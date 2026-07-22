@@ -1058,6 +1058,12 @@ export class StockLedgerService {
     return result;
   }
 
+  /**
+   * @internal Baja de activo vía ledger. Uso exclusivo del módulo inventario
+   * (`WriteOffService` / flujos internos). No forma parte del contrato público
+   * del Modulith: no exponer como endpoint ni invocar desde otros módulos.
+   * Preferir `WriteOffService.createRequest` → `approve` (ADR-060).
+   */
   async recordWriteOff(input: WriteOffAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const itemIds = input.itemId ? [input.itemId] : [];

@@ -33,4 +33,13 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  // Path-specific (rootDir=src): no umbral global del API — evita romper baseline monorepo.
+  coverageThreshold: {
+    '**/serialized-asset-useful-life.util.ts': {
+      statements: 80,
+      branches: 80,
+      functions: 80,
+      lines: 80,
+    },
+  },
 };

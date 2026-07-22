@@ -337,3 +337,4 @@ Resumen al 2026-07-21 (post H4): **22 de 22 requisitos MVP construidos (100 % al
 | Activos y comodato | [PRD-MOD12-ACTIVOS-COMODATO-v1.0.md](PRD-MOD12-ACTIVOS-COMODATO-v1.0.md) | **Cerrado** (5A+5B, 2026-07-21) |
 | Bajas con aprobación | [PRD-MOD12-BAJAS-APROBACION-v1.0.md](PRD-MOD12-BAJAS-APROBACION-v1.0.md) | **Cerrado** (H3, 2026-07-21) |
 | Vida útil / StockLow / eventos | [PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md](PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md) | **Cerrado** (H4, 2026-07-21) |
+| Cierre de módulo (H6) | [INFORME-MOD12-CIERRE-MODULO-v1.0.md](../informes/INFORME-MOD12-CIERRE-MODULO-v1.0.md) | **G7 NO-GO** — remediación H6-R1 |

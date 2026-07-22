@@ -47,6 +47,22 @@ const replaceMock = jest.fn();
 let pathnameMock = '/dashboard/inventory';
 let searchParamsMock = new URLSearchParams();
 
+const useAuthMock = jest.fn();
+
+function buildAuthUser(overrides: { id?: string; role?: UserRole } = {}) {
+  return {
+    id: overrides.id ?? 'user-admin',
+    emailHash: 'hash',
+    role: overrides.role ?? UserRole.ADMIN,
+    type: 'tenant' as const,
+    tenantId: 'tenant-1',
+    displayName: 'Admin',
+    subtitle: 'Administrador',
+    firstName: 'Admin',
+    lastName: 'Test',
+  };
+}
+
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
   useRouter: () => ({ replace: replaceMock }),
@@ -54,25 +70,7 @@ jest.mock('next/navigation', () => ({
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    user: {
-      id: 'user-admin',
-      emailHash: 'hash',
-      role: UserRole.ADMIN,
-      type: 'tenant' as const,
-      tenantId: 'tenant-1',
-      displayName: 'Admin',
-      subtitle: 'Administrador',
-      firstName: 'Admin',
-      lastName: 'Test',
-    },
-    isAuthenticated: true,
-    isLoading: false,
-    login: jest.fn(),
-    completeMfaLogin: jest.fn(),
-    logout: jest.fn(),
-    refreshProfile: jest.fn(),
-  }),
+  useAuth: () => useAuthMock(),
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -314,6 +312,15 @@ describe('InventoryClient', () => {
     replaceMock.mockReset();
     pathnameMock = '/dashboard/inventory';
     searchParamsMock = new URLSearchParams();
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser(),
+      isAuthenticated: true,
+      isLoading: false,
+      login: jest.fn(),
+      completeMfaLogin: jest.fn(),
+      logout: jest.fn(),
+      refreshProfile: jest.fn(),
+    });
     inventoryApiMock.createItem.mockClear();
     inventoryApiMock.dashboard.mockResolvedValue({
       itemsCount: 3,
@@ -1807,6 +1814,61 @@ describe('InventoryClient', () => {
       expect(screen.getByText(/Baja aprobada/)).toBeInTheDocument();
     });
   });
+
+  // CA-H6-03: canApproveWriteOff es flag independiente de canAdjustStock (ambos ADMIN hoy).
+  it('muestra Aprobar y Rechazar cuando canApproveWriteOff aplica (ADMIN) (CA-H6-03)', async () => {
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser({ role: UserRole.ADMIN }),
+      isAuthenticated: true,
+      isLoading: false,
+      login: jest.fn(),
+      completeMfaLogin: jest.fn(),
+      logout: jest.fn(),
+      refreshProfile: jest.fn(),
+    });
+
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+
+    const pendingRow = await screen.findByTestId('write-off-pending-row-wo-1');
+    expect(within(pendingRow).getByRole('button', { name: 'Aprobar' })).toBeInTheDocument();
+    expect(within(pendingRow).getByRole('button', { name: 'Rechazar' })).toBeInTheDocument();
+  });
+
+  it.each([UserRole.NOC, UserRole.SUPPORT] as const)(
+    'oculta Aprobar y Rechazar cuando canApproveWriteOff no aplica (%s) (CA-H6-03)',
+    async (role) => {
+      useAuthMock.mockReturnValue({
+        user: buildAuthUser({ id: 'user-operator', role }),
+        isAuthenticated: true,
+        isLoading: false,
+        login: jest.fn(),
+        completeMfaLogin: jest.fn(),
+        logout: jest.fn(),
+        refreshProfile: jest.fn(),
+      });
+
+      render(<InventoryClient />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+
+      const pendingRow = await screen.findByTestId('write-off-pending-row-wo-1');
+      expect(within(pendingRow).queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
+      expect(
+        within(pendingRow).queryByRole('button', { name: 'Rechazar' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Solicitar baja' })).toBeInTheDocument();
+    },
+  );
 
   it('muestra historial con enlace al movimiento cuando la baja está completada', async () => {
     render(<InventoryClient />);

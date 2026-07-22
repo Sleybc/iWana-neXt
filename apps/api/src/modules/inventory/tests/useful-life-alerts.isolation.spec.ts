@@ -1,5 +1,4 @@
 import { DataSource } from 'typeorm';
-import { SerializedAssetStatus } from '@iwana/shared';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 
 jest.mock('@iwana/db', () => ({
@@ -20,31 +19,38 @@ jest.mock('@iwana/db', () => ({
 const iwanaDb = require('@iwana/db') as {
   TenantContext: { getOrThrow: jest.Mock };
   runInTenantSchema: jest.Mock;
-  SerializedAsset: { name: string };
-  InventoryItem: { name: string };
 };
 
+/**
+ * Aislamiento de alertas de vida útil (H6-R1 / CA multi-tenant).
+ * No filtra filas por tenant en el stub: demuestra que el servicio emite
+ * `asset.tenant_id = :tenantId` en el predicado del QueryBuilder.
+ */
 describe('useful-life-alerts aislamiento tenant', () => {
   let currentTenant = { tenantId: 'tenant-a', schemaName: 'tenant_a' };
-  const assetsBySchema = new Map<string, Array<Record<string, unknown>>>();
+  let lastQb: {
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    orderBy: jest.Mock;
+    skip: jest.Mock;
+    take: jest.Mock;
+    getCount: jest.Mock;
+    getMany: jest.Mock;
+  };
 
-  function seed(schemaName: string, assets: Array<Record<string, unknown>>): void {
-    assetsBySchema.set(schemaName, assets);
-  }
-
-  function managerFor(schemaName: string) {
+  function managerStub() {
+    lastQb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
     return {
-      find: jest.fn(async (entity: { name: string }) => {
-        if (entity.name === 'SerializedAsset') {
-          return (assetsBySchema.get(schemaName) ?? []).filter(
-            (asset) => asset.tenantId === currentTenant.tenantId,
-          );
-        }
-        if (entity.name === 'InventoryItem') {
-          return [{ id: 'item-1', sku: 'SKU', name: 'ONT' }];
-        }
-        return [];
-      }),
+      createQueryBuilder: jest.fn().mockReturnValue(lastQb),
+      find: jest.fn().mockResolvedValue([]),
     };
   }
 
@@ -53,8 +59,10 @@ describe('useful-life-alerts aislamiento tenant', () => {
   beforeAll(() => {
     iwanaDb.TenantContext.getOrThrow.mockImplementation(() => currentTenant);
     iwanaDb.runInTenantSchema.mockImplementation(
-      async (_ds: unknown, schemaName: string, cb: (qr: { manager: unknown }) => unknown) =>
-        cb({ manager: managerFor(schemaName) }),
+      async (_ds: unknown, schemaName: string, cb: (qr: { manager: unknown }) => unknown) => {
+        expect(schemaName).toBe(currentTenant.schemaName);
+        return cb({ manager: managerStub() });
+      },
     );
 
     service = new SerializedAssetService(
@@ -66,56 +74,46 @@ describe('useful-life-alerts aislamiento tenant', () => {
     );
 
     jest.useFakeTimers().setSystemTime(new Date('2026-07-21T00:00:00.000Z'));
-
-    seed('tenant_a', [
-      {
-        id: 'asset-a',
-        tenantId: 'tenant-a',
-        inventoryItemId: 'item-1',
-        serialNumber: 'A-1',
-        assetTag: null,
-        currentStatus: SerializedAssetStatus.AVAILABLE,
-        usefulLifeMonths: 6,
-        purchaseDate: '2025-01-01',
-        warrantyUntil: null,
-        updatedAt: new Date(),
-      },
-    ]);
-    seed('tenant_b', [
-      {
-        id: 'asset-b',
-        tenantId: 'tenant-b',
-        inventoryItemId: 'item-1',
-        serialNumber: 'B-1',
-        assetTag: null,
-        currentStatus: SerializedAssetStatus.AVAILABLE,
-        usefulLifeMonths: 6,
-        purchaseDate: '2025-01-01',
-        warrantyUntil: null,
-        updatedAt: new Date(),
-      },
-    ]);
   });
 
   afterAll(() => {
     jest.useRealTimers();
   });
 
-  it('no filtra activos de otro schema', async () => {
+  it('emite predicado tenant_id = :tenantId y corre en el schema del contexto', async () => {
     currentTenant = { tenantId: 'tenant-a', schemaName: 'tenant_a' };
-    const resultA = await service.listUsefulLifeAlerts({
+    await service.listUsefulLifeAlerts({
       status: 'vencida',
       page: 1,
       pageSize: 20,
     });
-    expect(resultA.data.map((row) => row.id)).toEqual(['asset-a']);
+
+    expect(lastQb.where).toHaveBeenCalledWith('asset.tenant_id = :tenantId', {
+      tenantId: 'tenant-a',
+    });
+    expect(iwanaDb.runInTenantSchema).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant_a',
+      expect.any(Function),
+    );
 
     currentTenant = { tenantId: 'tenant-b', schemaName: 'tenant_b' };
-    const resultB = await service.listUsefulLifeAlerts({
-      status: 'vencida',
+    await service.listUsefulLifeAlerts({
+      status: 'por-vencer',
       page: 1,
       pageSize: 20,
     });
-    expect(resultB.data.map((row) => row.id)).toEqual(['asset-b']);
+
+    expect(lastQb.where).toHaveBeenCalledWith('asset.tenant_id = :tenantId', {
+      tenantId: 'tenant-b',
+    });
+    expect(iwanaDb.runInTenantSchema).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant_b',
+      expect.any(Function),
+    );
+
+    // El stub no filtra por tenant: la evidencia es el predicado emitido + schema.
+    expect(lastQb.getMany).toHaveBeenCalled();
   });
 });

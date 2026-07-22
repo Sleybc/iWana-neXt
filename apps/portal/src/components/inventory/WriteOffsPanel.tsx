@@ -62,6 +62,8 @@ interface WriteOffsPanelProps {
   historyError: string | null;
   actionError: string | null;
   processingWriteOffId: string | null;
+  /** Aprobación de bajas (flag independiente de canAdjustStock). El API sigue siendo autoridad. */
+  canApprove?: boolean;
   onRefreshPending: () => void;
   onRefreshHistory: () => void;
   onApprove: (writeOffId: string) => void;
@@ -143,6 +145,7 @@ export function WriteOffsPanel({
   historyError,
   actionError,
   processingWriteOffId,
+  canApprove = false,
   onRefreshPending,
   onRefreshHistory,
   onApprove,
@@ -376,7 +379,9 @@ export function WriteOffsPanel({
                           {formatInventoryDateTime(writeOff.createdAt)}
                         </td>
                         <td className={portalDataTableCellClassName}>
-                          {isRejecting ? (
+                          {!canApprove ? (
+                            <span className="text-gray-500 dark:text-gray-400">—</span>
+                          ) : isRejecting ? (
                             <div className="space-y-2 min-w-[14rem]">
                               <textarea
                                 aria-label="Motivo del rechazo"

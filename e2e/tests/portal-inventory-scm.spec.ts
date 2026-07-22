@@ -102,13 +102,26 @@ async function openPurchaseComposer(main: import('@playwright/test').Locator) {
   await expect(main.getByText('Nueva solicitud de compra')).toBeVisible();
 }
 
+/** Agrega un producto al borrador del composer de compras (búsqueda tipada, no tabs Catálogo). */
 async function addCatalogProductToDraft(
+  page: import('@playwright/test').Page,
   main: import('@playwright/test').Locator,
-  productPattern: RegExp,
+  searchText: string,
+  optionPattern: RegExp,
 ) {
-  await main.getByRole('tab', { name: /^Catálogo \(\d+\)/ }).click();
-  await main.getByRole('checkbox', { name: productPattern }).check();
-  await main.getByRole('button', { name: /Agregar 1 producto/i }).click();
+  const search = main.getByRole('combobox', { name: /Buscar producto/i });
+  await search.fill(searchText);
+  await page.getByRole('option', { name: optionPattern }).click();
+}
+
+/** Expande el disclosure «Ronda de cotización» cuando la sección primaria es cotización manual. */
+async function openRfqRoundSection(workbench: import('@playwright/test').Locator) {
+  const createButton = workbench.getByRole('button', { name: 'Crear solicitud de cotización' });
+  if (await createButton.isVisible().catch(() => false)) {
+    return;
+  }
+  await workbench.getByText('Ronda de cotización', { exact: true }).click();
+  await expect(createButton).toBeVisible();
 }
 
 async function assignIssueLineSerial(
@@ -2122,6 +2135,22 @@ async function setupInventoryMocks(
       return;
     }
 
+    const rfqInvitationPdfMatch = pathname.match(
+      /\/purchasing\/rfqs\/([^/]+)\/invitations\/([^/]+)\/pdf$/,
+    );
+    if (rfqInvitationPdfMatch && method === 'GET') {
+      const rfq = state.purchaseRfqs.find((entry) => entry.id === rfqInvitationPdfMatch[1]);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/pdf',
+        headers: {
+          'Content-Disposition': `attachment; filename="${String(rfq?.rfqNumber ?? 'RFQ-000001')}-Proveedor-Demo.pdf"`,
+        },
+        body: Buffer.from('%PDF-1.4\n% mock rfq invitation pdf\n'),
+      });
+      return;
+    }
+
     const providerListMatch = pathname.endsWith('/purchasing/providers') && method === 'GET';
     if (providerListMatch) {
       const search = url.searchParams.get('search') ?? '';
@@ -2459,7 +2488,9 @@ async function setupInventoryMocks(
     }
 
     if (pathname.endsWith('/purchasing/orders') && method === 'POST') {
-      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      // Usar `httpRequest` — no sombrear el `request` del route handler (TDZ con `const request` abajo).
+      const httpRequest = route.request();
+      const body = JSON.parse(httpRequest.postData() ?? '{}') as Record<string, unknown>;
 
       // Enforcement RF-PROV-08: una OC no puede emitirse a un proveedor BLOCKED/INACTIVE.
       const orderPartyRefs = [
@@ -3231,7 +3262,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText('Patch cord 24m')).toBeVisible();
 
     await openPurchaseComposer(main);
-    await addCatalogProductToDraft(main, /Seleccionar .* - Patch cord 24m/i);
+    await addCatalogProductToDraft(page, main, 'Patch cord', /Patch cord 24m/i);
     await main.getByLabel('Título').fill('Compra patch cord');
     await main.getByLabel('Área solicitante').fill('Operaciones');
     await main
@@ -3279,7 +3310,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText('Cable fibra 12 hilos')).toBeVisible();
 
     await openPurchaseComposer(main);
-    await addCatalogProductToDraft(main, /Seleccionar .* - Cable fibra 12 hilos/i);
+    await addCatalogProductToDraft(page, main, 'Cable fibra', /Cable fibra 12 hilos/i);
     await main.getByLabel('Título').fill('Compra fibra proyecto norte');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
     await main
@@ -3306,7 +3337,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText('Por cotizar')).toBeVisible();
 
     await main.getByRole('button', { name: 'Nueva solicitud' }).click();
-    await addCatalogProductToDraft(main, /Seleccionar ONT-HG8245 - ONT Huawei HG8245/i);
+    await addCatalogProductToDraft(page, main, 'ONT', /ONT-HG8245 - ONT Huawei HG8245/i);
     await main.getByLabel('Título').fill('Compra ONT marzo');
     await main.getByLabel('Área solicitante').fill('Operaciones');
     await main
@@ -3420,9 +3451,21 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(loansPanel.getByText('ONT-HG8245 · SN-001')).toBeVisible();
 
     await main.getByRole('tab', { name: 'Movimientos' }).click();
-    await main.getByLabel('Producto').nth(1).selectOption(ITEM_ID);
-    await main.getByLabel('Bodega de origen').selectOption(LOC_CUSTOMER);
-    await main.getByLabel('Bodega de destino').selectOption(LOC_MAIN);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Producto' }).nth(1),
+      'ONT-HG8245 · ONT Huawei HG8245',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Bodega de origen' }),
+      'CLI-01 · Sitio cliente',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Bodega de destino' }),
+      'BOD-01 · Bodega principal',
+    );
     await main.getByLabel('Serial (opcional)').nth(1).fill('SN-001');
     await main.getByRole('button', { name: 'Registrar retorno' }).click();
 
@@ -3551,7 +3594,11 @@ test.describe('Portal Inventario / SCM', () => {
 
     await orderDrawer.getByRole('button', { name: 'Generar orden de compra' }).click();
 
+    // El CTA post-creación cierra el drawer; hay que entrar a la pestaña Recepciones.
+    await expect(orderDrawer.getByText(/Orden de compra PO-.* generada/i)).toBeVisible();
+    await orderDrawer.getByRole('button', { name: 'Ir a recepciones' }).click();
     await expect(workbench.getByRole('tab', { name: 'Recepciones' })).toBeVisible();
+    await workbench.getByRole('tab', { name: 'Recepciones' }).click();
     await expect(workbench.getByText('Línea de orden')).toBeVisible();
     await expect(
       workbench.getByRole('paragraph').filter({ hasText: 'ONT-HG8245 · ONT Huawei HG8245' }),
@@ -3598,9 +3645,21 @@ test.describe('Portal Inventario / SCM', () => {
     await detail.getByRole('button', { name: 'Cerrar' }).click();
 
     await main.getByRole('tab', { name: 'Movimientos' }).click();
-    await main.getByLabel('Producto').nth(1).selectOption(ITEM_ID);
-    await main.getByLabel('Bodega de origen').selectOption(LOC_TECH);
-    await main.getByLabel('Bodega de destino').selectOption(LOC_MAIN);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Producto' }).nth(1),
+      'ONT-HG8245 · ONT Huawei HG8245',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Bodega de origen' }),
+      'TEC-01 · Custodia técnico',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Bodega de destino' }),
+      'BOD-01 · Bodega principal',
+    );
     await main.getByRole('button', { name: 'Registrar retorno' }).click();
 
     await expect(main.getByText(/Devolución registrada.*MOV-000011/i)).toBeVisible();
@@ -3618,7 +3677,7 @@ test.describe('Portal Inventario / SCM', () => {
       main.getByRole('combobox', { name: 'Tipo de compra' }),
       'Proyecto',
     );
-    await addCatalogProductToDraft(main, /Seleccionar ONT-HG8245 - ONT Huawei HG8245/i);
+    await addCatalogProductToDraft(page, main, 'ONT', /ONT-HG8245 - ONT Huawei HG8245/i);
     await main.getByRole('button', { name: 'Agregar línea manual' }).click();
     await main
       .getByRole('textbox', { name: 'Descripción manual' })
@@ -3759,11 +3818,14 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
     await main.getByRole('tab', { name: 'Compras' }).click();
-    await main.getByRole('button', { name: 'Abrir' }).first().click();
+    await main
+      .getByRole('row', { name: /PR-000200/ })
+      .getByRole('button', { name: 'Abrir' })
+      .click();
 
-    const workbench = page.getByRole('dialog');
-    await expect(workbench.getByText('Cable de fibra urgente')).toBeVisible();
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
     await workbench.getByRole('tab', { name: 'Aprobación' }).click();
+    await expect(workbench.getByLabel('Motivo de excepción')).toBeVisible();
     await workbench
       .getByLabel('Motivo de excepción')
       .fill('Falla crítica en red troncal sin stock disponible');
@@ -3792,6 +3854,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
     await workbench.getByRole('tab', { name: 'Cotizar' }).click();
+    await openRfqRoundSection(workbench);
     await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
     await expect(workbench.getByText('RFQ-000001')).toBeVisible();
     await expect(workbench.getByText('Borrador')).toBeVisible();
@@ -3809,7 +3872,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(workbench.getByText('Enviada', { exact: true })).toBeVisible();
 
     const downloadPromise = page.waitForEvent('download');
-    await workbench.getByRole('button', { name: 'Descargar PDF' }).click();
+    await workbench.getByRole('button', { name: /Descargar PDF de Proveedor Demo/i }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/RFQ-.*\.pdf$/);
   });
@@ -3839,6 +3902,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
     await workbench.getByRole('tab', { name: 'Cotizar' }).click();
+    await openRfqRoundSection(workbench);
     await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
     await expect(workbench.getByText('RFQ-000001')).toBeVisible();
 
@@ -3948,7 +4012,7 @@ test.describe('Portal Inventario / SCM', () => {
     await workbench.getByRole('button', { name: 'Adjudicar líneas' }).click();
     await expect(workbench.getByText('Adjudicaciones registradas')).toBeVisible();
 
-    await workbench.getByRole('tab', { name: 'Órdenes' }).click();
+    // Órdenes vive en fase Abastecer; el CTA del footer dispara el drawer sin cambiar de tab.
     await workbench.getByRole('button', { name: 'Generar órdenes desde adjudicación' }).click();
 
     const orderDrawer = page.getByRole('dialog', {
@@ -4364,7 +4428,8 @@ test.describe('Portal Inventario / Bodegas', () => {
 
       await main.getByRole('button', { name: 'Nuevo proveedor' }).first().click();
       let drawer = page.getByRole('dialog', { name: 'Nuevo proveedor' });
-      await drawer.getByLabel('Número de documento').fill('901777888');
+      // Alta por defecto usa NIT → label «Número de NIT» (no «Número de documento»).
+      await drawer.getByLabel('Número de NIT').fill('901777888');
       await drawer.getByLabel('Nombre').fill('Redes del Caribe SAS');
       await drawer.getByRole('button', { name: 'Continuar' }).click();
       await drawer.getByLabel('Plazo de pago (días)').fill('45');
@@ -4382,7 +4447,7 @@ test.describe('Portal Inventario / Bodegas', () => {
 
       await main.getByRole('button', { name: 'Nuevo proveedor' }).first().click();
       drawer = page.getByRole('dialog', { name: 'Nuevo proveedor' });
-      await drawer.getByLabel('Número de documento').fill(REUSE_DOCUMENT_NUMBER);
+      await drawer.getByLabel('Número de NIT').fill(REUSE_DOCUMENT_NUMBER);
       await drawer.getByRole('button', { name: 'Buscar documento' }).click();
       await expect(drawer.getByLabel('Nombre')).toHaveValue('Distribuidora Andina SAS');
       await expect(drawer.getByText('Se reutilizará la identidad de este tercero')).toBeVisible();

@@ -937,6 +937,7 @@ describe('InventoryController HTTP', () => {
   describe('write-offs', () => {
     const locationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const itemId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const writeOffId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
     it('crea solicitud pendiente sin invocar ledger directo', async () => {
       await request(app.getHttpServer())
@@ -954,9 +955,7 @@ describe('InventoryController HTTP', () => {
       expect(stockLedgerServiceMock.recordWriteOff).not.toHaveBeenCalled();
     });
 
-    it('permite listar y aprobar solicitudes de baja', async () => {
-      const writeOffId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
-
+    it('permite listar solicitudes a SUPPORT y aprobar a ADMIN distinto (CA-H6-01)', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/inventory/write-offs')
         .set('Authorization', 'Bearer support-token')
@@ -976,6 +975,60 @@ describe('InventoryController HTTP', () => {
       expect(writeOffServiceMock.list).toHaveBeenCalled();
       expect(writeOffServiceMock.getById).toHaveBeenCalledWith(writeOffId);
       expect(writeOffServiceMock.approve).toHaveBeenCalledWith(writeOffId, expect.any(Object));
+    });
+
+    it('forbids NOC from approving write-offs (CA-H6-01)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/write-offs/${writeOffId}/approve`)
+        .set('Authorization', 'Bearer noc-token')
+        .send({})
+        .expect(403);
+
+      expect(writeOffServiceMock.approve).not.toHaveBeenCalled();
+    });
+
+    it('forbids SUPPORT from approving write-offs (CA-H6-01)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/write-offs/${writeOffId}/approve`)
+        .set('Authorization', 'Bearer support-token')
+        .send({})
+        .expect(403);
+
+      expect(writeOffServiceMock.approve).not.toHaveBeenCalled();
+    });
+
+    it('forbids NOC from rejecting write-offs (CA-H6-01)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/write-offs/${writeOffId}/reject`)
+        .set('Authorization', 'Bearer noc-token')
+        .send({ notes: 'Motivo de rechazo suficientemente largo' })
+        .expect(403);
+
+      expect(writeOffServiceMock.reject).not.toHaveBeenCalled();
+    });
+
+    it('forbids SUPPORT from rejecting write-offs (CA-H6-01)', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/write-offs/${writeOffId}/reject`)
+        .set('Authorization', 'Bearer support-token')
+        .send({ notes: 'Motivo de rechazo suficientemente largo' })
+        .expect(403);
+
+      expect(writeOffServiceMock.reject).not.toHaveBeenCalled();
+    });
+
+    it('allows ADMIN to reject write-offs', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/write-offs/${writeOffId}/reject`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({ notes: 'Motivo de rechazo suficientemente largo' })
+        .expect(201);
+
+      expect(writeOffServiceMock.reject).toHaveBeenCalledWith(
+        writeOffId,
+        expect.objectContaining({ notes: 'Motivo de rechazo suficientemente largo' }),
+        expect.any(Object),
+      );
     });
   });
 });

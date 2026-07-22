@@ -221,6 +221,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   );
   const { user } = useAuth();
   const canAdjustStock = user?.role === UserRole.ADMIN;
+  // Contrato: no reutilizar canAdjustStock para bajas — flag de aprobación independiente.
+  const canApproveWriteOff = user?.role === UserRole.ADMIN;
   const [activeTab, setActiveTab] = useState<InventoryTab>(resolveInventoryTab(initialTab));
   const [locationCustodyFilter, setLocationCustodyFilter] = useState<LocationMatrixCustodyFilter>(
     () => resolveLocationCustodyFilter(searchParams.get('custody')),
@@ -2489,6 +2491,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             historyError={historyWriteOffsError}
             actionError={writeOffActionError}
             processingWriteOffId={processingWriteOffId}
+            canApprove={canApproveWriteOff}
             onRefreshPending={() => void loadPendingWriteOffs()}
             onRefreshHistory={() => void loadHistoryWriteOffs()}
             onApprove={(writeOffId) => void handleApproveWriteOff(writeOffId)}

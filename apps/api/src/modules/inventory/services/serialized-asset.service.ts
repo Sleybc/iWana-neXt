@@ -39,8 +39,17 @@ import {
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { AssetLifecycleService } from './asset-lifecycle.service';
 import { AssetLoanService } from './asset-loan.service';
-import { calculateUsefulLife } from './serialized-asset-useful-life.util';
+import {
+  USEFUL_LIFE_ALERT_THRESHOLD_MONTHS,
+  calculateUsefulLife,
+} from './serialized-asset-useful-life.util';
 import { StockMovementQueryService } from './stock-movement-query.service';
+
+const USEFUL_LIFE_ALERT_TERMINAL_STATUSES: SerializedAssetStatus[] = [
+  SerializedAssetStatus.WRITTEN_OFF,
+  SerializedAssetStatus.LOST,
+  SerializedAssetStatus.SOLD,
+];
 
 interface CreateReceivedAssetInput {
   tenantId: string;
@@ -156,8 +165,8 @@ export class SerializedAssetService {
   }
 
   /**
-   * Lista alertas de vida útil (pull on-read, sin materializar) — D-H4-06.
-   * Excluye `sin-dato` y `vigente`; filtra por `por-vencer` | `vencida`.
+   * Lista alertas de vida útil (pull on-read, sin materializar) — D-H4-06 / D-H6-4.
+   * Predicado, COUNT y LIMIT/OFFSET en SQL; resuelve ítems solo de la página.
    */
   async listUsefulLifeAlerts(query: ListUsefulLifeAlertsQueryInput): Promise<{
     data: Array<{
@@ -182,14 +191,42 @@ export class SerializedAssetService {
   }> {
     const validated = ListUsefulLifeAlertsQuerySchema.parse(query);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const allowedStatuses: Array<Extract<UsefulLifeStatus, 'por-vencer' | 'vencida'>> =
-      validated.status ? [validated.status] : ['por-vencer', 'vencida'];
+    const referenceDate = new Date();
+    const refDate = referenceDate.toISOString().slice(0, 10);
+    const expiryExpr = `(asset.purchase_date + (asset.useful_life_months * INTERVAL '1 month'))`;
+    const thresholdEndExpr = `(CAST(:refDate AS date) + (:thresholdMonths * INTERVAL '1 month'))`;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const assets = await qr.manager.find(SerializedAsset, {
-        where: { tenantId },
-        order: { updatedAt: 'DESC' },
-      });
+      const qb = qr.manager
+        .createQueryBuilder(SerializedAsset, 'asset')
+        .where('asset.tenant_id = :tenantId', { tenantId })
+        .andWhere('asset.purchase_date IS NOT NULL')
+        .andWhere('asset.useful_life_months IS NOT NULL')
+        .andWhere('asset.current_status NOT IN (:...terminalStatuses)', {
+          terminalStatuses: USEFUL_LIFE_ALERT_TERMINAL_STATUSES,
+        });
+
+      if (validated.status === 'vencida') {
+        qb.andWhere(`${expiryExpr} <= CAST(:refDate AS date)`, { refDate });
+      } else if (validated.status === 'por-vencer') {
+        qb.andWhere(`${expiryExpr} > CAST(:refDate AS date)`, { refDate }).andWhere(
+          `${expiryExpr} <= ${thresholdEndExpr}`,
+          { refDate, thresholdMonths: USEFUL_LIFE_ALERT_THRESHOLD_MONTHS },
+        );
+      } else {
+        qb.andWhere(`${expiryExpr} <= ${thresholdEndExpr}`, {
+          refDate,
+          thresholdMonths: USEFUL_LIFE_ALERT_THRESHOLD_MONTHS,
+        });
+      }
+
+      qb.orderBy('asset.updated_at', 'DESC');
+
+      const total = await qb.getCount();
+      const assets = await qb
+        .skip((validated.page - 1) * validated.pageSize)
+        .take(validated.pageSize)
+        .getMany();
 
       const itemIds = [...new Set(assets.map((asset) => asset.inventoryItemId))];
       const items =
@@ -200,41 +237,34 @@ export class SerializedAssetService {
             });
       const itemById = new Map(items.map((item) => [item.id, item]));
 
-      const alerts = assets
-        .map((asset) => {
-          const usefulLife = calculateUsefulLife({
-            usefulLifeMonths: asset.usefulLifeMonths,
-            purchaseDate: asset.purchaseDate,
-            warrantyUntil: asset.warrantyUntil,
-          });
-          if (usefulLife.status !== 'por-vencer' && usefulLife.status !== 'vencida') {
-            return null;
-          }
-          if (!allowedStatuses.includes(usefulLife.status)) {
-            return null;
-          }
+      const data = assets.map((asset) => {
+        const usefulLife = calculateUsefulLife({
+          usefulLifeMonths: asset.usefulLifeMonths,
+          purchaseDate: asset.purchaseDate,
+          warrantyUntil: asset.warrantyUntil,
+          referenceDate,
+        });
+        const status: Extract<UsefulLifeStatus, 'por-vencer' | 'vencida'> =
+          usefulLife.status === 'por-vencer' || usefulLife.status === 'vencida'
+            ? usefulLife.status
+            : 'por-vencer';
 
-          const item = itemById.get(asset.inventoryItemId) ?? null;
-          return {
-            id: asset.id,
-            inventoryItemId: asset.inventoryItemId,
-            serialNumber: asset.serialNumber,
-            assetTag: asset.assetTag,
-            currentStatus: asset.currentStatus,
-            sku: item?.sku ?? null,
-            itemName: item?.name ?? null,
-            status: usefulLife.status,
-            monthsRemaining: usefulLife.monthsRemaining,
-            monthsTotal: usefulLife.monthsTotal,
-            purchaseDate: asset.purchaseDate,
-            warrantyUntil: usefulLife.warrantyUntil,
-          };
-        })
-        .filter((row): row is NonNullable<typeof row> => row != null);
-
-      const total = alerts.length;
-      const start = (validated.page - 1) * validated.pageSize;
-      const data = alerts.slice(start, start + validated.pageSize);
+        const item = itemById.get(asset.inventoryItemId) ?? null;
+        return {
+          id: asset.id,
+          inventoryItemId: asset.inventoryItemId,
+          serialNumber: asset.serialNumber,
+          assetTag: asset.assetTag,
+          currentStatus: asset.currentStatus,
+          sku: item?.sku ?? null,
+          itemName: item?.name ?? null,
+          status,
+          monthsRemaining: usefulLife.monthsRemaining,
+          monthsTotal: usefulLife.monthsTotal,
+          purchaseDate: asset.purchaseDate,
+          warrantyUntil: usefulLife.warrantyUntil,
+        };
+      });
 
       return {
         data,

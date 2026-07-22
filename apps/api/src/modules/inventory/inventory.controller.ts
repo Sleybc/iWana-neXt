@@ -289,7 +289,7 @@ export class InventoryController {
   @ApiOperation({
     summary: 'Listar alertas de vida útil de activos',
     description:
-      'Devuelve activos con vida útil por vencer o vencida. Cálculo on-read sin tabla materializada.',
+      'Devuelve activos con vida útil por vencer o vencida. Predicado, COUNT y paginación en SQL; excluye WRITTEN_OFF, LOST y SOLD. Cálculo on-read sin tabla materializada.',
   })
   listUsefulLifeAlerts(
     @Query(new ZodValidationPipe(ListUsefulLifeAlertsQuerySchema))
@@ -525,8 +525,12 @@ export class InventoryController {
   }
 
   @Post('write-offs/:id/approve')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Aprobar solicitud de baja y aplicar al ledger' })
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Aprobar solicitud de baja y aplicar al ledger',
+    description:
+      'Exclusivo de ADMIN (ADR-060 / D-H6-1). El aprobador debe ser distinto del solicitante.',
+  })
   approveWriteOff(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(ApproveWriteOffSchema)) body: ApproveWriteOffDto,
@@ -537,8 +541,12 @@ export class InventoryController {
   }
 
   @Post('write-offs/:id/reject')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Rechazar solicitud de baja' })
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Rechazar solicitud de baja',
+    description:
+      'Exclusivo de ADMIN (ADR-060 / D-H6-1). El rechazante debe ser distinto del solicitante.',
+  })
   rejectWriteOff(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(RejectWriteOffSchema)) body: RejectWriteOffDto,

@@ -51,7 +51,7 @@ const requester: JwtPayload = {
 const approver: JwtPayload = {
   sub: APPROVER_ID,
   email: 'approver@example.test',
-  role: UserRole.NOC,
+  role: UserRole.ADMIN,
   tenantId: 'tenant-001',
   schemaName: 'tenant_001',
   jti: 'jti-approver',
@@ -226,7 +226,7 @@ describe('WriteOffService', () => {
     expect(result.location?.name).toBe('Bodega central');
   });
 
-  it('approve aplica ledger y marca COMPLETED', async () => {
+  it('approve aplica ledger y marca COMPLETED cuando ADMIN distinto del solicitante (CA-H6-01)', async () => {
     const { manager, save } = buildManager();
     (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
       work({ manager }),
@@ -279,7 +279,7 @@ describe('WriteOffService', () => {
     expect(result.status).toBe(WriteOffStatus.REJECTED);
   });
 
-  it('approve rechaza cuando solicitante y aprobador coinciden', async () => {
+  it('approve rechaza con 400 cuando el ADMIN solicitante intenta aprobar su propia baja (CA-H6-02)', async () => {
     const { manager } = buildManager();
     (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
       work({ manager }),
@@ -290,6 +290,20 @@ describe('WriteOffService', () => {
     await expect(service.approve(WRITE_OFF_ID, requester)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+    expect(stockLedgerService.recordWriteOffWithManager).not.toHaveBeenCalled();
+  });
+
+  it('reject rechaza con 400 cuando el ADMIN solicitante intenta rechazar su propia baja (H6-R1)', async () => {
+    const { manager } = buildManager();
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+      work({ manager }),
+    );
+
+    const service = createService();
+
+    await expect(
+      service.reject(WRITE_OFF_ID, { notes: 'Auto-rechazo' }, requester),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(stockLedgerService.recordWriteOffWithManager).not.toHaveBeenCalled();
   });
 
