@@ -85,4 +85,4 @@ Tras Fase F las alertas viven encima de los tabs; el tab **Resumen** quedó redu
 - [x] Suite portal sin regresión
 - [x] Gate navegador obligatorio PASS (SR-QA ≠ productor)
 - [x] Informe vivo v1.4
-- [ ] Push `origin/main` (este cierre)
+- [x] Push `origin/main` (`30af1eff..0011491c`)
