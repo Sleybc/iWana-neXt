@@ -232,6 +232,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
             summary={summary}
             isLoading={summaryLoading}
             onNavigateTab={handleNavigateTab}
+            onRetry={handleRefresh}
           />
         }
         onTabChange={handleTabChange}
