@@ -71,11 +71,11 @@ Tras Fase F las alertas viven encima de los tabs; el tab **Resumen** quedó redu
 
 ## Deuda residual (no bloquea)
 
-| Sev. | Ítem | Dueño |
-| --- | --- | --- |
-| P3 | Discoverabilidad post-retiro del tab | PROD-UX (medir) |
-| P3 | URL `?tab=summary` no se normaliza hasta el siguiente cambio de tab | FE (opcional) |
-| — | Mismo patrón de tab Resumen en Inventario | pendiente (fuera de alcance MOD06) |
+| Sev. | Ítem | Dueño | Estado |
+| --- | --- | --- | --- |
+| P3 | Discoverabilidad post-retiro del tab | PROD-UX → FE | **Cerrado** — `Actividad` usa `variant="secondary"` si `attentionCount > 0` ([PROD-UX](1207b268-7498-466c-aa56-ce000afb3e8a) opción B) |
+| P3 | URL `?tab=summary` no se normaliza | FE | **Cerrado** — `needsCommercialUrlCanonicalization` + `router.replace` canónico |
+| — | Mismo patrón de tab Resumen en Inventario | pendiente | Fuera de alcance MOD06 |
 
 ---
 
@@ -86,3 +86,4 @@ Tras Fase F las alertas viven encima de los tabs; el tab **Resumen** quedó redu
 - [x] Gate navegador obligatorio PASS (SR-QA ≠ productor)
 - [x] Informe vivo v1.4
 - [x] Push `origin/main` (`30af1eff..0011491c`)
+- [x] Deuda P3 URL + discoverabilidad (esta remediación)

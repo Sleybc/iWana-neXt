@@ -244,6 +244,18 @@ export function buildCommercialTabQuery(route: ResolvedCommercialRoute): string 
   return route.tab;
 }
 
+/**
+ * True si el `tab` de la URL no coincide con la forma canónica de la ruta resuelta
+ * (p. ej. `?tab=summary` → aterrizaje sin `tab`, `?tab=offers` → `bundles`).
+ */
+export function needsCommercialUrlCanonicalization(
+  rawTabParam: string | null,
+  route: ResolvedCommercialRoute,
+): boolean {
+  const canonicalTab = buildCommercialTabQuery(route) ?? null;
+  return rawTabParam !== canonicalTab;
+}
+
 export interface CommercialNavigateOptions {
   status?: CommercialOfferStatusFilter | null;
 }

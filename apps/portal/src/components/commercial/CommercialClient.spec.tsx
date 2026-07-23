@@ -5,9 +5,10 @@ import { CommercialClient } from './CommercialClient';
 import { commercialApi } from '@/lib/api-client';
 
 let mockSearchParams = new URLSearchParams();
+const replaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: jest.fn() }),
+  useRouter: () => ({ replace: replaceMock }),
   usePathname: () => '/dashboard/commercial',
   useSearchParams: () => mockSearchParams,
 }));
@@ -195,6 +196,50 @@ describe('CommercialClient', () => {
       expect(
         screen.getByRole('button', { name: 'Actividad comercial, 2 ítems requieren atención' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it('eleva el botón Actividad a secondary cuando hay ítems de atención', async () => {
+    getDashboardSummary.mockResolvedValue(
+      buildSummary({
+        attentionItems: [
+          {
+            id: 'p1',
+            name: 'Plan fibra',
+            entityType: 'plan',
+            reason: 'missing_current_price',
+            destinoTab: 'plans',
+            validTo: null,
+            usesRemaining: null,
+          },
+        ],
+      }),
+    );
+
+    const { container } = render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Actividad comercial, 1 ítem requiere atención' }),
+      ).toBeInTheDocument();
+    });
+
+    const activityButton = screen.getByRole('button', {
+      name: 'Actividad comercial, 1 ítem requiere atención',
+    });
+    // Secondary usa tokens de superficie; ghost es transparente — comprobamos clase del contrato Button.
+    expect(activityButton.className).toMatch(/secondary|iwana-secondary|bg-iwana/i);
+    expect(container.querySelector('[aria-label="Actividad comercial"]')).not.toBeInTheDocument();
+  });
+
+  it('reescribe ?tab=summary a la URL canónica sin tab', async () => {
+    mockSearchParams = new URLSearchParams('tab=summary');
+    getDashboardSummary.mockResolvedValue(buildSummary());
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith('/dashboard/commercial', { scroll: false });
     });
   });
 });

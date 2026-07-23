@@ -12,6 +12,7 @@ import { CommercialAlertsStrip } from '@/components/commercial/CommercialAlertsS
 import {
   applyCommercialOfferStatusToSearchParams,
   buildCommercialTabQuery,
+  needsCommercialUrlCanonicalization,
   parseCommercialOfferStatus,
   resolveCommercialRoute,
   type CommercialOfferStatusFilter,
@@ -107,20 +108,27 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   }, []);
 
   useEffect(() => {
-    const tabFromUrl = searchParams.get('tab') ?? initialTab;
+    const rawTabInUrl = searchParams.get('tab');
+    const tabFromUrl = rawTabInUrl ?? initialTab;
     const statusFromUrl = parseCommercialOfferStatus(searchParams.get('status'));
+    const nextRoute: ResolvedCommercialRoute = {
+      ...resolveCommercialRoute(tabFromUrl),
+      status: statusFromUrl,
+    };
+
     setRoute((current) => {
-      const nextRoute: ResolvedCommercialRoute = {
-        ...resolveCommercialRoute(tabFromUrl),
-        status: statusFromUrl,
-      };
       if (routesEqual(current, nextRoute)) {
         return current;
       }
 
       return nextRoute;
     });
-  }, [initialTab, searchParams]);
+
+    // Reescribe aliases legacy (`summary`, `offers`, `tab=plans` explícito) a la query canónica.
+    if (needsCommercialUrlCanonicalization(rawTabInUrl, nextRoute)) {
+      syncRouteToUrl(pathname, router, searchParams, nextRoute);
+    }
+  }, [initialTab, pathname, router, searchParams]);
 
   useEffect(() => {
     if (!user) {
@@ -209,7 +217,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         actions={
           <>
             <Button
-              variant="ghost"
+              variant={attentionCount > 0 ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => setIsActivityOpen(true)}
               aria-label={

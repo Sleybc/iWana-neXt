@@ -4,6 +4,7 @@ import {
   isCommercialTabParam,
   isCommercialValidToExpiringSoon,
   matchesCommercialExpiringOfferFilter,
+  needsCommercialUrlCanonicalization,
   parseCommercialOfferStatus,
   resolveCommercialRoute,
 } from './commercial-tab-params';
@@ -29,6 +30,37 @@ describe('commercial-tab-params', () => {
     expect(
       buildCommercialTabQuery({ tab: 'plans', taxationSubTab: 'tax-catalog', status: null }),
     ).toBeUndefined();
+  });
+
+  it('detecta URL no canonica para summary y offers', () => {
+    expect(
+      needsCommercialUrlCanonicalization('summary', {
+        tab: 'plans',
+        taxationSubTab: 'tax-catalog',
+        status: null,
+      }),
+    ).toBe(true);
+    expect(
+      needsCommercialUrlCanonicalization('offers', {
+        tab: 'bundles',
+        taxationSubTab: 'tax-catalog',
+        status: null,
+      }),
+    ).toBe(true);
+    expect(
+      needsCommercialUrlCanonicalization(null, {
+        tab: 'plans',
+        taxationSubTab: 'tax-catalog',
+        status: null,
+      }),
+    ).toBe(false);
+    expect(
+      needsCommercialUrlCanonicalization('products', {
+        tab: 'products',
+        taxationSubTab: 'tax-catalog',
+        status: null,
+      }),
+    ).toBe(false);
   });
 
   it('resuelve subtab tributaria desde query', () => {
