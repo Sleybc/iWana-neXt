@@ -882,22 +882,19 @@ export interface PlanCatalogItem {
   updatedAt: string;
 }
 
-export interface CommercialDashboardSummary {
-  plansCount: number;
-  activePlansCount: number;
-  productsCount: number;
-  activeProductsCount: number;
-  servicesCount: number;
-  activeServicesCount: number;
-  bundlesCount: number;
-  activeBundlesCount: number;
-  promotionsCount: number;
-  activePromotionsCount: number;
-  compatibilityRulesCount: number;
-  activeCompatibilityRulesCount: number;
-  taxRulesCount: number;
-  activeTaxRulesCount: number;
-}
+/** Reexport del contrato canónico H8 (`@iwana/shared`); legacy + campos aditivos. */
+import type { CommercialDashboardSummary } from '@iwana/shared';
+export type {
+  CommercialAttentionDestinoTab,
+  CommercialAttentionEntityType,
+  CommercialAttentionItem,
+  CommercialAttentionReason,
+  CommercialDashboardSummary,
+  CommercialRecentChange,
+  CommercialRecentChangeAction,
+  CommercialRecentChangeDestinoTab,
+  CommercialRecentChangeEntityType,
+} from '@iwana/shared';
 
 export interface CreatePlanCatalogItemDto {
   name: string;
@@ -963,6 +960,8 @@ export interface CommercialBundle {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Conteo de ítems del listado (GET /commercial/bundles). */
+  itemCount?: number;
 }
 
 export interface CommercialBundleItemDetail {
@@ -1234,6 +1233,7 @@ function mapCommercialBundle(bundle: CommercialBundle): CommercialBundle {
     validTo: bundle.validTo ?? null,
     createdAt: bundle.createdAt ?? new Date(0).toISOString(),
     updatedAt: bundle.updatedAt ?? new Date(0).toISOString(),
+    itemCount: bundle.itemCount ?? 0,
   };
 }
 

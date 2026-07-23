@@ -106,7 +106,7 @@ export function TaxSimulatorPanel() {
               type="number"
               min={1}
               max={6}
-              placeholder="1 – 6"
+              placeholder="Ej. 1 – 6"
               value={stratum}
               onChange={(e) => setStratum(e.target.value)}
               className={commercialFieldClassName}
@@ -118,7 +118,7 @@ export function TaxSimulatorPanel() {
             </label>
             <Input
               id="tax-simulator-municipality"
-              placeholder="ej: 11001"
+              placeholder="Ej. 11001"
               value={municipalityCode}
               onChange={(e) => setMunicipalityCode(e.target.value)}
               className={commercialFieldClassName}
@@ -127,9 +127,14 @@ export function TaxSimulatorPanel() {
         </div>
 
         <div className="mt-4 flex justify-end">
-          <Button onClick={() => void handleSimulate()} disabled={loading} className="gap-2">
+          <Button
+            onClick={() => void handleSimulate()}
+            disabled={loading}
+            loading={loading}
+            className="gap-2"
+          >
             <FlaskConical className="h-4 w-4" aria-hidden="true" />
-            {loading ? 'Simulando…' : 'Simular'}
+            Simular
           </Button>
         </div>
       </PortalPanel>

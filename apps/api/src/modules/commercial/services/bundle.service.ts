@@ -20,6 +20,11 @@ export interface BundleDetailResult extends CatalogBundle {
   }>;
 }
 
+/** Bundle de listado con conteo de ítems (evita N+1 de detalle en el portal). */
+export interface BundleListItem extends CatalogBundle {
+  itemCount: number;
+}
+
 export interface BundlePriceResult {
   bundleId: string;
   segment: CustomerSegment;
@@ -36,14 +41,40 @@ export class BundleService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async findAll(): Promise<CatalogBundle[]> {
+  async findAll(): Promise<BundleListItem[]> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(CatalogBundle, {
-        where: { tenantId, isActive: true },
-        order: { name: 'ASC' },
-      }),
-    );
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = await qr.manager
+        .createQueryBuilder(CatalogBundle, 'bundle')
+        .leftJoin(CatalogBundleItem, 'item', 'item.bundle_id = bundle.id')
+        .select([
+          'bundle.id',
+          'bundle.tenantId',
+          'bundle.name',
+          'bundle.description',
+          'bundle.discountType',
+          'bundle.discountValue',
+          'bundle.validFrom',
+          'bundle.validTo',
+          'bundle.isActive',
+          'bundle.createdAt',
+          'bundle.updatedAt',
+        ])
+        .addSelect('COUNT(item.id)', 'itemCount')
+        .where('bundle.tenant_id = :tenantId', { tenantId })
+        .andWhere('bundle.is_active = true')
+        .groupBy('bundle.id')
+        .orderBy('bundle.name', 'ASC')
+        .getRawAndEntities();
+
+      return rows.entities.map((bundle, index) => {
+        const raw = rows.raw[index] as { itemCount?: string | number } | undefined;
+        return {
+          ...bundle,
+          itemCount: Number(raw?.itemCount ?? 0),
+        };
+      });
+    });
   }
 
   async findOne(id: string): Promise<BundleDetailResult> {

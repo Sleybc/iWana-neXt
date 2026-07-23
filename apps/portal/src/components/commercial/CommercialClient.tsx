@@ -9,10 +9,12 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout';
 import { CommercialDashboard } from '@/components/commercial/CommercialDashboard';
 import {
+  applyCommercialOfferStatusToSearchParams,
   buildCommercialTabQuery,
+  parseCommercialOfferStatus,
   resolveCommercialRoute,
+  type CommercialOfferStatusFilter,
   type CommercialTab,
-  type OffersSubTab,
   type ResolvedCommercialRoute,
   type TaxationSubTab,
 } from '@/components/commercial/commercial-tab-params';
@@ -47,6 +49,8 @@ function syncRouteToUrl(
     nextSearchParams.delete('tab');
   }
 
+  applyCommercialOfferStatusToSearchParams(nextSearchParams, route.status ?? null);
+
   const nextQuery = nextSearchParams.toString();
   router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
 }
@@ -59,15 +63,24 @@ function mapSummaryError(error: unknown): string {
   return 'No fue posible cargar el resumen comercial. Intenta de nuevo.';
 }
 
+function routesEqual(a: ResolvedCommercialRoute, b: ResolvedCommercialRoute): boolean {
+  return (
+    a.tab === b.tab &&
+    a.taxationSubTab === b.taxationSubTab &&
+    (a.status ?? null) === (b.status ?? null)
+  );
+}
+
 export function CommercialClient({ initialTab }: CommercialClientProps) {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [route, setRoute] = useState<ResolvedCommercialRoute>(() =>
-    resolveCommercialRoute(initialTab ?? searchParams.get('tab')),
-  );
+  const [route, setRoute] = useState<ResolvedCommercialRoute>(() => ({
+    ...resolveCommercialRoute(initialTab ?? searchParams.get('tab')),
+    status: parseCommercialOfferStatus(searchParams.get('status')),
+  }));
   const [summary, setSummary] = useState<CommercialDashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -92,13 +105,13 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab') ?? initialTab;
+    const statusFromUrl = parseCommercialOfferStatus(searchParams.get('status'));
     setRoute((current) => {
-      const nextRoute = resolveCommercialRoute(tabFromUrl);
-      if (
-        current.tab === nextRoute.tab &&
-        current.taxationSubTab === nextRoute.taxationSubTab &&
-        current.offersSubTab === nextRoute.offersSubTab
-      ) {
+      const nextRoute: ResolvedCommercialRoute = {
+        ...resolveCommercialRoute(tabFromUrl),
+        status: statusFromUrl,
+      };
+      if (routesEqual(current, nextRoute)) {
         return current;
       }
 
@@ -127,10 +140,21 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
       updateRoute({
         tab,
         taxationSubTab: route.taxationSubTab,
-        offersSubTab: route.offersSubTab,
+        status: null,
       });
     },
-    [route.offersSubTab, route.taxationSubTab, updateRoute],
+    [route.taxationSubTab, updateRoute],
+  );
+
+  const handleNavigateTab = useCallback(
+    (tab: CommercialTab, options?: { status?: CommercialOfferStatusFilter | null }) => {
+      updateRoute({
+        tab,
+        taxationSubTab: route.taxationSubTab,
+        status: options?.status ?? null,
+      });
+    },
+    [route.taxationSubTab, updateRoute],
   );
 
   const handleTaxationSubTabChange = useCallback(
@@ -138,21 +162,10 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
       updateRoute({
         tab: 'taxation',
         taxationSubTab,
-        offersSubTab: route.offersSubTab,
+        status: null,
       });
     },
-    [route.offersSubTab, updateRoute],
-  );
-
-  const handleOffersSubTabChange = useCallback(
-    (offersSubTab: OffersSubTab) => {
-      updateRoute({
-        tab: 'offers',
-        taxationSubTab: route.taxationSubTab,
-        offersSubTab,
-      });
-    },
-    [route.taxationSubTab, updateRoute],
+    [updateRoute],
   );
 
   const handleRefresh = useCallback(() => {
@@ -211,11 +224,15 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         canEdit={canEdit}
         activeTab={route.tab}
         taxationSubTab={route.taxationSubTab}
-        offersSubTab={route.offersSubTab}
-        summary={<CommercialDashboard summary={summary} isLoading={summaryLoading} />}
+        summary={
+          <CommercialDashboard
+            summary={summary}
+            isLoading={summaryLoading}
+            onNavigateTab={handleNavigateTab}
+          />
+        }
         onTabChange={handleTabChange}
         onTaxationSubTabChange={handleTaxationSubTabChange}
-        onOffersSubTabChange={handleOffersSubTabChange}
       />
     </div>
   );

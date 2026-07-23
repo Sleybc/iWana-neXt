@@ -1,21 +1,17 @@
-import { cn } from '@iwana/ui';
 import {
-  interactiveFocusClassName,
+  portalFieldClassName,
+  portalSelectTriggerClassName,
   portalTableRowHoverClassName,
   portalTextareaClassName,
 } from '@/components/shared/portal-ui';
 
-export const commercialFieldClassName = cn(
-  'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
-  interactiveFocusClassName,
-);
+/** @deprecated Preferir `portalFieldClassName` de portal-ui. */
+export const commercialFieldClassName = portalFieldClassName;
 
 export const commercialTextareaClassName = portalTextareaClassName;
 
-export const commercialSelectTriggerClassName = cn(
-  'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
-  interactiveFocusClassName,
-);
+/** @deprecated Preferir `portalSelectTriggerClassName` de portal-ui. */
+export const commercialSelectTriggerClassName = portalSelectTriggerClassName;
 
 export const commercialTableHeadRowClassName =
   'border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';

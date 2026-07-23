@@ -10,15 +10,23 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExtraModels,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PlatformRole, UserRole, CustomerSegment } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { BundleService } from '../services/bundle.service';
-import { CreateBundleDto, UpdateBundleDto } from '../dto/bundle.dto';
+import { BundleListItemDto, CreateBundleDto, UpdateBundleDto } from '../dto/bundle.dto';
 
 @ApiTags('commercial-bundles')
+@ApiExtraModels(BundleListItemDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial/bundles')
@@ -33,7 +41,15 @@ export class BundleController {
     UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @ApiOperation({ summary: 'Listar bundles activos del tenant' })
+  @ApiOperation({
+    summary: 'Listar bundles activos del tenant',
+    description: 'Incluye itemCount (COUNT de catalog_bundle_items por bundle).',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Respuesta `{ data }` con bundles activos; cada elemento incluye `itemCount` (ver BundleListItemDto).',
+  })
   async findAll() {
     const data = await this.bundleService.findAll();
     return { data };

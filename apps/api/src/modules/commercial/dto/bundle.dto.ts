@@ -60,6 +60,45 @@ export class CreateBundleDto {
   optionalItemIds?: string[];
 }
 
+/** Campos de listado de bundle (documentación OpenAPI). */
+export class BundleListItemDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  tenantId: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  description: string | null;
+
+  @ApiProperty({ enum: DiscountType })
+  discountType: DiscountType;
+
+  @ApiProperty()
+  discountValue: string;
+
+  @ApiProperty()
+  validFrom: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  validTo: string | null;
+
+  @ApiProperty()
+  isActive: boolean;
+
+  @ApiProperty()
+  createdAt: string;
+
+  @ApiProperty()
+  updatedAt: string;
+
+  @ApiProperty({ description: 'Cantidad de ítems del bundle (catalog_bundle_items)' })
+  itemCount: number;
+}
+
 export class UpdateBundleDto {
   @ApiPropertyOptional()
   @IsOptional()

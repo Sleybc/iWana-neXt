@@ -2,11 +2,12 @@
 
 import type { ReactNode } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@iwana/ui';
+import { BundlesManager } from '@/components/commercial/BundlesManager';
+import { PromotionsManager } from '@/components/commercial/PromotionsManager';
 import { CompatibilityRulesManager } from '@/components/commercial/CompatibilityRulesManager';
 import { TaxCatalogManager } from '@/components/commercial/TaxCatalogManager';
 import { TaxApplicationRulesManager } from '@/components/commercial/TaxApplicationRulesManager';
 import { TaxSimulatorPanel } from '@/components/commercial/TaxSimulatorPanel';
-import { OffersManager } from '@/components/commercial/OffersManager';
 import { PlanCatalogPanel } from '@/components/commercial/catalog/PlanCatalogPanel';
 import { AdditionalProductsPanel } from '@/components/commercial/catalog/AdditionalProductsPanel';
 import { AdditionalServicesPanel } from '@/components/commercial/catalog/AdditionalServicesPanel';
@@ -17,34 +18,26 @@ import {
   portalModuleTabsShellClassName,
   portalModuleTabsTrackClassName,
 } from '@/components/shared/portal-ui';
-import type {
-  CommercialTab,
-  OffersSubTab,
-  TaxationSubTab,
-} from '@/components/commercial/commercial-tab-params';
+import type { CommercialTab, TaxationSubTab } from '@/components/commercial/commercial-tab-params';
 
-export type { CommercialTab, OffersSubTab, TaxationSubTab };
+export type { CommercialTab, TaxationSubTab };
 
 interface CommercialTabLayoutProps {
   canEdit: boolean;
   activeTab: CommercialTab;
   taxationSubTab: TaxationSubTab;
-  offersSubTab: OffersSubTab;
   summary: ReactNode;
   onTabChange: (tab: CommercialTab) => void;
   onTaxationSubTabChange: (subTab: TaxationSubTab) => void;
-  onOffersSubTabChange: (subTab: OffersSubTab) => void;
 }
 
 export function CommercialTabLayout({
   canEdit,
   activeTab,
   taxationSubTab,
-  offersSubTab,
   summary,
   onTabChange,
   onTaxationSubTabChange,
-  onOffersSubTabChange,
 }: CommercialTabLayoutProps) {
   return (
     <Tabs
@@ -54,20 +47,10 @@ export function CommercialTabLayout({
       }}
     >
       <TabsList aria-label="Secciones comerciales" className={portalModuleTabsShellClassName}>
-        <div className={portalModuleTabsGroupClassName}>
-          <p className="portal-eyebrow px-1" id="commercial-tabs-operation-label">
-            Operación
-          </p>
-          <div
-            role="group"
-            aria-labelledby="commercial-tabs-operation-label"
-            className={portalModuleTabsTrackClassName}
-          >
-            <TabsTrigger value="summary" className={portalModuleTabTriggerClassName}>
-              Resumen
-            </TabsTrigger>
-          </div>
-        </div>
+        {/* H12: Resumen fuera de grupo (sin rótulo Operación) */}
+        <TabsTrigger value="summary" className={portalModuleTabTriggerClassName}>
+          Resumen
+        </TabsTrigger>
 
         <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
 
@@ -95,7 +78,27 @@ export function CommercialTabLayout({
         <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
 
         <div className={portalModuleTabsGroupClassName}>
-          <p className="portal-eyebrow-muted px-1" id="commercial-tabs-rules-label">
+          <p className="portal-eyebrow px-1" id="commercial-tabs-offers-label">
+            Ofertas
+          </p>
+          <div
+            role="group"
+            aria-labelledby="commercial-tabs-offers-label"
+            className={portalModuleTabsTrackClassName}
+          >
+            <TabsTrigger value="bundles" className={portalModuleTabTriggerClassName}>
+              Combos
+            </TabsTrigger>
+            <TabsTrigger value="promotions" className={portalModuleTabTriggerClassName}>
+              Promociones
+            </TabsTrigger>
+          </div>
+        </div>
+
+        <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
+
+        <div className={portalModuleTabsGroupClassName}>
+          <p className="portal-eyebrow px-1" id="commercial-tabs-rules-label">
             Reglas
           </p>
           <div
@@ -103,9 +106,6 @@ export function CommercialTabLayout({
             aria-labelledby="commercial-tabs-rules-label"
             className={portalModuleTabsTrackClassName}
           >
-            <TabsTrigger value="offers" className={portalModuleTabTriggerClassName}>
-              Combos y promociones
-            </TabsTrigger>
             <TabsTrigger value="compatibility" className={portalModuleTabTriggerClassName}>
               Compatibilidad
             </TabsTrigger>
@@ -132,12 +132,12 @@ export function CommercialTabLayout({
         <AdditionalServicesPanel canEdit={canEdit} />
       </TabsContent>
 
-      <TabsContent value="offers" className="space-y-6">
-        <OffersManager
-          canEdit={canEdit}
-          activeSubTab={offersSubTab}
-          onSubTabChange={onOffersSubTabChange}
-        />
+      <TabsContent value="bundles" className="space-y-6">
+        <BundlesManager canEdit={canEdit} />
+      </TabsContent>
+
+      <TabsContent value="promotions" className="space-y-6">
+        <PromotionsManager canEdit={canEdit} />
       </TabsContent>
 
       <TabsContent value="compatibility" className="space-y-6">

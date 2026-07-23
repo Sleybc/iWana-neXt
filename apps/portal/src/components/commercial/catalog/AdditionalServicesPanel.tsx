@@ -1,15 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
+  CheckboxCard,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -31,15 +32,25 @@ import {
 } from '@/lib/portal-status-badge-rules';
 import {
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
+  PortalResultsStrip,
   PortalSearchField,
+  PortalSidePeek,
   PortalSkeletonBlock,
+  PortalSuccessAlert,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
   portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
+import {
+  applyServiceCatalogFilters,
+  parseServiceCatalogFilters,
+  type CatalogStatusFilter,
+  type ServiceCatalogFilters,
+} from '@/components/commercial/catalog/catalog-filter-params';
 
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
@@ -57,7 +68,6 @@ const serviceFormSchema = z.object({
 });
 
 type ServiceFormValues = z.infer<typeof serviceFormSchema>;
-type ServiceStatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 
 interface AdditionalServicesPanelProps {
   canEdit: boolean;
@@ -91,7 +101,7 @@ function normalizeSearchValue(value: string): string {
 
 function chargeTypeLabel(chargeType: ChargeType): string {
   if (chargeType === ChargeType.ONE_TIME) {
-    return 'Unica vez';
+    return 'Única vez';
   }
 
   if (chargeType === ChargeType.ON_DEMAND) {
@@ -109,18 +119,36 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
+function filtersEqual(a: ServiceCatalogFilters, b: ServiceCatalogFilters): boolean {
+  return a.q === b.q && a.status === b.status && a.charge === b.charge;
+}
+
 export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamsKey = searchParams.toString();
+
+  // searchParamsKey captura cambios de query (back/forward / replace).
+  const filtersFromUrl = useMemo(
+    () => parseServiceCatalogFilters(searchParams),
+    [searchParams, searchParamsKey],
+  );
+
   const [services, setServices] = useState<AdditionalService[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [searchValue, setSearchValue] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>('ALL');
-  const [chargeTypeFilter, setChargeTypeFilter] = useState<string>('ALL');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [searchValue, setSearchValue] = useState(filtersFromUrl.q);
+  const [statusFilter, setStatusFilter] = useState<CatalogStatusFilter>(filtersFromUrl.status);
+  const [chargeTypeFilter, setChargeTypeFilter] = useState(filtersFromUrl.charge);
 
   const {
     control,
@@ -134,39 +162,81 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
   });
 
   useEffect(() => {
+    const current: ServiceCatalogFilters = {
+      q: searchValue,
+      status: statusFilter,
+      charge: chargeTypeFilter,
+    };
+    if (filtersEqual(current, filtersFromUrl)) {
+      return;
+    }
+    setSearchValue(filtersFromUrl.q);
+    setStatusFilter(filtersFromUrl.status);
+    setChargeTypeFilter(filtersFromUrl.charge);
+  }, [filtersFromUrl, searchValue, statusFilter, chargeTypeFilter]);
+
+  function syncFiltersToUrl(next: ServiceCatalogFilters) {
+    const params = new URLSearchParams(searchParams.toString());
+    applyServiceCatalogFilters(params, next);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function updateFilters(patch: Partial<ServiceCatalogFilters>) {
+    setSuccessMessage(null);
+    setActionError(null);
+
+    const next: ServiceCatalogFilters = {
+      q: patch.q ?? searchValue,
+      status: patch.status ?? statusFilter,
+      charge: patch.charge ?? chargeTypeFilter,
+    };
+
+    if (patch.q !== undefined) setSearchValue(patch.q);
+    if (patch.status !== undefined) setStatusFilter(patch.status);
+    if (patch.charge !== undefined) setChargeTypeFilter(patch.charge);
+
+    syncFiltersToUrl(next);
+  }
+
+  useEffect(() => {
     void loadServices();
   }, []);
 
   async function loadServices() {
     setLoading(true);
     setLoadError(null);
+    setActionError(null);
     try {
       const data = await commercialApi.getAdditionalServices();
       setServices(data);
-    } catch (err) {
-      console.error('Error loading additional services:', err);
+    } catch {
       setLoadError('No se pudieron cargar los servicios adicionales.');
     } finally {
       setLoading(false);
     }
   }
 
-  function openCreateDialog() {
+  function openCreateForm() {
     setEditingServiceId(null);
     setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
     reset(getDefaultServiceFormValues());
-    setIsDialogOpen(true);
+    setIsFormOpen(true);
   }
 
-  function openEditDialog(service: AdditionalService) {
+  function openEditForm(service: AdditionalService) {
     setEditingServiceId(service.id);
     setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
     reset(toServiceFormValues(service));
-    setIsDialogOpen(true);
+    setIsFormOpen(true);
   }
 
-  function handleDialogOpenChange(nextOpen: boolean) {
-    setIsDialogOpen(nextOpen);
+  function handleFormOpenChange(nextOpen: boolean) {
+    setIsFormOpen(nextOpen);
 
     if (!nextOpen) {
       setEditingServiceId(null);
@@ -195,6 +265,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
         };
         const updated = await commercialApi.updateAdditionalService(editingServiceId, dto);
         setServices(updated);
+        setSuccessMessage('Servicio actualizado.');
       } else {
         const dto: CreateAdditionalServiceDto = {
           name: values.name.trim(),
@@ -206,29 +277,30 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
         };
         const created = await commercialApi.createAdditionalService(dto);
         setServices(created);
+        setSuccessMessage('Servicio creado.');
       }
 
-      handleDialogOpenChange(false);
-    } catch (err) {
-      console.error('Error saving additional service:', err);
+      handleFormOpenChange(false);
+    } catch {
       setFormError('No se pudo guardar el servicio.');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(serviceId: string) {
-    if (!window.confirm('Eliminar este servicio adicional?')) return;
+  async function handleDelete() {
+    if (!deleteTarget) return;
 
-    setDeleting(serviceId);
-    setLoadError(null);
+    setDeleting(deleteTarget.id);
+    setActionError(null);
 
     try {
-      const updated = await commercialApi.deleteAdditionalService(serviceId);
+      const updated = await commercialApi.deleteAdditionalService(deleteTarget.id);
       setServices(updated);
-    } catch (err) {
-      console.error('Error deleting additional service:', err);
-      setLoadError('No se pudo eliminar el servicio.');
+      setDeleteTarget(null);
+      setSuccessMessage('Servicio eliminado.');
+    } catch {
+      setActionError('No se pudo eliminar el servicio.');
     } finally {
       setDeleting(null);
     }
@@ -276,10 +348,20 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
   const hasActiveFilters =
     Boolean(searchValue.trim()) || statusFilter !== 'ALL' || chargeTypeFilter !== 'ALL';
 
+  function clearFilters() {
+    updateFilters({
+      q: '',
+      status: 'ALL',
+      charge: 'ALL',
+    });
+  }
+
   const resultsLabel =
     filteredServices.length === totalServices
       ? `${totalServices} registros`
       : `${filteredServices.length} de ${totalServices} registros`;
+
+  const showLoadErrorOnly = Boolean(loadError) && services.length === 0 && !loading;
 
   return (
     <PortalPanel
@@ -296,7 +378,8 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
             {inactiveServicesCount} inactivo{inactiveServicesCount === 1 ? '' : 's'}
           </Badge>
           {canEdit && (
-            <Button onClick={openCreateDialog} size="sm">
+            <Button onClick={openCreateForm}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Agregar servicio
             </Button>
           )}
@@ -305,36 +388,84 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
       contentClassName="space-y-4"
     >
       {loading ? (
-        <PortalSkeletonBlock className="h-28" />
-      ) : loadError ? (
+        <div className="space-y-2" aria-busy="true">
+          <PortalSkeletonBlock className="h-10 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+        </div>
+      ) : showLoadErrorOnly ? (
         <PortalAlert
           variant="error"
           title="No fue posible cargar servicios"
           description={loadError}
           icon={CircleAlert}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadServices()}>
+              Reintentar
+            </Button>
+          }
         />
       ) : services.length === 0 ? (
         <PortalEmptyState
           title="Catálogo listo para servicios"
           description="No hay servicios adicionales. Crea uno para empezar."
           icon={CheckCircle2}
+          {...(canEdit
+            ? {
+                action: (
+                  <Button onClick={openCreateForm}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Agregar servicio
+                  </Button>
+                ),
+              }
+            : {})}
         />
       ) : (
         <div className="space-y-6">
+          {successMessage ? (
+            <PortalSuccessAlert
+              message={successMessage}
+              onDismiss={() => setSuccessMessage(null)}
+            />
+          ) : null}
+
+          {actionError && !deleteTarget && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible completar la acción"
+              description={actionError}
+              icon={CircleAlert}
+              action={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActionError(null)}
+                >
+                  Cerrar
+                </Button>
+              }
+            />
+          )}
+
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_auto] lg:items-end">
             <PortalSearchField
               id="service-search"
               label="Buscar servicio"
               placeholder="Buscar por nombre, descripción o tipo de cobro"
               value={searchValue}
-              onChange={(value) => setSearchValue(value)}
+              onChange={(value) => updateFilters({ q: value })}
             />
 
             <Select
               id="service-status-filter"
               label="Estado"
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as ServiceStatusFilter)}
+              onChange={(event) =>
+                updateFilters({ status: event.target.value as CatalogStatusFilter })
+              }
               className="h-12"
             >
               <option value="ALL">Todos</option>
@@ -346,7 +477,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
               id="service-charge-filter"
               label="Tipo de cobro"
               value={chargeTypeFilter}
-              onChange={(event) => setChargeTypeFilter(event.target.value)}
+              onChange={(event) => updateFilters({ charge: event.target.value })}
               className="h-12"
             >
               <option value="ALL">Todos</option>
@@ -358,60 +489,59 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
             </Select>
 
             {hasActiveFilters && (
-              <button
+              <Button
                 type="button"
-                onClick={() => {
-                  setSearchValue('');
-                  setStatusFilter('ALL');
-                  setChargeTypeFilter('ALL');
-                }}
-                className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
+                variant="secondary"
+                size="sm"
+                onClick={clearFilters}
+                className="h-12 px-4"
               >
                 Limpiar filtros
-              </button>
+              </Button>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              Gestiona servicios del catálogo comercial con una vista operativa para ventas, soporte
-              y facturación.
-            </p>
-            <Badge variant="neutral">{resultsLabel}</Badge>
-          </div>
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
 
           {filteredServices.length === 0 ? (
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-4 text-sm text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-              <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-              <div>
-                <p className="font-medium">No hay servicios para los filtros seleccionados.</p>
-                <p className="mt-1">
-                  Ajusta la búsqueda, estado o tipo de cobro para recuperar resultados.
-                </p>
-              </div>
-            </div>
+            <PortalEmptyState
+              title="No hay servicios para los filtros seleccionados"
+              description="Ajusta la búsqueda, estado o tipo de cobro para recuperar resultados."
+              icon={CircleAlert}
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-12 px-4"
+                >
+                  Limpiar filtros
+                </Button>
+              }
+            />
           ) : (
             <div className={portalDataTableShellClassName}>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
                   <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                     <tr>
-                      <th className={portalDataTableHeadClassName}>Servicio</th>
-                      <th className={portalDataTableHeadClassName}>Tipo de cobro</th>
-                      <th className={portalDataTableHeadClassName}>Precio vigente</th>
-                      <th className={portalDataTableHeadClassName}>Estado</th>
-                      <th className={portalDataTableHeadClassName}>Actualización</th>
+                      <PortalDataTableHead>Servicio</PortalDataTableHead>
+                      <PortalDataTableHead>Tipo de cobro</PortalDataTableHead>
+                      <PortalDataTableHead>Precio vigente</PortalDataTableHead>
+                      <PortalDataTableHead>Estado</PortalDataTableHead>
+                      <PortalDataTableHead>Actualización</PortalDataTableHead>
                       {canEdit && (
-                        <th className={cn(portalDataTableHeadClassName, 'w-40')}>Acciones</th>
+                        <PortalDataTableHead className="w-40">Acciones</PortalDataTableHead>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white dark:divide-dark-border dark:bg-dark-surface-1">
+                  <tbody className="divide-y divide-gray-200 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
                     {filteredServices.map((service) => (
                       <tr
                         key={service.id}
                         className={cn(
-                          'transition-colors hover:bg-iwana-surface-soft/80 dark:hover:bg-dark-surface-3',
+                          portalTableRowHoverClassName,
                           !service.isActive && 'opacity-70',
                         )}
                       >
@@ -421,7 +551,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                               {service.name}
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {service.description?.trim() || 'Sin descripcion operativa.'}
+                              {service.description?.trim() || 'Sin descripción operativa.'}
                             </p>
                           </div>
                         </td>
@@ -430,11 +560,11 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                         </td>
                         <td className={portalDataTableCellClassName}>
                           <div className="space-y-1">
-                            <p className="font-medium text-gray-900 dark:text-white">
+                            <p className="font-mono font-medium tabular-nums text-gray-900 dark:text-white">
                               {formatCurrency(service.basePrice)}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Instalacion: {formatCurrency(service.installationFee)}
+                            <p className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                              Instalación: {formatCurrency(service.installationFee)}
                             </p>
                           </div>
                         </td>
@@ -461,7 +591,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                                 size="icon"
                                 aria-label={`Editar servicio ${service.name}`}
                                 title={`Editar servicio ${service.name}`}
-                                onClick={() => openEditDialog(service)}
+                                onClick={() => openEditForm(service)}
                               >
                                 <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>
@@ -470,13 +600,14 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                                 size="icon"
                                 aria-label={`Eliminar servicio ${service.name}`}
                                 title={`Eliminar servicio ${service.name}`}
-                                onClick={() => handleDelete(service.id)}
+                                onClick={() => {
+                                  setActionError(null);
+                                  setDeleteTarget({ id: service.id, name: service.name });
+                                }}
                                 disabled={deleting === service.id}
                                 loading={deleting === service.id}
                               >
-                                {deleting !== service.id && (
-                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                )}
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
                               </Button>
                             </div>
                           </td>
@@ -491,158 +622,213 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
         </div>
       )}
 
-      <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+      <PortalSidePeek
+        open={isFormOpen}
+        onClose={() => handleFormOpenChange(false)}
+        eyebrow="Catálogo comercial"
+        title={editingServiceId ? 'Editar servicio' : 'Crear servicio'}
+        description={
+          editingServiceId
+            ? 'Actualiza la información básica y la configuración comercial del servicio.'
+            : 'Agrega un servicio comercial al catálogo maestro de la empresa.'
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => handleFormOpenChange(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="additional-service-form"
+              disabled={!isDirty && !!editingServiceId}
+              loading={saving}
+            >
+              Guardar
+            </Button>
+          </div>
+        }
+      >
+        <form
+          id="additional-service-form"
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-5"
+          noValidate
+        >
+          <section className="space-y-4">
+            <div>
+              <p className="portal-eyebrow">Información básica</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Define el servicio y su alcance comercial sin mezclar facturación ni inventario.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Input
+                  label="Nombre"
+                  {...register('name')}
+                  placeholder="Ej. Instalación adicional, IP pública fija"
+                  aria-invalid={errors.name ? 'true' : 'false'}
+                />
+                {errors.name && (
+                  <p className="mt-1 text-sm text-error-600">{errors.name.message}</p>
+                )}
+              </div>
+
+              <Controller
+                name="chargeType"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    label="Tipo de cobro"
+                    className="h-11"
+                    name={field.name}
+                    value={field.value}
+                    onChange={(event) => field.onChange(event.target.value)}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                  >
+                    {SERVICE_CHARGE_TYPES.map((chargeType) => (
+                      <option key={chargeType} value={chargeType}>
+                        {chargeTypeLabel(chargeType)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
+
+              <div>
+                <label htmlFor="service-description" className="portal-eyebrow-muted">
+                  Descripción corta
+                </label>
+                <textarea
+                  id="service-description"
+                  {...register('description')}
+                  rows={4}
+                  placeholder="Describe el servicio y cuándo debe aplicarse en la operación comercial."
+                  className={`mt-2 ${commercialTextareaClassName}`}
+                />
+                {errors.description && (
+                  <p className="mt-1 text-sm text-error-600">{errors.description.message}</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <p className="portal-eyebrow">Configuración comercial</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Define precio vigente para cotización y disponibilidad en nuevas operaciones de la
+                empresa.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Input
+                  label="Precio base (COP)"
+                  type="number"
+                  min={0}
+                  step="100"
+                  {...register('basePrice', { valueAsNumber: true })}
+                  placeholder="0"
+                  aria-invalid={errors.basePrice ? 'true' : 'false'}
+                />
+                {errors.basePrice && (
+                  <p className="mt-1 text-sm text-error-600">{errors.basePrice.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Input
+                  label="Cargo de instalación (COP)"
+                  type="number"
+                  min={0}
+                  step="100"
+                  {...register('installationFee', { valueAsNumber: true })}
+                  placeholder="0"
+                  aria-invalid={errors.installationFee ? 'true' : 'false'}
+                />
+                {errors.installationFee && (
+                  <p className="mt-1 text-sm text-error-600">{errors.installationFee.message}</p>
+                )}
+              </div>
+            </div>
+
+            <Controller
+              name="isActive"
+              control={control}
+              render={({ field }) => (
+                <CheckboxCard
+                  label="Activo"
+                  description="Disponible para nuevas operaciones comerciales."
+                  checked={field.value}
+                  onChange={(event) => field.onChange(event.target.checked)}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  name={field.name}
+                />
+              )}
+            />
+          </section>
+
+          {formError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible guardar el servicio"
+              description={formError}
+              icon={CircleAlert}
+            />
+          )}
+        </form>
+      </PortalSidePeek>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setActionError(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingServiceId ? 'Editar servicio' : 'Crear servicio'}</DialogTitle>
+            <DialogTitle>Eliminar servicio</DialogTitle>
             <DialogDescription>
-              {editingServiceId
-                ? 'Actualiza la informacion basica y la configuracion comercial del servicio.'
-                : 'Agrega un servicio comercial al catálogo maestro de la empresa.'}
+              ¿Eliminar <strong>{deleteTarget?.name}</strong>? Esta acción es irreversible.
             </DialogDescription>
           </DialogHeader>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <section className="space-y-4 rounded-2xl border border-gray-100 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Informacion basica
-                </p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Define el servicio y su alcance comercial sin mezclar facturacion ni inventario.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Input
-                    label="Nombre"
-                    {...register('name')}
-                    placeholder="Ej. Instalacion adicional, IP publica fija"
-                    aria-invalid={errors.name ? 'true' : 'false'}
-                  />
-                  {errors.name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-                  )}
-                </div>
-
-                <Controller
-                  name="chargeType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      label="Tipo de cobro"
-                      className="h-11"
-                      name={field.name}
-                      value={field.value}
-                      onChange={(event) => field.onChange(event.target.value)}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    >
-                      {SERVICE_CHARGE_TYPES.map((chargeType) => (
-                        <option key={chargeType} value={chargeType}>
-                          {chargeTypeLabel(chargeType)}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                />
-
-                <div>
-                  <label htmlFor="service-description" className="portal-eyebrow-muted">
-                    Descripción corta
-                  </label>
-                  <textarea
-                    id="service-description"
-                    {...register('description')}
-                    rows={4}
-                    placeholder="Describe el servicio y cuándo debe aplicarse en la operación comercial."
-                    className={`mt-2 ${commercialTextareaClassName}`}
-                  />
-                  {errors.description && (
-                    <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-4 rounded-2xl border border-gray-100 p-4 dark:border-dark-border">
-              <div>
-                <p className="portal-eyebrow">Configuración comercial</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Define precio vigente para cotización y disponibilidad en nuevas operaciones de la
-                  empresa.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <Input
-                    label="Precio base (COP)"
-                    type="number"
-                    min={0}
-                    step="100"
-                    {...register('basePrice', { valueAsNumber: true })}
-                    placeholder="0"
-                    aria-invalid={errors.basePrice ? 'true' : 'false'}
-                  />
-                  {errors.basePrice && (
-                    <p className="mt-1 text-sm text-red-600">{errors.basePrice.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <Input
-                    label="Cargo de instalacion (COP)"
-                    type="number"
-                    min={0}
-                    step="100"
-                    {...register('installationFee', { valueAsNumber: true })}
-                    placeholder="0"
-                    aria-invalid={errors.installationFee ? 'true' : 'false'}
-                  />
-                  {errors.installationFee && (
-                    <p className="mt-1 text-sm text-red-600">{errors.installationFee.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  {...register('isActive')}
-                  type="checkbox"
-                  id="service-is-active"
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <label
-                  htmlFor="service-is-active"
-                  className="text-sm text-gray-700 dark:text-gray-200"
-                >
-                  Activo
-                </label>
-              </div>
-            </section>
-
-            {formError && (
-              <PortalAlert
-                variant="error"
-                title="No fue posible guardar el servicio"
-                description={formError}
-                icon={CircleAlert}
-              />
-            )}
-
-            <div className="flex justify-end gap-2">
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  Cancelar
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={(!isDirty && !!editingServiceId) || saving}>
-                {saving ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </div>
-          </form>
+          {actionError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible eliminar"
+              description={actionError}
+              icon={CircleAlert}
+              className="mt-3"
+            />
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              disabled={!!deleting}
+              onClick={() => {
+                setDeleteTarget(null);
+                setActionError(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDelete()} loading={!!deleting}>
+              Eliminar
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </PortalPanel>

@@ -1,8 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CircleAlert, Plus, Trash2 } from 'lucide-react';
-import { Badge, Button } from '@iwana/ui';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { CheckCircle2, CircleAlert, Plus, Trash2 } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
 import { CatalogItemType, DiscountType } from '@iwana/shared';
 import {
   ApiError,
@@ -14,20 +23,27 @@ import {
   type AdditionalService,
 } from '@/lib/api-client';
 import {
-  CreateBundleModal,
+  CreateBundleForm,
   type BundleCatalogSelectableItem,
-} from '@/components/commercial/CreateBundleModal';
+} from '@/components/commercial/CreateBundleForm';
+import {
+  applyCommercialOfferStatusToSearchParams,
+  matchesCommercialExpiringOfferFilter,
+  parseCommercialOfferStatus,
+} from '@/components/commercial/commercial-tab-params';
 import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
 import {
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
+  PortalSidePeek,
   PortalSkeletonBlock,
+  PortalSuccessAlert,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
@@ -35,6 +51,8 @@ import {
 interface BundlesManagerProps {
   canEdit: boolean;
 }
+
+const CREATE_BUNDLE_FORM_ID = 'create-bundle-form';
 
 function formatCurrency(value: string): string {
   return new Intl.NumberFormat('es-CO', {
@@ -70,18 +88,51 @@ function mapLoadError(error: unknown): string {
   return 'No fue posible cargar los combos de la empresa.';
 }
 
+function mapActionError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return 'No fue posible desactivar el combo. Intenta de nuevo.';
+}
+
 export function BundlesManager({ canEdit }: BundlesManagerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const offerStatusFilter = parseCommercialOfferStatus(searchParams.get('status'));
+
   const [bundles, setBundles] = useState<CommercialBundle[]>([]);
-  const [bundleItemCount, setBundleItemCount] = useState<Record<string, number>>({});
   const [availableItems, setAvailableItems] = useState<BundleCatalogSelectableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [mutationError, setMutationError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isPeekOpen, setIsPeekOpen] = useState(false);
   const [deletingBundleId, setDeletingBundleId] = useState<string | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const activeBundles = useMemo(() => bundles.filter((bundle) => bundle.isActive), [bundles]);
+
+  const visibleBundles = useMemo(() => {
+    if (offerStatusFilter !== 'expiring') {
+      return bundles;
+    }
+
+    return bundles.filter((bundle) => matchesCommercialExpiringOfferFilter(bundle, 'bundle'));
+  }, [bundles, offerStatusFilter]);
+
+  const clearExpiringFilter = () => {
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    applyCommercialOfferStatusToSearchParams(nextSearchParams, null);
+    const nextQuery = nextSearchParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  };
 
   const loadOfferCatalog = async () => {
     const [plans, products, services] = await Promise.all([
@@ -117,23 +168,11 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
   const loadBundles = async () => {
     setIsLoading(true);
     setLoadError(null);
+    setActionError(null);
 
     try {
       const data = await commercialApi.getBundles();
       setBundles(data);
-
-      const countEntries = await Promise.all(
-        data.map(async (bundle) => {
-          try {
-            const detail = await commercialApi.getBundleDetail(bundle.id);
-            return [bundle.id, detail.items.length] as const;
-          } catch {
-            return [bundle.id, 0] as const;
-          }
-        }),
-      );
-
-      setBundleItemCount(Object.fromEntries(countEntries));
       await loadOfferCatalog();
     } catch (error) {
       setLoadError(mapLoadError(error));
@@ -146,51 +185,57 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
     void loadBundles();
   }, []);
 
+  function openCreatePeek() {
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setIsPeekOpen(true);
+  }
+
+  function handlePeekClose() {
+    setIsPeekOpen(false);
+    setFormError(null);
+  }
+
   const handleCreateBundle = async (dto: CreateBundleDto) => {
     setIsSubmitting(true);
-    setMutationError(null);
+    setFormError(null);
 
     try {
       const updated = await commercialApi.createBundle(dto);
       setBundles(updated);
-
-      const detail = await Promise.all(
-        updated.map(async (bundle) => {
-          const bundleInfo = await commercialApi.getBundleDetail(bundle.id);
-          return [bundle.id, bundleInfo.items.length] as const;
-        }),
-      );
-      setBundleItemCount(Object.fromEntries(detail));
-
-      setIsModalOpen(false);
+      setIsPeekOpen(false);
+      setSuccessMessage('Combo creado.');
     } catch (error) {
       if (error instanceof ApiError) {
-        setMutationError(error.message);
+        setFormError(error.message);
       } else {
-        setMutationError('No fue posible crear el combo. Intenta de nuevo.');
+        setFormError('No fue posible crear el combo. Intenta de nuevo.');
       }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDeactivateBundle = async (bundleId: string) => {
-    if (!window.confirm('Desactivar este combo?')) {
-      return;
-    }
+  const handleDeactivateBundle = async () => {
+    if (!deactivateTarget) return;
 
-    setDeletingBundleId(bundleId);
-    setLoadError(null);
+    setDeletingBundleId(deactivateTarget.id);
+    setActionError(null);
 
     try {
-      const updated = await commercialApi.deactivateBundle(bundleId);
+      const updated = await commercialApi.deactivateBundle(deactivateTarget.id);
       setBundles(updated);
+      setDeactivateTarget(null);
+      setSuccessMessage('Combo desactivado.');
     } catch (error) {
-      setLoadError(mapLoadError(error));
+      setActionError(mapActionError(error));
     } finally {
       setDeletingBundleId(null);
     }
   };
+
+  const showLoadErrorOnly = Boolean(loadError) && bundles.length === 0 && !isLoading;
 
   return (
     <PortalPanel
@@ -203,8 +248,8 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
             {activeBundles.length} activo{activeBundles.length === 1 ? '' : 's'}
           </Badge>
           {canEdit && (
-            <Button size="sm" onClick={() => setIsModalOpen(true)}>
-              <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+            <Button onClick={openCreatePeek}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Crear combo
             </Button>
           )}
@@ -213,92 +258,242 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
       contentClassName="space-y-4"
     >
       {isLoading ? (
-        <PortalSkeletonBlock className="h-28" />
-      ) : loadError ? (
+        <div className="space-y-2" aria-busy="true">
+          <PortalSkeletonBlock className="h-10 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+        </div>
+      ) : showLoadErrorOnly ? (
         <PortalAlert
           variant="error"
           title="No fue posible cargar combos"
           description={loadError}
           icon={CircleAlert}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadBundles()}>
+              Reintentar
+            </Button>
+          }
         />
       ) : bundles.length === 0 ? (
         <PortalEmptyState
           title="Sin combos creados"
           description='Usa "Crear combo" para iniciar tu oferta compuesta.'
+          icon={CheckCircle2}
+          {...(canEdit
+            ? {
+                action: (
+                  <Button onClick={openCreatePeek}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Crear combo
+                  </Button>
+                ),
+              }
+            : {})}
         />
+      ) : offerStatusFilter === 'expiring' && visibleBundles.length === 0 ? (
+        <div className="space-y-4">
+          {successMessage ? (
+            <PortalSuccessAlert
+              message={successMessage}
+              onDismiss={() => setSuccessMessage(null)}
+            />
+          ) : null}
+          <PortalEmptyState
+            title="Sin combos que vencen pronto"
+            description="No hay combos con vigencia en los próximos 7 días."
+            action={
+              <Button type="button" variant="secondary" size="sm" onClick={clearExpiringFilter}>
+                Quitar filtro
+              </Button>
+            }
+          />
+        </div>
       ) : (
-        <div className={portalDataTableShellClassName}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
-                <tr>
-                  <th className={portalDataTableHeadClassName}>Combo</th>
-                  <th className={portalDataTableHeadClassName}>Items</th>
-                  <th className={portalDataTableHeadClassName}>Descuento</th>
-                  <th className={portalDataTableHeadClassName}>Vigencia</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  {canEdit && <th className={portalDataTableHeadClassName}>Acciones</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
-                {bundles.map((bundle) => (
-                  <tr key={bundle.id} className={portalTableRowHoverClassName}>
-                    <td className={portalDataTableCellClassName}>
-                      <p className="font-medium text-gray-800 dark:text-gray-100">{bundle.name}</p>
-                      {bundle.description && (
-                        <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
-                          {bundle.description}
-                        </p>
-                      )}
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      {bundleItemCount[bundle.id] ?? 0}
-                    </td>
-                    <td className={portalDataTableCellClassName}>{formatDiscount(bundle)}</td>
-                    <td className={portalDataTableCellClassName}>
-                      {formatDateRange(bundle.validFrom, bundle.validTo)}
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <Badge variant={getPortalActiveBadgeVariant(bundle.isActive)}>
-                        {bundle.isActive ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </td>
-                    {canEdit && (
-                      <td className={portalDataTableCellClassName}>
-                        <Button
-                          type="button"
-                          variant="softDestructive"
-                          size="sm"
-                          disabled={deletingBundleId === bundle.id || !bundle.isActive}
-                          onClick={() => handleDeactivateBundle(bundle.id)}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          Desactivar
-                        </Button>
-                      </td>
-                    )}
+        <div className="space-y-4">
+          {successMessage ? (
+            <PortalSuccessAlert
+              message={successMessage}
+              onDismiss={() => setSuccessMessage(null)}
+            />
+          ) : null}
+
+          {actionError && !deactivateTarget && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible completar la acción"
+              description={actionError}
+              icon={CircleAlert}
+              action={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActionError(null)}
+                >
+                  Cerrar
+                </Button>
+              }
+            />
+          )}
+
+          {offerStatusFilter === 'expiring' ? (
+            <PortalAlert
+              variant="info"
+              title="Filtro activo"
+              description="Mostrando combos que vencen en los próximos 7 días."
+              action={
+                <Button type="button" variant="ghost" size="sm" onClick={clearExpiringFilter}>
+                  Quitar filtro
+                </Button>
+              }
+            />
+          ) : null}
+
+          <div className={portalDataTableShellClassName}>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                  <tr>
+                    <PortalDataTableHead>Combo</PortalDataTableHead>
+                    <PortalDataTableHead>Ítems</PortalDataTableHead>
+                    <PortalDataTableHead>Descuento</PortalDataTableHead>
+                    <PortalDataTableHead>Vigencia</PortalDataTableHead>
+                    <PortalDataTableHead>Estado</PortalDataTableHead>
+                    {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                  {visibleBundles.map((bundle) => (
+                    <tr key={bundle.id} className={portalTableRowHoverClassName}>
+                      <td className={portalDataTableCellClassName}>
+                        <p className="font-medium text-gray-800 dark:text-gray-100">
+                          {bundle.name}
+                        </p>
+                        {bundle.description && (
+                          <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
+                            {bundle.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className={portalDataTableCellClassName}>{bundle.itemCount ?? 0}</td>
+                      <td className={portalDataTableCellClassName}>{formatDiscount(bundle)}</td>
+                      <td className={portalDataTableCellClassName}>
+                        {formatDateRange(bundle.validFrom, bundle.validTo)}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <Badge variant={getPortalActiveBadgeVariant(bundle.isActive)}>
+                          {bundle.isActive ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </td>
+                      {canEdit && (
+                        <td className={portalDataTableCellClassName}>
+                          <Button
+                            type="button"
+                            variant="softDestructive"
+                            size="sm"
+                            disabled={deletingBundleId === bundle.id || !bundle.isActive}
+                            loading={deletingBundleId === bundle.id}
+                            onClick={() => {
+                              setActionError(null);
+                              setDeactivateTarget({ id: bundle.id, name: bundle.name });
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            Desactivar
+                          </Button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      <CreateBundleModal
-        open={isModalOpen}
-        canEdit={canEdit}
-        isSubmitting={isSubmitting}
-        serverError={mutationError}
-        availableItems={availableItems}
+      <PortalSidePeek
+        open={isPeekOpen}
+        onClose={handlePeekClose}
+        eyebrow="Ofertas"
+        title="Crear combo"
+        description="Define una oferta compuesta con descuento y vigencia para el catálogo comercial."
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" disabled={isSubmitting} onClick={handlePeekClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form={CREATE_BUNDLE_FORM_ID}
+              disabled={!canEdit}
+              loading={isSubmitting}
+            >
+              Crear combo
+            </Button>
+          </div>
+        }
+      >
+        <CreateBundleForm
+          formId={CREATE_BUNDLE_FORM_ID}
+          open={isPeekOpen}
+          canEdit={canEdit}
+          isSubmitting={isSubmitting}
+          serverError={formError}
+          availableItems={availableItems}
+          onSubmit={handleCreateBundle}
+        />
+      </PortalSidePeek>
+
+      <Dialog
+        open={!!deactivateTarget}
         onOpenChange={(open) => {
-          setIsModalOpen(open);
           if (!open) {
-            setMutationError(null);
+            setDeactivateTarget(null);
+            setActionError(null);
           }
         }}
-        onSubmit={handleCreateBundle}
-      />
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Desactivar combo</DialogTitle>
+            <DialogDescription>
+              ¿Desactivar <strong>{deactivateTarget?.name}</strong>? Podrás reactivarlo más adelante
+              si el catálogo lo permite.
+            </DialogDescription>
+          </DialogHeader>
+          {actionError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible desactivar"
+              description={actionError}
+              icon={CircleAlert}
+              className="mt-3"
+            />
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              disabled={!!deletingBundleId}
+              onClick={() => {
+                setDeactivateTarget(null);
+                setActionError(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeactivateBundle()}
+              loading={!!deletingBundleId}
+            >
+              Desactivar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PortalPanel>
   );
 }

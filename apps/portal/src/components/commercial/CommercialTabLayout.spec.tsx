@@ -14,8 +14,12 @@ jest.mock('@/components/commercial/catalog/AdditionalServicesPanel', () => ({
   AdditionalServicesPanel: () => <div data-testid="services-panel">Servicios panel</div>,
 }));
 
-jest.mock('@/components/commercial/OffersManager', () => ({
-  OffersManager: () => <div data-testid="offers-panel">Ofertas panel</div>,
+jest.mock('@/components/commercial/BundlesManager', () => ({
+  BundlesManager: () => <div data-testid="bundles-panel">Combos panel</div>,
+}));
+
+jest.mock('@/components/commercial/PromotionsManager', () => ({
+  PromotionsManager: () => <div data-testid="promotions-panel">Promociones panel</div>,
 }));
 
 jest.mock('@/components/commercial/CompatibilityRulesManager', () => ({
@@ -42,19 +46,21 @@ const defaultProps = {
   canEdit: true,
   activeTab: 'summary' as const,
   taxationSubTab: 'tax-catalog' as const,
-  offersSubTab: 'bundles' as const,
   summary: <div data-testid="summary-panel">Resumen panel</div>,
   onTabChange: jest.fn(),
   onTaxationSubTabChange: jest.fn(),
-  onOffersSubTabChange: jest.fn(),
 };
 
 describe('CommercialTabLayout', () => {
-  it('renderiza Resumen por defecto', () => {
+  it('renderiza Resumen por defecto fuera de grupo Operación', () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
     expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('data-state', 'active');
     expect(screen.getByTestId('summary-panel')).toBeInTheDocument();
+    expect(screen.queryByText('Operación')).not.toBeInTheDocument();
+    expect(screen.getByText('Catálogo')).toBeInTheDocument();
+    expect(screen.getByText('Ofertas')).toBeInTheDocument();
+    expect(screen.getByText('Reglas')).toBeInTheDocument();
   });
 
   it('renderiza Planes al seleccionar el tab de catálogo', () => {
@@ -64,14 +70,30 @@ describe('CommercialTabLayout', () => {
     expect(screen.getByTestId('plans-panel')).toBeInTheDocument();
   });
 
-  it('renderiza Ofertas al seleccionar Combos y promociones', () => {
-    render(<CommercialTabLayout {...defaultProps} activeTab="offers" />);
+  it('renderiza Combos y Promociones bajo el grupo Ofertas', () => {
+    const { rerender } = render(<CommercialTabLayout {...defaultProps} activeTab="bundles" />);
 
-    expect(screen.getByRole('tab', { name: 'Combos y promociones' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Combos' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByTestId('bundles-panel')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Combos y promociones' })).not.toBeInTheDocument();
+
+    rerender(<CommercialTabLayout {...defaultProps} activeTab="promotions" />);
+
+    expect(screen.getByRole('tab', { name: 'Promociones' })).toHaveAttribute(
       'data-state',
       'active',
     );
-    expect(screen.getByTestId('offers-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('promotions-panel')).toBeInTheDocument();
+  });
+
+  it('no ubica Combos ni Promociones bajo Reglas', () => {
+    render(<CommercialTabLayout {...defaultProps} />);
+
+    const rulesGroup = screen.getByRole('group', { name: 'Reglas' });
+    expect(rulesGroup).toContainElement(screen.getByRole('tab', { name: 'Compatibilidad' }));
+    expect(rulesGroup).toContainElement(screen.getByRole('tab', { name: 'Tributación' }));
+    expect(rulesGroup).not.toContainElement(screen.getByRole('tab', { name: 'Combos' }));
+    expect(rulesGroup).not.toContainElement(screen.getByRole('tab', { name: 'Promociones' }));
   });
 
   it('renderiza Tributación al seleccionar el tab principal', () => {
@@ -103,5 +125,14 @@ describe('CommercialTabLayout', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Servicios' }));
 
     expect(onTabChange).toHaveBeenCalledWith('services');
+  });
+
+  it('notifica cambio a Promociones del grupo Ofertas', () => {
+    const onTabChange = jest.fn();
+    render(<CommercialTabLayout {...defaultProps} onTabChange={onTabChange} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Promociones' }));
+
+    expect(onTabChange).toHaveBeenCalledWith('promotions');
   });
 });

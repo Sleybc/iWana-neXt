@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowRight, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
+  CheckboxCard,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -29,12 +29,15 @@ import {
 } from '@/lib/portal-status-badge-rules';
 import {
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
+  PortalSidePeek,
   PortalSkeletonBlock,
+  PortalSuccessAlert,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
   portalDataTableShellClassName,
+  portalFieldClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
@@ -48,24 +51,20 @@ interface CatalogSelectableItem {
   name: string;
 }
 
-interface CreateFormState {
+interface RuleFormState {
   sourceItemId: string;
   targetItemId: string;
-  effectiveFrom: string;
-  note: string;
-}
-
-interface EditFormState {
   effectiveFrom: string;
   note: string;
   isActive: boolean;
 }
 
-const EMPTY_CREATE_FORM: CreateFormState = {
+const EMPTY_FORM: RuleFormState = {
   sourceItemId: '',
   targetItemId: '',
   effectiveFrom: '',
   note: '',
+  isActive: true,
 };
 
 function formatDate(dateStr: string | null): string {
@@ -96,27 +95,27 @@ function mapLoadError(error: unknown): string {
   return 'No fue posible cargar las reglas de compatibilidad.';
 }
 
+function mapActionError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message;
+  return fallback;
+}
+
 export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManagerProps) {
   const [rules, setRules] = useState<CompatibilityRule[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogSelectableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<CompatibilityRule | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [mutationError, setMutationError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<CompatibilityRule | null>(null);
 
-  const [createForm, setCreateForm] = useState<CreateFormState>(EMPTY_CREATE_FORM);
-  const [createFormErrors, setCreateFormErrors] = useState<
-    Partial<Record<keyof CreateFormState, string>>
-  >({});
-
-  const [editForm, setEditForm] = useState<EditFormState>({
-    effectiveFrom: '',
-    note: '',
-    isActive: true,
-  });
+  const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof RuleFormState, string>>>({});
 
   // Solo REPLACES en scope v1 del diseño comercial.
   const replacesRules = rules.filter((r) => r.ruleType === 'REPLACES');
@@ -124,6 +123,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
+    setActionError(null);
     try {
       const [rulesData, plans, products] = await Promise.all([
         commercialApi.getCompatibilityRules(),
@@ -150,103 +150,132 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
     void loadData();
   }, [loadData]);
 
-  function validateCreateForm(): boolean {
-    const errors: Partial<Record<keyof CreateFormState, string>> = {};
-    if (!createForm.sourceItemId) errors.sourceItemId = 'Selecciona el ítem obsoleto.';
-    if (!createForm.targetItemId) errors.targetItemId = 'Selecciona el ítem sucesor.';
-    if (
-      createForm.sourceItemId &&
-      createForm.targetItemId &&
-      createForm.sourceItemId === createForm.targetItemId
-    ) {
-      errors.targetItemId = 'El ítem sucesor debe ser distinto al obsoleto.';
-    }
-    if (createForm.note.length > 2000) errors.note = 'Máximo 2000 caracteres.';
-    setCreateFormErrors(errors);
-    return Object.keys(errors).length === 0;
+  function openCreateForm() {
+    setEditingRule(null);
+    setForm(EMPTY_FORM);
+    setFormErrors({});
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setIsFormOpen(true);
   }
 
-  const handleCreate = async () => {
-    if (!validateCreateForm()) return;
-
-    setIsSubmitting(true);
-    setMutationError(null);
-    try {
-      const dto: CreateCompatibilityRuleDto = {
-        ruleType: 'REPLACES',
-        sourceItemId: createForm.sourceItemId,
-        targetItemId: createForm.targetItemId,
-        ...(createForm.effectiveFrom && { effectiveFrom: createForm.effectiveFrom }),
-        ...(createForm.note.trim() && { note: createForm.note.trim() }),
-      };
-      await commercialApi.createCompatibilityRule(dto);
-      const updated = await commercialApi.getCompatibilityRules();
-      setRules(updated);
-      setIsCreateModalOpen(false);
-      setCreateForm(EMPTY_CREATE_FORM);
-      setCreateFormErrors({});
-    } catch (error) {
-      setMutationError(
-        error instanceof ApiError ? error.message : 'No fue posible crear la regla.',
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleOpenEdit = useCallback((rule: CompatibilityRule) => {
+  function openEditForm(rule: CompatibilityRule) {
     setEditingRule(rule);
-    setEditForm({
+    setForm({
+      sourceItemId: rule.sourceItemId,
+      targetItemId: rule.targetItemId,
       effectiveFrom: rule.effectiveFrom?.slice(0, 10) ?? '',
       note: rule.note ?? '',
       isActive: rule.isActive,
     });
-    setMutationError(null);
-  }, []);
+    setFormErrors({});
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setIsFormOpen(true);
+  }
 
-  const handleUpdate = async () => {
-    if (!editingRule) return;
+  function handleFormOpenChange(nextOpen: boolean) {
+    setIsFormOpen(nextOpen);
+    if (!nextOpen) {
+      setEditingRule(null);
+      setForm(EMPTY_FORM);
+      setFormErrors({});
+      setFormError(null);
+    }
+  }
+
+  function validateCreateForm(): boolean {
+    const errors: Partial<Record<keyof RuleFormState, string>> = {};
+    if (!form.sourceItemId) errors.sourceItemId = 'Selecciona el ítem obsoleto.';
+    if (!form.targetItemId) errors.targetItemId = 'Selecciona el ítem sucesor.';
+    if (form.sourceItemId && form.targetItemId && form.sourceItemId === form.targetItemId) {
+      errors.targetItemId = 'El ítem sucesor debe ser distinto al obsoleto.';
+    }
+    if (form.note.length > 2000) errors.note = 'Máximo 2000 caracteres.';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  function validateEditForm(): boolean {
+    const errors: Partial<Record<keyof RuleFormState, string>> = {};
+    if (form.note.length > 2000) errors.note = 'Máximo 2000 caracteres.';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  const handleSubmit = async () => {
+    if (editingRule) {
+      if (!validateEditForm()) return;
+
+      setIsSubmitting(true);
+      setFormError(null);
+      try {
+        const dto: UpdateCompatibilityRuleDto = {
+          ...(form.effectiveFrom && { effectiveFrom: form.effectiveFrom }),
+          ...(form.note.trim() !== '' && { note: form.note.trim() }),
+          isActive: form.isActive,
+        };
+        await commercialApi.updateCompatibilityRule(editingRule.id, dto);
+        const updated = await commercialApi.getCompatibilityRules();
+        setRules(updated);
+        handleFormOpenChange(false);
+        setSuccessMessage('Regla actualizada.');
+      } catch (error) {
+        setFormError(mapActionError(error, 'No fue posible actualizar la regla.'));
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    if (!validateCreateForm()) return;
 
     setIsSubmitting(true);
-    setMutationError(null);
+    setFormError(null);
     try {
-      const dto: UpdateCompatibilityRuleDto = {
-        ...(editForm.effectiveFrom && { effectiveFrom: editForm.effectiveFrom }),
-        ...(editForm.note.trim() !== '' && { note: editForm.note.trim() }),
-        isActive: editForm.isActive,
+      const dto: CreateCompatibilityRuleDto = {
+        ruleType: 'REPLACES',
+        sourceItemId: form.sourceItemId,
+        targetItemId: form.targetItemId,
+        ...(form.effectiveFrom && { effectiveFrom: form.effectiveFrom }),
+        ...(form.note.trim() && { note: form.note.trim() }),
       };
-      await commercialApi.updateCompatibilityRule(editingRule.id, dto);
+      await commercialApi.createCompatibilityRule(dto);
       const updated = await commercialApi.getCompatibilityRules();
       setRules(updated);
-      setEditingRule(null);
+      handleFormOpenChange(false);
+      setSuccessMessage('Regla de reemplazo creada.');
     } catch (error) {
-      setMutationError(
-        error instanceof ApiError ? error.message : 'No fue posible actualizar la regla.',
-      );
+      setFormError(mapActionError(error, 'No fue posible crear la regla.'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDeactivate = useCallback(async (rule: CompatibilityRule) => {
-    if (!window.confirm('¿Desactivar esta regla de reemplazo? Se puede reactivar desde "Editar".'))
-      return;
+  const handleDeactivate = useCallback(async () => {
+    if (!deactivateTarget) return;
 
-    setDeletingId(rule.id);
-    setLoadError(null);
+    setDeletingId(deactivateTarget.id);
+    setActionError(null);
     try {
-      await commercialApi.deactivateCompatibilityRule(rule.id);
+      await commercialApi.deactivateCompatibilityRule(deactivateTarget.id);
       const updated = await commercialApi.getCompatibilityRules();
       setRules(updated);
+      setDeactivateTarget(null);
+      setSuccessMessage('Regla desactivada.');
     } catch (error) {
-      setLoadError(mapLoadError(error));
+      setActionError(mapActionError(error, 'No fue posible desactivar la regla.'));
     } finally {
       setDeletingId(null);
     }
-  }, []);
+  }, [deactivateTarget]);
 
   const activeCount = replacesRules.filter((r) => r.isActive).length;
   const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
+  const showLoadErrorOnly = Boolean(loadError) && replacesRules.length === 0 && !isLoading;
+  const isEditing = editingRule !== null;
 
   return (
     <PortalPanel
@@ -259,14 +288,8 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             {activeCount} activa{activeCount === 1 ? '' : 's'}
           </Badge>
           {canEdit && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setIsCreateModalOpen(true);
-                setMutationError(null);
-              }}
-            >
-              <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+            <Button onClick={openCreateForm}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Nueva regla de reemplazo
             </Button>
           )}
@@ -275,142 +298,241 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
       contentClassName="space-y-4"
     >
       {isLoading ? (
-        <PortalSkeletonBlock className="h-28" />
-      ) : loadError ? (
+        <div className="space-y-2" aria-busy="true">
+          <PortalSkeletonBlock className="h-10 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+        </div>
+      ) : showLoadErrorOnly ? (
         <PortalAlert
           variant="error"
           title="No fue posible cargar reglas"
           description={loadError}
           icon={CircleAlert}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadData()}>
+              Reintentar
+            </Button>
+          }
         />
       ) : replacesRules.length === 0 ? (
         <PortalEmptyState
           title="Sin reglas de reemplazo"
           description="Crea la primera regla para guiar a los agentes cuando sugieran ítems obsoletos."
           icon={ArrowRight}
+          {...(canEdit
+            ? {
+                action: (
+                  <Button onClick={openCreateForm}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Nueva regla de reemplazo
+                  </Button>
+                ),
+              }
+            : {})}
         />
       ) : (
-        <div className={portalDataTableShellClassName}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
-                <tr>
-                  <th className={portalDataTableHeadClassName}>Ítem obsoleto → Sucesor</th>
-                  <th className={portalDataTableHeadClassName}>Desde</th>
-                  <th className={portalDataTableHeadClassName}>Nota</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  {canEdit && <th className={portalDataTableHeadClassName}>Acciones</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
-                {replacesRules.map((rule) => (
-                  <tr key={rule.id} className={portalTableRowHoverClassName}>
-                    <td className={portalDataTableCellClassName}>
-                      <span className="font-medium text-gray-800 dark:text-gray-100">
-                        {rule.sourceItem?.name ?? 'Ítem no disponible'}
-                      </span>
-                      <ArrowRight
-                        className="mx-2 inline h-3.5 w-3.5 text-gray-400"
-                        aria-hidden="true"
-                      />
-                      <span className="font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                        {rule.targetItem?.name ?? 'Ítem no disponible'}
-                      </span>
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      {formatDate(rule.effectiveFrom)}
-                    </td>
-                    <td className={`${portalDataTableCellClassName} max-w-xs`}>
-                      {rule.note ? (
-                        <span className="line-clamp-2 text-gray-600 dark:text-gray-300">
-                          {rule.note}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <Badge variant={getPortalActiveBadgeVariant(rule.isActive)}>
-                        {rule.isActive ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </td>
-                    {canEdit && (
-                      <td className={portalDataTableCellClassName}>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleOpenEdit(rule)}
-                            aria-label={`Editar regla: ${rule.sourceItem?.name ?? 'Ítem no disponible'}`}
-                          >
-                            <Pencil className="h-4 w-4" aria-hidden="true" />
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="softDestructive"
-                            size="sm"
-                            disabled={deletingId === rule.id || !rule.isActive}
-                            onClick={() => handleDeactivate(rule)}
-                            aria-label={`Desactivar regla: ${rule.sourceItem?.name ?? 'Ítem no disponible'}`}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            Desactivar
-                          </Button>
-                        </div>
-                      </td>
-                    )}
+        <div className="space-y-4">
+          {successMessage ? (
+            <PortalSuccessAlert
+              message={successMessage}
+              onDismiss={() => setSuccessMessage(null)}
+            />
+          ) : null}
+
+          {actionError && !deactivateTarget && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible completar la acción"
+              description={actionError}
+              icon={CircleAlert}
+              action={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActionError(null)}
+                >
+                  Cerrar
+                </Button>
+              }
+            />
+          )}
+
+          <div className={portalDataTableShellClassName}>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                  <tr>
+                    <PortalDataTableHead>Ítem obsoleto → Sucesor</PortalDataTableHead>
+                    <PortalDataTableHead>Desde</PortalDataTableHead>
+                    <PortalDataTableHead>Nota</PortalDataTableHead>
+                    <PortalDataTableHead>Estado</PortalDataTableHead>
+                    {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                  {replacesRules.map((rule) => (
+                    <tr key={rule.id} className={portalTableRowHoverClassName}>
+                      <td className={portalDataTableCellClassName}>
+                        <span className="font-medium text-gray-800 dark:text-gray-100">
+                          {rule.sourceItem?.name ?? 'Ítem no disponible'}
+                        </span>
+                        <ArrowRight
+                          className="mx-2 inline h-3.5 w-3.5 text-gray-400"
+                          aria-hidden="true"
+                        />
+                        <span className="font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          {rule.targetItem?.name ?? 'Ítem no disponible'}
+                        </span>
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        {formatDate(rule.effectiveFrom)}
+                      </td>
+                      <td className={`${portalDataTableCellClassName} max-w-xs`}>
+                        {rule.note ? (
+                          <span className="line-clamp-2 text-gray-600 dark:text-gray-300">
+                            {rule.note}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <Badge variant={getPortalActiveBadgeVariant(rule.isActive)}>
+                          {rule.isActive ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </td>
+                      {canEdit && (
+                        <td className={portalDataTableCellClassName}>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openEditForm(rule)}
+                              aria-label={`Editar regla: ${rule.sourceItem?.name ?? 'Ítem no disponible'}`}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="softDestructive"
+                              size="sm"
+                              disabled={deletingId === rule.id || !rule.isActive}
+                              loading={deletingId === rule.id}
+                              onClick={() => {
+                                setActionError(null);
+                                setDeactivateTarget(rule);
+                              }}
+                              aria-label={`Desactivar regla: ${rule.sourceItem?.name ?? 'Ítem no disponible'}`}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Desactivar
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Modal: crear regla de reemplazo ─────────────────────────────────── */}
-      <Dialog
-        open={isCreateModalOpen}
-        onOpenChange={(open) => {
-          setIsCreateModalOpen(open);
-          if (!open) {
-            setCreateForm(EMPTY_CREATE_FORM);
-            setCreateFormErrors({});
-            setMutationError(null);
-          }
-        }}
+      <PortalSidePeek
+        open={isFormOpen}
+        onClose={() => handleFormOpenChange(false)}
+        eyebrow="Reglas"
+        title={isEditing ? 'Editar regla de reemplazo' : 'Nueva regla de reemplazo'}
+        description={
+          isEditing
+            ? 'Actualiza la nota, la fecha de vigencia o el estado de la regla.'
+            : 'Indica qué ítem debe sugerir el agente como sucesor de un ítem obsoleto.'
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isSubmitting}
+              onClick={() => handleFormOpenChange(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" form="compatibility-rule-form" loading={isSubmitting}>
+              {isEditing ? 'Guardar cambios' : 'Crear regla'}
+            </Button>
+          </div>
+        }
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nueva regla de reemplazo</DialogTitle>
-            <DialogDescription>
-              Indica qué ítem debe sugerir el agente como sucesor de un ítem obsoleto.
-            </DialogDescription>
-          </DialogHeader>
+        <form
+          id="compatibility-rule-form"
+          className="space-y-5"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
+          }}
+        >
+          <section className="space-y-4">
+            <div>
+              <p className="portal-eyebrow">Ítems del reemplazo</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {isEditing
+                  ? 'Los ítems de la regla no se modifican; solo la vigencia, la nota y el estado.'
+                  : 'Define el ítem obsoleto y el sucesor que debe sugerir el agente.'}
+              </p>
+            </div>
 
-          <div className="space-y-4">
-            <Select
-              label="Ítem obsoleto"
-              id="compat-source"
-              value={createForm.sourceItemId}
-              onChange={(e) => setCreateForm((prev) => ({ ...prev, sourceItemId: e.target.value }))}
-              options={itemOptions}
-              placeholder="Selecciona el ítem que se reemplaza..."
-              {...(createFormErrors.sourceItemId && { error: createFormErrors.sourceItemId })}
-              disabled={isSubmitting}
-            />
+            {isEditing ? (
+              <p className="text-sm text-gray-800 dark:text-gray-100">
+                <span className="font-medium">
+                  {editingRule?.sourceItem?.name ?? 'Ítem no disponible'}
+                </span>
+                <ArrowRight className="mx-2 inline h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
+                <span className="font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                  {editingRule?.targetItem?.name ?? 'Ítem no disponible'}
+                </span>
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <Select
+                  label="Ítem obsoleto"
+                  id="compat-source"
+                  value={form.sourceItemId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, sourceItemId: e.target.value }))}
+                  options={itemOptions}
+                  placeholder="Selecciona el ítem que se reemplaza..."
+                  {...(formErrors.sourceItemId && { error: formErrors.sourceItemId })}
+                  disabled={isSubmitting}
+                />
 
-            <Select
-              label="Ítem sucesor"
-              id="compat-target"
-              value={createForm.targetItemId}
-              onChange={(e) => setCreateForm((prev) => ({ ...prev, targetItemId: e.target.value }))}
-              options={itemOptions}
-              placeholder="Selecciona el ítem que lo reemplaza..."
-              {...(createFormErrors.targetItemId && { error: createFormErrors.targetItemId })}
-              disabled={isSubmitting}
-            />
+                <Select
+                  label="Ítem sucesor"
+                  id="compat-target"
+                  value={form.targetItemId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, targetItemId: e.target.value }))}
+                  options={itemOptions}
+                  placeholder="Selecciona el ítem que lo reemplaza..."
+                  {...(formErrors.targetItemId && { error: formErrors.targetItemId })}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <p className="portal-eyebrow">Vigencia y nota</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Opcional: fecha desde la que aplica y contexto para el agente comercial.
+              </p>
+            </div>
 
             <div>
               <label htmlFor="compat-effective-from" className="mb-1.5 block portal-eyebrow-muted">
@@ -418,153 +540,103 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               </label>
               <DatePicker
                 id="compat-effective-from"
-                value={toDateFromLocalDateValue(createForm.effectiveFrom)}
+                value={toDateFromLocalDateValue(form.effectiveFrom)}
                 onChange={(date) =>
-                  setCreateForm((prev) => ({ ...prev, effectiveFrom: toLocalDateValue(date) }))
+                  setForm((prev) => ({ ...prev, effectiveFrom: toLocalDateValue(date) }))
                 }
                 disabled={isSubmitting}
                 placeholder="Selecciona una fecha"
-                buttonClassName="h-11 rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-800 shadow-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
+                buttonClassName={portalFieldClassName}
               />
             </div>
 
             <div>
               <label htmlFor="compat-note" className="mb-1.5 block portal-eyebrow-muted">
-                Nota para el agente (opcional)
+                Nota para el agente{isEditing ? '' : ' (opcional)'}
               </label>
               <textarea
                 id="compat-note"
                 rows={3}
                 maxLength={2000}
-                value={createForm.note}
-                onChange={(e) => setCreateForm((prev) => ({ ...prev, note: e.target.value }))}
+                value={form.note}
+                onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
                 disabled={isSubmitting}
                 placeholder="Ej: Este plan fue migrado a la oferta Hogar 200 desde mayo 2025..."
                 className={commercialTextareaClassName}
               />
-              {createFormErrors.note && (
-                <p className="mt-1 text-xs text-red-600">{createFormErrors.note}</p>
-              )}
-              <p className="mt-1 text-right text-xs text-gray-400">{createForm.note.length}/2000</p>
+              {formErrors.note && <p className="mt-1 text-sm text-error-600">{formErrors.note}</p>}
+              <p className="mt-1 text-right text-xs text-gray-400">{form.note.length}/2000</p>
             </div>
 
-            {mutationError && (
-              <PortalAlert
-                variant="error"
-                title="No fue posible guardar"
-                description={mutationError}
+            {isEditing && (
+              <CheckboxCard
+                label="Activo"
+                description="Disponible para orientar a los agentes en nuevas operaciones."
+                checked={form.isActive}
+                onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+                disabled={isSubmitting}
+                name="isActive"
               />
             )}
+          </section>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <DialogClose asChild>
-                <Button type="button" variant="ghost" disabled={isSubmitting}>
-                  Cancelar
-                </Button>
-              </DialogClose>
-              <Button onClick={handleCreate} disabled={isSubmitting}>
-                {isSubmitting ? 'Guardando...' : 'Crear regla'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          {formError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible guardar"
+              description={formError}
+              icon={CircleAlert}
+            />
+          )}
+        </form>
+      </PortalSidePeek>
 
-      {/* ── Modal: editar regla de reemplazo ────────────────────────────────── */}
       <Dialog
-        open={editingRule !== null}
+        open={!!deactivateTarget}
         onOpenChange={(open) => {
           if (!open) {
-            setEditingRule(null);
-            setMutationError(null);
+            setDeactivateTarget(null);
+            setActionError(null);
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar regla de reemplazo</DialogTitle>
+            <DialogTitle>Desactivar regla de reemplazo</DialogTitle>
             <DialogDescription>
-              Actualiza la nota, la fecha de vigencia o el estado de la regla.
+              ¿Desactivar el reemplazo de{' '}
+              <strong>{deactivateTarget?.sourceItem?.name ?? 'Ítem no disponible'}</strong> por{' '}
+              <strong>{deactivateTarget?.targetItem?.name ?? 'Ítem no disponible'}</strong>? Se
+              puede reactivar desde «Editar».
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Muestra los ítems involucrados como referencia, no son editables. */}
-            {editingRule && (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="font-medium text-gray-700 dark:text-gray-200">
-                  {editingRule.sourceItem?.name ?? 'Ítem no disponible'}
-                </span>
-                <ArrowRight className="mx-2 inline h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
-                <span className="font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  {editingRule.targetItem?.name ?? 'Ítem no disponible'}
-                </span>
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="edit-effective-from" className="mb-1.5 block portal-eyebrow-muted">
-                Vigente desde (opcional)
-              </label>
-              <DatePicker
-                id="edit-effective-from"
-                value={toDateFromLocalDateValue(editForm.effectiveFrom)}
-                onChange={(date) =>
-                  setEditForm((prev) => ({ ...prev, effectiveFrom: toLocalDateValue(date) }))
-                }
-                disabled={isSubmitting}
-                placeholder="Selecciona una fecha"
-                buttonClassName="h-11 rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-800 shadow-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="edit-note" className="mb-1.5 block portal-eyebrow-muted">
-                Nota para el agente
-              </label>
-              <textarea
-                id="edit-note"
-                rows={3}
-                maxLength={2000}
-                value={editForm.note}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, note: e.target.value }))}
-                disabled={isSubmitting}
-                className={commercialTextareaClassName}
-              />
-              <p className="mt-1 text-right text-xs text-gray-400">{editForm.note.length}/2000</p>
-            </div>
-
-            <label className="flex cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                checked={editForm.isActive}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-                disabled={isSubmitting}
-                className="h-4 w-4 rounded border-gray-300 accent-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30"
-              />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                Regla activa
-              </span>
-            </label>
-
-            {mutationError && (
-              <PortalAlert
-                variant="error"
-                title="No fue posible guardar"
-                description={mutationError}
-              />
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <DialogClose asChild>
-                <Button type="button" variant="ghost" disabled={isSubmitting}>
-                  Cancelar
-                </Button>
-              </DialogClose>
-              <Button onClick={handleUpdate} disabled={isSubmitting}>
-                {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
-            </div>
+          {actionError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible desactivar"
+              description={actionError}
+              icon={CircleAlert}
+              className="mt-3"
+            />
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              disabled={!!deletingId}
+              onClick={() => {
+                setDeactivateTarget(null);
+                setActionError(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeactivate()}
+              loading={!!deletingId}
+            >
+              Desactivar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -1,17 +1,24 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, Trash2, RotateCcw, HelpCircle } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  RotateCcw,
+  HelpCircle,
+  CircleAlert,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   Badge,
   Button,
+  CheckboxCard,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  FormField,
   Input,
   Popover,
   PopoverContent,
@@ -34,11 +41,13 @@ import {
 import {
   interactiveFocusClassName,
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
+  PortalSidePeek,
   PortalSkeletonBlock,
+  PortalSuccessAlert,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
@@ -58,7 +67,7 @@ interface AppFormState {
   isActive?: boolean;
 }
 
-const INITIAL_FORM: AppFormState = { treatment: 'STANDARD', priority: 0 };
+const INITIAL_FORM: AppFormState = { treatment: 'STANDARD', priority: 0, isActive: true };
 
 /** Ícono de ayuda con popover click-to-open */
 function HelpPopover({ children }: { children: React.ReactNode }) {
@@ -78,23 +87,45 @@ function HelpPopover({ children }: { children: React.ReactNode }) {
   );
 }
 
+function SelectLabelWithHelp({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center">
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        {label}
+        {required ? <span className="ml-1 text-iwana-error">*</span> : null}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManagerProps) {
   const [applications, setApplications] = useState<TaxRuleApplication[]>([]);
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<TaxRuleApplication | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaxRuleApplication | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState<AppFormState>(INITIAL_FORM);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [editError, setEditError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const [apps, taxRules, taxDefs] = await Promise.all([
         commercialApi.listTaxRuleApplications(),
@@ -105,7 +136,9 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       setRules(taxRules);
       setDefinitions(taxDefs);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al cargar aplicaciones tributarias');
+      setLoadError(
+        err instanceof ApiError ? err.message : 'Error al cargar aplicaciones tributarias',
+      );
     } finally {
       setLoading(false);
     }
@@ -133,13 +166,46 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   };
 
   const activeApplicationsCount = applications.filter((app) => app.isActive).length;
+  const isEditing = Boolean(editTarget);
+  const showLoadErrorOnly = Boolean(loadError) && applications.length === 0 && !loading;
+
+  function openCreateForm() {
+    setEditTarget(null);
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setForm(INITIAL_FORM);
+    setIsFormOpen(true);
+  }
+
+  function openEditForm(app: TaxRuleApplication) {
+    setEditTarget(app);
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setForm({
+      treatment: app.treatment,
+      rateOverride: app.rateOverride ? Number(app.rateOverride) : null,
+      priority: app.priority,
+      isActive: app.isActive,
+    });
+    setIsFormOpen(true);
+  }
+
+  function handleFormOpenChange(nextOpen: boolean) {
+    setIsFormOpen(nextOpen);
+    if (!nextOpen) {
+      setEditTarget(null);
+      setFormError(null);
+      setForm(INITIAL_FORM);
+    }
+  }
 
   const handleCreate = async () => {
     if (!form.taxRuleId || !form.taxDefinitionId) return;
-    setSubmitting(true);
-    setCreateError(null);
+    setSaving(true);
+    setFormError(null);
     try {
-      // Construir DTO evitando propiedades undefined (compatibilidad con exactOptionalPropertyTypes)
       const dto: CreateTaxRuleApplicationDto = {
         taxRuleId: form.taxRuleId,
         taxDefinitionId: form.taxDefinitionId,
@@ -148,21 +214,20 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
         ...(form.priority !== undefined ? { priority: form.priority } : {}),
       };
       await commercialApi.createTaxRuleApplication(dto);
-      setCreateOpen(false);
-      setCreateError(null);
-      setForm(INITIAL_FORM);
+      handleFormOpenChange(false);
       await load();
+      setSuccessMessage('Vinculación creada.');
     } catch (err) {
-      setCreateError(err instanceof ApiError ? err.message : 'Error al crear la vinculación.');
+      setFormError(err instanceof ApiError ? err.message : 'Error al crear la vinculación.');
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
   const handleUpdate = async () => {
     if (!editTarget) return;
-    setSubmitting(true);
-    setEditError(null);
+    setSaving(true);
+    setFormError(null);
     try {
       const dto: UpdateTaxRuleApplicationDto = {};
       if (form.treatment !== undefined) dto.treatment = form.treatment;
@@ -170,27 +235,29 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       if (form.priority !== undefined) dto.priority = form.priority;
       if (form.isActive !== undefined) dto.isActive = form.isActive;
       await commercialApi.updateTaxRuleApplication(editTarget.id, dto);
-      setEditTarget(null);
-      setEditError(null);
+      handleFormOpenChange(false);
       await load();
+      setSuccessMessage('Vinculación actualizada.');
     } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : 'Error al actualizar la vinculación.');
+      setFormError(err instanceof ApiError ? err.message : 'Error al actualizar la vinculación.');
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    setSubmitting(true);
+    setDeleting(true);
+    setActionError(null);
     try {
       await commercialApi.deleteTaxRuleApplication(deleteTarget.id);
       setDeleteTarget(null);
       await load();
+      setSuccessMessage('Vinculación eliminada.');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al eliminar aplicación');
+      setActionError(err instanceof ApiError ? err.message : 'Error al eliminar aplicación');
     } finally {
-      setSubmitting(false);
+      setDeleting(false);
     }
   };
 
@@ -214,8 +281,8 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             <RotateCcw className="h-4 w-4" aria-hidden="true" />
           </Button>
           {canEdit && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            <Button onClick={openCreateForm}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Vincular regla
             </Button>
           )}
@@ -223,399 +290,333 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       }
       contentClassName="flex flex-col gap-4"
     >
-      {error && (
+      {loading ? (
+        <div className="space-y-2" aria-busy="true">
+          <PortalSkeletonBlock className="h-10 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+          <PortalSkeletonBlock className="h-12 rounded-xl" />
+        </div>
+      ) : showLoadErrorOnly ? (
         <PortalAlert
           variant="error"
           title="No fue posible cargar reglas de aplicación"
-          description={error}
+          description={loadError}
+          icon={CircleAlert}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void load()}>
+              Reintentar
+            </Button>
+          }
         />
-      )}
-
-      {loading ? (
-        <PortalSkeletonBlock className="h-28" />
       ) : applications.length === 0 ? (
         <PortalEmptyState
           title="Sin reglas de aplicación"
           description="Vincula una regla comercial con una definición del catálogo para activar el motor tributario."
+          {...(canEdit
+            ? {
+                action: (
+                  <Button onClick={openCreateForm}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Vincular regla
+                  </Button>
+                ),
+              }
+            : {})}
         />
       ) : (
-        <div className={portalDataTableShellClassName}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
-                <tr>
-                  <th className={portalDataTableHeadClassName}>Regla comercial</th>
-                  <th className={portalDataTableHeadClassName}>Definición</th>
-                  <th className={portalDataTableHeadClassName}>Tratamiento</th>
-                  <th className={portalDataTableHeadClassName}>Prioridad</th>
-                  <th className={portalDataTableHeadClassName}>Override</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  {canEdit && <th className={portalDataTableHeadClassName}>Acciones</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
-                {applications.map((app) => (
-                  <tr key={app.id} className={portalTableRowHoverClassName}>
-                    <td className={portalDataTableCellClassName}>
-                      <p className="font-medium text-gray-800 dark:text-gray-100">
-                        {ruleName(app.taxRuleId)}
-                      </p>
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <span className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                        {defName(app.taxDefinitionId)}
-                      </span>
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      {resolveTaxLabel(TAX_TREATMENT_LABELS, app.treatment)}
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <span className="font-mono tabular-nums">{app.priority}</span>
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      {app.rateOverride !== null ? (
-                        <span className="font-mono tabular-nums">{app.rateOverride}%</span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <Badge
-                        variant={getPortalActiveBadgeVariant(app.isActive)}
-                        className="text-xs"
-                      >
-                        {app.isActive ? 'Activa' : 'Inactiva'}
-                      </Badge>
-                    </td>
-                    {canEdit && (
-                      <td className={portalDataTableCellClassName}>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="secondary"
-                            size="icon"
-                            aria-label={`Editar vinculación ${ruleName(app.taxRuleId)}`}
-                            title={`Editar vinculación ${ruleName(app.taxRuleId)}`}
-                            onClick={() => {
-                              setEditTarget(app);
-                              setForm({
-                                treatment: app.treatment,
-                                rateOverride: app.rateOverride ? Number(app.rateOverride) : null,
-                                priority: app.priority,
-                                isActive: app.isActive,
-                              });
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                          <Button
-                            variant="softDestructive"
-                            size="icon"
-                            aria-label={`Eliminar vinculación ${ruleName(app.taxRuleId)}`}
-                            title={`Eliminar vinculación ${ruleName(app.taxRuleId)}`}
-                            onClick={() => setDeleteTarget(app)}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                        </div>
-                      </td>
-                    )}
+        <div className="space-y-4">
+          {successMessage ? (
+            <PortalSuccessAlert
+              message={successMessage}
+              onDismiss={() => setSuccessMessage(null)}
+            />
+          ) : null}
+
+          {actionError && !deleteTarget && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible completar la acción"
+              description={actionError}
+              icon={CircleAlert}
+              action={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActionError(null)}
+                >
+                  Cerrar
+                </Button>
+              }
+            />
+          )}
+
+          <div className={portalDataTableShellClassName}>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                  <tr>
+                    <PortalDataTableHead>Regla comercial</PortalDataTableHead>
+                    <PortalDataTableHead>Definición</PortalDataTableHead>
+                    <PortalDataTableHead>Tratamiento</PortalDataTableHead>
+                    <PortalDataTableHead>Prioridad</PortalDataTableHead>
+                    <PortalDataTableHead>Override</PortalDataTableHead>
+                    <PortalDataTableHead>Estado</PortalDataTableHead>
+                    {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                  {applications.map((app) => (
+                    <tr key={app.id} className={portalTableRowHoverClassName}>
+                      <td className={portalDataTableCellClassName}>
+                        <p className="font-medium text-gray-800 dark:text-gray-100">
+                          {ruleName(app.taxRuleId)}
+                        </p>
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <span className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          {defName(app.taxDefinitionId)}
+                        </span>
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        {resolveTaxLabel(TAX_TREATMENT_LABELS, app.treatment)}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <span className="font-mono tabular-nums">{app.priority}</span>
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        {app.rateOverride !== null ? (
+                          <span className="font-mono tabular-nums">{app.rateOverride}%</span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <Badge
+                          variant={getPortalActiveBadgeVariant(app.isActive)}
+                          className="text-xs"
+                        >
+                          {app.isActive ? 'Activa' : 'Inactiva'}
+                        </Badge>
+                      </td>
+                      {canEdit && (
+                        <td className={portalDataTableCellClassName}>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="secondary"
+                              size="icon"
+                              aria-label={`Editar vinculación ${ruleName(app.taxRuleId)}`}
+                              title={`Editar vinculación ${ruleName(app.taxRuleId)}`}
+                              onClick={() => openEditForm(app)}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              variant="softDestructive"
+                              size="icon"
+                              aria-label={`Eliminar vinculación ${ruleName(app.taxRuleId)}`}
+                              title={`Eliminar vinculación ${ruleName(app.taxRuleId)}`}
+                              onClick={() => {
+                                setActionError(null);
+                                setDeleteTarget(app);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      <Dialog
-        open={createOpen}
-        onOpenChange={(o) => {
-          if (!o) {
-            setCreateOpen(false);
-            setCreateError(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Vincular regla con catálogo</DialogTitle>
-            <DialogDescription>
-              Asocia una regla comercial activa con una definición tributaria del catálogo.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="mt-2 flex flex-col gap-3">
-            {/* Regla comercial */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center">
-                <span className="portal-eyebrow-muted">
-                  Regla comercial <span className="text-iwana-error">*</span>
-                </span>
-                <HelpPopover>
-                  <p className="text-xs">
-                    Regla que define el <strong>tipo de tributo</strong> aplicable según el contexto
-                    comercial (ej: IVA ventas residencial). Solo se muestran reglas activas.
-                  </p>
-                </HelpPopover>
-              </div>
-              <Select
-                value={form.taxRuleId ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setForm((f) => ({ ...f, taxRuleId: v }) as AppFormState);
-                }}
-              >
-                <option value="">Selecciona una regla…</option>
-                {rules
-                  .filter((r) => r.isActive)
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {ruleName(r.id)}
-                    </option>
-                  ))}
-              </Select>
-            </div>
-
-            {/* Definición tributaria */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center">
-                <span className="portal-eyebrow-muted">
-                  Definición tributaria <span className="text-iwana-error">*</span>
-                </span>
-                <HelpPopover>
-                  <p className="text-xs">
-                    Impuesto concreto del catálogo que se aplicará cuando la regla seleccionada
-                    coincida (ej: IVA estándar 19%). Solo se muestran definiciones activas.
-                  </p>
-                </HelpPopover>
-              </div>
-              <Select
-                value={form.taxDefinitionId ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setForm((f) => ({ ...f, taxDefinitionId: v }) as AppFormState);
-                }}
-              >
-                <option value="">Selecciona una definición…</option>
-                {definitions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="my-1 border-t border-gray-100 dark:border-dark-border" />
-
-            {/* Tratamiento */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center">
-                <span className="portal-eyebrow-muted">Tratamiento</span>
-                <HelpPopover>
-                  <ul className="list-disc pl-4 space-y-1 text-xs">
-                    <li>
-                      <strong>Estándar</strong> — Se cobra sobre la base gravable
-                    </li>
-                    <li>
-                      <strong>Exento</strong> — Tasa cero; debe declararse
-                    </li>
-                    <li>
-                      <strong>Excluido</strong> — No genera el hecho gravable
-                    </li>
-                    <li>
-                      <strong>Fija</strong> — Monto fijo sin importar la base
-                    </li>
-                  </ul>
-                </HelpPopover>
-              </div>
-              <Select
-                value={form.treatment ?? 'STANDARD'}
-                onChange={(e) => {
-                  const v = e.target.value as AppFormState['treatment'];
-                  setForm((f) => ({ ...f, treatment: v }) as AppFormState);
-                }}
-              >
-                <option value="STANDARD">Estándar</option>
-                <option value="EXEMPT">Exento</option>
-                <option value="EXCLUDED">Excluido</option>
-                <option value="FIXED">Fija</option>
-              </Select>
-            </div>
-
-            {/* Override de tasa */}
-            <FormField
-              label="Override de tasa (%)"
-              hint="Tasa específica para esta vinculación. Deja vacío para usar la tasa base de la definición."
-            >
-              <Input
-                placeholder="Ej: 5"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={form.rateOverride ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value ? Number(e.target.value) : null;
-                  setForm((f) => ({ ...f, rateOverride: v }) as AppFormState);
-                }}
-              />
-            </FormField>
-
-            {/* Prioridad */}
-            <FormField
-              label="Prioridad"
-              hint="Número de orden cuando varias reglas aplican al mismo tiempo. Menor número = mayor prioridad."
-            >
-              <Input
-                placeholder="0"
-                type="number"
-                min="0"
-                value={form.priority ?? 0}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setForm((f) => ({ ...f, priority: v }) as AppFormState);
-                }}
-              />
-            </FormField>
-          </div>
-
-          {createError && (
-            <PortalAlert
-              variant="error"
-              title="No fue posible vincular"
-              description={createError}
-            />
-          )}
-
-          <div className="mt-2 flex justify-end gap-2">
-            <DialogClose asChild>
-              <Button variant="ghost" disabled={submitting}>
-                Cancelar
-              </Button>
-            </DialogClose>
+      <PortalSidePeek
+        open={isFormOpen}
+        onClose={() => handleFormOpenChange(false)}
+        eyebrow="Tributación"
+        title={isEditing ? 'Editar vinculación tributaria' : 'Vincular regla con catálogo'}
+        description={
+          isEditing && editTarget
+            ? `${ruleName(editTarget.taxRuleId)} → ${defName(editTarget.taxDefinitionId)}`
+            : 'Asocia una regla comercial activa con una definición tributaria del catálogo.'
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
-              onClick={() => void handleCreate()}
-              disabled={submitting || !form.taxRuleId || !form.taxDefinitionId}
-            >
-              {submitting ? 'Vinculando…' : 'Vincular'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!editTarget}
-        onOpenChange={(o) => {
-          if (!o) {
-            setEditTarget(null);
-            setEditError(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Editar vinculación tributaria</DialogTitle>
-            <DialogDescription>
-              {editTarget &&
-                `${ruleName(editTarget.taxRuleId)} → ${defName(editTarget.taxDefinitionId)}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center">
-                <span className="portal-eyebrow-muted">Tratamiento</span>
-                <HelpPopover>
-                  <ul className="list-disc pl-4 space-y-1 text-xs">
-                    <li>
-                      <strong>Estándar</strong> — Se cobra sobre la base gravable
-                    </li>
-                    <li>
-                      <strong>Exento</strong> — Tasa cero; debe declararse
-                    </li>
-                    <li>
-                      <strong>Excluido</strong> — No genera el hecho gravable
-                    </li>
-                    <li>
-                      <strong>Fija</strong> — Monto fijo sin importar la base
-                    </li>
-                  </ul>
-                </HelpPopover>
-              </div>
-              <Select
-                value={form.treatment ?? 'STANDARD'}
-                onChange={(e) => {
-                  const v = e.target.value as AppFormState['treatment'];
-                  setForm((f) => ({ ...f, treatment: v }) as AppFormState);
-                }}
-              >
-                <option value="STANDARD">Estándar</option>
-                <option value="EXEMPT">Exento</option>
-                <option value="EXCLUDED">Excluido</option>
-                <option value="FIXED">Fija</option>
-              </Select>
-            </div>
-
-            <FormField
-              label="Override de tasa (%)"
-              hint="Tasa específica para esta vinculación. Deja vacío para usar la tasa base de la definición."
-            >
-              <Input
-                placeholder="Ej: 5"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={form.rateOverride ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value ? Number(e.target.value) : null;
-                  setForm((f) => ({ ...f, rateOverride: v }) as AppFormState);
-                }}
-              />
-            </FormField>
-
-            <FormField
-              label="Prioridad"
-              hint="Menor número = mayor prioridad cuando varias reglas aplican simultáneamente."
-            >
-              <Input
-                placeholder="0"
-                type="number"
-                min="0"
-                value={form.priority ?? 0}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setForm((f) => ({ ...f, priority: v }) as AppFormState);
-                }}
-              />
-            </FormField>
-          </div>
-
-          {editError && (
-            <PortalAlert variant="error" title="No fue posible guardar" description={editError} />
-          )}
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
+              type="button"
               variant="ghost"
-              disabled={submitting}
-              onClick={() => {
-                setEditTarget(null);
-                setEditError(null);
-              }}
+              disabled={saving}
+              onClick={() => handleFormOpenChange(false)}
             >
               Cancelar
             </Button>
-            <Button onClick={() => void handleUpdate()} disabled={submitting}>
-              {submitting ? 'Guardando…' : 'Guardar cambios'}
+            <Button
+              type="button"
+              onClick={() => void (isEditing ? handleUpdate() : handleCreate())}
+              disabled={saving || (!isEditing && (!form.taxRuleId || !form.taxDefinitionId))}
+              loading={saving}
+            >
+              {isEditing ? 'Guardar' : 'Vincular'}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        }
+      >
+        <div className="space-y-5">
+          <section className="space-y-4">
+            {!isEditing && (
+              <>
+                <div className="space-y-1.5">
+                  <SelectLabelWithHelp label="Regla comercial" required>
+                    <HelpPopover>
+                      <p className="text-xs">
+                        Regla que define el <strong>tipo de tributo</strong> aplicable según el
+                        contexto comercial (ej: IVA ventas residencial). Solo se muestran reglas
+                        activas.
+                      </p>
+                    </HelpPopover>
+                  </SelectLabelWithHelp>
+                  <Select
+                    value={form.taxRuleId ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setForm((f) => ({ ...f, taxRuleId: v }) as AppFormState);
+                    }}
+                  >
+                    <option value="">Selecciona una regla…</option>
+                    {rules
+                      .filter((r) => r.isActive)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {ruleName(r.id)}
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <SelectLabelWithHelp label="Definición tributaria" required>
+                    <HelpPopover>
+                      <p className="text-xs">
+                        Impuesto concreto del catálogo que se aplicará cuando la regla seleccionada
+                        coincida (ej: IVA estándar 19%). Solo se muestran definiciones activas.
+                      </p>
+                    </HelpPopover>
+                  </SelectLabelWithHelp>
+                  <Select
+                    value={form.taxDefinitionId ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setForm((f) => ({ ...f, taxDefinitionId: v }) as AppFormState);
+                    }}
+                  >
+                    <option value="">Selecciona una definición…</option>
+                    {definitions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.code})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1.5">
+              <SelectLabelWithHelp label="Tratamiento">
+                <HelpPopover>
+                  <ul className="list-disc space-y-1 pl-4 text-xs">
+                    <li>
+                      <strong>Estándar</strong> — Se cobra sobre la base gravable
+                    </li>
+                    <li>
+                      <strong>Exento</strong> — Tasa cero; debe declararse
+                    </li>
+                    <li>
+                      <strong>Excluido</strong> — No genera el hecho gravable
+                    </li>
+                    <li>
+                      <strong>Fija</strong> — Monto fijo sin importar la base
+                    </li>
+                  </ul>
+                </HelpPopover>
+              </SelectLabelWithHelp>
+              <Select
+                value={form.treatment ?? 'STANDARD'}
+                onChange={(e) => {
+                  const v = e.target.value as AppFormState['treatment'];
+                  setForm((f) => ({ ...f, treatment: v }) as AppFormState);
+                }}
+              >
+                <option value="STANDARD">Estándar</option>
+                <option value="EXEMPT">Exento</option>
+                <option value="EXCLUDED">Excluido</option>
+                <option value="FIXED">Fija</option>
+              </Select>
+            </div>
+
+            <Input
+              label="Override de tasa (%)"
+              helperText="Tasa específica para esta vinculación. Deja vacío para usar la tasa base de la definición."
+              placeholder="Ej. 5"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              value={form.rateOverride ?? ''}
+              onChange={(e) => {
+                const v = e.target.value ? Number(e.target.value) : null;
+                setForm((f) => ({ ...f, rateOverride: v }) as AppFormState);
+              }}
+            />
+
+            <Input
+              label="Prioridad"
+              helperText="Número de orden cuando varias reglas aplican al mismo tiempo. Menor número = mayor prioridad."
+              placeholder="0"
+              type="number"
+              min="0"
+              value={form.priority ?? 0}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setForm((f) => ({ ...f, priority: v }) as AppFormState);
+              }}
+            />
+
+            {isEditing && (
+              <CheckboxCard
+                label="Activa"
+                description="Disponible para evaluación del motor tributario."
+                checked={form.isActive ?? true}
+                onChange={(event) =>
+                  setForm((f) => ({ ...f, isActive: event.target.checked }) as AppFormState)
+                }
+              />
+            )}
+          </section>
+
+          {formError && (
+            <PortalAlert
+              variant="error"
+              title={isEditing ? 'No fue posible guardar' : 'No fue posible vincular'}
+              description={formError}
+              icon={CircleAlert}
+            />
+          )}
+        </div>
+      </PortalSidePeek>
 
       <Dialog
         open={!!deleteTarget}
-        onOpenChange={(o) => {
-          if (!o) setDeleteTarget(null);
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setActionError(null);
+          }
         }}
       >
         <DialogContent>
@@ -627,12 +628,28 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
               <strong>{deleteTarget && defName(deleteTarget.taxDefinitionId)}</strong>?
             </DialogDescription>
           </DialogHeader>
+          {actionError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible eliminar"
+              description={actionError}
+              icon={CircleAlert}
+              className="mt-3"
+            />
+          )}
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" disabled={submitting} onClick={() => setDeleteTarget(null)}>
+            <Button
+              variant="ghost"
+              disabled={deleting}
+              onClick={() => {
+                setDeleteTarget(null);
+                setActionError(null);
+              }}
+            >
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={() => void handleDelete()} disabled={submitting}>
-              {submitting ? 'Eliminando&hellip;' : 'Eliminar'}
+            <Button variant="destructive" onClick={() => void handleDelete()} loading={deleting}>
+              Eliminar
             </Button>
           </div>
         </DialogContent>

@@ -111,15 +111,32 @@ describe('BundleService', () => {
   });
 
   describe('findAll', () => {
-    it('retorna lista de bundles activos del tenant', async () => {
+    it('retorna lista de bundles activos con itemCount', async () => {
       const bundles = [{ id: 'bun-1', name: 'Bundle A', isActive: true }];
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({ manager: { find: async () => bundles } }),
+        cb({
+          manager: {
+            createQueryBuilder: () => ({
+              leftJoin: jest.fn().mockReturnThis(),
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              getRawAndEntities: jest.fn().mockResolvedValue({
+                entities: bundles,
+                raw: [{ itemCount: '3' }],
+              }),
+            }),
+          },
+        }),
       );
 
       const result = await service.findAll();
       expect(result).toHaveLength(1);
       expect(result[0]?.id).toBe('bun-1');
+      expect(result[0]?.itemCount).toBe(3);
     });
   });
 

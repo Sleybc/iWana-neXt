@@ -116,6 +116,37 @@ describe('CommercialDashboardController HTTP', () => {
     activeCompatibilityRulesCount: 4,
     taxRulesCount: 6,
     activeTaxRulesCount: 5,
+    offersExpiringSoonCount: 1,
+    offersNearUseLimitCount: 0,
+    offersAtRiskCount: 1,
+    catalogActiveCount: 7,
+    catalogSellableActiveCount: 6,
+    catalogIncompleteActiveCount: 1,
+    missingCurrentPriceCount: 1,
+    activeBundlesWithInactiveItemsCount: 0,
+    taxRulesCoverageGapCount: 0,
+    rulesGapCount: 0,
+    activeOffersCount: 2,
+    attentionItems: [
+      {
+        id: 'plan-incomplete',
+        entityType: 'plan',
+        name: 'Plan sin precio',
+        reason: 'missing_current_price',
+        destinoTab: 'plans',
+        validTo: null,
+        usesRemaining: null,
+      },
+    ],
+    recentChanges: [
+      {
+        occurredAt: '2026-07-22T15:00:00.000Z',
+        action: 'created',
+        entityType: 'plan',
+        entityName: 'Plan fibra',
+        destinoTab: 'plans',
+      },
+    ],
   };
 
   const commercialDashboardServiceMock = {
@@ -161,6 +192,24 @@ describe('CommercialDashboardController HTTP', () => {
       .expect(200);
 
     expect(response.body).toEqual(summaryMock);
+    expect(response.body).toMatchObject({
+      plansCount: 3,
+      activePlansCount: 2,
+      offersAtRiskCount: 1,
+      catalogSellableActiveCount: 6,
+      taxRulesCoverageGapCount: 0,
+      activeOffersCount: 2,
+    });
+    expect(response.body.attentionItems).toHaveLength(1);
+    expect(response.body.recentChanges).toHaveLength(1);
+    expect(response.body.recentChanges[0]).toMatchObject({
+      action: 'created',
+      entityType: 'plan',
+      destinoTab: 'plans',
+    });
+    expect(response.body.recentChanges[0]).not.toHaveProperty('userId');
+    expect(response.body.recentChanges[0]).not.toHaveProperty('changedBy');
+    expect(response.body).not.toHaveProperty('missingTaxClassificationCount');
     expect(commercialDashboardServiceMock.getSummary).toHaveBeenCalledTimes(1);
   });
 

@@ -40,7 +40,8 @@ describe('PlanCatalogPanel', () => {
       expect(mockGetPlans).toHaveBeenCalled();
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Nuevo plan' }));
+    const nuevoPlanButtons = await screen.findAllByRole('button', { name: 'Nuevo plan' });
+    fireEvent.click(nuevoPlanButtons[0]!);
 
     const technologySelect = await screen.findByRole('combobox', { name: 'Tecnología' });
     fireEvent.click(technologySelect);
