@@ -11,10 +11,6 @@ import type {
 import type { CommercialNavigateHandler } from '@/components/commercial/commercial-tab-params';
 import { formatCompactNumber } from '@/components/commercial/commercial-format';
 import {
-  resolveOffersRiskTab,
-  resolveRulesGapTab,
-} from '@/components/commercial/commercial-alerts';
-import {
   PortalEmptyState,
   PortalMetricCard,
   PortalPanel,
@@ -188,21 +184,9 @@ function OperationalSummaryBody({
   return (
     <>
       <div
-        className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
         aria-label="Indicadores comerciales"
       >
-        <PortalMetricCard
-          eyebrow="Ofertas"
-          value={formatCompactNumber(summary.offersAtRiskCount)}
-          title="Vencen pronto"
-          description="Combos y promociones en los próximos 7 días o cerca del límite de usos."
-          accent={summary.offersAtRiskCount > 0 ? 'warning' : 'neutral'}
-          {...(onNavigateTab
-            ? {
-                onClick: () => onNavigateTab(resolveOffersRiskTab(summary), { status: 'expiring' }),
-              }
-            : {})}
-        />
         <PortalMetricCard
           eyebrow="Catálogo"
           value={formatCompactNumber(summary.catalogSellableActiveCount)}
@@ -211,14 +195,6 @@ function OperationalSummaryBody({
           description="Planes, productos y servicios activos con precio vigente."
           accent={summary.catalogIncompleteActiveCount > 0 ? 'danger' : 'neutral'}
           {...(onNavigateTab ? { onClick: () => onNavigateTab('plans') } : {})}
-        />
-        <PortalMetricCard
-          eyebrow="Reglas"
-          value={formatCompactNumber(summary.rulesGapCount)}
-          title="Huecos en reglas"
-          description="Combos con ítems inactivos u oferta activa sin reglas tributarias de aplicación."
-          accent={summary.rulesGapCount > 0 ? 'danger' : 'neutral'}
-          {...(onNavigateTab ? { onClick: () => onNavigateTab(resolveRulesGapTab(summary)) } : {})}
         />
         <PortalMetricCard
           eyebrow="Catálogo"
@@ -290,8 +266,8 @@ export function CommercialDashboard({
     >
       {isLoading ? (
         <div className="space-y-6" aria-busy="true" aria-label="Cargando resumen comercial">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {Array.from({ length: 5 }, (_, index) => (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }, (_, index) => (
               <PortalSkeletonBlock key={index} className="min-h-[148px] rounded-3xl" />
             ))}
           </div>

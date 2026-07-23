@@ -39,7 +39,7 @@ function buildSummary(
 }
 
 describe('CommercialDashboard', () => {
-  it('muestra skeleton de carga (5 KPIs + lista)', () => {
+  it('muestra skeleton de carga (3 KPIs + lista)', () => {
     const { container } = render(<CommercialDashboard summary={null} isLoading />);
 
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(7);
@@ -70,25 +70,29 @@ describe('CommercialDashboard', () => {
     );
 
     expect(screen.getByText('Arma tu oferta comercial')).toBeInTheDocument();
-    expect(screen.queryByText('Vencen pronto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Listos para vender')).not.toBeInTheDocument();
     expect(screen.queryByText('Planes activos')).not.toBeInTheDocument();
   });
 
-  it('estado saludable: 5 KPIs neutros, sin alertas y empty de atención', () => {
+  it('estado saludable: 3 KPIs neutros y empty de atención', () => {
     const { container } = render(<CommercialDashboard summary={buildSummary()} />);
 
     expect(screen.getByText('Operación')).toBeInTheDocument();
-    expect(screen.getByText('Vencen pronto')).toBeInTheDocument();
     expect(screen.getByText('Listos para vender')).toBeInTheDocument();
-    expect(screen.getByText('Huecos en reglas')).toBeInTheDocument();
     expect(screen.getByText('Planes activos')).toBeInTheDocument();
     expect(screen.getByText('Ofertas vigentes')).toBeInTheDocument();
-    expect(screen.queryByText('Productos activos')).not.toBeInTheDocument();
-    expect(screen.queryByText('Ofertas en riesgo')).not.toBeInTheDocument();
-    expect(screen.queryByText('Catálogo incompleto')).not.toBeInTheDocument();
     expect(screen.getByText('Todo al día')).toBeInTheDocument();
     expect(screen.getByText('Sin cambios en los últimos 7 días.')).toBeInTheDocument();
     expect(container.innerHTML).not.toMatch(/accent.*primary|primary.*accent/);
+  });
+
+  it('no repite en el grid los datos que ya emiten alerta', () => {
+    render(
+      <CommercialDashboard summary={buildSummary({ offersAtRiskCount: 3, rulesGapCount: 2 })} />,
+    );
+
+    expect(screen.queryByText('Vencen pronto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Huecos en reglas')).not.toBeInTheDocument();
   });
 
   it('lista Cambios recientes con labels en español y navega al tab destino', async () => {
@@ -131,7 +135,7 @@ describe('CommercialDashboard', () => {
     expect(onNavigateTab).toHaveBeenCalledWith('promotions');
   });
 
-  it('aplica acentos H10 warning/danger según riesgo y nunca primary', () => {
+  it('aplica acentos H10 danger en listos para vender y nunca primary', () => {
     render(
       <CommercialDashboard
         summary={buildSummary({
@@ -157,13 +161,7 @@ describe('CommercialDashboard', () => {
     );
 
     const metrics = screen.getByLabelText('Indicadores comerciales');
-    expect(within(metrics).getByRole('button', { name: /Vencen pronto/i })).toHaveClass(
-      'border-amber-200',
-    );
     expect(within(metrics).getByRole('button', { name: /Listos para vender/i })).toHaveClass(
-      'border-rose-200',
-    );
-    expect(within(metrics).getByRole('button', { name: /Huecos en reglas/i })).toHaveClass(
       'border-rose-200',
     );
     expect(within(metrics).getByRole('button', { name: /Planes activos/i })).toHaveClass(
@@ -216,32 +214,6 @@ describe('CommercialDashboard', () => {
 
     await user.click(within(section).getByRole('button', { name: /Promo fibra/i }));
     expect(onNavigateTab).toHaveBeenCalledWith('promotions', { status: 'expiring' });
-  });
-
-  it('KPI Vencen pronto navega con status=expiring', async () => {
-    const user = userEvent.setup();
-    const onNavigateTab = jest.fn();
-
-    render(
-      <CommercialDashboard
-        summary={buildSummary({
-          offersAtRiskCount: 2,
-          attentionItems: [
-            {
-              id: 'b1',
-              entityType: 'bundle',
-              name: 'Combo A',
-              reason: 'expiring_soon',
-              destinoTab: 'bundles',
-            },
-          ],
-        })}
-        onNavigateTab={onNavigateTab}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: /Vencen pronto/i }));
-    expect(onNavigateTab).toHaveBeenCalledWith('bundles', { status: 'expiring' });
   });
 
   it('CTA de primera vez navega a planes', async () => {
