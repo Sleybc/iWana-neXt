@@ -229,12 +229,12 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
               <Activity className="h-4 w-4" aria-hidden="true" />
               Actividad
               {attentionCount > 0 && (
-                <span className="ml-1 rounded-full bg-iwana-surface-soft px-2 py-0.5 font-mono text-xs tabular-nums text-iwana-secondary-700 dark:bg-dark-surface-3 dark:text-iwana-primary-300">
+                <span className="ml-1 rounded-full bg-iwana-surface-soft px-2 py-0.5 font-mono text-xs tabular-nums text-amber-700 dark:bg-dark-surface-3 dark:text-amber-300">
                   {attentionCount}
                 </span>
               )}
             </Button>
-            <Button variant="secondary" size="sm" onClick={handleRefresh}>
+            <Button variant="ghost" size="sm" onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Actualizar
             </Button>

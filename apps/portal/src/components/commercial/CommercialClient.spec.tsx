@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
 import { CommercialClient } from './CommercialClient';
@@ -163,6 +163,24 @@ describe('CommercialClient', () => {
     expect(screen.getByText('Cambios recientes')).toBeInTheDocument();
   });
 
+  it('mantiene el botón Actividad en ghost y sin badge cuando no hay ítems de atención', async () => {
+    getDashboardSummary.mockResolvedValue(buildSummary());
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Actividad comercial' })).toBeInTheDocument();
+    });
+
+    const activityButton = screen.getByRole('button', {
+      name: 'Actividad comercial',
+    });
+    expect(activityButton.classList.contains('border')).toBe(false);
+
+    const badge = within(activityButton).queryByText(/\d+/);
+    expect(badge).toBeNull();
+  });
+
   it('anuncia en el botón cuántos ítems requieren atención', async () => {
     mockSearchParams = new URLSearchParams('tab=plans');
     getDashboardSummary.mockResolvedValue(
@@ -193,9 +211,13 @@ describe('CommercialClient', () => {
     render(<CommercialClient />);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: 'Actividad comercial, 2 ítems requieren atención' }),
-      ).toBeInTheDocument();
+      const button = screen.getByRole('button', {
+        name: 'Actividad comercial, 2 ítems requieren atención',
+      });
+      expect(button).toBeInTheDocument();
+
+      const badge = within(button).getByText('2');
+      expect(badge.className).toContain('text-amber-700');
     });
   });
 
@@ -227,8 +249,8 @@ describe('CommercialClient', () => {
     const activityButton = screen.getByRole('button', {
       name: 'Actividad comercial, 1 ítem requiere atención',
     });
-    // Secondary usa tokens de superficie; ghost es transparente — comprobamos clase del contrato Button.
-    expect(activityButton.className).toMatch(/secondary|iwana-secondary|bg-iwana/i);
+    // El variante secondary aplica border; ghost no tiene borde.
+    expect(activityButton.classList.contains('border')).toBe(true);
     expect(container.querySelector('[aria-label="Actividad comercial"]')).not.toBeInTheDocument();
   });
 
