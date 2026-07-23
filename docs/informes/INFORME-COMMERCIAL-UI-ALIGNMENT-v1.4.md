@@ -79,6 +79,22 @@ Tras Fase F las alertas viven encima de los tabs; el tab **Resumen** quedó redu
 
 ---
 
+## Gate navegador post-ajuste variante (2026-07-23 · post `ebf72797`)
+
+Evidencia pedida tras H19: recorrer Comercial en pantalla después de URL canónica + `Actividad` secondary.
+
+| Check | Resultado |
+| --- | --- |
+| Aterrizaje Planes, sin tab Resumen | PASS |
+| `?tab=summary` → URL canónica `/dashboard/commercial` (sin `tab`) | PASS |
+| Sin atención: `Actividad` = **ghost** (`aria-label` sin conteo) | PASS |
+| Con atención (probe temporal): `Actividad` = **secondary** (`border-iwana-primary` + badge) | PASS |
+| Estado tenant restaurado tras probe | PASS |
+
+Capturas locales de sesión: `comercial-post-h19-actividad-secondary.png`, `comercial-post-h19-healthy-ghost.png`.
+
+---
+
 ## Criterio de cierre
 
 - [x] Tareas 1–4 en `main`
@@ -87,3 +103,4 @@ Tras Fase F las alertas viven encima de los tabs; el tab **Resumen** quedó redu
 - [x] Informe vivo v1.4
 - [x] Push `origin/main` (`30af1eff..0011491c`)
 - [x] Deuda P3 URL + discoverabilidad (esta remediación)
+- [x] Gate navegador post-variante (esta sección)
