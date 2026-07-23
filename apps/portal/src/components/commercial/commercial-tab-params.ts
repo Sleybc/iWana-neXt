@@ -238,3 +238,12 @@ export function buildCommercialTabQuery(route: ResolvedCommercialRoute): string 
 
   return route.tab;
 }
+
+export interface CommercialNavigateOptions {
+  status?: CommercialOfferStatusFilter | null;
+}
+
+export type CommercialNavigateHandler = (
+  tab: CommercialTab,
+  options?: CommercialNavigateOptions,
+) => void;

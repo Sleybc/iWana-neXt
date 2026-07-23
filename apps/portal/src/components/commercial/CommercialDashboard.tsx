@@ -10,7 +10,7 @@ import type {
 } from '@/lib/api-client';
 import type {
   CommercialTab,
-  CommercialOfferStatusFilter,
+  CommercialNavigateHandler,
 } from '@/components/commercial/commercial-tab-params';
 import { formatCompactNumber } from '@/components/commercial/commercial-format';
 import {
@@ -25,12 +25,6 @@ import {
   PortalSkeletonBlock,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
-
-export interface CommercialNavigateOptions {
-  status?: CommercialOfferStatusFilter | null;
-}
-
-type CommercialNavigateHandler = (tab: CommercialTab, options?: CommercialNavigateOptions) => void;
 
 interface CommercialDashboardProps {
   summary: CommercialDashboardSummary | null;
