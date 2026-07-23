@@ -2,9 +2,9 @@
 
 **Versión:** 1.3  
 **Fecha:** 2026-07-23  
-**Estado:** H13–H18 en código — pendiente G6 (SR-QA ≠ productor) + gate navegador  
+**Estado:** **GO con deuda** (G6 [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4)) — H17/H18 cerrados; gate navegador pendiente  
 **Módulo:** MOD06 — Comercial  
-**Rama:** `main` · H18 `61cb63bf` · H17 `7d7549d1`  
+**Rama:** `main` · H18 `61cb63bf` · H17 `7d7549d1` · docs `e5cf14dc`  
 **Modo:** AI-EM-ARCH Orquestador  
 **Plan:** [2026-07-23-mod06-resumen-fuera-del-tab](../plans/2026-07-23-mod06-resumen-fuera-del-tab.md)  
 **Prompt:** [PROMPT-MOD06-UI-FASE-F-v1.0](../prompts/PROMPT-MOD06-UI-FASE-F-v1.0.md)  
@@ -18,9 +18,9 @@ Fase E dejó alertas operativas útiles **dentro** del tab Resumen (H13). Fase F
 
 | Métrica | Pre-F | Post-F (G6 automatizado) | Post-auditoría 2ª capa |
 | --- | --- | --- | --- |
-| Puntaje identidad | 82/100 | 99–100 (productor; **no válido**) | H17+H18 remediados en código; **puntaje solo tras G6 SR-QA** |
-| Commercial Jest | 10/55 | 13/73 | — |
-| Portal Jest | — | **752** (no 751) | — |
+| Puntaje identidad | 82/100 | 99–100 (productor; **inválido**) | **100/100** G6 SR-QA (H17+H18 cerrados; 0 P0–P3 confirmados) |
+| Commercial Jest | 10/55 | 13/73 | **14 suites / 85** (dirigido) |
+| Portal Jest | — | 752 | **153 / 756** |
 
 **Corrección de proceso:** el gate de navegador (Tarea 7 paso 4) **no** es opcional; degradarlo permitió que H17/H18 pasaran. El puntaje de cierre lo debe recalcular AI-SR-QA/EM-ARCH sobre código + recorrido de tarea, nunca el productor. Un 100/100 inmediato tras un cambio estructural es señal de cobertura incompleta (mismo patrón v1.1 ≈97 → 51).
 
@@ -78,9 +78,10 @@ Fase E dejó alertas operativas útiles **dentro** del tab Resumen (H13). Fase F
 
 ---
 
-## Decisión
+## Decisión G6 (EM-ARCH)
 
-**H13–H18 en código: listos para G6.**  
-Puntaje de cierre lo emite **solo** AI-SR-QA/EM-ARCH tras suite + audit + (idealmente) gate navegador. No usar 100/100 del productor.
+**Veredicto:** **GO con deuda** — H13–H18 cerrados en código y verificados por [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4) (puntaje **100/100**, no del productor).
 
-**Impacto:** H17 contrato DS portal-ui (carril rápido); H18 composición commercial. Sin ADR.
+**Deuda que no bloquea merge de remediación:** gate navegador Tarea 7 paso 4 (mobile 375 + lector). Sigue obligatorio antes de declarar cierre de identidad *sin* deuda de proceso.
+
+**No** reabrir H17/H18 sin evidencia nueva.
