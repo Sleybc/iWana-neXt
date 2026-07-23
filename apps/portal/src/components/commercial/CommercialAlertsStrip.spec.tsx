@@ -70,6 +70,13 @@ describe('CommercialAlertsStrip', () => {
     expect(screen.getByText('Huecos en reglas')).toBeInTheDocument();
   });
 
+  it('no anuncia las alertas de la tira como regiones live', () => {
+    render(<CommercialAlertsStrip summary={buildSummary({ rulesGapCount: 2 })} />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('navega al tab destino con el filtro de la alerta', async () => {
     const user = userEvent.setup();
     const onNavigateTab = jest.fn();

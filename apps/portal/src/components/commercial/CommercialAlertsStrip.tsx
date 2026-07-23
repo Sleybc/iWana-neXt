@@ -49,6 +49,7 @@ export function CommercialAlertsStrip({
           variant={alert.variant}
           title={alert.title}
           description={alert.description}
+          live="off"
           {...(onNavigateTab
             ? {
                 action: (

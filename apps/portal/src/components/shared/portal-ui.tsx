@@ -549,6 +549,8 @@ interface PortalActionToolbarProps {
   align?: 'start' | 'end' | undefined;
 }
 
+type PortalAlertLive = 'assertive' | 'polite' | 'off';
+
 interface PortalAlertProps {
   variant: PortalAlertVariant;
   title: string;
@@ -556,6 +558,13 @@ interface PortalAlertProps {
   action?: ReactNode | undefined;
   icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }> | undefined;
   className?: string | undefined;
+  /**
+   * Politenez de la región live. Independiente de `variant`.
+   * - assertive → role=alert, aria-live=assertive
+   * - polite (default) → role=status, aria-live=polite
+   * - off → sin role live ni aria-live (p. ej. tiras estáticas)
+   */
+  live?: PortalAlertLive | undefined;
 }
 
 interface PortalEmptyStateProps {
@@ -728,17 +737,28 @@ export function PortalAlert({
   action,
   icon,
   className,
+  live = 'polite',
 }: PortalAlertProps) {
   const styles = alertVariantStyles[variant];
   const Icon = icon ?? styles.defaultIcon;
-  const liveRole = variant === 'error' || variant === 'warning' ? 'alert' : 'status';
-  const liveMode = liveRole === 'alert' ? 'assertive' : 'polite';
+  const liveRegionProps =
+    live === 'off'
+      ? {}
+      : live === 'assertive'
+        ? ({
+            role: 'alert',
+            'aria-live': 'assertive',
+            'aria-atomic': true,
+          } as const)
+        : ({
+            role: 'status',
+            'aria-live': 'polite',
+            'aria-atomic': true,
+          } as const);
 
   return (
     <div
-      role={liveRole}
-      aria-live={liveMode}
-      aria-atomic="true"
+      {...liveRegionProps}
       className={cn('flex items-start gap-3 rounded-2xl border px-4 py-3', styles.root, className)}
     >
       <div

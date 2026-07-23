@@ -9,7 +9,7 @@ import {
 } from './portal-ui';
 
 describe('portal-ui', () => {
-  it('should expose polite live regions for success alerts', () => {
+  it('should expose polite live regions by default for success alerts', () => {
     render(
       <PortalAlert
         variant="success"
@@ -22,7 +22,7 @@ describe('portal-ui', () => {
     expect(screen.getByRole('status')).toHaveAttribute('aria-atomic', 'true');
   });
 
-  it('should expose assertive live regions for error alerts', () => {
+  it('should expose polite live regions by default for error alerts (variant no decide politeness)', () => {
     render(
       <PortalAlert
         variant="error"
@@ -31,8 +31,42 @@ describe('portal-ui', () => {
       />,
     );
 
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByRole('status')).toHaveAttribute('aria-atomic', 'true');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('should expose assertive live region when live="assertive" is opted in', () => {
+    render(
+      <PortalAlert
+        variant="error"
+        live="assertive"
+        title="No fue posible completar la operación"
+        description="Intenta nuevamente."
+      />,
+    );
+
     expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'assertive');
     expect(screen.getByRole('alert')).toHaveAttribute('aria-atomic', 'true');
+  });
+
+  it('should omit live role and aria-live when live="off"', () => {
+    const { container } = render(
+      <PortalAlert
+        variant="warning"
+        live="off"
+        title="Atención operativa"
+        description="Revisa el catálogo."
+      />,
+    );
+
+    const root = container.firstElementChild;
+    expect(root).toBeTruthy();
+    expect(root).not.toHaveAttribute('role');
+    expect(root).not.toHaveAttribute('aria-live');
+    expect(root).not.toHaveAttribute('aria-atomic');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('should use the shared token class in empty states', () => {
