@@ -7,10 +7,19 @@ import {
   HttpStatus,
   Param,
   Post,
+  Req,
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiHeader,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   PlatformRole,
   AccessPermissionKey,
@@ -54,6 +63,32 @@ export class UsersBulkController {
   @ApiOperation({
     summary: 'Encolar creación de usuarios en lote (async BullMQ)',
   })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['users'],
+      properties: {
+        users: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['email', 'role'],
+            properties: {
+              email: { type: 'string', format: 'email' },
+              role: { type: 'string', description: 'Rol del usuario en el tenant' },
+              firstName: { type: 'string' },
+              lastName: { type: 'string' },
+              phone: { type: 'string', description: 'Formato E.164 (ej: +573001234567)' },
+              jobTitle: { type: 'string' },
+              documentType: { type: 'string' },
+              documentNumber: { type: 'string' },
+              isOperationalResource: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+  })
   @ApiHeader({
     name: 'Idempotency-Key',
     required: true,
@@ -70,12 +105,13 @@ export class UsersBulkController {
     @Body(new ZodValidationPipe(BulkCreateUsersRequestSchema))
     dto: BulkCreateUsersRequest,
     @CurrentUser() actor: JwtPayload,
+    @Req() req: Request,
     @Headers('idempotency-key') idempotencyKey?: string,
-    @Headers('x-forwarded-for') ipAddress?: string,
   ): Promise<UsersBulkCreateAcceptedResponse> {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
+    const ipAddress = req.ip ?? req.socket?.remoteAddress;
     return this.usersService.bulkCreate(
       dto.users,
       actor.sub,
@@ -88,7 +124,11 @@ export class UsersBulkController {
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @ApiOperation({ summary: 'Estado de importación masiva (sin contraseñas)' })
-  @ApiResponse({ status: 200, description: 'Estado del job.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Estado del job. Incluye summary (total/succeeded/failed), failed[], y credentialsClaimed.',
+  })
   @ApiResponse({ status: 404, description: 'Job no encontrado en este tenant.' })
   async getBulkJobStatus(@Param('jobId') jobId: string): Promise<UsersBulkJobStatusResponse> {
     return this.usersService.getBulkJobStatus(jobId);
@@ -104,7 +144,8 @@ export class UsersBulkController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Resultado del lote. Las contraseñas solo en la primera reclamación.',
+    description:
+      'Resultado del lote con summary (total/succeeded/failed), succeeded[] (incluye temporaryPassword en primera reclamación), failed[]. Las contraseñas solo en la primera reclamación.',
   })
   @ApiResponse({ status: 400, description: 'El job aún no terminó.' })
   @ApiResponse({ status: 404, description: 'Job o resultado no disponible.' })

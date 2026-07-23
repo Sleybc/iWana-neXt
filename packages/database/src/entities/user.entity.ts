@@ -29,7 +29,9 @@ import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 3 (Modelo de Datos)
  */
-@Index('idx_users_email_hash', ['emailHash'])
+// emailHash ya tiene unique: true en @Column, que crea un índice único automáticamente.
+// Los índices GIN trgm sobre first_name y last_name (migración 084) cubren búsqueda
+// de texto; estos btree persisten para ORDER BY y lookups exactos.
 @Index('idx_users_first_name', ['firstName'])
 @Index('idx_users_last_name', ['lastName'])
 @Index('idx_users_tenant_role', ['tenantId', 'role'])
@@ -51,18 +53,27 @@ export class User {
   @Column({ name: 'password_hash', length: 60 })
   passwordHash: string;
 
-  /** Rol del usuario dentro del tenant (14 roles definidos en shared/enums) */
-  @Column({ type: 'enum', enum: UserRole })
+  /**
+   * Rol del usuario dentro del tenant (14 roles definidos en shared/enums).
+   * La columna real es VARCHAR(20); la migración 085 añade el CHECK de narrowing
+   * de rol (solo tenant-assignable), no ensancha la columna.
+   */
+  @Column({ type: 'varchar', length: 20 })
   role: UserRole;
 
-  @Column({ type: 'enum', enum: UserStatus, default: UserStatus.PENDING_VERIFICATION })
+  /**
+   * Estado del usuario. La columna real es VARCHAR(30); la migración 085 añade
+   * el CHECK de narrowing de rol, no ensancha la columna.
+   */
+  @Column({ type: 'varchar', length: 30, default: UserStatus.PENDING_VERIFICATION })
   status: UserStatus;
 
   /**
    * FK logica a public.tenants.id.
    * No es FK referencial para evitar cross-schema FK en PostgreSQL.
+   * El tipo UUID se declara explícitamente para reflejar el DDL real.
    */
-  @Column({ name: 'tenant_id' })
+  @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
 
   /** MFA TOTP — opcional para usuarios de tenant (obligatorio por rol segun politica) */

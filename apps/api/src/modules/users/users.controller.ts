@@ -14,8 +14,10 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   ApiBearerAuth,
   ApiHeader,
@@ -103,12 +105,12 @@ export class UsersController {
       'Búsqueda en PostgreSQL (pg_trgm + ILIKE) sobre email, first_name, last_name y job_title. ' +
       'total/nextCursor se calculan sobre el conjunto ya filtrado; el cursor aplica después del filtro (ADR-062).',
   })
-  @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.' })
+  @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.', type: UserResponseDto })
   @ApiResponse({ status: 400, description: 'Parametro limit invalido.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos de administrador o USERS_READ.' })
   async findAll(
-    @Query('cursor') cursor?: string,
+    @Query('cursor', new ParseUUIDPipe({ optional: true })) cursor?: string,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
     @Query('status') status?: UserStatus,
     @Query('role') role?: UserRole,
@@ -160,13 +162,17 @@ export class UsersController {
   async create(
     @Body() createUserDto: CreateUserDto,
     @CurrentUser() actor: JwtPayload,
+    @Req() req: Request,
     @Headers('idempotency-key') idempotencyKey?: string,
-    @Headers('x-forwarded-for') ipAddress?: string,
   ): Promise<{ data: UserResponseDto & { temporaryPassword?: string } }> {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
+    if (idempotencyKey.trim().length > 128) {
+      throw new BadRequestException('El header Idempotency-Key no puede exceder 128 caracteres.');
+    }
 
+    const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const user = await this.usersService.create(
       createUserDto,
       actor.sub,
@@ -179,7 +185,11 @@ export class UsersController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Obtener perfil propio' })
-  @ApiResponse({ status: 200, description: 'Perfil propio del usuario autenticado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil propio del usuario autenticado.',
+    type: UserResponseDto,
+  })
   async getMe(@CurrentUser() actor: JwtPayload): Promise<{ data: UserResponseDto }> {
     return { data: await this.usersService.findMe(actor.sub) };
   }
@@ -193,17 +203,18 @@ export class UsersController {
     description: 'Clave de idempotencia obligatoria',
     required: true,
   })
-  @ApiResponse({ status: 200, description: 'Perfil propio actualizado.' })
+  @ApiResponse({ status: 200, description: 'Perfil propio actualizado.', type: UserResponseDto })
   async updateMe(
     @CurrentUser() actor: JwtPayload,
     @Body() dto: UpdateProfileDto,
+    @Req() req: Request,
     @Headers('idempotency-key') idempotencyKey?: string,
-    @Headers('x-forwarded-for') ipAddress?: string,
   ): Promise<{ data: UserResponseDto }> {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
 
+    const ipAddress = req.ip ?? req.socket?.remoteAddress;
     return { data: await this.usersService.updateMe(actor.sub, dto, ipAddress || 'unknown') };
   }
 
@@ -216,7 +227,7 @@ export class UsersController {
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_READ)
   @ApiOperation({ summary: 'Obtener usuario del tenant por UUID' })
-  @ApiResponse({ status: 200, description: 'Usuario encontrado.' })
+  @ApiResponse({ status: 200, description: 'Usuario encontrado.', type: UserResponseDto })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos para ver este usuario.' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
@@ -242,7 +253,7 @@ export class UsersController {
     description: 'Clave de idempotencia obligatoria',
     required: true,
   })
-  @ApiResponse({ status: 200, description: 'Usuario actualizado.' })
+  @ApiResponse({ status: 200, description: 'Usuario actualizado.', type: UserResponseDto })
   @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos para modificar este usuario.' })
@@ -259,6 +270,9 @@ export class UsersController {
   ): Promise<{ data: UserResponseDto }> {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
+    }
+    if (idempotencyKey.trim().length > 128) {
+      throw new BadRequestException('El header Idempotency-Key no puede exceder 128 caracteres.');
     }
 
     const result = await this.usersService.update(
@@ -285,7 +299,11 @@ export class UsersController {
     description: 'Clave de idempotencia obligatoria',
     required: true,
   })
-  @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email de acceso actualizado (admin).',
+    type: UserResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
   @ApiResponse({ status: 403, description: 'Sin permisos para modificar este usuario.' })
   @ApiResponse({
@@ -301,12 +319,15 @@ export class UsersController {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
+    if (idempotencyKey.trim().length > 128) {
+      throw new BadRequestException('El header Idempotency-Key no puede exceder 128 caracteres.');
+    }
 
     const result = await this.usersService.changeLoginEmailAsAdmin(
       id,
       dto,
       actor.sub,
-      actor.role as UserRole,
+      actor.role,
       idempotencyKey.trim(),
     );
 
@@ -321,7 +342,11 @@ export class UsersController {
   @Patch(':id/login-email')
   @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso del propio usuario' })
-  @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email de acceso actualizado (propio).',
+    type: UserResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Contraseña actual invalida u otros datos invalidos.' })
   @ApiResponse({ status: 403, description: 'Solo puedes cambiar tu propio email de acceso.' })
   @ApiResponse({ status: 409, description: 'El nuevo email ya está en uso.' })
@@ -355,18 +380,22 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: JwtPayload,
     @Body() dto: ResetPasswordDto,
+    @Req() req: Request,
     @Headers('idempotency-key') idempotencyKey?: string,
-    @Headers('x-forwarded-for') ipAddress?: string,
   ): Promise<{ data: { temporaryPassword: string } }> {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
+    if (idempotencyKey.trim().length > 128) {
+      throw new BadRequestException('El header Idempotency-Key no puede exceder 128 caracteres.');
+    }
 
+    const ipAddress = req.ip ?? req.socket?.remoteAddress;
     return {
       data: await this.usersService.resetPassword(
         id,
         actor.sub,
-        actor.role as UserRole,
+        actor.role,
         ipAddress || 'unknown',
         dto?.password,
         idempotencyKey.trim(),
@@ -422,7 +451,11 @@ export class UsersController {
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @ApiOperation({ summary: 'Designar administrador principal de la empresa' })
-  @ApiResponse({ status: 200, description: 'Administrador principal designado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Administrador principal designado.',
+    type: UserResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description: 'El usuario no está activo o no tiene rol de administrador.',

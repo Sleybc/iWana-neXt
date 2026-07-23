@@ -607,9 +607,9 @@ describe('UsersService', () => {
   });
 
   describe('changeLoginEmailAsAdmin()', () => {
-    it('actualiza el email de un tercero sin contraseña actual y sincroniza contacto si es admin principal', async () => {
+    it('actualiza el email de un ADMIN no-principal como SYSTEM_ADMIN', async () => {
       const targetUser = buildUserEntity({
-        id: 'usr-admin-principal',
+        id: 'usr-admin-secundario',
         role: UserRole.ADMIN,
         emailHash: 'hash-viejo',
         createdAt: new Date('2025-01-01T00:00:00.000Z'),
@@ -621,29 +621,48 @@ describe('UsersService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(targetUser),
       });
-      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue('usr-admin-principal');
+      // El target NO es el principal — el principal es otro.
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue('usr-admin-principal-otro');
 
       const result = await service.changeLoginEmailAsAdmin(
-        'usr-admin-principal',
-        { email: 'admin.principal.nuevo@empresa.com' },
-        'usr-admin-operador',
-        UserRole.ADMIN,
+        'usr-admin-secundario',
+        { email: 'admin.secundario.nuevo@empresa.com' },
+        'usr-sysadmin-operador',
+        PlatformRole.SYSTEM_ADMIN,
       );
 
-      expect(result.email).toBe('admin.principal.nuevo@empresa.com');
+      expect(result.email).toBe('admin.secundario.nuevo@empresa.com');
       expect(mgr.save).toHaveBeenCalled();
-      expect(tenantServiceMock.updateTenantSelfProfile).toHaveBeenCalledWith(
-        MOCK_TENANT_CTX.tenantId,
-        { contactEmail: 'admin.principal.nuevo@empresa.com' },
-        'usr-admin-operador',
-      );
+      expect(tenantServiceMock.updateTenantSelfProfile).not.toHaveBeenCalled();
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.UPDATE,
           entityType: 'UserLoginEmailAdmin',
-          entityId: 'usr-admin-principal',
+          entityId: 'usr-admin-secundario',
         }),
       );
+    });
+
+    it('rechaza cambio de email del administrador principal incluso como SYSTEM_ADMIN', async () => {
+      const targetUser = buildUserEntity({
+        id: 'usr-admin-principal',
+        role: UserRole.ADMIN,
+        emailHash: 'hash-viejo',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(targetUser),
+      });
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue('usr-admin-principal');
+
+      await expect(
+        service.changeLoginEmailAsAdmin(
+          'usr-admin-principal',
+          { email: 'admin.principal.nuevo@empresa.com' },
+          'usr-sysadmin-operador',
+          PlatformRole.SYSTEM_ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('rechaza cuando ADMIN intenta cambiar email de SYSTEM_ADMIN', async () => {

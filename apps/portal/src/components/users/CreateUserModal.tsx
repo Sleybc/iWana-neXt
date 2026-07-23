@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { AlertTriangle, CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
 import { type AccessPermissionKey, TENANT_ASSIGNABLE_ROLES, UserRole } from '@iwana/shared';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,14 +27,14 @@ import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 import { UserProfileFields } from './UserProfileFields';
 
 const createUserSchema = z.object({
-  email: z.string().trim().email('Ingresa un correo valido.'),
+  email: z.string().trim().email('Ingresa un correo válido.'),
   role: z.string().min(1, 'Selecciona un rol.'),
-  firstName: z.string().trim().max(100, 'Maximo 100 caracteres.').optional().or(z.literal('')),
-  lastName: z.string().trim().max(100, 'Maximo 100 caracteres.').optional().or(z.literal('')),
-  phone: z.string().max(15, 'Maximo 15 caracteres.').optional().or(z.literal('')),
-  jobTitle: z.string().trim().max(150, 'Maximo 150 caracteres.').optional().or(z.literal('')),
+  firstName: z.string().trim().max(100, 'Máximo 100 caracteres.').optional().or(z.literal('')),
+  lastName: z.string().trim().max(100, 'Máximo 100 caracteres.').optional().or(z.literal('')),
+  phone: z.string().max(15, 'Máximo 15 caracteres.').optional().or(z.literal('')),
+  jobTitle: z.string().trim().max(150, 'Máximo 150 caracteres.').optional().or(z.literal('')),
   documentType: z.string().optional(),
-  documentNumber: z.string().trim().max(20, 'Maximo 20 caracteres.').optional().or(z.literal('')),
+  documentNumber: z.string().trim().max(20, 'Máximo 20 caracteres.').optional().or(z.literal('')),
   mfaRequired: z.boolean().optional(),
   isOperationalResource: z.boolean().optional(),
 });
@@ -87,6 +88,8 @@ export function CreateUserModal({
   const [copied, setCopied] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [selectedCompanyRoleIds, setSelectedCompanyRoleIds] = useState<string[]>([]);
+  const [secretsSaved, setSecretsSaved] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const {
     register,
@@ -129,6 +132,8 @@ export function CreateUserModal({
       setCopied(false);
       setShowSuccess(false);
       setSelectedCompanyRoleIds([]);
+      setSecretsSaved(false);
+      setConfirmClose(false);
     }
   }, [isOpen, reset]);
 
@@ -137,9 +142,15 @@ export function CreateUserModal({
   }, [error]);
 
   useEffect(() => {
-    // Mantener el estado de exito sincronizado con las props evita estados stale
+    // Mantener el estado de éxito sincronizado con las props evita estados stale
     // cuando el padre limpia la clave temporal al cerrar el flujo.
-    setShowSuccess(Boolean(tempPassword && tempPasswordEmail));
+    const nextShowSuccess = Boolean(tempPassword && tempPasswordEmail);
+    setShowSuccess(nextShowSuccess);
+    if (!nextShowSuccess) {
+      setSecretsSaved(false);
+      setConfirmClose(false);
+      setCopied(false);
+    }
   }, [tempPassword, tempPasswordEmail]);
 
   const selectedBaseRole = watch('role') as UserRole | '';
@@ -214,15 +225,34 @@ export function CreateUserModal({
 
   const handleCopy = async () => {
     if (tempPassword) {
-      await navigator.clipboard.writeText(tempPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(tempPassword);
+        setCopied(true);
+        setSecretsSaved(true);
+        setConfirmClose(false);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Sin feedback de error aquí: el usuario puede seleccionar y copiar manualmente.
+      }
     }
   };
 
   const handleDismiss = () => {
+    setConfirmClose(false);
     setShowSuccess(false);
     onDismissSuccess?.();
+    onClose();
+  };
+
+  const requestClose = () => {
+    if (showSuccess && tempPassword && !secretsSaved) {
+      setConfirmClose(true);
+      return;
+    }
+    if (showSuccess) {
+      handleDismiss();
+      return;
+    }
     onClose();
   };
 
@@ -232,8 +262,8 @@ export function CreateUserModal({
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open && !showSuccess) {
-          onClose();
+        if (!open) {
+          requestClose();
         }
       }}
     >
@@ -246,21 +276,44 @@ export function CreateUserModal({
             </DialogTitle>
             {!showSuccess ? (
               <DialogDescription className="mt-1 leading-6">
-                Registra un nuevo colaborador con su rol, datos base y política inicial de MFA.
+                Registra un nuevo colaborador con su rol, datos base y política inicial de
+                verificación en dos pasos.
               </DialogDescription>
             ) : null}
           </div>
-          {!showSuccess && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-iwana-surface-soft hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
-              aria-label="Cerrar"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={requestClose}
+            className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-iwana-surface-soft hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
+            aria-label="Cerrar"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
         </DialogHeader>
+
+        {confirmClose && (
+          <PortalAlert
+            variant="warning"
+            title="Contraseña temporal"
+            description="¿Ya guardaste la contraseña temporal? No podrás verla de nuevo."
+            className="mb-4"
+            action={
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmClose(false)}
+                >
+                  Seguir aquí
+                </Button>
+                <Button type="button" variant="lime" size="sm" onClick={handleDismiss}>
+                  Ya la guardé
+                </Button>
+              </div>
+            }
+          />
+        )}
 
         {showSuccess && tempPassword ? (
           <div className="space-y-4">
@@ -278,10 +331,16 @@ export function CreateUserModal({
               description={
                 <>
                   Comparte la siguiente clave temporal con <strong>{tempPasswordEmail}</strong>. El
-                  usuario debera cambiarla al primer inicio de sesion.
+                  usuario deberá cambiarla al primer inicio de sesión.
                 </>
               }
               icon={CheckCircle2}
+            />
+
+            <PortalAlert
+              variant="warning"
+              title="Contraseña de un solo uso"
+              description="Esta contraseña solo se muestra una vez. El usuario deberá cambiarla en el próximo inicio de sesión."
             />
 
             <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-5 dark:border-amber-800 dark:bg-amber-900/20">
@@ -294,7 +353,7 @@ export function CreateUserModal({
                 </code>
                 <button
                   type="button"
-                  onClick={handleCopy}
+                  onClick={() => void handleCopy()}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-amber-300 dark:hover:bg-amber-900/30"
                 >
                   {copied ? (
@@ -348,7 +407,7 @@ export function CreateUserModal({
                   htmlFor="create-email"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
                 >
-                  Correo electronico <span className="text-red-500">*</span>
+                  Correo electrónico <span className="text-red-500">*</span>
                 </label>
                 {errors.email ? (
                   <input

@@ -22,9 +22,13 @@ import {
   PORTAL_USER_STATUS_FILTER_OPTIONS,
 } from '@/lib/user-labels';
 import {
+  interactiveFocusClassName,
   PortalActionToolbar,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalSectionHeader,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { canDeleteUser, getDeleteUserBlockedReason } from './can-delete-user';
 
@@ -32,14 +36,15 @@ const TABLE_HEADERS = [
   { id: 'user', label: 'Usuario', className: 'min-w-[180px]' },
   { id: 'role', label: 'Rol', className: 'min-w-[140px]' },
   { id: 'status', label: 'Estado', className: 'min-w-[110px]' },
-  { id: 'mfa', label: 'MFA', className: 'hidden md:table-cell min-w-[100px]' },
+  {
+    id: 'mfa',
+    label: 'Verificación en dos pasos',
+    className: 'hidden md:table-cell min-w-[140px]',
+  },
   { id: 'lastLogin', label: 'Último acceso', className: 'hidden sm:table-cell min-w-[140px]' },
   { id: 'created', label: 'Creado', className: 'hidden lg:table-cell min-w-[140px]' },
   { id: 'actions', label: 'Acciones', className: 'w-[140px] text-right' },
 ] as const;
-
-const thBaseClass =
-  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
 
 interface UsersTableProps {
   users: InternalUser[];
@@ -57,6 +62,8 @@ interface UsersTableProps {
   onStatusChange: (value: string) => void;
   onRoleChange: (value: string) => void;
   onClearFilters: () => void;
+  /** Abre el flujo de alta (empty state primera vez). */
+  onCreateUser: () => void;
   currentUserId?: string;
   currentUserRole?: string;
   /** Id del usuario cuya edición se está preparando (FE-11). */
@@ -86,6 +93,7 @@ export function UsersTable({
   onStatusChange,
   onRoleChange,
   onClearFilters,
+  onCreateUser,
   currentUserId,
   currentUserRole,
   preparingEditUserId = null,
@@ -99,7 +107,7 @@ export function UsersTable({
         : `${users.length} usuarios mostrados`;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+    <div className={portalDataTableShellClassName}>
       {/* Filtros */}
       <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -136,7 +144,10 @@ export function UsersTable({
                 placeholder="Buscar por nombre o correo…"
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
+                className={cn(
+                  'h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500',
+                  interactiveFocusClassName,
+                )}
               />
             </div>
           </div>
@@ -184,14 +195,15 @@ export function UsersTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm" aria-label="Listado de usuarios internos">
           <caption className="sr-only">
-            Usuarios internos de la empresa con rol, estado, MFA y acciones de gestión
+            Usuarios internos de la empresa con rol, estado, verificación en dos pasos y acciones de
+            gestión
           </caption>
           <thead>
             <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
               {TABLE_HEADERS.map((header) => (
-                <th key={header.id} scope="col" className={cn(thBaseClass, header.className)}>
+                <PortalDataTableHead key={header.id} className={header.className}>
                   {header.label}
-                </th>
+                </PortalDataTableHead>
               ))}
             </tr>
           </thead>
@@ -216,11 +228,29 @@ export function UsersTable({
                   colSpan={TABLE_HEADERS.length}
                   className="px-4 py-12 text-center text-gray-500 dark:text-gray-400"
                 >
-                  <PortalEmptyState
-                    title="Sin usuarios registrados"
-                    description="Ajusta los filtros o crea el primer usuario para comenzar a gestionar accesos internos."
-                    className="mx-auto max-w-xl text-left"
-                  />
+                  {hasActiveFilters ? (
+                    <PortalEmptyState
+                      title="Sin resultados"
+                      description="Ningún usuario coincide con los filtros actuales."
+                      className="mx-auto max-w-xl text-left"
+                      action={
+                        <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
+                          Limpiar filtros
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <PortalEmptyState
+                      title="Aún no hay usuarios"
+                      description="Crea el primer usuario interno para gestionar los accesos de tu equipo."
+                      className="mx-auto max-w-xl text-left"
+                      action={
+                        <Button type="button" variant="lime" size="sm" onClick={onCreateUser}>
+                          Nuevo usuario
+                        </Button>
+                      }
+                    />
+                  )}
                 </td>
               </tr>
             )}
@@ -240,7 +270,10 @@ export function UsersTable({
               return (
                 <tr
                   key={user.id}
-                  className="border-b border-gray-50 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3"
+                  className={cn(
+                    'border-b border-gray-50 dark:border-dark-border',
+                    portalTableRowHoverClassName,
+                  )}
                 >
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
@@ -281,17 +314,17 @@ export function UsersTable({
                     <div className="flex flex-col gap-0.5">
                       {user.mfaEnabled ? (
                         <>
-                          <span className="text-xs text-green-600 dark:text-green-400">
+                          <span className="text-xs text-emerald-700 dark:text-emerald-400">
                             Habilitado
                           </span>
                           {user.mfaRequired && (
-                            <span className="text-xs text-amber-600 dark:text-amber-400">
+                            <span className="text-xs text-amber-700 dark:text-amber-400">
                               Requerido
                             </span>
                           )}
                         </>
                       ) : user.mfaRequired ? (
-                        <span className="text-xs text-amber-600 dark:text-amber-400">
+                        <span className="text-xs text-amber-700 dark:text-amber-400">
                           Requerido
                         </span>
                       ) : (
@@ -362,7 +395,7 @@ export function UsersTable({
         </table>
       </div>
 
-      {/* Paginacion */}
+      {/* Paginación */}
       {(meta?.nextCursor || users.length > 0) && (
         <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-dark-border">
           <p className="text-sm text-gray-500 dark:text-gray-400">

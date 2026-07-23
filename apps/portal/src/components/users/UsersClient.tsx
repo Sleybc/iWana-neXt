@@ -97,6 +97,8 @@ export function UsersClient() {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<'ok' | 'error' | null>(null);
+  const [tempSecretsSaved, setTempSecretsSaved] = useState(false);
+  const [tempConfirmClose, setTempConfirmClose] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accessCatalog, setAccessCatalog] = useState<AccessPermissionsCatalog | null>(null);
   const [availableProfiles, setAvailableProfiles] = useState<AccessProfileView[]>([]);
@@ -256,6 +258,8 @@ export function UsersClient() {
       createIdempotencyKeyRef.current = null;
 
       if ('temporaryPassword' in result && result.temporaryPassword) {
+        setTempSecretsSaved(false);
+        setTempConfirmClose(false);
         setTempPassword(result.temporaryPassword);
       } else if (!profilesFailed) {
         setIsCreateOpen(false);
@@ -343,6 +347,9 @@ export function UsersClient() {
         idempotencyKey,
       });
       resetPasswordIdempotencyKeyRef.current = null;
+      setTempSecretsSaved(false);
+      setTempConfirmClose(false);
+      setCopyFeedback(null);
       setTempPassword(result.temporaryPassword);
       setNewUserEmail(selectedUser.email);
       setIsResetPasswordOpen(false);
@@ -425,6 +432,16 @@ export function UsersClient() {
     setTempPassword(null);
     setNewUserEmail(null);
     setCopyFeedback(null);
+    setTempSecretsSaved(false);
+    setTempConfirmClose(false);
+  };
+
+  const requestDismissTempPassword = () => {
+    if (tempPassword && !tempSecretsSaved) {
+      setTempConfirmClose(true);
+      return;
+    }
+    dismissTempPassword();
   };
 
   const handleCopyTempPassword = async () => {
@@ -433,6 +450,8 @@ export function UsersClient() {
     try {
       await navigator.clipboard.writeText(tempPassword);
       setCopyFeedback('ok');
+      setTempSecretsSaved(true);
+      setTempConfirmClose(false);
     } catch {
       setCopyFeedback('error');
     }
@@ -549,6 +568,7 @@ export function UsersClient() {
           onStatusChange={handleStatusChange}
           onRoleChange={handleRoleChange}
           onClearFilters={handleClearFilters}
+          onCreateUser={openCreate}
           currentUserId={user?.id}
           currentUserRole={user?.role}
           preparingEditUserId={preparingEditUserId}
@@ -584,7 +604,14 @@ export function UsersClient() {
 
       {/* Modal de contraseña temporal tras reset desde la tabla */}
       {!isCreateOpen && tempPassword && newUserEmail && (
-        <Dialog open={true} onOpenChange={(open) => !open && dismissTempPassword()}>
+        <Dialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) {
+              requestDismissTempPassword();
+            }
+          }}
+        >
           <DialogContent aria-labelledby="reset-success-title" className="max-w-sm">
             <DialogHeader className="space-y-1">
               <DialogTitle id="reset-success-title">Contraseña temporal generada</DialogTitle>
@@ -594,6 +621,38 @@ export function UsersClient() {
                 Deberá cambiarla en el próximo inicio de sesión.
               </DialogDescription>
             </DialogHeader>
+
+            {tempConfirmClose && (
+              <PortalAlert
+                variant="warning"
+                title="Contraseña temporal"
+                description="¿Ya guardaste la contraseña temporal? No podrás verla de nuevo."
+                className="mt-4"
+                action={
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTempConfirmClose(false)}
+                    >
+                      Seguir aquí
+                    </Button>
+                    <Button type="button" variant="lime" size="sm" onClick={dismissTempPassword}>
+                      Ya la guardé
+                    </Button>
+                  </div>
+                }
+              />
+            )}
+
+            <PortalAlert
+              variant="warning"
+              title="Contraseña de un solo uso"
+              description="Esta contraseña solo se muestra una vez. El usuario deberá cambiarla en el próximo inicio de sesión."
+              className="mt-4"
+            />
+
             <div className="mt-4 flex items-center gap-2 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
               <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-white select-all">
                 {tempPassword}

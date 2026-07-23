@@ -1,8 +1,29 @@
-import { PlatformRole, TENANT_ASSIGNABLE_ROLES, UserRole, UserStatus } from '@iwana/shared';
+import {
+  DocumentType,
+  PlatformRole,
+  TENANT_ASSIGNABLE_ROLES,
+  UserRole,
+  UserStatus,
+} from '@iwana/shared';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { getSystemBaseRoleLabel } from './system-vocabulary';
 
 type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'lime';
+
+export const PORTAL_DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  [DocumentType.CC]: 'Cédula de ciudadanía',
+  [DocumentType.CE]: 'Cédula de extranjería',
+  [DocumentType.PASAPORTE]: 'Pasaporte',
+  [DocumentType.PEP]: 'PEP',
+  [DocumentType.PTP]: 'PTP',
+  [DocumentType.NIT_PERSONA]: 'NIT persona',
+};
+
+export function getPortalDocumentTypeLabel(documentType: string): string {
+  return (
+    PORTAL_DOCUMENT_TYPE_LABELS[documentType as DocumentType] ?? formatEnumFallback(documentType)
+  );
+}
 
 export const PORTAL_USER_ROLE_LABELS: Record<UserRole | PlatformRole, string> = {
   [UserRole.ADMIN]: 'Administrador',

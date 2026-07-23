@@ -52,6 +52,7 @@ function renderTable(overrides: Partial<ComponentProps<typeof UsersTable>> = {})
     onStatusChange: jest.fn(),
     onRoleChange: jest.fn(),
     onClearFilters: jest.fn(),
+    onCreateUser: jest.fn(),
     currentUserId: 'other-user',
     currentUserRole: UserRole.ADMIN,
     ...overrides,
@@ -61,11 +62,30 @@ function renderTable(overrides: Partial<ComponentProps<typeof UsersTable>> = {})
 }
 
 describe('UsersTable', () => {
-  it('muestra un estado vacío accionable cuando no hay usuarios', () => {
-    renderTable({ users: [], meta: { nextCursor: null, total: 0 } });
+  it('muestra empty state de primera vez con CTA Nuevo usuario', () => {
+    const { props } = renderTable({ users: [], meta: { nextCursor: null, total: 0 } });
 
-    expect(screen.getByText('Sin usuarios registrados')).toBeInTheDocument();
-    expect(screen.getByText(/ajusta los filtros o crea el primer usuario/i)).toBeInTheDocument();
+    expect(screen.getByText('Aún no hay usuarios')).toBeInTheDocument();
+    expect(
+      screen.getByText(/crea el primer usuario interno para gestionar los accesos/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
+    expect(props.onCreateUser).toHaveBeenCalled();
+  });
+
+  it('muestra empty state con filtros activos y CTA Limpiar filtros', () => {
+    const { props } = renderTable({
+      users: [],
+      meta: { nextCursor: null, total: 0 },
+      searchValue: 'sin-match',
+    });
+
+    expect(screen.getByText('Sin resultados')).toBeInTheDocument();
+    expect(
+      screen.getByText(/ningún usuario coincide con los filtros actuales/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Limpiar filtros' })[0]!);
+    expect(props.onClearFilters).toHaveBeenCalled();
   });
 
   it('muestra acciones icon-only con nombre accesible y CTA de cargar más', () => {
@@ -122,6 +142,7 @@ describe('UsersTable', () => {
         onStatusChange={jest.fn()}
         onRoleChange={jest.fn()}
         onClearFilters={jest.fn()}
+        onCreateUser={jest.fn()}
         currentUserId="admin-1"
         currentUserRole={UserRole.ADMIN}
       />,
@@ -152,6 +173,7 @@ describe('UsersTable', () => {
         onStatusChange={jest.fn()}
         onRoleChange={jest.fn()}
         onClearFilters={jest.fn()}
+        onCreateUser={jest.fn()}
         currentUserId="sys-1"
         currentUserRole={PlatformRole.SYSTEM_ADMIN}
       />,

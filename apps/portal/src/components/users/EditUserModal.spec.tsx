@@ -136,7 +136,7 @@ describe('EditUserModal', () => {
 
     expect(screen.getByText('Perfil y accesos')).toBeInTheDocument();
     expect(screen.getByText('Credenciales y acceso')).toBeInTheDocument();
-    expect(screen.getByLabelText('Restablecer contrasena')).toBeInTheDocument();
+    expect(screen.getByLabelText('Restablecer contraseña')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Estado' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Categoría base' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Tipo de documento' })).toBeInTheDocument();
@@ -376,14 +376,14 @@ describe('EditUserModal', () => {
     render(<EditUserModal {...defaultModalProps} />);
 
     await screen.findByRole('dialog', { name: 'Editar usuario' });
-    const passwordResetButton = screen.getAllByRole('button', { name: 'Restablecer' })[1];
-    fireEvent.click(passwordResetButton!);
+    const passwordResetButton = screen.getByRole('button', { name: 'Restablecer' });
+    fireEvent.click(passwordResetButton);
 
     await waitFor(() => {
       expect(resetPasswordMock).toHaveBeenCalledTimes(1);
     });
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restablecer' })[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Restablecer' }));
 
     await waitFor(() => {
       expect(resetPasswordMock).toHaveBeenCalledTimes(2);
@@ -409,18 +409,20 @@ describe('EditUserModal', () => {
 
     const emailInput = screen.getByDisplayValue('tecnico@empresa.com');
     fireEvent.change(emailInput, { target: { value: 'nuevo@empresa.com' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restablecer' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar correo' }));
 
-    expect(await screen.findByText(/confirmar restablecimiento de email/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar restablecimiento' }));
+    expect(
+      await screen.findByRole('button', { name: 'Confirmar cambio de correo' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar cambio de correo' }));
 
     await waitFor(() => {
       expect(changeLoginEmailAsAdminMock).toHaveBeenCalledTimes(1);
     });
 
     // Reintento de la misma intención: volver a abrir confirmación y guardar
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restablecer' })[0]!);
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar restablecimiento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar correo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cambio de correo' }));
 
     await waitFor(() => {
       expect(changeLoginEmailAsAdminMock).toHaveBeenCalledTimes(2);

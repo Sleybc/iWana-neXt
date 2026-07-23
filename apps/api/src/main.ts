@@ -82,6 +82,10 @@ async function bootstrap(): Promise<void> {
     next();
   });
 
+  // Confiar en nginx como unico reverse proxy para que req.ip devuelva la IP real del cliente.
+  // Debe emparejarse con nginx sobrescribiendo X-Forwarded-For via $remote_addr.
+  app.set('trust proxy', true);
+
   // Habilitar lectura de cookies (refresh token llega como cookie httpOnly)
   app.use(cookieParser());
 

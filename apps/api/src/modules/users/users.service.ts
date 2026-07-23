@@ -526,22 +526,19 @@ export class UsersService {
       }
 
       // Audit trail — actor real (H-02); sin PII en newValue.
-      this.fireAndForget(
-        this.auditService.log({
-          action: AuditAction.CREATE,
-          entityType: 'User',
-          entityId: user.id,
-          userId: actorUserId,
-          newValue: {
-            role: user.role,
-            status: user.status,
-            tenantId: user.tenantId,
-            isOperationalResource: user.isOperationalResource,
-          },
-          ipAddress: ipAddress || null,
-        }),
-        'auditoria create usuario',
-      );
+      await this.auditService.log({
+        action: AuditAction.CREATE,
+        entityType: 'User',
+        entityId: user.id,
+        userId: actorUserId,
+        newValue: {
+          role: user.role,
+          status: user.status,
+          tenantId: user.tenantId,
+          isOperationalResource: user.isOperationalResource,
+        },
+        ipAddress: ipAddress || null,
+      });
 
       if (cacheKey) {
         await this.writeIdempotencyRecord(cacheKey, {
@@ -888,6 +885,23 @@ export class UsersService {
         throw new ForbiddenException('No tienes permisos para actualizar este usuario.');
       }
 
+      // E-01: ADMIN peer barrier — mismo modelo que remove().
+      // R-01: exime self-edit (un ADMIN sí puede editar su propia fila).
+      if (
+        user.id !== actorUserId &&
+        user.role === UserRole.ADMIN &&
+        actorRole !== PlatformRole.SYSTEM_ADMIN
+      ) {
+        throw new ForbiddenException('No es posible modificar a otro administrador del tenant.');
+      }
+
+      if (await this.isPrincipalAdminUser(user.tenantId, user.id)) {
+        throw new ConflictException(
+          'No es posible modificar al administrador principal de la empresa. ' +
+            'Designa primero a otro administrador principal.',
+        );
+      }
+
       const oldValue = {
         status: user.status,
         role: user.role,
@@ -911,21 +925,18 @@ export class UsersService {
 
       await qr.manager.save(User, user);
 
-      this.fireAndForget(
-        this.auditService.log({
-          action: AuditAction.UPDATE,
-          entityType: 'User',
-          entityId: id,
-          userId: actorUserId,
-          oldValue,
-          newValue: {
-            status: user.status,
-            role: user.role,
-            isOperationalResource: user.isOperationalResource,
-          },
-        }),
-        'auditoria update usuario',
-      );
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'User',
+        entityId: id,
+        userId: actorUserId,
+        oldValue,
+        newValue: {
+          status: user.status,
+          role: user.role,
+          isOperationalResource: user.isOperationalResource,
+        },
+      });
 
       if (cacheKey) {
         await this.writeIdempotencyRecord(cacheKey, { fingerprint, userId: user.id });
@@ -1030,7 +1041,7 @@ export class UsersService {
     id: string,
     dto: AdminChangeUserLoginEmailDto,
     actorUserId: string,
-    actorRole: UserRole,
+    actorRole: string,
     idempotencyKey?: string,
   ): Promise<UserResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
@@ -1063,6 +1074,20 @@ export class UsersService {
       // pero la comprobacion se hace sobre el literal persistido para cubrir un
       // schema que no haya pasado por el runner.
       this.assertTargetIsNotPlatformUser(user.role, actorRole);
+
+      // E-01: ADMIN peer barrier — mismo modelo que remove().
+      if (user.role === UserRole.ADMIN && actorRole !== PlatformRole.SYSTEM_ADMIN) {
+        throw new ForbiddenException(
+          'No es posible modificar el email de otro administrador del tenant.',
+        );
+      }
+
+      if (await this.isPrincipalAdminUser(user.tenantId, user.id)) {
+        throw new ConflictException(
+          'No es posible modificar el email del administrador principal de la empresa. ' +
+            'Designa primero a otro administrador principal.',
+        );
+      }
 
       const normalizedEmail = dto.email.toLowerCase().trim();
       const previousEmailHash = user.emailHash;
@@ -1168,15 +1193,12 @@ export class UsersService {
       // Soft delete via softRemove — establece deletedAt
       await qr.manager.softRemove(User, user);
 
-      this.fireAndForget(
-        this.auditService.log({
-          action: AuditAction.DELETE,
-          entityType: 'User',
-          entityId: id,
-          userId: actorUserId,
-        }),
-        'auditoria delete usuario',
-      );
+      await this.auditService.log({
+        action: AuditAction.DELETE,
+        entityType: 'User',
+        entityId: id,
+        userId: actorUserId,
+      });
 
       this.fireAndForget(
         this.searchQueueService.enqueueUserDelete(id),
@@ -1233,7 +1255,7 @@ export class UsersService {
   async resetPassword(
     id: string,
     actorId: string,
-    actorRole: UserRole,
+    actorRole: string,
     ipAddress: string,
     password?: string,
     idempotencyKey?: string,
@@ -1266,21 +1288,32 @@ export class UsersService {
       // Defensa en profundidad tras ADR-061 §4 — ver `assertTargetIsNotPlatformUser`.
       this.assertTargetIsNotPlatformUser(user.role, actorRole);
 
+      // E-01: ADMIN peer barrier — mismo modelo que remove().
+      if (user.role === UserRole.ADMIN && actorRole !== PlatformRole.SYSTEM_ADMIN) {
+        throw new ForbiddenException(
+          'No es posible reiniciar la contraseña de otro administrador del tenant.',
+        );
+      }
+
+      if (await this.isPrincipalAdminUser(user.tenantId, user.id)) {
+        throw new ConflictException(
+          'No es posible reiniciar la contraseña del administrador principal de la empresa. ' +
+            'Designa primero a otro administrador principal.',
+        );
+      }
+
       const temporaryPassword = password ?? crypto.randomBytes(TEMP_PASSWORD_BYTES).toString('hex');
       user.passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
       user.passwordResetRequired = true;
       await qr.manager.save(User, user);
 
-      this.fireAndForget(
-        this.auditService.log({
-          action: AuditAction.PASSWORD_CHANGED,
-          entityType: 'UserPasswordReset',
-          entityId: user.id,
-          userId: actorId,
-          ipAddress,
-        }),
-        'auditoria reset password usuario',
-      );
+      await this.auditService.log({
+        action: AuditAction.PASSWORD_CHANGED,
+        entityType: 'UserPasswordReset',
+        entityId: user.id,
+        userId: actorId,
+        ipAddress,
+      });
 
       if (idempotencyKey?.trim()) {
         const { tenantId } = TenantContext.getOrThrow();
@@ -1325,7 +1358,7 @@ export class UsersService {
         const dto = this.toDto(user);
         const routeParams = new URLSearchParams({
           tenant: params.tenantSlug,
-          search: dto.email,
+          search: dto.id,
           openUser: dto.id,
         });
 

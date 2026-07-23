@@ -248,7 +248,6 @@ describe('UsersController HTTP', () => {
       .post('/api/v1/users')
       .set('Authorization', 'Bearer admin-token')
       .set('Idempotency-Key', 'idem-1')
-      .set('X-Forwarded-For', '198.51.100.10')
       .send({ email: 'usuario@empresa.com', role: UserRole.NOC })
       .expect(201)
       .expect(({ body }) => {
@@ -258,7 +257,7 @@ describe('UsersController HTTP', () => {
     expect(usersServiceMock.create).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'usuario@empresa.com', role: UserRole.NOC }),
       'usr-admin',
-      '198.51.100.10',
+      '::ffff:127.0.0.1',
       'idem-1',
     );
   });

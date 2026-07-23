@@ -174,7 +174,7 @@ describe('UsersBulkController HTTP', () => {
       expect(usersServiceMock.bulkCreate).toHaveBeenCalledWith(
         loteValido.users,
         'usr-admin',
-        'unknown',
+        '::ffff:127.0.0.1',
         'lote-001',
       );
     });
@@ -256,21 +256,20 @@ describe('UsersBulkController HTTP', () => {
       await request(app.getHttpServer()).post(RUTA_BULK).send(loteValido).expect(401);
     });
 
-    it('propaga la IP del proxy al servicio para la auditoria', async () => {
+    it('propaga la IP de la conexion al servicio para la auditoria', async () => {
       usersServiceMock.bulkCreate.mockResolvedValue({ jobId: JOB_ID, status: 'queued' });
 
       await request(app.getHttpServer())
         .post(RUTA_BULK)
         .set('Authorization', 'Bearer admin-token')
         .set('Idempotency-Key', 'lote-001')
-        .set('X-Forwarded-For', '203.0.113.7')
         .send(loteValido)
         .expect(202);
 
       expect(usersServiceMock.bulkCreate).toHaveBeenCalledWith(
         loteValido.users,
         'usr-admin',
-        '203.0.113.7',
+        '::ffff:127.0.0.1',
         'lote-001',
       );
     });

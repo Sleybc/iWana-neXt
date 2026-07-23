@@ -56,6 +56,12 @@ describe('CreateUserModal', () => {
     );
 
     expect(await screen.findByText('Clave temporal')).toBeInTheDocument();
+    expect(screen.getByText('Contraseña de un solo uso')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /esta contraseña solo se muestra una vez\. el usuario deberá cambiarla en el próximo inicio de sesión/i,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Entendido' })).toBeInTheDocument();
 
     rerender(
@@ -99,6 +105,73 @@ describe('CreateUserModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Entendido' }));
 
     expect(onDismissSuccess).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('pide confirmación al cerrar el reveal si el secreto no se guardó', async () => {
+    const onClose = jest.fn();
+    const onDismissSuccess = jest.fn();
+
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={onClose}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        tempPassword="temporal-123"
+        tempPasswordEmail="nuevo@empresa.com"
+        onDismissSuccess={onDismissSuccess}
+      />,
+    );
+
+    await screen.findByText('Clave temporal');
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/¿ya guardaste la contraseña temporal\?/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Seguir aquí' }));
+    expect(screen.queryByText(/¿ya guardaste la contraseña temporal\?/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ya la guardé' }));
+    expect(onDismissSuccess).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('permite cerrar libremente tras Copiar', async () => {
+    const onClose = jest.fn();
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={onClose}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        tempPassword="temporal-123"
+        tempPasswordEmail="nuevo@empresa.com"
+        onDismissSuccess={jest.fn()}
+      />,
+    );
+
+    await screen.findByText('Clave temporal');
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar' }));
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('temporal-123');
+      expect(screen.getByText('Copiado')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -170,7 +243,7 @@ describe('CreateUserModal', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText(/correo electronico/i), {
+    fireEvent.change(screen.getByLabelText(/correo electrónico/i), {
       target: { value: 'nuevo@empresa.com' },
     });
     fireEvent.click(screen.getByRole('combobox', { name: 'Categoría base' }));

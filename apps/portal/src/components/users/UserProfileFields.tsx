@@ -3,6 +3,7 @@
 import { DocumentType } from '@iwana/shared';
 import { Select } from '@iwana/ui';
 import type { FieldErrors, FieldValues, Path, UseFormRegister } from 'react-hook-form';
+import { getPortalDocumentTypeLabel } from '@/lib/user-labels';
 
 type ProfileFieldName =
   | 'jobTitle'
@@ -105,7 +106,7 @@ export function UserProfileFields<TFieldValues extends FieldValues>({
           htmlFor={`${idPrefix}-phone`}
           className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Telefono
+          Teléfono
         </label>
         <input
           id={`${idPrefix}-phone`}
@@ -139,7 +140,7 @@ export function UserProfileFields<TFieldValues extends FieldValues>({
           <option value="">Selecciona</option>
           {Object.values(DocumentType).map((dt) => (
             <option key={dt} value={dt}>
-              {dt}
+              {getPortalDocumentTypeLabel(dt)}
             </option>
           ))}
         </Select>
@@ -150,7 +151,7 @@ export function UserProfileFields<TFieldValues extends FieldValues>({
           htmlFor={`${idPrefix}-documentNumber`}
           className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Numero de documento
+          Número de documento
         </label>
         <input
           id={`${idPrefix}-documentNumber`}
@@ -176,7 +177,7 @@ export function UserProfileFields<TFieldValues extends FieldValues>({
             className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            Requerir autenticacion de dos factores (MFA)
+            Requerir verificación en dos pasos
           </span>
         </label>
       </div>

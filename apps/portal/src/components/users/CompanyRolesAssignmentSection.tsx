@@ -104,13 +104,13 @@ export function CompanyRolesAssignmentSection({
 
               <PortalAlert
                 variant="info"
-                title="Permisos efectivos"
+                title="Accesos finales de esta cuenta"
                 description={
                   preview.permissionKeys.length > 0
                     ? preview.permissionKeys
                         .map((permissionKey) => resolvePermissionLabel(permissionKey, catalog))
                         .join(' · ')
-                    : 'No hay permisos efectivos calculados todavía.'
+                    : 'No hay accesos finales calculados todavía.'
                 }
               />
             </div>

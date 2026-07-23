@@ -34,25 +34,25 @@ import {
   getPortalUserStatusLabel,
   PORTAL_USER_STATUSES,
 } from '@/lib/user-labels';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { interactiveFocusClassName, PortalAlert } from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 import { UserProfileFields } from './UserProfileFields';
 
 const editUserSchema = z.object({
-  email: z.string().trim().email('Ingresa un correo valido.'),
+  email: z.string().trim().email('Ingresa un correo válido.'),
   status: z.string().optional(),
   role: z.string().optional(),
-  firstName: z.string().trim().max(100, 'Maximo 100 caracteres.').optional().or(z.literal('')),
-  lastName: z.string().trim().max(100, 'Maximo 100 caracteres.').optional().or(z.literal('')),
+  firstName: z.string().trim().max(100, 'Máximo 100 caracteres.').optional().or(z.literal('')),
+  lastName: z.string().trim().max(100, 'Máximo 100 caracteres.').optional().or(z.literal('')),
   phone: z
     .string()
-    .min(7, 'Minimo 7 caracteres')
-    .max(50, 'Maximo 50 caracteres')
+    .min(7, 'Mínimo 7 caracteres')
+    .max(50, 'Máximo 50 caracteres')
     .optional()
     .or(z.literal('')),
-  jobTitle: z.string().trim().max(150, 'Maximo 150 caracteres.').optional().or(z.literal('')),
+  jobTitle: z.string().trim().max(150, 'Máximo 150 caracteres.').optional().or(z.literal('')),
   documentType: z.string().optional(),
-  documentNumber: z.string().trim().max(20, 'Maximo 20 caracteres.').optional().or(z.literal('')),
+  documentNumber: z.string().trim().max(20, 'Máximo 20 caracteres.').optional().or(z.literal('')),
   mfaRequired: z.boolean().optional(),
   isOperationalResource: z.boolean().optional(),
 });
@@ -78,21 +78,22 @@ interface EditUserModalProps {
 
 function mapError(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 401) return 'Tu sesion expiró. Inicia sesion nuevamente.';
+    if (err.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
     if (err.status === 403) return 'No tienes permisos para gestionar usuarios.';
     if (err.status === 409) return err.message;
     return err.message;
   }
-  return 'No fue posible completar la operacion. Intenta de nuevo.';
+  return 'No fue posible completar la operación. Intenta de nuevo.';
 }
 
 const inputClass = [
   'flex h-11 w-full rounded-2xl border border-gray-200 bg-gray-50/80 px-4 py-2 text-sm',
   'text-gray-900 placeholder:text-gray-400',
-  'transition-all focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 focus:border-iwana-secondary focus:bg-white',
+  'transition-all focus:border-iwana-secondary focus:bg-white',
+  interactiveFocusClassName,
   'disabled:cursor-not-allowed disabled:opacity-50',
   'dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
-  'dark:placeholder:text-gray-500 dark:focus:ring-iwana-secondary/25 dark:focus:border-iwana-secondary',
+  'dark:placeholder:text-gray-500 dark:focus:border-iwana-secondary',
 ].join(' ');
 
 const selectClass = [
@@ -120,7 +121,7 @@ export function EditUserModal({
   const [selectedCompanyRoleIds, setSelectedCompanyRoleIds] =
     useState<string[]>(initialCompanyRoleIds);
 
-  // Estados para restablecimiento de contrasena
+  // Estados para restablecimiento de contraseña
   const [resetPasswordText, setResetPasswordText] = useState('');
   const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
@@ -400,14 +401,14 @@ export function EditUserModal({
 
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
               {/*
-                Correo electronico: siempre ancho completo
+                Correo electrónico: siempre ancho completo
               */}
               <div className="col-span-full">
                 <label
                   htmlFor="edit-email"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
                 >
-                  Correo electronico
+                  Correo electrónico
                 </label>
                 <div className="flex items-center gap-2">
                   {errors.email ? (
@@ -439,7 +440,7 @@ export function EditUserModal({
                     disabled={isSubmitting || isSavingEmail}
                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 disabled:opacity-50 transition-colors shrink-0 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
                   >
-                    {isSavingEmail ? 'Guardando...' : 'Restablecer'}
+                    {isSavingEmail ? 'Guardando...' : 'Cambiar correo'}
                   </button>
                 </div>
                 {errors.email && (
@@ -453,18 +454,18 @@ export function EditUserModal({
               </div>
 
               {/*
-                Confirmacion de cambio de email
+                Confirmación de cambio de email
               */}
               {emailToConfirm && (
                 <PortalAlert
                   className="col-span-full"
                   variant="warning"
-                  title="Confirmar restablecimiento de email"
+                  title="Confirmar cambio de correo"
                   description={
                     <>
                       Estás a punto de cambiar el email de <strong>{user.email}</strong> a{' '}
-                      <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesion se
-                      hara con el nuevo email.
+                      <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesión se
+                      hará con el nuevo email.
                     </>
                   }
                   icon={ShieldAlert}
@@ -486,7 +487,7 @@ export function EditUserModal({
                         disabled={isSavingEmail}
                         className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
                       >
-                        {isSavingEmail ? 'Guardando...' : 'Confirmar restablecimiento'}
+                        {isSavingEmail ? 'Guardando...' : 'Confirmar cambio de correo'}
                       </button>
                     </div>
                   }
@@ -603,10 +604,10 @@ export function EditUserModal({
                 htmlFor="reset-password"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
               >
-                Restablecer contrasena
+                Restablecer contraseña
               </label>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Ingresa una nueva contrasena (min 10 caracteres) o deja en blanco para generar una
+                Ingresa una nueva contraseña (mín. 10 caracteres) o deja en blanco para generar una
                 temporal.
               </p>
               <div className="flex items-center gap-2">
@@ -616,7 +617,7 @@ export function EditUserModal({
                   value={resetPasswordText}
                   onChange={(e) => setResetPasswordText(e.target.value)}
                   disabled={isResettingPassword}
-                  placeholder="Minimo 10 caracteres"
+                  placeholder="Mínimo 10 caracteres"
                   className={inputClass + ' flex-1'}
                 />
                 <button
@@ -658,7 +659,7 @@ export function EditUserModal({
                 </button>
               </div>
               {resetPasswordText.length > 0 && resetPasswordText.length < 10 && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">Minimo 10 caracteres</p>
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">Mínimo 10 caracteres</p>
               )}
               {resetPasswordError && (
                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">{resetPasswordError}</p>
@@ -668,7 +669,7 @@ export function EditUserModal({
             {resetPasswordResult && (
               <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
-                  Nueva contrasena
+                  Nueva contraseña
                 </p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base font-mono font-bold tracking-wider text-gray-900 dark:border-emerald-700 dark:bg-dark-surface-3 dark:text-white">
@@ -692,8 +693,8 @@ export function EditUserModal({
                     )}
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-green-600 dark:text-green-400">
-                  El usuario debera cambiar esta contrasena al proximo inicio de sesion.
+                <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
+                  El usuario deberá cambiar esta contraseña al próximo inicio de sesión.
                 </p>
               </div>
             )}
