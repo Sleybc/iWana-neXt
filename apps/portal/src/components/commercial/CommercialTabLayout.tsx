@@ -26,7 +26,7 @@ interface CommercialTabLayoutProps {
   canEdit: boolean;
   activeTab: CommercialTab;
   taxationSubTab: TaxationSubTab;
-  summary: ReactNode;
+  summary?: ReactNode;
   onTabChange: (tab: CommercialTab) => void;
   onTaxationSubTabChange: (subTab: TaxationSubTab) => void;
 }

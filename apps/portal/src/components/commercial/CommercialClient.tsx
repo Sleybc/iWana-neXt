@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Activity, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout';
-import { CommercialDashboard } from '@/components/commercial/CommercialDashboard';
+import { CommercialActivityPanel } from '@/components/commercial/CommercialActivityPanel';
 import { CommercialAlertsStrip } from '@/components/commercial/CommercialAlertsStrip';
 import {
   applyCommercialOfferStatusToSearchParams,
@@ -19,7 +19,7 @@ import {
   type ResolvedCommercialRoute,
   type TaxationSubTab,
 } from '@/components/commercial/commercial-tab-params';
-import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalSidePeek, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { ApiError, commercialApi, type CommercialDashboardSummary } from '@/lib/api-client';
 
 function CommercialSkeleton() {
@@ -86,8 +86,10 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
 
   const canEdit = user?.role === 'ADMIN';
+  const attentionCount = useMemo(() => summary?.attentionItems.length ?? 0, [summary]);
 
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true);
@@ -205,10 +207,30 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         title="Comercial"
         subtitle="Gestiona catálogo, precios vigentes y reglas operativas."
         actions={
-          <Button variant="secondary" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Actualizar
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsActivityOpen(true)}
+              aria-label={
+                attentionCount > 0
+                  ? `Actividad comercial, ${attentionCount} ${attentionCount === 1 ? 'ítem requiere' : 'ítems requieren'} atención`
+                  : 'Actividad comercial'
+              }
+            >
+              <Activity className="h-4 w-4" aria-hidden="true" />
+              Actividad
+              {attentionCount > 0 && (
+                <span className="ml-1 rounded-full bg-iwana-surface-soft px-2 py-0.5 font-mono text-xs tabular-nums text-iwana-secondary-700 dark:bg-dark-surface-3 dark:text-iwana-primary-300">
+                  {attentionCount}
+                </span>
+              )}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Actualizar
+            </Button>
+          </>
         }
       />
 
@@ -231,17 +253,26 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         canEdit={canEdit}
         activeTab={route.tab}
         taxationSubTab={route.taxationSubTab}
-        summary={
-          <CommercialDashboard
-            summary={summary}
-            isLoading={summaryLoading}
-            onNavigateTab={handleNavigateTab}
-            onRetry={handleRefresh}
-          />
-        }
         onTabChange={handleTabChange}
         onTaxationSubTabChange={handleTaxationSubTabChange}
       />
+
+      <PortalSidePeek
+        open={isActivityOpen}
+        onClose={() => setIsActivityOpen(false)}
+        title="Actividad comercial"
+        description="Qué requiere atención y qué cambió en los últimos 7 días."
+      >
+        <CommercialActivityPanel
+          summary={summary}
+          isLoading={summaryLoading}
+          onNavigateTab={(tab, options) => {
+            setIsActivityOpen(false);
+            handleNavigateTab(tab, options);
+          }}
+          onRetry={handleRefresh}
+        />
+      </PortalSidePeek>
     </div>
   );
 }

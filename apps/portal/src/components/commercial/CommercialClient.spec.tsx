@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
@@ -24,10 +23,8 @@ jest.mock('@/components/auth/AuthProvider', () => {
 });
 
 jest.mock('@/components/commercial/CommercialTabLayout', () => ({
-  CommercialTabLayout: ({ summary, activeTab }: { summary: ReactNode; activeTab?: string }) => (
-    <div data-testid="tab-layout" data-active-tab={activeTab}>
-      {summary}
-    </div>
+  CommercialTabLayout: ({ activeTab }: { activeTab?: string }) => (
+    <div data-testid="tab-layout" data-active-tab={activeTab} />
   ),
 }));
 
@@ -102,14 +99,17 @@ describe('CommercialClient', () => {
     render(<CommercialClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Indicadores no disponibles')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Actividad/ })).toBeInTheDocument();
     });
 
-    const retryButtons = screen.getAllByRole('button', { name: 'Actualizar' });
-    expect(retryButtons.length).toBeGreaterThan(1);
+    await user.click(screen.getByRole('button', { name: /Actividad/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Actividad no disponible')).toBeInTheDocument();
+    });
 
     getDashboardSummary.mockClear();
-    await user.click(retryButtons[retryButtons.length - 1] as HTMLElement);
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }));
 
     await waitFor(() => {
       expect(getDashboardSummary).toHaveBeenCalledTimes(1);
@@ -128,5 +128,73 @@ describe('CommercialClient', () => {
     });
 
     expect(screen.getByText('Ofertas en riesgo')).toBeInTheDocument();
+  });
+
+  it('abre la actividad comercial desde la cabecera en cualquier tab', async () => {
+    const user = userEvent.setup();
+    mockSearchParams = new URLSearchParams('tab=taxation');
+    getDashboardSummary.mockResolvedValue(
+      buildSummary({
+        attentionItems: [
+          {
+            id: 'b1',
+            name: 'Combo hogar',
+            entityType: 'bundle',
+            reason: 'expiring_soon',
+            destinoTab: 'bundles',
+            validTo: '2026-07-30T00:00:00.000Z',
+            usesRemaining: null,
+          },
+        ],
+      }),
+    );
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Actividad/ })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Actividad/ }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Requiere atención')).toBeInTheDocument();
+    expect(screen.getByText('Cambios recientes')).toBeInTheDocument();
+  });
+
+  it('anuncia en el botón cuántos ítems requieren atención', async () => {
+    mockSearchParams = new URLSearchParams('tab=plans');
+    getDashboardSummary.mockResolvedValue(
+      buildSummary({
+        attentionItems: [
+          {
+            id: 'b1',
+            name: 'Combo hogar',
+            entityType: 'bundle',
+            reason: 'expiring_soon',
+            destinoTab: 'bundles',
+            validTo: null,
+            usesRemaining: null,
+          },
+          {
+            id: 'p1',
+            name: 'Plan fibra',
+            entityType: 'plan',
+            reason: 'missing_current_price',
+            destinoTab: 'plans',
+            validTo: null,
+            usesRemaining: null,
+          },
+        ],
+      }),
+    );
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Actividad comercial, 2 ítems requieren atención' }),
+      ).toBeInTheDocument();
+    });
   });
 });
