@@ -261,7 +261,7 @@ export function CommercialDashboard({
     <PortalPanel
       eyebrow="Operación"
       title="Resumen comercial"
-      description="Qué requiere atención hoy en catálogo, ofertas y reglas — y dónde corregirlo."
+      description="Estado del catálogo, las ofertas y las reglas, con lo que cambió en los últimos 7 días."
       contentClassName="space-y-6"
     >
       {isLoading ? (
