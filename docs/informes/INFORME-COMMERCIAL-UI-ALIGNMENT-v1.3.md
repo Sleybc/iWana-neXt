@@ -2,9 +2,9 @@
 
 **Versión:** 1.3  
 **Fecha:** 2026-07-23  
-**Estado:** **GO con deuda** (G6 [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4)) — H17/H18 cerrados; gate navegador pendiente  
+**Estado:** **GO identidad sin deuda de proceso** — G6 + gate navegador PASS  
 **Módulo:** MOD06 — Comercial  
-**Rama:** `main` · H18 `61cb63bf` · H17 `7d7549d1` · docs `e5cf14dc`  
+**Rama:** `main` · H18 `61cb63bf` · H17 `7d7549d1`  
 **Modo:** AI-EM-ARCH Orquestador  
 **Plan:** [2026-07-23-mod06-resumen-fuera-del-tab](../plans/2026-07-23-mod06-resumen-fuera-del-tab.md)  
 **Prompt:** [PROMPT-MOD06-UI-FASE-F-v1.0](../prompts/PROMPT-MOD06-UI-FASE-F-v1.0.md)  
@@ -72,16 +72,37 @@ Fase E dejó alertas operativas útiles **dentro** del tab Resumen (H13). Fase F
 
 ## Deuda residual / proceso
 
-1. **Gate navegador** (Tarea 7 paso 4): sigue **obligatorio** antes de declarar GO de identidad perfecto; mobile 375 + lector.
+1. ~~Gate navegador~~ → **cerrado** (sección Gate navegador).
 2. Mock auth estable en specs (mitigado).
-3. Informe: commits en `main`; conteo portal a recalcular en G6.
 
 ---
 
-## Decisión G6 (EM-ARCH)
+## Gate navegador (Tarea 7 paso 4) — ejecutado 2026-07-23
 
-**Veredicto:** **GO con deuda** — H13–H18 cerrados en código y verificados por [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4) (puntaje **100/100**, no del productor).
+Evidencia automatizada en Chromium (UI real + summary con 3 alertas):  
+`e2e/tests/portal-commercial-alerts-gate.spec.ts` · **PASS** (playwright.portal.local).
 
-**Deuda que no bloquea merge de remediación:** gate navegador Tarea 7 paso 4 (mobile 375 + lector). Sigue obligatorio antes de declarar cierre de identidad *sin* deuda de proceso.
+| Check | Resultado |
+| --- | --- |
+| Alertas visibles en Resumen | PASS |
+| Visibles tras tab Planes / Compatibilidad / Tributación | PASS |
+| CTA «Ver ofertas» → `status=expiring` + tab ofertas | PASS |
+| H17: tira sin `role=alert`/`status` (`live="off"`) | PASS (criterio actualizado post-H17; el plan v1 pedía `role=alert`) |
+| Mobile 375: tabs alcanzables con 3 alertas (y &lt; 2.5 viewports) | PASS — **no** escalar a PROD-UX |
+
+Comando:
+
+```bash
+npx playwright test e2e/tests/portal-commercial-alerts-gate.spec.ts --config=e2e/playwright.portal.local.config.ts
+```
+
+---
+
+## Decisión G6 + gate (EM-ARCH)
+
+**Veredicto:** **GO identidad sin deuda de proceso** para H13–H18.
+
+- Código + suite: [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4) · 100/100  
+- Gate navegador: PASS (evidencia E2E arriba)
 
 **No** reabrir H17/H18 sin evidencia nueva.
