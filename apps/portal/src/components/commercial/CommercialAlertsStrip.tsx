@@ -4,10 +4,12 @@ import { Button } from '@iwana/ui';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
 import { buildCommercialAlerts } from '@/components/commercial/commercial-alerts';
 import type { CommercialNavigateHandler } from '@/components/commercial/commercial-tab-params';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface CommercialAlertsStripProps {
   summary: CommercialDashboardSummary | null;
+  /** Reserva altura mientras llega el resumen; evita layout shift sobre los tabs. */
+  isLoading?: boolean | undefined;
   onNavigateTab?: CommercialNavigateHandler | undefined;
 }
 
@@ -15,7 +17,20 @@ interface CommercialAlertsStripProps {
  * Alertas operativas del módulo, visibles desde cualquier tab.
  * Vive sobre la barra de tabs: es capa de orientación, no una sección más.
  */
-export function CommercialAlertsStrip({ summary, onNavigateTab }: CommercialAlertsStripProps) {
+export function CommercialAlertsStrip({
+  summary,
+  isLoading = false,
+  onNavigateTab,
+}: CommercialAlertsStripProps) {
+  if (isLoading) {
+    return (
+      <section className="space-y-3" aria-busy="true" aria-label="Cargando alertas operativas">
+        <PortalSkeletonBlock className="min-h-[72px] rounded-2xl" />
+        <PortalSkeletonBlock className="min-h-[72px] rounded-2xl" />
+      </section>
+    );
+  }
+
   if (!summary) {
     return null;
   }

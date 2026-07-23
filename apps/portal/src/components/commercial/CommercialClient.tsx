@@ -221,7 +221,11 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         />
       )}
 
-      <CommercialAlertsStrip summary={summary} onNavigateTab={handleNavigateTab} />
+      <CommercialAlertsStrip
+        summary={summary}
+        isLoading={summaryLoading}
+        onNavigateTab={handleNavigateTab}
+      />
 
       <CommercialTabLayout
         canEdit={canEdit}

@@ -39,14 +39,26 @@ function buildSummary(
 }
 
 describe('CommercialAlertsStrip', () => {
-  it('no renderiza contenedor cuando no hay summary', () => {
+  it('muestra skeleton mientras carga, sin depender del summary', () => {
+    render(<CommercialAlertsStrip summary={null} isLoading />);
+
+    expect(screen.getByRole('region', { name: 'Cargando alertas operativas' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Cargando alertas operativas' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+
+  it('no renderiza contenedor cuando no hay summary y no está cargando', () => {
     const { container } = render(<CommercialAlertsStrip summary={null} />);
 
     expect(container).toBeEmptyDOMElement();
   });
 
   it('no renderiza contenedor en estado saludable', () => {
-    const { container } = render(<CommercialAlertsStrip summary={buildSummary()} />);
+    const { container } = render(
+      <CommercialAlertsStrip summary={buildSummary()} isLoading={false} />,
+    );
 
     expect(container).toBeEmptyDOMElement();
   });
