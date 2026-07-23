@@ -12,6 +12,11 @@ import type {
   CommercialTab,
   CommercialOfferStatusFilter,
 } from '@/components/commercial/commercial-tab-params';
+import { formatCompactNumber } from '@/components/commercial/commercial-format';
+import {
+  resolveOffersRiskTab,
+  resolveRulesGapTab,
+} from '@/components/commercial/commercial-alerts';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -68,30 +73,8 @@ const RECENT_ENTITY_TYPE_LABELS: Record<CommercialRecentChange['entityType'], st
   tax_rule: 'Regla tributaria',
 };
 
-function formatCompactNumber(value: number): string {
-  return new Intl.NumberFormat('es-CO').format(value);
-}
-
 function isFirstTimeCatalog(summary: CommercialDashboardSummary): boolean {
   return summary.plansCount === 0 && summary.productsCount === 0 && summary.servicesCount === 0;
-}
-
-function resolveOffersRiskTab(summary: CommercialDashboardSummary): CommercialTab {
-  const offerReasons = new Set<CommercialAttentionReason>(['expiring_soon', 'near_use_limit']);
-  const offerItems = summary.attentionItems.filter((item) => offerReasons.has(item.reason));
-  const promotionHits = offerItems.filter((item) => item.destinoTab === 'promotions').length;
-  const bundleHits = offerItems.filter((item) => item.destinoTab === 'bundles').length;
-  if (promotionHits > bundleHits) {
-    return 'promotions';
-  }
-  return 'bundles';
-}
-
-function resolveRulesGapTab(summary: CommercialDashboardSummary): CommercialTab {
-  if (summary.activeBundlesWithInactiveItemsCount > summary.taxRulesCoverageGapCount) {
-    return 'bundles';
-  }
-  return 'taxation';
 }
 
 function buildAlerts(summary: CommercialDashboardSummary): Array<{
