@@ -44,20 +44,24 @@ jest.mock('@/components/commercial/TaxSimulatorPanel', () => ({
 
 const defaultProps = {
   canEdit: true,
-  activeTab: 'summary' as const,
+  activeTab: 'plans' as const,
   taxationSubTab: 'tax-catalog' as const,
-  summary: <div data-testid="summary-panel">Resumen panel</div>,
   onTabChange: jest.fn(),
   onTaxationSubTabChange: jest.fn(),
 };
 
 describe('CommercialTabLayout', () => {
-  it('renderiza Resumen por defecto fuera de grupo Operación', () => {
+  it('no ofrece un tab de resumen', () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
-    expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('data-state', 'active');
-    expect(screen.getByTestId('summary-panel')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Resumen' })).not.toBeInTheDocument();
     expect(screen.queryByText('Operación')).not.toBeInTheDocument();
+  });
+
+  it('aterriza en Planes con los tres grupos visibles', () => {
+    render(<CommercialTabLayout {...defaultProps} />);
+
+    expect(screen.getByRole('tab', { name: 'Planes' })).toHaveAttribute('data-state', 'active');
     expect(screen.getByText('Catálogo')).toBeInTheDocument();
     expect(screen.getByText('Ofertas')).toBeInTheDocument();
     expect(screen.getByText('Reglas')).toBeInTheDocument();

@@ -1,6 +1,5 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@iwana/ui';
 import { BundlesManager } from '@/components/commercial/BundlesManager';
 import { PromotionsManager } from '@/components/commercial/PromotionsManager';
@@ -26,7 +25,6 @@ interface CommercialTabLayoutProps {
   canEdit: boolean;
   activeTab: CommercialTab;
   taxationSubTab: TaxationSubTab;
-  summary?: ReactNode;
   onTabChange: (tab: CommercialTab) => void;
   onTaxationSubTabChange: (subTab: TaxationSubTab) => void;
 }
@@ -35,7 +33,6 @@ export function CommercialTabLayout({
   canEdit,
   activeTab,
   taxationSubTab,
-  summary,
   onTabChange,
   onTaxationSubTabChange,
 }: CommercialTabLayoutProps) {
@@ -47,13 +44,6 @@ export function CommercialTabLayout({
       }}
     >
       <TabsList aria-label="Secciones comerciales" className={portalModuleTabsShellClassName}>
-        {/* H12: Resumen fuera de grupo (sin rótulo Operación) */}
-        <TabsTrigger value="summary" className={portalModuleTabTriggerClassName}>
-          Resumen
-        </TabsTrigger>
-
-        <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
-
         <div className={portalModuleTabsGroupClassName}>
           <p className="portal-eyebrow px-1" id="commercial-tabs-catalog-label">
             Catálogo
@@ -115,10 +105,6 @@ export function CommercialTabLayout({
           </div>
         </div>
       </TabsList>
-
-      <TabsContent value="summary" className="space-y-6">
-        {summary}
-      </TabsContent>
 
       <TabsContent value="plans" className="space-y-6">
         <PlanCatalogPanel canEdit={canEdit} />
