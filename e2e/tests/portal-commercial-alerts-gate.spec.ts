@@ -114,8 +114,8 @@ async function setupGateMocks(page: Page) {
     }
 
     if (pathname.endsWith('/commercial/dashboard/summary') && method === 'GET') {
-      // El cliente `request()` unwrappea `.data` (ApiEnvelope).
-      await json({ data: summaryWithThreeAlerts });
+      // API responde el DTO en raíz; el cliente usa returnFullResponse: true.
+      await json(summaryWithThreeAlerts);
       return;
     }
 

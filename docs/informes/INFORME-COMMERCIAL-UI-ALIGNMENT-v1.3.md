@@ -79,18 +79,27 @@ Fase E dejó alertas operativas útiles **dentro** del tab Resumen (H13). Fase F
 
 ## Gate navegador (Tarea 7 paso 4) — ejecutado 2026-07-23
 
-Evidencia automatizada en Chromium (UI real + summary con 3 alertas):  
-`e2e/tests/portal-commercial-alerts-gate.spec.ts` · **PASS** (playwright.portal.local).
+### A) E2E Chromium (summary con 3 alertas)
+`e2e/tests/portal-commercial-alerts-gate.spec.ts` · **PASS**
+
+### B) Sesión real tenant `iwana` (Chrome DevTools)
+Login operativo local. Hallazgo bloqueante descubierto y corregido:
+
+| ID | Hallazgo | Fix |
+| --- | --- | --- |
+| **H19** | `getDashboardSummary` unwrappeaba `.data` pero la API responde el DTO en raíz → «Indicadores no disponibles» con HTTP 200 | `returnFullResponse: true` en `api-client.ts` |
+
+Tras el fix:
 
 | Check | Resultado |
 | --- | --- |
-| Alertas visibles en Resumen | PASS |
-| Visibles tras tab Planes / Compatibilidad / Tributación | PASS |
-| CTA «Ver ofertas» → `status=expiring` + tab ofertas | PASS |
-| H17: tira sin `role=alert`/`status` (`live="off"`) | PASS (criterio actualizado post-H17; el plan v1 pedía `role=alert`) |
-| Mobile 375: tabs alcanzables con 3 alertas (y &lt; 2.5 viewports) | PASS — **no** escalar a PROD-UX |
+| Tira «Alertas operativas» sobre tabs (2 alertas reales: catálogo incompleto + huecos) | PASS |
+| Visible en Planes / Compatibilidad / Tributación | PASS |
+| CTA «Completar catálogo» → `?tab=plans` | PASS |
+| H17: sin `role=alert/status` dentro de la tira (`live=off`) | PASS |
+| Mobile ~375: tabs en primer viewport | PASS |
 
-Comando:
+Comando E2E:
 
 ```bash
 npx playwright test e2e/tests/portal-commercial-alerts-gate.spec.ts --config=e2e/playwright.portal.local.config.ts
@@ -100,9 +109,10 @@ npx playwright test e2e/tests/portal-commercial-alerts-gate.spec.ts --config=e2e
 
 ## Decisión G6 + gate (EM-ARCH)
 
-**Veredicto:** **GO identidad sin deuda de proceso** para H13–H18.
+**Veredicto:** **GO identidad** tras gate real + fix H19.
 
-- Código + suite: [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4) · 100/100  
-- Gate navegador: PASS (evidencia E2E arriba)
+- Código H13–H18: [SR-QA](500e561e-5360-4d95-adba-fc9660e89bd4) · 100/100  
+- Gate navegador: PASS (E2E + sesión real)  
+- H19: corregido en cliente (no era fallo del summary API)
 
-**No** reabrir H17/H18 sin evidencia nueva.
+**Credenciales de prueba:** no versionadas; solo uso operativo local.

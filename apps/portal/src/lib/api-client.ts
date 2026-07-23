@@ -1592,7 +1592,11 @@ export const tenantSelfApi = {
 export const commercialApi = {
   /** Retorna KPIs agregados del módulo comercial. */
   getDashboardSummary: (tenantSlug?: string) =>
-    request<CommercialDashboardSummary>('/commercial/dashboard/summary', undefined, tenantSlug),
+    request<CommercialDashboardSummary>(
+      '/commercial/dashboard/summary',
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
 
   /** Lista el cat?logo de planes del tenant autenticado. */
   getPlans: async (tenantSlug?: string) => {
