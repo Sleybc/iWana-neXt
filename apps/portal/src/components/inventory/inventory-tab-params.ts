@@ -1,5 +1,4 @@
 export type InventoryTab =
-  | 'summary'
   | 'catalog'
   | 'stock'
   | 'purchasing'
@@ -12,7 +11,6 @@ export type InventoryTab =
   | 'writeoffs';
 
 const INVENTORY_TABS: InventoryTab[] = [
-  'summary',
   'catalog',
   'stock',
   'purchasing',
@@ -25,15 +23,23 @@ const INVENTORY_TABS: InventoryTab[] = [
   'writeoffs',
 ];
 
+/** Alias legacy del tab retirado ?tab=summary (Fase H). */
+const LEGACY_SUMMARY_BASE = 'summary';
+
 const LOCATION_CREATE_SUFFIX = /crear[-_\s]?bodega/i;
 
 export function resolveInventoryTab(value: string | null | undefined): InventoryTab {
   const baseTab = extractInventoryTabBase(value);
+
+  if (baseTab === LEGACY_SUMMARY_BASE) {
+    return 'catalog';
+  }
+
   if (baseTab && INVENTORY_TABS.includes(baseTab as InventoryTab)) {
     return baseTab as InventoryTab;
   }
 
-  return 'summary';
+  return 'catalog';
 }
 
 export function extractInventoryTabBase(value: string | null | undefined): string | null {

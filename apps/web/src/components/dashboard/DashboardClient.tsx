@@ -433,7 +433,7 @@ export function DashboardClient() {
                 {
                   label: 'En configuración',
                   value: summary.provisioning,
-                  valueClassName: 'text-warning-700 dark:text-warning-400',
+                  valueClassName: 'text-amber-700 dark:text-amber-400',
                 },
                 {
                   label: 'Con error',

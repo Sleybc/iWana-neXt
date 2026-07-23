@@ -11,7 +11,7 @@ describe('inventory-tab-params', () => {
       expect(resolveInventoryTab('locations/Crear bodega')).toBe('locations');
       expect(resolveInventoryTab('issues')).toBe('issues');
       expect(resolveInventoryTab('stock')).toBe('stock');
-      expect(resolveInventoryTab(null)).toBe('summary');
+      expect(resolveInventoryTab(null)).toBe('catalog');
     });
   });
 

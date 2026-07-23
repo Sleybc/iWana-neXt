@@ -140,7 +140,6 @@ import { type CatalogFilters, EMPTY_CATALOG_FILTERS } from './catalog-filters';
 import { resolveInventoryTab, shouldOpenLocationCreateFromUrl } from './inventory-tab-params';
 
 export type InventoryTab =
-  | 'summary'
   | 'catalog'
   | 'stock'
   | 'purchasing'
@@ -615,7 +614,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     if (!tabFromUrl) {
       if (!initialTab) {
-        setActiveTab((current) => (current === 'summary' ? current : 'summary'));
+        setActiveTab((current) => (current === 'catalog' ? current : 'catalog'));
       }
       return;
     }
@@ -758,7 +757,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setActiveTab(nextTab);
 
       const nextSearchParams = new URLSearchParams(searchParams.toString());
-      if (nextTab === 'summary') {
+      if (nextTab === 'catalog') {
         nextSearchParams.delete('tab');
       } else {
         nextSearchParams.set('tab', nextTab);
@@ -1947,6 +1946,95 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         />
       )}
 
+      {!isLoading && summary && (
+        <div className="space-y-6 mb-6">
+          <InventoryDashboard summary={summary} isLoading={isLoading} />
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <PortalPanel
+              eyebrow="Abastecimiento"
+              title="Productos bajo mínimo"
+              description={`Productos cuyo disponible ya llegó al mínimo definido para reponer. ${STOCK_RESERVED_HELP_TEXT}`}
+              actions={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={navigateToReplenishment}
+                  data-testid="summary-replenishment-cta"
+                >
+                  Ver reposición
+                </Button>
+              }
+            >
+              {lowStockItems.length === 0 ? (
+                <PortalEmptyState
+                  title="Sin alertas de reposición"
+                  description="El material disponible está por encima del mínimo definido."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {lowStockItems.map((row) => (
+                    <div
+                      key={row.item.id}
+                      className="rounded-xl border border-gray-100 px-3 py-3 dark:border-dark-border"
+                    >
+                      <p className="font-medium text-gray-900 dark:text-white">{row.item.name}</p>
+                      <p className="mt-1 text-sm tabular-nums text-gray-500 dark:text-gray-400">
+                        {row.item.sku} · {STOCK_AVAILABLE_LABEL.toLowerCase()}{' '}
+                        {formatInventoryQuantity(row.available)} ·{' '}
+                        {STOCK_RESERVED_LABEL.toLowerCase()} {formatInventoryQuantity(row.reserved)}{' '}
+                        · mínimo {formatInventoryQuantity(row.minimumStock)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </PortalPanel>
+
+            <PortalPanel
+              eyebrow="Riesgos"
+              title="Activos a vigilar"
+              description="Seriales en prueba, reparación o pérdida que requieren seguimiento inmediato."
+            >
+              {monitoredAssets.length === 0 ? (
+                <PortalEmptyState
+                  title="Sin activos críticos"
+                  description="No hay activos en estados que demanden seguimiento inmediato."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {monitoredAssets.slice(0, 6).map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      className={cn(
+                        'w-full rounded-xl border border-gray-100 px-3 py-3 text-left transition hover:border-iwana-primary/40 dark:border-dark-border',
+                        interactiveFocusClassName,
+                      )}
+                      onClick={() => void openAssetDetail(asset.id)}
+                    >
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {asset.serialNumber ?? asset.assetTag ?? 'Sin código'}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {getSerializedAssetStatusLabel(asset.currentStatus)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PortalPanel>
+          </div>
+
+          <InventoryCatalogSummaryPreview
+            items={items}
+            isLoading={isLoading}
+            onOpenCatalog={() => setActiveTab('catalog')}
+          />
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList aria-label="Secciones de inventario" className={portalModuleTabsShellClassName}>
           <div className={portalModuleTabsGroupClassName}>
@@ -1958,9 +2046,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               aria-labelledby="inventory-tabs-operation-label"
               className={portalModuleTabsTrackClassName}
             >
-              <TabsTrigger value="summary" className={portalModuleTabTriggerClassName}>
-                Resumen
-              </TabsTrigger>
               <TabsTrigger value="catalog" className={portalModuleTabTriggerClassName}>
                 Catálogo
               </TabsTrigger>
@@ -2006,97 +2091,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             </div>
           </div>
         </TabsList>
-
-        <TabsContent value="summary" className="space-y-6">
-          <InventoryDashboard summary={summary} isLoading={isLoading} />
-
-          <div className="grid gap-6 xl:grid-cols-2">
-            <PortalPanel
-              eyebrow="Abastecimiento"
-              title="Productos bajo mínimo"
-              description={`Productos cuyo disponible ya llegó al mínimo definido para reponer. ${STOCK_RESERVED_HELP_TEXT}`}
-              actions={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={navigateToReplenishment}
-                  data-testid="summary-replenishment-cta"
-                >
-                  Ver reposición
-                </Button>
-              }
-            >
-              {isLoading ? (
-                <PortalSkeletonBlock className="h-48" />
-              ) : lowStockItems.length === 0 ? (
-                <PortalEmptyState
-                  title="Sin alertas de reposición"
-                  description="El material disponible está por encima del mínimo definido."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {lowStockItems.map((row) => (
-                    <div
-                      key={row.item.id}
-                      className="rounded-xl border border-gray-100 px-3 py-3 dark:border-dark-border"
-                    >
-                      <p className="font-medium text-gray-900 dark:text-white">{row.item.name}</p>
-                      <p className="mt-1 text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                        {row.item.sku} · {STOCK_AVAILABLE_LABEL.toLowerCase()}{' '}
-                        {formatInventoryQuantity(row.available)} ·{' '}
-                        {STOCK_RESERVED_LABEL.toLowerCase()} {formatInventoryQuantity(row.reserved)}{' '}
-                        · mínimo {formatInventoryQuantity(row.minimumStock)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </PortalPanel>
-
-            <PortalPanel
-              eyebrow="Riesgos"
-              title="Activos a vigilar"
-              description="Seriales en prueba, reparación o pérdida que requieren seguimiento inmediato."
-            >
-              {isLoading ? (
-                <PortalSkeletonBlock className="h-48" />
-              ) : monitoredAssets.length === 0 ? (
-                <PortalEmptyState
-                  title="Sin activos críticos"
-                  description="No hay activos en estados que demanden seguimiento inmediato."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {monitoredAssets.slice(0, 6).map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      className={cn(
-                        'w-full rounded-xl border border-gray-100 px-3 py-3 text-left transition hover:border-iwana-primary/40 dark:border-dark-border',
-                        interactiveFocusClassName,
-                      )}
-                      onClick={() => void openAssetDetail(asset.id)}
-                    >
-                      <p className="font-medium text-gray-900 dark:text-white">
-                        {asset.serialNumber ?? asset.assetTag ?? 'Sin código'}
-                      </p>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {getSerializedAssetStatusLabel(asset.currentStatus)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </PortalPanel>
-          </div>
-
-          <InventoryCatalogSummaryPreview
-            items={items}
-            isLoading={isLoading}
-            onOpenCatalog={() => setActiveTab('catalog')}
-          />
-        </TabsContent>
 
         <TabsContent value="catalog" className="space-y-6">
           {catalogFeedback ? (

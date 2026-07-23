@@ -1459,7 +1459,7 @@ describe('InventoryClient', () => {
       await waitFor(() => {
         expect(screen.getByText('Catálogo de productos')).toBeInTheDocument();
         expect(screen.getByLabelText('Buscar producto')).toBeInTheDocument();
-        expect(screen.getByText('ONT-001')).toBeInTheDocument();
+        expect(screen.getAllByText('ONT-001').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument();
       });
 
@@ -1685,7 +1685,9 @@ describe('InventoryClient', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
 
-    const skuCell = await screen.findByText('ONT-001');
+    const skuCells = await screen.findAllByText('ONT-001');
+    // El último es la celda de la tabla de catálogo (renderiza después del resumen)
+    const skuCell = skuCells[skuCells.length - 1]!;
     fireEvent.click(skuCell.closest('tr') as HTMLElement);
 
     await waitFor(() => {

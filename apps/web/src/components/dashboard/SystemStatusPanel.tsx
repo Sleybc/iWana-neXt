@@ -25,9 +25,9 @@ const statusStyles: Record<StatusLevel, { dot: string; text: string; bg: string 
     bg: 'bg-success-50 dark:bg-dark-surface-3/30',
   },
   warning: {
-    dot: 'bg-warning-500',
-    text: 'text-warning-700 dark:text-warning-400',
-    bg: 'bg-warning-50 dark:bg-dark-surface-3/30',
+    dot: 'bg-amber-500',
+    text: 'text-amber-700 dark:text-amber-400',
+    bg: 'bg-amber-50 dark:bg-dark-surface-3/30',
   },
   error: {
     dot: 'bg-error-500',

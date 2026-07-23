@@ -46,7 +46,7 @@ const TONE_PRIORITY: Record<NotificationTone, number> = {
 // info no tiene escala info-* en globals.css; se usa azul de marca (token DS existente).
 const toneClasses: Record<NotificationTone, string> = {
   error: 'bg-error-500',
-  warning: 'bg-warning-500',
+  warning: 'bg-amber-500',
   info: 'bg-iwana-primary',
   success: 'bg-success-500',
 };
@@ -168,7 +168,7 @@ export function NotificationBell() {
     worstAlertTone === 'error'
       ? 'text-error-600 dark:text-error-400'
       : worstAlertTone === 'warning'
-        ? 'text-warning-600 dark:text-warning-400'
+        ? 'text-amber-600 dark:text-amber-400'
         : '';
 
   return (
@@ -190,7 +190,7 @@ export function NotificationBell() {
           <span
             className={cn(
               'absolute top-1 right-1 h-2 w-2 rounded-full',
-              worstAlertTone === 'error' ? 'bg-error-500' : 'bg-warning-500',
+              worstAlertTone === 'error' ? 'bg-error-500' : 'bg-amber-500',
             )}
           />
         )}
