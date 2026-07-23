@@ -931,6 +931,8 @@ export interface AdditionalProduct {
   requiresInventory: boolean;
   isActive: boolean;
   description?: string | null;
+  currentPrice: string | null;
+  basePrice: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1196,6 +1198,7 @@ export interface CreateAdditionalProductDto {
   isLoan?: boolean;
   requiresInventory?: boolean;
   isActive?: boolean;
+  basePrice?: number;
 }
 
 export interface UpdateAdditionalProductDto {
@@ -1205,6 +1208,7 @@ export interface UpdateAdditionalProductDto {
   isLoan?: boolean;
   requiresInventory?: boolean;
   isActive?: boolean;
+  basePrice?: number;
 }
 
 export interface CreateAdditionalServiceDto {
@@ -1307,6 +1311,8 @@ function mapCommercialProduct(item: CommercialCatalogItemPayload): AdditionalPro
     requiresInventory: item.requiresInventory ?? false,
     isActive: item.isActive,
     description: item.description,
+    currentPrice: item.currentPrice ?? null,
+    basePrice: Number(item.currentPrice ?? 0),
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
   };
@@ -1715,7 +1721,7 @@ export const commercialApi = {
 
   /** Crea un producto adicional en el cat?logo del tenant autenticado. */
   createAdditionalProduct: async (dto: CreateAdditionalProductDto, tenantSlug?: string) => {
-    await request(
+    const item = await request<CommercialCatalogItemPayload>(
       '/commercial/catalog/products',
       {
         method: 'POST',
@@ -1731,6 +1737,10 @@ export const commercialApi = {
       tenantSlug,
     );
 
+    if (dto.basePrice !== undefined) {
+      await setCommercialCatalogPrice(item.id, { basePrice: dto.basePrice }, tenantSlug);
+    }
+
     return commercialApi.getAdditionalProducts(tenantSlug);
   },
 
@@ -1740,7 +1750,7 @@ export const commercialApi = {
     dto: UpdateAdditionalProductDto,
     tenantSlug?: string,
   ) =>
-    request<AdditionalProduct[]>(
+    request(
       `/commercial/catalog/${productId}`,
       {
         method: 'PATCH',
@@ -1756,7 +1766,24 @@ export const commercialApi = {
         }),
       },
       tenantSlug,
-    ).then(() => commercialApi.getAdditionalProducts(tenantSlug)),
+    ).then(async () => {
+      if (dto.basePrice !== undefined) {
+        try {
+          await setCommercialCatalogPrice(productId, { basePrice: dto.basePrice }, tenantSlug);
+        } catch (error) {
+          if (
+            error instanceof ApiError &&
+            error.status === 409 &&
+            /precio vigente id.?ntico/i.test(error.message)
+          ) {
+            return commercialApi.getAdditionalProducts(tenantSlug);
+          }
+          throw error;
+        }
+      }
+
+      return commercialApi.getAdditionalProducts(tenantSlug);
+    }),
 
   /** Elimina un producto adicional del cat?logo del tenant autenticado. */
   deleteAdditionalProduct: (productId: string, tenantSlug?: string) =>
@@ -1971,6 +1998,28 @@ export const commercialApi = {
   /** Lista reglas tributarias del tenant. Usado por TaxApplicationRulesManager para selecci?n. */
   getTaxRules: (tenantSlug?: string) =>
     request<TaxRule[]>('/commercial/tax-rules', undefined, tenantSlug),
+
+  /** Crea una regla tributaria del tenant (sin clasificaci?n legacy obligatoria). */
+  createTaxRule: (
+    dto: {
+      taxType: string;
+      ratePercentage: string;
+      customerSegment?: string;
+      stratumFrom?: number;
+      stratumTo?: number;
+      priority?: number;
+      municipalityCode?: string;
+      validFrom?: string;
+      validTo?: string;
+      taxClassificationId?: string;
+    },
+    tenantSlug?: string,
+  ) =>
+    request<TaxRule>(
+      '/commercial/tax-rules',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
 
   // ?? Cat?logo MOD07 ???????????????????????????????????????????????????????
 

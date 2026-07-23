@@ -42,6 +42,7 @@ import { ExtendInventoryWriteOffsPayload0820000000000 } from './082_extend_inven
 import { AlignUsersEntityDdl0830000000000 } from './083_align_users_entity_ddl';
 import { UsersSearchTrgmIndexes0840000000000 } from './084_users_search_trgm_indexes';
 import { NarrowUsersRoleToTenantDomain0850000000000 } from './085_narrow_users_role_to_tenant_domain';
+import { TaxRulesClassificationNullable0860000000000 } from './086_tax_rules_classification_nullable';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -161,6 +162,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AlignUsersEntityDdl0830000000000,
   UsersSearchTrgmIndexes0840000000000,
   NarrowUsersRoleToTenantDomain0850000000000,
+  TaxRulesClassificationNullable0860000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -283,7 +283,7 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
     });
   }
 
-  // ─── Listado de TaxRule (para selección en TaxApplicationRulesManager) ───
+  // ─── Listado / alta de TaxRule ───────────────────────────────────────────
 
   /**
    * Lista las reglas tributarias del tenant para ser usadas en la UI
@@ -296,6 +296,42 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
         where: { tenantId },
         order: { createdAt: 'DESC' },
       });
+    });
+  }
+
+  async createRule(
+    dto: {
+      taxClassificationId?: string;
+      customerSegment?: string;
+      stratumFrom?: number;
+      stratumTo?: number;
+      priority?: number;
+      municipalityCode?: string;
+      taxType: TaxRule['taxType'];
+      ratePercentage: string;
+      validFrom?: string;
+      validTo?: string;
+    },
+    createdBy: string,
+  ): Promise<TaxRule> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rule = qr.manager.create(TaxRule, {
+        tenantId,
+        taxClassificationId: dto.taxClassificationId ?? null,
+        customerSegment: (dto.customerSegment as TaxRule['customerSegment']) ?? null,
+        municipalityCode: dto.municipalityCode ?? null,
+        taxType: dto.taxType,
+        ratePercentage: dto.ratePercentage,
+        isActive: true,
+        validFrom: dto.validFrom ? new Date(dto.validFrom) : new Date(),
+        validTo: dto.validTo ? new Date(dto.validTo) : null,
+        createdBy,
+        stratumFrom: dto.stratumFrom ?? null,
+        stratumTo: dto.stratumTo ?? null,
+        priority: dto.priority ?? 0,
+      });
+      return qr.manager.save(TaxRule, rule);
     });
   }
 }

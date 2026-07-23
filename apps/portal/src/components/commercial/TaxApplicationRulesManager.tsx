@@ -57,7 +57,7 @@ interface TaxApplicationRulesManagerProps {
   canEdit: boolean;
 }
 
-// Formulario local que unifica campos de create + update
+// Formulario local que unifica campos de create (vínculo / guiado) + update
 interface AppFormState {
   taxRuleId?: string;
   taxDefinitionId?: string;
@@ -65,9 +65,20 @@ interface AppFormState {
   rateOverride?: number | null;
   priority?: number;
   isActive?: boolean;
+  /** Campos de alta guiada (regla nueva + vínculo) */
+  taxType?: 'IVA' | 'RETENTION' | 'ICA';
+  ratePercentage?: string;
 }
 
-const INITIAL_FORM: AppFormState = { treatment: 'STANDARD', priority: 0, isActive: true };
+type FormMode = 'link' | 'guided' | 'edit';
+
+const INITIAL_FORM: AppFormState = {
+  treatment: 'STANDARD',
+  priority: 0,
+  isActive: true,
+  taxType: 'IVA',
+  ratePercentage: '19.00',
+};
 
 /** Ícono de ayuda con popover click-to-open */
 function HelpPopover({ children }: { children: React.ReactNode }) {
@@ -117,6 +128,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<FormMode>('link');
   const [editTarget, setEditTarget] = useState<TaxRuleApplication | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaxRuleApplication | null>(null);
   const [saving, setSaving] = useState(false);
@@ -166,11 +178,23 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   };
 
   const activeApplicationsCount = applications.filter((app) => app.isActive).length;
-  const isEditing = Boolean(editTarget);
+  const isEditing = formMode === 'edit';
+  const isGuided = formMode === 'guided';
   const showLoadErrorOnly = Boolean(loadError) && applications.length === 0 && !loading;
 
   function openCreateForm() {
     setEditTarget(null);
+    setFormMode('link');
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setForm(INITIAL_FORM);
+    setIsFormOpen(true);
+  }
+
+  function openGuidedCreateForm() {
+    setEditTarget(null);
+    setFormMode('guided');
     setFormError(null);
     setActionError(null);
     setSuccessMessage(null);
@@ -180,6 +204,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
 
   function openEditForm(app: TaxRuleApplication) {
     setEditTarget(app);
+    setFormMode('edit');
     setFormError(null);
     setActionError(null);
     setSuccessMessage(null);
@@ -196,6 +221,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
     setIsFormOpen(nextOpen);
     if (!nextOpen) {
       setEditTarget(null);
+      setFormMode('link');
       setFormError(null);
       setForm(INITIAL_FORM);
     }
@@ -219,6 +245,43 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       setSuccessMessage('Vinculación creada.');
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Error al crear la vinculación.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGuidedCreate = async () => {
+    if (!form.taxDefinitionId || !form.taxType || !form.ratePercentage?.trim()) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      const rule = await commercialApi.createTaxRule({
+        taxType: form.taxType,
+        ratePercentage: form.ratePercentage.trim(),
+        ...(form.priority !== undefined ? { priority: form.priority } : {}),
+      });
+      try {
+        await commercialApi.createTaxRuleApplication({
+          taxRuleId: rule.id,
+          taxDefinitionId: form.taxDefinitionId,
+          treatment: form.treatment ?? 'STANDARD',
+          ...(form.rateOverride !== undefined ? { rateOverride: form.rateOverride } : {}),
+          ...(form.priority !== undefined ? { priority: form.priority } : {}),
+        });
+      } catch (linkErr) {
+        await load();
+        setFormError(
+          linkErr instanceof ApiError
+            ? `Regla creada, pero falló el vínculo: ${linkErr.message}. Usa «Vincular regla» para reintentar.`
+            : 'Regla creada, pero falló el vínculo. Usa «Vincular regla» para reintentar.',
+        );
+        return;
+      }
+      handleFormOpenChange(false);
+      await load();
+      setSuccessMessage('Regla y vinculación creadas.');
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : 'Error al crear la regla tributaria.');
     } finally {
       setSaving(false);
     }
@@ -281,10 +344,15 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             <RotateCcw className="h-4 w-4" aria-hidden="true" />
           </Button>
           {canEdit && (
-            <Button onClick={openCreateForm}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Vincular regla
-            </Button>
+            <>
+              <Button variant="secondary" onClick={openCreateForm}>
+                Vincular regla
+              </Button>
+              <Button onClick={openGuidedCreateForm}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Nueva regla y vínculo
+              </Button>
+            </>
           )}
         </>
       }
@@ -312,13 +380,17 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       ) : applications.length === 0 ? (
         <PortalEmptyState
           title="Sin reglas de aplicación"
-          description="Vincula una regla comercial con una definición del catálogo para activar el motor tributario."
+          description={
+            rules.length === 0
+              ? 'Crea una regla tributaria y vincúlala a una definición del catálogo para activar el motor.'
+              : 'Vincula una regla comercial con una definición del catálogo para activar el motor tributario.'
+          }
           {...(canEdit
             ? {
                 action: (
-                  <Button onClick={openCreateForm}>
+                  <Button onClick={rules.length === 0 ? openGuidedCreateForm : openCreateForm}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
-                    Vincular regla
+                    {rules.length === 0 ? 'Nueva regla y vínculo' : 'Vincular regla'}
                   </Button>
                 ),
               }
@@ -440,11 +512,19 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
         open={isFormOpen}
         onClose={() => handleFormOpenChange(false)}
         eyebrow="Tributación"
-        title={isEditing ? 'Editar vinculación tributaria' : 'Vincular regla con catálogo'}
+        title={
+          isEditing
+            ? 'Editar vinculación tributaria'
+            : isGuided
+              ? 'Nueva regla y vínculo'
+              : 'Vincular regla con catálogo'
+        }
         description={
           isEditing && editTarget
             ? `${ruleName(editTarget.taxRuleId)} → ${defName(editTarget.taxDefinitionId)}`
-            : 'Asocia una regla comercial activa con una definición tributaria del catálogo.'
+            : isGuided
+              ? 'Crea la regla comercial y la vincula a una definición del catálogo en un solo paso.'
+              : 'Asocia una regla comercial activa con una definición tributaria del catálogo.'
         }
         footer={
           <div className="flex flex-wrap justify-end gap-2">
@@ -458,18 +538,57 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             </Button>
             <Button
               type="button"
-              onClick={() => void (isEditing ? handleUpdate() : handleCreate())}
-              disabled={saving || (!isEditing && (!form.taxRuleId || !form.taxDefinitionId))}
+              onClick={() =>
+                void (isEditing ? handleUpdate() : isGuided ? handleGuidedCreate() : handleCreate())
+              }
+              disabled={
+                saving ||
+                (isGuided
+                  ? !form.taxDefinitionId || !form.taxType || !form.ratePercentage?.trim()
+                  : !isEditing && (!form.taxRuleId || !form.taxDefinitionId))
+              }
               loading={saving}
             >
-              {isEditing ? 'Guardar' : 'Vincular'}
+              {isEditing ? 'Guardar' : isGuided ? 'Crear y vincular' : 'Vincular'}
             </Button>
           </div>
         }
       >
         <div className="space-y-5">
           <section className="space-y-4">
-            {!isEditing && (
+            {!isEditing && isGuided && (
+              <>
+                <div className="space-y-1.5">
+                  <SelectLabelWithHelp label="Tipo de tributo" required>
+                    <HelpPopover>
+                      <p className="text-xs">Tipo comercial de la regla (IVA, retención o ICA).</p>
+                    </HelpPopover>
+                  </SelectLabelWithHelp>
+                  <Select
+                    value={form.taxType ?? 'IVA'}
+                    onChange={(e) => {
+                      const v = e.target.value as 'IVA' | 'RETENTION' | 'ICA';
+                      setForm((f) => ({ ...f, taxType: v }));
+                    }}
+                  >
+                    <option value="IVA">IVA</option>
+                    <option value="RETENTION">Retención</option>
+                    <option value="ICA">ICA</option>
+                  </Select>
+                </div>
+
+                <div>
+                  <Input
+                    label="Tasa (%)"
+                    value={form.ratePercentage ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, ratePercentage: e.target.value }))}
+                    placeholder="19.00"
+                  />
+                </div>
+              </>
+            )}
+
+            {!isEditing && !isGuided && (
               <>
                 <div className="space-y-1.5">
                   <SelectLabelWithHelp label="Regla comercial" required>
@@ -498,32 +617,34 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                       ))}
                   </Select>
                 </div>
-
-                <div className="space-y-1.5">
-                  <SelectLabelWithHelp label="Definición tributaria" required>
-                    <HelpPopover>
-                      <p className="text-xs">
-                        Impuesto concreto del catálogo que se aplicará cuando la regla seleccionada
-                        coincida (ej: IVA estándar 19%). Solo se muestran definiciones activas.
-                      </p>
-                    </HelpPopover>
-                  </SelectLabelWithHelp>
-                  <Select
-                    value={form.taxDefinitionId ?? ''}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setForm((f) => ({ ...f, taxDefinitionId: v }) as AppFormState);
-                    }}
-                  >
-                    <option value="">Selecciona una definición…</option>
-                    {definitions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.code})
-                      </option>
-                    ))}
-                  </Select>
-                </div>
               </>
+            )}
+
+            {!isEditing && (
+              <div className="space-y-1.5">
+                <SelectLabelWithHelp label="Definición tributaria" required>
+                  <HelpPopover>
+                    <p className="text-xs">
+                      Impuesto concreto del catálogo que se aplicará cuando la regla seleccionada
+                      coincida (ej: IVA estándar 19%). Solo se muestran definiciones activas.
+                    </p>
+                  </HelpPopover>
+                </SelectLabelWithHelp>
+                <Select
+                  value={form.taxDefinitionId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setForm((f) => ({ ...f, taxDefinitionId: v }) as AppFormState);
+                  }}
+                >
+                  <option value="">Selecciona una definición…</option>
+                  {definitions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.code})
+                    </option>
+                  ))}
+                </Select>
+              </div>
             )}
 
             <div className="space-y-1.5">

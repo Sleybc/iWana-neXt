@@ -1,6 +1,7 @@
 import type { CommercialDashboardSummary } from '@/lib/api-client';
 import {
   buildCommercialAlerts,
+  resolveCatalogIncompleteTab,
   resolveOffersRiskTab,
   resolveRulesGapTab,
 } from './commercial-alerts';
@@ -65,13 +66,37 @@ describe('buildCommercialAlerts', () => {
   });
 
   it('emite alerta de catálogo incompleto sin filtro de estado', () => {
-    const alerts = buildCommercialAlerts(buildSummary({ catalogIncompleteActiveCount: 2 }));
+    const alerts = buildCommercialAlerts(
+      buildSummary({
+        catalogIncompleteActiveCount: 2,
+        attentionItems: [
+          {
+            id: 'prod-1',
+            name: 'TV Box',
+            entityType: 'product',
+            reason: 'missing_current_price',
+            destinoTab: 'products',
+            validTo: null,
+            usesRemaining: null,
+          },
+          {
+            id: 'prod-2',
+            name: 'Cámara',
+            entityType: 'product',
+            reason: 'missing_current_price',
+            destinoTab: 'products',
+            validTo: null,
+            usesRemaining: null,
+          },
+        ],
+      }),
+    );
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({
       key: 'catalog-incomplete',
       variant: 'error',
-      tab: 'plans',
+      tab: 'products',
     });
     expect(alerts[0]?.status).toBeUndefined();
   });
@@ -142,5 +167,92 @@ describe('resolveRulesGapTab', () => {
 
   it('elige tributación en el resto de los casos', () => {
     expect(resolveRulesGapTab(buildSummary())).toBe('taxation');
+  });
+});
+
+describe('resolveCatalogIncompleteTab', () => {
+  it('elige products cuando dominan los incompletos de producto', () => {
+    const summary = buildSummary({
+      attentionItems: [
+        {
+          id: '1',
+          name: 'TV Box',
+          entityType: 'product',
+          reason: 'missing_current_price',
+          destinoTab: 'products',
+          validTo: null,
+          usesRemaining: null,
+        },
+        {
+          id: '2',
+          name: 'Cámara',
+          entityType: 'product',
+          reason: 'missing_current_price',
+          destinoTab: 'products',
+          validTo: null,
+          usesRemaining: null,
+        },
+        {
+          id: '3',
+          name: 'Plan X',
+          entityType: 'plan',
+          reason: 'missing_current_price',
+          destinoTab: 'plans',
+          validTo: null,
+          usesRemaining: null,
+        },
+      ],
+    });
+
+    expect(resolveCatalogIncompleteTab(summary)).toBe('products');
+  });
+
+  it('elige services cuando dominan los servicios incompletos', () => {
+    const summary = buildSummary({
+      attentionItems: [
+        {
+          id: '1',
+          name: 'Instalación',
+          entityType: 'service',
+          reason: 'missing_current_price',
+          destinoTab: 'services',
+          validTo: null,
+          usesRemaining: null,
+        },
+      ],
+    });
+
+    expect(resolveCatalogIncompleteTab(summary)).toBe('services');
+  });
+
+  it('en empate plans/products prefiere plans', () => {
+    const summary = buildSummary({
+      attentionItems: [
+        {
+          id: '1',
+          name: 'Plan',
+          entityType: 'plan',
+          reason: 'missing_current_price',
+          destinoTab: 'plans',
+          validTo: null,
+          usesRemaining: null,
+        },
+        {
+          id: '2',
+          name: 'Producto',
+          entityType: 'product',
+          reason: 'missing_current_price',
+          destinoTab: 'products',
+          validTo: null,
+          usesRemaining: null,
+        },
+      ],
+    });
+
+    expect(resolveCatalogIncompleteTab(summary)).toBe('plans');
+  });
+
+  it('sin attention items de precio cae a plans', () => {
+    expect(resolveCatalogIncompleteTab(buildSummary())).toBe('plans');
   });
 });

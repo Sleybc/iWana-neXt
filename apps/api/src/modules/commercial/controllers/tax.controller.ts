@@ -9,6 +9,7 @@
   ParseUUIDPipe,
   Patch,
   Post,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -16,9 +17,11 @@ import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { TaxApplicationService } from '../services/tax-application.service';
 import {
   CreateTaxRuleApplicationDto,
+  CreateTaxRuleDto,
   SimulateTaxDto,
   UpdateTaxRuleApplicationDto,
 } from '../dto/tax.dto';
@@ -30,13 +33,22 @@ import {
 export class TaxController {
   constructor(private readonly taxApplicationService: TaxApplicationService) {}
 
-  // ─── Reglas tributarias (listado para TaxApplicationRulesManager) ────────
+  // ─── Reglas tributarias (listado + alta para TaxApplicationRulesManager) ─
 
   @Get('tax-rules')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar reglas tributarias del tenant' })
   async findAllRules() {
     const data = await this.taxApplicationService.listRules();
+    return { data };
+  }
+
+  @Post('tax-rules')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Crear regla tributaria del tenant' })
+  @ApiResponse({ status: 201, description: 'Regla tributaria creada' })
+  async createRule(@Body() dto: CreateTaxRuleDto, @Request() req: { user: JwtPayload }) {
+    const data = await this.taxApplicationService.createRule(dto, req.user.sub);
     return { data };
   }
 

@@ -109,6 +109,7 @@ describe('TaxController HTTP', () => {
     updateApplication: jest.fn(),
     deleteApplication: jest.fn(),
     listRules: jest.fn(),
+    createRule: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -163,6 +164,38 @@ describe('TaxController HTTP', () => {
       .get('/api/v1/commercial/tax-rules')
       .set('Authorization', 'Bearer sales-token')
       .expect(403);
+  });
+
+  it('POST /api/v1/commercial/tax-rules crea regla sin clasificación legacy', async () => {
+    const created = {
+      id: 'rule-new',
+      tenantId: 'tenant-test',
+      taxClassificationId: null,
+      customerSegment: null,
+      taxType: 'IVA',
+      ratePercentage: '19.00',
+      stratumFrom: null,
+      stratumTo: null,
+      priority: 10,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+    taxApplicationServiceMock.createRule.mockResolvedValue(created);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/commercial/tax-rules')
+      .set('Authorization', 'Bearer accountant-token')
+      .send({ taxType: 'IVA', ratePercentage: '19.00', priority: 10 })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.data.id).toBe('rule-new');
+        expect(body.data.taxClassificationId).toBeNull();
+      });
+
+    expect(taxApplicationServiceMock.createRule).toHaveBeenCalledWith(
+      expect.objectContaining({ taxType: 'IVA', ratePercentage: '19.00', priority: 10 }),
+      'usr-accountant-sub',
+    );
   });
 
   // ─── POST /commercial/tax/simulate ──────────────────────────────────────

@@ -17,10 +17,12 @@ import {
 import { CustomerSegment, TaxType } from '@iwana/shared';
 
 export class CreateTaxRuleDto {
-  @ApiProperty({ description: 'UUID de la clasificación tributaria' })
-  @IsString()
-  @IsNotEmpty()
-  taxClassificationId: string;
+  @ApiPropertyOptional({
+    description: 'UUID de clasificación tributaria legacy (opcional; tabla eliminada en mig. 025)',
+  })
+  @IsOptional()
+  @IsUUID()
+  taxClassificationId?: string;
 
   @ApiPropertyOptional({ description: 'Segmento de cliente (null = todos)' })
   @IsOptional()

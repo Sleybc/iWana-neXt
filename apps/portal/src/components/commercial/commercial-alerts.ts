@@ -37,6 +37,32 @@ export function resolveRulesGapTab(summary: CommercialDashboardSummary): Commerc
   return 'taxation';
 }
 
+/**
+ * Tab destino de «Completar catálogo»: tipo con más ítems sin precio vigente.
+ * Empate: plans > products > services (estable, documentado en el design spec).
+ */
+export function resolveCatalogIncompleteTab(summary: CommercialDashboardSummary): CommercialTab {
+  const missing = summary.attentionItems.filter((item) => item.reason === 'missing_current_price');
+  if (missing.length === 0) {
+    return 'plans';
+  }
+
+  const counts = { plans: 0, products: 0, services: 0 };
+  for (const item of missing) {
+    if (item.destinoTab === 'plans') counts.plans += 1;
+    else if (item.destinoTab === 'products') counts.products += 1;
+    else if (item.destinoTab === 'services') counts.services += 1;
+  }
+
+  if (counts.products > counts.plans && counts.products >= counts.services) {
+    return 'products';
+  }
+  if (counts.services > counts.plans && counts.services > counts.products) {
+    return 'services';
+  }
+  return 'plans';
+}
+
 export function buildCommercialAlerts(summary: CommercialDashboardSummary): CommercialAlert[] {
   const alerts: CommercialAlert[] = [];
 
@@ -61,7 +87,7 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
       title: 'Catálogo incompleto',
       description: `${count} ${summary.catalogIncompleteActiveCount === 1 ? 'ítem activo está' : 'ítems activos están'} sin precio vigente.`,
       ctaLabel: 'Completar catálogo',
-      tab: 'plans',
+      tab: resolveCatalogIncompleteTab(summary),
     });
   }
 

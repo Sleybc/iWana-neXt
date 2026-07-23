@@ -73,6 +73,7 @@ const productFormSchema = z.object({
   name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(100, 'Máximo 100 caracteres.'),
   description: z.string().trim().max(240, 'Máximo 240 caracteres.').optional(),
   category: z.enum(PRODUCT_CATEGORY_VALUES),
+  basePrice: z.coerce.number().min(0, 'No puede ser negativo.'),
   isLoan: z.boolean(),
   requiresInventory: z.boolean(),
   isActive: z.boolean(),
@@ -98,6 +99,7 @@ function getDefaultProductFormValues(): ProductFormValues {
     name: '',
     description: '',
     category: ProductCategory.CONNECTIVITY,
+    basePrice: 0,
     isLoan: false,
     requiresInventory: false,
     isActive: true,
@@ -109,6 +111,7 @@ function toProductFormValues(product: AdditionalProduct): ProductFormValues {
     name: product.name,
     description: product.description ?? '',
     category: product.category,
+    basePrice: product.basePrice,
     isLoan: product.isLoan,
     requiresInventory: product.requiresInventory,
     isActive: product.isActive,
@@ -117,6 +120,14 @@ function toProductFormValues(product: AdditionalProduct): ProductFormValues {
 
 function normalizeSearchValue(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function filtersEqual(a: ProductCatalogFilters, b: ProductCatalogFilters): boolean {
@@ -280,6 +291,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
           isLoan: values.isLoan,
           requiresInventory: values.requiresInventory,
           isActive: values.isActive,
+          basePrice: values.basePrice,
         };
         const updated = await commercialApi.updateAdditionalProduct(editingProductId, dto);
         setProducts(updated);
@@ -292,6 +304,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
           isLoan: values.isLoan,
           requiresInventory: values.requiresInventory,
           isActive: values.isActive,
+          basePrice: values.basePrice,
         };
         const created = await commercialApi.createAdditionalProduct(dto);
         setProducts(created);
@@ -616,6 +629,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                       <PortalDataTableHead>Producto</PortalDataTableHead>
                       <PortalDataTableHead>Categoría</PortalDataTableHead>
                       <PortalDataTableHead>Modelo comercial</PortalDataTableHead>
+                      <PortalDataTableHead>Precio vigente</PortalDataTableHead>
                       <PortalDataTableHead>Estado</PortalDataTableHead>
                       <PortalDataTableHead>Señales</PortalDataTableHead>
                       {canEdit && (
@@ -649,6 +663,11 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                         </td>
                         <td className={portalDataTableCellClassName}>
                           {product.isLoan ? 'Comodato' : 'Venta'}
+                        </td>
+                        <td className={portalDataTableCellClassName}>
+                          <p className="font-mono font-medium tabular-nums text-gray-900 dark:text-white">
+                            {formatCurrency(product.basePrice)}
+                          </p>
                         </td>
                         <td className={portalDataTableCellClassName}>
                           <Badge
@@ -823,6 +842,23 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Define cómo se comercializa el producto y si se mantiene disponible para nuevas
                 operaciones.
+              </p>
+            </div>
+
+            <div>
+              <Input
+                label="Precio base (COP)"
+                type="number"
+                min={0}
+                step={1000}
+                {...register('basePrice', { valueAsNumber: true })}
+                aria-invalid={errors.basePrice ? 'true' : 'false'}
+              />
+              {errors.basePrice && (
+                <p className="mt-1 text-sm text-error-600">{errors.basePrice.message}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                En comodato puedes registrar 0 si no hay cargo recurrente.
               </p>
             </div>
 
