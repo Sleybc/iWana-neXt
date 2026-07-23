@@ -13,12 +13,11 @@ import { formatCompactNumber } from '@/components/commercial/commercial-format';
 import {
   PortalEmptyState,
   PortalMetricCard,
-  PortalPanel,
   PortalSkeletonBlock,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 
-interface CommercialDashboardProps {
+interface CommercialActivityPanelProps {
   summary: CommercialDashboardSummary | null;
   isLoading?: boolean;
   onNavigateTab?: CommercialNavigateHandler;
@@ -183,10 +182,7 @@ function OperationalSummaryBody({
 
   return (
     <>
-      <div
-        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-        aria-label="Indicadores comerciales"
-      >
+      <div aria-label="Indicadores comerciales">
         <PortalMetricCard
           eyebrow="Catálogo"
           value={formatCompactNumber(summary.catalogSellableActiveCount)}
@@ -195,23 +191,6 @@ function OperationalSummaryBody({
           description="Planes, productos y servicios activos con precio vigente."
           accent={summary.catalogIncompleteActiveCount > 0 ? 'danger' : 'neutral'}
           {...(onNavigateTab ? { onClick: () => onNavigateTab('plans') } : {})}
-        />
-        <PortalMetricCard
-          eyebrow="Catálogo"
-          value={formatCompactNumber(summary.activePlansCount)}
-          total={formatCompactNumber(summary.plansCount)}
-          title="Planes activos"
-          description="Planes habilitados para venta."
-          accent="neutral"
-          {...(onNavigateTab ? { onClick: () => onNavigateTab('plans') } : {})}
-        />
-        <PortalMetricCard
-          eyebrow="Ofertas"
-          value={formatCompactNumber(summary.activeOffersCount)}
-          title="Ofertas vigentes"
-          description="Combos activos en vigencia y promociones vigentes."
-          accent="neutral"
-          {...(onNavigateTab ? { onClick: () => onNavigateTab('bundles') } : {})}
         />
       </div>
 
@@ -251,63 +230,64 @@ function OperationalSummaryBody({
   );
 }
 
-export function CommercialDashboard({
+export function CommercialActivityPanel({
   summary,
   isLoading = false,
   onNavigateTab,
   onRetry,
-}: CommercialDashboardProps) {
-  return (
-    <PortalPanel
-      eyebrow="Operación"
-      title="Resumen comercial"
-      description="Estado del catálogo, las ofertas y las reglas, con lo que cambió en los últimos 7 días."
-      contentClassName="space-y-6"
-    >
-      {isLoading ? (
-        <div className="space-y-6" aria-busy="true" aria-label="Cargando resumen comercial">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }, (_, index) => (
-              <PortalSkeletonBlock key={index} className="min-h-[148px] rounded-3xl" />
-            ))}
-          </div>
-          <div className="space-y-2">
-            {Array.from({ length: 5 }, (_, index) => (
-              <PortalSkeletonBlock key={index} className="min-h-[52px] rounded-xl" />
-            ))}
-          </div>
+}: CommercialActivityPanelProps) {
+  if (isLoading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Cargando actividad comercial">
+        <PortalSkeletonBlock className="min-h-[148px] rounded-3xl" />
+        <div className="space-y-2">
+          {Array.from({ length: 5 }, (_, index) => (
+            <PortalSkeletonBlock key={index} className="min-h-[52px] rounded-xl" />
+          ))}
         </div>
-      ) : !summary ? (
-        <PortalEmptyState
-          title="Indicadores no disponibles"
-          description="No fue posible cargar el resumen comercial. Usa actualizar para reintentar."
-          {...(onRetry
-            ? {
-                action: (
-                  <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
-                    Actualizar
-                  </Button>
-                ),
-              }
-            : {})}
-        />
-      ) : isFirstTimeCatalog(summary) ? (
-        <PortalEmptyState
-          title="Arma tu oferta comercial"
-          description="Crea el primer plan para empezar a vender. Luego podrás sumar productos, servicios, combos y promociones."
-          {...(onNavigateTab
-            ? {
-                action: (
-                  <Button type="button" size="sm" onClick={() => onNavigateTab('plans')}>
-                    Crear plan
-                  </Button>
-                ),
-              }
-            : {})}
-        />
-      ) : (
-        <OperationalSummaryBody summary={summary} onNavigateTab={onNavigateTab} />
-      )}
-    </PortalPanel>
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <PortalEmptyState
+        title="Actividad no disponible"
+        description="No fue posible cargar la actividad comercial."
+        {...(onRetry
+          ? {
+              action: (
+                <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
+                  Reintentar
+                </Button>
+              ),
+            }
+          : {})}
+      />
+    );
+  }
+
+  if (isFirstTimeCatalog(summary)) {
+    return (
+      <PortalEmptyState
+        title="Arma tu oferta comercial"
+        description="Crea el primer plan para empezar a vender. Luego podrás sumar productos, servicios, combos y promociones."
+        {...(onNavigateTab
+          ? {
+              action: (
+                <Button type="button" size="sm" onClick={() => onNavigateTab('plans')}>
+                  Crear plan
+                </Button>
+              ),
+            }
+          : {})}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <OperationalSummaryBody summary={summary} onNavigateTab={onNavigateTab} />
+    </div>
   );
 }

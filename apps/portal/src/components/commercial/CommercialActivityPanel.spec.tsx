@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
-import { CommercialDashboard } from './CommercialDashboard';
+import { CommercialActivityPanel } from './CommercialActivityPanel';
 
 function buildSummary(
   overrides: Partial<CommercialDashboardSummary> = {},
@@ -38,23 +38,23 @@ function buildSummary(
   };
 }
 
-describe('CommercialDashboard', () => {
-  it('muestra skeleton de carga (3 KPIs + lista)', () => {
-    const { container } = render(<CommercialDashboard summary={null} isLoading />);
+describe('CommercialActivityPanel', () => {
+  it('muestra skeleton de carga (indicador + lista)', () => {
+    const { container } = render(<CommercialActivityPanel summary={null} isLoading />);
 
-    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(7);
-    expect(screen.getByLabelText('Cargando resumen comercial')).toBeInTheDocument();
+    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(6);
+    expect(screen.getByLabelText('Cargando actividad comercial')).toBeInTheDocument();
   });
 
   it('muestra empty de error cuando no hay summary', () => {
-    render(<CommercialDashboard summary={null} />);
+    render(<CommercialActivityPanel summary={null} />);
 
-    expect(screen.getByText('Indicadores no disponibles')).toBeInTheDocument();
+    expect(screen.getByText('Actividad no disponible')).toBeInTheDocument();
   });
 
   it('muestra empty de primera vez sin KPIs', () => {
     render(
-      <CommercialDashboard
+      <CommercialActivityPanel
         summary={buildSummary({
           plansCount: 0,
           activePlansCount: 0,
@@ -74,21 +74,33 @@ describe('CommercialDashboard', () => {
     expect(screen.queryByText('Planes activos')).not.toBeInTheDocument();
   });
 
-  it('estado saludable: 3 KPIs neutros y empty de atención', () => {
-    const { container } = render(<CommercialDashboard summary={buildSummary()} />);
+  it('estado saludable: un indicador de catálogo y empty de atención', () => {
+    render(<CommercialActivityPanel summary={buildSummary()} />);
 
-    expect(screen.getByText('Operación')).toBeInTheDocument();
     expect(screen.getByText('Listos para vender')).toBeInTheDocument();
-    expect(screen.getByText('Planes activos')).toBeInTheDocument();
-    expect(screen.getByText('Ofertas vigentes')).toBeInTheDocument();
     expect(screen.getByText('Todo al día')).toBeInTheDocument();
     expect(screen.getByText('Sin cambios en los últimos 7 días.')).toBeInTheDocument();
-    expect(container.innerHTML).not.toMatch(/accent.*primary|primary.*accent/);
+  });
+
+  it('no repite indicadores que ya viven en el panel destino', () => {
+    render(<CommercialActivityPanel summary={buildSummary()} />);
+
+    expect(screen.queryByText('Planes activos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ofertas vigentes')).not.toBeInTheDocument();
+  });
+
+  it('no envuelve su contenido en un panel propio: el peek ya aporta la cabecera', () => {
+    render(<CommercialActivityPanel summary={buildSummary()} />);
+
+    expect(screen.queryByText('Resumen comercial')).not.toBeInTheDocument();
+    expect(screen.queryByText('Operación')).not.toBeInTheDocument();
   });
 
   it('no repite en el grid los datos que ya emiten alerta', () => {
     render(
-      <CommercialDashboard summary={buildSummary({ offersAtRiskCount: 3, rulesGapCount: 2 })} />,
+      <CommercialActivityPanel
+        summary={buildSummary({ offersAtRiskCount: 3, rulesGapCount: 2 })}
+      />,
     );
 
     expect(screen.queryByText('Vencen pronto')).not.toBeInTheDocument();
@@ -100,7 +112,7 @@ describe('CommercialDashboard', () => {
     const onNavigateTab = jest.fn();
 
     render(
-      <CommercialDashboard
+      <CommercialActivityPanel
         summary={buildSummary({
           recentChanges: [
             {
@@ -137,7 +149,7 @@ describe('CommercialDashboard', () => {
 
   it('aplica acentos H10 danger en listos para vender y nunca primary', () => {
     render(
-      <CommercialDashboard
+      <CommercialActivityPanel
         summary={buildSummary({
           offersAtRiskCount: 2,
           offersExpiringSoonCount: 1,
@@ -164,9 +176,6 @@ describe('CommercialDashboard', () => {
     expect(within(metrics).getByRole('button', { name: /Listos para vender/i })).toHaveClass(
       'border-rose-200',
     );
-    expect(within(metrics).getByRole('button', { name: /Planes activos/i })).toHaveClass(
-      'border-gray-200',
-    );
 
     const metricButtons = within(metrics).getAllByRole('button');
     for (const button of metricButtons) {
@@ -180,7 +189,7 @@ describe('CommercialDashboard', () => {
     const onNavigateTab = jest.fn();
 
     render(
-      <CommercialDashboard
+      <CommercialActivityPanel
         summary={buildSummary({
           offersAtRiskCount: 1,
           attentionItems: [
@@ -221,7 +230,7 @@ describe('CommercialDashboard', () => {
     const onNavigateTab = jest.fn();
 
     render(
-      <CommercialDashboard
+      <CommercialActivityPanel
         summary={buildSummary({
           plansCount: 0,
           productsCount: 0,
@@ -240,7 +249,7 @@ describe('CommercialDashboard', () => {
 
   it('no renderiza alertas operativas: viven en la tira sobre los tabs', () => {
     render(
-      <CommercialDashboard
+      <CommercialActivityPanel
         summary={buildSummary({
           offersAtRiskCount: 3,
           rulesGapCount: 2,
