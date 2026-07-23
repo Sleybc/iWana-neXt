@@ -1,5 +1,4 @@
 export type CommercialTab =
-  | 'summary'
   | 'plans'
   | 'products'
   | 'services'
@@ -24,7 +23,6 @@ export const COMMERCIAL_NEAR_USE_RATIO = 0.8;
 export const COMMERCIAL_NEAR_USE_REMAINING = 2;
 
 const COMMERCIAL_TABS: CommercialTab[] = [
-  'summary',
   'plans',
   'products',
   'services',
@@ -36,6 +34,9 @@ const COMMERCIAL_TABS: CommercialTab[] = [
 
 /** Alias legacy de deep-links `?tab=offers` y `?tab=offers/promotions`. */
 const LEGACY_OFFERS_BASE = 'offers';
+
+/** Alias legacy del tab retirado `?tab=summary` (Fase G). */
+const LEGACY_SUMMARY_BASE = 'summary';
 
 const TAXATION_SUB_TABS: TaxationSubTab[] = ['tax-catalog', 'tax-rules-app', 'tax-simulator'];
 
@@ -49,7 +50,7 @@ export interface ResolvedCommercialRoute {
 }
 
 const DEFAULT_ROUTE: ResolvedCommercialRoute = {
-  tab: 'summary',
+  tab: 'plans',
   taxationSubTab: 'tax-catalog',
   status: null,
 };
@@ -85,6 +86,10 @@ export function resolveCommercialRoute(value: string | null | undefined): Resolv
   const [baseTab, subTab] = decoded.split('/');
 
   if (!baseTab) {
+    return DEFAULT_ROUTE;
+  }
+
+  if (baseTab === LEGACY_SUMMARY_BASE) {
     return DEFAULT_ROUTE;
   }
 
@@ -224,7 +229,7 @@ export function isCommercialTabParam(value: string | null | undefined): boolean 
 
 /** Query canónica: `bundles` / `promotions` (no reescribe a `offers`). */
 export function buildCommercialTabQuery(route: ResolvedCommercialRoute): string | undefined {
-  if (route.tab === 'summary') {
+  if (route.tab === 'plans') {
     return undefined;
   }
 

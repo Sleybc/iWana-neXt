@@ -9,12 +9,26 @@ import {
 } from './commercial-tab-params';
 
 describe('commercial-tab-params', () => {
-  it('resuelve la ruta por defecto en tab Resumen', () => {
-    expect(resolveCommercialRoute(undefined)).toEqual({
-      tab: 'summary',
+  it('aterriza en planes cuando no hay tab en la URL', () => {
+    expect(resolveCommercialRoute(null)).toEqual({
+      tab: 'plans',
       taxationSubTab: 'tax-catalog',
       status: null,
     });
+  });
+
+  it('redirige el deep link legacy de resumen a planes', () => {
+    expect(resolveCommercialRoute('summary').tab).toBe('plans');
+  });
+
+  it('deja de reconocer summary como tab del modulo', () => {
+    expect(isCommercialTabParam('summary')).toBe(false);
+  });
+
+  it('omite el parametro tab cuando la ruta es la de aterrizaje', () => {
+    expect(
+      buildCommercialTabQuery({ tab: 'plans', taxationSubTab: 'tax-catalog', status: null }),
+    ).toBeUndefined();
   });
 
   it('resuelve subtab tributaria desde query', () => {
@@ -57,7 +71,7 @@ describe('commercial-tab-params', () => {
   });
 
   it('valida tabs comerciales soportados e aliases offers', () => {
-    expect(isCommercialTabParam('summary')).toBe(true);
+    expect(isCommercialTabParam('plans')).toBe(true);
     expect(isCommercialTabParam('products')).toBe(true);
     expect(isCommercialTabParam('bundles')).toBe(true);
     expect(isCommercialTabParam('promotions')).toBe(true);
@@ -69,17 +83,17 @@ describe('commercial-tab-params', () => {
   it('construye query canónica sin reescribir a offers', () => {
     expect(
       buildCommercialTabQuery({
-        tab: 'summary',
+        tab: 'plans',
         taxationSubTab: 'tax-catalog',
       }),
     ).toBeUndefined();
 
     expect(
       buildCommercialTabQuery({
-        tab: 'plans',
+        tab: 'products',
         taxationSubTab: 'tax-catalog',
       }),
-    ).toBe('plans');
+    ).toBe('products');
 
     expect(
       buildCommercialTabQuery({
