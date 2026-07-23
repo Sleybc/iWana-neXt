@@ -8,6 +8,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout';
 import { CommercialDashboard } from '@/components/commercial/CommercialDashboard';
+import { CommercialAlertsStrip } from '@/components/commercial/CommercialAlertsStrip';
 import {
   applyCommercialOfferStatusToSearchParams,
   buildCommercialTabQuery,
@@ -211,7 +212,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         }
       />
 
-      {summaryError && route.tab === 'summary' && (
+      {summaryError && (
         <PortalAlert
           variant="error"
           title="Resumen no disponible"
@@ -219,6 +220,8 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
           icon={AlertTriangle}
         />
       )}
+
+      <CommercialAlertsStrip summary={summary} onNavigateTab={handleNavigateTab} />
 
       <CommercialTabLayout
         canEdit={canEdit}

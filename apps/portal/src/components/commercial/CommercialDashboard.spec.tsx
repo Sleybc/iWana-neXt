@@ -39,7 +39,7 @@ function buildSummary(
 }
 
 describe('CommercialDashboard', () => {
-  it('muestra skeleton de carga (alerta + 5 KPIs + lista)', () => {
+  it('muestra skeleton de carga (5 KPIs + lista)', () => {
     const { container } = render(<CommercialDashboard summary={null} isLoading />);
 
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(7);
@@ -156,9 +156,6 @@ describe('CommercialDashboard', () => {
       />,
     );
 
-    expect(screen.getByText('Ofertas en riesgo')).toBeInTheDocument();
-    expect(screen.getByText('Catálogo incompleto')).toBeInTheDocument();
-
     const metrics = screen.getByLabelText('Indicadores comerciales');
     expect(within(metrics).getByRole('button', { name: /Vencen pronto/i })).toHaveClass(
       'border-amber-200',
@@ -221,41 +218,6 @@ describe('CommercialDashboard', () => {
     expect(onNavigateTab).toHaveBeenCalledWith('promotions', { status: 'expiring' });
   });
 
-  it('CTAs de alertas navegan a tabs canónicos', async () => {
-    const user = userEvent.setup();
-    const onNavigateTab = jest.fn();
-
-    render(
-      <CommercialDashboard
-        summary={buildSummary({
-          offersAtRiskCount: 1,
-          catalogIncompleteActiveCount: 2,
-          rulesGapCount: 1,
-          taxRulesCoverageGapCount: 1,
-          attentionItems: [
-            {
-              id: 'p1',
-              entityType: 'promotion',
-              name: 'Promo A',
-              reason: 'expiring_soon',
-              destinoTab: 'promotions',
-            },
-          ],
-        })}
-        onNavigateTab={onNavigateTab}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Ver ofertas' }));
-    expect(onNavigateTab).toHaveBeenCalledWith('promotions', { status: 'expiring' });
-
-    await user.click(screen.getByRole('button', { name: 'Completar catálogo' }));
-    expect(onNavigateTab).toHaveBeenCalledWith('plans');
-
-    await user.click(screen.getByRole('button', { name: 'Revisar reglas' }));
-    expect(onNavigateTab).toHaveBeenCalledWith('taxation');
-  });
-
   it('KPI Vencen pronto navega con status=expiring', async () => {
     const user = userEvent.setup();
     const onNavigateTab = jest.fn();
@@ -302,5 +264,21 @@ describe('CommercialDashboard', () => {
 
     await user.click(screen.getByRole('button', { name: 'Crear plan' }));
     expect(onNavigateTab).toHaveBeenCalledWith('plans');
+  });
+
+  it('no renderiza alertas operativas: viven en la tira sobre los tabs', () => {
+    render(
+      <CommercialDashboard
+        summary={buildSummary({
+          offersAtRiskCount: 3,
+          rulesGapCount: 2,
+          catalogIncompleteActiveCount: 1,
+        })}
+      />,
+    );
+
+    expect(screen.queryByText('Ofertas en riesgo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Catálogo incompleto')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Alertas operativas')).not.toBeInTheDocument();
   });
 });

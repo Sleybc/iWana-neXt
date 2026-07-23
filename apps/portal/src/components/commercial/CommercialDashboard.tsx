@@ -8,17 +8,13 @@ import type {
   CommercialRecentChange,
   CommercialRecentChangeAction,
 } from '@/lib/api-client';
-import type {
-  CommercialTab,
-  CommercialNavigateHandler,
-} from '@/components/commercial/commercial-tab-params';
+import type { CommercialNavigateHandler } from '@/components/commercial/commercial-tab-params';
 import { formatCompactNumber } from '@/components/commercial/commercial-format';
 import {
   resolveOffersRiskTab,
   resolveRulesGapTab,
 } from '@/components/commercial/commercial-alerts';
 import {
-  PortalAlert,
   PortalEmptyState,
   PortalMetricCard,
   PortalPanel,
@@ -69,62 +65,6 @@ const RECENT_ENTITY_TYPE_LABELS: Record<CommercialRecentChange['entityType'], st
 
 function isFirstTimeCatalog(summary: CommercialDashboardSummary): boolean {
   return summary.plansCount === 0 && summary.productsCount === 0 && summary.servicesCount === 0;
-}
-
-function buildAlerts(summary: CommercialDashboardSummary): Array<{
-  key: string;
-  variant: 'warning' | 'error';
-  title: string;
-  description: string;
-  ctaLabel: string;
-  tab: CommercialTab;
-}> {
-  const alerts: Array<{
-    key: string;
-    variant: 'warning' | 'error';
-    title: string;
-    description: string;
-    ctaLabel: string;
-    tab: CommercialTab;
-  }> = [];
-
-  if (summary.offersAtRiskCount > 0) {
-    const count = formatCompactNumber(summary.offersAtRiskCount);
-    alerts.push({
-      key: 'offers-at-risk',
-      variant: 'warning',
-      title: 'Ofertas en riesgo',
-      description: `${count} ${summary.offersAtRiskCount === 1 ? 'oferta vence' : 'ofertas vencen'} pronto o están cerca del límite de usos.`,
-      ctaLabel: 'Ver ofertas',
-      tab: resolveOffersRiskTab(summary),
-    });
-  }
-
-  if (summary.catalogIncompleteActiveCount > 0) {
-    const count = formatCompactNumber(summary.catalogIncompleteActiveCount);
-    alerts.push({
-      key: 'catalog-incomplete',
-      variant: 'error',
-      title: 'Catálogo incompleto',
-      description: `${count} ${summary.catalogIncompleteActiveCount === 1 ? 'ítem activo está' : 'ítems activos están'} sin precio vigente.`,
-      ctaLabel: 'Completar catálogo',
-      tab: 'plans',
-    });
-  }
-
-  if (summary.rulesGapCount > 0) {
-    const count = formatCompactNumber(summary.rulesGapCount);
-    alerts.push({
-      key: 'rules-gap',
-      variant: 'error',
-      title: 'Huecos en reglas',
-      description: `${count} ${summary.rulesGapCount === 1 ? 'bloqueo o riesgo' : 'bloqueos o riesgos'} en tributación o integridad de combos.`,
-      ctaLabel: 'Revisar reglas',
-      tab: resolveRulesGapTab(summary),
-    });
-  }
-
-  return alerts.slice(0, 3);
 }
 
 function AttentionRow({
@@ -243,44 +183,10 @@ function OperationalSummaryBody({
   summary: CommercialDashboardSummary;
   onNavigateTab?: CommercialNavigateHandler | undefined;
 }) {
-  const alerts = buildAlerts(summary);
   const recentChanges = summary.recentChanges ?? [];
 
   return (
     <>
-      {alerts.length > 0 ? (
-        <div className="space-y-3" aria-label="Alertas operativas">
-          {alerts.map((alert) => (
-            <PortalAlert
-              key={alert.key}
-              variant={alert.variant}
-              title={alert.title}
-              description={alert.description}
-              {...(onNavigateTab
-                ? {
-                    action: (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          if (alert.key === 'offers-at-risk') {
-                            onNavigateTab(alert.tab, { status: 'expiring' });
-                            return;
-                          }
-                          onNavigateTab(alert.tab);
-                        }}
-                      >
-                        {alert.ctaLabel}
-                      </Button>
-                    ),
-                  }
-                : {})}
-            />
-          ))}
-        </div>
-      ) : null}
-
       <div
         className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
         aria-label="Indicadores comerciales"
@@ -384,7 +290,6 @@ export function CommercialDashboard({
     >
       {isLoading ? (
         <div className="space-y-6" aria-busy="true" aria-label="Cargando resumen comercial">
-          <PortalSkeletonBlock className="min-h-[72px] rounded-2xl" />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {Array.from({ length: 5 }, (_, index) => (
               <PortalSkeletonBlock key={index} className="min-h-[148px] rounded-3xl" />
