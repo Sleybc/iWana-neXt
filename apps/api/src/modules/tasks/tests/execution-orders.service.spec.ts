@@ -813,4 +813,147 @@ describe('ExecutionOrdersService', () => {
       ).rejects.toThrow('La OT fue modificada por otro actor.');
     });
   });
+
+  // ─── OBS-02: Generación de números consecutivos de OT ──────────────────
+
+  describe('generación de número de OT', () => {
+    const buildSchedulingInput = () => ({
+      visitRequestId: '11111111-1111-4111-8111-111111111111',
+      scheduleEventId: '22222222-2222-4222-8222-222222222222',
+      assignedTechnicianId: '33333333-3333-4333-8333-333333333333',
+      originContext: 'TASKS' as const,
+      originRefId: 'task-001',
+      taskId: 'task-uuid',
+      ticketId: 'ticket-uuid',
+      subscriberId: 'sub-uuid',
+      customerDisplayLabel: 'Cliente Torre Norte',
+      serviceAddress: 'Calle 1 # 2 - 3',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      workType: WfmWorkType.INSTALLATION,
+      workSummary: 'Instalar ONU y activar servicio',
+      plannedWindowStartAt: '2026-06-24T14:00:00.000Z',
+      plannedWindowEndAt: '2026-06-24T16:00:00.000Z',
+    });
+
+    it('genera números consecutivos para dos OTs creadas en secuencia', async () => {
+      // Simulamos que no hay OTs previas para el tenant
+      const makeManager = () => ({
+        findOne: jest.fn().mockResolvedValue(null),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null), // Sin OT previa → seq 001
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => ({
+          id: 'eo-001',
+          ...payload,
+        })),
+      });
+
+      // Primera OT: sin registros previos → OTE-YYYYMMDD-001
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager: makeManager() } as never),
+      );
+
+      const ot1 = await service.createFromScheduling(buildSchedulingInput(), actor);
+
+      // Verificar que el número termina en 001
+      expect(ot1.executionOrderNumber).toMatch(/^OTE-\d{8}-001$/);
+      const prefix = ot1.executionOrderNumber.replace(/-001$/, '');
+
+      // Segunda OT: simulamos que ya existe la primera
+      const manager2 = makeManager();
+      // El getOne para la consulta de numeración debe devolver la OT anterior
+      (manager2.createQueryBuilder as jest.Mock).mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ executionOrderNumber: ot1.executionOrderNumber }),
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager: manager2 } as never),
+      );
+
+      const ot2 = await service.createFromScheduling(buildSchedulingInput(), actor);
+
+      // Verificar que el segundo número es consecutivo (002)
+      expect(ot2.executionOrderNumber).toBe(`${prefix}-002`);
+
+      // Verificar que son diferentes
+      expect(ot1.executionOrderNumber).not.toBe(ot2.executionOrderNumber);
+    });
+
+    it('genera números independientes por tenant (tenant-scoped)', async () => {
+      const { TenantContext } = require('@iwana/db');
+
+      // ── Tenant A (tenant-001): sin OTs previas → 001 ──
+      (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
+        tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
+      });
+
+      const managerA = {
+        findOne: jest.fn().mockResolvedValue(null),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => ({
+          id: 'eo-tenant-a',
+          ...payload,
+        })),
+      };
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager: managerA } as never),
+      );
+
+      const otTenantA = await service.createFromScheduling(buildSchedulingInput(), actor);
+      expect(otTenantA.executionOrderNumber).toMatch(/^OTE-\d{8}-001$/);
+
+      // ── Tenant B (tenant-002): sin OTs previas → 001 (independiente) ──
+      (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
+        tenantId: 'tenant-002',
+        schemaName: 'tenant_002',
+      });
+
+      const managerB = {
+        findOne: jest.fn().mockResolvedValue(null),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null), // Sin OTs en tenant B
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => ({
+          id: 'eo-tenant-b',
+          ...payload,
+        })),
+      };
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager: managerB } as never),
+      );
+
+      const otTenantB = await service.createFromScheduling(buildSchedulingInput(), actor);
+
+      // Ambos tenants comienzan desde 001
+      expect(otTenantB.executionOrderNumber).toMatch(/^OTE-\d{8}-001$/);
+
+      // Los números son idénticos pero pertenecen a tenants diferentes
+      expect(otTenantA.executionOrderNumber).toBe(otTenantB.executionOrderNumber);
+    });
+  });
 });

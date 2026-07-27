@@ -35,10 +35,15 @@ import {
   RegisterFieldWorkDto,
   StartExecutionOrderDto,
   AssignExecutionOrderDto,
+  AssignExecutionOrderSchema,
   BlockExecutionOrderDto,
+  BlockExecutionOrderSchema,
   UnblockExecutionOrderDto,
+  UnblockExecutionOrderSchema,
   RegisterEvidenceDto,
+  RegisterEvidenceSchema,
   FollowUpDto,
+  FollowUpSchema,
   StartExecutionOrderSchema,
   RegisterFieldWorkSchema,
   RegisterExecutionOrderItemUsageSchema,
@@ -239,7 +244,7 @@ export class ExecutionOrdersController {
   @HttpCode(HttpStatus.OK)
   assign(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: AssignExecutionOrderDto,
+    @Body(new ZodValidationPipe(AssignExecutionOrderSchema)) dto: AssignExecutionOrderDto,
     @CurrentUser() actor: JwtPayload,
     @Headers('if-match') ifMatch?: string,
     @Headers('idempotency-key') key?: string,
@@ -312,7 +317,7 @@ export class ExecutionOrdersController {
   @ApiOperation({ summary: 'Registrar evidencia vinculando un asset AVAILABLE' })
   registerEvidence(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: RegisterEvidenceDto,
+    @Body(new ZodValidationPipe(RegisterEvidenceSchema)) dto: RegisterEvidenceDto,
     @CurrentUser() actor: JwtPayload,
     @Headers('if-match') ifMatch?: string,
     @Headers('idempotency-key') key?: string,
@@ -332,7 +337,7 @@ export class ExecutionOrdersController {
   @HttpCode(HttpStatus.OK)
   block(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: BlockExecutionOrderDto,
+    @Body(new ZodValidationPipe(BlockExecutionOrderSchema)) dto: BlockExecutionOrderDto,
     @CurrentUser() actor: JwtPayload,
     @Headers('if-match') ifMatch?: string,
     @Headers('idempotency-key') key?: string,
@@ -352,7 +357,7 @@ export class ExecutionOrdersController {
   @HttpCode(HttpStatus.OK)
   unblock(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UnblockExecutionOrderDto,
+    @Body(new ZodValidationPipe(UnblockExecutionOrderSchema)) dto: UnblockExecutionOrderDto,
     @CurrentUser() actor: JwtPayload,
     @Headers('if-match') ifMatch?: string,
     @Headers('idempotency-key') key?: string,
@@ -372,7 +377,7 @@ export class ExecutionOrdersController {
   @HttpCode(HttpStatus.CREATED)
   createFollowUp(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: FollowUpDto,
+    @Body(new ZodValidationPipe(FollowUpSchema)) dto: FollowUpDto,
     @CurrentUser() actor: JwtPayload,
     @Headers('idempotency-key') key?: string,
     @Headers('x-correlation-id') correlationId?: string,

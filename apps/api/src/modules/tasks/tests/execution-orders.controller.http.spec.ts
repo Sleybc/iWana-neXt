@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   INestApplication,
   NotFoundException,
   UnauthorizedException,
@@ -239,6 +241,9 @@ describe('ExecutionOrdersController HTTP', () => {
       mediaAssetId: 'media-001',
       status: 'PENDING_ANALYSIS',
     }),
+    getEvidenceContentRedirect: jest
+      .fn()
+      .mockResolvedValue('https://minio.example/bucket/obj?X-Amz-Signature=abc123'),
     registerEvidence: jest.fn().mockResolvedValue({
       id: 'evidence-001',
       mediaAssetId: 'media-001',
@@ -497,6 +502,138 @@ describe('ExecutionOrdersController HTTP', () => {
 
     expect(res.headers['x-correlation-id']).toBeDefined();
   });
+
+  // ─── Rate Limiting (TenantAwareThrottlerGuard) ──────────────────────────
+
+  describe('rate limiting tenant-aware', () => {
+    it('devuelve 429 cuando se excede el rate limit', async () => {
+      const guardMock = jest.fn().mockImplementation(() => {
+        throw new HttpException(
+          {
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: 'Demasiadas solicitudes. Intente de nuevo en un momento.',
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      });
+
+      const moduleRef: TestingModule = await Test.createTestingModule({
+        controllers: [ExecutionOrdersController],
+        providers: [
+          {
+            provide: ExecutionOrdersService,
+            useFactory: buildExecutionOrdersServiceMock,
+          },
+          {
+            provide: EffectivePermissionsService,
+            useValue: {
+              getEffectivePermissionsForUser: jest
+                .fn()
+                .mockResolvedValue([
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+                ]),
+            },
+          },
+          { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+          { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+          JwtAuthGuard,
+          RolesGuard,
+          ExecutionOrderResponseHeadersInterceptor,
+          {
+            provide: ExecutionOrderProjectionConvergenceService,
+            useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+          },
+        ],
+      })
+        .overrideGuard(TenantAwareThrottlerGuard)
+        .useValue({ canActivate: guardMock })
+        .compile();
+
+      const appWithRateLimit = moduleRef.createNestApplication();
+      appWithRateLimit.setGlobalPrefix('api/v1');
+      await appWithRateLimit.init();
+
+      try {
+        await request(appWithRateLimit.getHttpServer())
+          .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/assign`)
+          .set('Authorization', 'Bearer coordinator-token')
+          .set('If-Match', '1')
+          .set('Idempotency-Key', 'rate-limit-exceeded-001')
+          .send({
+            assigneeType: 'TECHNICIAN' as const,
+            assigneeId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          })
+          .expect(429);
+
+        expect(guardMock).toHaveBeenCalled();
+      } finally {
+        await appWithRateLimit.close();
+      }
+    });
+
+    it('incluye encabezado X-RateLimit-Remaining en la respuesta', async () => {
+      const moduleRefWithHeaders: TestingModule = await Test.createTestingModule({
+        controllers: [ExecutionOrdersController],
+        providers: [
+          {
+            provide: ExecutionOrdersService,
+            useFactory: buildExecutionOrdersServiceMock,
+          },
+          {
+            provide: EffectivePermissionsService,
+            useValue: {
+              getEffectivePermissionsForUser: jest
+                .fn()
+                .mockResolvedValue([AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ]),
+            },
+          },
+          { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+          { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+          JwtAuthGuard,
+          RolesGuard,
+          ExecutionOrderResponseHeadersInterceptor,
+          {
+            provide: ExecutionOrderProjectionConvergenceService,
+            useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+          },
+        ],
+      })
+        .overrideGuard(TenantAwareThrottlerGuard)
+        .useValue({
+          canActivate: (context: {
+            switchToHttp: () => {
+              getResponse: () => {
+                setHeader: (name: string, value: string) => void;
+              };
+            };
+          }) => {
+            const res = context.switchToHttp().getResponse();
+            res.setHeader('X-RateLimit-Limit', '120');
+            res.setHeader('X-RateLimit-Remaining', '119');
+            return true;
+          },
+        })
+        .compile();
+
+      const appWithHeaders = moduleRefWithHeaders.createNestApplication();
+      appWithHeaders.setGlobalPrefix('api/v1');
+      await appWithHeaders.init();
+
+      try {
+        const res = await request(appWithHeaders.getHttpServer())
+          .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
+          .set('Authorization', 'Bearer support-token')
+          .expect(200);
+
+        expect(res.headers['x-ratelimit-remaining']).toBeDefined();
+        expect(res.headers['x-ratelimit-limit']).toBeDefined();
+      } finally {
+        await appWithHeaders.close();
+      }
+    });
+  });
 });
 
 // ─── Permisos por capacidad (Task 2) ─────────────────────────────────────
@@ -574,6 +711,9 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       mediaAssetId: 'media-001',
       status: 'PENDING_ANALYSIS',
     }),
+    getEvidenceContentRedirect: jest
+      .fn()
+      .mockResolvedValue('https://minio.example/bucket/obj?X-Amz-Signature=abc123'),
     registerEvidence: jest.fn().mockResolvedValue({
       id: 'evidence-001',
       mediaAssetId: 'media-001',
@@ -659,7 +799,11 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       },
       {
         path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence`,
-        body: { mediaAssetId: 'media-001', evidenceType: 'PHOTO', requirementKey: 'req-1' },
+        body: {
+          mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          evidenceType: 'PHOTO',
+          requirementKey: 'req-1',
+        },
       },
       {
         path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/block`,
@@ -702,7 +846,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         .set('Authorization', 'Bearer coordinator-readonly-token')
         .set('If-Match', '1')
         .set('Idempotency-Key', 'coord-assign-00000001')
-        .send({ assigneeType: 'TECHNICIAN', assigneeId: 'tech-001' })
+        .send({ assigneeType: 'TECHNICIAN', assigneeId: '11111111-1111-4111-8111-111111111111' })
         .expect(200);
     });
   });
@@ -760,7 +904,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         .set('Authorization', 'Bearer tech-token')
         .set('If-Match', '1')
         .set('Idempotency-Key', 'tech-assign-00000001')
-        .send({ assigneeType: 'TECHNICIAN', assigneeId: 'tech-002' })
+        .send({ assigneeType: 'TECHNICIAN', assigneeId: '22222222-2222-4222-8222-222222222222' })
         .expect(403);
     });
 

@@ -47,7 +47,8 @@ const noColombianPII = (value: string, ctx: z.RefinementCtx) => {
  * Campo de texto libre protegido: máximo 4000 caracteres, recortado,
  * sin PII colombiano detectable.
  */
-const safeTextField = (max: number) => z.string().trim().max(max).superRefine(noColombianPII);
+export const safeTextField = (max: number) =>
+  z.string().trim().max(max).superRefine(noColombianPII);
 
 export const StartExecutionOrderSchema = z
   .object({
@@ -173,6 +174,16 @@ export class CloseExecutionOrderDto {
   followUp?: { reasonCode: string; dueAt?: string };
 }
 
+export const AssignExecutionOrderSchema = z
+  .object({
+    assigneeType: z.enum(['TECHNICIAN', 'CREW']),
+    assigneeId: z.string().uuid(),
+    reason: safeTextField(1000).optional().nullable(),
+  })
+  .strict();
+
+export type AssignExecutionOrderInput = z.infer<typeof AssignExecutionOrderSchema>;
+
 export class AssignExecutionOrderDto {
   @ApiProperty({ enum: ['TECHNICIAN', 'CREW'] }) @Allow() assigneeType!: 'TECHNICIAN' | 'CREW';
   @ApiProperty() @Allow() assigneeId!: string;
@@ -184,10 +195,35 @@ export class BlockExecutionOrderDto {
   @ApiPropertyOptional() @Allow() note?: string;
 }
 
+export const BlockExecutionOrderSchema = z
+  .object({
+    reasonCode: z.string().trim().min(1).max(64),
+    note: safeTextField(2000).optional().nullable(),
+  })
+  .strict();
+
 export class UnblockExecutionOrderDto {
   @ApiProperty() @Allow() resolutionCode!: string;
   @ApiPropertyOptional() @Allow() note?: string;
 }
+
+export const UnblockExecutionOrderSchema = z
+  .object({
+    resolutionCode: z.string().trim().min(1).max(64),
+    note: safeTextField(2000).optional().nullable(),
+  })
+  .strict();
+
+export const RegisterEvidenceSchema = z
+  .object({
+    mediaAssetId: z.string().uuid(),
+    evidenceType: z.string().trim().min(1).max(64),
+    requirementKey: z.string().trim().min(1).max(128),
+    capturedAt: z.string().datetime().optional().nullable(),
+  })
+  .strict();
+
+export type RegisterEvidenceInput = z.infer<typeof RegisterEvidenceSchema>;
 
 export class RegisterEvidenceDto {
   @ApiProperty() @Allow() mediaAssetId!: string;
@@ -200,6 +236,15 @@ export class EvidenceAssetUploadIntentDto {
   @ApiProperty() @Allow() mediaAssetId!: string;
   @ApiPropertyOptional() @Allow() mimeType?: string;
 }
+
+export const FollowUpSchema = z
+  .object({
+    reasonCode: z.string().trim().min(1).max(200).superRefine(noColombianPII),
+    dueAt: z.string().datetime().optional().nullable(),
+  })
+  .strict();
+
+export type FollowUpInput = z.infer<typeof FollowUpSchema>;
 
 export class FollowUpDto {
   @ApiProperty() @Allow() reasonCode!: string;
