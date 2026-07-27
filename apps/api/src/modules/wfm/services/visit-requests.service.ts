@@ -55,7 +55,11 @@ import { ScheduleConflictService } from './schedule-conflict.service';
 import { assertScheduleStartNotInPast } from './schedule-past-guard';
 import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
-import { ExecutionOrdersService } from '../../tasks/services/execution-orders.service';
+import {
+  EXECUTION_ORDER_SCHEDULING_PORT,
+  ExecutionOrderSchedulingPort,
+} from '../../tasks/ports/execution-order-scheduling.port';
+import { clampPage } from '../../../common/pagination/clamp-page';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 
@@ -102,7 +106,8 @@ export class VisitRequestsService {
     private readonly expedienteService: ExpedienteService,
     private readonly usersService: UsersService,
     @Optional()
-    private readonly executionOrdersService?: ExecutionOrdersService,
+    @Inject(EXECUTION_ORDER_SCHEDULING_PORT)
+    private readonly executionOrdersService?: ExecutionOrderSchedulingPort,
   ) {}
 
   async listEligibleOperationalAssignees(actor: JwtPayload): Promise<WfmEligibleAssigneeDto[]> {
@@ -135,6 +140,8 @@ export class VisitRequestsService {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
     });
+    // D-5 / R-4: validar paginación antes de ocupar conexión del pool.
+    const { page, limit } = clampPage(validated.page, validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
@@ -174,8 +181,9 @@ export class VisitRequestsService {
       qb.orderBy('CASE WHEN vr.sla_due_at IS NULL THEN 1 ELSE 0 END', 'ASC')
         .addOrderBy('vr.sla_due_at', 'ASC')
         .addOrderBy('vr.created_at', 'DESC')
-        .skip((validated.page - 1) * validated.limit)
-        .take(validated.limit);
+        .addOrderBy('vr.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
       const [items, total] = await qb.getManyAndCount();
       const enrichedItems = await this.enrichVisitRequests(items, qr.manager);
@@ -184,9 +192,9 @@ export class VisitRequestsService {
         items: enrichedItems,
         meta: {
           total,
-          page: validated.page,
-          limit: validated.limit,
-          totalPages: total === 0 ? 0 : Math.ceil(total / validated.limit),
+          page,
+          limit,
+          totalPages: total === 0 ? 0 : Math.ceil(total / limit),
         },
       };
     });
@@ -882,13 +890,43 @@ export class VisitRequestsService {
     return { ...normalizedVisitRequest, customerDisplayName };
   }
 
+  /**
+   * Enriquecimiento batch de visit requests con display names del CRM.
+   *
+   * Resuelve todos los expedienteId en una sola consulta usando el EntityManager
+   * pasado por parámetro (sin abrir nuevas conexiones a la pool). Evita el deadlock
+   * N+1 que ocurría cuando cada fila llamaba a findDisplayNameById() por separado.
+   */
   private async enrichVisitRequests<T extends VisitRequest>(
     visitRequests: T[],
     manager: EntityManager,
   ): Promise<Array<T & { customerDisplayName: string | null }>> {
-    return Promise.all(
-      visitRequests.map((visitRequest) => this.enrichVisitRequest(visitRequest, manager)),
-    );
+    const crmIds: string[] = [];
+    const idIndexMap = new Map<number, string>(); // index -> expedienteId
+
+    let index = 0;
+    for (const vr of visitRequests) {
+      if (vr.originContext === WorkOrderSourceContext.CRM) {
+        const expedienteId = this.resolveCrmExpedienteId(vr);
+        if (expedienteId) {
+          crmIds.push(expedienteId);
+          idIndexMap.set(index, expedienteId);
+        }
+      }
+      index++;
+    }
+
+    const displayNameMap =
+      crmIds.length > 0
+        ? await this.expedienteService.findDisplayNamesByIds(manager, crmIds)
+        : new Map<string, string | null>();
+
+    return visitRequests.map((vr, i) => {
+      const normalized = this.normalizeVisitRequestStatus(vr);
+      const expedienteId = idIndexMap.get(i);
+      const customerDisplayName = expedienteId ? (displayNameMap.get(expedienteId) ?? null) : null;
+      return { ...normalized, customerDisplayName };
+    });
   }
 
   private async resolveCustomerDisplayName(visitRequest: VisitRequest): Promise<string | null> {

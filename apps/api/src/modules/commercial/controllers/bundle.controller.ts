@@ -24,9 +24,11 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { BundleService } from '../services/bundle.service';
 import { BundleListItemDto, CreateBundleDto, UpdateBundleDto } from '../dto/bundle.dto';
+import { CommercialListMetaDto } from '../dto/commercial-list-query.dto';
+import { CommercialOfferListQueryDto } from '../dto/commercial-offer-list-query.dto';
 
 @ApiTags('commercial-bundles')
-@ApiExtraModels(BundleListItemDto)
+@ApiExtraModels(BundleListItemDto, CommercialListMetaDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial/bundles')
@@ -42,17 +44,17 @@ export class BundleController {
     PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({
-    summary: 'Listar bundles activos del tenant',
-    description: 'Incluye itemCount (COUNT de catalog_bundle_items por bundle).',
+    summary: 'Listar bundles activos del tenant (paginación cursor)',
+    description:
+      'Incluye itemCount. ADR-064: limit default 20, max 100; meta.nextCursor + meta.total. Orden: name ASC, id ASC. ' +
+      'Filtro `offerStatus=expiring`: vigencia en ≤7 días.',
   })
   @ApiResponse({
     status: 200,
-    description:
-      'Respuesta `{ data }` con bundles activos; cada elemento incluye `itemCount` (ver BundleListItemDto).',
+    description: 'Respuesta `{ data, meta: { nextCursor, total } }` (ver BundleListItemDto).',
   })
-  async findAll() {
-    const data = await this.bundleService.findAll();
-    return { data };
+  async findAll(@Query() query: CommercialOfferListQueryDto) {
+    return this.bundleService.findAll(query);
   }
 
   @Get(':id')

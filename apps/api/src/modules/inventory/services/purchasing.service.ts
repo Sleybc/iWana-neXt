@@ -18,7 +18,10 @@ import {
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
   PurchaseRfqStatus,
+  type ListResponse,
 } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   AddSupplierQuoteInput,
   AddSupplierQuoteSchema,
@@ -146,15 +149,20 @@ export class PurchasingService {
     );
   }
 
-  async listOrders(query: ListPurchaseOrdersQueryInput): Promise<PurchaseOrder[]> {
+  async listOrders(query: ListPurchaseOrdersQueryInput): Promise<ListResponse<PurchaseOrder>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListPurchaseOrdersQuerySchema.parse(query);
+    const cappedLimit = clampLimit(validated.limit);
+    const { page, limit } = clampPage(validated.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(PurchaseOrder, 'purchaseOrder')
         .where('purchaseOrder.tenant_id = :tenantId', { tenantId })
-        .orderBy('purchaseOrder.created_at', 'DESC');
+        .orderBy('purchaseOrder.created_at', 'DESC')
+        .addOrderBy('purchaseOrder.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
       if (validated.status) {
         qb.andWhere('purchaseOrder.status = :status', { status: validated.status });
@@ -166,7 +174,17 @@ export class PurchasingService {
         });
       }
 
-      return qb.getMany();
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 

@@ -12,6 +12,8 @@ import type {
 import {
   PortalEmptyState,
   PortalPanel,
+  PortalResultsStrip,
+  PortalTablePagination,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 import {
@@ -38,8 +40,10 @@ interface PendingVisitRequestInboxProps {
   openDispatchVisitRequestId?: string | null;
   filterOptions: WfmVisitRequestFilterOptionsResponse | null;
   isLoading: boolean;
+  isLoadingMore?: boolean;
   isLoadingFilterOptions: boolean;
   onFiltersChange: (next: PendingVisitFilters) => void;
+  onLoadMore?: () => void;
   onOpenDispatch: (visitRequestId: string) => void;
   onRefresh: () => void;
   extraActions?: ReactNode;
@@ -259,8 +263,10 @@ export function PendingVisitRequestInbox({
   openDispatchVisitRequestId = null,
   filterOptions,
   isLoading,
+  isLoadingMore = false,
   isLoadingFilterOptions,
   onFiltersChange,
+  onLoadMore,
   onOpenDispatch,
   onRefresh,
   extraActions,
@@ -271,6 +277,14 @@ export function PendingVisitRequestInbox({
   const items = response?.items ?? [];
   const meta = response?.meta;
   const visibleItems = compactMode ? items.slice(0, maxItems) : items;
+  const hasMore =
+    !compactMode && meta != null && meta.page < meta.totalPages && Boolean(onLoadMore);
+  const resultsLabel =
+    meta == null
+      ? `${items.length} solicitudes`
+      : hasMore
+        ? `${items.length} de ${meta.total} solicitudes`
+        : `${meta.total} ${meta.total === 1 ? 'solicitud' : 'solicitudes'}`;
   const panelTitle = compactMode ? 'Decisiones pendientes' : 'Pendiente por agendar';
   const panelDescription = compactMode
     ? 'Solicitudes que ya exigen decisión operativa sin abrir todavía la bandeja completa.'
@@ -367,19 +381,23 @@ export function PendingVisitRequestInbox({
         </div>
       )}
 
-      <div
-        className={`flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 ${
-          compactMode ? 'pt-0.5' : ''
-        }`}
-      >
-        <span>
-          {meta
-            ? compactMode
-              ? `${meta.total} pendientes · mostrando ${Math.min(visibleItems.length, maxItems)}`
-              : `${meta.total} solicitudes · página ${meta.page} de ${Math.max(meta.totalPages, 1)}`
-            : 'Sin datos cargados'}
-        </span>
-      </div>
+      {!compactMode && items.length > 0 ? (
+        <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+      ) : (
+        <div
+          className={`flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 ${
+            compactMode ? 'pt-0.5' : ''
+          }`}
+        >
+          <span>
+            {meta
+              ? compactMode
+                ? `${meta.total} pendientes · mostrando ${Math.min(visibleItems.length, maxItems)}`
+                : resultsLabel
+              : 'Sin datos cargados'}
+          </span>
+        </div>
+      )}
 
       {visibleItems.length === 0 ? (
         <PortalEmptyState
@@ -503,31 +521,16 @@ export function PendingVisitRequestInbox({
         </div>
       )}
 
-      {!compactMode && meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between gap-3 pt-2">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={meta.page <= 1}
-            onClick={() => onFiltersChange({ ...filters, page: Math.max(1, filters.page - 1) })}
-          >
-            Página anterior
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={meta.page >= meta.totalPages}
-            onClick={() =>
-              onFiltersChange({
-                ...filters,
-                page: Math.min(meta.totalPages, filters.page + 1),
-              })
-            }
-          >
-            Siguiente página
-          </Button>
-        </div>
-      )}
+      {!compactMode ? (
+        <PortalTablePagination
+          hasMore={hasMore}
+          onLoadMore={() => onLoadMore?.()}
+          loading={isLoadingMore}
+          resourceLabel="solicitudes"
+          shown={items.length}
+          total={meta?.total}
+        />
+      ) : null}
     </PortalPanel>
   );
 }

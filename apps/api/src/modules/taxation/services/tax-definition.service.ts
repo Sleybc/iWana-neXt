@@ -13,18 +13,27 @@ import {
   UpdateTaxDefinitionInput,
 } from '../dto/update-tax-definition.dto';
 import { ListTaxDefinitionQueryDto } from '../dto/list-tax-definition-query.dto';
+import {
+  buildCodeIdNextCursor,
+  clampTaxationLimit,
+  decodeCodeIdCursor,
+  TaxationPaginatedResult,
+} from '../../../common/pagination';
 
 @Injectable()
 export class TaxDefinitionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   /**
-   * Lista todas las definiciones tributarias del tenant con filtros opcionales.
-   * Por defecto excluye las inactivas; usar `isActive=true` para incluirlas.
+   * Lista definiciones tributarias del tenant con filtros y paginación cursor (ADR-064).
+   * Por defecto excluye las inactivas; usar `isActive=false` para incluirlas.
    * El filtro de contexto incluye registros con `BOTH`.
+   * Orden: code ASC, id ASC. `total` = conjunto filtrado.
    */
-  async findAll(query: ListTaxDefinitionQueryDto): Promise<TaxDefinition[]> {
+  async findAll(query: ListTaxDefinitionQueryDto): Promise<TaxationPaginatedResult<TaxDefinition>> {
     const { schemaName } = TenantContext.getOrThrow();
+    const limit = clampTaxationLimit(query.limit);
+    const { cursor } = query;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // En expresiones SQL string del QueryBuilder se deben usar nombres físicos de columnas.
@@ -50,7 +59,33 @@ export class TaxDefinitionService {
         qb = qb.andWhere('td.origin = :origin', { origin: query.origin });
       }
 
-      return qb.orderBy('td.code', 'ASC').getMany();
+      const total = await qb.clone().getCount();
+
+      if (cursor) {
+        const decoded = decodeCodeIdCursor(cursor);
+        qb = qb.andWhere(
+          '(td.code > :cursorCode OR (td.code = :cursorCode AND td.id > :cursorId))',
+          { cursorCode: decoded.c, cursorId: decoded.i },
+        );
+      }
+
+      const rows = await qb
+        .orderBy('td.code', 'ASC')
+        .addOrderBy('td.id', 'ASC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = rows.length > limit;
+      const page = hasNext ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+
+      return {
+        data: page,
+        meta: {
+          nextCursor: buildCodeIdNextCursor(hasNext, last),
+          total,
+        },
+      };
     });
   }
 

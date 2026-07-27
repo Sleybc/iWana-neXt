@@ -5,6 +5,11 @@ import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import { clampLimit } from '../../../common/pagination/clamp-limit';
+import { applySort } from '../../../common/pagination/apply-sort';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
+import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
 import {
   PersonType,
   CustomerSegment,
@@ -89,6 +94,14 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
  * Servicio CRUD del suscriptor con cifrado PII, búsqueda determinista
  * y cálculo automático de tratamiento IVA.
  */
+
+/**
+ * Campos ordenables del recurso Subscriber.
+ * Vacío hasta Ola 2 (creación de índices compuestos).
+ * ADR-065 Ola 1.
+ */
+const SORTABLE_FIELDS: string[] = [];
+
 @Injectable()
 export class SubscribersService {
   private readonly encryptionKey: Buffer;
@@ -174,7 +187,7 @@ export class SubscribersService {
       : null;
 
     // Hash determinista para búsqueda por documento/email/teléfono (migración 014)
-    const documentNumberHash = dto.documentNumber ? this.sha256Hash(dto.documentNumber) : null;
+    const documentNumberHash = dto.documentNumber ? hashDocumentNumber(dto.documentNumber) : null;
     const emailHash = this.sha256Hash(dto.email);
     const phoneHash = this.sha256Hash(dto.phone);
     const normalizedManualReason = dto.manualOverrideReason?.trim();
@@ -267,41 +280,63 @@ export class SubscribersService {
     search?: string | undefined;
     page?: number | undefined;
     limit?: number | undefined;
-  }): Promise<{ data: Subscriber[]; total: number }> {
+    sortBy?: string | undefined;
+    sortDir?: 'asc' | 'desc' | undefined;
+  }): Promise<{ data: Subscriber[]; total: number; meta: ReturnType<typeof buildPageMeta> }> {
     const { schemaName } = TenantContext.getOrThrow();
-    const page = filters.page ?? 1;
-    const limit = filters.limit ?? 20;
+    // H-1 / D-2: tope de limit 100 antes de clampPage (Ley 1581 — no amplificar extracción PII).
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
-    const [data, total] = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const query = qr.manager.createQueryBuilder(Subscriber, 's');
+    const { data, total, sortResult } = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr) => {
+        const query = qr.manager.createQueryBuilder(Subscriber, 's');
 
-      if (filters.status) query.andWhere('s.status = :status', { status: filters.status });
-      if (filters.personType)
-        query.andWhere('s.personType = :personType', { personType: filters.personType });
-      if (filters.customerSegment)
-        query.andWhere('s.customerSegment = :customerSegment', {
-          customerSegment: filters.customerSegment,
-        });
-      if (filters.stratum) query.andWhere('s.stratum = :stratum', { stratum: filters.stratum });
+        if (filters.status) query.andWhere('s.status = :status', { status: filters.status });
+        if (filters.personType)
+          query.andWhere('s.personType = :personType', { personType: filters.personType });
+        if (filters.customerSegment)
+          query.andWhere('s.customerSegment = :customerSegment', {
+            customerSegment: filters.customerSegment,
+          });
+        if (filters.stratum) query.andWhere('s.stratum = :stratum', { stratum: filters.stratum });
 
-      // Búsqueda por nombre/NIT/businessName (campos no cifrados)
-      if (filters.search) {
-        query.andWhere(
-          '(s.firstName ILIKE :search OR s.lastName ILIKE :search OR s.businessName ILIKE :search OR s.nit ILIKE :search OR s.commercialName ILIKE :search)',
-          { search: `%${filters.search}%` },
-        );
-      }
+        // Búsqueda por nombre/NIT/businessName (campos no cifrados)
+        if (filters.search) {
+          query.andWhere(
+            '(s.firstName ILIKE :search OR s.lastName ILIKE :search OR s.businessName ILIKE :search OR s.nit ILIKE :search OR s.commercialName ILIKE :search)',
+            { search: `%${filters.search}%` },
+          );
+        }
 
-      query.orderBy('s.createdAt', 'DESC');
-      query.skip((page - 1) * limit).take(limit);
+        // Default primero: TypeORM orderBy() reemplaza el ORDER BY acumulado (O-7(b)).
+        query.orderBy('s.createdAt', 'DESC').addOrderBy('s.id', 'DESC');
+        const sortResult = applySort(query, SORTABLE_FIELDS, filters.sortBy, filters.sortDir);
+        query.skip((page - 1) * limit).take(limit);
 
-      return query.getManyAndCount();
-    });
+        const [rows, count] = await query.getManyAndCount();
+        return { data: rows, total: count, sortResult };
+      },
+    );
 
     // Descifrar PII para respuesta
     const hydratedData = data.map((s) => this.decryptSubscriberFields(s));
 
-    return { data: hydratedData, total };
+    return {
+      data: hydratedData,
+      total,
+      meta: buildPageMeta({
+        total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: SORTABLE_FIELDS,
+        sortBy: sortResult.appliedSortBy ?? undefined,
+        sortDir: sortResult.appliedSortDir ?? undefined,
+      }),
+    };
   }
 
   /**
@@ -385,6 +420,9 @@ export class SubscribersService {
     if (dto.documentNumber !== undefined) {
       entity.documentNumberEncrypted = dto.documentNumber
         ? this.encryptValue(dto.documentNumber)
+        : null;
+      entity.documentNumberHash = dto.documentNumber
+        ? hashDocumentNumber(dto.documentNumber)
         : null;
     }
     if (dto.firstName !== undefined) entity.firstName = dto.firstName;
@@ -530,7 +568,7 @@ export class SubscribersService {
       // Búsqueda por hash SHA-256 (columnas de migración 014)
       if (query.documentNumber) {
         conditions.push('s.documentNumberHash = :docHash');
-        params.docHash = this.sha256Hash(query.documentNumber);
+        params.docHash = hashDocumentNumber(query.documentNumber);
       }
 
       if (query.nit) {
@@ -553,7 +591,7 @@ export class SubscribersService {
       }
 
       qb.where(conditions.join(' AND '), params);
-      return qb.getMany();
+      return qb.take(100).getMany();
     });
   }
 

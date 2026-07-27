@@ -16,6 +16,20 @@ jest.mock('@/lib/api-client', () => ({
     createAttribution: jest.fn(),
     revokeAttribution: jest.fn(),
   },
+  usersApi: {
+    searchForPicker: jest.fn().mockResolvedValue({ data: [], total: 0 }),
+  },
+  commercialApi: {
+    getPlanById: jest.fn(),
+    getCatalogItemById: jest.fn(),
+  },
+  mapPickerSearchResponse: ({
+    data,
+    total,
+  }: {
+    data: Array<{ id: string; label: string; sublabel?: string | null }>;
+    total: number;
+  }) => ({ items: data, total }),
 }));
 
 describe('SeguimientoTab', () => {
@@ -44,10 +58,6 @@ describe('SeguimientoTab', () => {
         responsibilityHistory={[]}
         currentAttribution={null}
         attributionHistory={[]}
-        sortedAttributionUsers={[]}
-        loadingAttributionUsers={false}
-        planCatalog={[]}
-        additionalProducts={[]}
         recentActivity={[]}
         pipelineChanges={[]}
         onSaved={jest.fn(async () => undefined)}

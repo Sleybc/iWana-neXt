@@ -173,7 +173,7 @@ export function ContractCard({
       className={[
         'relative rounded-[20px] border bg-white p-5 shadow-[var(--shadow-sm)] transition dark:bg-dark-surface-2',
         contract.status === 'ARCHIVED'
-          ? 'border-gray-100 opacity-60 dark:border-dark-border'
+          ? 'border-gray-100 [&_p]:text-gray-500 dark:border-dark-border dark:[&_p]:text-gray-400'
           : 'border-gray-100 dark:border-dark-border',
       ].join(' ')}
     >

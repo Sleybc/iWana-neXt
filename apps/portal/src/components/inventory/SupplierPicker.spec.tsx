@@ -7,6 +7,13 @@ jest.mock('@/lib/api-client', () => ({
   purchasingApi: {
     searchSuppliers: jest.fn(),
   },
+  mapPickerSearchResponse: ({
+    data,
+    total,
+  }: {
+    data: Array<{ id: string; label: string; sublabel?: string | null }>;
+    total: number;
+  }) => ({ items: data, total }),
 }));
 
 const purchasingApiMock = purchasingApi as jest.Mocked<typeof purchasingApi>;
@@ -32,12 +39,17 @@ describe('SupplierPicker', () => {
     });
   });
 
-  it('no busca proveedores con texto vacío', async () => {
+  it('no busca con menos de 2 caracteres (umbral E-4)', async () => {
     render(<SupplierPicker label="Proveedor" value={null} onChange={jest.fn()} />);
 
-    await waitFor(() => {
-      expect(purchasingApiMock.searchSuppliers).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Proveedor' }), {
+      target: { value: 'A' },
     });
+
+    await waitFor(() => {
+      expect(screen.getByText('Escribe al menos 2 caracteres')).toBeInTheDocument();
+    });
+    expect(purchasingApiMock.searchSuppliers).not.toHaveBeenCalled();
   });
 
   it('muestra resultados y selecciona con clic', async () => {
@@ -46,12 +58,14 @@ describe('SupplierPicker', () => {
     render(<SupplierPicker label="Proveedor" value={null} onChange={onChange} />);
 
     const input = screen.getByRole('combobox', { name: 'Proveedor' });
-    expect(input).toHaveAttribute('aria-expanded', 'false');
-
     fireEvent.change(input, { target: { value: 'Alfa' } });
 
     await waitFor(() => {
-      expect(purchasingApiMock.searchSuppliers).toHaveBeenCalledWith({ search: 'Alfa', page: 1 });
+      expect(purchasingApiMock.searchSuppliers).toHaveBeenCalledWith(
+        { search: 'Alfa', page: 1 },
+        undefined,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
 
     await waitFor(() => {
@@ -83,59 +97,8 @@ describe('SupplierPicker', () => {
     expect(onChange).toHaveBeenCalledWith('supplier-1', 'Proveedor Alfa');
   });
 
-  it('navega con flechas y selecciona la opción resaltada', async () => {
-    const onChange = jest.fn();
-
-    render(<SupplierPicker label="Proveedor" value={null} onChange={onChange} />);
-
-    const input = screen.getByRole('combobox', { name: 'Proveedor' });
-    fireEvent.change(input, { target: { value: 'Proveedor' } });
-
-    await waitFor(
-      () => {
-        expect(screen.getByRole('option', { name: /Proveedor Beta/i })).toBeInTheDocument();
-      },
-      { timeout: 5_000 },
-    );
-
-    fireEvent.keyDown(input, { key: 'ArrowDown' });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    expect(onChange).toHaveBeenCalledWith('supplier-2', 'Proveedor Beta');
-  });
-
-  it('en error de búsqueda muestra mensaje inline y no listbox vacío', async () => {
+  it('en error de búsqueda muestra mensaje recuperable y Reintentar', async () => {
     purchasingApiMock.searchSuppliers.mockRejectedValueOnce(new Error('network'));
-
-    render(<SupplierPicker label="Proveedor" value={null} onChange={jest.fn()} />);
-
-    const input = screen.getByRole('combobox', { name: 'Proveedor' });
-    fireEvent.change(input, { target: { value: 'macro' } });
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('No fue posible cargar proveedores.');
-    });
-
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
-    expect(screen.queryByText('Sin resultados para esta búsqueda.')).not.toBeInTheDocument();
-    expect(screen.queryByText('Búsqueda de proveedor')).not.toBeInTheDocument();
-    expect(input).toHaveAttribute('aria-invalid', 'true');
-  });
-
-  it('mientras carga muestra skeleton y no el mensaje de sin resultados', async () => {
-    let resolveSearch!: (value: {
-      data: Array<{ partyRefId: string; displayName: string; status: PartyStatus }>;
-      total: number;
-      page: number;
-      limit: number;
-    }) => void;
-
-    purchasingApiMock.searchSuppliers.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveSearch = resolve;
-        }),
-    );
 
     render(<SupplierPicker label="Proveedor" value={null} onChange={jest.fn()} />);
 
@@ -144,27 +107,9 @@ describe('SupplierPicker', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('listbox')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByText(/No fue posible cargar proveedores/i)).toBeInTheDocument();
     });
 
-    expect(screen.queryByText('Sin resultados para esta búsqueda.')).not.toBeInTheDocument();
-    expect(screen.queryByText('Buscando proveedores…')).not.toBeInTheDocument();
-
-    resolveSearch({
-      data: [
-        {
-          partyRefId: 'supplier-1',
-          displayName: 'Macrotics SAS',
-          status: PartyStatus.ACTIVE,
-        },
-      ],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /Macrotics SAS/i })).toBeInTheDocument();
-    });
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   });
 });

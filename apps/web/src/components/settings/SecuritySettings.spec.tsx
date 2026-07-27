@@ -60,30 +60,24 @@ describe('SecuritySettings', () => {
 
     it('muestra "Deshabilitado" cuando MFA está apagado', async () => {
       render(<SecuritySettings />);
-      await waitFor(() => {
-        expect(screen.getByText(/deshabilitado/i)).toBeInTheDocument();
-      });
+      expect(await screen.findByText(/deshabilitado/i)).toBeInTheDocument();
     });
 
     it('muestra "Habilitado" cuando MFA está activo', async () => {
       mockPlatformUsersApi.me.mockResolvedValue({ mfaEnabled: true });
       render(<SecuritySettings />);
-      await waitFor(() => {
-        expect(screen.getByText(/habilitado/i)).toBeInTheDocument();
-      });
+      expect(await screen.findByText(/habilitado/i)).toBeInTheDocument();
     });
 
     it('muestra el botón Configurar MFA solo cuando MFA está deshabilitado', async () => {
       render(<SecuritySettings />);
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /configurar mfa/i })).toBeInTheDocument();
-      });
+      expect(await screen.findByRole('button', { name: /configurar mfa/i })).toBeInTheDocument();
     });
 
     it('no muestra Configurar MFA cuando MFA ya está activo', async () => {
       mockPlatformUsersApi.me.mockResolvedValue({ mfaEnabled: true });
       render(<SecuritySettings />);
-      await waitFor(() => screen.getByText(/habilitado/i));
+      await screen.findByText(/habilitado/i);
       expect(screen.queryByRole('button', { name: /configurar mfa/i })).not.toBeInTheDocument();
     });
   });

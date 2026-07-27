@@ -1,5 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 import { ScheduleEventStatus, WfmWorkType } from '@iwana/shared';
 
 /** DTO de query params para listar eventos de agenda con filtros. */
@@ -51,4 +61,24 @@ export class ListScheduleEventsQueryDto {
   @IsOptional()
   @IsString()
   sector?: string;
+
+  @ApiPropertyOptional({ minimum: 1, example: 1, description: 'Número de página (≥ 1)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 100,
+    example: 20,
+    description: 'Tamaño de página (1–100)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }

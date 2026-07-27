@@ -86,7 +86,7 @@ flowchart LR
 - [x] Registrar en el informe vivo la fecha y hash documental de congelacion.
 - [x] Ejecutar `pnpm audit:adr-citations` y obtener 0 bloqueantes.
 - [x] Ejecutar `pnpm audit:doc-locations` y obtener 0 hallazgos.
-- [ ] Commit documental: `docs(operations): freeze installation work order contracts`.
+- [x] Commit documental: `docs(operations): freeze installation work order contracts`.
 
 **Corte de revisión 2026-07-27:** G3 no se declara completo mientras falten proyecciones efectivas, receipt/saga de inventario, plantilla/acciones, OpenAPI completo y límites `429`. Media, cuadrillas, follow-up y redrive permanecen fail-closed hasta disponer de sus boundaries.
 

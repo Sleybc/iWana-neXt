@@ -74,7 +74,7 @@ export function CalendarSettingsClient() {
       // Carga los tres recursos en paralelo para minimizar latencia
       const [hoursResult, sitesResult, exceptionsResult] = await Promise.allSettled([
         organizationApi.getCompanyHours(),
-        organizationApi.list(),
+        organizationApi.list({ page: 1, limit: 100 }),
         organizationApi.getExceptions(),
       ]);
 
@@ -85,7 +85,7 @@ export function CalendarSettingsClient() {
       }
 
       if (sitesResult.status === 'fulfilled') {
-        setSites(sitesResult.value);
+        setSites(sitesResult.value.data);
       } else {
         setSites([]);
       }

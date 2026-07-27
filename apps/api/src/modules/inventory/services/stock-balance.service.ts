@@ -4,6 +4,13 @@ import { DataSource, EntityManager } from 'typeorm';
 import { StockBalance, TenantContext, runInTenantSchema } from '@iwana/db';
 import { StockBalanceCondition } from '@iwana/shared';
 import { ListStockBalancesQueryInput, ListStockBalancesQuerySchema } from '../dto';
+import {
+  clampInventoryLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  InventoryPaginatedResult,
+  sliceDateIdDescPage,
+} from '../../../common/pagination';
 import { acquireTransactionAdvisoryLock } from './inventory-postgres.util';
 
 export interface ApplyStockDeltaInput {
@@ -84,15 +91,15 @@ export function formatInvariantViolationMessage(onHand: number, reserved: number
 export class StockBalanceService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async list(query: ListStockBalancesQueryInput): Promise<StockBalance[]> {
+  async list(query: ListStockBalancesQueryInput): Promise<InventoryPaginatedResult<StockBalance>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListStockBalancesQuerySchema.parse(query);
+    const limit = clampInventoryLimit(validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(StockBalance, 'balance')
-        .where('balance.tenant_id = :tenantId', { tenantId })
-        .orderBy('balance.updated_at', 'DESC');
+        .where('balance.tenant_id = :tenantId', { tenantId });
 
       if (validated.itemId) {
         qb.andWhere('balance.item_id = :itemId', { itemId: validated.itemId });
@@ -106,7 +113,23 @@ export class StockBalanceService {
         qb.andWhere('balance.condition = :condition', { condition: validated.condition });
       }
 
-      return qb.getMany();
+      const total = await qb.clone().getCount();
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('balance', 'updated_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb
+        .orderBy('balance.updated_at', 'DESC')
+        .addOrderBy('balance.id', 'DESC')
+        .take(limit + 1)
+        .getMany();
+
+      const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.updatedAt);
+      return { data, meta: { nextCursor, total } };
     });
   }
 

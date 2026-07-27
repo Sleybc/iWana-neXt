@@ -30,6 +30,17 @@ import {
   type ItemStockThresholdSnapshot,
 } from './inventory-domain-event-publisher.service';
 import { StockLedgerService } from './stock-ledger.service';
+import {
+  assertExclusivePageCursor,
+  buildCursorMeta,
+  buildPageMeta,
+  clampInventoryLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  sliceDateIdDescPage,
+} from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import type { ListResponse } from '@iwana/shared';
 
 export type StockCountLineView = StockCountLine & {
   variance: string | null;
@@ -207,15 +218,18 @@ export class CycleCountService {
     );
   }
 
-  async list(query: ListStockCountsQueryInput): Promise<StockCount[]> {
+  async list(query: ListStockCountsQueryInput): Promise<ListResponse<StockCount>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListStockCountsQuerySchema.parse(query);
+    assertExclusivePageCursor(validated);
+    const limit = clampInventoryLimit(validated.limit);
+    const usePage = validated.page !== undefined;
+    const page = usePage ? clampPage(validated.page!, limit).page : 1;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(StockCount, 'count')
-        .where('count.tenant_id = :tenantId', { tenantId })
-        .orderBy('count.created_at', 'DESC');
+        .where('count.tenant_id = :tenantId', { tenantId });
 
       if (validated.status) {
         qb.andWhere('count.status = :status', { status: validated.status });
@@ -225,7 +239,44 @@ export class CycleCountService {
         qb.andWhere('count.location_id = :locationId', { locationId: validated.locationId });
       }
 
-      return qb.getMany();
+      const total = await qb.clone().getCount();
+
+      qb.orderBy('count.created_at', 'DESC').addOrderBy('count.id', 'DESC');
+
+      if (usePage) {
+        const rows = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getMany();
+        return {
+          data: rows,
+          meta: buildPageMeta({
+            total,
+            page,
+            limit,
+            randomAccess: false,
+            sortableFields: [],
+          }),
+        };
+      }
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('count', 'created_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb.take(limit + 1).getMany();
+      const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.createdAt);
+      return {
+        data,
+        meta: buildCursorMeta({
+          nextCursor,
+          total,
+          limit,
+        }),
+      };
     });
   }
 

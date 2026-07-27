@@ -98,6 +98,19 @@ export class ReplenishmentService {
     private readonly supplierPartyPort: SupplierPartyPort,
   ) {}
 
+  /**
+   * Endpoint de cómputo de negocio — no aplica paginación de listado
+   * (ADR-065 §Excepciones).
+   *
+   * Este método computa sugerencias de reabastecimiento comparando stock actual,
+   * balances, PO lines abiertas y punto de reorden para TODOS los items activos.
+   * Un `.take(100)` o `.limit(20)` cortaría el cómputo y devolvería resultados
+   * incorrectos (falsos negativos en items que necesitan reabastecimiento).
+   *
+   * Si el volumen de items activos supera ~1000, migrar a un job BullMQ
+   * que compute y materialice el resultado en una tabla cacheada,
+   * consultada luego vía un endpoint de listado convencional con paginación.
+   */
   async listSuggestions(): Promise<ReplenishmentSuggestionRecord[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 

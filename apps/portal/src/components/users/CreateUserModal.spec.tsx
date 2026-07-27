@@ -82,7 +82,7 @@ describe('CreateUserModal', () => {
     expect(screen.queryByText('Clave temporal')).not.toBeInTheDocument();
   });
 
-  it('should clear temporary password and close modal on success dismiss', async () => {
+  it('should clear temporary password and close modal after confirming secret was saved', async () => {
     const onClose = jest.fn();
     const onDismissSuccess = jest.fn();
 
@@ -103,6 +103,12 @@ describe('CreateUserModal', () => {
 
     await screen.findByText('Clave temporal');
     fireEvent.click(screen.getByRole('button', { name: 'Entendido' }));
+
+    expect(onDismissSuccess).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/¿Ya guardaste la contraseña temporal/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ya la guardé' }));
 
     expect(onDismissSuccess).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -198,6 +204,24 @@ describe('CreateUserModal', () => {
     });
   });
 
+  it('muestra PortalAlert de error cuando falla la creación', async () => {
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error="El correo ya está registrado."
+        accessCatalog={null}
+        availableProfiles={[]}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+    expect(screen.getByText('No se pudo crear el usuario')).toBeInTheDocument();
+    expect(screen.getByText('El correo ya está registrado.')).toBeInTheDocument();
+  });
+
   it('should return selected company roles with the create payload', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 
@@ -248,7 +272,7 @@ describe('CreateUserModal', () => {
     });
     fireEvent.click(screen.getByRole('combobox', { name: 'Categoría base' }));
     fireEvent.click(await screen.findByRole('option', { name: 'Técnico de campo' }));
-    fireEvent.click(screen.getByRole('button', { name: /perfiles de acceso/i }));
+    expect(await screen.findByText('Perfiles de acceso')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Técnico de campo' }));
     fireEvent.click(screen.getByRole('button', { name: 'Crear usuario' }));
 
@@ -262,5 +286,29 @@ describe('CreateUserModal', () => {
         ['template-tech'],
       );
     });
+  });
+
+  it('oculta datos de perfil detrás de disclosure colapsado por defecto', async () => {
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+    const summary = screen.getByText('Datos de perfil (opcional)');
+    const details = summary.closest('details');
+    expect(details).toBeTruthy();
+    expect(details).not.toHaveAttribute('open');
+
+    fireEvent.click(summary);
+    expect(details).toHaveAttribute('open');
+    expect(screen.getByLabelText(/disponible para despacho operativo/i)).toBeInTheDocument();
   });
 });

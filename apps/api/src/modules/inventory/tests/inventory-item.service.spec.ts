@@ -55,9 +55,15 @@ describe('InventoryItemService', () => {
     where: jest.Mock;
     andWhere: jest.Mock;
     orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
+    take: jest.Mock;
+    skip: jest.Mock;
+    clone: jest.Mock;
+    getCount: jest.Mock;
     select: jest.Mock;
     innerJoinAndSelect: jest.Mock;
     getMany: jest.Mock;
+    setParameter: jest.Mock;
   };
 
   beforeEach(() => {
@@ -90,9 +96,15 @@ describe('InventoryItemService', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      clone: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
       select: jest.fn().mockReturnThis(),
       innerJoinAndSelect: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([]),
+      setParameter: jest.fn().mockReturnThis(),
     };
 
     runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
@@ -107,8 +119,22 @@ describe('InventoryItemService', () => {
     });
   });
 
+  it('filters list by search and belowMinimum', async () => {
+    const result = await service.list({ search: 'ont', belowMinimum: true });
+
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('LOWER(item.sku)'),
+      expect.objectContaining({ term: '%ont%' }),
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(expect.stringContaining('stock_balances'));
+    expect(result).toMatchObject({
+      data: [],
+      meta: { nextCursor: null, total: 0, mode: 'cursor' },
+    });
+  });
+
   it('filters list by search and purchasable flag', async () => {
-    await service.list({ search: 'ont', purchasable: true });
+    const result = await service.list({ search: 'ont', purchasable: true });
 
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       expect.stringContaining('LOWER(item.sku)'),
@@ -117,6 +143,175 @@ describe('InventoryItemService', () => {
     expect(queryBuilder.andWhere).toHaveBeenCalledWith('item.purchasable = :purchasable', {
       purchasable: true,
     });
+    expect(queryBuilder.take).toHaveBeenCalledWith(21);
+    expect(result).toMatchObject({
+      data: [],
+      meta: { nextCursor: null, total: 0, mode: 'cursor' },
+    });
+  });
+
+  it('retorna items paginados con meta.nextCursor y total', async () => {
+    const categoryId = '11111111-1111-4111-8111-111111111111';
+    queryBuilder.getCount.mockResolvedValue(1);
+    queryBuilder.getMany.mockResolvedValue([
+      {
+        id: 'item-1',
+        tenantId: 'tenant-001',
+        categoryId,
+        sku: 'SKU-1',
+        name: 'ONT',
+        createdAt: new Date('2026-07-01T00:00:00.000Z'),
+        description: null,
+        brand: null,
+        model: null,
+        itemKind: InventoryItemKind.STOCK,
+        category: InventoryItemCategory.CPE,
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+        unitOfMeasure: 'unidad',
+        baseCost: '0',
+        minimumStock: '0',
+        purchasable: true,
+        inventoryControlled: true,
+        assetControlled: true,
+        preferredSupplierRefId: null,
+        supplierSku: null,
+        purchaseUnitOfMeasure: null,
+        purchaseToBaseUomFactor: null,
+        standardCost: '0',
+        lastPurchaseCost: null,
+        averageCost: '0',
+        reorderPoint: '0',
+        targetStock: '0',
+        minimumOrderQty: null,
+        orderMultiple: null,
+        leadTimeDays: null,
+        usefulLifeMonths: null,
+        commercialReferenceId: null,
+        status: InventoryItemStatus.ACTIVE,
+        updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const categoryQb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([
+        {
+          id: categoryId,
+          tenantId: 'tenant-001',
+          code: 'CPE',
+          codePrefix: 'CPE',
+          name: 'CPE',
+          status: 'ACTIVE',
+        },
+      ]),
+    };
+
+    runInTenantSchemaMock
+      .mockImplementationOnce(async (_ds, _schema, work) => {
+        const manager = {
+          createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+        };
+        return work({ manager } as never);
+      })
+      .mockImplementationOnce(async (_ds, _schema, work) => {
+        const manager = {
+          createQueryBuilder: jest.fn().mockReturnValue(categoryQb),
+        };
+        return work({ manager } as never);
+      });
+
+    const result = await service.list({ limit: 20 });
+
+    expect(result.meta.total).toBe(1);
+    expect(result.meta.nextCursor).toBeNull();
+    expect(result.meta.mode).toBe('cursor');
+    expect(result.meta.capabilities.randomAccess).toBe(true);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.sku).toBe('SKU-1');
+  });
+
+  it('indica nextCursor cuando hay más ítems que el limit', async () => {
+    const categoryId = '11111111-1111-4111-8111-111111111111';
+    const makeItem = (id: string, day: string) => ({
+      id,
+      tenantId: 'tenant-001',
+      categoryId,
+      sku: `SKU-${id}`,
+      name: `Item ${id}`,
+      createdAt: new Date(`${day}T00:00:00.000Z`),
+      description: null,
+      brand: null,
+      model: null,
+      itemKind: InventoryItemKind.STOCK,
+      category: InventoryItemCategory.CPE,
+      trackingMode: InventoryTrackingMode.SERIALIZED,
+      unitOfMeasure: 'unidad',
+      baseCost: '0',
+      minimumStock: '0',
+      purchasable: true,
+      inventoryControlled: true,
+      assetControlled: true,
+      preferredSupplierRefId: null,
+      supplierSku: null,
+      purchaseUnitOfMeasure: null,
+      purchaseToBaseUomFactor: null,
+      standardCost: '0',
+      lastPurchaseCost: null,
+      averageCost: '0',
+      reorderPoint: '0',
+      targetStock: '0',
+      minimumOrderQty: null,
+      orderMultiple: null,
+      leadTimeDays: null,
+      usefulLifeMonths: null,
+      commercialReferenceId: null,
+      status: InventoryItemStatus.ACTIVE,
+      updatedAt: new Date(`${day}T00:00:00.000Z`),
+    });
+
+    queryBuilder.getCount.mockResolvedValue(3);
+    queryBuilder.getMany.mockResolvedValue([
+      makeItem('a', '2026-07-03'),
+      makeItem('b', '2026-07-02'),
+      makeItem('c', '2026-07-01'),
+    ]);
+
+    const categoryQb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([
+        {
+          id: categoryId,
+          tenantId: 'tenant-001',
+          code: 'CPE',
+          codePrefix: 'CPE',
+          name: 'CPE',
+          status: 'ACTIVE',
+        },
+      ]),
+    };
+
+    runInTenantSchemaMock
+      .mockImplementationOnce(async (_ds, _schema, work) => {
+        const manager = {
+          createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+        };
+        return work({ manager } as never);
+      })
+      .mockImplementationOnce(async (_ds, _schema, work) => {
+        const manager = {
+          createQueryBuilder: jest.fn().mockReturnValue(categoryQb),
+        };
+        return work({ manager } as never);
+      });
+
+    const result = await service.list({ limit: 2 });
+
+    expect(result.meta.total).toBe(3);
+    expect(result.meta.nextCursor).toBeTruthy();
+    expect(result.data).toHaveLength(2);
+    expect(queryBuilder.take).toHaveBeenCalledWith(3);
   });
 
   it('rejects create when purchase unit lacks conversion factor', async () => {

@@ -11,6 +11,7 @@ import { UsersTable } from '@/components/users/UsersTable';
 import { tenantApi, type TenantListItem, type UserListItem, usersApi } from '@/lib/api-client';
 import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { PLATFORM_UI_COPY, getPlatformUsersSubtitle } from '@/lib/platform-ui-copy';
+import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 
 export default function UsersPage() {
   const router = useRouter();
@@ -40,7 +41,8 @@ export default function UsersPage() {
   useEffect(() => {
     const loadTenants = async () => {
       try {
-        const list = await tenantApi.list({ limit: 100, offset: 0 });
+        // ADR-064 excepción picker: soft-cap, no tabla operativa.
+        const list = await tenantApi.list({ limit: PICKER_SOFT_CAP, offset: 0 });
         const active = list.filter((item) => item.status === 'ACTIVE');
         setTenants(active);
         const initialTenant =
@@ -210,7 +212,7 @@ export default function UsersPage() {
 
         <Button
           type="button"
-          variant="lime"
+          variant="primary"
           onClick={() => setOpenCreateModal(true)}
           disabled={!tenantSlug}
         >

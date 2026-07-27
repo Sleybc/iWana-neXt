@@ -1,14 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  InventoryItemCategory,
-  InventoryItemKind,
-  InventoryItemStatus,
-  InventoryTrackingMode,
-  StockLocationStatus,
-  StockLocationType,
-} from '@iwana/shared';
-import { inventoryApi, type InventoryItemRecord, type StockLocationRecord } from '@/lib/api-client';
+import { inventoryApi } from '@/lib/api-client';
 import { StockAdjustmentDialog } from './StockAdjustmentDialog';
 
 jest.mock('@/lib/api-client', () => {
@@ -22,64 +14,47 @@ jest.mock('@/lib/api-client', () => {
   };
 });
 
+jest.mock('./InventoryItemPicker', () => ({
+  InventoryItemPicker: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label?: string;
+    value: string | null;
+    onChange: (id: string | null, item: { id: string; label: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      aria-label={label ?? 'Producto'}
+      onClick={() => onChange('item-001', { id: 'item-001', label: 'Cable UTP' })}
+    >
+      {value ?? 'sin producto'}
+    </button>
+  ),
+}));
+
+jest.mock('./InventoryLocationPicker', () => ({
+  InventoryLocationPicker: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label?: string;
+    value: string | null;
+    onChange: (id: string | null, item: { id: string; label: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      aria-label={label ?? 'Bodega'}
+      onClick={() => onChange('loc-001', { id: 'loc-001', label: 'Central' })}
+    >
+      {value ?? 'sin bodega'}
+    </button>
+  ),
+}));
+
 const createAdjustmentMock = inventoryApi.createAdjustment as jest.Mock;
-
-function makeItem(overrides: Partial<InventoryItemRecord> = {}): InventoryItemRecord {
-  return {
-    id: 'item-001',
-    tenantId: 'tenant-001',
-    sku: 'CAB-01',
-    name: 'Cable UTP',
-    description: null,
-    brand: null,
-    model: null,
-    itemKind: InventoryItemKind.STOCK,
-    category: InventoryItemCategory.OTHER,
-    categoryId: 'cat-001',
-    categoryName: 'Otros',
-    categoryCode: 'OTH',
-    trackingMode: InventoryTrackingMode.CONSUMABLE,
-    unitOfMeasure: 'UND',
-    baseCost: '0',
-    minimumStock: '5',
-    purchasable: true,
-    inventoryControlled: true,
-    assetControlled: false,
-    preferredSupplierRefId: null,
-    supplierSku: null,
-    purchaseUnitOfMeasure: null,
-    purchaseToBaseUomFactor: null,
-    standardCost: '0',
-    lastPurchaseCost: null,
-    averageCost: '0',
-    reorderPoint: '10',
-    targetStock: '20',
-    minimumOrderQty: '1',
-    orderMultiple: null,
-    leadTimeDays: null,
-    usefulLifeMonths: null,
-    commercialReferenceId: null,
-    status: InventoryItemStatus.ACTIVE,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function makeLocation(): StockLocationRecord {
-  return {
-    id: 'loc-001',
-    tenantId: 'tenant-001',
-    code: 'BC',
-    name: 'Bodega central',
-    type: StockLocationType.MAIN_WAREHOUSE,
-    status: StockLocationStatus.ACTIVE,
-    responsibleRefId: null,
-    maxCapacity: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  };
-}
 
 describe('StockAdjustmentDialog', () => {
   beforeEach(() => {
@@ -102,14 +77,14 @@ describe('StockAdjustmentDialog', () => {
     render(
       <StockAdjustmentDialog
         open
-        items={[makeItem()]}
-        locations={[makeLocation()]}
         preselectedItemId="item-001"
+        preselectedItemLabel="Cable UTP"
         onClose={onClose}
         onAdjustmentRegistered={onRegistered}
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Bodega' }));
     await user.click(screen.getByRole('combobox', { name: 'Dirección' }));
     await user.click(await screen.findByRole('option', { name: 'Salida' }));
     await user.clear(screen.getByLabelText('Cantidad'));

@@ -136,15 +136,63 @@ describe('PromotionService', () => {
   });
 
   describe('findAll', () => {
-    it('retorna lista de promociones activas del tenant', async () => {
-      const promos = [{ id: 'promo-1', code: 'BIENVENIDA', isActive: true }];
+    it('retorna lista paginada de promociones activas con meta', async () => {
+      const promos = [
+        {
+          id: 'promo-1',
+          code: 'BIENVENIDA',
+          isActive: true,
+          validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ];
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue(promos),
+      };
+      qb.clone.mockReturnValue(qb);
+
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({ manager: { find: async () => promos } }),
+        cb({ manager: { createQueryBuilder: () => qb } }),
       );
 
-      const result = await service.findAll();
-      expect(result).toHaveLength(1);
-      expect(result[0]?.code).toBe('BIENVENIDA');
+      const result = await service.findAll({ limit: 20 });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.code).toBe('BIENVENIDA');
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.nextCursor).toBeNull();
+    });
+
+    it('aplica offerStatus=expiring (vigencia o cerca de usos)', async () => {
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      qb.clone.mockReturnValue(qb);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      await service.findAll({ limit: 20, offerStatus: 'expiring' });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('promo.valid_to'),
+        expect.objectContaining({
+          nearUseRatio: 0.8,
+          nearUseRemaining: 2,
+        }),
+      );
     });
   });
 

@@ -111,32 +111,77 @@ describe('BundleService', () => {
   });
 
   describe('findAll', () => {
-    it('retorna lista de bundles activos con itemCount', async () => {
+    it('retorna lista paginada de bundles activos con itemCount y meta', async () => {
       const bundles = [{ id: 'bun-1', name: 'Bundle A', isActive: true }];
+      const listQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue(bundles),
+      };
+      listQb.clone.mockReturnValue(listQb);
+
+      const countQb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([{ bundleId: 'bun-1', itemCount: '3' }]),
+      };
+
+      let call = 0;
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            createQueryBuilder: () => ({
-              leftJoin: jest.fn().mockReturnThis(),
-              select: jest.fn().mockReturnThis(),
-              addSelect: jest.fn().mockReturnThis(),
-              where: jest.fn().mockReturnThis(),
-              andWhere: jest.fn().mockReturnThis(),
-              groupBy: jest.fn().mockReturnThis(),
-              orderBy: jest.fn().mockReturnThis(),
-              getRawAndEntities: jest.fn().mockResolvedValue({
-                entities: bundles,
-                raw: [{ itemCount: '3' }],
-              }),
-            }),
+            createQueryBuilder: () => {
+              call += 1;
+              return call === 1 ? listQb : countQb;
+            },
           },
         }),
       );
 
-      const result = await service.findAll();
-      expect(result).toHaveLength(1);
-      expect(result[0]?.id).toBe('bun-1');
-      expect(result[0]?.itemCount).toBe(3);
+      const result = await service.findAll({ limit: 20 });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.id).toBe('bun-1');
+      expect(result.data[0]?.itemCount).toBe(3);
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.nextCursor).toBeNull();
+    });
+
+    it('aplica offerStatus=expiring sobre valid_to en ventana', async () => {
+      const listQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      listQb.clone.mockReturnValue(listQb);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => listQb,
+          },
+        }),
+      );
+
+      await service.findAll({ limit: 20, offerStatus: 'expiring' });
+      expect(listQb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('bundle.valid_to'),
+        expect.objectContaining({
+          offerNow: expect.any(Date),
+          offerWindowEnd: expect.any(Date),
+        }),
+      );
     });
   });
 

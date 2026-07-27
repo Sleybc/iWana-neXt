@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Select } from '@iwana/ui';
 import type {
   InventoryItemRecord,
@@ -9,7 +9,9 @@ import type {
 } from '@/lib/api-client';
 import {
   PortalEmptyState,
+  PortalResultsStrip,
   PortalSearchField,
+  PortalTablePagination,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
@@ -22,17 +24,31 @@ import {
   STOCK_RESERVED_LABEL,
   formatInventoryQuantity,
 } from './inventory-labels';
+import { formatInventoryResultsLabel } from './inventory-list-pagination';
 import {
   buildStockOverviewRows,
-  filterStockOverviewRows,
   isStockAdjustableItem,
   type StockOverviewStatus,
 } from './stock-overview';
+
+export interface StockByProductServerFilters {
+  search: string;
+  onlyBelowMinimum: boolean;
+  stockLocationId: string;
+}
 
 interface StockByProductTableProps {
   items: InventoryItemRecord[];
   balances: StockBalanceRecord[];
   locations: StockLocationRecord[];
+  /** Total servidor de productos (meta.total). */
+  totalCount?: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  /** Filtros controlados por el padre (servidor Ola 6). */
+  filters?: StockByProductServerFilters;
+  onFiltersChange?: (filters: StockByProductServerFilters) => void;
   canAdjust?: boolean;
   onViewDetail: (itemId: string) => void;
   onAdjust?: (itemId: string) => void;
@@ -47,26 +63,71 @@ function statusBadgeVariant(
   return 'success';
 }
 
+const EMPTY_FILTERS: StockByProductServerFilters = {
+  search: '',
+  onlyBelowMinimum: false,
+  stockLocationId: '',
+};
+
 export function StockByProductTable({
   items,
   balances,
   locations,
+  totalCount,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  filters: filtersProp,
+  onFiltersChange,
   canAdjust = false,
   onViewDetail,
   onAdjust,
 }: StockByProductTableProps) {
-  const [search, setSearch] = useState('');
-  const [onlyBelowMinimum, setOnlyBelowMinimum] = useState(false);
-  const [locationId, setLocationId] = useState('');
+  const [filtersLocal, setFiltersLocal] = useState<StockByProductServerFilters>(EMPTY_FILTERS);
+  const filters = onFiltersChange ? (filtersProp ?? EMPTY_FILTERS) : filtersLocal;
+  const setFilters = (next: StockByProductServerFilters) => {
+    if (onFiltersChange) {
+      onFiltersChange(next);
+    } else {
+      setFiltersLocal(next);
+    }
+  };
+
+  const { search, onlyBelowMinimum, stockLocationId } = filters;
+
+  // Debounce local de búsqueda antes de notificar al padre (servidor).
+  const [searchDraft, setSearchDraft] = useState(search);
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+  useEffect(() => {
+    if (!onFiltersChange) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      if (searchDraft === search) return;
+      setFilters({ ...filters, search: searchDraft });
+    }, 300);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debounce searchDraft
+  }, [searchDraft, onFiltersChange]);
 
   const rows = useMemo(
     () =>
-      filterStockOverviewRows(
-        buildStockOverviewRows(items, balances, { locationId: locationId || null }),
-        { search, onlyBelowMinimum },
-      ),
-    [balances, items, locationId, onlyBelowMinimum, search],
+      buildStockOverviewRows(items, balances, {
+        locationId: stockLocationId || null,
+      }),
+    [balances, items, stockLocationId],
   );
+
+  const resolvedTotal = totalCount ?? items.length;
+  const resultsLabel = formatInventoryResultsLabel({
+    loaded: rows.length,
+    total: resolvedTotal,
+    hasMore,
+    singular: 'producto',
+    plural: 'productos',
+  });
 
   return (
     <div className="space-y-4">
@@ -74,8 +135,14 @@ export function StockByProductTable({
         <div className="flex-1">
           <PortalSearchField
             id="stock-by-product-search"
-            value={search}
-            onChange={setSearch}
+            value={onFiltersChange ? searchDraft : search}
+            onChange={(value) => {
+              if (onFiltersChange) {
+                setSearchDraft(value);
+              } else {
+                setFilters({ ...filters, search: value });
+              }
+            }}
             placeholder="Buscar por SKU o nombre"
             label="Buscar existencias por producto"
           />
@@ -83,8 +150,8 @@ export function StockByProductTable({
         <div className="w-full lg:w-56">
           <Select
             label="Bodega"
-            value={locationId}
-            onChange={(event) => setLocationId(event.target.value)}
+            value={stockLocationId}
+            onChange={(event) => setFilters({ ...filters, stockLocationId: event.target.value })}
             options={[
               { value: '', label: 'Todas las bodegas' },
               ...locations.map((location) => ({
@@ -98,11 +165,13 @@ export function StockByProductTable({
           <input
             type="checkbox"
             checked={onlyBelowMinimum}
-            onChange={(event) => setOnlyBelowMinimum(event.target.checked)}
+            onChange={(event) => setFilters({ ...filters, onlyBelowMinimum: event.target.checked })}
           />
           Solo bajo mínimo
         </label>
       </div>
+
+      <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
 
       {rows.length === 0 ? (
         <PortalEmptyState
@@ -192,6 +261,16 @@ export function StockByProductTable({
               ))}
             </tbody>
           </table>
+          {onLoadMore ? (
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={onLoadMore}
+              loading={isLoadingMore}
+              resourceLabel="productos"
+              shown={items.length}
+              total={resolvedTotal}
+            />
+          ) : null}
         </div>
       )}
 

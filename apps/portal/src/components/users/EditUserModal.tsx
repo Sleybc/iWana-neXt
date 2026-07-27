@@ -5,21 +5,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, Copy, PencilLine, ShieldAlert, X } from 'lucide-react';
+import { ChevronDown, ShieldAlert } from 'lucide-react';
 import {
   type AccessPermissionKey,
   PLATFORM_ONLY_ROLES,
   TENANT_ASSIGNABLE_ROLES,
   UserRole,
 } from '@iwana/shared';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Select,
-} from '@iwana/ui';
+import { Button, Select, cn } from '@iwana/ui';
 import {
   usersApi,
   type AccessPermissionsCatalog,
@@ -34,7 +27,12 @@ import {
   getPortalUserStatusLabel,
   PORTAL_USER_STATUSES,
 } from '@/lib/user-labels';
-import { interactiveFocusClassName, PortalAlert } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalSidePeek,
+  portalFieldClassName,
+  portalSelectTriggerClassName,
+} from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 import { UserProfileFields } from './UserProfileFields';
 
@@ -63,6 +61,15 @@ function getDefaultOperationalResource(role: string | UserRole | undefined): boo
   return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
 }
 
+function buildProfileSummary(user: InternalUser): string {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
+  const parts = [name || null, user.jobTitle || null].filter(Boolean);
+  if (parts.length === 0) {
+    return 'Nombre, contacto, documento y preferencias';
+  }
+  return parts.join(' · ');
+}
+
 interface EditUserModalProps {
   isOpen: boolean;
   user: InternalUser;
@@ -86,22 +93,6 @@ function mapError(err: unknown): string {
   return 'No fue posible completar la operación. Intenta de nuevo.';
 }
 
-const inputClass = [
-  'flex h-11 w-full rounded-2xl border border-gray-200 bg-gray-50/80 px-4 py-2 text-sm',
-  'text-gray-900 placeholder:text-gray-400',
-  'transition-all focus:border-iwana-secondary focus:bg-white',
-  interactiveFocusClassName,
-  'disabled:cursor-not-allowed disabled:opacity-50',
-  'dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
-  'dark:placeholder:text-gray-500 dark:focus:border-iwana-secondary',
-].join(' ');
-
-const selectClass = [
-  'h-11 rounded-2xl border-gray-200 bg-gray-50/80 shadow-none',
-  'focus:bg-white',
-  'dark:bg-dark-surface-3',
-].join(' ');
-
 export function EditUserModal({
   isOpen,
   user,
@@ -121,13 +112,6 @@ export function EditUserModal({
   const [selectedCompanyRoleIds, setSelectedCompanyRoleIds] =
     useState<string[]>(initialCompanyRoleIds);
 
-  // Estados para restablecimiento de contraseña
-  const [resetPasswordText, setResetPasswordText] = useState('');
-  const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(null);
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const resetPasswordIdempotencyKeyRef = useRef<string | null>(null);
   const changeEmailIdempotencyKeyRef = useRef<string | null>(null);
 
   const {
@@ -154,13 +138,8 @@ export function EditUserModal({
     },
   });
 
-  const clearIdempotencyKeys = () => {
-    resetPasswordIdempotencyKeyRef.current = null;
-    changeEmailIdempotencyKeyRef.current = null;
-  };
-
   const handleClose = () => {
-    clearIdempotencyKeys();
+    changeEmailIdempotencyKeyRef.current = null;
     onClose();
   };
 
@@ -182,12 +161,7 @@ export function EditUserModal({
       setServerError(null);
       setEmailError(null);
       setEmailToConfirm(null);
-      setResetPasswordText('');
-      setResetPasswordResult(null);
-      setResetPasswordError(null);
-      setCopied(false);
       setSelectedCompanyRoleIds(initialCompanyRoleIds);
-      resetPasswordIdempotencyKeyRef.current = null;
       changeEmailIdempotencyKeyRef.current = null;
     }
   }, [initialCompanyRoleIds, isOpen, user, reset]);
@@ -197,6 +171,7 @@ export function EditUserModal({
   }, [error]);
 
   const selectedBaseRole = watch('role') as UserRole | undefined;
+  const emailValue = watch('email');
   const isOperationalResource = watch('isOperationalResource');
 
   useEffect(() => {
@@ -310,454 +285,268 @@ export function EditUserModal({
     }
   };
 
-  const handleResetPassword = async () => {
-    setResetPasswordError(null);
-    setResetPasswordResult(null);
-    setIsResettingPassword(true);
-    const idempotencyKey = ensureIdempotencyKey(resetPasswordIdempotencyKeyRef);
-    try {
-      const result = await usersApi.resetPassword(user.id, {
-        password: resetPasswordText || undefined,
-        idempotencyKey,
-      });
-      resetPasswordIdempotencyKeyRef.current = null;
-      setResetPasswordResult(result.temporaryPassword);
-      setResetPasswordText('');
-    } catch (err: unknown) {
-      setResetPasswordError(mapError(err));
-    } finally {
-      setIsResettingPassword(false);
-    }
+  const requestEmailChange = () => {
+    const nextEmail = emailValue.trim();
+    if (!nextEmail || nextEmail === user.email) return;
+    setEmailToConfirm(nextEmail);
   };
-
-  const handleCopyPassword = async () => {
-    if (resetPasswordResult) {
-      await navigator.clipboard.writeText(resetPasswordResult);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  if (!isOpen) return null;
 
   const hasPlatformRole = PLATFORM_ONLY_ROLES.has(user.role);
   const isAdmin = user.role === UserRole.ADMIN || hasPlatformRole;
   const isProtectedRole = isAdmin || hasPlatformRole;
+  const companyRolesUnchanged =
+    [...initialCompanyRoleIds].sort().join('|') === [...selectedCompanyRoleIds].sort().join('|');
+  const emailUnchanged = emailValue.trim() === user.email;
+  const profileSummary = buildProfileSummary(user);
 
   return (
-    <Dialog
+    <PortalSidePeek
       open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          handleClose();
-        }
-      }}
-    >
-      <DialogContent aria-labelledby="edit-user-title">
-        <DialogHeader className="mb-6 flex flex-row items-start justify-between gap-4 space-y-0">
-          <div className="min-w-0 flex-1">
-            <p className="portal-eyebrow">Perfil interno</p>
-            <DialogTitle id="edit-user-title" className="mt-1">
-              Editar usuario
-            </DialogTitle>
-            <DialogDescription className="mt-1 leading-6">{user.email}</DialogDescription>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-iwana-surface-soft hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
-            aria-label="Cerrar"
+      onClose={handleClose}
+      eyebrow="Perfil interno"
+      title="Editar usuario"
+      description={user.email}
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="edit-user-form"
+            variant="primary"
+            disabled={isSubmitting || (!isDirty && companyRolesUnchanged)}
+            loading={isSubmitting}
           >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </DialogHeader>
+            Guardar cambios
+          </Button>
+        </div>
+      }
+    >
+      <form
+        id="edit-user-form"
+        onSubmit={handleSubmit(onFormSubmit)}
+        noValidate
+        className="space-y-5"
+      >
+        {/* 1. Acceso — decisión principal */}
+        <section className="space-y-3" aria-labelledby="edit-access-heading">
+          <div>
+            <h3 id="edit-access-heading" className="portal-eyebrow">
+              Acceso
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Estado, categoría base y perfiles de la empresa.
+            </p>
+          </div>
 
-        <form onSubmit={handleSubmit(onFormSubmit)} noValidate className="space-y-4">
-          <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
-              <PencilLine className="h-5 w-5" aria-hidden="true" />
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
-                Ajustes del colaborador
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Puedes modificar perfil, permisos y restablecer credenciales desde una sola vista
-                controlada.
-              </p>
+              <label
+                htmlFor="edit-status"
+                className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Estado
+              </label>
+              <Select
+                id="edit-status"
+                disabled={isSubmitting || isProtectedRole}
+                {...register('status')}
+                aria-label="Estado"
+                className={portalSelectTriggerClassName}
+                title={
+                  isProtectedRole ? 'No puedes cambiar el estado de usuarios protegidos' : undefined
+                }
+              >
+                {PORTAL_USER_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {getPortalUserStatusLabel(status)}
+                  </option>
+                ))}
+              </Select>
+              {isProtectedRole && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  No editable para roles protegidos
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-role"
+                className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Categoría base
+              </label>
+              <Select
+                id="edit-role"
+                disabled={isSubmitting || isProtectedRole}
+                {...register('role')}
+                aria-label="Categoría base"
+                className={portalSelectTriggerClassName}
+                title={
+                  isProtectedRole ? 'No puedes cambiar el rol de usuarios protegidos' : undefined
+                }
+              >
+                {PLATFORM_ONLY_ROLES.has(user.role) && (
+                  <option value={user.role}>{getPortalUserRoleLabel(user.role)}</option>
+                )}
+                {TENANT_ASSIGNABLE_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {getPortalUserRoleLabel(role)}
+                  </option>
+                ))}
+              </Select>
+              {isProtectedRole && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  No editable para roles protegidos
+                </p>
+              )}
             </div>
           </div>
 
-          <section className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3/60">
-            <div className="mb-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
-                Perfil y accesos
-              </p>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                Actualiza la identidad operativa, la categoría base y los perfiles de acceso del
-                colaborador.
-              </p>
-            </div>
+          <CompanyRolesAssignmentSection
+            layout="flat"
+            baseRole={selectedBaseRole ?? null}
+            availableProfiles={availableProfiles}
+            selectedProfileIds={selectedCompanyRoleIds}
+            compatibilityMatrix={
+              accessCatalog?.compatibilityMatrix ?? ({} as Record<UserRole, AccessPermissionKey[]>)
+            }
+            catalog={accessCatalog}
+            onToggleProfile={toggleCompanyRole}
+          />
+        </section>
 
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-              {/*
-                Correo electrónico: siempre ancho completo
-              */}
-              <div className="col-span-full">
-                <label
-                  htmlFor="edit-email"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Correo electrónico
-                </label>
-                <div className="flex items-center gap-2">
-                  {errors.email ? (
-                    <input
-                      id="edit-email"
-                      type="email"
-                      disabled={isSubmitting}
-                      {...register('email')}
-                      className={inputClass + ' flex-1'}
-                      aria-invalid="true"
-                    />
-                  ) : (
-                    <input
-                      id="edit-email"
-                      type="email"
-                      disabled={isSubmitting}
-                      {...register('email')}
-                      className={inputClass + ' flex-1'}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const email =
-                        (document.getElementById('edit-email') as HTMLInputElement)?.value ?? '';
-                      if (email === user.email) return;
-                      setEmailToConfirm(email);
-                    }}
-                    disabled={isSubmitting || isSavingEmail}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 disabled:opacity-50 transition-colors shrink-0 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
-                  >
-                    {isSavingEmail ? 'Guardando...' : 'Cambiar correo'}
-                  </button>
-                </div>
-                {errors.email && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {errors.email.message}
-                  </p>
-                )}
-                {emailError && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{emailError}</p>
-                )}
-              </div>
+        {/* 2. Correo — flujo sensible, CTA secundaria */}
+        <section
+          className="space-y-3 border-t border-gray-100 pt-5 dark:border-dark-border"
+          aria-labelledby="edit-email-heading"
+        >
+          <div>
+            <h3 id="edit-email-heading" className="portal-eyebrow">
+              Correo de inicio de sesión
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Se guarda aparte del resto del perfil. El colaborador usará este correo para entrar.
+            </p>
+          </div>
 
-              {/*
-                Confirmación de cambio de email
-              */}
-              {emailToConfirm && (
-                <PortalAlert
-                  className="col-span-full"
-                  variant="warning"
-                  title="Confirmar cambio de correo"
-                  description={
-                    <>
-                      Estás a punto de cambiar el email de <strong>{user.email}</strong> a{' '}
-                      <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesión se
-                      hará con el nuevo email.
-                    </>
-                  }
-                  icon={ShieldAlert}
-                  action={
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setEmailToConfirm(null)}
-                        className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleSaveEmail(emailToConfirm);
-                          setEmailToConfirm(null);
-                        }}
-                        disabled={isSavingEmail}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
-                      >
-                        {isSavingEmail ? 'Guardando...' : 'Confirmar cambio de correo'}
-                      </button>
-                    </div>
-                  }
-                />
-              )}
-
-              {/*
-              Estado y rol en 2 columnas
-            */}
-              <div>
-                <label
-                  htmlFor="edit-status"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Estado
-                </label>
-                <Select
-                  id="edit-status"
-                  disabled={isSubmitting || isProtectedRole}
-                  {...register('status')}
-                  aria-label="Estado"
-                  className={selectClass}
-                  title={
-                    isProtectedRole
-                      ? 'No puedes cambiar el estado de usuarios protegidos'
-                      : undefined
-                  }
-                >
-                  {PORTAL_USER_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {getPortalUserStatusLabel(status)}
-                    </option>
-                  ))}
-                </Select>
-                {isProtectedRole && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    No editable para roles protegidos
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-role"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Categoría base
-                </label>
-                <Select
-                  id="edit-role"
-                  disabled={isSubmitting || isProtectedRole}
-                  {...register('role')}
-                  aria-label="Categoría base"
-                  className={selectClass}
-                  title={
-                    isProtectedRole ? 'No puedes cambiar el rol de usuarios protegidos' : undefined
-                  }
-                >
-                  {PLATFORM_ONLY_ROLES.has(user.role) && (
-                    <option value={user.role}>{getPortalUserRoleLabel(user.role)}</option>
-                  )}
-                  {TENANT_ASSIGNABLE_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {getPortalUserRoleLabel(role)}
-                    </option>
-                  ))}
-                </Select>
-                {isProtectedRole && (
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    No editable para roles protegidos
-                  </p>
-                )}
-              </div>
-
-              <div className="col-span-full">
-                <CompanyRolesAssignmentSection
-                  baseRole={selectedBaseRole ?? null}
-                  availableProfiles={availableProfiles}
-                  selectedProfileIds={selectedCompanyRoleIds}
-                  compatibilityMatrix={
-                    accessCatalog?.compatibilityMatrix ??
-                    ({} as Record<UserRole, AccessPermissionKey[]>)
-                  }
-                  catalog={accessCatalog}
-                  onToggleProfile={toggleCompanyRole}
-                />
-              </div>
-
-              <UserProfileFields
-                idPrefix="edit"
-                register={register}
-                errors={errors}
-                isSubmitting={isSubmitting}
-                inputClassName={inputClass}
-                selectClassName={selectClass}
-                operationalResourceDescription="Controla si esta persona aparece en agenda diaria, capacidad visible y recomendaciones operativas. Aunque esté desactivado, seguirá disponible para agenda general."
+          <div>
+            <label
+              htmlFor="edit-email"
+              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Correo electrónico
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                id="edit-email"
+                type="email"
+                disabled={isSubmitting}
+                {...register('email')}
+                className={`${portalFieldClassName} flex-1`}
+                aria-invalid={errors.email ? 'true' : undefined}
               />
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 dark:border-amber-800 dark:bg-amber-900/10">
-            <div className="mb-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
-                Credenciales y acceso
-              </p>
-              <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-100/80">
-                Usa este bloque solo para restablecer una contraseña puntual o entregar una temporal
-                controlada.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <label
-                htmlFor="reset-password"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+              <Button
+                type="button"
+                variant="outline"
+                onClick={requestEmailChange}
+                disabled={isSubmitting || isSavingEmail || emailUnchanged}
+                loading={isSavingEmail}
+                className="shrink-0 sm:self-stretch"
               >
-                Restablecer contraseña
-              </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Ingresa una nueva contraseña (mín. 10 caracteres) o deja en blanco para generar una
-                temporal.
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  id="reset-password"
-                  type="password"
-                  value={resetPasswordText}
-                  onChange={(e) => setResetPasswordText(e.target.value)}
-                  disabled={isResettingPassword}
-                  placeholder="Mínimo 10 caracteres"
-                  className={inputClass + ' flex-1'}
-                />
-                <button
-                  type="button"
-                  onClick={handleResetPassword}
-                  disabled={
-                    isResettingPassword ||
-                    (resetPasswordText.length > 0 && resetPasswordText.length < 10)
-                  }
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors shrink-0 dark:bg-amber-500 dark:hover:bg-amber-400"
-                >
-                  {isResettingPassword ? (
-                    <>
-                      <svg
-                        className="h-4 w-4 animate-spin"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                      Restableciendo...
-                    </>
-                  ) : (
-                    'Restablecer'
-                  )}
-                </button>
-              </div>
-              {resetPasswordText.length > 0 && resetPasswordText.length < 10 && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">Mínimo 10 caracteres</p>
-              )}
-              {resetPasswordError && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{resetPasswordError}</p>
-              )}
+                Cambiar correo
+              </Button>
             </div>
-
-            {resetPasswordResult && (
-              <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
-                  Nueva contraseña
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base font-mono font-bold tracking-wider text-gray-900 dark:border-emerald-700 dark:bg-dark-surface-3 dark:text-white">
-                    {resetPasswordResult}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={handleCopyPassword}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-700 dark:bg-dark-surface-3 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
-                  >
-                    {copied ? (
-                      <>
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                        Copiado
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                        Copiar
-                      </>
-                    )}
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400">
-                  El usuario deberá cambiar esta contraseña al próximo inicio de sesión.
-                </p>
-              </div>
+            {errors.email && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.email.message}</p>
             )}
-          </section>
+            {emailError && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">{emailError}</p>
+            )}
+          </div>
 
-          {serverError && (
+          {emailToConfirm && (
             <PortalAlert
-              variant="error"
-              title="No fue posible guardar los cambios"
-              description={serverError}
+              variant="warning"
+              title="Confirmar cambio de correo"
+              description={
+                <>
+                  Vas a cambiar el inicio de sesión de <strong>{user.email}</strong> a{' '}
+                  <strong>{emailToConfirm}</strong>.
+                </>
+              }
+              icon={ShieldAlert}
+              action={
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEmailToConfirm(null)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      void handleSaveEmail(emailToConfirm);
+                      setEmailToConfirm(null);
+                    }}
+                    disabled={isSavingEmail}
+                    loading={isSavingEmail}
+                  >
+                    Confirmar cambio de correo
+                  </Button>
+                </div>
+              }
             />
           )}
+        </section>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={isSubmitting}
-              className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={
-                isSubmitting ||
-                (!isDirty &&
-                  [...initialCompanyRoleIds].sort().join('|') ===
-                    [...selectedCompanyRoleIds].sort().join('|'))
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600 disabled:opacity-50 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
-            >
-              {isSubmitting ? (
-                <>
-                  <svg
-                    className="h-4 w-4 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  Guardando...
-                </>
-              ) : (
-                'Guardar cambios'
-              )}
-            </button>
+        {/* 3. Perfil — progressive disclosure */}
+        <details className="group border-t border-gray-100 pt-5 dark:border-dark-border">
+          <summary
+            className={cn(
+              'flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary',
+            )}
+          >
+            <div className="min-w-0">
+              <p className="portal-eyebrow">Datos de perfil</p>
+              <p className="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">
+                {profileSummary}
+              </p>
+            </div>
+            <ChevronDown
+              className="h-4 w-4 shrink-0 text-iwana-primary transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <UserProfileFields
+              idPrefix="edit"
+              register={register}
+              errors={errors}
+              isSubmitting={isSubmitting}
+              inputClassName={portalFieldClassName}
+              selectClassName={portalSelectTriggerClassName}
+              operationalResourceDescription="Si está activo, aparece en agenda diaria, capacidad y recomendaciones. Si no, sigue disponible para agenda general."
+            />
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </details>
+
+        {serverError && (
+          <PortalAlert
+            variant="error"
+            title="No fue posible guardar los cambios"
+            description={serverError}
+          />
+        )}
+      </form>
+    </PortalSidePeek>
   );
 }

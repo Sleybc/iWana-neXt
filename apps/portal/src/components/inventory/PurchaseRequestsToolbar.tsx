@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Select } from '@iwana/ui';
 import { PurchaseRequestPriority, PurchaseRequestStatus, PurchaseRequestType } from '@iwana/shared';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
@@ -20,6 +21,8 @@ interface PurchaseRequestsToolbarProps {
   resultCount: number;
   totalCount: number;
   isRefreshing?: boolean;
+  /** Cuando true, el conteo vive en PortalResultsStrip (ADR-064). */
+  hideResultsLabel?: boolean;
   onFiltersChange: (filters: PurchaseRequestFilters) => void;
   onRefresh: () => void;
   onClearFilters: () => void;
@@ -81,6 +84,7 @@ export function PurchaseRequestsToolbar({
   resultCount,
   totalCount,
   isRefreshing = false,
+  hideResultsLabel = false,
   onFiltersChange,
   onRefresh,
   onClearFilters,
@@ -92,6 +96,35 @@ export function PurchaseRequestsToolbar({
     resultCount === 0
       ? 'Sin resultados con estos filtros'
       : `${resultCount} solicitud${resultCount === 1 ? '' : 'es'}${resultCount !== totalCount ? ` de ${totalCount}` : ''}`;
+
+  const urlSearch = filters.search ?? '';
+  const [searchDraft, setSearchDraft] = useState(urlSearch);
+  const searchDraftRef = useRef(searchDraft);
+  searchDraftRef.current = searchDraft;
+
+  const flushSearchDraft = useCallback(() => {
+    const trimmed = searchDraftRef.current.trim();
+    const current = (filters.search ?? '').trim();
+    if (trimmed === current) return;
+    const next = { ...filters };
+    if (trimmed) {
+      next.search = trimmed;
+    } else {
+      delete next.search;
+    }
+    onFiltersChange(next);
+  }, [filters, onFiltersChange]);
+
+  useEffect(() => {
+    setSearchDraft(urlSearch);
+  }, [urlSearch]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      flushSearchDraft();
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchDraft, flushSearchDraft]);
 
   function removeChip(key: string) {
     if (key === 'kpiPreset') {
@@ -124,15 +157,33 @@ export function PurchaseRequestsToolbar({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="text-sm text-gray-600 dark:text-gray-300">{resultsLabel}</p>
+        {hideResultsLabel ? (
+          <span />
+        ) : (
+          <p className="text-sm text-gray-600 dark:text-gray-300">{resultsLabel}</p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {onOpenComposer ? (
-            <Button type="button" variant="secondary" onClick={onOpenComposer}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                flushSearchDraft();
+                onOpenComposer();
+              }}
+            >
               Nueva solicitud
             </Button>
           ) : null}
           {onOpenCounterPurchase ? (
-            <Button type="button" variant="secondary" onClick={onOpenCounterPurchase}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                flushSearchDraft();
+                onOpenCounterPurchase();
+              }}
+            >
               Ingreso directo
             </Button>
           ) : null}
@@ -189,8 +240,8 @@ export function PurchaseRequestsToolbar({
           id="purchase-filter-search"
           label="Buscar"
           placeholder="Número, título o área"
-          value={filters.search ?? ''}
-          onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}
+          value={searchDraft}
+          onChange={(event) => setSearchDraft(event.target.value)}
         />
       </div>
 

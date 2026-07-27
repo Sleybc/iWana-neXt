@@ -11,7 +11,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -27,10 +27,12 @@ import {
 } from '../dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from '../dto/update-catalog-item.dto';
 import { CatalogQueryDto } from '../dto/catalog-query.dto';
+import { CommercialListMetaDto } from '../dto/commercial-list-query.dto';
 import { CreatePriceDto } from '../dto/create-price.dto';
 import { CatalogItemType, CustomerSegment } from '@iwana/shared';
 
 @ApiTags('commercial-catalog')
+@ApiExtraModels(CommercialListMetaDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial/catalog')
@@ -49,11 +51,24 @@ export class CatalogController {
     UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @ApiOperation({ summary: 'Listar ítems del catálogo con filtros y paginación' })
-  @ApiResponse({ status: 200, description: 'Lista paginada de ítems' })
+  @ApiOperation({
+    summary: 'Listar ítems del catálogo con filtros y paginación cursor/page',
+    description:
+      'ADR-064/065: `limit` default 20, max 100; `cursor` o `page` (excluyentes). ' +
+      '`total` = tamaño del conjunto filtrado; el cursor aplica después del filtro. ' +
+      'Orden default: name ASC, id ASC. `sort` = CATEGORY_NAME | ACTIVE_NAME | RECENTLY_UPDATED ' +
+      '(keyset coherente; cambiar sort reinicia cursor). ' +
+      'Filtros servidor: `type`, `name`, `isActive`, `missingPrice`, `category` (productos), ' +
+      '`model` (SALE|LOAN), `charge` (servicios). `sortableFields: []` (sin p95).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Envelope H-11 `{ data: { data, meta } }` (ListMeta mode page|cursor)',
+  })
   async findAll(@Query() query: CatalogQueryDto) {
+    // Envelope H-11 (igual Users): { data: { data, meta } } → el FE desenvuelve / normaliza.
     const result = await this.catalogService.findAll(query);
-    return { data: result.data, meta: { total: result.total } };
+    return { data: result };
   }
 
   @Get(':id')

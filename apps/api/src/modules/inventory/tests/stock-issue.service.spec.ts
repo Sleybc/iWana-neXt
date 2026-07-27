@@ -468,8 +468,13 @@ describe('StockIssueService', () => {
     const qb = {
       where: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      clone: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
       getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
     };
     const manager = {
@@ -480,7 +485,10 @@ describe('StockIssueService', () => {
     );
 
     const service = createService();
-    await service.list({ status: StockIssueStatus.DRAFT, type: StockIssueType.CREW_CUSTODY });
+    const result = await service.list({
+      status: StockIssueStatus.DRAFT,
+      type: StockIssueType.CREW_CUSTODY,
+    });
 
     expect(qb.andWhere).toHaveBeenCalledWith('issue.type = :type', {
       type: StockIssueType.CREW_CUSTODY,
@@ -488,6 +496,9 @@ describe('StockIssueService', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('issue.status = :status', {
       status: StockIssueStatus.DRAFT,
     });
+    expect(result.meta).toBeDefined();
+    expect(result.meta.capabilities.randomAccess).toBe(false);
+    expect(result.data).toHaveLength(0);
   });
 
   it('cancels a non-dispatched issue', async () => {

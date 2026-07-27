@@ -16,6 +16,7 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import type {
   ContactAttemptRecord,
   ExpedienteActivityItem,
@@ -439,20 +440,22 @@ export function ExpedienteTimelinePanel({
                   type="button"
                   onClick={() => onTimelinePageChange(Math.max(1, timelinePage - 1))}
                   disabled={timelinePage === 1}
-                  className="rounded-lg border border-gray-200 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border"
+                  className={`inline-flex min-h-11 items-center rounded-lg border border-gray-200 px-3 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border ${interactiveFocusClassName}`}
                 >
                   Anterior
                 </button>
                 <span className="whitespace-nowrap">
                   Página {timelinePage} de {timelineTotalPages}
                 </span>
-                <div className="hidden items-center gap-1 sm:flex">
+                <div className="hidden items-center gap-2 sm:flex">
                   {firstTimelinePageButton > 1 && (
                     <>
                       <button
                         type="button"
                         onClick={() => onTimelinePageChange(1)}
-                        className="rounded-md border border-gray-200 px-2 py-1 dark:border-dark-border"
+                        aria-label="Página 1"
+                        aria-current={timelinePage === 1 ? 'page' : undefined}
+                        className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-200 px-2 dark:border-dark-border ${interactiveFocusClassName}`}
                       >
                         1
                       </button>
@@ -465,11 +468,13 @@ export function ExpedienteTimelinePanel({
                       key={page}
                       type="button"
                       onClick={() => onTimelinePageChange(page)}
-                      className={`rounded-md border px-2 py-1 ${
+                      aria-label={`Página ${page}`}
+                      aria-current={page === timelinePage ? 'page' : undefined}
+                      className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border px-2 ${
                         page === timelinePage
                           ? 'border-iwana-primary bg-iwana-primary text-white'
                           : 'border-gray-200 dark:border-dark-border'
-                      }`}
+                      } ${interactiveFocusClassName}`}
                     >
                       {page}
                     </button>
@@ -483,7 +488,9 @@ export function ExpedienteTimelinePanel({
                       <button
                         type="button"
                         onClick={() => onTimelinePageChange(timelineTotalPages)}
-                        className="rounded-md border border-gray-200 px-2 py-1 dark:border-dark-border"
+                        aria-label={`Página ${timelineTotalPages}`}
+                        aria-current={timelinePage === timelineTotalPages ? 'page' : undefined}
+                        className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-200 px-2 dark:border-dark-border ${interactiveFocusClassName}`}
                       >
                         {timelineTotalPages}
                       </button>
@@ -496,7 +503,7 @@ export function ExpedienteTimelinePanel({
                     onTimelinePageChange(Math.min(timelineTotalPages, timelinePage + 1))
                   }
                   disabled={timelinePage === timelineTotalPages}
-                  className="rounded-lg border border-gray-200 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border"
+                  className={`inline-flex min-h-11 items-center rounded-lg border border-gray-200 px-3 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border ${interactiveFocusClassName}`}
                 >
                   Siguiente
                 </button>

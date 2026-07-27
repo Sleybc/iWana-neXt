@@ -54,6 +54,7 @@ describe('SerializedAssetService.listUsefulLifeAlerts', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getCount: jest.fn().mockResolvedValue(total),
@@ -116,6 +117,9 @@ describe('SerializedAssetService.listUsefulLifeAlerts', () => {
     expect(qb.getCount).toHaveBeenCalled();
     expect(qb.skip).toHaveBeenCalledWith(0);
     expect(qb.take).toHaveBeenCalledWith(20);
+    // DEF-1: orden estable (updated_at + desempate por id).
+    expect(qb.orderBy).toHaveBeenCalledWith('asset.updated_at', 'DESC');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('asset.id', 'DESC');
     expect(qb.andWhere).toHaveBeenCalledWith(
       expect.stringContaining("INTERVAL '1 month'"),
       expect.any(Object),

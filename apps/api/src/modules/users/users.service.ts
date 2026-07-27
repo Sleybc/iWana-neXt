@@ -35,6 +35,7 @@ import {
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
+import { clampPickerSearchLimit, type PickerSearchResult } from '../../common/pagination';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
@@ -400,6 +401,112 @@ export class UsersService {
         },
       };
     });
+  }
+
+  /**
+   * Lookup typeahead E-4 para pickers (atribución de usuarios, etc.).
+   * Respuesta `{ data: { id, label, sublabel }[], total }` — máx. 20.
+   * Label: nombre completo o email (precedente portal `buildInternalUserLabel`).
+   * Sublabel: email si hay nombre; sin PII extra (documento/teléfono fuera).
+   */
+  async searchForPicker(params: {
+    q?: string | undefined;
+    status?: UserStatus | undefined;
+    limit?: number | undefined;
+  }): Promise<PickerSearchResult> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const limit = clampPickerSearchLimit(params.limit);
+    const normalizedSearch = this.normalizeSearchValue(params.q ?? '');
+
+    if (!normalizedSearch) {
+      return { data: [], total: 0 };
+    }
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.query(`SELECT set_config('pg_trgm.similarity_threshold', $1, true)`, [
+        String(TRGM_SIMILARITY_THRESHOLD),
+      ]);
+
+      const filterClauses: string[] = ['deleted_at IS NULL'];
+      const filterParams: unknown[] = [];
+
+      if (params.status) {
+        filterParams.push(params.status);
+        filterClauses.push(`status = $${filterParams.length}`);
+      }
+
+      filterParams.push(normalizedSearch);
+      const qIdx = filterParams.length;
+      filterParams.push(`%${this.escapeLikePattern(normalizedSearch)}%`);
+      const likeIdx = filterParams.length;
+
+      filterClauses.push(`(
+        email ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(first_name, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(last_name, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(job_title, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR email % $${qIdx}
+        OR coalesce(first_name, '') % $${qIdx}
+        OR coalesce(last_name, '') % $${qIdx}
+        OR coalesce(job_title, '') % $${qIdx}
+        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) % $${qIdx}
+      )`);
+
+      const filterSql = filterClauses.join(' AND ');
+
+      const countRows = (await qr.query(
+        `SELECT COUNT(*)::int AS total FROM users WHERE ${filterSql}`,
+        filterParams,
+      )) as Array<{ total: number }>;
+      const total = countRows[0]?.total ?? 0;
+
+      const pageParams = [...filterParams, limit];
+      const pageSql = `
+        SELECT id, email, first_name, last_name, job_title
+        FROM users
+        WHERE ${filterSql}
+        ORDER BY
+          GREATEST(
+            similarity(email, $${qIdx}),
+            similarity(coalesce(first_name, ''), $${qIdx}),
+            similarity(coalesce(last_name, ''), $${qIdx}),
+            similarity(coalesce(first_name, '') || ' ' || coalesce(last_name, ''), $${qIdx})
+          ) DESC,
+          id ASC
+        LIMIT $${pageParams.length}
+      `;
+
+      const rows = (await qr.query(pageSql, pageParams)) as Array<{
+        id: string;
+        email: string;
+        first_name: string | null;
+        last_name: string | null;
+        job_title: string | null;
+      }>;
+
+      return {
+        data: rows.map((row) => this.toPickerItem(row)),
+        total,
+      };
+    });
+  }
+
+  private toPickerItem(row: {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    job_title?: string | null;
+  }): { id: string; label: string; sublabel?: string | null } {
+    const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
+    if (fullName) {
+      return { id: row.id, label: fullName, sublabel: row.email };
+    }
+    return {
+      id: row.id,
+      label: row.email,
+      sublabel: row.job_title?.trim() || null,
+    };
   }
 
   /**

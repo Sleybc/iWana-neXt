@@ -157,15 +157,16 @@ describe('InventoryController HTTP', () => {
   let app: INestApplication;
 
   const inventoryItemServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     create: jest.fn().mockResolvedValue({ id: 'item-001' }),
     getById: jest.fn().mockResolvedValue({ id: 'item-001' }),
     update: jest.fn().mockResolvedValue({ id: 'item-001', purchasable: false }),
     delete: jest.fn().mockResolvedValue(undefined),
     listCatalogOptions: jest.fn().mockResolvedValue([]),
+    searchForPicker: jest.fn().mockResolvedValue({ data: [], total: 0 }),
   };
   const inventoryCategoryServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     suggestPrefix: jest.fn().mockResolvedValue({
       code: 'CONSUMIBLESRD',
       codePrefix: 'CRD',
@@ -176,13 +177,15 @@ describe('InventoryController HTTP', () => {
     update: jest.fn().mockResolvedValue({ id: 'cat-001', productCount: 2 }),
   };
   const stockLocationServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     create: jest.fn().mockResolvedValue({ id: 'loc-001' }),
     update: jest.fn().mockResolvedValue({ id: 'loc-001', status: 'ACTIVE' }),
+    searchForPicker: jest.fn().mockResolvedValue({ data: [], total: 0 }),
   };
   const serializedAssetServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     getById: jest.fn().mockResolvedValue({ id: 'asset-001' }),
+    searchForPicker: jest.fn().mockResolvedValue({ data: [], total: 0 }),
     listUsefulLifeAlerts: jest.fn().mockResolvedValue({
       data: [],
       total: 0,
@@ -191,7 +194,7 @@ describe('InventoryController HTTP', () => {
     }),
   };
   const stockBalanceServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
   };
   const stockLedgerServiceMock = {
     transfer: jest.fn().mockResolvedValue({ movement: { id: 'mov-001' } }),
@@ -231,7 +234,7 @@ describe('InventoryController HTTP', () => {
     listSuggestions: jest.fn().mockResolvedValue([]),
   };
   const cycleCountServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     create: jest.fn().mockResolvedValue({ id: 'count-001', lines: [] }),
     getById: jest.fn().mockResolvedValue({ id: 'count-001', lines: [] }),
     update: jest.fn().mockResolvedValue({ id: 'count-001', lines: [] }),
@@ -240,7 +243,21 @@ describe('InventoryController HTTP', () => {
   };
   const purchasingServiceMock = {
     listRequests: jest.fn().mockResolvedValue([]),
-    listOrders: jest.fn().mockResolvedValue([]),
+    listOrders: jest.fn().mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    }),
     getOrderById: jest.fn().mockResolvedValue({ id: 'po-001', lines: [] }),
     createPurchaseRequest: jest.fn().mockResolvedValue({ id: 'pr-001' }),
     addSupplierQuote: jest.fn().mockResolvedValue({ id: 'quote-001' }),
@@ -283,7 +300,7 @@ describe('InventoryController HTTP', () => {
     }),
   };
   const stockIssueServiceMock = {
-    list: jest.fn().mockResolvedValue([]),
+    list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     create: jest.fn().mockResolvedValue({ id: 'issue-001' }),
     getById: jest.fn().mockResolvedValue({ id: 'issue-001', lines: [] }),
     update: jest.fn().mockResolvedValue({ id: 'issue-001', status: 'DRAFT' }),
@@ -295,7 +312,23 @@ describe('InventoryController HTTP', () => {
       id: 'wo-001',
       status: 'PENDING_APPROVAL',
     }),
-    list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 }),
+    list: jest
+      .fn()
+      .mockResolvedValue({
+        data: [],
+        meta: {
+          nextCursor: null,
+          total: 0,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 20,
+          totalPages: 0,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: false, sortableFields: [] },
+          sort: null,
+        },
+      }),
     getById: jest.fn().mockResolvedValue({ id: 'wo-001', status: 'PENDING_APPROVAL' }),
     approve: jest.fn().mockResolvedValue({
       writeOff: { id: 'wo-001', status: 'COMPLETED', stockMovementId: 'mov-006' },
@@ -387,7 +420,10 @@ describe('InventoryController HTTP', () => {
       .set('Authorization', 'Bearer support-token')
       .expect(200);
 
-    expect(inventoryCategoryServiceMock.list).toHaveBeenCalledWith({ search: 'fibra' });
+    expect(inventoryCategoryServiceMock.list).toHaveBeenCalledWith({
+      search: 'fibra',
+      limit: 20,
+    });
   });
 
   it('suggests inventory category prefix for support role', async () => {
@@ -463,6 +499,7 @@ describe('InventoryController HTTP', () => {
     expect(inventoryItemServiceMock.list).toHaveBeenCalledWith({
       purchasable: true,
       search: 'ont',
+      limit: 20,
     });
   });
 
@@ -708,6 +745,7 @@ describe('InventoryController HTTP', () => {
     expect(stockIssueServiceMock.list).toHaveBeenCalledWith({
       status: 'DRAFT',
       type: 'CREW_CUSTODY',
+      limit: 20,
     });
   });
 

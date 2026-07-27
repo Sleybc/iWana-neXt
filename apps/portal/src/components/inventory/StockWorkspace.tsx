@@ -1,19 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@iwana/ui';
-import type {
-  InventoryItemRecord,
-  StockBalanceRecord,
-  StockLocationRecord,
+import {
+  inventoryApi,
+  type InventoryItemRecord,
+  type StockBalanceRecord,
+  type StockLocationRecord,
 } from '@/lib/api-client';
 import { portalModuleTabTriggerClassName } from '@/components/shared/portal-ui';
 import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { StockAdjustmentDialog } from './StockAdjustmentDialog';
-import { StockByProductTable } from './StockByProductTable';
+import { StockByProductTable, type StockByProductServerFilters } from './StockByProductTable';
 import { StockItemDetailDrawer } from './StockItemDetailDrawer';
 import { StockKardexPanel } from './StockKardexPanel';
 import { StockLocationsMatrix, type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
+import type { LocationMatrixFilters } from './location-matrix-filters';
 import { StockReplenishmentPanel } from './StockReplenishmentPanel';
 import type { StockKardexFilters } from './stock-kardex-filters';
 
@@ -26,6 +28,21 @@ interface StockWorkspaceProps {
   userLabelById?: Map<string, string>;
   custodyFilter?: LocationMatrixCustodyFilter;
   canAdjust?: boolean;
+  itemsTotal?: number;
+  itemsHasMore?: boolean;
+  locationsTotal?: number;
+  locationsHasMore?: boolean;
+  isLoadingMoreItems?: boolean;
+  isLoadingMoreLocations?: boolean;
+  onLoadMoreItems?: () => void;
+  onLoadMoreLocations?: () => void;
+  balancesHasMore?: boolean;
+  isLoadingMoreBalances?: boolean;
+  onLoadMoreBalances?: () => void;
+  productFilters?: StockByProductServerFilters;
+  onProductFiltersChange?: (filters: StockByProductServerFilters) => void;
+  locationListFilters?: Omit<LocationMatrixFilters, 'custodyFilter'>;
+  onLocationListFiltersChange?: (filters: Omit<LocationMatrixFilters, 'custodyFilter'>) => void;
   initialSubview?: StockSubview;
   initialKardexFilters?: Partial<StockKardexFilters>;
   onCustodyFilterChange?: (filter: LocationMatrixCustodyFilter) => void;
@@ -40,6 +57,21 @@ export function StockWorkspace({
   userLabelById,
   custodyFilter = 'all',
   canAdjust = false,
+  itemsTotal,
+  itemsHasMore = false,
+  locationsTotal,
+  locationsHasMore = false,
+  isLoadingMoreItems = false,
+  isLoadingMoreLocations = false,
+  onLoadMoreItems,
+  onLoadMoreLocations,
+  balancesHasMore = false,
+  isLoadingMoreBalances = false,
+  onLoadMoreBalances,
+  productFilters,
+  onProductFiltersChange,
+  locationListFilters,
+  onLocationListFiltersChange,
   initialSubview,
   initialKardexFilters,
   onCustodyFilterChange,
@@ -49,7 +81,8 @@ export function StockWorkspace({
   const [subview, setSubview] = useState<StockSubview>(
     () => initialSubview ?? (custodyFilter === 'mobile' ? 'by-location' : 'by-product'),
   );
-  const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  /** Selección fuera del buffer de página: no derivar con `items.find` al paginar. */
+  const [detailItem, setDetailItem] = useState<InventoryItemRecord | null>(null);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,9 +97,33 @@ export function StockWorkspace({
     }
   }, [custodyFilter]);
 
-  const detailItem = useMemo(
-    () => items.find((item) => item.id === detailItemId) ?? null,
-    [detailItemId, items],
+  useEffect(() => {
+    if (!detailItem) {
+      return;
+    }
+
+    const fresh = items.find((item) => item.id === detailItem.id);
+    if (fresh && fresh !== detailItem) {
+      setDetailItem(fresh);
+    }
+  }, [detailItem, items]);
+
+  const openDetail = useCallback(
+    async (itemId: string) => {
+      const fromPage = items.find((item) => item.id === itemId) ?? null;
+      if (fromPage) {
+        setDetailItem(fromPage);
+        return;
+      }
+
+      try {
+        const item = await inventoryApi.getItem(itemId);
+        setDetailItem(item);
+      } catch {
+        setDetailItem(null);
+      }
+    },
+    [items],
   );
 
   return (
@@ -92,8 +149,16 @@ export function StockWorkspace({
             items={items}
             balances={balances}
             locations={locations}
+            {...(itemsTotal != null ? { totalCount: itemsTotal } : {})}
+            hasMore={itemsHasMore}
+            isLoadingMore={isLoadingMoreItems}
+            {...(onLoadMoreItems ? { onLoadMore: onLoadMoreItems } : {})}
+            {...(productFilters ? { filters: productFilters } : {})}
+            {...(onProductFiltersChange ? { onFiltersChange: onProductFiltersChange } : {})}
             canAdjust={canAdjust}
-            onViewDetail={setDetailItemId}
+            onViewDetail={(itemId) => {
+              void openDetail(itemId);
+            }}
             onAdjust={setAdjustItemId}
           />
         </TabsContent>
@@ -105,14 +170,23 @@ export function StockWorkspace({
             items={items}
             {...(userLabelById ? { userLabelById } : {})}
             custodyFilter={custodyFilter}
+            {...(locationsTotal != null ? { totalCount: locationsTotal } : {})}
+            hasMore={locationsHasMore}
+            isLoadingMore={isLoadingMoreLocations}
+            {...(onLoadMoreLocations ? { onLoadMore: onLoadMoreLocations } : {})}
+            balancesHasMore={balancesHasMore}
+            isLoadingMoreBalances={isLoadingMoreBalances}
+            {...(onLoadMoreBalances ? { onLoadMoreBalances } : {})}
             {...(onCustodyFilterChange ? { onCustodyFilterChange } : {})}
+            {...(locationListFilters ? { listFilters: locationListFilters } : {})}
+            {...(onLocationListFiltersChange
+              ? { onListFiltersChange: onLocationListFiltersChange }
+              : {})}
           />
         </TabsContent>
 
         <TabsContent value="kardex" className="space-y-4">
           <StockKardexPanel
-            items={items}
-            locations={locations}
             {...(initialKardexFilters ? { initialFilters: initialKardexFilters } : {})}
           />
         </TabsContent>
@@ -130,17 +204,15 @@ export function StockWorkspace({
         balances={balances}
         locations={locations}
         canAdjust={canAdjust}
-        onClose={() => setDetailItemId(null)}
+        onClose={() => setDetailItem(null)}
         onAdjust={(itemId) => {
-          setDetailItemId(null);
+          setDetailItem(null);
           setAdjustItemId(itemId);
         }}
       />
 
       <StockAdjustmentDialog
         open={adjustItemId !== null}
-        items={items}
-        locations={locations}
         preselectedItemId={adjustItemId}
         onClose={() => setAdjustItemId(null)}
         onAdjustmentRegistered={onAdjustmentRegistered}

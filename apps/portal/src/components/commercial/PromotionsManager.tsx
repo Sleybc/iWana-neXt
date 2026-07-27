@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle2, CircleAlert, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -11,26 +11,32 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  cn,
 } from '@iwana/ui';
 import { CatalogItemType, DiscountType, PromotionScope } from '@iwana/shared';
 import {
   ApiError,
+  COMMERCIAL_LIST_PAGE_SIZE,
+  COMMERCIAL_PICKER_LIMIT,
   commercialApi,
   type AdditionalProduct,
   type AdditionalService,
   type CommercialBundle,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CommercialPromotion,
   type CreatePromotionDto,
   type PlanCatalogItem,
+  type UpdatePromotionDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 import {
   CreatePromotionForm,
   type PromotionTargetItem,
 } from '@/components/commercial/CreatePromotionForm';
 import {
   applyCommercialOfferStatusToSearchParams,
-  matchesCommercialExpiringOfferFilter,
-  parseCommercialOfferStatus,
+  parseCommercialOfferStatusFromSearchParams,
 } from '@/components/commercial/commercial-tab-params';
 import {
   getPortalActiveBadgeVariant,
@@ -43,17 +49,25 @@ import {
   PortalPanel,
   PortalSidePeek,
   PortalSkeletonBlock,
+  PortalResultsStrip,
   PortalSuccessAlert,
+  PortalTablePagination,
   portalDataTableCellClassName,
+  portalDataTableBodyClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableInactiveRowClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
+import { useCommercialFocusConsume } from '@/components/commercial/useCommercialFocusConsume';
 
 interface PromotionsManagerProps {
   canEdit: boolean;
+  focusId?: string | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
 }
 
-const CREATE_PROMOTION_FORM_ID = 'create-promotion-form';
+const PROMOTION_FORM_ID = 'promotion-form';
 
 function formatCurrency(value: string): string {
   return new Intl.NumberFormat('es-CO', {
@@ -108,11 +122,15 @@ function mapActionError(error: unknown): string {
   return 'No fue posible desactivar la promoción. Intenta de nuevo.';
 }
 
-export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
+export function PromotionsManager({
+  canEdit,
+  focusId = null,
+  onFocusConsumed,
+}: PromotionsManagerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const offerStatusFilter = parseCommercialOfferStatus(searchParams.get('status'));
+  const offerStatusFilter = parseCommercialOfferStatusFromSearchParams(searchParams);
 
   const [promotions, setPromotions] = useState<CommercialPromotion[]>([]);
   const [bundles, setBundles] = useState<CommercialBundle[]>([]);
@@ -124,26 +142,21 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPeekOpen, setIsPeekOpen] = useState(false);
+  const [editingPromotion, setEditingPromotion] = useState<CommercialPromotion | null>(null);
   const [deletingPromotionId, setDeletingPromotionId] = useState<string | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
+  const isEditMode = editingPromotion !== null;
+
   const activePromotions = useMemo(
     () => promotions.filter((promotion) => promotion.isActive),
     [promotions],
   );
 
-  const visiblePromotions = useMemo(() => {
-    if (offerStatusFilter !== 'expiring') {
-      return promotions;
-    }
-
-    return promotions.filter((promotion) =>
-      matchesCommercialExpiringOfferFilter(promotion, 'promotion'),
-    );
-  }, [offerStatusFilter, promotions]);
+  const visiblePromotions = promotions;
 
   const clearExpiringFilter = () => {
     const nextSearchParams = new URLSearchParams(searchParams.toString());
@@ -152,54 +165,97 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   };
 
-  const loadContext = async () => {
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+  });
+
+  function buildPromotionListParams(): CommercialListParams {
+    const params: CommercialListParams = { limit: COMMERCIAL_LIST_PAGE_SIZE };
+    if (offerStatusFilter === 'expiring') {
+      params.offerStatus = 'expiring';
+    }
+    return params;
+  }
+
+  const loadContext = useCallback(async (params: CommercialListParams, append = false) => {
     setIsLoading(true);
     setLoadError(null);
     setActionError(null);
 
     try {
-      const [promotionData, bundleData, plans, products, services] = await Promise.all([
-        commercialApi.getPromotions(),
-        commercialApi.getBundles(),
-        commercialApi.getPlans(),
-        commercialApi.getAdditionalProducts(),
-        commercialApi.getAdditionalServices(),
+      const picker = { limit: COMMERCIAL_PICKER_LIMIT };
+      const [promotionResult, bundleResult, plans, products, services] = await Promise.all([
+        commercialApi.getPromotions(params),
+        append
+          ? Promise.resolve(null)
+          : commercialApi.getBundles({ limit: COMMERCIAL_PICKER_LIMIT }),
+        append ? Promise.resolve(null) : commercialApi.getPlans(picker),
+        append ? Promise.resolve(null) : commercialApi.getAdditionalProducts(picker),
+        append ? Promise.resolve(null) : commercialApi.getAdditionalServices(picker),
       ]);
 
-      setPromotions(promotionData);
-      setBundles(bundleData);
+      setPromotions((prev) => {
+        const page = promotionResult.data ?? [];
+        return append ? [...prev, ...page] : page;
+      });
+      setMeta(
+        promotionResult.meta ?? {
+          ...EMPTY_LIST_META,
+          nextCursor: null,
+          total: promotionResult.data?.length ?? 0,
+        },
+      );
+      setListParams(params);
 
-      const allItems: PromotionTargetItem[] = [
-        ...plans.map((item: PlanCatalogItem) => ({
-          id: item.id,
-          name: item.name,
-          type: CatalogItemType.PLAN,
-        })),
-        ...products.map((item: AdditionalProduct) => ({
-          id: item.id,
-          name: item.name,
-          type: CatalogItemType.PRODUCT,
-        })),
-        ...services.map((item: AdditionalService) => ({
-          id: item.id,
-          name: item.name,
-          type: CatalogItemType.SERVICE,
-        })),
-      ];
-
-      setTargetItems(allItems);
+      if (!append && bundleResult && plans && products && services) {
+        setBundles(bundleResult.data ?? []);
+        const allItems: PromotionTargetItem[] = [
+          ...(plans.data ?? []).map((item: PlanCatalogItem) => ({
+            id: item.id,
+            name: item.name,
+            type: CatalogItemType.PLAN,
+          })),
+          ...(products.data ?? []).map((item: AdditionalProduct) => ({
+            id: item.id,
+            name: item.name,
+            type: CatalogItemType.PRODUCT,
+          })),
+          ...(services.data ?? []).map((item: AdditionalService) => ({
+            id: item.id,
+            name: item.name,
+            type: CatalogItemType.SERVICE,
+          })),
+        ];
+        setTargetItems(allItems);
+      }
     } catch (error) {
       setLoadError(mapLoadError(error));
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void loadContext({ ...listParams, cursor: meta.nextCursor }, true);
+    }
   };
 
   useEffect(() => {
-    void loadContext();
-  }, []);
+    void loadContext(buildPromotionListParams());
+  }, [loadContext, offerStatusFilter]);
 
   function openCreatePeek() {
+    setEditingPromotion(null);
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setIsPeekOpen(true);
+  }
+
+  function openEditPeek(promotion: CommercialPromotion) {
+    setEditingPromotion(promotion);
     setFormError(null);
     setActionError(null);
     setSuccessMessage(null);
@@ -208,23 +264,53 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
 
   function handlePeekClose() {
     setIsPeekOpen(false);
+    setEditingPromotion(null);
     setFormError(null);
   }
 
-  const handleCreatePromotion = async (dto: CreatePromotionDto) => {
+  useCommercialFocusConsume({
+    focusId,
+    isLoading,
+    items: promotions,
+    getId: (item) => item.id,
+    onMatch: (promotion) => {
+      if (canEdit) {
+        openEditPeek(promotion);
+      }
+      const row = document.querySelector(`[data-commercial-focus="${promotion.id}"]`);
+      if (row instanceof HTMLElement && typeof row.scrollIntoView === 'function') {
+        row.scrollIntoView({ block: 'nearest' });
+      }
+    },
+    onFocusConsumed,
+  });
+
+  const handleSubmitPromotion = async (dto: CreatePromotionDto | UpdatePromotionDto) => {
     setIsSubmitting(true);
     setFormError(null);
 
     try {
-      const updated = await commercialApi.createPromotion(dto);
-      setPromotions(updated);
-      setIsPeekOpen(false);
+      if (editingPromotion) {
+        await commercialApi.updatePromotion(editingPromotion.id, dto as UpdatePromotionDto);
+        handlePeekClose();
+        setSuccessMessage('Promoción actualizada.');
+        void loadContext(buildPromotionListParams());
+        return;
+      }
+
+      await commercialApi.createPromotion(dto as CreatePromotionDto);
+      handlePeekClose();
       setSuccessMessage('Promoción creada.');
+      void loadContext(buildPromotionListParams());
     } catch (error) {
       if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError('No fue posible crear la promoción. Intenta de nuevo.');
+        setFormError(
+          isEditMode
+            ? 'No fue posible guardar la promoción. Intenta de nuevo.'
+            : 'No fue posible crear la promoción. Intenta de nuevo.',
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -238,16 +324,23 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
     setActionError(null);
 
     try {
-      const updated = await commercialApi.deactivatePromotion(deactivateTarget.id);
-      setPromotions(updated);
+      await commercialApi.deactivatePromotion(deactivateTarget.id);
       setDeactivateTarget(null);
       setSuccessMessage('Promoción desactivada.');
+      void loadContext(buildPromotionListParams());
     } catch (error) {
       setActionError(mapActionError(error));
     } finally {
       setDeletingPromotionId(null);
     }
   };
+
+  const hasMore = meta?.nextCursor != null;
+  const totalPromotions = meta?.total ?? promotions.length;
+  const resourceWord = totalPromotions === 1 ? 'promoción' : 'promociones';
+  const resultsLabel = hasMore
+    ? `${visiblePromotions.length} de ${totalPromotions} ${resourceWord}`
+    : `${totalPromotions} ${resourceWord}`;
 
   const showLoadErrorOnly = Boolean(loadError) && promotions.length === 0 && !isLoading;
 
@@ -262,7 +355,7 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
             {activePromotions.length} activa{activePromotions.length === 1 ? '' : 's'}
           </Badge>
           {canEdit && (
-            <Button onClick={openCreatePeek}>
+            <Button variant="primary" onClick={openCreatePeek}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Crear promoción
             </Button>
@@ -285,28 +378,17 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void loadContext()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadContext(buildPromotionListParams())}
+            >
               Reintentar
             </Button>
           }
         />
-      ) : promotions.length === 0 ? (
-        <PortalEmptyState
-          title="Sin promociones creadas"
-          description='Usa "Crear promoción" para iniciar una campaña.'
-          icon={CheckCircle2}
-          {...(canEdit
-            ? {
-                action: (
-                  <Button onClick={openCreatePeek}>
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Crear promoción
-                  </Button>
-                ),
-              }
-            : {})}
-        />
-      ) : offerStatusFilter === 'expiring' && visiblePromotions.length === 0 ? (
+      ) : offerStatusFilter === 'expiring' && promotions.length === 0 ? (
         <div className="space-y-4">
           {successMessage ? (
             <PortalSuccessAlert
@@ -324,6 +406,22 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
             }
           />
         </div>
+      ) : promotions.length === 0 ? (
+        <PortalEmptyState
+          title="Sin promociones creadas"
+          description='Usa "Crear promoción" para iniciar una campaña.'
+          icon={CheckCircle2}
+          {...(canEdit
+            ? {
+                action: (
+                  <Button variant="primary" onClick={openCreatePeek}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Crear promoción
+                  </Button>
+                ),
+              }
+            : {})}
+        />
       ) : (
         <div className="space-y-4">
           {successMessage ? (
@@ -365,10 +463,12 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
             />
           ) : null}
 
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+              <table className="min-w-full">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Promoción</PortalDataTableHead>
                     <PortalDataTableHead>Código</PortalDataTableHead>
@@ -380,9 +480,19 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                <tbody className={portalDataTableBodyClassName}>
                   {visiblePromotions.map((promotion) => (
-                    <tr key={promotion.id} className={portalTableRowHoverClassName}>
+                    <tr
+                      key={promotion.id}
+                      data-commercial-focus={promotion.id}
+                      data-focused={focusId === promotion.id ? 'true' : undefined}
+                      className={cn(
+                        portalTableRowHoverClassName,
+                        !promotion.isActive && portalDataTableInactiveRowClassName,
+                        focusId === promotion.id &&
+                          'bg-amber-50/80 ring-2 ring-inset ring-amber-400/60 dark:bg-amber-500/10',
+                      )}
+                    >
                       <td className={portalDataTableCellClassName}>
                         <p className="font-medium text-gray-800 dark:text-gray-100">
                           {promotion.name}
@@ -404,7 +514,7 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
                       <td className={portalDataTableCellClassName}>
                         {formatScope(promotion.appliesTo)}
                       </td>
-                      <td className={portalDataTableCellClassName}>
+                      <td className={`${portalDataTableCellClassName} font-mono tabular-nums`}>
                         {promotion.currentUses} / {promotion.maxUses ?? '∞'}
                       </td>
                       <td className={portalDataTableCellClassName}>
@@ -417,20 +527,32 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
                       </td>
                       {canEdit && (
                         <td className={portalDataTableCellClassName}>
-                          <Button
-                            type="button"
-                            variant="softDestructive"
-                            size="sm"
-                            disabled={deletingPromotionId === promotion.id || !promotion.isActive}
-                            loading={deletingPromotionId === promotion.id}
-                            onClick={() => {
-                              setActionError(null);
-                              setDeactivateTarget({ id: promotion.id, name: promotion.name });
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            Desactivar
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openEditPeek(promotion)}
+                              aria-label={`Editar promoción ${promotion.name}`}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="softDestructive"
+                              size="sm"
+                              disabled={deletingPromotionId === promotion.id || !promotion.isActive}
+                              loading={deletingPromotionId === promotion.id}
+                              onClick={() => {
+                                setActionError(null);
+                                setDeactivateTarget({ id: promotion.id, name: promotion.name });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Desactivar
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -438,6 +560,14 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
                 </tbody>
               </table>
             </div>
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={handleLoadMore}
+              loading={isLoading}
+              resourceLabel="promociones"
+              shown={visiblePromotions.length}
+              total={totalPromotions}
+            />
           </div>
         </div>
       )}
@@ -446,8 +576,12 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
         open={isPeekOpen}
         onClose={handlePeekClose}
         eyebrow="Ofertas"
-        title="Crear promoción"
-        description="Configura un incentivo temporal con alcance, vigencia y límite de uso opcional."
+        title={isEditMode ? 'Editar promoción' : 'Crear promoción'}
+        description={
+          isEditMode
+            ? 'Actualiza el nombre, la descripción y la vigencia. El código no se modifica.'
+            : 'Configura un incentivo temporal con alcance, vigencia y límite de uso opcional.'
+        }
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" disabled={isSubmitting} onClick={handlePeekClose}>
@@ -455,24 +589,26 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
             </Button>
             <Button
               type="submit"
-              form={CREATE_PROMOTION_FORM_ID}
+              form={PROMOTION_FORM_ID}
               disabled={!canEdit}
               loading={isSubmitting}
             >
-              Crear promoción
+              {isEditMode ? 'Guardar' : 'Crear promoción'}
             </Button>
           </div>
         }
       >
         <CreatePromotionForm
-          formId={CREATE_PROMOTION_FORM_ID}
+          formId={PROMOTION_FORM_ID}
           open={isPeekOpen}
           canEdit={canEdit}
           isSubmitting={isSubmitting}
           serverError={formError}
           bundles={bundles}
           items={targetItems}
-          onSubmit={handleCreatePromotion}
+          mode={isEditMode ? 'edit' : 'create'}
+          initialPromotion={editingPromotion}
+          onSubmit={handleSubmitPromotion}
         />
       </PortalSidePeek>
 

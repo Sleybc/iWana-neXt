@@ -14,6 +14,8 @@
   "exclude": [
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
+    "../../packages/database/src/**/*.spec.ts",
+    "../../packages/database/src/**/*.test.ts",
     "../../packages/shared/src/**/*.spec.ts",
     "../../packages/shared/src/**/*.test.ts"
   ]

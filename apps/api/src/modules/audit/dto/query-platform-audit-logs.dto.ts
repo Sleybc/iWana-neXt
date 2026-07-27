@@ -9,11 +9,11 @@ import { AuditAction } from '@iwana/shared';
  */
 export class QueryPlatformAuditLogsDto {
   @ApiPropertyOptional({
-    format: 'uuid',
-    description: 'Cursor UUID para paginación (id del último registro de la página anterior)',
+    description:
+      'Cursor compuesto base64url para paginación keyset (createdAt + id del último registro de la página anterior).',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   cursor?: string;
 
   @ApiPropertyOptional({

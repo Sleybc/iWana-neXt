@@ -93,6 +93,10 @@ export class ExecutionOrder {
   })
   result: ExecutionOrderResult | null;
 
+  /** Control optimista de concurrencia; se incrementa en cada mutación. */
+  @Column({ type: 'integer', default: 1 })
+  version: number;
+
   @Column({ name: 'started_at', type: 'timestamptz', nullable: true })
   startedAt: Date | null;
 

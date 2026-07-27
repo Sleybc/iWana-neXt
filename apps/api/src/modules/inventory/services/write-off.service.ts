@@ -21,6 +21,8 @@ import {
   WriteOffAssetSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { buildPageMeta, clampPage } from '../../../common/pagination';
+import type { ListResponse } from '@iwana/shared';
 import {
   InventoryDomainEventPublisher,
   type ItemStockThresholdSnapshot,
@@ -246,17 +248,16 @@ export class WriteOffService {
     );
   }
 
-  async list(
-    query: ListWriteOffsQueryInput,
-  ): Promise<{ data: WriteOffDetail[]; total: number; page: number; limit: number }> {
+  async list(query: ListWriteOffsQueryInput): Promise<ListResponse<WriteOffDetail>> {
     const validated = ListWriteOffsQuerySchema.parse(query);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    // D-5 / R-4: validar paginación antes de ocupar conexión del pool.
+    const { page, limit } = clampPage(validated.page, validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(InventoryWriteOff, 'writeOff')
-        .where('writeOff.tenant_id = :tenantId', { tenantId })
-        .orderBy('writeOff.created_at', 'DESC');
+        .where('writeOff.tenant_id = :tenantId', { tenantId });
 
       if (validated.status) {
         qb.andWhere('writeOff.status = :status', { status: validated.status });
@@ -288,10 +289,13 @@ export class WriteOffService {
         });
       }
 
-      const total = await qb.getCount();
+      const total = await qb.clone().getCount();
+
+      qb.orderBy('writeOff.created_at', 'DESC').addOrderBy('writeOff.id', 'DESC');
+
       const writeOffs = await qb
-        .skip((validated.page - 1) * validated.limit)
-        .take(validated.limit)
+        .skip((page - 1) * limit)
+        .take(limit)
         .getMany();
 
       const data = await Promise.all(
@@ -300,9 +304,13 @@ export class WriteOffService {
 
       return {
         data,
-        total,
-        page: validated.page,
-        limit: validated.limit,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: false,
+          sortableFields: [],
+        }),
       };
     });
   }

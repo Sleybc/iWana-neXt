@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle2, CircleAlert, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -11,25 +11,31 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  cn,
 } from '@iwana/ui';
 import { CatalogItemType, DiscountType } from '@iwana/shared';
 import {
   ApiError,
+  COMMERCIAL_LIST_PAGE_SIZE,
+  COMMERCIAL_PICKER_LIMIT,
   commercialApi,
   type CommercialBundle,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CreateBundleDto,
   type PlanCatalogItem,
   type AdditionalProduct,
   type AdditionalService,
+  type UpdateBundleDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 import {
   CreateBundleForm,
   type BundleCatalogSelectableItem,
 } from '@/components/commercial/CreateBundleForm';
 import {
   applyCommercialOfferStatusToSearchParams,
-  matchesCommercialExpiringOfferFilter,
-  parseCommercialOfferStatus,
+  parseCommercialOfferStatusFromSearchParams,
 } from '@/components/commercial/commercial-tab-params';
 import {
   getPortalActiveBadgeVariant,
@@ -42,17 +48,25 @@ import {
   PortalPanel,
   PortalSidePeek,
   PortalSkeletonBlock,
+  PortalResultsStrip,
   PortalSuccessAlert,
+  PortalTablePagination,
   portalDataTableCellClassName,
+  portalDataTableBodyClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableInactiveRowClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
+import { useCommercialFocusConsume } from '@/components/commercial/useCommercialFocusConsume';
 
 interface BundlesManagerProps {
   canEdit: boolean;
+  focusId?: string | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
 }
 
-const CREATE_BUNDLE_FORM_ID = 'create-bundle-form';
+const BUNDLE_FORM_ID = 'bundle-form';
 
 function formatCurrency(value: string): string {
   return new Intl.NumberFormat('es-CO', {
@@ -96,11 +110,11 @@ function mapActionError(error: unknown): string {
   return 'No fue posible desactivar el combo. Intenta de nuevo.';
 }
 
-export function BundlesManager({ canEdit }: BundlesManagerProps) {
+export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: BundlesManagerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const offerStatusFilter = parseCommercialOfferStatus(searchParams.get('status'));
+  const offerStatusFilter = parseCommercialOfferStatusFromSearchParams(searchParams);
 
   const [bundles, setBundles] = useState<CommercialBundle[]>([]);
   const [availableItems, setAvailableItems] = useState<BundleCatalogSelectableItem[]>([]);
@@ -111,21 +125,18 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPeekOpen, setIsPeekOpen] = useState(false);
+  const [editingBundle, setEditingBundle] = useState<CommercialBundle | null>(null);
   const [deletingBundleId, setDeletingBundleId] = useState<string | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
+  const isEditMode = editingBundle !== null;
+
   const activeBundles = useMemo(() => bundles.filter((bundle) => bundle.isActive), [bundles]);
 
-  const visibleBundles = useMemo(() => {
-    if (offerStatusFilter !== 'expiring') {
-      return bundles;
-    }
-
-    return bundles.filter((bundle) => matchesCommercialExpiringOfferFilter(bundle, 'bundle'));
-  }, [bundles, offerStatusFilter]);
+  const visibleBundles = bundles;
 
   const clearExpiringFilter = () => {
     const nextSearchParams = new URLSearchParams(searchParams.toString());
@@ -134,27 +145,41 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   };
 
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+  });
+
+  function buildBundleListParams(): CommercialListParams {
+    const params: CommercialListParams = { limit: COMMERCIAL_LIST_PAGE_SIZE };
+    if (offerStatusFilter === 'expiring') {
+      params.offerStatus = 'expiring';
+    }
+    return params;
+  }
+
   const loadOfferCatalog = async () => {
+    const picker = { limit: COMMERCIAL_PICKER_LIMIT, isActive: true as const };
     const [plans, products, services] = await Promise.all([
-      commercialApi.getPlans(),
-      commercialApi.getAdditionalProducts(),
-      commercialApi.getAdditionalServices(),
+      commercialApi.getPlans(picker),
+      commercialApi.getAdditionalProducts(picker),
+      commercialApi.getAdditionalServices(picker),
     ]);
 
     const normalizedItems: BundleCatalogSelectableItem[] = [
-      ...plans.map((item: PlanCatalogItem) => ({
+      ...plans.data.map((item: PlanCatalogItem) => ({
         id: item.id,
         name: item.name,
         type: CatalogItemType.PLAN,
         isActive: item.isActive,
       })),
-      ...products.map((item: AdditionalProduct) => ({
+      ...products.data.map((item: AdditionalProduct) => ({
         id: item.id,
         name: item.name,
         type: CatalogItemType.PRODUCT,
         isActive: item.isActive,
       })),
-      ...services.map((item: AdditionalService) => ({
+      ...services.data.map((item: AdditionalService) => ({
         id: item.id,
         name: item.name,
         type: CatalogItemType.SERVICE,
@@ -165,27 +190,47 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
     setAvailableItems(normalizedItems);
   };
 
-  const loadBundles = async () => {
+  const loadBundles = useCallback(async (params: CommercialListParams, append = false) => {
     setIsLoading(true);
     setLoadError(null);
     setActionError(null);
 
     try {
-      const data = await commercialApi.getBundles();
-      setBundles(data);
-      await loadOfferCatalog();
+      const result = await commercialApi.getBundles(params);
+      const page = result.data ?? [];
+      setBundles((prev) => (append ? [...prev, ...page] : page));
+      setMeta(result.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length });
+      setListParams(params);
+      if (!append) {
+        await loadOfferCatalog();
+      }
     } catch (error) {
       setLoadError(mapLoadError(error));
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void loadBundles({ ...listParams, cursor: meta.nextCursor }, true);
+    }
   };
 
   useEffect(() => {
-    void loadBundles();
-  }, []);
+    void loadBundles(buildBundleListParams());
+  }, [loadBundles, offerStatusFilter]);
 
   function openCreatePeek() {
+    setEditingBundle(null);
+    setFormError(null);
+    setActionError(null);
+    setSuccessMessage(null);
+    setIsPeekOpen(true);
+  }
+
+  function openEditPeek(bundle: CommercialBundle) {
+    setEditingBundle(bundle);
     setFormError(null);
     setActionError(null);
     setSuccessMessage(null);
@@ -194,23 +239,53 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
 
   function handlePeekClose() {
     setIsPeekOpen(false);
+    setEditingBundle(null);
     setFormError(null);
   }
 
-  const handleCreateBundle = async (dto: CreateBundleDto) => {
+  useCommercialFocusConsume({
+    focusId,
+    isLoading,
+    items: bundles,
+    getId: (item) => item.id,
+    onMatch: (bundle) => {
+      if (canEdit) {
+        openEditPeek(bundle);
+      }
+      const row = document.querySelector(`[data-commercial-focus="${bundle.id}"]`);
+      if (row instanceof HTMLElement && typeof row.scrollIntoView === 'function') {
+        row.scrollIntoView({ block: 'nearest' });
+      }
+    },
+    onFocusConsumed,
+  });
+
+  const handleSubmitBundle = async (dto: CreateBundleDto | UpdateBundleDto) => {
     setIsSubmitting(true);
     setFormError(null);
 
     try {
-      const updated = await commercialApi.createBundle(dto);
-      setBundles(updated);
-      setIsPeekOpen(false);
+      if (editingBundle) {
+        await commercialApi.updateBundle(editingBundle.id, dto as UpdateBundleDto);
+        handlePeekClose();
+        setSuccessMessage('Combo actualizado.');
+        void loadBundles(buildBundleListParams());
+        return;
+      }
+
+      await commercialApi.createBundle(dto as CreateBundleDto);
+      handlePeekClose();
       setSuccessMessage('Combo creado.');
+      void loadBundles(buildBundleListParams());
     } catch (error) {
       if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError('No fue posible crear el combo. Intenta de nuevo.');
+        setFormError(
+          isEditMode
+            ? 'No fue posible guardar el combo. Intenta de nuevo.'
+            : 'No fue posible crear el combo. Intenta de nuevo.',
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -224,16 +299,23 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
     setActionError(null);
 
     try {
-      const updated = await commercialApi.deactivateBundle(deactivateTarget.id);
-      setBundles(updated);
+      await commercialApi.deactivateBundle(deactivateTarget.id);
       setDeactivateTarget(null);
       setSuccessMessage('Combo desactivado.');
+      void loadBundles(buildBundleListParams());
     } catch (error) {
       setActionError(mapActionError(error));
     } finally {
       setDeletingBundleId(null);
     }
   };
+
+  const hasMore = meta?.nextCursor != null;
+  const totalBundles = meta?.total ?? bundles.length;
+  const resourceWord = totalBundles === 1 ? 'combo' : 'combos';
+  const resultsLabel = hasMore
+    ? `${visibleBundles.length} de ${totalBundles} ${resourceWord}`
+    : `${totalBundles} ${resourceWord}`;
 
   const showLoadErrorOnly = Boolean(loadError) && bundles.length === 0 && !isLoading;
 
@@ -271,28 +353,17 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void loadBundles()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadBundles(buildBundleListParams())}
+            >
               Reintentar
             </Button>
           }
         />
-      ) : bundles.length === 0 ? (
-        <PortalEmptyState
-          title="Sin combos creados"
-          description='Usa "Crear combo" para iniciar tu oferta compuesta.'
-          icon={CheckCircle2}
-          {...(canEdit
-            ? {
-                action: (
-                  <Button onClick={openCreatePeek}>
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Crear combo
-                  </Button>
-                ),
-              }
-            : {})}
-        />
-      ) : offerStatusFilter === 'expiring' && visibleBundles.length === 0 ? (
+      ) : offerStatusFilter === 'expiring' && bundles.length === 0 ? (
         <div className="space-y-4">
           {successMessage ? (
             <PortalSuccessAlert
@@ -310,6 +381,22 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
             }
           />
         </div>
+      ) : bundles.length === 0 ? (
+        <PortalEmptyState
+          title="Sin combos creados"
+          description='Usa "Crear combo" para iniciar tu oferta compuesta.'
+          icon={CheckCircle2}
+          {...(canEdit
+            ? {
+                action: (
+                  <Button onClick={openCreatePeek}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Crear combo
+                  </Button>
+                ),
+              }
+            : {})}
+        />
       ) : (
         <div className="space-y-4">
           {successMessage ? (
@@ -351,10 +438,12 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
             />
           ) : null}
 
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+              <table className="min-w-full">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Combo</PortalDataTableHead>
                     <PortalDataTableHead>Ítems</PortalDataTableHead>
@@ -364,9 +453,19 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                <tbody className={portalDataTableBodyClassName}>
                   {visibleBundles.map((bundle) => (
-                    <tr key={bundle.id} className={portalTableRowHoverClassName}>
+                    <tr
+                      key={bundle.id}
+                      data-commercial-focus={bundle.id}
+                      data-focused={focusId === bundle.id ? 'true' : undefined}
+                      className={cn(
+                        portalTableRowHoverClassName,
+                        !bundle.isActive && portalDataTableInactiveRowClassName,
+                        focusId === bundle.id &&
+                          'bg-amber-50/80 ring-2 ring-inset ring-amber-400/60 dark:bg-amber-500/10',
+                      )}
+                    >
                       <td className={portalDataTableCellClassName}>
                         <p className="font-medium text-gray-800 dark:text-gray-100">
                           {bundle.name}
@@ -377,7 +476,9 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                           </p>
                         )}
                       </td>
-                      <td className={portalDataTableCellClassName}>{bundle.itemCount ?? 0}</td>
+                      <td className={`${portalDataTableCellClassName} font-mono tabular-nums`}>
+                        {bundle.itemCount ?? 0}
+                      </td>
                       <td className={portalDataTableCellClassName}>{formatDiscount(bundle)}</td>
                       <td className={portalDataTableCellClassName}>
                         {formatDateRange(bundle.validFrom, bundle.validTo)}
@@ -389,20 +490,32 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                       </td>
                       {canEdit && (
                         <td className={portalDataTableCellClassName}>
-                          <Button
-                            type="button"
-                            variant="softDestructive"
-                            size="sm"
-                            disabled={deletingBundleId === bundle.id || !bundle.isActive}
-                            loading={deletingBundleId === bundle.id}
-                            onClick={() => {
-                              setActionError(null);
-                              setDeactivateTarget({ id: bundle.id, name: bundle.name });
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            Desactivar
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openEditPeek(bundle)}
+                              aria-label={`Editar combo ${bundle.name}`}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="softDestructive"
+                              size="sm"
+                              disabled={deletingBundleId === bundle.id || !bundle.isActive}
+                              loading={deletingBundleId === bundle.id}
+                              onClick={() => {
+                                setActionError(null);
+                                setDeactivateTarget({ id: bundle.id, name: bundle.name });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              Desactivar
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -410,6 +523,14 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                 </tbody>
               </table>
             </div>
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={handleLoadMore}
+              loading={isLoading}
+              resourceLabel="combos"
+              shown={visibleBundles.length}
+              total={totalBundles}
+            />
           </div>
         </div>
       )}
@@ -418,32 +539,33 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
         open={isPeekOpen}
         onClose={handlePeekClose}
         eyebrow="Ofertas"
-        title="Crear combo"
-        description="Define una oferta compuesta con descuento y vigencia para el catálogo comercial."
+        title={isEditMode ? 'Editar combo' : 'Crear combo'}
+        description={
+          isEditMode
+            ? 'Actualiza el descuento y la vigencia del combo. La composición de ítems no se modifica aquí.'
+            : 'Define una oferta compuesta con descuento y vigencia para el catálogo comercial.'
+        }
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" disabled={isSubmitting} onClick={handlePeekClose}>
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              form={CREATE_BUNDLE_FORM_ID}
-              disabled={!canEdit}
-              loading={isSubmitting}
-            >
-              Crear combo
+            <Button type="submit" form={BUNDLE_FORM_ID} disabled={!canEdit} loading={isSubmitting}>
+              {isEditMode ? 'Guardar' : 'Crear combo'}
             </Button>
           </div>
         }
       >
         <CreateBundleForm
-          formId={CREATE_BUNDLE_FORM_ID}
+          formId={BUNDLE_FORM_ID}
           open={isPeekOpen}
           canEdit={canEdit}
           isSubmitting={isSubmitting}
           serverError={formError}
           availableItems={availableItems}
-          onSubmit={handleCreateBundle}
+          mode={isEditMode ? 'edit' : 'create'}
+          initialBundle={editingBundle}
+          onSubmit={handleSubmitBundle}
         />
       </PortalSidePeek>
 

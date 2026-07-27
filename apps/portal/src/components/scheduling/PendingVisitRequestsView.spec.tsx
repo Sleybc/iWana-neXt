@@ -227,7 +227,21 @@ describe('PendingVisitRequestsView', () => {
       municipalities: [],
       sectors: [],
     });
-    wfmApi.events.list.mockResolvedValue([]);
+    wfmApi.events.list.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
     crmApi.getExpediente.mockResolvedValue({
       data: {
         id: '550e8400-e29b-41d4-a716-446655440111',

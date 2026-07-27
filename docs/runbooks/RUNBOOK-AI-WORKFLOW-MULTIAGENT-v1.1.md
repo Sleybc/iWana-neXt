@@ -28,7 +28,7 @@ GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspa
 - `.github/copilot-instructions.md`: bootstrap agnostico de proveedor.
 - `CLAUDE.md`: bootstrap propio de Claude Code, leido automaticamente por esa CLI.
 - `.github/instructions/*.instructions.md`: reglas contextuales por path.
-- `.github/prompts/*.prompt.md`: prompts operativos reutilizables.
+- `docs/prompts/PROMPT-*.md`: todos los prompts del workspace (ejecucion por fase y operativos reutilizables). Unica carpeta de prompts desde el 2026-07-27.
 - `.agents/skills/`: catalogo activo de skills del workspace.
 - `.opencode/opencode.json`: configuracion versionada de OpenCode para `instructions`, `skills.paths` y `mcp`.
 
@@ -37,7 +37,7 @@ GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspa
 | Capacidad | Fuente | Regla operativa |
 | --- | --- | --- |
 | Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Catalogo compartido del workspace; no duplicar criterios en agentes custom del cliente. Claude Code no tiene `skills.paths`: consume el catalogo por lectura documental desde `CLAUDE.md`. |
-| Prompts | `.github/prompts/` | Deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
+| Prompts | `docs/prompts/` | Unica carpeta de prompts, para los dos subtipos. Deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan la capa global y no deben competir con `AGENTS.md`. |
 | MCP | `.opencode/opencode.json` para OpenCode | En Codex la disponibilidad depende de la sesion activa; no crear config ficticia del repo. |
 | Agentes / subagentes | Skills de workflow (`brainstorming`, `writing-plans`, `architect-review`, `subagent-driven-development`) | Preferir flujos compartidos del repo antes que agentes paralelos por proveedor. |

@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { ResponsibilitiesService } from './responsibilities.service';
 import { UpdateResponsibilityDto, UpdateResponsibilitySchema } from './dto';
 
@@ -72,16 +73,10 @@ export class ResponsibilitiesController {
   @ApiOperation({ summary: 'Obtener historial operativo de reasignaciones del expediente' })
   async getResponsibilityHistory(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
   ) {
-    const pageNum = page ? Number(page) : undefined;
-    const limitNum = limit ? Number(limit) : undefined;
-    const result = await this.responsibilitiesService.getResponsibilityHistory(
-      id,
-      pageNum,
-      limitNum,
-    );
+    const result = await this.responsibilitiesService.getResponsibilityHistory(id, page, limit);
     return { data: result.data, total: result.total };
   }
 }

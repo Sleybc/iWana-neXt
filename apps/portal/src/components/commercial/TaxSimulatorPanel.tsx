@@ -5,6 +5,7 @@ import { CircleAlert, FlaskConical } from 'lucide-react';
 import { Badge, Button, Input, Select, cn } from '@iwana/ui';
 import {
   ApiError,
+  COMMERCIAL_PICKER_LIMIT,
   commercialApi,
   type SimulateTaxDto,
   type TaxApplicationSnapshot,
@@ -15,11 +16,9 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  portalFieldClassName,
+  portalSelectTriggerClassName,
 } from '@/components/shared/portal-ui';
-import {
-  commercialFieldClassName,
-  commercialSelectTriggerClassName,
-} from '@/components/commercial/commercial-field-styles';
 import {
   TAX_SEGMENT_LABELS,
   TAX_TREATMENT_LABELS,
@@ -38,8 +37,8 @@ export function TaxSimulatorPanel() {
 
   useEffect(() => {
     void commercialApi
-      .listTaxDefinitions({ isActive: true })
-      .then(setDefinitions)
+      .listTaxDefinitions({ isActive: true, limit: COMMERCIAL_PICKER_LIMIT })
+      .then((result) => setDefinitions(result.data))
       .catch(() => {
         setDefinitions([]);
       });
@@ -89,7 +88,7 @@ export function TaxSimulatorPanel() {
               id="tax-simulator-segment"
               value={segment}
               onChange={(e) => setSegment(e.target.value as SimulateTaxDto['segment'])}
-              className={commercialSelectTriggerClassName}
+              className={portalSelectTriggerClassName}
             >
               <option value="RESIDENTIAL">Residencial</option>
               <option value="SOHO">SOHO</option>
@@ -109,7 +108,7 @@ export function TaxSimulatorPanel() {
               placeholder="Ej. 1 – 6"
               value={stratum}
               onChange={(e) => setStratum(e.target.value)}
-              className={commercialFieldClassName}
+              className={portalFieldClassName}
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -121,7 +120,7 @@ export function TaxSimulatorPanel() {
               placeholder="Ej. 11001"
               value={municipalityCode}
               onChange={(e) => setMunicipalityCode(e.target.value)}
-              className={commercialFieldClassName}
+              className={portalFieldClassName}
             />
           </div>
         </div>
@@ -173,22 +172,25 @@ export function TaxSimulatorPanel() {
           ) : (
             <div className="flex flex-col gap-2">
               {results.map((snap, index) => (
-                <PortalPanel
+                <div
                   key={`${snap.taxDefinitionId}-${snap.ruleId}-${index}`}
-                  className={
+                  className={cn(
+                    'rounded-2xl border border-gray-200 px-4 py-3 dark:border-dark-border',
                     index === 0
                       ? 'border-iwana-secondary-700/30 bg-iwana-surface-soft dark:bg-dark-surface-3'
-                      : undefined
-                  }
-                  title={resolveDefinitionLabel(snap.taxDefinitionId)}
-                  actions={
-                    index === 0 ? (
+                      : 'bg-white dark:bg-dark-surface-2',
+                  )}
+                >
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {resolveDefinitionLabel(snap.taxDefinitionId)}
+                    </p>
+                    {index === 0 ? (
                       <Badge variant="lime" className="text-xs">
                         Regla ganadora
                       </Badge>
-                    ) : undefined
-                  }
-                >
+                    ) : null}
+                  </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <span>
                       Tratamiento:{' '}
@@ -219,7 +221,7 @@ export function TaxSimulatorPanel() {
                       </strong>
                     </span>
                   </div>
-                </PortalPanel>
+                </div>
               ))}
             </div>
           )}

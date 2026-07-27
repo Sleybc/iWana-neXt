@@ -1,23 +1,24 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Badge, Button, Input, Select } from '@iwana/ui';
 import { ArrowRightLeft, PhoneOutgoing, TrendingUp, User, UserCheck } from 'lucide-react';
 import {
+  commercialApi,
   crmApi,
-  type AdditionalProduct,
+  usersApi,
+  mapPickerSearchResponse,
   type ContactAttemptRecord,
   type CreateContactAttemptDto,
   type CreateAttributionDto,
   type ExpedienteActivityItem,
   type ExpedienteRecord,
   type ExpedienteTimelineChange,
-  type InternalUser,
   type OperationalHistoryItem,
-  type PlanCatalogItem,
   type ResponsibilitySnapshot,
   type SalesAttributionRecord,
 } from '@/lib/api-client';
+import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   EXPEDIENTE_STATUS_META,
@@ -49,10 +50,6 @@ interface SeguimientoTabProps {
   responsibilityHistory: OperationalHistoryItem[];
   currentAttribution: SalesAttributionRecord | null;
   attributionHistory: SalesAttributionRecord[];
-  sortedAttributionUsers: InternalUser[];
-  loadingAttributionUsers: boolean;
-  planCatalog?: PlanCatalogItem[];
-  additionalProducts?: AdditionalProduct[];
   /** Actividad del sistema (guardado de secciones, creación, etc.) */
   recentActivity?: ExpedienteActivityItem[];
   /** Cambios de estado del pipeline */
@@ -91,10 +88,6 @@ export function SeguimientoTab({
   responsibilityHistory,
   currentAttribution,
   attributionHistory,
-  sortedAttributionUsers,
-  loadingAttributionUsers,
-  planCatalog = [],
-  additionalProducts = [],
   recentActivity = [],
   pipelineChanges = [],
   onSaved,
@@ -106,6 +99,17 @@ export function SeguimientoTab({
     TIMELINE_DEFAULT_PAGE_SIZE,
   );
   const [timelinePage, setTimelinePage] = useState(1);
+  const [planNameById, setPlanNameById] = useState<Record<string, string>>({});
+  const [productNameById, setProductNameById] = useState<Record<string, string>>({});
+
+  const [responsibleSelectedItem, setResponsibleSelectedItem] = useState<Pick<
+    SearchablePickerItem,
+    'label' | 'sublabel'
+  > | null>(null);
+  const [actorSelectedItem, setActorSelectedItem] = useState<Pick<
+    SearchablePickerItem,
+    'label' | 'sublabel'
+  > | null>(null);
 
   const [contactAttempts, setContactAttempts] = useState<ContactAttemptRecord[]>([]);
   const [loadingAttempts, setLoadingAttempts] = useState(true);
@@ -160,6 +164,56 @@ export function SeguimientoTab({
     void loadAttempts();
   }, [expedienteId]);
 
+  useEffect(() => {
+    const planId = expediente.interestedPlanId;
+    const productIds = expediente.additionalProductIds ?? [];
+
+    if (!planId && productIds.length === 0) {
+      setPlanNameById({});
+      setProductNameById({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const planEntries = planId
+        ? await Promise.all([
+            (async () => {
+              try {
+                const plan = await commercialApi.getPlanById(planId);
+                return [planId, plan.name] as const;
+              } catch {
+                return [planId, planId] as const;
+              }
+            })(),
+          ])
+        : [];
+
+      const productEntries = await Promise.all(
+        productIds.map(async (id) => {
+          try {
+            const item = await commercialApi.getCatalogItemById(id);
+            return [id, item.name] as const;
+          } catch {
+            return [id, id] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      setPlanNameById(Object.fromEntries(planEntries));
+      setProductNameById(Object.fromEntries(productEntries));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expediente.interestedPlanId, expediente.additionalProductIds]);
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   const loadAttempts = async () => {
@@ -178,6 +232,11 @@ export function SeguimientoTab({
     setMsg({ text, tone });
     setTimeout(() => setMsg(null), 4500);
   };
+
+  const searchActiveUsers = useCallback(async (query: string, signal: AbortSignal) => {
+    const response = await usersApi.searchForPicker({ q: query, status: 'ACTIVE' }, { signal });
+    return mapPickerSearchResponse(response);
+  }, []);
 
   const togglePanel = (panel: Exclude<ActivePanel, null>) => {
     setActivePanel((current) => (current === panel ? null : panel));
@@ -243,6 +302,9 @@ export function SeguimientoTab({
     return allTimelineEntries.filter((e) => e.kind === 'system');
   }, [allTimelineEntries, activeFilter]);
 
+  // ADR-065 Ola 5 / E-3: excepción preview — pager ad hoc en memoria con opción «todos».
+  // No se porta a PortalTablePager en esta ola: «todos» contradice PORTAL_PAGE_SIZE_OPTIONS
+  // y ADR-064 §8. Conservar hasta decisión EM-ARCH de retirar «todos» o mapear a size fijo.
   const effectiveTimelinePageSize =
     timelinePageSize === 'all' ? Math.max(1, timelineEntries.length) : timelinePageSize;
   const showTimelinePagination =
@@ -553,35 +615,24 @@ export function SeguimientoTab({
                 Reasignar responsable
               </p>
               <div className="space-y-4">
-                <Select
+                <SearchablePicker
                   id="rs-user"
                   label="Nuevo responsable"
-                  value={responsibilityForm.responsibleUserId}
-                  onChange={(e) =>
+                  resource={{ singular: 'usuario', plural: 'usuarios' }}
+                  value={responsibilityForm.responsibleUserId || null}
+                  selectedItem={responsibleSelectedItem}
+                  onChange={(item) => {
                     setResponsibilityForm((curr) => ({
                       ...curr,
-                      responsibleUserId: e.target.value,
-                    }))
-                  }
-                  disabled={loadingAttributionUsers}
-                  placeholder={
-                    loadingAttributionUsers
-                      ? 'Cargando usuarios...'
-                      : 'Selecciona un usuario activo'
-                  }
-                >
-                  {sortedAttributionUsers.map((u) => {
-                    const name =
-                      [u.firstName, u.lastName].filter(Boolean).join(' ').trim() ||
-                      u.email ||
-                      'Sin nombre';
-                    return (
-                      <option key={u.id} value={u.id}>
-                        {name}
-                      </option>
+                      responsibleUserId: item?.id ?? '',
+                    }));
+                    setResponsibleSelectedItem(
+                      item ? { label: item.label, sublabel: item.sublabel } : null,
                     );
-                  })}
-                </Select>
+                  }}
+                  onSearch={searchActiveUsers}
+                  placeholder="Buscar usuario…"
+                />
                 <Input
                   id="rs-notes"
                   label="Notas (opcional)"
@@ -599,6 +650,7 @@ export function SeguimientoTab({
                     onClick={() => {
                       setActivePanel(null);
                       setResponsibilityForm({ responsibleUserId: '', notes: '' });
+                      setResponsibleSelectedItem(null);
                     }}
                   >
                     Cancelar
@@ -623,32 +675,24 @@ export function SeguimientoTab({
                 Gestionar originador comercial
               </p>
               <div className="space-y-4">
-                <Select
+                <SearchablePicker
                   id="at-actor"
                   label="Actor originador"
-                  value={attributionForm.actorId}
-                  onChange={(e) =>
-                    setAttributionForm((curr) => ({ ...curr, actorId: e.target.value }))
-                  }
-                  disabled={loadingAttributionUsers}
-                  placeholder={
-                    loadingAttributionUsers
-                      ? 'Cargando usuarios activos...'
-                      : 'Selecciona un usuario activo'
-                  }
-                >
-                  {sortedAttributionUsers.map((u) => {
-                    const name =
-                      [u.firstName, u.lastName].filter(Boolean).join(' ').trim() ||
-                      u.email ||
-                      'Sin nombre';
-                    return (
-                      <option key={u.id} value={u.id}>
-                        {name}
-                      </option>
+                  resource={{ singular: 'usuario', plural: 'usuarios' }}
+                  value={attributionForm.actorId || null}
+                  selectedItem={actorSelectedItem}
+                  onChange={(item) => {
+                    setAttributionForm((curr) => ({
+                      ...curr,
+                      actorId: item?.id ?? '',
+                    }));
+                    setActorSelectedItem(
+                      item ? { label: item.label, sublabel: item.sublabel } : null,
                     );
-                  })}
-                </Select>
+                  }}
+                  onSearch={searchActiveUsers}
+                  placeholder="Buscar usuario…"
+                />
                 <Select
                   id="at-channel"
                   label="Canal de captación"
@@ -843,7 +887,7 @@ export function SeguimientoTab({
               </p>
             </div>
             <p className="text-sm font-medium text-gray-900 dark:text-white">
-              {planCatalog.find((p) => p.id === expediente.interestedPlanId)?.name ||
+              {(expediente.interestedPlanId && planNameById[expediente.interestedPlanId]) ||
                 expediente.interestedPlanId ||
                 'Plan no registrado'}
             </p>
@@ -858,7 +902,7 @@ export function SeguimientoTab({
                       key={id}
                       className="rounded-full bg-blue-50/50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/10 dark:text-blue-400"
                     >
-                      {additionalProducts.find((product) => product.id === id)?.name || id}
+                      {productNameById[id] || id}
                     </span>
                   ))}
                 </div>

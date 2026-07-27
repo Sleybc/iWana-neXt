@@ -137,9 +137,12 @@ describe('BundleController HTTP', () => {
     jest.clearAllMocks();
   });
 
-  it('GET /api/v1/commercial/bundles retorna lista de bundles', async () => {
-    const bundles = [{ id: BUNDLE_ID, name: 'Triple Play', isActive: true }];
-    bundleServiceMock.findAll.mockResolvedValue(bundles);
+  it('GET /api/v1/commercial/bundles retorna lista paginada de bundles', async () => {
+    const bundles = [{ id: BUNDLE_ID, name: 'Triple Play', isActive: true, itemCount: 2 }];
+    bundleServiceMock.findAll.mockResolvedValue({
+      data: bundles,
+      meta: { nextCursor: null, total: 1 },
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/commercial/bundles')
@@ -148,9 +151,11 @@ describe('BundleController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data).toHaveLength(1);
         expect(body.data[0].id).toBe(BUNDLE_ID);
+        expect(body.meta.total).toBe(1);
+        expect(body.meta.nextCursor).toBeNull();
       });
 
-    expect(bundleServiceMock.findAll).toHaveBeenCalled();
+    expect(bundleServiceMock.findAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
   });
 
   it('GET /api/v1/commercial/bundles retorna 401 sin JWT', async () => {

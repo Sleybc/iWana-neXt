@@ -134,10 +134,11 @@ describe('PromotionController HTTP', () => {
     jest.clearAllMocks();
   });
 
-  it('GET /api/v1/commercial/promotions retorna lista de promociones activas', async () => {
-    promotionServiceMock.findAll.mockResolvedValue([
-      { id: PROMO_ID, code: 'BIENVENIDA', isActive: true },
-    ]);
+  it('GET /api/v1/commercial/promotions retorna lista paginada de promociones activas', async () => {
+    promotionServiceMock.findAll.mockResolvedValue({
+      data: [{ id: PROMO_ID, code: 'BIENVENIDA', isActive: true }],
+      meta: { nextCursor: null, total: 1 },
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/commercial/promotions')
@@ -146,9 +147,13 @@ describe('PromotionController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data).toHaveLength(1);
         expect(body.data[0].code).toBe('BIENVENIDA');
+        expect(body.meta.total).toBe(1);
+        expect(body.meta.nextCursor).toBeNull();
       });
 
-    expect(promotionServiceMock.findAll).toHaveBeenCalled();
+    expect(promotionServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 20 }),
+    );
   });
 
   it('GET /api/v1/commercial/promotions retorna 401 sin JWT', async () => {

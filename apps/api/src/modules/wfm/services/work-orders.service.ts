@@ -15,8 +15,11 @@ import {
   WorkOrderSourceContext,
   WorkOrderTaskStatus,
   WfmWorkType,
+  type ListResponse,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   CreateWorkOrderEmbeddedInput,
   CreateWorkOrderEmbeddedSchema,
@@ -152,22 +155,40 @@ export class WorkOrdersService {
   }
 
   /** Lista Work Orders del tenant con filtro de propiedad para roles restringidos. */
-  async list(actor: JwtPayload): Promise<WorkOrder[]> {
+  async list(
+    actor: JwtPayload,
+    filters: { page?: number; limit?: number } = {},
+  ): Promise<ListResponse<WorkOrder>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(WorkOrder, 'wo')
         .where('wo.tenant_id = :tenantId', { tenantId })
         .andWhere('wo.deleted_at IS NULL')
-        .orderBy('wo.created_at', 'DESC');
+        .orderBy('wo.created_at', 'DESC')
+        .addOrderBy('wo.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
       // Tecnicos y contratistas solo ven sus propias WO
       if (RESTRICTED_ROLES.includes(actor.role as UserRole)) {
         qb.andWhere('wo.assigned_user_id = :uid', { uid: actor.sub });
       }
 
-      return qb.getMany();
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 

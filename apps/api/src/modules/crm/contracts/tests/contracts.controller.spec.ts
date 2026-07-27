@@ -66,23 +66,52 @@ describe('ContractsController', () => {
   });
 
   describe('findAll', () => {
-    it('retorna contratos en envelope { data }', async () => {
-      serviceMock.findAll.mockResolvedValue([buildContract()]);
+    it('retorna contratos en envelope { data, meta }', async () => {
+      serviceMock.findAll.mockResolvedValue({
+        data: [buildContract()],
+        meta: {
+          nextCursor: null,
+          total: 1,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      });
 
       const result = await controller.findAll();
 
       expect(result.data).toHaveLength(1);
+      expect(result.meta.mode).toBe('page');
     });
   });
 
   describe('findAllBySubscriber', () => {
     it('delega al servicio con el subscriberId correcto', async () => {
       const contracts = [buildContract(), buildContract({ id: 'ctr-2' })];
-      serviceMock.findAllBySubscriber.mockResolvedValue(contracts);
+      serviceMock.findAllBySubscriber.mockResolvedValue({
+        data: contracts,
+        meta: {
+          nextCursor: null,
+          total: 2,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      });
 
       const result = await controller.findAllBySubscriber('sub-1');
 
-      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1');
+      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1', {});
       expect(result.data).toHaveLength(2);
     });
   });

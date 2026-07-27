@@ -10,10 +10,12 @@ import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout
 import { CommercialActivityPanel } from '@/components/commercial/CommercialActivityPanel';
 import { CommercialAlertsStrip } from '@/components/commercial/CommercialAlertsStrip';
 import {
+  applyCommercialFocusToSearchParams,
   applyCommercialOfferStatusToSearchParams,
   buildCommercialTabQuery,
   needsCommercialUrlCanonicalization,
-  parseCommercialOfferStatus,
+  parseCommercialFocusId,
+  parseCommercialOfferStatusFromSearchParams,
   resolveCommercialRoute,
   type CommercialOfferStatusFilter,
   type CommercialTab,
@@ -52,6 +54,7 @@ function syncRouteToUrl(
   }
 
   applyCommercialOfferStatusToSearchParams(nextSearchParams, route.status ?? null);
+  applyCommercialFocusToSearchParams(nextSearchParams, route.focus ?? null);
 
   const nextQuery = nextSearchParams.toString();
   router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
@@ -69,7 +72,8 @@ function routesEqual(a: ResolvedCommercialRoute, b: ResolvedCommercialRoute): bo
   return (
     a.tab === b.tab &&
     a.taxationSubTab === b.taxationSubTab &&
-    (a.status ?? null) === (b.status ?? null)
+    (a.status ?? null) === (b.status ?? null) &&
+    (a.focus ?? null) === (b.focus ?? null)
   );
 }
 
@@ -81,7 +85,8 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
 
   const [route, setRoute] = useState<ResolvedCommercialRoute>(() => ({
     ...resolveCommercialRoute(initialTab ?? searchParams.get('tab')),
-    status: parseCommercialOfferStatus(searchParams.get('status')),
+    status: parseCommercialOfferStatusFromSearchParams(searchParams),
+    focus: parseCommercialFocusId(searchParams.get('focus')),
   }));
   const [summary, setSummary] = useState<CommercialDashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -110,10 +115,12 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   useEffect(() => {
     const rawTabInUrl = searchParams.get('tab');
     const tabFromUrl = rawTabInUrl ?? initialTab;
-    const statusFromUrl = parseCommercialOfferStatus(searchParams.get('status'));
+    const statusFromUrl = parseCommercialOfferStatusFromSearchParams(searchParams);
+    const focusFromUrl = parseCommercialFocusId(searchParams.get('focus'));
     const nextRoute: ResolvedCommercialRoute = {
       ...resolveCommercialRoute(tabFromUrl),
       status: statusFromUrl,
+      focus: focusFromUrl,
     };
 
     setRoute((current) => {
@@ -124,7 +131,6 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
       return nextRoute;
     });
 
-    // Reescribe aliases legacy (`summary`, `offers`, `tab=plans` explícito) a la query canónica.
     if (needsCommercialUrlCanonicalization(rawTabInUrl, nextRoute)) {
       syncRouteToUrl(pathname, router, searchParams, nextRoute);
     }
@@ -152,21 +158,37 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         tab,
         taxationSubTab: route.taxationSubTab,
         status: null,
+        focus: null,
       });
     },
     [route.taxationSubTab, updateRoute],
   );
 
   const handleNavigateTab = useCallback(
-    (tab: CommercialTab, options?: { status?: CommercialOfferStatusFilter | null }) => {
+    (
+      tab: CommercialTab,
+      options?: { status?: CommercialOfferStatusFilter | null; focus?: string | null },
+    ) => {
       updateRoute({
         tab,
         taxationSubTab: route.taxationSubTab,
         status: options?.status ?? null,
+        focus: options?.focus ? parseCommercialFocusId(options.focus) : null,
       });
     },
     [route.taxationSubTab, updateRoute],
   );
+
+  const handleFocusConsumed = useCallback(() => {
+    if (!route.focus) {
+      return;
+    }
+
+    updateRoute({
+      ...route,
+      focus: null,
+    });
+  }, [route, updateRoute]);
 
   const handleTaxationSubTabChange = useCallback(
     (taxationSubTab: TaxationSubTab) => {
@@ -174,6 +196,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         tab: 'taxation',
         taxationSubTab,
         status: null,
+        focus: null,
       });
     },
     [updateRoute],
@@ -261,6 +284,8 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         canEdit={canEdit}
         activeTab={route.tab}
         taxationSubTab={route.taxationSubTab}
+        focusId={route.focus ?? null}
+        onFocusConsumed={handleFocusConsumed}
         onTabChange={handleTabChange}
         onTaxationSubTabChange={handleTaxationSubTabChange}
       />

@@ -101,8 +101,12 @@ export function StockTransferDialog({
   onSubmit,
 }: StockTransferDialogProps) {
   const [itemId, setItemId] = useState('');
+  const [selectedItemCache, setSelectedItemCache] = useState<InventoryItemRecord | null>(null);
   const [sourceLocationId, setSourceLocationId] = useState('');
+  const [selectedSourceCache, setSelectedSourceCache] = useState<StockLocationRecord | null>(null);
   const [destinationLocationId, setDestinationLocationId] = useState('');
+  const [selectedDestinationCache, setSelectedDestinationCache] =
+    useState<StockLocationRecord | null>(null);
   const [quantity, setQuantity] = useState('1');
   const [serialNumber, setSerialNumber] = useState('');
   const [handoffReference, setHandoffReference] = useState('');
@@ -112,8 +116,11 @@ export function StockTransferDialog({
   useEffect(() => {
     if (!open) {
       setItemId('');
+      setSelectedItemCache(null);
       setSourceLocationId('');
+      setSelectedSourceCache(null);
       setDestinationLocationId('');
+      setSelectedDestinationCache(null);
       setQuantity('1');
       setSerialNumber('');
       setHandoffReference('');
@@ -133,10 +140,24 @@ export function StockTransferDialog({
     [items, transferableItemIds],
   );
 
-  const selectedItem = useMemo(
-    () => transferableItems.find((item) => item.id === itemId) ?? null,
-    [itemId, transferableItems],
-  );
+  const selectedItem = useMemo(() => {
+    if (!itemId) {
+      return null;
+    }
+
+    return (
+      transferableItems.find((item) => item.id === itemId) ??
+      items.find((item) => item.id === itemId) ??
+      (selectedItemCache?.id === itemId ? selectedItemCache : null)
+    );
+  }, [itemId, items, selectedItemCache, transferableItems]);
+
+  const productOptions = useMemo(() => {
+    if (selectedItem && !transferableItems.some((item) => item.id === selectedItem.id)) {
+      return [selectedItem, ...transferableItems];
+    }
+    return transferableItems;
+  }, [selectedItem, transferableItems]);
 
   const requiresSerial = selectedItem ? isSerializedInventoryItem(selectedItem) : false;
 
@@ -150,21 +171,35 @@ export function StockTransferDialog({
 
   const sourceLocationOptions = useMemo(() => {
     const locationIds = new Set(positiveBalances.map((balance) => balance.locationId));
-    return locations.filter(
+    const fromBalances = locations.filter(
       (location) => locationIds.has(location.id) && !ISSUE_SOURCE_BLOCKED_TYPES.has(location.type),
     );
-  }, [locations, positiveBalances]);
+    if (
+      selectedSourceCache &&
+      selectedSourceCache.id === sourceLocationId &&
+      !fromBalances.some((location) => location.id === selectedSourceCache.id)
+    ) {
+      return [selectedSourceCache, ...fromBalances];
+    }
+    return fromBalances;
+  }, [locations, positiveBalances, selectedSourceCache, sourceLocationId]);
 
-  const destinationOptions = useMemo(
-    () =>
-      locations.filter(
-        (location) =>
-          location.id !== sourceLocationId &&
-          MOBILE_CUSTODY_TYPES.has(location.type) &&
-          Boolean(location.responsibleRefId),
-      ),
-    [locations, sourceLocationId],
-  );
+  const destinationOptions = useMemo(() => {
+    const fromLocations = locations.filter(
+      (location) =>
+        location.id !== sourceLocationId &&
+        MOBILE_CUSTODY_TYPES.has(location.type) &&
+        Boolean(location.responsibleRefId),
+    );
+    if (
+      selectedDestinationCache &&
+      selectedDestinationCache.id === destinationLocationId &&
+      !fromLocations.some((location) => location.id === selectedDestinationCache.id)
+    ) {
+      return [selectedDestinationCache, ...fromLocations];
+    }
+    return fromLocations;
+  }, [destinationLocationId, locations, selectedDestinationCache, sourceLocationId]);
 
   const mobileDestinationsWithoutResponsible = useMemo(
     () =>
@@ -186,12 +221,16 @@ export function StockTransferDialog({
 
   const requestedQuantity = serialNumber.trim() ? 1 : Number(quantity || '0');
   const selectedSource = useMemo(
-    () => locations.find((location) => location.id === sourceLocationId) ?? null,
-    [locations, sourceLocationId],
+    () =>
+      locations.find((location) => location.id === sourceLocationId) ??
+      (selectedSourceCache?.id === sourceLocationId ? selectedSourceCache : null),
+    [locations, selectedSourceCache, sourceLocationId],
   );
   const selectedDestination = useMemo(
-    () => locations.find((location) => location.id === destinationLocationId) ?? null,
-    [destinationLocationId, locations],
+    () =>
+      locations.find((location) => location.id === destinationLocationId) ??
+      (selectedDestinationCache?.id === destinationLocationId ? selectedDestinationCache : null),
+    [destinationLocationId, locations, selectedDestinationCache],
   );
 
   // La capacidad del destino se mide contra la existencia física: el material reservado
@@ -223,30 +262,37 @@ export function StockTransferDialog({
 
   useEffect(() => {
     setSourceLocationId('');
+    setSelectedSourceCache(null);
     setDestinationLocationId('');
+    setSelectedDestinationCache(null);
   }, [itemId]);
 
   useEffect(() => {
     setDestinationLocationId('');
+    setSelectedDestinationCache(null);
   }, [sourceLocationId]);
 
   useEffect(() => {
     if (
       sourceLocationId &&
-      !sourceLocationOptions.some((location) => location.id === sourceLocationId)
+      !sourceLocationOptions.some((location) => location.id === sourceLocationId) &&
+      selectedSourceCache?.id !== sourceLocationId
     ) {
       setSourceLocationId('');
+      setSelectedSourceCache(null);
     }
-  }, [sourceLocationId, sourceLocationOptions]);
+  }, [selectedSourceCache?.id, sourceLocationId, sourceLocationOptions]);
 
   useEffect(() => {
     if (
       destinationLocationId &&
-      !destinationOptions.some((location) => location.id === destinationLocationId)
+      !destinationOptions.some((location) => location.id === destinationLocationId) &&
+      selectedDestinationCache?.id !== destinationLocationId
     ) {
       setDestinationLocationId('');
+      setSelectedDestinationCache(null);
     }
-  }, [destinationLocationId, destinationOptions]);
+  }, [destinationLocationId, destinationOptions, selectedDestinationCache?.id]);
 
   async function handleSubmit() {
     if (!itemId || !sourceLocationId || !destinationLocationId) {
@@ -301,16 +347,24 @@ export function StockTransferDialog({
                   {
                     value: '',
                     label:
-                      transferableItems.length === 0
+                      productOptions.length === 0
                         ? 'Sin productos disponibles para entregar'
                         : 'Selecciona un producto',
                   },
-                  ...transferableItems.map((item) => ({
+                  ...productOptions.map((item) => ({
                     value: item.id,
                     label: `${item.sku} · ${item.name}`,
                   })),
                 ]}
-                onChange={(event) => setItemId(event.target.value)}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setItemId(nextId);
+                  const nextItem =
+                    transferableItems.find((item) => item.id === nextId) ??
+                    items.find((item) => item.id === nextId) ??
+                    null;
+                  setSelectedItemCache(nextItem);
+                }}
                 helperText="Solo se muestran productos disponibles en bodega."
               />
 
@@ -364,7 +418,15 @@ export function StockTransferDialog({
                     label: formatLocationOptionLabel(location, userLabelById),
                   })),
                 ]}
-                onChange={(event) => setSourceLocationId(event.target.value)}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setSourceLocationId(nextId);
+                  setSelectedSourceCache(
+                    sourceLocationOptions.find((location) => location.id === nextId) ??
+                      locations.find((location) => location.id === nextId) ??
+                      null,
+                  );
+                }}
                 helperText="Bodegas centrales o de preparación con material disponible."
               />
 
@@ -388,7 +450,15 @@ export function StockTransferDialog({
                     label: formatLocationOptionLabel(location, userLabelById),
                   })),
                 ]}
-                onChange={(event) => setDestinationLocationId(event.target.value)}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setDestinationLocationId(nextId);
+                  setSelectedDestinationCache(
+                    destinationOptions.find((location) => location.id === nextId) ??
+                      locations.find((location) => location.id === nextId) ??
+                      null,
+                  );
+                }}
                 helperText="Solo aparecen técnicos o cuadrillas con bodega asignada."
               />
             </div>
@@ -456,7 +526,7 @@ export function StockTransferDialog({
             </div>
           </details>
 
-          {transferableItems.length === 0 ? (
+          {productOptions.length === 0 ? (
             <PortalAlert
               variant="warning"
               title="Sin material disponible para salida"

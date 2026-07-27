@@ -11,7 +11,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,6 +40,7 @@ import {
   LinkWorkOrderSchema,
   ListTicketsQueryDto,
   ListTicketsQuerySchema,
+  ListTicketsResponseDto,
   RequestFieldServiceDto,
   RequestFieldServiceSchema,
   TransitionTicketDto,
@@ -40,6 +48,7 @@ import {
   UpdateTicketDto,
   UpdateTicketSchema,
 } from './dto';
+import { ListMetaDto } from '../../common/pagination';
 import { AssuranceDashboardService } from './services/assurance-dashboard.service';
 import { CommentsService } from './services/comments.service';
 import { SlaService } from './services/sla.service';
@@ -83,6 +92,14 @@ const dashboardSummarySchema = {
   ],
 };
 
+/**
+ * Assurance — tickets, comentarios, timeline y SLA.
+ *
+ * Nota (DEF-2 D-6): la validación efectiva de query/body en este controller
+ * la hace `ZodValidationPipe` + schemas Zod (p. ej. `ListTicketsQuerySchema`),
+ * no el `ValidationPipe` global de class-validator. Los DTO clase con `@Allow()`
+ * existen solo para OpenAPI / tipado Nest; no son la fuente de verdad de cotas.
+ */
 @ApiTags('assurance')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -99,6 +116,8 @@ export class AssuranceController {
   @Get('tickets')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @ApiOperation({ summary: 'Listar tickets del tenant' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   listTickets(
     @Query(new ZodValidationPipe(ListTicketsQuerySchema)) query: ListTicketsQueryDto,
     @CurrentUser() actor: JwtPayload,

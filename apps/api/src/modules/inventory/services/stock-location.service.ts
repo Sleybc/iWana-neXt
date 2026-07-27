@@ -17,9 +17,22 @@ import {
   CreateStockLocationSchema,
   ListStockLocationsQueryInput,
   ListStockLocationsQuerySchema,
+  StockLocationPickerSearchQueryInput,
+  StockLocationPickerSearchQuerySchema,
   UpdateStockLocationInput,
   UpdateStockLocationSchema,
 } from '../dto';
+import {
+  clampInventoryLimit,
+  clampPickerSearchLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  escapePickerLikePattern,
+  InventoryPaginatedResult,
+  normalizePickerQuery,
+  sliceDateIdDescPage,
+  type PickerSearchResult,
+} from '../../../common/pagination';
 
 const MOBILE_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
@@ -56,21 +69,31 @@ export class StockLocationService {
     }
   }
 
-  async list(query: ListStockLocationsQueryInput): Promise<StockLocation[]> {
+  async list(
+    query: ListStockLocationsQueryInput,
+  ): Promise<InventoryPaginatedResult<StockLocation>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListStockLocationsQuerySchema.parse(query);
+    const limit = clampInventoryLimit(validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(StockLocation, 'location')
-        .where('location.tenant_id = :tenantId', { tenantId })
-        .orderBy('location.created_at', 'DESC');
+        .where('location.tenant_id = :tenantId', { tenantId });
 
-      if (validated.type) {
+      if (validated.custody === 'mobile') {
+        qb.andWhere('location.type IN (:...mobileTypes)', {
+          mobileTypes: [StockLocationType.MOBILE_TECHNICIAN, StockLocationType.MOBILE_CREW],
+        });
+      } else if (validated.type) {
         qb.andWhere('location.type = :type', { type: validated.type });
       }
 
-      if (validated.status) {
+      if (validated.statusGroup === 'inactive_group') {
+        qb.andWhere('location.status IN (:...inactiveStatuses)', {
+          inactiveStatuses: [StockLocationStatus.INACTIVE, StockLocationStatus.ARCHIVED],
+        });
+      } else if (validated.status) {
         qb.andWhere('location.status = :status', { status: validated.status });
       }
 
@@ -80,7 +103,90 @@ export class StockLocationService {
         });
       }
 
-      return qb.getMany();
+      if (validated.search) {
+        const needle = `%${validated.search.trim().toLowerCase()}%`;
+        qb.andWhere(
+          `(LOWER(location.name) LIKE :locationSearch
+            OR LOWER(location.code) LIKE :locationSearch
+            OR LOWER(COALESCE(location.responsible_ref_id::text, '')) LIKE :locationSearch)`,
+          { locationSearch: needle },
+        );
+      }
+
+      if (validated.withStock === true) {
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM stock_balances bal
+            WHERE bal.tenant_id = location.tenant_id
+              AND bal.location_id = location.id
+              AND bal.quantity_on_hand::numeric > 0
+          )`,
+        );
+      }
+
+      const total = await qb.clone().getCount();
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('location', 'created_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb
+        .orderBy('location.created_at', 'DESC')
+        .addOrderBy('location.id', 'DESC')
+        .take(limit + 1)
+        .getMany();
+
+      const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.createdAt);
+      return { data, meta: { nextCursor, total } };
+    });
+  }
+
+  /**
+   * Lookup typeahead E-4 para ubicaciones de stock.
+   * Label = nombre; sublabel = código.
+   */
+  async searchForPicker(query: StockLocationPickerSearchQueryInput): Promise<PickerSearchResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = StockLocationPickerSearchQuerySchema.parse(query);
+    const limit = clampPickerSearchLimit(validated.limit);
+    const q = normalizePickerQuery(validated.q);
+
+    if (!q) {
+      return { data: [], total: 0 };
+    }
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const like = `%${escapePickerLikePattern(q.toLowerCase())}%`;
+      const qb = qr.manager
+        .createQueryBuilder(StockLocation, 'location')
+        .where('location.tenant_id = :tenantId', { tenantId })
+        .andWhere(
+          "(LOWER(location.name) LIKE :like ESCAPE '\\' OR LOWER(location.code) LIKE :like ESCAPE '\\')",
+          { like },
+        );
+
+      if (validated.status) {
+        qb.andWhere('location.status = :status', { status: validated.status });
+      }
+
+      const total = await qb.clone().getCount();
+      const rows = await qb
+        .orderBy('location.name', 'ASC')
+        .addOrderBy('location.id', 'ASC')
+        .take(limit)
+        .getMany();
+
+      return {
+        data: rows.map((loc) => ({
+          id: loc.id,
+          label: loc.name,
+          sublabel: loc.code,
+        })),
+        total,
+      };
     });
   }
 

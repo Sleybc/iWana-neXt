@@ -13,9 +13,24 @@ import {
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
-import { PurchaseRfqStatus } from '@iwana/shared';
-import { ListPurchaseRequestsQueryInput, SearchSuppliersQueryInput } from '../dto';
+import { PurchaseRfqStatus, PurchaseRequestPriority, PurchaseRequestStatus } from '@iwana/shared';
+import {
+  ListPurchaseRequestsQueryInput,
+  ListPurchaseRequestsQuerySchema,
+  SearchSuppliersQueryInput,
+} from '../dto';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
+import {
+  assertExclusivePageCursor,
+  buildCursorMeta,
+  buildPageMeta,
+  clampInventoryLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  sliceDateIdDescPage,
+} from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import type { ListResponse } from '@iwana/shared';
 import { PurchasingPolicyService } from './purchasing-policy.service';
 
 function toNumeric(value: string | number | null | undefined): number {
@@ -55,34 +70,119 @@ export class PurchasingQueryService {
     private readonly purchasingPolicyService: PurchasingPolicyService,
   ) {}
 
-  async listRequests(query: ListPurchaseRequestsQueryInput): Promise<PurchaseRequest[]> {
+  async listRequests(
+    query: ListPurchaseRequestsQueryInput,
+  ): Promise<ListResponse<PurchaseRequest>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = ListPurchaseRequestsQuerySchema.parse(query);
+    assertExclusivePageCursor(validated);
+    const limit = clampInventoryLimit(validated.limit);
+    const usePage = validated.page !== undefined;
+    const page = usePage ? clampPage(validated.page!, limit).page : 1;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(PurchaseRequest, 'request')
-        .where('request.tenant_id = :tenantId', { tenantId })
-        .orderBy('request.created_at', 'DESC');
+        .where('request.tenant_id = :tenantId', { tenantId });
 
-      if (query.status) {
-        qb.andWhere('request.status = :status', { status: query.status });
+      if (validated.requestType) {
+        qb.andWhere('request.request_type = :requestType', { requestType: validated.requestType });
       }
 
-      if (query.requestType) {
-        qb.andWhere('request.request_type = :requestType', { requestType: query.requestType });
-      }
-
-      if (query.priority) {
-        qb.andWhere('request.priority = :priority', { priority: query.priority });
-      }
-
-      if (query.requestingArea) {
-        qb.andWhere('LOWER(request.requesting_area) LIKE :requestingArea', {
-          requestingArea: `%${query.requestingArea.trim().toLowerCase()}%`,
+      if (validated.kpiPreset === 'pendingQuotes') {
+        qb.andWhere('request.status IN (:...pendingQuoteStatuses)', {
+          pendingQuoteStatuses: [PurchaseRequestStatus.DRAFT, PurchaseRequestStatus.PENDING_QUOTES],
+        });
+      } else if (validated.status) {
+        qb.andWhere('request.status = :status', { status: validated.status });
+      } else if (validated.kpiPreset === 'pendingApproval') {
+        qb.andWhere('request.status = :status', {
+          status: PurchaseRequestStatus.PENDING_APPROVAL,
+        });
+      } else if (validated.kpiPreset === 'readyForPo') {
+        qb.andWhere('request.status = :status', { status: PurchaseRequestStatus.APPROVED });
+      } else if (validated.kpiPreset === 'pendingReceipt') {
+        qb.andWhere('request.status = :status', {
+          status: PurchaseRequestStatus.CONVERTED_TO_PO,
         });
       }
 
-      return qb.getMany();
+      if (validated.priority) {
+        qb.andWhere('request.priority = :priority', { priority: validated.priority });
+      }
+
+      if (validated.kpiPreset === 'urgent' && !validated.priority) {
+        qb.andWhere('request.priority = :urgentPriority', {
+          urgentPriority: PurchaseRequestPriority.URGENT,
+        });
+      }
+
+      if (validated.kpiPreset === 'overdue') {
+        qb.andWhere('request.needed_by_date IS NOT NULL');
+        qb.andWhere('request.needed_by_date < CURRENT_DATE');
+        qb.andWhere('request.status NOT IN (:...overdueTerminalStatuses)', {
+          overdueTerminalStatuses: [
+            PurchaseRequestStatus.CONVERTED_TO_PO,
+            PurchaseRequestStatus.CANCELLED,
+            PurchaseRequestStatus.REJECTED,
+          ],
+        });
+      }
+
+      if (validated.requestingArea) {
+        qb.andWhere('LOWER(request.requesting_area) LIKE :requestingArea', {
+          requestingArea: `%${validated.requestingArea.trim().toLowerCase()}%`,
+        });
+      }
+
+      if (validated.search) {
+        const needle = `%${validated.search.trim().toLowerCase()}%`;
+        qb.andWhere(
+          `(LOWER(request.request_number) LIKE :purchaseSearch
+            OR LOWER(request.title) LIKE :purchaseSearch
+            OR LOWER(COALESCE(request.requesting_area, '')) LIKE :purchaseSearch)`,
+          { purchaseSearch: needle },
+        );
+      }
+
+      const total = await qb.clone().getCount();
+
+      qb.orderBy('request.created_at', 'DESC').addOrderBy('request.id', 'DESC');
+
+      if (usePage) {
+        const rows = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getMany();
+        return {
+          data: rows,
+          meta: buildPageMeta({
+            total,
+            page,
+            limit,
+            randomAccess: false,
+            sortableFields: [],
+          }),
+        };
+      }
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('request', 'created_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb.take(limit + 1).getMany();
+      const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.createdAt);
+      return {
+        data,
+        meta: buildCursorMeta({
+          nextCursor,
+          total,
+          limit,
+        }),
+      };
     });
   }
 

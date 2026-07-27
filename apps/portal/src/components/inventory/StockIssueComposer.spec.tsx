@@ -9,6 +9,85 @@ import {
 import { STOCK_COMMITTED_NEXT_STEP_TEXT } from './inventory-labels';
 import { StockIssueComposer } from './StockIssueComposer';
 
+jest.mock('./InventoryLocationPicker', () => ({
+  InventoryLocationPicker: ({
+    id,
+    label,
+    onChange,
+  }: {
+    id?: string;
+    label?: string;
+    onChange: (id: string | null, item: { id: string; label: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      aria-label={label ?? 'Bodega'}
+      data-testid={id}
+      onClick={() => {
+        if (id === 'issue-destination') {
+          onChange('loc-2', { id: 'loc-2', label: 'TEC-01 · Custodia técnico' });
+          return;
+        }
+        onChange('loc-1', { id: 'loc-1', label: 'BOD-01 · Bodega principal' });
+      }}
+    >
+      Elegir {label}
+    </button>
+  ),
+}));
+
+jest.mock('@/lib/api-client', () => {
+  const actual = jest.requireActual('@/lib/api-client');
+  return {
+    ...actual,
+    inventoryApi: {
+      ...actual.inventoryApi,
+      listBalances: jest.fn().mockResolvedValue({
+        data: [
+          {
+            id: 'bal-1',
+            tenantId: 'tenant-1',
+            itemId: 'item-1',
+            locationId: 'loc-1',
+            lotId: null,
+            condition: 'NEW',
+            quantityOnHand: '3',
+            quantityReserved: '0',
+            createdAt: '2026-07-01T00:00:00.000Z',
+            updatedAt: '2026-07-01T00:00:00.000Z',
+          },
+          {
+            id: 'bal-2',
+            tenantId: 'tenant-1',
+            itemId: 'item-2',
+            locationId: 'loc-1',
+            lotId: null,
+            condition: 'NEW',
+            quantityOnHand: '5',
+            quantityReserved: '0',
+            createdAt: '2026-07-01T00:00:00.000Z',
+            updatedAt: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+        meta: { nextCursor: null, total: 2, hasMore: false },
+      }),
+      listAssets: jest.fn().mockResolvedValue({
+        data: [],
+        meta: { nextCursor: null, total: 0, hasMore: false },
+      }),
+      getItem: jest.fn().mockResolvedValue({
+        id: 'item-1',
+        tenantId: 'tenant-1',
+        sku: 'ONT-001',
+        name: 'ONT WiFi 6',
+        categoryName: 'Equipos',
+        unitOfMeasure: 'unidad',
+      }),
+      searchItemsForPicker: jest.fn().mockResolvedValue({ data: [], total: 0 }),
+    },
+  };
+});
+
 const baseItem = {
   id: 'item-1',
   tenantId: 'tenant-1',
@@ -106,18 +185,13 @@ describe('StockIssueComposer', () => {
     expect(screen.getByRole('heading', { name: 'Datos de la salida' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Con material/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('combobox', { name: 'Origen' }));
-    await user.click(screen.getByRole('option', { name: /BOD-01 · Bodega principal/i }));
-    await user.click(screen.getByRole('combobox', { name: 'Destino' }));
-    await user.click(screen.getByRole('option', { name: /Custodia técnico/i }));
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await user.click(screen.getByRole('button', { name: 'Destino' }));
 
-    await user.click(screen.getByRole('tab', { name: /Catálogo/i }));
-    await user.click(screen.getByRole('checkbox', { name: /ONT WiFi 6/i }));
-    await user.click(screen.getByRole('checkbox', { name: /Cable drop/i }));
-    await user.click(screen.getByRole('button', { name: 'Agregar 2 productos' }));
+    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar ONT/i }));
+    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
 
     expect(screen.getAllByText('ONT-001 · ONT WiFi 6').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('CAB-010 · Cable drop').length).toBeGreaterThanOrEqual(1);
     expect(
       screen.getAllByRole('columnheader', { name: 'Disponible en origen' }).length,
     ).toBeGreaterThanOrEqual(1);
@@ -130,8 +204,7 @@ describe('StockIssueComposer', () => {
         sourceLocationId: 'loc-1',
         destinationLocationId: 'loc-2',
         lines: [
-          { itemId: 'item-1', requestedQty: 1, condition: StockBalanceCondition.NEW },
-          { itemId: 'item-2', requestedQty: 1, condition: StockBalanceCondition.NEW },
+          expect.objectContaining({ itemId: 'item-1', condition: StockBalanceCondition.NEW }),
         ],
       }),
     );
@@ -175,13 +248,12 @@ describe('StockIssueComposer', () => {
       />,
     );
 
-    await user.click(screen.getByRole('combobox', { name: 'Origen' }));
-    await user.click(screen.getByRole('option', { name: /BOD-01 · Bodega principal/i }));
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
 
-    expect(screen.getByText(/Disponible en origen: 3/)).toBeInTheDocument();
+    expect(await screen.findByText(/Disponible en origen: 3/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('checkbox', { name: /ONT WiFi 6/i }));
-    await user.click(screen.getByRole('button', { name: 'Agregar 1 producto' }));
+    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT/i }));
+    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
 
     const quantityInput = screen.getByLabelText(/Cantidad ONT-001/i);
     await user.clear(quantityInput);

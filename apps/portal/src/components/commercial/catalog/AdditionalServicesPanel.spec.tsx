@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdditionalServicesPanel } from './AdditionalServicesPanel';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 
 const mockGetAdditionalServices = jest.fn();
 const mockCreateAdditionalService = jest.fn();
@@ -21,6 +22,7 @@ jest.mock('@/lib/api-client', () => ({
     updateAdditionalService: (...args: unknown[]) => mockUpdateAdditionalService(...args),
     deleteAdditionalService: (...args: unknown[]) => mockDeleteAdditionalService(...args),
   },
+  COMMERCIAL_LIST_PAGE_SIZE: 20,
 }));
 
 const sampleService = {
@@ -38,10 +40,13 @@ const sampleService = {
 describe('AdditionalServicesPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetAdditionalServices.mockResolvedValue([sampleService]);
-    mockCreateAdditionalService.mockResolvedValue([]);
-    mockUpdateAdditionalService.mockResolvedValue([]);
-    mockDeleteAdditionalService.mockResolvedValue([]);
+    mockGetAdditionalServices.mockResolvedValue({
+      data: [sampleService],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
+    mockCreateAdditionalService.mockResolvedValue(undefined);
+    mockUpdateAdditionalService.mockResolvedValue(undefined);
+    mockDeleteAdditionalService.mockResolvedValue(undefined);
   });
 
   it('muestra acciones compactas accesibles para editar y eliminar servicios', async () => {
@@ -78,9 +83,10 @@ describe('AdditionalServicesPanel', () => {
 
   it('ofrece reintentar cuando falla la carga inicial', async () => {
     const user = userEvent.setup();
-    mockGetAdditionalServices
-      .mockRejectedValueOnce(new Error('network'))
-      .mockResolvedValueOnce([sampleService]);
+    mockGetAdditionalServices.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({
+      data: [sampleService],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
 
     render(<AdditionalServicesPanel canEdit />);
 
@@ -89,5 +95,20 @@ describe('AdditionalServicesPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Reintentar' }));
 
     expect(await screen.findByText('IP pública')).toBeInTheDocument();
+  });
+
+  it('envía charge al servidor al filtrar tipo de cargo', async () => {
+    const user = userEvent.setup();
+    render(<AdditionalServicesPanel canEdit />);
+
+    expect(await screen.findByText('IP pública')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Tipo de cobro' }));
+    await user.click(await screen.findByRole('option', { name: /Recurrente/i }));
+
+    await waitFor(() => {
+      expect(
+        mockGetAdditionalServices.mock.calls.some((call) => call[0]?.charge === 'RECURRING'),
+      ).toBe(true);
+    });
   });
 });

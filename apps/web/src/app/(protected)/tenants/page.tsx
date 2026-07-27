@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
 import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
+import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 
 type TenantConfirmAction = {
   type: 'suspend' | 'activate';
@@ -24,6 +25,9 @@ type TenantStatusFilter =
   | 'SUSPENDED'
   | 'INACTIVE'
   | 'MARKED_FOR_DELETION';
+
+/** ADR-064 analogía web: page size / soft-cap previo → load-more por offset. */
+const TENANTS_PAGE_SIZE = PICKER_SOFT_CAP;
 
 const VALID_STATUS_FILTERS = new Set<TenantStatusFilter>([
   'TODAS',
@@ -49,6 +53,8 @@ export default function TenantsPage() {
 
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search')?.trim() ?? '');
   const [statusFilter, setStatusFilter] = useState<TenantStatusFilter>(() =>
@@ -109,23 +115,38 @@ export default function TenantsPage() {
     );
   }, []);
 
-  const loadTenants = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await tenantApi.list({ limit: 100, offset: 0 });
-      setTenants(response);
-    } catch {
-      setError('No fue posible cargar empresas.');
-      setTenants([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const loadTenants = useCallback(
+    async (options?: { append?: boolean }) => {
+      const append = options?.append === true;
+      try {
+        if (append) {
+          setIsLoadingMore(true);
+        } else {
+          setIsLoading(true);
+        }
+        setError(null);
+        const offset = append ? tenants.length : 0;
+        const response = await tenantApi.list({ limit: TENANTS_PAGE_SIZE, offset });
+        setTenants((current) => (append ? [...current, ...response] : response));
+        setHasMore(response.length === TENANTS_PAGE_SIZE);
+      } catch {
+        setError('No fue posible cargar empresas.');
+        if (!append) {
+          setTenants([]);
+          setHasMore(false);
+        }
+      } finally {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
+    },
+    [tenants.length],
+  );
 
   useEffect(() => {
-    loadTenants();
-  }, [loadTenants]);
+    void loadTenants();
+    // Carga inicial: no re-disparar cuando crece tenants.length tras append.
+  }, []);
 
   const executeSuspend = useCallback(
     async (id: string) => {
@@ -352,7 +373,7 @@ export default function TenantsPage() {
         title="Empresas"
         subtitle="Revisa la puesta en marcha, el estado operativo y los datos base de cada empresa desde un solo directorio."
         actions={
-          <Button asChild variant="lime">
+          <Button asChild variant="primary">
             <Link href="/tenants/new">Nueva empresa</Link>
           </Button>
         }
@@ -414,7 +435,7 @@ export default function TenantsPage() {
         tenants={tableRows}
         isLoading={isLoading}
         error={error}
-        onRetry={loadTenants}
+        onRetry={() => void loadTenants()}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         statusFilter={statusFilter}
@@ -422,6 +443,9 @@ export default function TenantsPage() {
         onSuspend={handleSuspend}
         onActivate={handleActivate}
         onRetryProvisioning={handleRetryProvisioning}
+        hasMore={hasMore}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={() => void loadTenants({ append: true })}
       />
     </div>
   );

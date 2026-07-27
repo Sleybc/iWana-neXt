@@ -12,7 +12,7 @@
 
 **Asistentes activos:** GitHub Copilot (VS Code), OpenCode (CLI / TUI / web), Codex y Claude Code (CLI / IDE extension). Los cuatro estan subordinados a `AGENTS.md`, no se prefiere uno sobre otro salvo que el usuario lo indique explicitamente para una tarea concreta.
 
-**Gobernanza vs modo de sesion:** la identidad AI-EM-ARCH es la *autoridad de gobernanza* del workspace (boundaries, multi-tenancy, gates, precedencia, protocolo multiagente). No implica que toda sesion opere en modo Orquestador. Por defecto la sesion actua como **ejecutor** subordinado a esa gobernanza. El **modo Orquestador** (define/delega, sin codigo productivo ni UI detallada) solo se activa con el prompt [`.github/prompts/activar-ai-em-arch.prompt.md`](.github/prompts/activar-ai-em-arch.prompt.md) o citando la Parte II de [`docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md`](docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md). Una nueva sesion sin ese prompt vuelve al modo ejecutor.
+**Gobernanza vs modo de sesion:** la identidad AI-EM-ARCH es la *autoridad de gobernanza* del workspace (boundaries, multi-tenancy, gates, precedencia, protocolo multiagente). No implica que toda sesion opere en modo Orquestador. Por defecto la sesion actua como **ejecutor** subordinado a esa gobernanza. El **modo Orquestador** (define/delega, sin codigo productivo ni UI detallada) solo se activa con el prompt [`docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md`](docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md) o citando la Parte II de [`docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md`](docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md). Una nueva sesion sin ese prompt vuelve al modo ejecutor.
 
 **Superficies activas:**
 
@@ -20,7 +20,7 @@
 - `.opencode/opencode.json` — declaracion explicita de OpenCode: `instructions`, `skills.paths` y `mcp` (chrome-devtools, context7, playwright). Es la superficie de paridad con Copilot.
 - `CLAUDE.md` — bootstrap propio de Claude Code, leido automaticamente al arrancar en el workspace. Reactivado el 2026-07-09 (ver `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`); sigue subordinado a `AGENTS.md` y no debe duplicar reglas que ya viven aqui.
 - `.github/instructions/*.instructions.md` — reglas contextuales por path; aplican en su `applyTo` para todas las IAs.
-- `.github/prompts/*.prompt.md` — prompts operativos reutilizables; disponibles para cualquier asistente compatible con prompts markdown del workspace.
+- `docs/prompts/PROMPT-*.md` — **todos** los prompts del workspace, sin excepcion: de ejecucion por fase y operativos reutilizables. Disponibles para cualquier asistente compatible con prompts markdown. **No existe ninguna otra carpeta de prompts**; `.github/prompts/` quedo suprimida el 2026-07-27 (ver Documentation Rules).
 - `.agents/skills/` — catalogo activo de skills. `INDEX.md` y `MANIFEST.json` son la fuente de verdad. OpenCode las descubre via `skills.paths`; Copilot, Codex y Claude Code las usan como referencia documental: leen el `SKILL.md` relevante segun `INDEX.md` antes de actuar, ya que ninguno de los tres tiene en este repo un mecanismo nativo de carga automatica de skills de proyecto.
 - `.claude/agents/*.md` — **fuente canonica de los subagentes de rol** (8 ejecutores del protocolo multiagente; AI-EM-ARCH no es subagente: es el modo Orquestador del agente padre). La leen nativamente Claude Code, Cursor y VS Code/Copilot. `.opencode/agents/` y `.codex/agents/` son **generados** por `pnpm sync:agents` — no se editan a mano; `pnpm sync:agents:check` verifica la sincronizacion. Cada subagente remite a su perfil en `docs/roles/` y al protocolo (los perfiles definen el rol; el subagente es su adaptador operativo).
 
@@ -54,16 +54,18 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 | Capacidad | Fuente principal | Regla operativa |
 | --- | --- | --- |
 | Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Reutilizables por cualquier asistente que soporte skills del workspace; no crear catalogos paralelos por cliente. Claude Code no tiene `skills.paths`: aplica el dispatch leyendo `SKILL.md` como documentacion, no invocandolo como tool nativa. |
-| Prompts | `.github/prompts/` | Prompts reutilizables y agnosticos de proveedor; deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
+| Prompts | `docs/prompts/` | **Unica carpeta de prompts del repo.** Aplica a los dos tipos, sin excepcion: prompts de **ejecucion por fase** (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, un solo encargo, versionados) y prompts **operativos reutilizables** (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`, agnosticos de proveedor). Todos deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. **Depositar un prompt fuera de `docs/prompts/` es defecto bloqueante**, no cuestion de estilo. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan a `AGENTS.md`; aplican por `applyTo`, no reemplazan la gobernanza global. |
 | MCP | `.opencode/opencode.json` para OpenCode | Los MCP son cliente-dependientes: OpenCode los declara en config versionada; en Codex dependen de la sesion activa y no de un archivo ficticio del repo. |
 | Agentes / subagentes | Skills de workflow existentes | Preferir `brainstorming`, `writing-plans`, `architect-review` y `subagent-driven-development` antes que inventar agentes custom paralelos del repo. |
 
 ### Prompts Operativos
 
-- `.github/prompts/activar-ai-em-arch.prompt.md` — activar modo Orquestador AI-EM-ARCH (define/delega; sin codigo productivo).
-- `.github/prompts/actualizar-informe-vivo.prompt.md` — actualizar el informe vivo relacionado sin duplicarlo.
-- `.github/prompts/revisar-boundary-modulith.prompt.md` — revisar boundaries Modulith, accesos cruzados y riesgos de arquitectura.
+Viven en `docs/prompts/` como el resto, con el subtipo `PROMPT-OPERATIVO-` que los distingue de los prompts de ejecucion por fase: no tienen modulo ni fase porque son reutilizables.
+
+- `docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md` — activar modo Orquestador AI-EM-ARCH (define/delega; sin codigo productivo).
+- `docs/prompts/PROMPT-OPERATIVO-ACTUALIZAR-INFORME-VIVO-v1.0.md` — actualizar el informe vivo relacionado sin duplicarlo.
+- `docs/prompts/PROMPT-OPERATIVO-REVISAR-BOUNDARY-MODULITH-v1.0.md` — revisar boundaries Modulith, accesos cruzados y riesgos de arquitectura.
 
 ---
 
@@ -234,7 +236,14 @@ Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritati
 │   ├── ui/               # Design system, Tailwind v4
 │   └── config/           # tsconfig, eslint, prettier
 ├── e2e/                  # Playwright tests
-└── docs/                 # PRDs, ADRs, HLDs, informes
+└── docs/                 # TODA la documentacion del repo
+    ├── prds/             # PRDs          ├── adrs/      # ADRs
+    ├── hlds/             # HLDs          ├── informes/  # informes vivos y de cierre
+    ├── prompts/          # PROMPTS (unica carpeta de prompts)
+    ├── specs/            # specs UX y contratos DS
+    ├── plans/            # planes de ejecucion
+    ├── roles/            # perfiles de agente y protocolo
+    └── runbooks/ quality/ sprints/ identity/ prototipo/
 ```
 
 ---
@@ -261,6 +270,20 @@ Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritati
 
 - **New documents:** `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md`
 - **Types:** PRD, HLD, ADR, INFORME, PROMPT
+- **Location — toda la documentacion vive bajo `docs/`, y cada tipo tiene UNA carpeta:**
+
+  | TIPO | Carpeta | Regla |
+  | --- | --- | --- |
+  | PRD | `docs/prds/` | — |
+  | HLD | `docs/hlds/` | — |
+  | ADR | `docs/adrs/` | Estado del vocabulario canonico: `Aprobado` · `En revision` · `Propuesto` · `Superado` |
+  | INFORME | `docs/informes/` | — |
+  | **PROMPT** | **`docs/prompts/`** | **Sin excepcion.** Cubre los dos subtipos: ejecucion por fase (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`) y operativo reutilizable (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`) |
+  | Spec UX / contrato DS | `docs/specs/` | `YYYY-MM-DD-<nombre>.md` |
+  | Plan | `docs/plans/` | `YYYY-MM-DD-<nombre>.md` |
+
+  **Ningun prompt se deposita fuera de `docs/prompts/`.** No existe `.github/prompts/` ni ninguna otra carpeta de prompts: fue suprimida el 2026-07-27 y sus 33 archivos migrados. Esta regla vive aqui, y no solo en `.github/instructions/docs.instructions.md`, precisamente porque aquel archivo solo se activa en su `applyTo: docs/**` — es decir, no se aplicaba a quien se equivocaba de carpeta. `AGENTS.md` se lee siempre.
+
 - **After changes:** Update/create report in `docs/informes/`
 - **Use Spanish** for business logic comments
 

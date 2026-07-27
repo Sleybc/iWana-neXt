@@ -14,13 +14,28 @@ import { PartyRole } from '../entities/party-role.entity';
 import { CreatePartyDto, CreatePartySchema } from '../dto/create-party.dto';
 import { UpdatePartyDto } from '../dto/update-party.dto';
 import { ListPartiesDto } from '../dto/list-parties.dto';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import { applySort } from '../../../common/pagination/apply-sort';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
+import type { ListMeta } from '@iwana/shared';
 
 export interface PaginatedParties {
   data: Party[];
+  /** @deprecated Usar meta.total */
   total: number;
+  /** @deprecated Usar meta.page */
   page: number;
+  /** @deprecated Usar meta.limit */
   limit: number;
+  meta: ListMeta;
 }
+
+/**
+ * Campos ordenables del recurso Party.
+ * Vacío hasta Ola 2 (creación de índices compuestos).
+ * ADR-065 Ola 1.
+ */
+const SORTABLE_FIELDS: string[] = [];
 
 @Injectable()
 export class PartyService {
@@ -76,12 +91,11 @@ export class PartyService {
 
   async findAll(dto: ListPartiesDto): Promise<PaginatedParties> {
     const { schemaName } = TenantContext.getOrThrow();
+    // D-5 / R-4: validar paginación antes de ocupar conexión del pool.
+    const { page, limit } = clampPage(dto.page ?? 1, dto.limit ?? 20);
+    const skip = (page - 1) * limit;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const page = dto.page ?? 1;
-      const limit = dto.limit ?? 20;
-      const skip = (page - 1) * limit;
-
       const qb = qr.manager.createQueryBuilder(Party, 'p').where('p.deleted_at IS NULL');
 
       if (dto.status) qb.andWhere('p.status = :status', { status: dto.status });
@@ -99,8 +113,26 @@ export class PartyService {
         );
       }
 
+      // Default primero: TypeORM orderBy() reemplaza el ORDER BY acumulado (O-7(b)).
+      qb.orderBy('p.createdAt', 'DESC').addOrderBy('p.id', 'DESC');
+      const sortResult = applySort(qb, SORTABLE_FIELDS, dto.sortBy, dto.sortDir);
+
       const [data, total] = await qb.skip(skip).take(limit).getManyAndCount();
-      return { data, total, page, limit };
+      return {
+        data,
+        total,
+        page,
+        limit,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: SORTABLE_FIELDS,
+          sortBy: sortResult.appliedSortBy ?? undefined,
+          sortDir: sortResult.appliedSortDir ?? undefined,
+        }),
+      };
     });
   }
 

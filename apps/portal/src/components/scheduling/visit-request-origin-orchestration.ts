@@ -11,6 +11,7 @@ import {
   buildPendingVisitInboxHref,
   buildPendingVisitSchedulingHref,
 } from './pending-visit-scheduling-handoff';
+import { parseOptionalCoordinate } from './scheduling-ui';
 
 export type VisitRequestNextAction = 'schedule-now' | 'send-to-pending';
 
@@ -40,10 +41,19 @@ export async function createCrmVisitRequestAndRoute(input: {
   customerLabel: string;
   municipality?: string;
   address?: string;
-  latitude?: number | null;
-  longitude?: number | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   nextAction: VisitRequestNextAction;
 }) {
+  const latitude = parseOptionalCoordinate(input.latitude);
+  const longitude = parseOptionalCoordinate(input.longitude);
+  const hasCoordinatePair =
+    latitude !== undefined &&
+    longitude !== undefined &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180;
   const ticketResult = await assuranceApi.tickets.findOrCreateInstallation({
     expedienteId: input.expedienteId,
     expedienteFullName: input.customerLabel,
@@ -59,8 +69,8 @@ export async function createCrmVisitRequestAndRoute(input: {
     ticketId: ticketResult.ticket.id,
     municipality: input.municipality ?? null,
     address: input.address ?? null,
-    latitude: input.latitude ?? null,
-    longitude: input.longitude ?? null,
+    latitude: hasCoordinatePair ? latitude : null,
+    longitude: hasCoordinatePair ? longitude : null,
   });
 
   return { visitRequest, href: resolveNextHref(visitRequest.id, input.nextAction) };

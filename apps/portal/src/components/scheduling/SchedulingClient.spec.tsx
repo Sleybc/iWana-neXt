@@ -346,9 +346,51 @@ describe('SchedulingClient', () => {
       alerts: [],
       technicianLoad: [{ assignedUserId: TECHNICIAN_ID, todayCount: 1 }],
     });
-    wfmApiMock.technicians.listAvailability.mockResolvedValue([]);
-    wfmApiMock.workOrders.list.mockResolvedValue([]);
-    wfmApiMock.events.list.mockResolvedValue([]);
+    wfmApiMock.technicians.listAvailability.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+    wfmApiMock.workOrders.list.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
     wfmApiMock.events.get.mockResolvedValue(buildEvent());
     wfmApiMock.visitRequests.list.mockResolvedValue({
       items: [],
@@ -407,7 +449,21 @@ describe('SchedulingClient', () => {
   });
 
   it('recomienda lista cuando la jornada visible alcanza alta densidad', async () => {
-    wfmApiMock.events.list.mockResolvedValue(buildHighDensityVisibleDayEvents());
+    wfmApiMock.events.list.mockResolvedValue({
+      data: buildHighDensityVisibleDayEvents(),
+      meta: {
+        nextCursor: null,
+        total: 20,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     render(<SchedulingClient surface="agenda" />);
 
@@ -425,7 +481,21 @@ describe('SchedulingClient', () => {
   });
 
   it('mantiene la vista elegida manualmente aunque el día tenga alta densidad', async () => {
-    wfmApiMock.events.list.mockResolvedValue(buildHighDensityVisibleDayEvents());
+    wfmApiMock.events.list.mockResolvedValue({
+      data: buildHighDensityVisibleDayEvents(),
+      meta: {
+        nextCursor: null,
+        total: 20,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     render(<SchedulingClient surface="agenda" />);
 
@@ -449,7 +519,21 @@ describe('SchedulingClient', () => {
   });
 
   it('muestra lista como superficie recomendada cuando el usuario cambia desde una jornada densa', async () => {
-    wfmApiMock.events.list.mockResolvedValue(buildHighDensityVisibleDayEvents());
+    wfmApiMock.events.list.mockResolvedValue({
+      data: buildHighDensityVisibleDayEvents(),
+      meta: {
+        nextCursor: null,
+        total: 20,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     render(<SchedulingClient surface="agenda" />);
 
@@ -521,7 +605,21 @@ describe('SchedulingClient', () => {
   });
 
   it('no muestra la sección de carga por recurso en la agenda principal', async () => {
-    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [buildEvent()],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     render(<SchedulingClient surface="agenda" />);
 
@@ -533,9 +631,34 @@ describe('SchedulingClient', () => {
   });
 
   it('mapea tipo, estado y técnico al renderizar eventos cargados', async () => {
-    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [buildEvent()],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     render(<SchedulingClient surface="agenda" />);
+
+    await waitFor(() => {
+      expect(wfmApiMock.events.list).toHaveBeenCalled();
+    });
+    // H-FE-ENVELOPE-OLA7: page/limit + unwrap .data (no Array.isArray sobre envelope)
+    expect(wfmApiMock.events.list.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ page: 1, limit: 100 }),
+    );
+    expect(wfmApiMock.workOrders.list.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ page: 1, limit: 100 }),
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Lista' }));
 
@@ -551,7 +674,21 @@ describe('SchedulingClient', () => {
       ...buildEventForVisibleDay(1),
       title: 'Instalación GPON barrio norte',
     };
-    wfmApiMock.events.list.mockResolvedValue([event]);
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [event],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
     wfmApiMock.events.get.mockResolvedValue(event);
     wfmApiMock.events.moveToPending.mockResolvedValue(buildPendingVisitRequest());
     wfmApiMock.visitRequests.list.mockResolvedValue({
@@ -618,7 +755,21 @@ describe('SchedulingClient', () => {
 
   it('renderiza el resumen operativo y no muestra calendario completo en dashboard', async () => {
     pathnameMock = '/dashboard/scheduling';
-    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [buildEvent()],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
     wfmApiMock.visitRequests.list.mockResolvedValue({
       items: [buildPendingVisitRequest()],
       meta: { total: 1, page: 1, limit: 12, totalPages: 1 },

@@ -28,24 +28,18 @@ import {
   Sparkles,
 } from 'lucide-react';
 import {
-  AdditionalProduct,
-  AdditionalService,
   ApiError,
-  commercialApi,
   CompletenessResult,
   crmApi,
   ExpedienteActivityItem,
-  InternalUser,
   ExpedienteOperationalMetadata,
   ExpedienteRecord,
   OperationalHistoryItem,
   PipelineRecommendation,
-  PlanCatalogItem,
   ResponsibilitySnapshot,
   SalesAttributionRecord,
   ExpedienteStatus,
   ExpedienteTimelineChange,
-  usersApi,
 } from '@/lib/api-client';
 import { ExpedienteHeader } from '@/components/crm/expedientes/ExpedienteHeader';
 import { ExpedienteConversionBanner } from '@/components/crm/expedientes/ExpedienteConversionBanner';
@@ -70,11 +64,12 @@ import {
   getMunicipiosByDepartamento,
 } from '@/components/crm/expedientes/sections';
 import {
-  buildSchedulingHref,
   canScheduleInstallation,
   hasMissingOperationalRefsForInstallation,
 } from '@/components/crm/expedientes/expediente-scheduling';
 import { ExpedienteSchedulingActions } from '@/components/crm/expedientes/ExpedienteSchedulingActions';
+import { useCrmVisitRequestAction } from '@/components/crm/expedientes/useCrmVisitRequestAction';
+import { PortalAlert } from '@/components/shared/portal-ui';
 import type { SectionId, DraftValues } from '@/components/crm/expedientes/sections';
 
 function getActorLabel(name: string | null | undefined): string {
@@ -182,13 +177,13 @@ export default function ExpedienteDetailPage() {
   const [lockedSections, setLockedSections] = useState<Set<SectionId>>(new Set());
   const [currentAttribution, setCurrentAttribution] = useState<SalesAttributionRecord | null>(null);
   const [attributionHistory, setAttributionHistory] = useState<SalesAttributionRecord[]>([]);
-  const [attributionUsers, setAttributionUsers] = useState<InternalUser[]>([]);
-  const [loadingAttributionUsers, setLoadingAttributionUsers] = useState(false);
   const [responsibility, setResponsibility] = useState<ResponsibilitySnapshot | null>(null);
   const [responsibilityHistory, setResponsibilityHistory] = useState<OperationalHistoryItem[]>([]);
-  const [planCatalog, setPlanCatalog] = useState<PlanCatalogItem[]>([]);
-  const [additionalProducts, setAdditionalProducts] = useState<AdditionalProduct[]>([]);
-  const [additionalServices, setAdditionalServices] = useState<AdditionalService[]>([]);
+  const {
+    error: coordinationError,
+    isSubmitting: isCoordinatingInstallation,
+    submit: submitVisitRequest,
+  } = useCrmVisitRequestAction();
 
   // Controla que el spinner de carga full-page solo se muestre en la carga inicial.
   // Las recargas posteriores (después de guardar) son silenciosas para no resetear el tab activo.
@@ -235,34 +230,6 @@ export default function ExpedienteDetailPage() {
   useEffect(() => {
     if (!id) return;
     void loadExpediente();
-
-    // Carga el catálogo de planes activos para el selector de "Interés del cliente"
-    commercialApi
-      .getPlans()
-      .then((items) => {
-        setPlanCatalog(items.filter((p) => p.isActive));
-      })
-      .catch(() => {
-        // Si falla, el selector queda vacío; no es bloqueante
-      });
-
-    commercialApi
-      .getAdditionalProducts()
-      .then((items) => {
-        setAdditionalProducts(items.filter((item) => item.isActive));
-      })
-      .catch(() => {
-        // Si falla, el selector queda vacío; no es bloqueante
-      });
-
-    commercialApi
-      .getAdditionalServices()
-      .then((items) => {
-        setAdditionalServices(items.filter((item) => item.isActive));
-      })
-      .catch(() => {
-        // Si falla, el selector queda vacío; no es bloqueante
-      });
   }, [id]);
 
   const loadExpediente = async (options?: {
@@ -518,6 +485,24 @@ export default function ExpedienteDetailPage() {
     }
   };
 
+  const handleCoordinateInstallation = async () => {
+    if (!expediente || !canCoordinateInstallationVisit || isCoordinatingInstallation) {
+      return;
+    }
+
+    void submitVisitRequest(
+      {
+        expedienteId: expediente.id,
+        customerLabel: expediente.fullName,
+        municipality: expediente.municipality,
+        address: expediente.address,
+        latitude: expediente.latitude ?? null,
+        longitude: expediente.longitude ?? null,
+      },
+      'schedule-now',
+    );
+  };
+
   const handleTransition = async (targetStatus = transitionTarget) => {
     if (!targetStatus) {
       setActionMessageTone('error');
@@ -567,11 +552,7 @@ export default function ExpedienteDetailPage() {
           targetStatus === 'INSTALACION_AGENDADA' &&
           hasMissingOperationalRefsForInstallation(missing)
         ) {
-          setActionMessageTone('info');
-          setActionMessage(
-            'Para cerrar la oportunidad como instalación agendada debes crear la solicitud operativa. Te llevamos a la vista de recomendaciones con este expediente preseleccionado.',
-          );
-          router.push(buildSchedulingHref(id));
+          void handleCoordinateInstallation();
           return;
         }
 
@@ -605,52 +586,6 @@ export default function ExpedienteDetailPage() {
   };
 
   const canManageAttribution = new Set(['ADMIN', 'SYSTEM_ADMIN']).has(user?.role ?? '');
-
-  // Usuarios ordenados alfabéticamente para el select sin filtrado.
-  const sortedAttributionUsers = [...attributionUsers].sort((left, right) => {
-    const leftName = [left.firstName, left.lastName].filter(Boolean).join(' ').trim();
-    const rightName = [right.firstName, right.lastName].filter(Boolean).join(' ').trim();
-    return leftName.localeCompare(rightName, 'es', { sensitivity: 'base' });
-  });
-
-  // Carga usuarios activos una sola vez al activar el panel de atribución.
-  // No se envía `search` al backend porque firstName/lastName pueden estar
-  // cifrados en BD — ILIKE contra valores cifrados nunca coincide con texto
-  // plano. El filtrado se realiza client-side en `filteredAttributionUsers`
-  // sobre los nombres ya decodificados que devuelve toDto().
-  useEffect(() => {
-    if (!canManageAttribution) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadAttributionUsers = async () => {
-      try {
-        setLoadingAttributionUsers(true);
-        const response = await usersApi.list({ status: 'ACTIVE', limit: 100 });
-
-        if (!cancelled) {
-          setAttributionUsers(response.data ?? []);
-        }
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) {
-          setActionMessage('No fue posible cargar usuarios para atribución.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingAttributionUsers(false);
-        }
-      }
-    };
-
-    void loadAttributionUsers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canManageAttribution]);
 
   if (loading) {
     return (
@@ -687,17 +622,24 @@ export default function ExpedienteDetailPage() {
   const tabVistaGeneral = (
     <div className="space-y-6">
       {actionMessage && (
-        <p
-          className={`rounded-[20px] px-4 py-3 text-sm shadow-iwana-soft ${
+        <PortalAlert
+          variant={actionMessageTone}
+          title={
             actionMessageTone === 'error'
-              ? 'border border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
+              ? 'No fue posible completar la acción'
               : actionMessageTone === 'success'
-                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
-                : 'border border-iwana-primary/15 bg-iwana-primary/5 text-iwana-primary dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200'
-          }`}
-        >
-          {actionMessage}
-        </p>
+                ? 'Acción completada'
+                : 'Información de la oportunidad'
+          }
+          description={actionMessage}
+        />
+      )}
+      {coordinationError && (
+        <PortalAlert
+          variant="error"
+          title="No fue posible coordinar la visita"
+          description={coordinationError}
+        />
       )}
       {expediente.dataConsentRevoked && (
         <p className="rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
@@ -838,7 +780,9 @@ export default function ExpedienteDetailPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push(buildSchedulingHref(id))}
+              onClick={() => void handleCoordinateInstallation()}
+              disabled={!canCoordinateInstallationVisit || isCoordinatingInstallation}
+              loading={isCoordinatingInstallation}
             >
               <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
               Coordinar visita de instalación
@@ -1065,7 +1009,9 @@ export default function ExpedienteDetailPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => router.push(buildSchedulingHref(id))}
+            onClick={() => void handleCoordinateInstallation()}
+            disabled={!canCoordinateInstallationVisit || isCoordinatingInstallation}
+            loading={isCoordinatingInstallation}
           >
             <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
             Coordinar visita de instalación
@@ -1111,9 +1057,6 @@ export default function ExpedienteDetailPage() {
         });
       }}
       savingSection={savingSection}
-      planCatalog={planCatalog}
-      additionalProducts={additionalProducts}
-      additionalServices={additionalServices}
       actionMessage={actionMessage}
       actionMessageTone={actionMessageTone}
       onDocumentSupportSaved={loadExpediente}
@@ -1129,10 +1072,6 @@ export default function ExpedienteDetailPage() {
       responsibilityHistory={responsibilityHistory}
       currentAttribution={currentAttribution}
       attributionHistory={attributionHistory}
-      sortedAttributionUsers={sortedAttributionUsers}
-      loadingAttributionUsers={loadingAttributionUsers}
-      planCatalog={planCatalog}
-      additionalProducts={additionalProducts}
       recentActivity={recentActivity}
       pipelineChanges={timeline}
       onSaved={loadExpediente}

@@ -57,7 +57,12 @@ export function CommercialAlertsStrip({
                     type="button"
                     size="sm"
                     variant="secondary"
-                    onClick={() => onNavigateTab(alert.tab, { status: alert.status ?? null })}
+                    onClick={() =>
+                      onNavigateTab(alert.tab, {
+                        ...(alert.status ? { status: alert.status } : { status: null }),
+                        ...(alert.focus ? { focus: alert.focus } : {}),
+                      })
+                    }
                   >
                     {alert.ctaLabel}
                   </Button>

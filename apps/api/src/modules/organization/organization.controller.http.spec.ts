@@ -201,7 +201,21 @@ describe('OrganizationController HTTP', () => {
   });
 
   it('GET /api/v1/organization/sites retorna 200 para rol allowed', async () => {
-    organizationServiceMock.findAll.mockResolvedValue([]);
+    organizationServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/organization/sites')
@@ -209,23 +223,38 @@ describe('OrganizationController HTTP', () => {
       .expect(200)
       .expect(({ body }) => {
         expect(body.data).toEqual([]);
+        expect(body.meta.mode).toBe('page');
       });
   });
 
   it('GET /api/v1/organization/sites expone el summary enriquecido en el contrato HTTP', async () => {
-    organizationServiceMock.findAll.mockResolvedValue([
-      {
-        id: '243f5a18-4adc-4ca5-8cce-f55b70a3412e',
-        name: 'Sede centro',
-        code: 'CENTRO',
-        siteType: OrganizationSiteType.OFFICE,
-        address: 'Cra 10 # 10-10',
-        municipality: 'Bogotá',
-        department: 'Cundinamarca',
-        capabilities: [OrganizationSiteCapability.ADMIN_OFFICE],
-        isActive: true,
+    organizationServiceMock.findAll.mockResolvedValue({
+      data: [
+        {
+          id: '243f5a18-4adc-4ca5-8cce-f55b70a3412e',
+          name: 'Sede centro',
+          code: 'CENTRO',
+          siteType: OrganizationSiteType.OFFICE,
+          address: 'Cra 10 # 10-10',
+          municipality: 'Bogotá',
+          department: 'Cundinamarca',
+          capabilities: [OrganizationSiteCapability.ADMIN_OFFICE],
+          isActive: true,
+        },
+      ],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
       },
-    ]);
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/organization/sites')
@@ -385,9 +414,24 @@ describe('OrganizationController HTTP', () => {
   });
 
   it('DELETE /api/v1/organization/sites/:id aplica baja lógica y el listado posterior ya no expone la sede', async () => {
+    const emptyMeta = {
+      nextCursor: null,
+      total: 0,
+      totalIsEstimate: false,
+      page: 1,
+      limit: 20,
+      totalPages: 0,
+      hasMore: false,
+      mode: 'page' as const,
+      capabilities: { randomAccess: true, sortableFields: [] as string[] },
+      sort: null,
+    };
     organizationServiceMock.findAll
-      .mockResolvedValueOnce([{ id: '243f5a18-4adc-4ca5-8cce-f55b70a3412e', name: 'Sede centro' }])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce({
+        data: [{ id: '243f5a18-4adc-4ca5-8cce-f55b70a3412e', name: 'Sede centro' }],
+        meta: { ...emptyMeta, total: 1, totalPages: 1 },
+      })
+      .mockResolvedValueOnce({ data: [], meta: emptyMeta });
 
     await request(app.getHttpServer())
       .get('/api/v1/organization/sites')
@@ -460,5 +504,67 @@ describe('OrganizationController HTTP', () => {
         contactPhone: '+573001112233',
       })
       .expect(400);
+  });
+
+  // --------------------------------------------------------------------------
+  // DEF-2: cota de page en endpoint — cobertura de los 5 casos
+  // --------------------------------------------------------------------------
+
+  describe('DEF-2: cota de page en listados', () => {
+    const baseMeta = {
+      nextCursor: null,
+      total: 0,
+      totalIsEstimate: false,
+      limit: 20,
+      totalPages: 0,
+      hasMore: false,
+      mode: 'page' as const,
+      capabilities: { randomAccess: true, sortableFields: [] as string[] },
+      sort: null,
+    };
+
+    beforeEach(() => {
+      organizationServiceMock.findAll.mockResolvedValue({ data: [], meta: baseMeta });
+    });
+
+    it('retorna 200 con page en el límite exacto (page=100, limit=100)', async () => {
+      organizationServiceMock.findAll.mockResolvedValue({
+        data: [],
+        meta: { ...baseMeta, page: 100, limit: 100, totalPages: 0 },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/organization/sites?page=100&limit=100')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+    });
+
+    it('retorna 400 con page justo por encima del límite (page=101, limit=100)', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/organization/sites?page=101&limit=100')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+    });
+
+    it('retorna 400 con page no numérica', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/organization/sites?page=abc')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+    });
+
+    it('retorna 400 con page negativa', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/organization/sites?page=-1&limit=20')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+    });
+
+    it('retorna 400 con page=0', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/organization/sites?page=0&limit=20')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+    });
   });
 });

@@ -1,6 +1,5 @@
 import {
   INSTALLATION_SCHEDULING_MIN_PROGRESS,
-  buildSchedulingHref,
   canScheduleInstallation,
   hasMissingOperationalRefsForInstallation,
 } from './expediente-scheduling';
@@ -38,12 +37,6 @@ describe('expediente-scheduling', () => {
         canTransition: false,
       }),
     ).toBe(false);
-  });
-
-  it('should construir la ruta de programacion en el detalle del expediente', () => {
-    expect(buildSchedulingHref('550e8400-e29b-41d4-a716-446655440000')).toBe(
-      '/dashboard/crm/expedientes/550e8400-e29b-41d4-a716-446655440000#programacion',
-    );
   });
 
   it('should detectar faltantes operativos para redirigir a scheduling', () => {

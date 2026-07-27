@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { PlatformRole, UserRole, UserStatus } from '@iwana/shared';
 import { UsersTable } from './UsersTable';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 
 const baseUser = {
   id: 'user-1',
@@ -40,7 +41,7 @@ function renderTable(overrides: Partial<ComponentProps<typeof UsersTable>> = {})
   const props = {
     users: [baseUser],
     isLoading: false,
-    meta: { nextCursor: null as string | null, total: 1 },
+    meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
     onEdit: jest.fn(),
     onDelete: jest.fn(),
     onResetPassword: jest.fn(),
@@ -63,7 +64,10 @@ function renderTable(overrides: Partial<ComponentProps<typeof UsersTable>> = {})
 
 describe('UsersTable', () => {
   it('muestra empty state de primera vez con CTA Nuevo usuario', () => {
-    const { props } = renderTable({ users: [], meta: { nextCursor: null, total: 0 } });
+    const { props } = renderTable({
+      users: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
 
     expect(screen.getByText('Aún no hay usuarios')).toBeInTheDocument();
     expect(
@@ -73,10 +77,19 @@ describe('UsersTable', () => {
     expect(props.onCreateUser).toHaveBeenCalled();
   });
 
+  it('usa par tonal secondary para MFA habilitado', () => {
+    renderTable({
+      users: [{ ...baseUser, mfaEnabled: true, isOperationalResource: true }],
+    });
+
+    expect(screen.getByText('Habilitado')).toHaveClass('text-iwana-secondary-700');
+    expect(screen.getByText('Despacho operativo')).toHaveClass('text-iwana-secondary-700');
+  });
+
   it('muestra empty state con filtros activos y CTA Limpiar filtros', () => {
     const { props } = renderTable({
       users: [],
-      meta: { nextCursor: null, total: 0 },
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
       searchValue: 'sin-match',
     });
 
@@ -88,9 +101,9 @@ describe('UsersTable', () => {
     expect(props.onClearFilters).toHaveBeenCalled();
   });
 
-  it('muestra acciones icon-only con nombre accesible y CTA de cargar más', () => {
+  it('muestra tres acciones icono visibles (editar, reiniciar, eliminar)', () => {
     const { props } = renderTable({
-      meta: { nextCursor: 'next-page', total: 3 },
+      meta: { ...EMPTY_LIST_META, nextCursor: 'next-page', total: 3 },
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar usuario ana@example.com' }));
@@ -104,6 +117,29 @@ describe('UsersTable', () => {
     expect(props.onResetPassword).toHaveBeenCalledWith(baseUser);
     expect(props.onDelete).toHaveBeenCalledWith(baseUser);
     expect(props.onLoadMore).toHaveBeenCalled();
+  });
+
+  it('ADR-064: strip único de conteo y footer solo con Cargar más si hasMore', () => {
+    const { unmount } = renderTable({
+      users: [baseUser],
+      meta: { ...EMPTY_LIST_META, nextCursor: 'next-page', total: 3 },
+    });
+
+    expect(screen.getByText('1 de 3 usuarios')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
+    expect(screen.queryByText('Fin de resultados')).not.toBeInTheDocument();
+    expect(screen.getByText(/Mostrando 1 de 3 usuarios/)).toHaveClass('sr-only');
+    unmount();
+
+    renderTable({
+      users: [baseUser],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
+
+    expect(screen.getByText('1 usuario')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Fin de resultados')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Mostrando/)).not.toBeInTheDocument();
   });
 
   it('FE-01: refleja filtros controlados y limpia vía callback único', () => {
@@ -126,11 +162,11 @@ describe('UsersTable', () => {
   });
 
   it('FE-03: SYSTEM_ADMIN puede eliminar un ADMIN; ADMIN no', () => {
-    const { rerender } = render(
+    const { unmount } = render(
       <UsersTable
         users={[adminUser]}
         isLoading={false}
-        meta={{ nextCursor: null, total: 1 }}
+        meta={{ ...EMPTY_LIST_META, nextCursor: null, total: 1 }}
         onEdit={jest.fn()}
         onDelete={jest.fn()}
         onResetPassword={jest.fn()}
@@ -156,12 +192,17 @@ describe('UsersTable', () => {
       'title',
       'No puedes eliminar a otro administrador del tenant',
     );
+    expect(deleteAsAdmin).toHaveAttribute('aria-describedby', 'delete-blocked-admin-2');
+    expect(screen.getByText('No puedes eliminar a otro administrador del tenant')).toHaveClass(
+      'sr-only',
+    );
+    unmount();
 
-    rerender(
+    render(
       <UsersTable
         users={[adminUser]}
         isLoading={false}
-        meta={{ nextCursor: null, total: 1 }}
+        meta={{ ...EMPTY_LIST_META, nextCursor: null, total: 1 }}
         onEdit={jest.fn()}
         onDelete={jest.fn()}
         onResetPassword={jest.fn()}
@@ -184,5 +225,98 @@ describe('UsersTable', () => {
     });
     expect(deleteAsSystemAdmin).not.toBeDisabled();
     expect(deleteAsSystemAdmin).toHaveAttribute('title', 'Eliminar usuario');
+  });
+
+  describe('ADR-065: PortalTablePager (page-based)', () => {
+    const twoUsers = [
+      { ...baseUser, id: 'user-1', email: 'ana@example.com', firstName: 'Ana' },
+      {
+        ...baseUser,
+        id: 'user-2',
+        email: 'carlos@example.com',
+        firstName: 'Carlos',
+        lastName: 'Gómez',
+      },
+    ];
+
+    const pageBasedProps = {
+      page: 1,
+      pageCount: 2,
+      from: 1,
+      to: 2,
+      onPageChange: jest.fn(),
+    };
+
+    it('muestra PortalTablePager en vez de Cargar más con props page-based', () => {
+      renderTable({
+        users: twoUsers,
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 4 },
+        ...pageBasedProps,
+      });
+
+      // El pager numerado está presente
+      expect(screen.getByRole('navigation', { name: /Paginación/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Anterior' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument();
+
+      // Cargar más NO se muestra cuando hay pager
+      expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    });
+
+    it('no muestra pager cuando total es 0 aunque lleguen props page-based', () => {
+      renderTable({
+        users: [],
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+        ...pageBasedProps,
+      });
+
+      // Sin resultados no hay paginación
+      expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    });
+
+    it('llama a onPageChange al pulsar Siguiente', () => {
+      const onPageChange = jest.fn();
+      renderTable({
+        users: twoUsers,
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 4 },
+        page: 1,
+        pageCount: 2,
+        from: 1,
+        to: 2,
+        onPageChange,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+      expect(onPageChange).toHaveBeenCalledWith(2);
+    });
+
+    it('fallback a Cargar más cuando onPageChange no se pasa', () => {
+      renderTable({
+        users: twoUsers,
+        meta: { ...EMPTY_LIST_META, nextCursor: 'next', total: 4 },
+        // Sin props page-based → PortalTablePagination
+      });
+
+      expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
+    });
+
+    it('strip de resultados y pager coexisten en modo page-based', () => {
+      renderTable({
+        users: twoUsers,
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 4 },
+        page: 1,
+        pageCount: 2,
+        from: 1,
+        to: 2,
+        onPageChange: jest.fn(),
+      });
+
+      // Strip de la tabla muestra el total (sin nextCursor → hasMore=false)
+      expect(screen.getByText('4 usuarios')).toBeInTheDocument();
+      // El pager muestra el rango (visible + sr-only → múltiples matches)
+      expect(screen.getAllByText(/Mostrando 1–2 de 4 usuarios/).length).toBeGreaterThan(0);
+    });
   });
 });

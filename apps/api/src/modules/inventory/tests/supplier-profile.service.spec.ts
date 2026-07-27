@@ -123,6 +123,7 @@ describe('SupplierProfileService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getCount: jest.fn().mockResolvedValue(profiles.length),
@@ -269,6 +270,16 @@ describe('SupplierProfileService', () => {
     const result = await service.list({ page: 1, limit: 20 });
 
     expect(result.total).toBe(1);
+    expect(result.page).toBe(1);
+    expect(result.meta).toMatchObject({
+      mode: 'page',
+      page: 1,
+      total: 1,
+      limit: 20,
+      totalPages: 1,
+      hasMore: false,
+      capabilities: { randomAccess: true, sortableFields: [] },
+    });
     expect(result.data).toHaveLength(1);
     expect(result.data[0]?.supplierCode).toBe('PROV-000001');
     expect(result.data[0]?.party?.displayName).toBe('Proveedor ACME');

@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ExpedienteDetailPage from './page';
-import { commercialApi, crmApi, usersApi } from '@/lib/api-client';
+import { crmApi, usersApi } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
+import { createCrmVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -11,6 +13,10 @@ jest.mock('next/navigation', () => ({
     push: mockPush,
     back: mockBack,
   }),
+}));
+
+jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
+  createCrmVisitRequestAndRoute: jest.fn(),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
@@ -93,13 +99,23 @@ jest.mock('@/lib/api-client', () => ({
     reactivateExpediente: jest.fn(),
   },
   commercialApi: {
-    getPlans: jest.fn(),
-    getAdditionalProducts: jest.fn(),
-    getAdditionalServices: jest.fn(),
+    searchPlansForPicker: jest.fn(),
+    searchAdditionalProductsForPicker: jest.fn(),
+    searchAdditionalServicesForPicker: jest.fn(),
+    getPlanById: jest.fn(),
+    getCatalogItemById: jest.fn(),
   },
   usersApi: {
     list: jest.fn(),
+    searchForPicker: jest.fn(),
   },
+  mapPickerSearchResponse: ({
+    data,
+    total,
+  }: {
+    data: Array<{ id: string; label: string; sublabel?: string | null }>;
+    total: number;
+  }) => ({ items: data, total }),
 }));
 
 const crmApiMock = crmApi as unknown as {
@@ -114,15 +130,12 @@ const crmApiMock = crmApi as unknown as {
   reactivateExpediente: jest.Mock;
 };
 
-const commercialApiMock = commercialApi as unknown as {
-  getPlans: jest.Mock;
-  getAdditionalProducts: jest.Mock;
-  getAdditionalServices: jest.Mock;
-};
-
 const usersApiMock = usersApi as unknown as {
   list: jest.Mock;
+  searchForPicker: jest.Mock;
 };
+
+const createCrmVisitRequestAndRouteMock = jest.mocked(createCrmVisitRequestAndRoute);
 
 function buildExpediente(overrides: Record<string, unknown> = {}) {
   return {
@@ -249,10 +262,11 @@ describe('ExpedienteDetailPage', () => {
     crmApiMock.getResponsibilityHistory.mockResolvedValue({ data: [] });
     crmApiMock.transitionExpedienteStatus.mockResolvedValue({ data: {}, transitionWarning: null });
 
-    commercialApiMock.getPlans.mockResolvedValue([]);
-    commercialApiMock.getAdditionalProducts.mockResolvedValue([]);
-    commercialApiMock.getAdditionalServices.mockResolvedValue([]);
-    usersApiMock.list.mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } });
+    usersApiMock.list.mockResolvedValue({
+      data: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
+    usersApiMock.searchForPicker.mockResolvedValue({ data: [], total: 0 });
   });
 
   it('renderiza la acción recomendada con bloqueantes y recomendados', async () => {
@@ -299,6 +313,124 @@ describe('ExpedienteDetailPage', () => {
       expect(crmApiMock.transitionExpedienteStatus).toHaveBeenCalledWith(
         'exp-1',
         expect.objectContaining({ targetStatus: 'PRECALIFICADO' }),
+      );
+    });
+  });
+
+  it('coordina una instalación desde el CTA y abre la agenda', async () => {
+    crmApiMock.getExpediente.mockResolvedValue(
+      buildExpedienteResponse({
+        data: buildExpediente({
+          status: 'LISTO_PARA_INSTALACION',
+          pipelineProgress: 80,
+          latitude: 4.711,
+          longitude: -74.0721,
+        }),
+        completeness: {
+          ...buildExpedienteResponse().completeness,
+          overall: 80,
+          installationReadiness: {
+            status: 'READY_COMPLETE',
+            canTransition: true,
+            title: 'Listo para instalación',
+            message: 'La instalación puede coordinarse.',
+          },
+          missingRequirements: [],
+        },
+      }),
+    );
+    createCrmVisitRequestAndRouteMock.mockResolvedValue({
+      visitRequest: { id: 'vr-001' } as never,
+      href: '/dashboard/scheduling/agenda?source=pending-visits&visitRequestId=vr-001',
+    });
+
+    render(<ExpedienteDetailPage />);
+
+    const [coordinateButton] = await screen.findAllByRole('button', {
+      name: 'Coordinar visita de instalación',
+    });
+    fireEvent.click(coordinateButton!);
+
+    await waitFor(() => {
+      expect(createCrmVisitRequestAndRouteMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expedienteId: 'exp-1',
+          customerLabel: 'Juan Perez',
+          municipality: 'EL_COLEGIO',
+          address: 'Calle 1',
+          latitude: 4.711,
+          longitude: -74.0721,
+          nextAction: 'schedule-now',
+        }),
+      );
+      expect(mockPush).toHaveBeenCalledWith(
+        '/dashboard/scheduling/agenda?source=pending-visits&visitRequestId=vr-001',
+      );
+    });
+  });
+
+  it('deshabilita la coordinación cuando el expediente aún no está listo', async () => {
+    render(<ExpedienteDetailPage />);
+
+    const [coordinateButton] = await screen.findAllByRole('button', {
+      name: 'Coordinar visita de instalación',
+    });
+
+    expect(coordinateButton).toBeDisabled();
+    expect(createCrmVisitRequestAndRouteMock).not.toHaveBeenCalled();
+  });
+
+  it('evita solicitudes duplicadas mientras la coordinación está en curso', async () => {
+    let resolveVisitRequest:
+      | ((result: Awaited<ReturnType<typeof createCrmVisitRequestAndRoute>>) => void)
+      | undefined;
+    createCrmVisitRequestAndRouteMock.mockImplementation(
+      () =>
+        new Promise<Awaited<ReturnType<typeof createCrmVisitRequestAndRoute>>>((resolve) => {
+          resolveVisitRequest = resolve;
+        }),
+    );
+    crmApiMock.getExpediente.mockResolvedValue(
+      buildExpedienteResponse({
+        data: buildExpediente({ status: 'LISTO_PARA_INSTALACION', pipelineProgress: 80 }),
+        completeness: {
+          ...buildExpedienteResponse().completeness,
+          overall: 80,
+          installationReadiness: {
+            status: 'READY_COMPLETE',
+            canTransition: true,
+            title: 'Listo para instalación',
+            message: 'La instalación puede coordinarse.',
+          },
+          missingRequirements: [],
+        },
+      }),
+    );
+
+    render(<ExpedienteDetailPage />);
+
+    const coordinateButtons = await screen.findAllByRole('button', {
+      name: 'Coordinar visita de instalación',
+    });
+    fireEvent.click(coordinateButtons[0]!);
+
+    await waitFor(() => {
+      expect(createCrmVisitRequestAndRouteMock).toHaveBeenCalledTimes(1);
+    });
+    expect(coordinateButtons[0]).toBeDisabled();
+    expect(coordinateButtons[1]).toBeDisabled();
+
+    fireEvent.click(coordinateButtons[1]!);
+    expect(createCrmVisitRequestAndRouteMock).toHaveBeenCalledTimes(1);
+
+    resolveVisitRequest?.({
+      visitRequest: { id: 'vr-001' } as never,
+      href: '/dashboard/scheduling/agenda?source=pending-visits&visitRequestId=vr-001',
+    });
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(
+        '/dashboard/scheduling/agenda?source=pending-visits&visitRequestId=vr-001',
       );
     });
   });

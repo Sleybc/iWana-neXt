@@ -33,8 +33,31 @@ import {
   SupplierProfileStatus,
   IncotermCode,
 } from '@iwana/shared';
+import {
+  INVENTORY_LIST_DEFAULT_LIMIT,
+  INVENTORY_LIST_MAX_LIMIT,
+  inventoryHybridPaginationZod,
+  inventoryListPaginationZod,
+} from '../../../common/pagination';
 
 const emptyStringToNull = (value: unknown) => (value === '' ? null : value);
+
+/** Meta de listado paginado cursor (ADR-064) — documentado en OpenAPI. */
+export class InventoryListMetaDto {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Cursor para la siguiente página; null si no hay más resultados',
+    example: null,
+  })
+  nextCursor!: string | null;
+
+  @ApiProperty({
+    description: 'Total del conjunto filtrado (sin aplicar cursor)',
+    example: 128,
+  })
+  total!: number;
+}
 
 const optionalTrimmedString = (maxLength: number) =>
   z.preprocess(emptyStringToNull, z.string().trim().max(maxLength).optional().nullable());
@@ -59,9 +82,40 @@ export const ListInventoryItemsQuerySchema = z.object({
   purchasable: optionalQueryBoolean,
   preferredSupplierRefId: z.string().uuid().optional(),
   commercialReferenceId: z.string().uuid().optional(),
+  /** ADR-065 Ola 6: equivalentes a «solo bajo mínimo» del overview (agotado ∪ bajo mínimo). */
+  belowMinimum: optionalQueryBoolean,
+  /** Alcance de agregación de saldos para `belowMinimum` (bodega opcional). */
+  stockLocationId: z.string().uuid().optional(),
+  ...inventoryHybridPaginationZod,
 });
 
-export type ListInventoryItemsQueryInput = z.infer<typeof ListInventoryItemsQuerySchema>;
+export type ListInventoryItemsQueryInput = z.input<typeof ListInventoryItemsQuerySchema>;
+
+/** Query E-4 typeahead — máx. 20; FE mapea a SearchablePickerSearchResult. */
+export const InventoryPickerSearchQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().min(1).max(20).optional().default(20),
+  ),
+  status: z.nativeEnum(InventoryItemStatus).optional(),
+});
+
+export type InventoryPickerSearchQueryInput = z.input<typeof InventoryPickerSearchQuerySchema>;
+
+export class InventoryPickerSearchQueryDto {
+  @ApiPropertyOptional({ description: 'Texto typeahead (nombre / SKU / marca / modelo)' })
+  @Allow()
+  q?: string;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 20 })
+  @Allow()
+  limit?: number;
+
+  @ApiPropertyOptional({ enum: InventoryItemStatus })
+  @Allow()
+  status?: InventoryItemStatus;
+}
 
 export class ListInventoryItemsQueryDto {
   @ApiPropertyOptional()
@@ -99,6 +153,45 @@ export class ListInventoryItemsQueryDto {
   @ApiPropertyOptional({ description: 'UUID de producto adicional comercial (MOD06)' })
   @Allow()
   commercialReferenceId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Si true, solo ítems con disponible ≤ 0 o disponible < minimumStock (agregado de saldos). ' +
+      'Desbloquea StockByProductTable sin filtrar en cliente sobre buffer paginado (ADR-065 Ola 6).',
+  })
+  @Allow()
+  belowMinimum?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Bodega para agregar saldos al evaluar `belowMinimum` (opcional).',
+    format: 'uuid',
+  })
+  @Allow()
+  stockLocationId?: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Página 1-based (ADR-065 Ola 6). Excluyente con `cursor`. Sin `page` ni `cursor` = primera página keyset.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 const inventoryItemMasterFields = {
@@ -254,9 +347,10 @@ export class ListCatalogOptionsQueryDto {
 export const ListInventoryCategoriesQuerySchema = z.object({
   search: z.string().trim().min(1).max(200).optional(),
   status: z.nativeEnum(InventoryCategoryStatus).optional(),
+  ...inventoryListPaginationZod,
 });
 
-export type ListInventoryCategoriesQueryInput = z.infer<typeof ListInventoryCategoriesQuerySchema>;
+export type ListInventoryCategoriesQueryInput = z.input<typeof ListInventoryCategoriesQuerySchema>;
 
 export class ListInventoryCategoriesQueryDto {
   @ApiPropertyOptional()
@@ -266,6 +360,22 @@ export class ListInventoryCategoriesQueryDto {
   @ApiPropertyOptional({ enum: InventoryCategoryStatus })
   @Allow()
   status?: InventoryCategoryStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    description: 'Tamaño de página (default 20, max 100)',
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+  })
+  @Allow()
+  limit?: number;
 }
 
 export const CreateInventoryCategorySchema = z.object({
@@ -525,10 +635,45 @@ export class UpdateInventoryItemDto extends CreateInventoryItemDto {}
 export const ListStockLocationsQuerySchema = z.object({
   type: z.nativeEnum(StockLocationType).optional(),
   status: z.nativeEnum(StockLocationStatus).optional(),
+  /** Grupo INACTIVE + ARCHIVED (matriz de ubicaciones). Excluyente con `status` puntual. */
+  statusGroup: z.enum(['inactive_group']).optional(),
   responsibleRefId: z.string().uuid().optional(),
+  search: z.string().trim().min(1).max(200).optional(),
+  /** Solo ubicaciones móviles (técnico / cuadrilla). */
+  custody: z.enum(['mobile']).optional(),
+  /** Solo ubicaciones con quantity_on_hand > 0 en algún saldo. */
+  withStock: optionalQueryBoolean,
+  ...inventoryListPaginationZod,
 });
 
-export type ListStockLocationsQueryInput = z.infer<typeof ListStockLocationsQuerySchema>;
+export type ListStockLocationsQueryInput = z.input<typeof ListStockLocationsQuerySchema>;
+
+export const StockLocationPickerSearchQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().min(1).max(20).optional().default(20),
+  ),
+  status: z.nativeEnum(StockLocationStatus).optional(),
+});
+
+export type StockLocationPickerSearchQueryInput = z.input<
+  typeof StockLocationPickerSearchQuerySchema
+>;
+
+export class StockLocationPickerSearchQueryDto {
+  @ApiPropertyOptional({ description: 'Texto typeahead (nombre / código)' })
+  @Allow()
+  q?: string;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 20 })
+  @Allow()
+  limit?: number;
+
+  @ApiPropertyOptional({ enum: StockLocationStatus })
+  @Allow()
+  status?: StockLocationStatus;
+}
 
 export class ListStockLocationsQueryDto {
   @ApiPropertyOptional({ enum: StockLocationType })
@@ -539,9 +684,51 @@ export class ListStockLocationsQueryDto {
   @Allow()
   status?: StockLocationStatus;
 
+  @ApiPropertyOptional({
+    enum: ['inactive_group'],
+    description: 'Filtra INACTIVE ∪ ARCHIVED. Si se envía, prevalece sobre `status`.',
+  })
+  @Allow()
+  statusGroup?: 'inactive_group';
+
   @ApiPropertyOptional()
   @Allow()
   responsibleRefId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Busca por nombre, código o responsibleRefId (ADR-065 Ola 6 · matriz).',
+  })
+  @Allow()
+  search?: string;
+
+  @ApiPropertyOptional({
+    enum: ['mobile'],
+    description: 'Solo MOBILE_TECHNICIAN / MOBILE_CREW.',
+  })
+  @Allow()
+  custody?: 'mobile';
+
+  @ApiPropertyOptional({
+    description: 'Si true, solo ubicaciones con saldo on-hand > 0.',
+  })
+  @Allow()
+  withStock?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 export const CreateStockLocationSchema = z.object({
@@ -626,9 +813,34 @@ export const ListSerializedAssetsQuerySchema = z.object({
   status: z.nativeEnum(SerializedAssetStatus).optional(),
   locationId: z.string().trim().min(1).max(160).optional(),
   serialNumber: z.string().trim().min(1).max(160).optional(),
+  ...inventoryHybridPaginationZod,
 });
 
-export type ListSerializedAssetsQueryInput = z.infer<typeof ListSerializedAssetsQuerySchema>;
+export type ListSerializedAssetsQueryInput = z.input<typeof ListSerializedAssetsQuerySchema>;
+
+export const SerializedAssetPickerSearchQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().min(1).max(20).optional().default(20),
+  ),
+});
+
+export type SerializedAssetPickerSearchQueryInput = z.input<
+  typeof SerializedAssetPickerSearchQuerySchema
+>;
+
+export class SerializedAssetPickerSearchQueryDto {
+  @ApiPropertyOptional({
+    description: 'Texto typeahead (serial / asset tag / MAC)',
+  })
+  @Allow()
+  q?: string;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 20 })
+  @Allow()
+  limit?: number;
+}
 
 export class ListSerializedAssetsQueryDto {
   @ApiPropertyOptional()
@@ -646,6 +858,30 @@ export class ListSerializedAssetsQueryDto {
   @ApiPropertyOptional()
   @Allow()
   serialNumber?: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Página 1-based (ADR-065 Ola 6). Excluyente con `cursor`. Sin `page` ni `cursor` = primera página keyset.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 export const GetSerializedAssetDetailQuerySchema = z.object({
@@ -721,9 +957,10 @@ export const ListStockBalancesQuerySchema = z.object({
   itemId: z.string().trim().min(1).max(160).optional(),
   locationId: z.string().trim().min(1).max(160).optional(),
   condition: z.nativeEnum(StockBalanceCondition).optional(),
+  ...inventoryListPaginationZod,
 });
 
-export type ListStockBalancesQueryInput = z.infer<typeof ListStockBalancesQuerySchema>;
+export type ListStockBalancesQueryInput = z.input<typeof ListStockBalancesQuerySchema>;
 
 export class ListStockBalancesQueryDto {
   @ApiPropertyOptional()
@@ -737,6 +974,22 @@ export class ListStockBalancesQueryDto {
   @ApiPropertyOptional({ enum: StockBalanceCondition })
   @Allow()
   condition?: StockBalanceCondition;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 const StockIssueLineSchema = z.object({
@@ -1031,9 +1284,11 @@ export const ListStockIssuesQuerySchema = z.object({
   status: z.nativeEnum(StockIssueStatus).optional(),
   sourceLocationId: z.string().uuid().optional(),
   destinationLocationId: z.string().uuid().optional(),
+  search: z.string().trim().min(1).max(200).optional(),
+  ...inventoryHybridPaginationZod,
 });
 
-export type ListStockIssuesQueryInput = z.infer<typeof ListStockIssuesQuerySchema>;
+export type ListStockIssuesQueryInput = z.input<typeof ListStockIssuesQuerySchema>;
 
 export class ListStockIssuesQueryDto {
   @ApiPropertyOptional({ enum: StockIssueType })
@@ -1051,16 +1306,62 @@ export class ListStockIssuesQueryDto {
   @ApiPropertyOptional()
   @Allow()
   destinationLocationId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Busca por id, nombre de bodega origen/destino, destinationRefId, originRefId, commercialRefId o costCenter.',
+  })
+  @Allow()
+  search?: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Página 1-based (ADR-065 Ola 6). Excluyente con `cursor`. Sin `page` ni `cursor` = primera página keyset.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
+
+/** Presets KPI del workspace de compras (paridad con portal purchase-filters). */
+export const PurchaseRequestKpiPresetSchema = z.enum([
+  'pendingQuotes',
+  'pendingApproval',
+  'readyForPo',
+  'pendingReceipt',
+  'urgent',
+  'overdue',
+]);
+
+export type PurchaseRequestKpiPreset = z.infer<typeof PurchaseRequestKpiPresetSchema>;
 
 export const ListPurchaseRequestsQuerySchema = z.object({
   status: z.nativeEnum(PurchaseRequestStatus).optional(),
   requestType: z.nativeEnum(PurchaseRequestType).optional(),
   priority: z.nativeEnum(PurchaseRequestPriority).optional(),
   requestingArea: z.string().trim().min(1).max(120).optional(),
+  search: z.string().trim().min(1).max(200).optional(),
+  kpiPreset: PurchaseRequestKpiPresetSchema.optional(),
+  ...inventoryHybridPaginationZod,
 });
 
-export type ListPurchaseRequestsQueryInput = z.infer<typeof ListPurchaseRequestsQuerySchema>;
+export type ListPurchaseRequestsQueryInput = z.input<typeof ListPurchaseRequestsQuerySchema>;
 
 export class ListPurchaseRequestsQueryDto {
   @ApiPropertyOptional({ enum: PurchaseRequestStatus })
@@ -1078,11 +1379,62 @@ export class ListPurchaseRequestsQueryDto {
   @ApiPropertyOptional()
   @Allow()
   requestingArea?: string;
+
+  @ApiPropertyOptional({
+    description: 'Busca por número, título o área solicitante.',
+  })
+  @Allow()
+  search?: string;
+
+  @ApiPropertyOptional({
+    enum: ['pendingQuotes', 'pendingApproval', 'readyForPo', 'pendingReceipt', 'urgent', 'overdue'],
+    description:
+      'Preset KPI operativo. `pendingQuotes` = DRAFT∪PENDING_QUOTES; `overdue` = neededByDate vencida y no terminal.',
+  })
+  @Allow()
+  kpiPreset?: PurchaseRequestKpiPreset;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Página 1-based (ADR-065 Ola 6). Excluyente con `cursor`.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 export const ListPurchaseOrdersQuerySchema = z.object({
   status: z.nativeEnum(PurchaseOrderStatus).optional(),
   purchaseRequestId: z.string().trim().min(1).max(160).optional(),
+  page: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().min(1).optional(),
+  ),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(INVENTORY_LIST_MAX_LIMIT)
+      .optional()
+      .default(INVENTORY_LIST_DEFAULT_LIMIT),
+  ),
 });
 
 export type ListPurchaseOrdersQueryInput = z.infer<typeof ListPurchaseOrdersQuerySchema>;
@@ -1095,6 +1447,22 @@ export class ListPurchaseOrdersQueryDto {
   @ApiPropertyOptional()
   @Allow()
   purchaseRequestId?: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Página 1-based (ADR-065 Ola 7). Default 1.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 export const SearchSuppliersQuerySchema = z.object({
@@ -2458,11 +2826,20 @@ export class ListSuppliersQueryDto {
   @Allow()
   status?: SupplierProfileStatus;
 
-  @ApiPropertyOptional({ maxLength: 120 })
+  @ApiPropertyOptional({
+    maxLength: 120,
+    description:
+      'Busca por código de proveedor, nombre de party (port) o contacto de compras (nombre/email).',
+  })
   @Allow()
   search?: string;
 
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @ApiPropertyOptional({
+    default: 1,
+    minimum: 1,
+    description:
+      'Página 1-based (ADR-065). Dual-emit: `meta` ListMeta + campos planos legacy `page`/`total`/`limit`.',
+  })
   @Allow()
   page?: number;
 
@@ -2674,18 +3051,46 @@ export class CloseStockCountDto {
 export const ListStockCountsQuerySchema = z.object({
   status: z.nativeEnum(StockCountStatus).optional(),
   locationId: z.string().uuid().optional(),
+  ...inventoryHybridPaginationZod,
 });
 
-export type ListStockCountsQueryInput = z.infer<typeof ListStockCountsQuerySchema>;
+export type ListStockCountsQueryInput = z.input<typeof ListStockCountsQuerySchema>;
 
 export class ListStockCountsQueryDto {
-  @ApiPropertyOptional({ enum: StockCountStatus })
+  @ApiPropertyOptional({
+    enum: StockCountStatus,
+    description: 'Filtro por estado (ADR-065 Ola 6 — no filtrar en cliente sobre buffer paginado).',
+  })
   @Allow()
   status?: StockCountStatus;
 
   @ApiPropertyOptional({ format: 'uuid' })
   @Allow()
   locationId?: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Página 1-based (ADR-065 Ola 6). Excluyente con `cursor`. Sin `page` ni `cursor` = primera página keyset.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cursor opaco de la página anterior (`meta.nextCursor`). Omitir en la primera página.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: INVENTORY_LIST_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
 }
 
 export const ListWriteOffsQuerySchema = z.object({

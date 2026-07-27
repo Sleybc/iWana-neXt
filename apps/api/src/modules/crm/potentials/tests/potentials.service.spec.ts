@@ -222,27 +222,37 @@ describe('PotentialsService', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {
-          find: async () => [
-            {
-              id: 'pot-1',
-              tenantId: 'ten-1',
-              fullName: 'Camila Torres',
-              emailEncrypted: null,
-              phoneEncrypted: null,
-              source: 'Web',
-              notes: null,
-              qualified: false,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-          ],
+          createQueryBuilder: () => ({
+            orderBy: jest.fn().mockReturnThis(),
+            addOrderBy: jest.fn().mockReturnThis(),
+            skip: jest.fn().mockReturnThis(),
+            take: jest.fn().mockReturnThis(),
+            getManyAndCount: jest.fn().mockResolvedValue([
+              [
+                {
+                  id: 'pot-1',
+                  tenantId: 'ten-1',
+                  fullName: 'Camila Torres',
+                  emailEncrypted: null,
+                  phoneEncrypted: null,
+                  source: 'Web',
+                  notes: null,
+                  qualified: false,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              ],
+              1,
+            ]),
+          }),
         },
       }),
     );
 
     const result = await service.findAll();
-    expect(result).toHaveLength(1);
-    expect(result[0]!.fullName).toBe('Camila Torres');
-    expect(result[0]!.qualified).toBe(false);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]!.fullName).toBe('Camila Torres');
+    expect(result.data[0]!.qualified).toBe(false);
+    expect(result.meta.mode).toBe('page');
   });
 });

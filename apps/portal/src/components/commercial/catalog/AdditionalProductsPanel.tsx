@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,16 +21,24 @@ import {
   cn,
 } from '@iwana/ui';
 import {
+  COMMERCIAL_LIST_PAGE_SIZE,
   commercialApi,
   type AdditionalProduct,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CreateAdditionalProductDto,
   type UpdateAdditionalProductDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { ProductCategory, PRODUCT_CATEGORY_LABELS } from '@iwana/shared';
 import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
+import {
+  hasMissingCurrentPrice,
+  MissingCurrentPriceBadge,
+} from '@/components/commercial/catalog/MissingCurrentPriceBadge';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -42,15 +50,18 @@ import {
   PortalSidePeek,
   PortalSkeletonBlock,
   PortalSuccessAlert,
+  PortalTablePagination,
   interactiveFocusClassName,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableInactiveRowClassName,
   portalDataTableShellClassName,
   portalFilterChipGroupClassName,
+  portalTableRowHoverClassName,
+  portalTextareaClassName,
 } from '@/components/shared/portal-ui';
-import {
-  commercialTableRowHoverClassName,
-  commercialTextareaClassName,
-} from '@/components/commercial/commercial-field-styles';
+import { useCommercialFocusConsume } from '@/components/commercial/useCommercialFocusConsume';
 import {
   applyProductCatalogFilters,
   parseProductCatalogFilters,
@@ -92,6 +103,8 @@ const CATEGORY_ORDER = [
 
 interface AdditionalProductsPanelProps {
   canEdit: boolean;
+  focusId?: string | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
 }
 
 function getDefaultProductFormValues(): ProductFormValues {
@@ -111,7 +124,7 @@ function toProductFormValues(product: AdditionalProduct): ProductFormValues {
     name: product.name,
     description: product.description ?? '',
     category: product.category,
-    basePrice: product.basePrice,
+    basePrice: product.basePrice ?? 0,
     isLoan: product.isLoan,
     requiresInventory: product.requiresInventory,
     isActive: product.isActive,
@@ -140,7 +153,11 @@ function filtersEqual(a: ProductCatalogFilters, b: ProductCatalogFilters): boole
   );
 }
 
-export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProps) {
+export function AdditionalProductsPanel({
+  canEdit,
+  focusId = null,
+  onFocusConsumed,
+}: AdditionalProductsPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -228,23 +245,82 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
     syncFiltersToUrl(next);
   }
 
-  useEffect(() => {
-    void loadProducts();
-  }, []);
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+  });
+  const [debouncedSearch, setDebouncedSearch] = useState(filtersFromUrl.q);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function loadProducts() {
+  function buildProductListParams(filters: {
+    q: string;
+    status: CatalogStatusFilter;
+    category: ProductCatalogFilters['category'];
+    model: ProductCommercialModelFilter;
+    sort: ProductSortMode;
+  }): CommercialListParams {
+    const params: CommercialListParams = {
+      limit: COMMERCIAL_LIST_PAGE_SIZE,
+      sort: filters.sort,
+    };
+    const q = filters.q.trim();
+    if (q) params.name = q;
+    if (filters.status === 'ACTIVE') params.isActive = true;
+    else if (filters.status === 'INACTIVE') params.isActive = false;
+    if (filters.category !== 'ALL') params.category = filters.category as ProductCategory;
+    if (filters.model === 'LOAN' || filters.model === 'SALE') params.model = filters.model;
+    return params;
+  }
+
+  const loadProducts = useCallback(async (params: CommercialListParams, append = false) => {
     setLoading(true);
     setLoadError(null);
     setActionError(null);
     try {
-      const data = await commercialApi.getAdditionalProducts();
-      setProducts(data);
+      const result = await commercialApi.getAdditionalProducts(params);
+      const page = result.data ?? [];
+      setProducts((prev) => (append ? [...prev, ...page] : page));
+      setMeta(result.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length });
+      setListParams(params);
     } catch {
       setLoadError('No se pudieron cargar los productos adicionales.');
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void loadProducts({ ...listParams, cursor: meta.nextCursor }, true);
+    }
+  };
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(searchValue), 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchValue]);
+
+  useEffect(() => {
+    void loadProducts(
+      buildProductListParams({
+        q: debouncedSearch,
+        status: statusFilter,
+        category: categoryFilter,
+        model: commercialModelFilter,
+        sort: sortMode,
+      }),
+    );
+  }, [
+    categoryFilter,
+    commercialModelFilter,
+    debouncedSearch,
+    loadProducts,
+    sortMode,
+    statusFilter,
+  ]);
 
   function openCreateDialog() {
     setEditingProductId(null);
@@ -263,6 +339,17 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
     reset(toProductFormValues(product));
     setIsDialogOpen(true);
   }
+
+  useCommercialFocusConsume({
+    focusId,
+    isLoading: loading,
+    items: products,
+    getId: (item) => item.id,
+    onMatch: (product) => {
+      openEditDialog(product);
+    },
+    onFocusConsumed,
+  });
 
   function handleDialogOpenChange(nextOpen: boolean) {
     setIsDialogOpen(nextOpen);
@@ -293,8 +380,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
           isActive: values.isActive,
           basePrice: values.basePrice,
         };
-        const updated = await commercialApi.updateAdditionalProduct(editingProductId, dto);
-        setProducts(updated);
+        await commercialApi.updateAdditionalProduct(editingProductId, dto);
         setSuccessMessage('Producto actualizado.');
       } else {
         const dto: CreateAdditionalProductDto = {
@@ -306,10 +392,19 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
           isActive: values.isActive,
           basePrice: values.basePrice,
         };
-        const created = await commercialApi.createAdditionalProduct(dto);
-        setProducts(created);
+        await commercialApi.createAdditionalProduct(dto);
         setSuccessMessage('Producto creado.');
       }
+
+      void loadProducts(
+        buildProductListParams({
+          q: debouncedSearch,
+          status: statusFilter,
+          category: categoryFilter,
+          model: commercialModelFilter,
+          sort: sortMode,
+        }),
+      );
 
       handleDialogOpenChange(false);
     } catch {
@@ -326,10 +421,18 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
     setActionError(null);
 
     try {
-      const updated = await commercialApi.deleteAdditionalProduct(deleteTarget.id);
-      setProducts(updated);
+      await commercialApi.deleteAdditionalProduct(deleteTarget.id);
       setDeleteTarget(null);
       setSuccessMessage('Producto eliminado.');
+      void loadProducts(
+        buildProductListParams({
+          q: debouncedSearch,
+          status: statusFilter,
+          category: categoryFilter,
+          model: commercialModelFilter,
+          sort: sortMode,
+        }),
+      );
     } catch {
       setActionError('No se pudo eliminar el producto.');
     } finally {
@@ -337,73 +440,16 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
     }
   }
 
-  const totalProducts = products.length;
+  const hasMore = meta?.nextCursor != null;
+  const totalProducts = meta?.total ?? products.length;
   const activeProductsCount = products.filter((product) => product.isActive).length;
-  const inactiveProductsCount = totalProducts - activeProductsCount;
+  const inactiveProductsCount = products.filter((product) => !product.isActive).length;
   const categoryTotals = useMemo(() => {
     return CATEGORY_ORDER.map((category) => ({
       category,
       count: products.filter((product) => product.category === category).length,
     })).filter((item) => item.count > 0);
   }, [products]);
-
-  const filteredProducts = useMemo(() => {
-    const normalizedSearch = normalizeSearchValue(searchValue);
-
-    return [...products]
-      .filter((product) => {
-        if (categoryFilter !== 'ALL' && product.category !== categoryFilter) {
-          return false;
-        }
-
-        if (statusFilter === 'ACTIVE' && !product.isActive) {
-          return false;
-        }
-
-        if (statusFilter === 'INACTIVE' && product.isActive) {
-          return false;
-        }
-
-        if (commercialModelFilter === 'LOAN' && !product.isLoan) {
-          return false;
-        }
-
-        if (commercialModelFilter === 'SALE' && product.isLoan) {
-          return false;
-        }
-
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        return [product.name, product.description ?? '', PRODUCT_CATEGORY_LABELS[product.category]]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedSearch);
-      })
-      .sort((left, right) => {
-        if (sortMode === 'RECENTLY_UPDATED') {
-          return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-        }
-
-        if (sortMode === 'ACTIVE_NAME') {
-          if (left.isActive !== right.isActive) {
-            return left.isActive ? -1 : 1;
-          }
-
-          return left.name.localeCompare(right.name, 'es', { sensitivity: 'base' });
-        }
-
-        const categoryDiff =
-          CATEGORY_ORDER.indexOf(left.category) - CATEGORY_ORDER.indexOf(right.category);
-
-        if (categoryDiff !== 0) {
-          return categoryDiff;
-        }
-
-        return left.name.localeCompare(right.name, 'es', { sensitivity: 'base' });
-      });
-  }, [categoryFilter, commercialModelFilter, products, searchValue, sortMode, statusFilter]);
 
   const hasActiveFilters =
     Boolean(searchValue.trim()) ||
@@ -420,10 +466,10 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
     });
   }
 
-  const resultsLabel =
-    filteredProducts.length === totalProducts
-      ? `${totalProducts} registros`
-      : `${filteredProducts.length} de ${totalProducts} registros`;
+  const resourceWord = totalProducts === 1 ? 'producto' : 'productos';
+  const resultsLabel = hasMore
+    ? `${products.length} de ${totalProducts} ${resourceWord}`
+    : `${totalProducts} ${resourceWord}`;
 
   const showLoadErrorOnly = Boolean(loadError) && products.length === 0 && !loading;
 
@@ -442,7 +488,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
             {inactiveProductsCount} inactivo{inactiveProductsCount === 1 ? '' : 's'}
           </Badge>
           {canEdit && (
-            <Button onClick={openCreateDialog}>
+            <Button variant="primary" onClick={openCreateDialog}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Agregar producto
             </Button>
@@ -465,12 +511,27 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void loadProducts()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                void loadProducts(
+                  buildProductListParams({
+                    q: debouncedSearch,
+                    status: statusFilter,
+                    category: categoryFilter,
+                    model: commercialModelFilter,
+                    sort: sortMode,
+                  }),
+                )
+              }
+            >
               Reintentar
             </Button>
           }
         />
-      ) : products.length === 0 ? (
+      ) : products.length === 0 && !hasActiveFilters ? (
         <PortalEmptyState
           title="Catálogo listo para crecer"
           description="No hay productos adicionales. Crea uno para empezar."
@@ -478,7 +539,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
           {...(canEdit
             ? {
                 action: (
-                  <Button onClick={openCreateDialog}>
+                  <Button variant="primary" onClick={openCreateDialog}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     Agregar producto
                   </Button>
@@ -603,7 +664,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
             </div>
           )}
 
-          {filteredProducts.length === 0 ? (
+          {products.length === 0 ? (
             <PortalEmptyState
               title="No hay productos para los filtros seleccionados"
               description="Ajusta búsqueda, categoría, estado o modelo comercial para recuperar resultados."
@@ -624,7 +685,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
             <div className={portalDataTableShellClassName}>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                  <thead className={portalDataTableHeadRowClassName}>
                     <tr>
                       <PortalDataTableHead>Producto</PortalDataTableHead>
                       <PortalDataTableHead>Categoría</PortalDataTableHead>
@@ -637,13 +698,13 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
-                    {filteredProducts.map((product) => (
+                  <tbody className={portalDataTableBodyClassName}>
+                    {products.map((product) => (
                       <tr
                         key={product.id}
                         className={cn(
-                          commercialTableRowHoverClassName,
-                          !product.isActive && 'opacity-70',
+                          portalTableRowHoverClassName,
+                          !product.isActive && portalDataTableInactiveRowClassName,
                         )}
                       >
                         <td className={portalDataTableCellClassName}>
@@ -666,7 +727,11 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                         </td>
                         <td className={portalDataTableCellClassName}>
                           <p className="font-mono font-medium tabular-nums text-gray-900 dark:text-white">
-                            {formatCurrency(product.basePrice)}
+                            {hasMissingCurrentPrice(product) ? (
+                              <MissingCurrentPriceBadge />
+                            ) : (
+                              formatCurrency(product.basePrice ?? 0)
+                            )}
                           </p>
                         </td>
                         <td className={portalDataTableCellClassName}>
@@ -732,6 +797,14 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                   </tbody>
                 </table>
               </div>
+              <PortalTablePagination
+                hasMore={hasMore}
+                onLoadMore={handleLoadMore}
+                loading={loading}
+                resourceLabel="productos"
+                shown={products.length}
+                total={totalProducts}
+              />
             </div>
           )}
         </div>
@@ -827,7 +900,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                   {...register('description')}
                   rows={4}
                   placeholder="Describe brevemente el uso comercial del producto o cómo se diferencia dentro del catálogo."
-                  className={`mt-2 ${commercialTextareaClassName}`}
+                  className={`mt-2 ${portalTextareaClassName}`}
                 />
                 {errors.description && (
                   <p className="mt-1 text-sm text-error-600">{errors.description.message}</p>

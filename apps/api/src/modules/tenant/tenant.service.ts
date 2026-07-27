@@ -13,6 +13,7 @@ import { DataSource, Repository } from 'typeorm';
 import { MediaUsage, Tenant, runInTenantSchema } from '@iwana/db';
 import type { MediaThemeVariant } from '@iwana/db';
 import { AuditAction, AdditionalProductCategory, TenantStatus } from '@iwana/shared';
+import { clampPage } from '../../common/pagination/clamp-page';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { SearchQueueService } from '../search/search-queue.service';
@@ -265,12 +266,19 @@ export class TenantService {
     offset = 0,
     filters: TenantListFilters = {},
   ): Promise<{ data: TenantResponseDto[]; total: number }> {
+    const { page, limit: safeLimit } = clampPage(
+      Math.floor(offset / (limit || 50)) + 1,
+      limit || 50,
+    );
+    const safeOffset = (page - 1) * safeLimit;
     if (filters.status || filters.search?.trim()) {
       const queryBuilder = this.tenantRepo
         .createQueryBuilder('tenant')
+        // DEF-1: desempate por id para paginación offset estable.
         .orderBy('tenant.createdAt', 'DESC')
-        .take(limit)
-        .skip(offset);
+        .addOrderBy('tenant.id', 'DESC')
+        .take(safeLimit)
+        .skip(safeOffset);
 
       if (filters.status) {
         queryBuilder.andWhere('tenant.status = :status', { status: filters.status });
@@ -292,9 +300,10 @@ export class TenantService {
     }
 
     const [tenants, total] = await this.tenantRepo.findAndCount({
-      order: { createdAt: 'DESC' },
-      take: limit,
-      skip: offset,
+      // DEF-1: desempate por id (rama findAndCount sin filtros).
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: safeLimit,
+      skip: safeOffset,
     });
 
     return {

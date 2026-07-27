@@ -3,8 +3,16 @@
 
 import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
 import type { InternalUser } from '@/lib/api-client';
+import { PortalAlert, portalFieldClassName } from '@/components/shared/portal-ui';
 
 interface DeleteUserDialogProps {
   isOpen: boolean;
@@ -64,9 +72,7 @@ export function DeleteUserDialog({
             <AlertTriangle className="h-6 w-6" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-700 dark:text-red-300">
-              Acción sensible
-            </p>
+            <p className="portal-eyebrow text-red-700 dark:text-red-300">Acción sensible</p>
             <DialogTitle id="delete-user-title" className="mt-1 text-iwana-primary dark:text-white">
               Eliminar usuario
             </DialogTitle>
@@ -102,12 +108,12 @@ export function DeleteUserDialog({
         </div>
 
         {isSelfDelete && (
-          <div className="mb-4 rounded-2xl border border-amber-200/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
-            <p className="text-sm text-amber-800 dark:text-amber-300">
-              <strong>Advertencia:</strong> Estás a punto de eliminar tu propia cuenta. Perderás el
-              acceso al portal y necesitarás que otro administrador restaure tu cuenta.
-            </p>
-          </div>
+          <PortalAlert
+            className="mb-4"
+            variant="warning"
+            title="Advertencia"
+            description="Estás a punto de eliminar tu propia cuenta. Perderás el acceso al portal y necesitarás que otro administrador restaure tu cuenta."
+          />
         )}
 
         <div className="mb-4">
@@ -118,79 +124,40 @@ export function DeleteUserDialog({
             Escribe <span className="font-mono text-gray-900 dark:text-white">{user.email}</span>{' '}
             para confirmar:
           </label>
-          {confirmText.length > 0 && !isConfirmed ? (
-            <input
-              id="confirm-email"
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              disabled={isSubmitting}
-              placeholder={user.email}
-              className="flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500"
-              aria-invalid="true"
-            />
-          ) : (
-            <input
-              id="confirm-email"
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              disabled={isSubmitting}
-              placeholder={user.email}
-              className="flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500"
-            />
-          )}
+          <input
+            id="confirm-email"
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            disabled={isSubmitting}
+            placeholder={user.email}
+            className={portalFieldClassName}
+            aria-invalid={confirmText.length > 0 && !isConfirmed ? 'true' : undefined}
+          />
         </div>
 
         {serverError && (
-          <div className="mb-4 rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-            <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
-          </div>
+          <PortalAlert
+            className="mb-4"
+            variant="error"
+            title="No fue posible eliminar"
+            description={serverError}
+          />
         )}
 
         <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
-          >
+          <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            onClick={handleConfirm}
+            variant="destructive"
+            onClick={() => void handleConfirm()}
             disabled={isSubmitting || !isConfirmed}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-400"
+            loading={isSubmitting}
           >
-            {isSubmitting ? (
-              <>
-                <svg
-                  className="h-4 w-4 animate-spin"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Eliminando...
-              </>
-            ) : (
-              'Eliminar usuario'
-            )}
-          </button>
+            Eliminar usuario
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

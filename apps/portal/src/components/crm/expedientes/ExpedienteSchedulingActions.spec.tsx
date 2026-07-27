@@ -85,4 +85,28 @@ describe('ExpedienteSchedulingActions', () => {
       '/dashboard/scheduling/agenda?source=pending-visits&visitRequestId=vr-001',
     );
   });
+
+  it('routes CRM requests to the pending inbox when requested', async () => {
+    const user = userEvent.setup();
+    createCrmVisitRequestAndRouteMock.mockResolvedValue({
+      visitRequest: { id: 'vr-002' } as never,
+      href: '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-002',
+    });
+
+    render(
+      <ExpedienteSchedulingActions
+        expedienteId="550e8400-e29b-41d4-a716-446655440000"
+        customerLabel="Cliente Demo"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Enviar a pendientes' }));
+
+    expect(createCrmVisitRequestAndRouteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ nextAction: 'send-to-pending' }),
+    );
+    expect(mockPush).toHaveBeenCalledWith(
+      '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-002',
+    );
+  });
 });

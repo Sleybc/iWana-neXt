@@ -10,6 +10,7 @@ import {
 import { AuditAction, OrganizationSiteCapability, OrganizationSiteType } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { OrganizationService } from './organization.service';
+import type { OrganizationSiteSummary } from './ports/organization-site-read.port';
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db');
@@ -82,9 +83,7 @@ describe('OrganizationService', () => {
     };
   }
 
-  function createSiteSummary(
-    overrides: Partial<Awaited<ReturnType<OrganizationService['findAll']>>[number]> = {},
-  ) {
+  function createSiteSummary(overrides: Partial<OrganizationSiteSummary> = {}) {
     return {
       id: 'site-1',
       name: 'Sede norte',
@@ -117,11 +116,15 @@ describe('OrganizationService', () => {
       isEnabled: true,
     };
     const manager = {
+      createQueryBuilder: () => ({
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[siteEntity], 1]),
+      }),
       find: jest.fn().mockImplementation(async (entity) => {
-        if (entity === OrganizationSite) {
-          return [siteEntity];
-        }
-
         if (entity === OrganizationSiteCapabilityEntity) {
           return [capabilityEntity];
         }
@@ -133,11 +136,13 @@ describe('OrganizationService', () => {
 
     const result = await service.findAll();
 
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       createSiteSummary({
         capabilities: [OrganizationSiteCapability.NOC],
       }),
     ]);
+    expect(result.meta.total).toBe(1);
+    expect(result.meta.capabilities.sortableFields).toEqual([]);
   });
 
   it('should reject creating a second primary site for the tenant', async () => {

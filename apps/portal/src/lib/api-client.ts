@@ -95,11 +95,42 @@ import {
   WriteOffReason,
   WriteOffStatus,
   UserRole,
+  type ListMeta,
+  type ListResponse,
   type UsersBulkCreateAcceptedResponse,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
+import { PICKER_SOFT_CAP } from './picker-soft-cap';
+import {
+  EMPTY_LIST_META,
+  normalizeListMeta,
+  collectListPages,
+  emptyPageListMeta,
+} from './list-meta';
+
+export type { ListMeta, ListResponse };
+export { EMPTY_LIST_META, normalizeListMeta, collectListPages, emptyPageListMeta };
+
+/** Contrato HTTP uniforme E-4 lookup (`GET …/search`). FE mapea a `{ items, total }`. */
+export interface PickerSearchItemDto {
+  id: string;
+  label: string;
+  sublabel?: string | null;
+}
+
+export interface PickerSearchResponse {
+  data: PickerSearchItemDto[];
+  total: number;
+}
+
+export function mapPickerSearchResponse(response: PickerSearchResponse): {
+  items: PickerSearchItemDto[];
+  total: number;
+} {
+  return { items: response.data, total: response.total };
+}
 
 /**
  * Cliente HTTP para @iwana/portal - Portal de Suscriptores.
@@ -290,10 +321,7 @@ export interface AuditLogQueryParams {
 
 export interface AuditLogListResponse {
   data: AuditLogEntry[];
-  meta: {
-    nextCursor: string | null;
-    total: number;
-  };
+  meta: ListMeta;
 }
 
 export function setPendingTenantMfaLogin(payload: PendingTenantMfaLogin): void {
@@ -871,7 +899,8 @@ export interface PlanCatalogItem {
   installationRule: PlanInstallationRule;
   downloadSpeedMbps: number;
   uploadSpeedMbps: number;
-  basePrice: number;
+  /** Precio vigente en COP; `null` si no hay fila `is_current` (no usar 0 como sentinel). */
+  basePrice: number | null;
   installationFee: number;
   currentPrice?: string | null;
   description?: string | null;
@@ -932,7 +961,8 @@ export interface AdditionalProduct {
   isActive: boolean;
   description?: string | null;
   currentPrice: string | null;
-  basePrice: number;
+  /** Precio vigente en COP; `null` si no hay precio current. */
+  basePrice: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -944,7 +974,8 @@ export interface AdditionalService {
   isActive: boolean;
   description?: string | null;
   currentPrice: string | null;
-  basePrice: number;
+  /** Precio vigente en COP; `null` si no hay precio current. */
+  basePrice: number | null;
   installationFee: number;
   createdAt: string;
   updatedAt: string;
@@ -1006,6 +1037,16 @@ export interface CreateBundleDto {
   optionalItemIds?: string[];
 }
 
+export interface UpdateBundleDto {
+  name?: string;
+  description?: string;
+  discountType?: Extract<DiscountType, DiscountType.PERCENTAGE | DiscountType.FIXED_AMOUNT>;
+  discountValue?: string;
+  validFrom?: string;
+  validTo?: string;
+  isActive?: boolean;
+}
+
 export interface CommercialPromotion {
   id: string;
   tenantId: string;
@@ -1041,6 +1082,13 @@ export interface CreatePromotionDto {
   maxUses?: number;
   validFrom: string;
   validTo: string;
+}
+
+export interface UpdatePromotionDto {
+  name?: string;
+  description?: string;
+  isActive?: boolean;
+  validTo?: string;
 }
 
 // ?? Compatibilidad ????????????????????????????????????????????????????????????
@@ -1253,11 +1301,161 @@ function mapCommercialPromotion(promotion: CommercialPromotion): CommercialPromo
   };
 }
 
+/** Tamaño de página por defecto (ADR-064 / Ola 2a). */
+export const COMMERCIAL_LIST_PAGE_SIZE = 20;
+/**
+ * Soft-cap pickers/combobox comerciales (ADR-064 excepción permanente).
+ * @see PICKER_SOFT_CAP — no drenar universo; una sola página acotada.
+ */
+export const COMMERCIAL_PICKER_LIMIT = PICKER_SOFT_CAP;
+
+/** Modelo comercial de producto en listado (`model=SALE|LOAN`). */
+export type CommercialCatalogProductModel = 'SALE' | 'LOAN';
+
+/** Filtro de ofertas en riesgo (bundles / promociones). */
+export type CommercialOfferStatusParam = 'expiring';
+
+/** Orden servidor catálogo — alineado a `ProductSortMode` / `CatalogQueryDto.sort`. */
+export type CommercialCatalogSort = 'CATEGORY_NAME' | 'ACTIVE_NAME' | 'RECENTLY_UPDATED';
+
+/**
+ * Params de listado comercial (ADR-064).
+ * Catálogo: `name`, `isActive`, `missingPrice`, `category`, `model`, `charge`, `sort`.
+ * Ofertas: `offerStatus=expiring`.
+ */
+export interface CommercialListParams {
+  cursor?: string;
+  limit?: number;
+  /** Filtro ILIKE por nombre (catálogo). */
+  name?: string;
+  isActive?: boolean;
+  /** Solo ítems activos sin precio vigente RESIDENTIAL. */
+  missingPrice?: boolean;
+  /** Categoría de producto (`product_details.category`). */
+  category?: ProductCategory;
+  /** SALE (`is_loan=false`) | LOAN (`is_loan=true`). */
+  model?: CommercialCatalogProductModel;
+  /** Tipo de cargo de servicio (`service_details.charge_type`). */
+  charge?: ChargeType;
+  /** Bundles/promos: vigencia en ventana (y usos en promos). */
+  offerStatus?: CommercialOfferStatusParam;
+  /**
+   * Orden servidor + cursor keyset (productos).
+   * Sin valor: name ASC (planes/servicios). Productos FE siempre envían sort.
+   */
+  sort?: CommercialCatalogSort;
+}
+
+/**
+ * Alias de compatibilidad Ola 3 → contrato ADR-065.
+ * @deprecated Preferir `ListMeta` de `@iwana/shared`.
+ */
+export type CommercialListMeta = ListMeta;
+
+export type CommercialPaginatedList<T> = ListResponse<T>;
+
+/** Params de listado de definiciones tributarias (ADR-064). */
+export interface ListTaxDefinitionsParams {
+  cursor?: string;
+  limit?: number;
+  isActive?: boolean;
+  category?: string;
+  context?: string;
+  origin?: string;
+}
+
 interface CommercialCatalogListResponse<T> {
   data: T[];
-  meta: {
-    total: number;
+  meta: ListMeta;
+}
+
+/**
+ * Normaliza listados comerciales (envelope plano o H-11 anidado).
+ * Conserva el unwrap H-11; la forma de `meta` se unifica a `ListMeta`.
+ */
+function normalizeCommercialPaginatedResponse<T>(body: unknown): CommercialPaginatedList<T> {
+  const empty: CommercialPaginatedList<T> = {
+    data: [],
+    meta: EMPTY_LIST_META,
   };
+  if (!body || typeof body !== 'object') {
+    return empty;
+  }
+
+  const root = body as Record<string, unknown>;
+  const nested = root['data'];
+
+  // H-11: { data: { data: T[], meta } }
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const inner = nested as Record<string, unknown>;
+    if (Array.isArray(inner['data'])) {
+      const rows = inner['data'] as T[];
+      return {
+        data: rows,
+        meta: normalizeListMeta(inner['meta'] as Partial<ListMeta> | undefined, {
+          dataLength: rows.length,
+        }),
+      };
+    }
+  }
+
+  // Plano: { data: T[], meta }
+  if (Array.isArray(nested)) {
+    const rows = nested as T[];
+    return {
+      data: rows,
+      meta: normalizeListMeta(root['meta'] as Partial<ListMeta> | undefined, {
+        dataLength: rows.length,
+      }),
+    };
+  }
+
+  return empty;
+}
+
+function buildCommercialListQuery(
+  params?: CommercialListParams,
+  extra?: Record<string, string | undefined>,
+): string {
+  const searchParams = new URLSearchParams();
+  if (params?.cursor) {
+    searchParams.set('cursor', params.cursor);
+  }
+  // Siempre enviar limit (ADR-064): evita listados unbounded si el caller omite el param.
+  searchParams.set('limit', String(params?.limit ?? COMMERCIAL_LIST_PAGE_SIZE));
+  if (params?.name) {
+    searchParams.set('name', params.name);
+  }
+  if (params?.isActive !== undefined) {
+    searchParams.set('isActive', String(params.isActive));
+  }
+  if (params?.missingPrice === true) {
+    searchParams.set('missingPrice', 'true');
+  }
+  if (params?.category) {
+    searchParams.set('category', params.category);
+  }
+  if (params?.model) {
+    searchParams.set('model', params.model);
+  }
+  if (params?.charge) {
+    searchParams.set('charge', params.charge);
+  }
+  if (params?.offerStatus) {
+    searchParams.set('offerStatus', params.offerStatus);
+  }
+  if (params?.sort) {
+    searchParams.set('sort', params.sort);
+  }
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (value !== undefined && value !== '') {
+        searchParams.set(key, value);
+      }
+    }
+  }
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
 }
 
 interface CommercialCatalogItemPayload {
@@ -1282,6 +1480,14 @@ interface CommercialCatalogItemPayload {
   requiresInventory?: boolean;
 }
 
+function mapCurrentPriceAmount(currentPrice: string | null | undefined): number | null {
+  if (currentPrice == null) {
+    return null;
+  }
+
+  return Number(currentPrice);
+}
+
 function mapCommercialPlan(item: CommercialCatalogItemPayload): PlanCatalogItem {
   return {
     id: item.id,
@@ -1290,7 +1496,7 @@ function mapCommercialPlan(item: CommercialCatalogItemPayload): PlanCatalogItem 
     installationRule: item.installationRule ?? InstallationRule.ALWAYS,
     downloadSpeedMbps: item.downloadSpeedMbps ?? 0,
     uploadSpeedMbps: item.uploadSpeedMbps ?? 0,
-    basePrice: Number(item.currentPrice ?? 0),
+    basePrice: mapCurrentPriceAmount(item.currentPrice),
     installationFee: Number(item.installationFee ?? 0),
     currentPrice: item.currentPrice ?? null,
     description: item.description,
@@ -1312,7 +1518,7 @@ function mapCommercialProduct(item: CommercialCatalogItemPayload): AdditionalPro
     isActive: item.isActive,
     description: item.description,
     currentPrice: item.currentPrice ?? null,
-    basePrice: Number(item.currentPrice ?? 0),
+    basePrice: mapCurrentPriceAmount(item.currentPrice),
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
   };
@@ -1326,7 +1532,7 @@ function mapCommercialService(item: CommercialCatalogItemPayload): AdditionalSer
     isActive: item.isActive,
     description: item.description,
     currentPrice: item.currentPrice ?? null,
-    basePrice: Number(item.currentPrice ?? 0),
+    basePrice: mapCurrentPriceAmount(item.currentPrice),
     installationFee: Number(item.installationFee ?? 0),
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
@@ -1604,18 +1810,25 @@ export const commercialApi = {
       tenantSlug,
     ),
 
-  /** Lista el cat?logo de planes del tenant autenticado. */
-  getPlans: async (tenantSlug?: string) => {
-    const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
-      '/commercial/catalog?type=PLAN',
+  /** Lista el catálogo de planes del tenant autenticado (cursor + total). */
+  getPlans: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<PlanCatalogItem>> => {
+    const raw = await request<unknown>(
+      `/commercial/catalog${buildCommercialListQuery(params, { type: 'PLAN' })}`,
       { returnFullResponse: true },
       tenantSlug,
     );
+    const response = normalizeCommercialPaginatedResponse<CommercialCatalogItemPayload>(raw);
 
-    return response.data.map(mapCommercialPlan);
+    return {
+      data: response.data.map(mapCommercialPlan),
+      meta: response.meta,
+    };
   },
 
-  /** Crea un plan en el cat?logo del tenant autenticado. */
+  /** Crea un plan en el catálogo del tenant autenticado. */
   createPlan: async (dto: CreatePlanCatalogItemDto, tenantSlug?: string) => {
     const item = await request<CommercialCatalogItemPayload>(
       '/commercial/catalog/plans',
@@ -1645,8 +1858,6 @@ export const commercialApi = {
       },
       tenantSlug,
     );
-
-    return commercialApi.getPlans(tenantSlug);
   },
 
   /** Actualiza un plan del cat?logo del tenant autenticado. */
@@ -1688,38 +1899,43 @@ export const commercialApi = {
           tenantSlug,
         );
       } catch (error) {
-        // Idempotencia operativa: si el precio vigente ya es id?ntico, no bloqueamos la edici?n.
+        // Idempotencia operativa: si el precio vigente ya es idéntico, no bloqueamos la edición.
         if (
           error instanceof ApiError &&
           error.status === 409 &&
-          /precio vigente id?ntico/i.test(error.message)
+          /precio vigente id.?ntico/i.test(error.message)
         ) {
-          return commercialApi.getPlans(tenantSlug);
+          return;
         }
 
         throw error;
       }
     }
-
-    return commercialApi.getPlans(tenantSlug);
   },
 
-  /** Elimina un plan del cat?logo del tenant autenticado. */
+  /** Elimina un plan del catálogo del tenant autenticado. */
   deletePlan: (planId: string, tenantSlug?: string) =>
     request<void>(`/commercial/catalog/${planId}`, { method: 'DELETE' }, tenantSlug),
 
-  /** Lista los productos adicionales del tenant autenticado. */
-  getAdditionalProducts: async (tenantSlug?: string) => {
-    const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
-      '/commercial/catalog?type=PRODUCT',
+  /** Lista productos adicionales (cursor + total). */
+  getAdditionalProducts: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<AdditionalProduct>> => {
+    const raw = await request<unknown>(
+      `/commercial/catalog${buildCommercialListQuery(params, { type: 'PRODUCT' })}`,
       { returnFullResponse: true },
       tenantSlug,
     );
+    const response = normalizeCommercialPaginatedResponse<CommercialCatalogItemPayload>(raw);
 
-    return response.data.map(mapCommercialProduct);
+    return {
+      data: response.data.map(mapCommercialProduct),
+      meta: response.meta,
+    };
   },
 
-  /** Crea un producto adicional en el cat?logo del tenant autenticado. */
+  /** Crea un producto adicional en el catálogo del tenant autenticado. */
   createAdditionalProduct: async (dto: CreateAdditionalProductDto, tenantSlug?: string) => {
     const item = await request<CommercialCatalogItemPayload>(
       '/commercial/catalog/products',
@@ -1740,17 +1956,15 @@ export const commercialApi = {
     if (dto.basePrice !== undefined) {
       await setCommercialCatalogPrice(item.id, { basePrice: dto.basePrice }, tenantSlug);
     }
-
-    return commercialApi.getAdditionalProducts(tenantSlug);
   },
 
-  /** Actualiza un producto adicional del cat?logo del tenant autenticado. */
-  updateAdditionalProduct: (
+  /** Actualiza un producto adicional del catálogo del tenant autenticado. */
+  updateAdditionalProduct: async (
     productId: string,
     dto: UpdateAdditionalProductDto,
     tenantSlug?: string,
-  ) =>
-    request(
+  ) => {
+    await request(
       `/commercial/catalog/${productId}`,
       {
         method: 'PATCH',
@@ -1766,45 +1980,47 @@ export const commercialApi = {
         }),
       },
       tenantSlug,
-    ).then(async () => {
-      if (dto.basePrice !== undefined) {
-        try {
-          await setCommercialCatalogPrice(productId, { basePrice: dto.basePrice }, tenantSlug);
-        } catch (error) {
-          if (
-            error instanceof ApiError &&
-            error.status === 409 &&
-            /precio vigente id.?ntico/i.test(error.message)
-          ) {
-            return commercialApi.getAdditionalProducts(tenantSlug);
-          }
-          throw error;
+    );
+
+    if (dto.basePrice !== undefined) {
+      try {
+        await setCommercialCatalogPrice(productId, { basePrice: dto.basePrice }, tenantSlug);
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.status === 409 &&
+          /precio vigente id.?ntico/i.test(error.message)
+        ) {
+          return;
         }
+        throw error;
       }
+    }
+  },
 
-      return commercialApi.getAdditionalProducts(tenantSlug);
-    }),
-
-  /** Elimina un producto adicional del cat?logo del tenant autenticado. */
+  /** Elimina un producto adicional del catálogo del tenant autenticado. */
   deleteAdditionalProduct: (productId: string, tenantSlug?: string) =>
-    request<AdditionalProduct[]>(
-      `/commercial/catalog/${productId}`,
-      { method: 'DELETE' },
-      tenantSlug,
-    ).then(() => commercialApi.getAdditionalProducts(tenantSlug)),
+    request<void>(`/commercial/catalog/${productId}`, { method: 'DELETE' }, tenantSlug),
 
-  /** Lista los servicios adicionales del tenant autenticado. */
-  getAdditionalServices: async (tenantSlug?: string) => {
-    const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
-      '/commercial/catalog?type=SERVICE',
+  /** Lista servicios adicionales (cursor + total). */
+  getAdditionalServices: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<AdditionalService>> => {
+    const raw = await request<unknown>(
+      `/commercial/catalog${buildCommercialListQuery(params, { type: 'SERVICE' })}`,
       { returnFullResponse: true },
       tenantSlug,
     );
+    const response = normalizeCommercialPaginatedResponse<CommercialCatalogItemPayload>(raw);
 
-    return response.data.map(mapCommercialService);
+    return {
+      data: response.data.map(mapCommercialService),
+      meta: response.meta,
+    };
   },
 
-  /** Crea un servicio adicional en el cat?logo del tenant autenticado. */
+  /** Crea un servicio adicional en el catálogo del tenant autenticado. */
   createAdditionalService: async (dto: CreateAdditionalServiceDto, tenantSlug?: string) => {
     const item = await request<CommercialCatalogItemPayload>(
       '/commercial/catalog/services',
@@ -1830,17 +2046,15 @@ export const commercialApi = {
         tenantSlug,
       );
     }
-
-    return commercialApi.getAdditionalServices(tenantSlug);
   },
 
-  /** Actualiza un servicio adicional del cat?logo del tenant autenticado. */
-  updateAdditionalService: (
+  /** Actualiza un servicio adicional del catálogo del tenant autenticado. */
+  updateAdditionalService: async (
     serviceId: string,
     dto: UpdateAdditionalServiceDto,
     tenantSlug?: string,
-  ) =>
-    request<AdditionalService[]>(
+  ) => {
+    await request(
       `/commercial/catalog/${serviceId}`,
       {
         method: 'PATCH',
@@ -1852,68 +2066,161 @@ export const commercialApi = {
         }),
       },
       tenantSlug,
-    ).then(async () => {
-      if (dto.basePrice !== undefined) {
-        try {
-          await setCommercialCatalogPrice(
-            serviceId,
-            {
-              basePrice: dto.basePrice,
-              ...(dto.installationFee !== undefined && {
-                installationFee: dto.installationFee,
-              }),
-            },
-            tenantSlug,
-          );
-        } catch (error) {
-          if (
-            error instanceof ApiError &&
-            error.status === 409 &&
-            /precio vigente id?ntico/i.test(error.message)
-          ) {
-            return commercialApi.getAdditionalServices(tenantSlug);
-          }
+    );
 
-          throw error;
+    if (dto.basePrice !== undefined) {
+      try {
+        await setCommercialCatalogPrice(
+          serviceId,
+          {
+            basePrice: dto.basePrice,
+            ...(dto.installationFee !== undefined && {
+              installationFee: dto.installationFee,
+            }),
+          },
+          tenantSlug,
+        );
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.status === 409 &&
+          /precio vigente id.?ntico/i.test(error.message)
+        ) {
+          return;
         }
+        throw error;
       }
-
-      return commercialApi.getAdditionalServices(tenantSlug);
-    }),
-
-  /** Elimina un servicio adicional del cat?logo del tenant autenticado. */
-  deleteAdditionalService: (serviceId: string, tenantSlug?: string) =>
-    request<AdditionalService[]>(
-      `/commercial/catalog/${serviceId}`,
-      { method: 'DELETE' },
-      tenantSlug,
-    ).then(() => commercialApi.getAdditionalServices(tenantSlug)),
-
-  /** Lista bundles activos del tenant autenticado. */
-  getBundles: async (tenantSlug?: string) => {
-    const bundles = await request<CommercialBundle[]>('/commercial/bundles', undefined, tenantSlug);
-    return bundles.map(mapCommercialBundle);
+    }
   },
 
-  /** Retorna el detalle de un bundle con sus ?tems. */
+  /** Elimina un servicio adicional del catálogo del tenant autenticado. */
+  deleteAdditionalService: (serviceId: string, tenantSlug?: string) =>
+    request<void>(`/commercial/catalog/${serviceId}`, { method: 'DELETE' }, tenantSlug),
+
+  /** Lookup typeahead E-4 — planes activos por defecto. */
+  searchPlansForPicker: (
+    params: { q: string; isActive?: boolean; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/commercial/plans/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
+
+  /** Lookup typeahead E-4 — productos adicionales. */
+  searchAdditionalProductsForPicker: (
+    params: { q: string; isActive?: boolean; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/commercial/additional-products/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
+
+  /** Lookup typeahead E-4 — servicios adicionales. */
+  searchAdditionalServicesForPicker: (
+    params: { q: string; isActive?: boolean; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/commercial/additional-services/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
+
+  /** Detalle de ítem de catálogo por ID (snapshot de plan / resolución de nombre). */
+  getCatalogItemById: async (itemId: string, tenantSlug?: string) => {
+    const item = await request<CommercialCatalogItemPayload>(
+      `/commercial/catalog/${itemId}`,
+      undefined,
+      tenantSlug,
+    );
+    return item;
+  },
+
+  getPlanById: async (planId: string, tenantSlug?: string): Promise<PlanCatalogItem> => {
+    const item = await request<CommercialCatalogItemPayload>(
+      `/commercial/catalog/${planId}`,
+      undefined,
+      tenantSlug,
+    );
+    return mapCommercialPlan(item);
+  },
+
+  /** Lista bundles del tenant (cursor + total). */
+  getBundles: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<CommercialBundle>> => {
+    const response = await request<CommercialCatalogListResponse<CommercialBundle>>(
+      `/commercial/bundles${buildCommercialListQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+
+    return {
+      data: response.data.map(mapCommercialBundle),
+      meta: response.meta,
+    };
+  },
+
+  /** Retorna el detalle de un bundle con sus ítems. */
   getBundleDetail: (bundleId: string, tenantSlug?: string) =>
     request<CommercialBundleDetail>(`/commercial/bundles/${bundleId}`, undefined, tenantSlug),
 
-  /** Crea un bundle y retorna la lista actualizada. */
+  /** Crea un bundle. */
   createBundle: (dto: CreateBundleDto, tenantSlug?: string) =>
     request<CommercialBundle>(
       '/commercial/bundles',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,
-    ).then(() => commercialApi.getBundles(tenantSlug)),
-
-  /** Desactiva un bundle y retorna la lista actualizada. */
-  deactivateBundle: (bundleId: string, tenantSlug?: string) =>
-    request(`/commercial/bundles/${bundleId}`, { method: 'DELETE' }, tenantSlug).then(() =>
-      commercialApi.getBundles(tenantSlug),
     ),
 
-  /** Calcula precio din?mico de un bundle por segmento para previsualizaci?n de oferta. */
+  /** Actualiza un bundle (PATCH). */
+  updateBundle: (bundleId: string, dto: UpdateBundleDto, tenantSlug?: string) =>
+    request<CommercialBundle>(
+      `/commercial/bundles/${bundleId}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Desactiva un bundle. */
+  deactivateBundle: (bundleId: string, tenantSlug?: string) =>
+    request<void>(`/commercial/bundles/${bundleId}`, { method: 'DELETE' }, tenantSlug),
+
+  /** Calcula precio dinámico de un bundle por segmento para previsualización de oferta. */
   getBundlePrice: (
     bundleId: string,
     options?: {
@@ -1937,17 +2244,24 @@ export const commercialApi = {
     );
   },
 
-  /** Lista promociones activas del tenant autenticado. */
-  getPromotions: async (tenantSlug?: string) => {
-    const promotions = await request<CommercialPromotion[]>(
-      '/commercial/promotions',
-      undefined,
+  /** Lista promociones del tenant (cursor + total). */
+  getPromotions: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<CommercialPromotion>> => {
+    const response = await request<CommercialCatalogListResponse<CommercialPromotion>>(
+      `/commercial/promotions${buildCommercialListQuery(params)}`,
+      { returnFullResponse: true },
       tenantSlug,
     );
-    return promotions.map(mapCommercialPromotion);
+
+    return {
+      data: response.data.map(mapCommercialPromotion),
+      meta: response.meta,
+    };
   },
 
-  /** Crea una promoci?n y retorna la lista actualizada. */
+  /** Crea una promoción. */
   createPromotion: (dto: CreatePromotionDto, tenantSlug?: string) =>
     request<CommercialPromotion>(
       '/commercial/promotions',
@@ -1959,21 +2273,36 @@ export const commercialApi = {
         }),
       },
       tenantSlug,
-    ).then(() => commercialApi.getPromotions(tenantSlug)),
-
-  /** Desactiva una promoci?n y retorna la lista actualizada. */
-  deactivatePromotion: (promotionId: string, tenantSlug?: string) =>
-    request(`/commercial/promotions/${promotionId}`, { method: 'DELETE' }, tenantSlug).then(() =>
-      commercialApi.getPromotions(tenantSlug),
     ),
 
-  // ?? Compatibilidad ????????????????????????????????????????????????????????
+  /** Actualiza una promoción (PATCH). */
+  updatePromotion: (promotionId: string, dto: UpdatePromotionDto, tenantSlug?: string) =>
+    request<CommercialPromotion>(
+      `/commercial/promotions/${promotionId}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
 
-  /** Lista reglas de compatibilidad del tenant (incluye REPLACES, REQUIRES, EXCLUDES). */
-  getCompatibilityRules: (tenantSlug?: string) =>
-    request<CompatibilityRule[]>('/commercial/compatibility-rules', undefined, tenantSlug),
+  /** Desactiva una promoción. */
+  deactivatePromotion: (promotionId: string, tenantSlug?: string) =>
+    request<void>(`/commercial/promotions/${promotionId}`, { method: 'DELETE' }, tenantSlug),
 
-  /** Crea regla de compatibilidad. Solo REPLACES est? en scope del dise?o inicial. */
+  // —— Compatibilidad ————————————————————————————————————————————————
+
+  /** Lista reglas de compatibilidad del tenant (cursor + total). */
+  getCompatibilityRules: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<CompatibilityRule>> => {
+    const response = await request<CommercialCatalogListResponse<CompatibilityRule>>(
+      `/commercial/compatibility-rules${buildCommercialListQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+    return { data: response.data, meta: response.meta };
+  },
+
+  /** Crea regla de compatibilidad. Solo REPLACES está en scope del diseño inicial. */
   createCompatibilityRule: (dto: CreateCompatibilityRuleDto, tenantSlug?: string) =>
     request<CompatibilityRule>(
       '/commercial/compatibility-rules',
@@ -1993,11 +2322,20 @@ export const commercialApi = {
   deactivateCompatibilityRule: (id: string, tenantSlug?: string) =>
     request<void>(`/commercial/compatibility-rules/${id}`, { method: 'DELETE' }, tenantSlug),
 
-  // ?? Tributarias (compatibilidad: GET listado de reglas para TaxApplicationRulesManager) ?
+  // —— Tributarias (listado para TaxApplicationRulesManager) ——
 
-  /** Lista reglas tributarias del tenant. Usado por TaxApplicationRulesManager para selecci?n. */
-  getTaxRules: (tenantSlug?: string) =>
-    request<TaxRule[]>('/commercial/tax-rules', undefined, tenantSlug),
+  /** Lista reglas tributarias del tenant (cursor + total). */
+  getTaxRules: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<TaxRule>> => {
+    const response = await request<CommercialCatalogListResponse<TaxRule>>(
+      `/commercial/tax-rules${buildCommercialListQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+    return { data: response.data, meta: response.meta };
+  },
 
   /** Crea una regla tributaria del tenant (sin clasificaci?n legacy obligatoria). */
   createTaxRule: (
@@ -2023,21 +2361,45 @@ export const commercialApi = {
 
   // ?? Cat?logo MOD07 ???????????????????????????????????????????????????????
 
-  /** Lista definiciones tributarias del cat?logo MOD07 (filtros opcionales). */
-  listTaxDefinitions: (
-    params?: { isActive?: boolean; category?: string; context?: string },
+  /**
+   * Lista definiciones tributarias del catálogo MOD07 (cursor + total, ADR-064).
+   * Pickers: usar `limit: COMMERCIAL_PICKER_LIMIT`.
+   */
+  listTaxDefinitions: async (
+    params?: ListTaxDefinitionsParams,
     tenantSlug?: string,
-  ) => {
-    const qs =
-      params && Object.keys(params).length > 0
-        ? '?' +
-          new URLSearchParams(
-            Object.entries(params)
-              .filter(([, v]) => v !== undefined)
-              .map(([k, v]) => [k, String(v)]),
-          ).toString()
-        : '';
-    return request<TaxDefinition[]>(`/taxation/definitions${qs}`, undefined, tenantSlug);
+  ): Promise<CommercialPaginatedList<TaxDefinition>> => {
+    const searchParams = new URLSearchParams();
+    if (params?.cursor) {
+      searchParams.set('cursor', params.cursor);
+    }
+    if (params?.limit !== undefined) {
+      searchParams.set('limit', String(params.limit));
+    }
+    if (params?.isActive !== undefined) {
+      searchParams.set('isActive', String(params.isActive));
+    }
+    if (params?.category) {
+      searchParams.set('category', params.category);
+    }
+    if (params?.context) {
+      searchParams.set('context', params.context);
+    }
+    if (params?.origin) {
+      searchParams.set('origin', params.origin);
+    }
+    const qs = searchParams.toString();
+    const response = await request<CommercialCatalogListResponse<TaxDefinition>>(
+      `/taxation/definitions${qs ? `?${qs}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+    return {
+      data: response.data ?? [],
+      meta: normalizeListMeta(response.meta, {
+        dataLength: response.data?.length ?? 0,
+      }),
+    };
   },
 
   /** Crea definici?n tributaria en el cat?logo MOD07. */
@@ -2062,9 +2424,18 @@ export const commercialApi = {
 
   // ?? Aplicaciones tributarias ?????????????????????????????????????????????
 
-  /** Lista aplicaciones tributarias (tabla puente reglas ? cat?logo). */
-  listTaxRuleApplications: (tenantSlug?: string) =>
-    request<TaxRuleApplication[]>('/commercial/tax-rule-applications', undefined, tenantSlug),
+  /** Lista aplicaciones tributarias (cursor + total). */
+  listTaxRuleApplications: async (
+    params?: CommercialListParams,
+    tenantSlug?: string,
+  ): Promise<CommercialPaginatedList<TaxRuleApplication>> => {
+    const response = await request<CommercialCatalogListResponse<TaxRuleApplication>>(
+      `/commercial/tax-rule-applications${buildCommercialListQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+    return { data: response.data, meta: response.meta };
+  },
 
   /** Crea aplicaci?n tributaria (vincula regla con definici?n del cat?logo). */
   createTaxRuleApplication: (dto: CreateTaxRuleApplicationDto, tenantSlug?: string) =>
@@ -2259,14 +2630,19 @@ export interface ListAssuranceTicketsParams {
   assignedUserId?: string | undefined;
   page?: number | undefined;
   limit?: number | undefined;
+  sortBy?: string | undefined;
+  sortDir?: 'asc' | 'desc' | undefined;
 }
 
-export interface ListAssuranceTicketsResponse {
-  data: AssuranceTicket[];
+/** Dual-emit Ola 1: `total`/`page`/`limit` planos + `meta` ADR-065. */
+export type ListAssuranceTicketsResponse = ListResponse<AssuranceTicket> & {
+  /** @deprecated Usar meta.total — conservado para consumidores legacy. */
   total: number;
-  page: number;
-  limit: number;
-}
+  /** @deprecated Usar meta.page */
+  page?: number;
+  /** @deprecated Usar meta.limit */
+  limit?: number;
+};
 
 export interface FindOrCreateInstallationTicketDto {
   expedienteId: string;
@@ -2287,7 +2663,10 @@ export interface LinkExpedienteInstallationRefsDto {
 
 export const assuranceApi = {
   tickets: {
-    list: (params?: ListAssuranceTicketsParams, tenantSlug?: string) => {
+    list: async (
+      params?: ListAssuranceTicketsParams,
+      tenantSlug?: string,
+    ): Promise<ListAssuranceTicketsResponse> => {
       const searchParams = new URLSearchParams();
       if (params?.status) searchParams.set('status', params.status);
       if (params?.type) searchParams.set('type', params.type);
@@ -2298,13 +2677,39 @@ export const assuranceApi = {
       if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.limit) searchParams.set('limit', String(params.limit));
+      if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+      if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
 
       const query = searchParams.toString();
-      return request<ListAssuranceTicketsResponse>(
-        `/assurance/tickets${query ? `?${query}` : ''}`,
-        { returnFullResponse: true },
-        tenantSlug,
+      const response = await request<{
+        data: AssuranceTicket[];
+        total?: number;
+        page?: number;
+        limit?: number;
+        meta?: Partial<ListMeta>;
+      }>(`/assurance/tickets${query ? `?${query}` : ''}`, { returnFullResponse: true }, tenantSlug);
+
+      const meta = normalizeListMeta(
+        {
+          ...response.meta,
+          ...(response.page != null ? { page: response.page } : {}),
+          ...(response.limit != null ? { limit: response.limit } : {}),
+          ...(response.total != null ? { total: response.total } : {}),
+        },
+        {
+          dataLength: response.data.length,
+          ...(params?.limit !== undefined ? { limit: params.limit } : {}),
+        },
       );
+      const total = response.total ?? meta.total;
+
+      return {
+        data: response.data,
+        meta: { ...meta, total },
+        total,
+        page: meta.page ?? response.page ?? params?.page ?? 1,
+        limit: meta.limit,
+      };
     },
 
     get: (id: string, tenantSlug?: string) =>
@@ -2514,7 +2919,15 @@ export interface ListWfmScheduleEventsParams {
   status?: ScheduleEventStatus | undefined;
   municipality?: string | undefined;
   sector?: string | undefined;
+  /** ADR-065 Ola 7 — offset 1-based. */
+  page?: number | undefined;
+  limit?: number | undefined;
 }
+
+export type ListWfmScheduleEventsResponse = ListResponse<WfmScheduleEvent>;
+export type ListWfmWorkOrdersResponse = ListResponse<WfmWorkOrder>;
+export type ListWfmTechnicianAvailabilityResponse = ListResponse<WfmTechnicianAvailability>;
+export type ListOperationalEventualitiesResponse = ListResponse<OperationalEventuality>;
 
 export interface WfmScheduleRecommendationRequestDto {
   workType: WfmWorkType;
@@ -2931,6 +3344,20 @@ export interface ListWfmTechnicianAvailabilityParams {
   from?: string | undefined;
   to?: string | undefined;
   type?: TechnicianAvailabilityType | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface ListOperationalEventualitiesParams {
+  userId?: string | undefined;
+  organizationSiteId?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface ListWfmWorkOrdersParams {
+  page?: number | undefined;
+  limit?: number | undefined;
 }
 
 export interface CreateWfmTechnicianAvailabilityDto {
@@ -3165,9 +3592,11 @@ export const wfmApi = {
       if (params?.status) searchParams.set('status', params.status);
       if (params?.municipality) searchParams.set('municipality', params.municipality);
       if (params?.sector) searchParams.set('sector', params.sector);
+      if (params?.page != null) searchParams.set('page', String(params.page));
+      if (params?.limit != null) searchParams.set('limit', String(params.limit));
 
       const query = searchParams.toString();
-      return request<WfmScheduleEvent[]>(
+      return request<ListWfmScheduleEventsResponse>(
         `/wfm/events${query ? `?${query}` : ''}`,
         { returnFullResponse: true },
         tenantSlug,
@@ -3226,8 +3655,17 @@ export const wfmApi = {
   },
 
   workOrders: {
-    list: (tenantSlug?: string) =>
-      request<WfmWorkOrder[]>('/wfm/work-orders', { returnFullResponse: true }, tenantSlug),
+    list: (params?: ListWfmWorkOrdersParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.page != null) searchParams.set('page', String(params.page));
+      if (params?.limit != null) searchParams.set('limit', String(params.limit));
+      const query = searchParams.toString();
+      return request<ListWfmWorkOrdersResponse>(
+        `/wfm/work-orders${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
 
     get: (id: string, tenantSlug?: string) =>
       request<WfmWorkOrder>(`/wfm/work-orders/${id}`, { returnFullResponse: true }, tenantSlug),
@@ -3256,9 +3694,11 @@ export const wfmApi = {
       if (params?.from) searchParams.set('from', params.from);
       if (params?.to) searchParams.set('to', params.to);
       if (params?.type) searchParams.set('type', params.type);
+      if (params?.page != null) searchParams.set('page', String(params.page));
+      if (params?.limit != null) searchParams.set('limit', String(params.limit));
 
       const query = searchParams.toString();
-      return request<WfmTechnicianAvailability[]>(
+      return request<ListWfmTechnicianAvailabilityResponse>(
         `/wfm/technicians/availability${query ? `?${query}` : ''}`,
         { returnFullResponse: true },
         tenantSlug,
@@ -3274,13 +3714,15 @@ export const wfmApi = {
   },
 
   operationalEventualities: {
-    list: (filters?: { userId?: string; organizationSiteId?: string }, tenantSlug?: string) => {
+    list: (params?: ListOperationalEventualitiesParams, tenantSlug?: string) => {
       const searchParams = new URLSearchParams();
-      if (filters?.userId) searchParams.set('userId', filters.userId);
-      if (filters?.organizationSiteId)
-        searchParams.set('organizationSiteId', filters.organizationSiteId);
+      if (params?.userId) searchParams.set('userId', params.userId);
+      if (params?.organizationSiteId)
+        searchParams.set('organizationSiteId', params.organizationSiteId);
+      if (params?.page != null) searchParams.set('page', String(params.page));
+      if (params?.limit != null) searchParams.set('limit', String(params.limit));
       const query = searchParams.toString();
-      return request<OperationalEventuality[]>(
+      return request<ListOperationalEventualitiesResponse>(
         `/wfm/operational-eventualities${query ? `?${query}` : ''}`,
         { returnFullResponse: true },
         tenantSlug,
@@ -3373,21 +3815,21 @@ export interface GlobalSearchResponse {
 export interface ListUsersParams {
   cursor?: string;
   limit?: number;
+  /** ADR-065: página 1-based (modo randomAccess). */
+  page?: number;
   status?: string;
   role?: string;
   /** Texto libre para filtrar por nombre, apellido o email */
   search?: string;
 }
 
-export interface UsersPaginationMeta {
-  nextCursor: string | null;
-  total: number;
-}
+/**
+ * Alias de compatibilidad Ola 3 → contrato ADR-065.
+ * @deprecated Preferir `ListMeta` de `@iwana/shared`.
+ */
+export type UsersPaginationMeta = ListMeta;
 
-export interface ListUsersResponse {
-  data: InternalUser[];
-  meta: UsersPaginationMeta;
-}
+export type ListUsersResponse = ListResponse<InternalUser>;
 
 interface PortalSearchModule {
   id: string;
@@ -3567,7 +4009,7 @@ function searchPortalModules(query: string, limit: number): GlobalSearchGroup | 
 function emptyUsersResponse(): ListUsersResponse {
   return {
     data: [],
-    meta: { nextCursor: null, total: 0 },
+    meta: EMPTY_LIST_META,
   };
 }
 
@@ -3917,8 +4359,17 @@ export const configurationApi = {
 };
 
 export const organizationApi = {
-  list: (tenantSlug?: string) =>
-    request<OrganizationSiteSummary[]>('/organization/sites', undefined, tenantSlug),
+  list: (params?: { page?: number; limit?: number }, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page != null) searchParams.set('page', String(params.page));
+    if (params?.limit != null) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return request<ListResponse<OrganizationSiteSummary>>(
+      `/organization/sites${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 
   get: (id: string, tenantSlug?: string) =>
     request<OrganizationSiteDetail>(`/organization/sites/${id}`, undefined, tenantSlug),
@@ -4097,6 +4548,7 @@ export const usersApi = {
     const searchParams = new URLSearchParams();
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+    if (params?.page !== undefined) searchParams.set('page', String(params.page));
     if (params?.status) searchParams.set('status', params.status);
     if (params?.role) searchParams.set('role', params.role);
     if (params?.search) searchParams.set('search', params.search);
@@ -4206,6 +4658,30 @@ export const usersApi = {
       },
       tenantSlug,
     ),
+
+  /**
+   * Lookup typeahead E-4 para pickers (`SearchablePicker`).
+   * Respuesta `{ data: { id, label, sublabel }[], total }` — sin ListMeta.
+   */
+  searchForPicker: (
+    params: { q: string; status?: string; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/users/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
 
   /**
    * Cambia el email de login de otro usuario (acción administrativa).
@@ -4552,7 +5028,19 @@ export interface ListSubscribersParams {
   search?: string;
   page?: number;
   limit?: number;
+  /** ADR-065 — orden declarado por el servidor (`sortableFields`). */
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
+
+/**
+ * Envelope ADR-065 + dual-emit `total` plano (Ola 1) para no romper pickers E-4
+ * (`TaskCoreFields` / typeahead) que aún leen `response.total`.
+ */
+export type ListSubscribersResponse = ListResponse<SubscriberRecord> & {
+  /** @deprecated Preferir `meta.total`. Conservado por dual-emit / E-4. */
+  total: number;
+};
 
 export interface SearchSubscribersParams {
   documentNumber?: string;
@@ -4941,6 +5429,7 @@ export const crmApi = {
       limit?: number;
     },
     tenantSlug?: string,
+    options?: Pick<RequestOptions, 'signal'>,
   ) => {
     const searchParams = new URLSearchParams();
 
@@ -4958,7 +5447,10 @@ export const crmApi = {
 
     return request<{ data: ExpedienteRecord[]; total: number }>(
       `/crm/expedientes${query ? `?${query}` : ''}`,
-      { returnFullResponse: true },
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
       tenantSlug,
     );
   },
@@ -5231,7 +5723,11 @@ export const subscribersApi = {
       tenantSlug,
     ),
 
-  list: (params?: ListSubscribersParams, tenantSlug?: string) => {
+  list: async (
+    params?: ListSubscribersParams,
+    tenantSlug?: string,
+    options?: Pick<RequestOptions, 'signal'>,
+  ): Promise<ListSubscribersResponse> => {
     const searchParams = new URLSearchParams();
 
     if (params?.status) searchParams.set('status', params.status);
@@ -5241,14 +5737,38 @@ export const subscribersApi = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
 
     const query = searchParams.toString();
 
-    return request<{ data: SubscriberRecord[]; total: number }>(
+    const response = await request<{
+      data: SubscriberRecord[];
+      total?: number;
+      meta?: Partial<ListMeta>;
+    }>(
       `/crm/subscribers${query ? `?${query}` : ''}`,
-      { returnFullResponse: true },
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
       tenantSlug,
     );
+
+    const meta = normalizeListMeta(response.meta, {
+      dataLength: response.data.length,
+      ...(params?.limit !== undefined ? { limit: params.limit } : {}),
+    });
+    const total = response.total ?? meta.total;
+
+    return {
+      data: response.data,
+      meta: {
+        ...meta,
+        total,
+      },
+      total,
+    };
   },
 
   search: (params?: SearchSubscribersParams, tenantSlug?: string) => {
@@ -5383,8 +5903,21 @@ export const subscriberTaxApi = {
 
 export const contractsApi = {
   /** Lista todos los contratos de un subscriber, ordenados por createdAt DESC. */
-  listBySubscriber: (subscriberId: string, tenantSlug?: string) =>
-    request<Contract[]>(`/crm/subscribers/${subscriberId}/contracts`, undefined, tenantSlug),
+  listBySubscriber: (
+    subscriberId: string,
+    params?: { page?: number; limit?: number },
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page != null) searchParams.set('page', String(params.page));
+    if (params?.limit != null) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return request<ListResponse<Contract>>(
+      `/crm/subscribers/${subscriberId}/contracts${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 
   /** Crea un contrato directo para un subscriber. */
   createForSubscriber: (
@@ -5421,13 +5954,22 @@ export const contractsApi = {
       tenantSlug,
     ),
 
-  /** Lista todos los contratos (con filtros opcionales ?status=&planId=). */
-  findAll: (params?: { status?: ContractStatus; planId?: string }, tenantSlug?: string) => {
+  /** Lista todos los contratos (con filtros opcionales ?status=&planId=&page=&limit=). */
+  findAll: (
+    params?: { status?: ContractStatus; planId?: string; page?: number; limit?: number },
+    tenantSlug?: string,
+  ) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set('status', params.status);
     if (params?.planId) qs.set('planId', params.planId);
+    if (params?.page != null) qs.set('page', String(params.page));
+    if (params?.limit != null) qs.set('limit', String(params.limit));
     const query = qs.toString();
-    return request<Contract[]>(`/crm/contracts${query ? `?${query}` : ''}`, undefined, tenantSlug);
+    return request<ListResponse<Contract>>(
+      `/crm/contracts${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
   },
 
   /** Obtiene un contrato por ID. */
@@ -6451,8 +6993,13 @@ export interface LookupSupplierByDocumentParams {
 
 export interface SupplierProfileListResult {
   data: SupplierProfileRecord[];
+  /** Dual-emit ADR-065 — preferir `meta` cuando exista. */
+  meta?: ListMeta;
+  /** @deprecated Dual-emit — leer `meta.total`. */
   total: number;
+  /** @deprecated Dual-emit — leer `meta.page`. */
   page: number;
+  /** @deprecated Dual-emit — leer `meta.limit`. */
   limit: number;
 }
 
@@ -6523,6 +7070,8 @@ export interface PurchaseOrderDetailRecord extends PurchaseOrderRecord {
 export interface ListPurchaseOrdersParams {
   status?: PurchaseOrderStatus;
   purchaseRequestId?: string;
+  page?: number;
+  limit?: number;
 }
 
 export interface GoodsReceiptRecord {
@@ -6556,6 +7105,17 @@ export interface GoodsReceiptResultRecord {
   lines: StockMovementLineRecord[];
 }
 
+/**
+ * Alias de compatibilidad Ola 3 → contrato ADR-065.
+ * @deprecated Preferir `ListMeta` de `@iwana/shared`.
+ */
+export type InventoryListMeta = ListMeta;
+
+export type InventoryPaginatedList<T> = ListResponse<T>;
+
+/** Default FE alineado a API (`INVENTORY_LIST_DEFAULT_LIMIT`). */
+export const INVENTORY_LIST_PAGE_SIZE = 20;
+
 export interface ListInventoryItemsParams {
   search?: string;
   categoryId?: string;
@@ -6566,6 +7126,12 @@ export interface ListInventoryItemsParams {
   purchasable?: boolean;
   preferredSupplierRefId?: string;
   commercialReferenceId?: string;
+  /** Ola 6: overview «solo bajo mínimo» (out ∪ below-minimum). */
+  belowMinimum?: boolean;
+  /** Alcance de agregación de saldos para `belowMinimum`. */
+  stockLocationId?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface CreateInventoryItemDto {
@@ -6607,6 +7173,8 @@ export type UpdateInventoryItemDto = Partial<CreateInventoryItemDto>;
 export interface ListInventoryCategoriesParams {
   search?: string;
   status?: InventoryCategoryStatus;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface CreateInventoryCategoryDto {
@@ -6640,6 +7208,16 @@ export interface ListStockLocationsParams {
   type?: StockLocationType;
   status?: StockLocationStatus;
   responsibleRefId?: string;
+  /** Ola 6: búsqueda por nombre/código/responsable. */
+  search?: string;
+  /** Ola 6: `mobile` → tipos de custodia móvil. */
+  custody?: 'mobile';
+  /** Ola 6: grupo inactivo/archivado. */
+  statusGroup?: 'inactive_group';
+  /** Ola 6: solo ubicaciones con saldo > 0. */
+  withStock?: boolean;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface CreateStockLocationDto {
@@ -6663,12 +7241,18 @@ export interface ListSerializedAssetsParams {
   status?: SerializedAssetStatus;
   locationId?: string;
   serialNumber?: string;
+  /** Offset numerado (excluyente con `cursor`). */
+  page?: number;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface ListStockBalancesParams {
   itemId?: string;
   locationId?: string;
   condition?: StockBalanceCondition;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface TransferStockDto {
@@ -6863,6 +7447,12 @@ export interface ListStockIssuesParams {
   status?: StockIssueStatus;
   sourceLocationId?: string;
   destinationLocationId?: string;
+  /** Ola 6: id, bodegas, refs, costCenter. */
+  search?: string;
+  /** Ola 6: offset; excluyente con cursor. */
+  page?: number;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface StockIssueLineRecord {
@@ -6910,6 +7500,10 @@ export interface StockIssueDetailRecord extends StockIssueRecord {
 export interface ListStockCountsParams {
   status?: StockCountStatus;
   locationId?: string;
+  /** Offset numerado (excluyente con `cursor`). */
+  page?: number;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface CreateStockCountDto {
@@ -6966,11 +7560,27 @@ export interface StockCountDetailRecord extends StockCountRecord {
   lines: StockCountLineRecord[];
 }
 
+export type PurchaseRequestKpiPreset =
+  | 'pendingQuotes'
+  | 'pendingApproval'
+  | 'readyForPo'
+  | 'pendingReceipt'
+  | 'urgent'
+  | 'overdue';
+
 export interface ListPurchaseRequestsParams {
   status?: PurchaseRequestStatus;
   requestType?: PurchaseRequestType;
   priority?: PurchaseRequestPriority;
   requestingArea?: string;
+  /** Ola 6: número, título o área. */
+  search?: string;
+  /** Ola 6: presets KPI del portal. */
+  kpiPreset?: PurchaseRequestKpiPreset;
+  /** Ola 6: offset; excluyente con cursor. */
+  page?: number;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface CreatePurchaseRequestLineDto {
@@ -7131,7 +7741,7 @@ function buildInventoryQuery(params?: Record<string, string | undefined>): strin
 
 export const inventoryApi = {
   listItems: (params?: ListInventoryItemsParams, tenantSlug?: string) =>
-    request<InventoryItemRecord[]>(
+    request<InventoryPaginatedList<InventoryItemRecord>>(
       `/inventory/items${buildInventoryQuery({
         search: params?.search,
         categoryId: params?.categoryId,
@@ -7147,10 +7757,38 @@ export const inventoryApi = {
               : undefined,
         preferredSupplierRefId: params?.preferredSupplierRefId,
         commercialReferenceId: params?.commercialReferenceId,
+        belowMinimum: params?.belowMinimum === true ? 'true' : undefined,
+        stockLocationId: params?.stockLocationId,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
     ),
+
+  /**
+   * Lookup typeahead E-4 para pickers (`SearchablePicker`).
+   * Respuesta `{ data: { id, label, sublabel }[], total }` — sin ListMeta.
+   */
+  searchItemsForPicker: (
+    params: { q: string; status?: string; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/inventory/items/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
 
   getItem: (id: string, tenantSlug?: string) =>
     request<InventoryItemRecord>(
@@ -7189,11 +7827,14 @@ export const inventoryApi = {
       tenantSlug,
     ),
 
+  /** Lista categorías de inventario (cursor + total, ADR-064). */
   listCategories: (params?: ListInventoryCategoriesParams, tenantSlug?: string) =>
-    request<InventoryCategoryRecord[]>(
+    request<InventoryPaginatedList<InventoryCategoryRecord>>(
       `/inventory/categories${buildInventoryQuery({
         search: params?.search,
         status: params?.status,
+        cursor: params?.cursor,
+        limit: params?.limit !== undefined ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -7232,15 +7873,45 @@ export const inventoryApi = {
     ),
 
   listLocations: (params?: ListStockLocationsParams, tenantSlug?: string) =>
-    request<StockLocationRecord[]>(
+    request<InventoryPaginatedList<StockLocationRecord>>(
       `/inventory/locations${buildInventoryQuery({
         type: params?.type,
         status: params?.status,
         responsibleRefId: params?.responsibleRefId,
+        search: params?.search,
+        custody: params?.custody,
+        statusGroup: params?.statusGroup,
+        withStock: params?.withStock === true ? 'true' : undefined,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
     ),
+
+  /**
+   * Lookup typeahead E-4 — ubicaciones / bodegas.
+   * Label = nombre; sublabel = código.
+   */
+  searchLocationsForPicker: (
+    params: { q: string; status?: string; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/inventory/locations/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
 
   createLocation: (dto: CreateStockLocationDto, tenantSlug?: string) =>
     request<StockLocationRecord>(
@@ -7257,16 +7928,42 @@ export const inventoryApi = {
     ),
 
   listAssets: (params?: ListSerializedAssetsParams, tenantSlug?: string) =>
-    request<SerializedAssetRecord[]>(
+    request<InventoryPaginatedList<SerializedAssetRecord>>(
       `/inventory/assets${buildInventoryQuery({
         itemId: params?.itemId,
         status: params?.status,
         locationId: params?.locationId,
         serialNumber: params?.serialNumber,
+        page: params?.page != null ? String(params.page) : undefined,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
     ),
+
+  /**
+   * Lookup typeahead E-4 — activos serializados.
+   * Label = serial|tag; sublabel = SKU ….
+   */
+  searchAssetsForPicker: (
+    params: { q: string; limit?: number },
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+    return request<PickerSearchResponse>(
+      `/inventory/assets/search?${searchParams.toString()}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
+      tenantSlug,
+    );
+  },
 
   getAsset: (id: string, params?: GetSerializedAssetParams, tenantSlug?: string) =>
     request<SerializedAssetDetailRecord>(
@@ -7306,11 +8003,13 @@ export const inventoryApi = {
     ),
 
   listBalances: (params?: ListStockBalancesParams, tenantSlug?: string) =>
-    request<StockBalanceRecord[]>(
+    request<InventoryPaginatedList<StockBalanceRecord>>(
       `/inventory/balances${buildInventoryQuery({
         itemId: params?.itemId,
         locationId: params?.locationId,
         condition: params?.condition,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -7450,12 +8149,16 @@ export const inventoryApi = {
     ),
 
   listIssues: (params?: ListStockIssuesParams, tenantSlug?: string) =>
-    request<StockIssueRecord[]>(
+    request<InventoryPaginatedList<StockIssueRecord>>(
       `/inventory/issues${buildInventoryQuery({
         type: params?.type,
         status: params?.status,
         sourceLocationId: params?.sourceLocationId,
         destinationLocationId: params?.destinationLocationId,
+        search: params?.search,
+        page: params?.page != null ? String(params.page) : undefined,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -7497,10 +8200,13 @@ export const inventoryApi = {
     ),
 
   listCounts: (params?: ListStockCountsParams, tenantSlug?: string) =>
-    request<StockCountRecord[]>(
+    request<InventoryPaginatedList<StockCountRecord>>(
       `/inventory/counts${buildInventoryQuery({
         status: params?.status,
         locationId: params?.locationId,
+        page: params?.page != null ? String(params.page) : undefined,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -7544,12 +8250,17 @@ export const inventoryApi = {
 
 export const purchasingApi = {
   listRequests: (params?: ListPurchaseRequestsParams, tenantSlug?: string) =>
-    request<PurchaseRequestRecord[]>(
+    request<InventoryPaginatedList<PurchaseRequestRecord>>(
       `/purchasing/requests${buildInventoryQuery({
         status: params?.status,
         requestType: params?.requestType,
         priority: params?.priority,
         requestingArea: params?.requestingArea,
+        search: params?.search,
+        kpiPreset: params?.kpiPreset,
+        page: params?.page != null ? String(params.page) : undefined,
+        cursor: params?.cursor,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -7618,13 +8329,20 @@ export const purchasingApi = {
       tenantSlug,
     ),
 
-  searchSuppliers: (params?: ListSuppliersParams, tenantSlug?: string) =>
+  searchSuppliers: (
+    params?: ListSuppliersParams,
+    tenantSlug?: string,
+    options?: Pick<RequestOptions, 'signal'>,
+  ) =>
     request<SupplierSearchResultRecord>(
       `/purchasing/providers${buildInventoryQuery({
         search: params?.search,
         page: params?.page ? String(params.page) : undefined,
       })}`,
-      { returnFullResponse: true },
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
       tenantSlug,
     ),
 
@@ -7686,10 +8404,12 @@ export const purchasingApi = {
     ),
 
   listOrders: (params?: ListPurchaseOrdersParams, tenantSlug?: string) =>
-    request<PurchaseOrderRecord[]>(
+    request<InventoryPaginatedList<PurchaseOrderRecord>>(
       `/purchasing/orders${buildInventoryQuery({
         status: params?.status,
         purchaseRequestId: params?.purchaseRequestId,
+        page: params?.page != null ? String(params.page) : undefined,
+        limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,

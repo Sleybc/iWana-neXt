@@ -114,9 +114,6 @@ describe('ExpedienteSections', () => {
         lockedSections={new Set()}
         onUnlockIdentification={jest.fn()}
         savingSection={null}
-        planCatalog={[]}
-        additionalProducts={[]}
-        additionalServices={[]}
         actionMessage={null}
         actionMessageTone="info"
         onDocumentSupportSaved={jest.fn(async () => undefined)}

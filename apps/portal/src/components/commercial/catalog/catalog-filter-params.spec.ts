@@ -1,8 +1,11 @@
 import {
+  applyPlanCatalogFilters,
   applyProductCatalogFilters,
   applyServiceCatalogFilters,
+  DEFAULT_PLAN_CATALOG_FILTERS,
   DEFAULT_PRODUCT_CATALOG_FILTERS,
   DEFAULT_SERVICE_CATALOG_FILTERS,
+  parsePlanCatalogFilters,
   parseProductCatalogFilters,
   parseServiceCatalogFilters,
 } from './catalog-filter-params';
@@ -95,6 +98,77 @@ describe('catalog-filter-params', () => {
       expect(params.has('q')).toBe(false);
       expect(params.has('status')).toBe(false);
       expect(params.has('charge')).toBe(false);
+    });
+  });
+
+  describe('parsePlanCatalogFilters / applyPlanCatalogFilters', () => {
+    it('usa defaults cuando no hay query', () => {
+      expect(parsePlanCatalogFilters(new URLSearchParams())).toEqual(DEFAULT_PLAN_CATALOG_FILTERS);
+    });
+
+    it('hidrata q, status y missingPrice; descarta inválidos', () => {
+      expect(
+        parsePlanCatalogFilters(
+          new URLSearchParams({
+            q: '  gpon  ',
+            status: 'ACTIVE',
+            missingPrice: '1',
+            tab: 'plans',
+            focus: 'plan-uuid',
+            offerStatus: 'AT_RISK',
+          }),
+        ),
+      ).toEqual({
+        q: 'gpon',
+        status: 'ACTIVE',
+        missingPrice: true,
+      });
+
+      expect(
+        parsePlanCatalogFilters(
+          new URLSearchParams({
+            status: 'NOPE',
+            missingPrice: '0',
+          }),
+        ),
+      ).toEqual(DEFAULT_PLAN_CATALOG_FILTERS);
+
+      expect(parsePlanCatalogFilters(new URLSearchParams({ missingPrice: 'true' }))).toEqual({
+        ...DEFAULT_PLAN_CATALOG_FILTERS,
+        missingPrice: true,
+      });
+    });
+
+    it('omite defaults y preserva tab, focus y offerStatus', () => {
+      const params = new URLSearchParams({
+        tab: 'plans',
+        focus: 'abc',
+        offerStatus: 'AT_RISK',
+        q: 'old',
+        status: 'ACTIVE',
+        missingPrice: '1',
+      });
+      applyPlanCatalogFilters(params, DEFAULT_PLAN_CATALOG_FILTERS);
+
+      expect(params.get('tab')).toBe('plans');
+      expect(params.get('focus')).toBe('abc');
+      expect(params.get('offerStatus')).toBe('AT_RISK');
+      expect(params.has('q')).toBe(false);
+      expect(params.has('status')).toBe(false);
+      expect(params.has('missingPrice')).toBe(false);
+    });
+
+    it('serializa solo filtros no default', () => {
+      const params = new URLSearchParams({ tab: 'plans', focus: 'keep-me' });
+      applyPlanCatalogFilters(params, {
+        q: 'fibra',
+        status: 'INACTIVE',
+        missingPrice: true,
+      });
+
+      expect(params.toString()).toBe(
+        'tab=plans&focus=keep-me&q=fibra&status=INACTIVE&missingPrice=1',
+      );
     });
   });
 });

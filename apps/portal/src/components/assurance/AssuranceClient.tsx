@@ -1,8 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ShieldAlert, Ticket, TimerReset, Wrench, Workflow } from 'lucide-react';
+import {
+  AlertTriangle,
+  Loader2,
+  ShieldAlert,
+  Ticket,
+  TimerReset,
+  Wrench,
+  Workflow,
+} from 'lucide-react';
 import {
   Badge,
   Button,
@@ -13,6 +21,7 @@ import {
   DialogTitle,
 } from '@iwana/ui';
 import { UserRole, TicketFieldDecision } from '@iwana/shared';
+import type { ListMeta } from '@iwana/shared';
 import type {
   AddAssuranceCommentDto,
   AssuranceDashboardSummary,
@@ -28,6 +37,9 @@ import type {
   TransitionAssuranceTicketDto,
 } from '@/lib/api-client';
 import { ApiError, assuranceApi, usersApi } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -46,6 +58,8 @@ import { AssuranceSectionCard } from './assurance-ui';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 
 const USERS_PAGE_SIZE = 100;
+const TICKET_FILTER_KEYS = ['status', 'priority', 'type', 'queueName'] as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
 
 function mapAssuranceError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -67,10 +81,6 @@ function mapAssuranceViewError(error: unknown): string {
   }
 
   return mapAssuranceError(error);
-}
-
-function buildDefaultFilters(): ListAssuranceTicketsParams {
-  return { page: 1, limit: 20 };
 }
 
 async function loadOperationalUsers(): Promise<InternalUser[]> {
@@ -106,20 +116,37 @@ function AssuranceSkeleton() {
   );
 }
 
-export function AssuranceClient() {
+function AssuranceClientInner() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
-  const [filters, setFilters] = useState<ListAssuranceTicketsParams>(() => buildDefaultFilters());
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+
+  const {
+    page,
+    pageSize,
+    filters: urlFilters,
+    setPage,
+    setPageSize,
+    setFilters,
+    setQuery,
+  } = useTableQueryState({
+    filterKeys: TICKET_FILTER_KEYS,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
+
   const [searchValue, setSearchValue] = useState('');
   const [summary, setSummary] = useState<AssuranceDashboardSummary | null>(null);
   const [tickets, setTickets] = useState<AssuranceTicket[]>([]);
-  const [totalTickets, setTotalTickets] = useState(0);
+  const [ticketsMeta, setTicketsMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [assignees, setAssignees] = useState<InternalUser[]>([]);
   const [slaPolicies, setSlaPolicies] = useState<AssuranceSlaPolicy[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryMessage, setSummaryMessage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -149,11 +176,32 @@ export function AssuranceClient() {
     user?.role === UserRole.ADMIN || user?.role === UserRole.NOC || user?.role === UserRole.SUPPORT;
   const canViewSummary = canManageAssurance;
   const assigneeLabelById = useMemo(
-    () => new Map(assignees.map((user) => [user.id, getAssuranceUserDisplayName(user)])),
+    () => new Map(assignees.map((entry) => [entry.id, getAssuranceUserDisplayName(entry)])),
     [assignees],
   );
 
-  const filteredTickets = useMemo(() => {
+  const listFilters = useMemo((): ListAssuranceTicketsParams => {
+    const next: ListAssuranceTicketsParams = {
+      page,
+      limit: pageSize,
+    };
+    if (urlFilters.status) {
+      next.status = urlFilters.status as ListAssuranceTicketsParams['status'];
+    }
+    if (urlFilters.priority) {
+      next.priority = urlFilters.priority as ListAssuranceTicketsParams['priority'];
+    }
+    if (urlFilters.type) {
+      next.type = urlFilters.type as ListAssuranceTicketsParams['type'];
+    }
+    if (urlFilters.queueName) {
+      next.queueName = urlFilters.queueName as ListAssuranceTicketsParams['queueName'];
+    }
+    return next;
+  }, [page, pageSize, urlFilters]);
+
+  /** Filtro local solo sobre la página actual — no miente al pie numerado. */
+  const visibleTickets = useMemo(() => {
     if (!searchValue.trim()) {
       return tickets;
     }
@@ -166,53 +214,125 @@ export function AssuranceClient() {
     );
   }, [searchValue, tickets]);
 
-  const loadData = useCallback(async () => {
-    if (!user || !canViewAssurance) {
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setSummaryMessage(null);
-
-    const [ticketsResult, usersResult, summaryResult, slaResult] = await Promise.allSettled([
-      assuranceApi.tickets.list(filters),
-      loadOperationalUsers(),
-      canViewSummary ? assuranceApi.dashboard.getSummary() : Promise.resolve(null),
-      canManageAssurance ? assuranceApi.slaPolicies.list() : Promise.resolve([]),
-    ]);
-
-    if (ticketsResult.status === 'rejected') {
-      setError(mapAssuranceViewError(ticketsResult.reason));
-      setTickets([]);
-      setTotalTickets(0);
-    } else {
-      setTickets(ticketsResult.value.data);
-      setTotalTickets(ticketsResult.value.total);
-    }
-
-    if (usersResult.status === 'fulfilled') {
-      setAssignees(usersResult.value);
-    }
-
-    if (summaryResult.status === 'fulfilled') {
-      setSummary(summaryResult.value);
-      if (!summaryResult.value) {
-        setSummaryMessage('Resumen no disponible para tu rol actual.');
+  const loadTicketsPage = useCallback(
+    async (params: ListAssuranceTicketsParams, opts?: { soft?: boolean; withChrome?: boolean }) => {
+      if (!user || !canViewAssurance) {
+        return;
       }
-    } else {
-      setSummary(null);
-      setSummaryMessage(mapAssuranceError(summaryResult.reason));
-    }
 
-    if (slaResult.status === 'fulfilled') {
-      setSlaPolicies(slaResult.value);
-    } else {
-      setSlaPolicies([]);
-    }
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      const withChrome = opts?.withChrome !== false;
 
-    setIsLoading(false);
-  }, [canManageAssurance, canViewAssurance, canViewSummary, filters, user]);
+      if (soft) {
+        setRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+      if (withChrome) {
+        setSummaryMessage(null);
+      }
+
+      try {
+        if (withChrome) {
+          const [ticketsResult, usersResult, summaryResult, slaResult] = await Promise.allSettled([
+            assuranceApi.tickets.list(params),
+            loadOperationalUsers(),
+            canViewSummary ? assuranceApi.dashboard.getSummary() : Promise.resolve(null),
+            canManageAssurance ? assuranceApi.slaPolicies.list() : Promise.resolve([]),
+          ]);
+
+          if (ticketsResult.status === 'rejected') {
+            setError(mapAssuranceViewError(ticketsResult.reason));
+            setTickets([]);
+            setTicketsMeta(EMPTY_LIST_META);
+          } else {
+            const result = ticketsResult.value;
+            const nextMeta = normalizeListMeta(result.meta, {
+              dataLength: result.data.length,
+              ...(params.limit !== undefined ? { limit: params.limit } : {}),
+            });
+            const requestedPage = params.page ?? 1;
+            const totalPages = nextMeta.totalPages ?? 0;
+
+            if (totalPages > 0 && requestedPage > totalPages) {
+              if (!outOfRangeShownRef.current) {
+                outOfRangeShownRef.current = true;
+                setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+              }
+              setQuery({ page: totalPages }, { history: 'replace' });
+              return;
+            }
+
+            if (result.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+              const fallback = Math.max(1, totalPages || requestedPage - 1);
+              setQuery({ page: fallback }, { history: 'replace' });
+              return;
+            }
+
+            setTickets(result.data);
+            setTicketsMeta({
+              ...nextMeta,
+              page: nextMeta.page ?? requestedPage,
+              total: result.total ?? nextMeta.total,
+            });
+            hasLoadedOnceRef.current = true;
+          }
+
+          if (usersResult.status === 'fulfilled') {
+            setAssignees(usersResult.value);
+          }
+
+          if (summaryResult.status === 'fulfilled') {
+            setSummary(summaryResult.value);
+            if (!summaryResult.value) {
+              setSummaryMessage('Resumen no disponible para tu rol actual.');
+            }
+          } else {
+            setSummary(null);
+            setSummaryMessage(mapAssuranceError(summaryResult.reason));
+          }
+
+          if (slaResult.status === 'fulfilled') {
+            setSlaPolicies(slaResult.value);
+          } else {
+            setSlaPolicies([]);
+          }
+        } else {
+          const result = await assuranceApi.tickets.list(params);
+          const nextMeta = normalizeListMeta(result.meta, {
+            dataLength: result.data.length,
+            ...(params.limit !== undefined ? { limit: params.limit } : {}),
+          });
+          setTickets(result.data);
+          setTicketsMeta({
+            ...nextMeta,
+            page: nextMeta.page ?? params.page ?? 1,
+            total: result.total ?? nextMeta.total,
+          });
+          hasLoadedOnceRef.current = true;
+        }
+      } catch (loadError) {
+        setError(mapAssuranceViewError(loadError));
+        if (!soft) {
+          setTickets([]);
+          setTicketsMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [canManageAssurance, canViewAssurance, canViewSummary, setQuery, user],
+  );
+
+  const loadData = useCallback(async () => {
+    await loadTicketsPage(listFilters, { soft: true, withChrome: true });
+  }, [listFilters, loadTicketsPage]);
+
+  const handleLoadMoreTickets = useCallback(() => {
+    void setPage(page + 1);
+  }, [page, setPage]);
 
   const refreshSelectedTicket = useCallback(async (ticketId: string) => {
     const [ticketResult, commentsResult, timelineResult] = await Promise.allSettled([
@@ -239,8 +359,17 @@ export function AssuranceClient() {
       return;
     }
 
-    void loadData();
-  }, [authLoading, canViewAssurance, loadData, user]);
+    void loadTicketsPage(listFilters, { soft: true, withChrome: !hasLoadedOnceRef.current });
+  }, [authLoading, canViewAssurance, listFilters, loadTicketsPage, user]);
+
+  const pageCount = ticketsMeta.totalPages ?? (ticketsMeta.total > 0 ? 1 : 0);
+  const effectivePage = ticketsMeta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: ticketsMeta.limit || pageSize,
+    total: ticketsMeta.total,
+  });
+  const randomAccess = ticketsMeta.capabilities.randomAccess;
 
   const openTicket = useCallback(
     async (ticket: AssuranceTicket) => {
@@ -320,7 +449,7 @@ export function AssuranceClient() {
         subtitle="Opera tickets, SLA y escalamientos a campo sin salir del portal empresarial."
         actions={
           canManageAssurance ? (
-            <Button type="button" onClick={() => setIsCreateOpen(true)}>
+            <Button type="button" variant="primary" onClick={() => setIsCreateOpen(true)}>
               Nuevo ticket
             </Button>
           ) : undefined
@@ -333,6 +462,14 @@ export function AssuranceClient() {
       {error && (
         <PortalAlert variant="error" title="No fue posible cargar la vista" description={error} />
       )}
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
+      ) : null}
 
       {isLoading && tickets.length === 0 ? (
         <AssuranceSkeleton />
@@ -463,14 +600,41 @@ export function AssuranceClient() {
           </div>
 
           <AssuranceTicketsTable
-            tickets={filteredTickets}
-            total={totalTickets}
+            tickets={visibleTickets}
+            total={ticketsMeta.total}
             isLoading={isLoading}
-            filters={filters}
+            refreshing={refreshing}
+            randomAccess={randomAccess}
+            page={effectivePage}
+            pageCount={Math.max(1, pageCount)}
+            pageSize={pageSize}
+            from={from}
+            to={to}
+            hasMore={ticketsMeta.hasMore}
+            filters={listFilters}
             searchValue={searchValue}
             assigneeLabelById={assigneeLabelById}
-            onFiltersChange={(nextFilters) => setFilters({ ...nextFilters, page: 1, limit: 20 })}
+            onFiltersChange={(nextFilters) => {
+              setFilters({
+                status: nextFilters.status ?? null,
+                priority: nextFilters.priority ?? null,
+                type: nextFilters.type ?? null,
+                queueName: nextFilters.queueName ?? null,
+              });
+            }}
             onSearchChange={setSearchValue}
+            onClearFilters={() => {
+              setSearchValue('');
+              setFilters({
+                status: null,
+                priority: null,
+                type: null,
+                queueName: null,
+              });
+            }}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            onLoadMore={handleLoadMoreTickets}
             onOpenTicket={(ticket) => {
               setFeedback(null);
               void openTicket(ticket);
@@ -638,5 +802,26 @@ export function AssuranceClient() {
         }}
       />
     </div>
+  );
+}
+
+export function AssuranceClient() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <PageHeader
+            title="Mesa de ayuda"
+            subtitle="Cargando tickets, SLA y trazabilidad operativa de la empresa autenticada"
+          />
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            Cargando mesa de ayuda...
+          </div>
+        </div>
+      }
+    >
+      <AssuranceClientInner />
+    </Suspense>
   );
 }

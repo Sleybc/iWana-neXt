@@ -3,11 +3,35 @@ import userEvent from '@testing-library/user-event';
 import {
   PortalAlert,
   PortalDataTableHead,
+  PortalDataTableSortableHead,
   PortalEmptyState,
+  PortalPageSizeSelect,
+  PortalResultsStrip,
   PortalSidePeek,
   PortalSuccessAlert,
+  PortalTablePagination,
+  PortalTablePager,
+  buildPageWindow,
+  PORTAL_DEFAULT_PAGE_SIZE,
+  PORTAL_PAGE_SIZE_OPTIONS,
 } from './portal-ui';
+import { USERS_PAGE_SIZE } from '@/components/users/users-query';
 
+function mockMatchMediaSmUp(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: query.includes('640') ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }),
+  });
+}
 describe('portal-ui', () => {
   it('should expose polite live regions by default for success alerts', () => {
     render(
@@ -213,5 +237,332 @@ describe('PortalSuccessAlert', () => {
     render(<PortalSuccessAlert description="Promoción desactivada." onDismiss={jest.fn()} />);
 
     expect(screen.getByText('Promoción desactivada.')).toBeInTheDocument();
+  });
+});
+
+describe('PortalTablePagination', () => {
+  it('no renderiza nada si !hasMore', () => {
+    const { container } = render(
+      <PortalTablePagination hasMore={false} onLoadMore={jest.fn()} loading={false} />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+  });
+
+  it('muestra el botón Cargar más cuando hasMore', async () => {
+    const user = userEvent.setup();
+    const onLoadMore = jest.fn();
+
+    render(
+      <PortalTablePagination
+        hasMore={true}
+        onLoadMore={onLoadMore}
+        loading={false}
+        shown={20}
+        total={48}
+        resourceLabel="usuarios"
+      />,
+    );
+
+    expect(screen.queryByText(/Mostrando 20 de 48/i)).toHaveClass('sr-only');
+    const button = screen.getByRole('button', { name: 'Cargar más' });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('deshabilita el botón mientras loading', () => {
+    render(<PortalTablePagination hasMore={true} onLoadMore={jest.fn()} loading={true} />);
+
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeDisabled();
+  });
+});
+
+describe('PORTAL_PAGE_SIZE_OPTIONS', () => {
+  it('alineado a USERS_PAGE_SIZE / default 20', () => {
+    expect(PORTAL_PAGE_SIZE_OPTIONS).toEqual([10, 20, 50]);
+    expect(PORTAL_DEFAULT_PAGE_SIZE).toBe(20);
+    expect(USERS_PAGE_SIZE).toBe(PORTAL_DEFAULT_PAGE_SIZE);
+  });
+});
+
+describe('buildPageWindow', () => {
+  it('lista todas las páginas cuando caben', () => {
+    expect(buildPageWindow(1, 5)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('inserta elipsis en extremos', () => {
+    expect(buildPageWindow(5, 12)).toEqual([1, 'ellipsis', 4, 5, 6, 'ellipsis', 12]);
+  });
+});
+
+describe('PortalResultsStrip', () => {
+  it('sin controls conserva justify-end vía clase', () => {
+    const { container } = render(<PortalResultsStrip badge={<span>20 usuarios</span>} />);
+    expect(container.firstChild).toHaveClass('justify-end');
+    expect(screen.getByText('20 usuarios')).toBeInTheDocument();
+  });
+
+  it('con controls usa justify-between', () => {
+    const { container } = render(
+      <PortalResultsStrip
+        controls={<button type="button">Filtro</button>}
+        badge={<span>badge</span>}
+      />,
+    );
+    expect(container.firstChild).toHaveClass('justify-between');
+    expect(screen.getByRole('button', { name: 'Filtro' })).toBeInTheDocument();
+  });
+});
+
+describe('PortalTablePager', () => {
+  const resource = { singular: 'usuario', plural: 'usuarios' };
+
+  it('no renderiza pie con cero resultados', () => {
+    const { container } = render(
+      <PortalTablePager
+        page={1}
+        pageCount={0}
+        onPageChange={jest.fn()}
+        from={0}
+        to={0}
+        total={0}
+        resource={resource}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('página única: solo conteo, sin navegación', () => {
+    render(
+      <PortalTablePager
+        page={1}
+        pageCount={1}
+        onPageChange={jest.fn()}
+        from={1}
+        to={12}
+        total={12}
+        resource={resource}
+      />,
+    );
+    expect(screen.getAllByText('12 usuarios').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it('muestra rango, nav y aria-current en la página activa', async () => {
+    const user = userEvent.setup();
+    const onPageChange = jest.fn();
+    render(
+      <PortalTablePager
+        page={3}
+        pageCount={7}
+        onPageChange={onPageChange}
+        from={41}
+        to={60}
+        total={128}
+        resource={resource}
+      />,
+    );
+
+    expect(
+      screen.getAllByText('Mostrando 41\u201360 de 128 usuarios').length,
+    ).toBeGreaterThanOrEqual(1);
+    const nav = screen.getByRole('navigation', { name: 'Paginación de usuarios' });
+    expect(nav).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Página 3' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(onPageChange).toHaveBeenCalledWith(4);
+  });
+
+  it('deshabilita controles y marca aria-busy en loading', () => {
+    render(
+      <PortalTablePager
+        page={2}
+        pageCount={5}
+        onPageChange={jest.fn()}
+        from={21}
+        to={40}
+        total={90}
+        resource={resource}
+        loading
+      />,
+    );
+    const nav = screen.getByRole('navigation');
+    expect(nav).toHaveAttribute('aria-busy', 'true');
+    expect(nav).toHaveAttribute('data-loading', 'true');
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
+  });
+
+  it('un solo resultado usa singular', () => {
+    render(
+      <PortalTablePager
+        page={1}
+        pageCount={1}
+        onPageChange={jest.fn()}
+        from={1}
+        to={1}
+        total={1}
+        resource={resource}
+      />,
+    );
+    expect(screen.getAllByText('1\u20131 de 1 usuario').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('total estimado antepone «más de»', () => {
+    render(
+      <PortalTablePager
+        page={3}
+        pageCount={50}
+        onPageChange={jest.fn()}
+        from={41}
+        to={60}
+        total={1000}
+        resource={resource}
+        totalIsEstimate
+      />,
+    );
+    expect(
+      screen.getAllByText(/Mostrando 41\u201360 de m\u00e1s de/).length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it('permanece montado tras paginar (sin CLS de desmontaje)', async () => {
+    const user = userEvent.setup();
+    const onPageChange = jest.fn();
+    const { rerender } = render(
+      <PortalTablePager
+        page={1}
+        pageCount={3}
+        onPageChange={onPageChange}
+        from={1}
+        to={20}
+        total={55}
+        resource={resource}
+      />,
+    );
+    const nav = screen.getByRole('navigation');
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    rerender(
+      <PortalTablePager
+        page={2}
+        pageCount={3}
+        onPageChange={onPageChange}
+        from={21}
+        to={40}
+        total={55}
+        resource={resource}
+      />,
+    );
+    expect(screen.getByRole('navigation')).toBe(nav);
+  });
+});
+
+describe('PortalPageSizeSelect', () => {
+  it('usa Select de @iwana/ui con etiqueta Filas por página', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    render(<PortalPageSizeSelect value={20} onChange={onChange} />);
+
+    expect(screen.getByText('Filas por página')).toBeInTheDocument();
+    const trigger = screen.getByRole('combobox');
+    await user.click(trigger);
+    const option = await screen.findByRole('option', { name: '50' });
+    await user.click(option);
+    expect(onChange).toHaveBeenCalledWith(50);
+  });
+});
+
+describe('PortalDataTableSortableHead', () => {
+  beforeEach(() => {
+    mockMatchMediaSmUp(true);
+  });
+
+  it('cicla sin orden → asc → desc → sin orden y fija aria-sort', async () => {
+    const user = userEvent.setup();
+    const onSortChange = jest.fn();
+
+    const { rerender } = render(
+      <table>
+        <thead>
+          <tr>
+            <PortalDataTableSortableHead field="name" activeSort={null} onSortChange={onSortChange}>
+              Nombre
+            </PortalDataTableSortableHead>
+            <PortalDataTableHead>Estado</PortalDataTableHead>
+          </tr>
+        </thead>
+      </table>,
+    );
+
+    const sortable = screen.getByRole('columnheader', { name: /Nombre/i });
+    expect(sortable).toHaveAttribute('aria-sort', 'none');
+    expect(screen.getByRole('columnheader', { name: 'Estado' })).not.toHaveAttribute('aria-sort');
+
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Nombre, ascendente' }));
+    expect(onSortChange).toHaveBeenLastCalledWith({ by: 'name', dir: 'asc' });
+
+    rerender(
+      <table>
+        <thead>
+          <tr>
+            <PortalDataTableSortableHead
+              field="name"
+              activeSort={{ by: 'name', dir: 'asc' }}
+              onSortChange={onSortChange}
+            >
+              Nombre
+            </PortalDataTableSortableHead>
+          </tr>
+        </thead>
+      </table>,
+    );
+    expect(screen.getByRole('columnheader')).toHaveAttribute('aria-sort', 'ascending');
+    await user.click(screen.getByRole('button', { name: 'Ordenar por Nombre, descendente' }));
+    expect(onSortChange).toHaveBeenLastCalledWith({ by: 'name', dir: 'desc' });
+
+    rerender(
+      <table>
+        <thead>
+          <tr>
+            <PortalDataTableSortableHead
+              field="name"
+              activeSort={{ by: 'name', dir: 'desc' }}
+              onSortChange={onSortChange}
+            >
+              Nombre
+            </PortalDataTableSortableHead>
+          </tr>
+        </thead>
+      </table>,
+    );
+    expect(screen.getByRole('columnheader')).toHaveAttribute('aria-sort', 'descending');
+    await user.click(screen.getByRole('button', { name: 'Quitar orden por Nombre' }));
+    expect(onSortChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('deshabilita el control en loading sin desmontarlo', () => {
+    render(
+      <table>
+        <thead>
+          <tr>
+            <PortalDataTableSortableHead
+              field="name"
+              activeSort={{ by: 'name', dir: 'asc' }}
+              onSortChange={jest.fn()}
+              loading
+            >
+              Nombre
+            </PortalDataTableSortableHead>
+          </tr>
+        </thead>
+      </table>,
+    );
+    expect(screen.getByRole('button', { name: /Ordenar por Nombre/ })).toBeDisabled();
   });
 });

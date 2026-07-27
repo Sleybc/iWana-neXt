@@ -227,12 +227,25 @@ describe('ContractsService', () => {
     it('retorna lista de contratos del subscriber', async () => {
       const contracts = [buildContract(), buildContract({ id: 'ctr-2' })];
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({ manager: { find: async () => contracts } }),
+        cb({
+          manager: {
+            createQueryBuilder: () => ({
+              where: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest.fn().mockResolvedValue([contracts, 2]),
+            }),
+          },
+        }),
       );
 
       const result = await service.findAllBySubscriber('sub-1');
 
-      expect(result).toHaveLength(2);
+      expect(result.data).toHaveLength(2);
+      expect(result.meta.total).toBe(2);
+      expect(result.meta.capabilities.sortableFields).toEqual([]);
     });
   });
 

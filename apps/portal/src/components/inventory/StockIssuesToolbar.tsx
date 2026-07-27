@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Button, Input, Select } from '@iwana/ui';
 import { StockIssueStatus, StockIssueType } from '@iwana/shared';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
@@ -16,6 +17,7 @@ interface StockIssuesToolbarProps {
   resultCount: number;
   totalCount: number;
   isRefreshing?: boolean;
+  hideResultsLabel?: boolean;
   onFiltersChange: (filters: StockIssueFilters) => void;
   onRefresh: () => void;
   onClearFilters: () => void;
@@ -58,6 +60,7 @@ export function StockIssuesToolbar({
   resultCount,
   totalCount,
   isRefreshing = false,
+  hideResultsLabel = false,
   onFiltersChange,
   onRefresh,
   onClearFilters,
@@ -71,6 +74,29 @@ export function StockIssuesToolbar({
         ? 'Sin resultados con estos filtros'
         : `${resultCount} salida${resultCount === 1 ? '' : 's'}${resultCount !== totalCount ? ` de ${totalCount}` : ''}`;
 
+  const urlSearch = filters.search ?? '';
+  const [searchDraft, setSearchDraft] = useState(urlSearch);
+
+  useEffect(() => {
+    setSearchDraft(urlSearch);
+  }, [urlSearch]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const trimmed = searchDraft.trim();
+      const current = (filters.search ?? '').trim();
+      if (trimmed === current) return;
+      const next = { ...filters };
+      if (trimmed) {
+        next.search = trimmed;
+      } else {
+        delete next.search;
+      }
+      onFiltersChange(next);
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchDraft]); // eslint-disable-line react-hooks/exhaustive-deps -- solo debounce searchDraft
+
   function removeChip(key: keyof StockIssueFilters) {
     const next = { ...filters };
     delete next[key];
@@ -80,7 +106,11 @@ export function StockIssuesToolbar({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="text-sm text-gray-600 dark:text-gray-300">{resultsLabel}</p>
+        {hideResultsLabel ? (
+          <span />
+        ) : (
+          <p className="text-sm text-gray-600 dark:text-gray-300">{resultsLabel}</p>
+        )}
         <Button
           type="button"
           variant="secondary"
@@ -121,8 +151,8 @@ export function StockIssuesToolbar({
           id="issue-filter-search"
           label="Buscar"
           placeholder="Ubicación o referencia…"
-          value={filters.search ?? ''}
-          onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}
+          value={searchDraft}
+          onChange={(event) => setSearchDraft(event.target.value)}
         />
       </div>
 

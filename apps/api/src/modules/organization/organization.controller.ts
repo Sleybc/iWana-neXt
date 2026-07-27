@@ -12,9 +12,18 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import {
+  ApiBearerAuth,
+  ApiExtraModels,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AccessPermissionKey, UserRole, type ListResponse } from '@iwana/shared';
+import { ListMetaDto } from '../../common/pagination';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { CrmListLimitPipe, CrmListPagePipe } from '../crm/pipes/crm-list-pagination.pipe';
 import { Permissions } from '../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -23,6 +32,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   CreateOrganizationSiteDto,
+  ListOrganizationSitesQueryDto,
   replaceSiteAssignmentsSchema,
   replaceSiteBusinessHoursSchema,
   replaceSiteResponsibilitiesSchema,
@@ -38,6 +48,7 @@ import {
   UpdateOrganizationSiteDto,
 } from './dto/organization-site.dto';
 import { OrganizationService } from './organization.service';
+import type { OrganizationSiteSummary } from './ports/organization-site-read.port';
 
 type AuthenticatedRequest = {
   user: JwtPayload;
@@ -73,10 +84,18 @@ export class OrganizationController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.ACCOUNTANT, UserRole.HR)
   @Permissions(AccessPermissionKey.ORGANIZATION_SITES_READ)
   @ApiOperation({ summary: 'Listar sedes organizacionales del tenant' })
+  @ApiExtraModels(ListOrganizationSitesQueryDto, ListMetaDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   @ApiResponse({ status: 200, description: 'Listado de sedes disponible.' })
-  async findAll() {
-    const data = await this.organizationService.findAll();
-    return { data };
+  async findAll(
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ): Promise<ListResponse<OrganizationSiteSummary>> {
+    return this.organizationService.findAll({
+      ...(page !== undefined ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
   }
 
   @Post('sites')

@@ -29,8 +29,13 @@ describe('TaxDefinitionService', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      clone: jest.fn(),
+      getCount: jest.fn().mockResolvedValue(0),
       getMany: jest.fn().mockResolvedValue([]),
     };
+    mockQb.clone.mockReturnValue(mockQb);
 
     mockQr = {
       manager: {
@@ -390,8 +395,9 @@ describe('TaxDefinitionService', () => {
   });
 
   describe('findAll', () => {
-    it('should return empty list when no definitions found', async () => {
+    it('should return empty paginated list when no definitions found', async () => {
       mockQb.getMany.mockResolvedValue([]);
+      mockQb.getCount.mockResolvedValue(0);
 
       const query: ListTaxDefinitionQueryDto = {};
       const result = await service.findAll(query);
@@ -404,12 +410,14 @@ describe('TaxDefinitionService', () => {
         isActive: true,
       });
       expect(mockQb.orderBy).toHaveBeenCalledWith('td.code', 'ASC');
-      expect(result).toEqual([]);
+      expect(mockQb.take).toHaveBeenCalledWith(21);
+      expect(result).toEqual({ data: [], meta: { nextCursor: null, total: 0 } });
     });
 
     it('should apply filters when provided', async () => {
       const entities = [buildTaxDef(), buildTaxDef({ id: 'def-002', code: 'ICA_10' })];
       mockQb.getMany.mockResolvedValue(entities);
+      mockQb.getCount.mockResolvedValue(2);
 
       const query: ListTaxDefinitionQueryDto = {
         category: TaxCategory.VAT,
@@ -430,7 +438,9 @@ describe('TaxDefinitionService', () => {
       expect(mockQb.andWhere).toHaveBeenCalledWith('td.origin = :origin', {
         origin: TaxOrigin.CUSTOM,
       });
-      expect(result).toEqual(entities);
+      expect(result.data).toEqual(entities);
+      expect(result.meta.total).toBe(2);
+      expect(result.meta.nextCursor).toBeNull();
     });
 
     it('should include inactive when isActive=false', async () => {
@@ -439,6 +449,7 @@ describe('TaxDefinitionService', () => {
         buildTaxDef({ id: 'def-002', isActive: false }),
       ];
       mockQb.getMany.mockResolvedValue(entities);
+      mockQb.getCount.mockResolvedValue(2);
 
       const query: ListTaxDefinitionQueryDto = { isActive: false };
       await service.findAll(query);
@@ -447,6 +458,21 @@ describe('TaxDefinitionService', () => {
       expect(mockQb.andWhere).not.toHaveBeenCalledWith('td.is_active = :isActive', {
         isActive: true,
       });
+    });
+
+    it('indica nextCursor cuando hay más definiciones que el limit', async () => {
+      const entities = [
+        buildTaxDef({ id: 'def-1', code: 'A' }),
+        buildTaxDef({ id: 'def-2', code: 'B' }),
+        buildTaxDef({ id: 'def-3', code: 'C' }),
+      ];
+      mockQb.getMany.mockResolvedValue(entities);
+      mockQb.getCount.mockResolvedValue(3);
+
+      const result = await service.findAll({ limit: 2 });
+      expect(result.data).toHaveLength(2);
+      expect(result.meta.total).toBe(3);
+      expect(result.meta.nextCursor).toBeTruthy();
     });
   });
 });

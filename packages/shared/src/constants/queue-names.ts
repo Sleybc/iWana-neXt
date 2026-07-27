@@ -26,3 +26,9 @@ export const ASSURANCE_FIELD_SERVICE_QUEUE = 'assurance-field-service';
 
 /** Cola de alta masiva de usuarios de tenant (MOD04 Ola C / H-06) */
 export const USERS_BULK_CREATE_QUEUE = 'users-bulk-create';
+
+/** Eventos outbox tenant-aware de MOD11/MOD09/MOD12. */
+export const OPERATIONS_EXECUTION_EVENTS_QUEUE = 'operations-execution-events';
+export const OPERATIONS_EXECUTION_RELAY_QUEUE = 'operations-execution-relay';
+export const OPERATIONS_EXECUTION_TOMBSTONE_QUEUE = 'operations-execution-tombstone';
+export const OPERATIONS_EXECUTION_DLQ = 'operations-execution-dlq';

@@ -22,6 +22,7 @@ import {
   InventoryResponsibleType,
   SerializedAssetStatus,
   StockMovementOrigin,
+  type ListResponse,
 } from '@iwana/shared';
 import {
   GetSerializedAssetDetailQueryInput,
@@ -30,6 +31,8 @@ import {
   ListSerializedAssetsQuerySchema,
   ListUsefulLifeAlertsQueryInput,
   ListUsefulLifeAlertsQuerySchema,
+  SerializedAssetPickerSearchQueryInput,
+  SerializedAssetPickerSearchQuerySchema,
 } from '../dto';
 import {
   SerializedAssetDetailRecord,
@@ -37,8 +40,22 @@ import {
   UsefulLifeStatus,
 } from '../types/serialized-asset-detail.types';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
+import {
+  assertExclusivePageCursor,
+  buildCursorMeta,
+  buildPageMeta,
+  clampInventoryLimit,
+  clampPickerSearchLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  escapePickerLikePattern,
+  normalizePickerQuery,
+  sliceDateIdDescPage,
+  type PickerSearchResult,
+} from '../../../common/pagination';
 import { AssetLifecycleService } from './asset-lifecycle.service';
 import { AssetLoanService } from './asset-loan.service';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   USEFUL_LIFE_ALERT_THRESHOLD_MONTHS,
   calculateUsefulLife,
@@ -130,15 +147,18 @@ export class SerializedAssetService {
     private readonly assetLoanService: AssetLoanService,
   ) {}
 
-  async list(query: ListSerializedAssetsQueryInput): Promise<SerializedAsset[]> {
+  async list(query: ListSerializedAssetsQueryInput): Promise<ListResponse<SerializedAsset>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListSerializedAssetsQuerySchema.parse(query);
+    assertExclusivePageCursor(validated);
+    const limit = clampInventoryLimit(validated.limit);
+    const usePage = validated.page !== undefined;
+    const page = usePage ? clampPage(validated.page!, limit).page : 1;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(SerializedAsset, 'asset')
-        .where('asset.tenant_id = :tenantId', { tenantId })
-        .orderBy('asset.updated_at', 'DESC');
+        .where('asset.tenant_id = :tenantId', { tenantId });
 
       if (validated.itemId) {
         qb.andWhere('asset.inventory_item_id = :itemId', { itemId: validated.itemId });
@@ -160,7 +180,114 @@ export class SerializedAssetService {
         });
       }
 
-      return qb.getMany();
+      const total = await qb.clone().getCount();
+
+      qb.orderBy('asset.updated_at', 'DESC').addOrderBy('asset.id', 'DESC');
+
+      if (usePage) {
+        const rows = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getMany();
+        return {
+          data: rows,
+          meta: buildPageMeta({
+            total,
+            page,
+            limit,
+            randomAccess: false,
+            sortableFields: [],
+          }),
+        };
+      }
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('asset', 'updated_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb.take(limit + 1).getMany();
+
+      const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.updatedAt);
+      return {
+        data,
+        meta: buildCursorMeta({
+          nextCursor,
+          total,
+          limit,
+        }),
+      };
+    });
+  }
+
+  /**
+   * Lookup typeahead E-4 para activos serializados.
+   * Label = serial / asset tag; sublabel = SKU del ítem (sin enum de estado).
+   */
+  async searchForPicker(query: SerializedAssetPickerSearchQueryInput): Promise<PickerSearchResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = SerializedAssetPickerSearchQuerySchema.parse(query);
+    const limit = clampPickerSearchLimit(validated.limit);
+    const q = normalizePickerQuery(validated.q);
+
+    if (!q) {
+      return { data: [], total: 0 };
+    }
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const like = `%${escapePickerLikePattern(q.toLowerCase())}%`;
+      const qb = qr.manager
+        .createQueryBuilder(SerializedAsset, 'asset')
+        .leftJoin(InventoryItem, 'item', 'item.id = asset.inventory_item_id')
+        .addSelect(['item.sku', 'item.name'])
+        .where('asset.tenant_id = :tenantId', { tenantId })
+        .andWhere(
+          `(
+            LOWER(COALESCE(asset.serial_number, '')) LIKE :like ESCAPE '\\'
+            OR LOWER(COALESCE(asset.asset_tag, '')) LIKE :like ESCAPE '\\'
+            OR LOWER(COALESCE(asset.mac_address, '')) LIKE :like ESCAPE '\\'
+            OR LOWER(COALESCE(item.sku, '')) LIKE :like ESCAPE '\\'
+            OR LOWER(COALESCE(item.name, '')) LIKE :like ESCAPE '\\'
+          )`,
+          { like },
+        );
+
+      const total = await qb.clone().getCount();
+      const rows = await qb
+        .orderBy('asset.serial_number', 'ASC', 'NULLS LAST')
+        .addOrderBy('asset.id', 'ASC')
+        .take(limit)
+        .getMany();
+
+      // Re-fetch with item sku via raw map — getMany con leftJoin select parcial
+      // no hidrata item. Consulta ligera de SKUs para la página.
+      const itemIds = [...new Set(rows.map((r) => r.inventoryItemId))];
+      const items =
+        itemIds.length === 0
+          ? []
+          : await qr.manager.find(InventoryItem, {
+              where: { tenantId, id: In(itemIds) },
+              select: ['id', 'sku', 'name'],
+            });
+      const skuByItemId = new Map(items.map((i) => [i.id, i.sku]));
+
+      return {
+        data: rows.map((asset) => {
+          const label =
+            asset.serialNumber?.trim() ||
+            asset.assetTag?.trim() ||
+            `Activo ${asset.id.slice(0, 8)}`;
+          const sku = skuByItemId.get(asset.inventoryItemId);
+          return {
+            id: asset.id,
+            label,
+            sublabel: sku ? `SKU ${sku}` : null,
+          };
+        }),
+        total,
+      };
     });
   }
 
@@ -220,12 +347,15 @@ export class SerializedAssetService {
         });
       }
 
-      qb.orderBy('asset.updated_at', 'DESC');
+      // DEF-1: desempate por id para paginación offset estable.
+      qb.orderBy('asset.updated_at', 'DESC').addOrderBy('asset.id', 'DESC');
+
+      const { page, limit: pageSize } = clampPage(validated.page, validated.pageSize);
 
       const total = await qb.getCount();
       const assets = await qb
-        .skip((validated.page - 1) * validated.pageSize)
-        .take(validated.pageSize)
+        .skip((page - 1) * pageSize)
+        .take(pageSize)
         .getMany();
 
       const itemIds = [...new Set(assets.map((asset) => asset.inventoryItemId))];
@@ -269,9 +399,9 @@ export class SerializedAssetService {
       return {
         data,
         total,
-        page: validated.page,
-        pageSize: validated.pageSize,
-        limit: validated.pageSize,
+        page,
+        pageSize,
+        limit: pageSize,
       };
     });
   }

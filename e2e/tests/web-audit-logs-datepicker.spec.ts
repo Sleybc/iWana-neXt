@@ -99,9 +99,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(1),
     );
-    await expect(
-      platformSection.getByText('No hay eventos que cumplan los filtros actuales.'),
-    ).toBeVisible();
+    await expect(platformSection.getByText('Sin eventos con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -117,9 +115,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(-10),
     );
-    await expect(
-      platformSection.getByText('No hay eventos que cumplan los filtros actuales.'),
-    ).toBeVisible();
+    await expect(platformSection.getByText('Sin eventos con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -147,9 +143,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(1),
     );
-    await expect(
-      tenantSection.getByText('No hay eventos que cumplan los filtros actuales.'),
-    ).toBeVisible();
+    await expect(tenantSection.getByText('Sin eventos con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -165,9 +159,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(-10),
     );
-    await expect(
-      tenantSection.getByText('No hay eventos que cumplan los filtros actuales.'),
-    ).toBeVisible();
+    await expect(tenantSection.getByText('Sin eventos con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -201,9 +193,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-3),
     );
-    await expect(
-      tenantSection.getByText('No hay eventos que cumplan los filtros actuales.'),
-    ).toBeVisible();
+    await expect(tenantSection.getByText('Sin eventos con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,

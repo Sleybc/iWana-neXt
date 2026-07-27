@@ -1,8 +1,8 @@
 # HLD - MOD09 Programacion / WFM
 
-**Version:** 1.1  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-19  
+**Version:** 1.2  
+**Estado:** En revision — baseline v1.1 aprobado; addendum v1.2 sujeto a ADR-068 (Aprobado)  
+**Fecha:** 2026-07-27  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md  
@@ -329,3 +329,31 @@ pnpm test:e2e:portal --grep "Programacion"
 | PII duplicada | Alto | Guardar referencias y direccion operativa minima; no documentos/telefonos. |
 | Solapamientos por zona horaria | Medio | Persistir `timestamptz` y validar rangos absolutos. |
 | UI calendario compleja | Medio | Fase 01 con calendario propio simple + lista operativa; no introducir libreria pesada sin decision. |
+
+---
+
+## 13. Addendum 2026-07-27 — proyeccion de ejecución en Agenda
+
+Este addendum supera la frase del §1 que atribuye al técnico la ejecución de una `WorkOrder` ligera desde el portal. En el objetivo nuevo, el técnico ejecuta `ExecutionOrder` de MOD11; la `WorkOrder` ligera es compatibilidad no operable.
+
+MOD09 no inyecta servicios ni repositorios privados de MOD11. El addendum consume un contrato de lectura/proyeccion y eventos definidos en ADR-068 (Aprobado).
+
+Componentes lógicos:
+
+- `ExecutionOrderProjectionConsumer`: aplica eventos idempotentes por tenant y version.
+- `ExecutionOrderProjectionReconciler`: detecta drift, lag y eventos agotados.
+- `OperationalSidePeek`: representa contexto, progreso y excepciones sin formularios de campo.
+- adaptador temporal de `WorkOrder` ligera: solo compatibilidad, sin autoridad terminal.
+
+Reglas:
+
+- jobs reciben `tenantId` explícito y abren transacción con `SET LOCAL search_path`;
+- `(tenantId, consumer, eventId)` evita efectos duplicados;
+- una version antigua no sobrescribe una nueva;
+- el lag se expone como estado operativo;
+- `VisitRequest` incorpora, mediante migracion reversible, `IN_EXECUTION`, `REQUIRES_RESCHEDULE` y `CLOSED`;
+- `SCHEDULED` no significa “ejecutada”.
+
+La migracion del enum PostgreSQL usa expand/contract y un `down` que recrea el tipo anterior con mapeo documentado: `IN_EXECUTION → SCHEDULED`, `REQUIRES_RESCHEDULE → READY_TO_SCHEDULE`, `CLOSED → SCHEDULED`. El audit trail conserva el significado previo; el rollback no se ejecuta si la perdida semantica no ha sido aceptada en el gate.
+
+**ADR requerido:** `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (Aprobado).

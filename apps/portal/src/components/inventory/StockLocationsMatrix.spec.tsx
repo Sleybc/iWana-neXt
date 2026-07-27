@@ -81,4 +81,23 @@ describe('StockLocationsMatrix', () => {
     expect(screen.getAllByText('3').length).toBeGreaterThan(0);
     expect(screen.getAllByText('7').length).toBeGreaterThan(0);
   });
+
+  it('ADR-064: alerta de ocupación parcial con CTA de balances', async () => {
+    const user = userEvent.setup();
+    const onLoadMoreBalances = jest.fn();
+
+    render(
+      <StockLocationsMatrix
+        locations={[makeLocation()]}
+        balances={[makeBalance()]}
+        items={[makeItem()]}
+        balancesHasMore
+        onLoadMoreBalances={onLoadMoreBalances}
+      />,
+    );
+
+    expect(screen.getByText('Ocupación parcial')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cargar más existencias' }));
+    expect(onLoadMoreBalances).toHaveBeenCalledTimes(1);
+  });
 });

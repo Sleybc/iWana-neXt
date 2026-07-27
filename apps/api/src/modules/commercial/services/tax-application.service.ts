@@ -7,6 +7,12 @@ import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { TaxRule } from '../entities/tax-rule.entity';
 import { TaxRuleApplication } from '../entities/tax-rule-application.entity';
 import { ITaxApplicationReadPort } from '../ports/tax-application-read.port';
+import {
+  buildDateIdNextCursor,
+  clampCommercialLimit,
+  CommercialPaginatedResult,
+  decodeDateIdCursor,
+} from '../../../common/pagination';
 
 /**
  * Servicio de resolución de aplicaciones tributarias.
@@ -223,12 +229,49 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
 
   // ─── CRUD de TaxRuleApplication ──────────────────────────────────────────
 
-  async listApplications(): Promise<TaxRuleApplication[]> {
+  /**
+   * Lista aplicaciones tributarias con paginación cursor (ADR-064 / P1).
+   * Orden: createdAt DESC, id DESC (priority se conserva en el payload; no forma el keyset).
+   */
+  async listApplications(
+    query: { cursor?: string; limit?: number } = {},
+  ): Promise<CommercialPaginatedResult<TaxRuleApplication>> {
     const { schemaName } = TenantContext.getOrThrow();
+    const limit = clampCommercialLimit(query.limit);
+    const { cursor } = query;
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      return qr.manager.find(TaxRuleApplication, {
-        order: { priority: 'ASC', createdAt: 'DESC' },
-      });
+      const qb = qr.manager.createQueryBuilder(TaxRuleApplication, 'app');
+      const total = await qb.clone().getCount();
+
+      if (cursor) {
+        const decoded = decodeDateIdCursor(cursor);
+        qb.andWhere(
+          '(app.created_at < :cursorDate OR (app.created_at = :cursorDate AND app.id < :cursorId))',
+          { cursorDate: decoded.d, cursorId: decoded.i },
+        );
+      }
+
+      const rows = await qb
+        .orderBy('app.created_at', 'DESC')
+        .addOrderBy('app.id', 'DESC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = rows.length > limit;
+      const page = hasNext ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+
+      return {
+        data: page,
+        meta: {
+          nextCursor: buildDateIdNextCursor(
+            hasNext,
+            last ? { date: last.createdAt, id: last.id } : undefined,
+          ),
+          total,
+        },
+      };
     });
   }
 
@@ -286,16 +329,51 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
   // ─── Listado / alta de TaxRule ───────────────────────────────────────────
 
   /**
-   * Lista las reglas tributarias del tenant para ser usadas en la UI
-   * del gestor de aplicaciones tributarias (TaxApplicationRulesManager).
+   * Lista las reglas tributarias del tenant con paginación cursor (ADR-064 / P1).
+   * Orden: createdAt DESC, id DESC.
    */
-  async listRules(): Promise<TaxRule[]> {
+  async listRules(
+    query: { cursor?: string; limit?: number } = {},
+  ): Promise<CommercialPaginatedResult<TaxRule>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const limit = clampCommercialLimit(query.limit);
+    const { cursor } = query;
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      return qr.manager.find(TaxRule, {
-        where: { tenantId },
-        order: { createdAt: 'DESC' },
-      });
+      const qb = qr.manager
+        .createQueryBuilder(TaxRule, 'rule')
+        .where('rule.tenant_id = :tenantId', { tenantId });
+
+      const total = await qb.clone().getCount();
+
+      if (cursor) {
+        const decoded = decodeDateIdCursor(cursor);
+        qb.andWhere(
+          '(rule.created_at < :cursorDate OR (rule.created_at = :cursorDate AND rule.id < :cursorId))',
+          { cursorDate: decoded.d, cursorId: decoded.i },
+        );
+      }
+
+      const rows = await qb
+        .orderBy('rule.created_at', 'DESC')
+        .addOrderBy('rule.id', 'DESC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = rows.length > limit;
+      const page = hasNext ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+
+      return {
+        data: page,
+        meta: {
+          nextCursor: buildDateIdNextCursor(
+            hasNext,
+            last ? { date: last.createdAt, id: last.id } : undefined,
+          ),
+          total,
+        },
+      };
     });
   }
 

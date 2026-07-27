@@ -55,6 +55,10 @@ interface TenantsTableProps {
   onSuspend?: (id: string) => void;
   onActivate?: (id: string) => void;
   onRetryProvisioning?: (id: string) => void;
+  /** ADR-064 analogía: hay más páginas en servidor (offset/limit). */
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 /** Clases CSS para pill badges por estado de tenant. */
@@ -216,6 +220,9 @@ export function TenantsTable({
   onSuspend,
   onActivate,
   onRetryProvisioning,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: TenantsTableProps) {
   const router = useRouter();
   const [internalSearch, setInternalSearch] = useState(searchQuery);
@@ -531,11 +538,30 @@ export function TenantsTable({
           </div>
         </div>
 
-        {filtered.length > 0 && (
-          <div className="border-t border-gray-100 px-6 py-3 dark:border-dark-border">
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              Mostrando {filtered.length} de {tenants.length} empresas en el directorio
-            </p>
+        {tenants.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-6 py-3 dark:border-dark-border">
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-iwana-secondary-700 dark:bg-dark-surface-3 dark:text-gray-300">
+              {hasMore && !hasActiveFilters
+                ? `${tenants.length} empresas cargadas`
+                : `${hasActiveFilters ? filtered.length : tenants.length} ${
+                    (hasActiveFilters ? filtered.length : tenants.length) === 1
+                      ? 'empresa'
+                      : 'empresas'
+                  }`}
+            </span>
+            {hasMore && onLoadMore && !hasActiveFilters ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="min-h-11"
+                loading={isLoadingMore}
+                disabled={isLoadingMore}
+                onClick={onLoadMore}
+              >
+                Cargar más
+              </Button>
+            ) : null}
           </div>
         )}
       </CardContent>

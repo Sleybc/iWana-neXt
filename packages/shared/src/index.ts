@@ -48,6 +48,7 @@ export * from './constants/users-bulk-job-names';
 // Contratos de payload entre procesos (API productor / Worker consumidor)
 export * from './contracts/queue-payloads';
 export * from './contracts/users-bulk-create.contract';
+export * from './contracts/operations/execution-orders';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

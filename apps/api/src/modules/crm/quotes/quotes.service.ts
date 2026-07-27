@@ -2,6 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
+import type { ListResponse } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { Quote } from './entities/quote.entity';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
@@ -40,11 +43,36 @@ export class QuotesService {
     });
   }
 
-  async findAll(): Promise<Quote[]> {
+  async findAll(
+    filters: {
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<ListResponse<Quote>> {
     const { schemaName } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(Quote, { order: { createdAt: 'DESC' } }),
-    );
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const [data, total] = await qr.manager
+        .createQueryBuilder(Quote, 'q')
+        .orderBy('q.createdAt', 'DESC')
+        .addOrderBy('q.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
+    });
   }
 
   async findOne(id: string): Promise<Quote> {

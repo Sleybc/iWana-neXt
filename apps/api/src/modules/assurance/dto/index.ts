@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Allow } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Allow, IsInt, Max, Min } from 'class-validator';
 import { z } from 'zod';
+import type { ListMeta } from '@iwana/shared';
 import {
   TicketFieldDecision,
   SlaBreachStatus,
@@ -106,6 +108,8 @@ export const ListTicketsQuerySchema = z.object({
   assignedUserId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  sortBy: z.string().optional(),
+  sortDir: z.enum(['asc', 'desc']).optional(),
 });
 
 export type CreateTicketInput = z.input<typeof CreateTicketSchema>;
@@ -357,19 +361,38 @@ export class ListTicketsQueryDto {
   assignedUserId?: string;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
-  @Allow()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   page?: number;
 
-  @ApiPropertyOptional({ default: 20, minimum: 1 })
-  @Allow()
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number;
+
+  @ApiPropertyOptional({
+    description: 'Campo por el cual ordenar (ADR-065 Ola 1). Vacío = orden por defecto.',
+  })
+  @Allow()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], description: 'Dirección de ordenamiento' })
+  @Allow()
+  sortDir?: 'asc' | 'desc';
 }
 
 export interface ListTicketsResponseDto {
   data: unknown[];
+  /** @deprecated Usar meta.total */
   total: number;
+  /** @deprecated Usar meta.page */
   page: number;
+  /** @deprecated Usar meta.limit */
   limit: number;
+  meta: ListMeta;
 }
 
 export const FindOrCreateInstallationTicketSchema = z.object({

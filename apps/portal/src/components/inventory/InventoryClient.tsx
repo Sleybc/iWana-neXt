@@ -45,21 +45,21 @@ import {
   type InventoryCatalogOptionRecord,
   type InventoryCategoryRecord,
   type InventoryItemRecord,
+  type InventoryListMeta,
   type InternalUser,
   inventoryApi,
   commercialApi,
-  type AdditionalProduct,
   type StockIssueRecord,
   type StockIssueDetailRecord,
   type CreateStockIssueDto,
   type UpdateStockIssueDto,
   type DispatchStockIssueDto,
-  type StockCountRecord,
   type StockCountDetailRecord,
   type CreateStockCountDto,
   type UpdateStockCountDto,
   type CreateStockLocationDto,
   type ListInventoryItemsParams,
+  type ReplenishmentSuggestionRecord,
   purchasingApi,
   type PurchaseOrderLineRecord,
   type PurchaseOrderRecord,
@@ -68,7 +68,6 @@ import {
   type RejectPurchaseRequestDto,
   type SerializedAssetRecord,
   type SerializedAssetDetailRecord,
-  type AssetLoanRecord,
   type StockBalanceRecord,
   type StockLocationRecord,
   type StockMovementResultRecord,
@@ -79,6 +78,7 @@ import {
   type UpdateInventoryCategoryDto,
   type UpdateSupplierDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { buildUserLabelMap, loadTenantUsers } from '@/lib/portal-user-options';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -108,16 +108,21 @@ import { SuppliersPanel } from './SuppliersPanel';
 import { SupplierFormDrawer } from './SupplierFormDrawer';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
 import { AssetsWorkspace, type AssetsSubview } from './AssetsWorkspace';
-import type { AssetLoanStatusFilter } from './AssetLoansPanel';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
 import { type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
+import {
+  EMPTY_LOCATION_MATRIX_FILTERS,
+  locationMatrixFiltersToListParams,
+  type LocationMatrixFilters,
+} from './location-matrix-filters';
 import { StockLocationsPanel } from './StockLocationsPanel';
 import { StockWorkspace, type StockSubview } from './StockWorkspace';
+import type { StockByProductServerFilters } from './StockByProductTable';
 
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
 import { StockCountsWorkspace } from './StockCountsWorkspace';
 import { MovementsWorkspace } from './MovementsWorkspace';
-import { WriteOffsPanel, type WriteOffHistoryStatusFilter } from './WriteOffsPanel';
+import { WriteOffsPanel } from './WriteOffsPanel';
 import type { StockKardexFilters } from './stock-kardex-filters';
 import {
   buildTakenCodePrefixSet,
@@ -130,14 +135,21 @@ import {
 import {
   STOCK_AVAILABLE_LABEL,
   STOCK_RESERVED_HELP_TEXT,
-  STOCK_RESERVED_LABEL,
   formatInventoryDate,
   formatInventoryQuantity,
   getSerializedAssetStatusLabel,
 } from './inventory-labels';
-import { buildStockOverviewRows } from './stock-overview';
 import { type CatalogFilters, EMPTY_CATALOG_FILTERS } from './catalog-filters';
 import { resolveInventoryTab, shouldOpenLocationCreateFromUrl } from './inventory-tab-params';
+import {
+  EMPTY_INVENTORY_LIST_META,
+  INVENTORY_LIST_PAGE_SIZE,
+  INVENTORY_SOFT_CAP_PAGE_SIZE,
+  drainInventoryBalances,
+  inventoryHasMore,
+  mergeById,
+} from './inventory-list-pagination';
+import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 
 export type InventoryTab =
   | 'catalog'
@@ -230,12 +242,27 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [items, setItems] = useState<InventoryItemRecord[]>([]);
   const [locations, setLocations] = useState<StockLocationRecord[]>([]);
   const [issues, setIssues] = useState<StockIssueRecord[]>([]);
-  const [counts, setCounts] = useState<StockCountRecord[]>([]);
   const [tenantUsers, setTenantUsers] = useState<InternalUser[]>([]);
   const [usersLoadError, setUsersLoadError] = useState<string | null>(null);
   const [assets, setAssets] = useState<SerializedAssetRecord[]>([]);
   const [balances, setBalances] = useState<StockBalanceRecord[]>([]);
   const [requests, setRequests] = useState<PurchaseRequestRecord[]>([]);
+  const [itemsMeta, setItemsMeta] = useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [balancesMeta, setBalancesMeta] = useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [locationsMeta, setLocationsMeta] = useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [issuesMeta, setIssuesMeta] = useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [requestsMeta, setRequestsMeta] = useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [catalogMeta, setCatalogMeta] = useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [isLoadingMoreCatalog, setIsLoadingMoreCatalog] = useState(false);
+  const [isLoadingMoreItems, setIsLoadingMoreItems] = useState(false);
+  const [isLoadingMoreLocations, setIsLoadingMoreLocations] = useState(false);
+  const [isLoadingMoreBalances, setIsLoadingMoreBalances] = useState(false);
+  const [isLoadingMoreIssues, setIsLoadingMoreIssues] = useState(false);
+  const [isLoadingMoreRequests, setIsLoadingMoreRequests] = useState(false);
+  const [isLoadingTabLists, setIsLoadingTabLists] = useState(false);
+  const [replenishmentPreview, setReplenishmentPreview] = useState<ReplenishmentSuggestionRecord[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,10 +279,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [isLoadingMoreAssetMovements, setIsLoadingMoreAssetMovements] = useState(false);
   const [assetsSubview, setAssetsSubview] = useState<AssetsSubview>('list');
   const [stockSubviewPrefill, setStockSubviewPrefill] = useState<StockSubview | null>(null);
-  const [loans, setLoans] = useState<AssetLoanRecord[]>([]);
-  const [isLoadingLoans, setIsLoadingLoans] = useState(false);
-  const [loansError, setLoansError] = useState<string | null>(null);
-  const [loanStatusFilter, setLoanStatusFilter] = useState<AssetLoanStatusFilter>('all');
   const [createRequestError, setCreateRequestError] = useState<string | null>(null);
   const [pendingComposerPrefill, setPendingComposerPrefill] =
     useState<PurchaseComposerInitialValues | null>(null);
@@ -322,13 +345,27 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [writeOffError, setWriteOffError] = useState<string | null>(null);
   const [writeOffSuccess, setWriteOffSuccess] = useState<string | null>(null);
   const [pendingWriteOffs, setPendingWriteOffs] = useState<InventoryWriteOffRecord[]>([]);
-  const [historyWriteOffs, setHistoryWriteOffs] = useState<InventoryWriteOffRecord[]>([]);
-  const [writeOffHistoryStatusFilter, setWriteOffHistoryStatusFilter] =
-    useState<WriteOffHistoryStatusFilter>('all');
+  const [writeOffHistoryRevision, setWriteOffHistoryRevision] = useState(0);
+  const [purchaseListRevision, setPurchaseListRevision] = useState(0);
+  const [issuesListRevision, setIssuesListRevision] = useState(0);
+  const [countsListRevision, setCountsListRevision] = useState(0);
+  const [suppliersListRevision, setSuppliersListRevision] = useState(0);
+  const [assetsListRevision, setAssetsListRevision] = useState(0);
+  const [stockProductFilters, setStockProductFilters] = useState<StockByProductServerFilters>({
+    search: '',
+    onlyBelowMinimum: false,
+    stockLocationId: '',
+  });
+  const [locationListFilters, setLocationListFilters] = useState<
+    Omit<LocationMatrixFilters, 'custodyFilter'>
+  >({
+    search: EMPTY_LOCATION_MATRIX_FILTERS.search,
+    typeFilter: EMPTY_LOCATION_MATRIX_FILTERS.typeFilter,
+    statusFilter: EMPTY_LOCATION_MATRIX_FILTERS.statusFilter,
+    stockFilter: EMPTY_LOCATION_MATRIX_FILTERS.stockFilter,
+  });
   const [isLoadingPendingWriteOffs, setIsLoadingPendingWriteOffs] = useState(false);
-  const [isLoadingHistoryWriteOffs, setIsLoadingHistoryWriteOffs] = useState(false);
   const [pendingWriteOffsError, setPendingWriteOffsError] = useState<string | null>(null);
-  const [historyWriteOffsError, setHistoryWriteOffsError] = useState<string | null>(null);
   const [writeOffActionError, setWriteOffActionError] = useState<string | null>(null);
   const [processingWriteOffId, setProcessingWriteOffId] = useState<string | null>(null);
   const [stockKardexPrefill, setStockKardexPrefill] = useState<Partial<StockKardexFilters> | null>(
@@ -368,17 +405,17 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [isSubmittingInlineCategory, setIsSubmittingInlineCategory] = useState(false);
   const [catalogSubView, setCatalogSubView] = useState<CatalogSubView>('products');
   const [categories, setCategories] = useState<InventoryCategoryRecord[]>([]);
+  const [categoriesMeta, setCategoriesMeta] =
+    useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
+  const [categoriesSearch, setCategoriesSearch] = useState('');
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isRefreshingCategories, setIsRefreshingCategories] = useState(false);
+  const [isLoadingMoreCategories, setIsLoadingMoreCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [categoryEditItem, setCategoryEditItem] = useState<InventoryCategoryRecord | null>(null);
   const [categorySubmitError, setCategorySubmitError] = useState<string | null>(null);
   const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
-  const [suppliers, setSuppliers] = useState<SupplierProfileRecord[]>([]);
-  const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false);
-  const [isRefreshingSuppliers, setIsRefreshingSuppliers] = useState(false);
-  const [suppliersError, setSuppliersError] = useState<string | null>(null);
   const [supplierDrawerOpen, setSupplierDrawerOpen] = useState(false);
   const [supplierEditItem, setSupplierEditItem] = useState<SupplierProfileRecord | null>(null);
   const [supplierSubmitError, setSupplierSubmitError] = useState<string | null>(null);
@@ -438,29 +475,30 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     setActiveTab('stock');
   }, []);
 
-  // Resumen y «Por producto» deben coincidir: ambos usan el disponible canónico
-  // (existencia − reservado) que calcula buildStockOverviewRows.
+  // Resumen: reposición desde API dedicada (no materializa catálogo+balances).
   const lowStockItems = useMemo(
     () =>
-      buildStockOverviewRows(items, balances)
-        .filter((row) => row.status === 'out' || row.status === 'below-minimum')
+      replenishmentPreview
+        .filter((row) => row.criticality === 'out' || row.criticality === 'below-minimum')
         .slice(0, 6),
-    [balances, items],
+    [replenishmentPreview],
   );
 
   const monitoredAssets = useMemo(
     () =>
-      assets.filter((asset) =>
-        [
-          SerializedAssetStatus.IN_REPAIR,
-          SerializedAssetStatus.IN_TESTING,
-          SerializedAssetStatus.LOST,
-        ].includes(asset.currentStatus),
-      ),
+      assets
+        .filter((asset) =>
+          [
+            SerializedAssetStatus.IN_REPAIR,
+            SerializedAssetStatus.IN_TESTING,
+            SerializedAssetStatus.LOST,
+          ].includes(asset.currentStatus),
+        )
+        .slice(0, 6),
     [assets],
   );
 
-  const loadData = useCallback(async (silent = false) => {
+  const loadBootstrap = useCallback(async (silent = false) => {
     if (silent) {
       setIsRefreshing(true);
     } else {
@@ -470,41 +508,33 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     setError(null);
 
     try {
-      const [
-        dashboardResponse,
-        itemsResponse,
-        locationsResponse,
-        issuesResponse,
-        countsResponse,
-        assetsResponse,
-        balancesResponse,
-        requestsResponse,
-        usersResult,
-      ] = await Promise.all([
-        inventoryApi.dashboard(),
-        inventoryApi.listItems(),
-        inventoryApi.listLocations(),
-        inventoryApi.listIssues(),
-        inventoryApi.listCounts(),
-        inventoryApi.listAssets(),
-        inventoryApi.listBalances(),
-        purchasingApi.listRequests(),
-        loadTenantUsers()
-          .then((users) => ({ users, error: null as string | null }))
-          .catch(() => ({
-            users: [] as InternalUser[],
-            error: 'No fue posible cargar la lista de usuarios.',
-          })),
-      ]);
+      const [dashboardResponse, usersResult, previewItems, replenishment, previewAssets] =
+        await Promise.all([
+          inventoryApi.dashboard(),
+          loadTenantUsers()
+            .then((users) => ({ users, error: null as string | null }))
+            .catch(() => ({
+              users: [] as InternalUser[],
+              error: 'No fue posible cargar la lista de usuarios.',
+            })),
+          inventoryApi.listItems({ limit: 6 }),
+          inventoryApi
+            .listReplenishmentSuggestions()
+            .catch(() => [] as ReplenishmentSuggestionRecord[]),
+          inventoryApi.listAssets({ limit: INVENTORY_LIST_PAGE_SIZE }),
+        ]);
 
       setSummary(dashboardResponse);
-      setItems(itemsResponse);
-      setLocations(locationsResponse);
-      setIssues(issuesResponse);
-      setCounts(countsResponse);
-      setAssets(assetsResponse);
-      setBalances(balancesResponse);
-      setRequests(requestsResponse);
+      setItems(previewItems.data);
+      setItemsMeta(
+        previewItems.meta ?? {
+          ...EMPTY_LIST_META,
+          nextCursor: null,
+          total: previewItems.data.length,
+        },
+      );
+      setReplenishmentPreview(replenishment);
+      setAssets(previewAssets.data);
       setTenantUsers(usersResult.users);
       setUsersLoadError(usersResult.error);
     } catch (loadError) {
@@ -515,23 +545,246 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }, []);
 
-  const loadLoans = useCallback(async () => {
-    setIsLoadingLoans(true);
-    setLoansError(null);
-    try {
-      const response = await inventoryApi.listLoans({
-        ...(loanStatusFilter !== 'all' ? { status: loanStatusFilter } : {}),
-        page: 1,
-        limit: 50,
-      });
-      setLoans(response.data);
-    } catch (loadError) {
-      setLoansError(mapInventoryError(loadError));
-      setLoans([]);
-    } finally {
-      setIsLoadingLoans(false);
+  /**
+   * ADR-064 matriz: ocupación completa → drenar balances (limit 100, tope 50 págs).
+   * Bodegas/productos siguen page++ load-more; balances no van a medias con esas páginas.
+   * Ola 6: filtros de ítems (search/belowMinimum) van al servidor.
+   */
+  const loadStockLists = useCallback(
+    async (options?: { appendItems?: boolean; appendLocations?: boolean }) => {
+      const appendItems = options?.appendItems === true;
+      const appendLocations = options?.appendLocations === true;
+      const itemListParams = {
+        limit: INVENTORY_LIST_PAGE_SIZE,
+        ...(stockProductFilters.search.trim() ? { search: stockProductFilters.search.trim() } : {}),
+        ...(stockProductFilters.onlyBelowMinimum ? { belowMinimum: true as const } : {}),
+        ...(stockProductFilters.onlyBelowMinimum && stockProductFilters.stockLocationId
+          ? { stockLocationId: stockProductFilters.stockLocationId }
+          : {}),
+      };
+
+      if (appendItems) {
+        if (!itemsMeta.nextCursor || isLoadingMoreItems) return;
+        setIsLoadingMoreItems(true);
+      }
+      if (appendLocations) {
+        if (!locationsMeta.nextCursor || isLoadingMoreLocations) return;
+        setIsLoadingMoreLocations(true);
+      }
+
+      try {
+        if (appendItems) {
+          const itemsCursor = itemsMeta.nextCursor;
+          const itemsResponse = await inventoryApi.listItems({
+            ...itemListParams,
+            ...(itemsCursor ? { cursor: itemsCursor } : {}),
+          });
+          setItems((prev) => mergeById(prev, itemsResponse.data));
+          setItemsMeta(itemsResponse.meta);
+          return;
+        }
+
+        if (appendLocations) {
+          const locationsCursor = locationsMeta.nextCursor;
+          const locationsResponse = await inventoryApi.listLocations({
+            limit: INVENTORY_LIST_PAGE_SIZE,
+            ...locationMatrixFiltersToListParams({
+              ...locationListFilters,
+              custodyFilter: locationCustodyFilter,
+            }),
+            ...(locationsCursor ? { cursor: locationsCursor } : {}),
+          });
+          setLocations((prev) => mergeById(prev, locationsResponse.data));
+          setLocationsMeta(locationsResponse.meta);
+          return;
+        }
+
+        const [itemsResponse, locationsResponse, balancesDrain] = await Promise.all([
+          inventoryApi.listItems(itemListParams),
+          inventoryApi.listLocations({
+            limit: INVENTORY_LIST_PAGE_SIZE,
+            ...locationMatrixFiltersToListParams({
+              ...locationListFilters,
+              custodyFilter: locationCustodyFilter,
+            }),
+          }),
+          drainInventoryBalances((params) => inventoryApi.listBalances(params)),
+        ]);
+        setItems(itemsResponse.data);
+        setItemsMeta(itemsResponse.meta);
+        setLocations(locationsResponse.data);
+        setLocationsMeta(locationsResponse.meta);
+        setBalances(balancesDrain.data);
+        setBalancesMeta(balancesDrain.meta);
+      } catch (loadError) {
+        setError(mapInventoryError(loadError));
+      } finally {
+        setIsLoadingMoreItems(false);
+        setIsLoadingMoreLocations(false);
+      }
+    },
+    [
+      isLoadingMoreItems,
+      isLoadingMoreLocations,
+      itemsMeta.nextCursor,
+      locationCustodyFilter,
+      locationListFilters,
+      locationsMeta.nextCursor,
+      stockProductFilters,
+    ],
+  );
+
+  const loadMoreBalances = useCallback(async () => {
+    if (!balancesMeta.nextCursor || isLoadingMoreBalances) {
+      return;
     }
-  }, [loanStatusFilter]);
+    setIsLoadingMoreBalances(true);
+    try {
+      const drain = await drainInventoryBalances((params) => inventoryApi.listBalances(params), {
+        initialCursor: balancesMeta.nextCursor,
+      });
+      setBalances((prev) => mergeById(prev, drain.data));
+      setBalancesMeta(drain.meta);
+    } catch (loadError) {
+      setError(mapInventoryError(loadError));
+    } finally {
+      setIsLoadingMoreBalances(false);
+    }
+  }, [balancesMeta.nextCursor, isLoadingMoreBalances]);
+
+  const loadLocationsTab = useCallback(
+    async (append = false) => {
+      if (append) {
+        if (!locationsMeta.nextCursor || isLoadingMoreLocations) return;
+        setIsLoadingMoreLocations(true);
+      }
+
+      try {
+        const locationsResponse = await inventoryApi.listLocations({
+          limit: INVENTORY_LIST_PAGE_SIZE,
+          ...locationMatrixFiltersToListParams({
+            ...locationListFilters,
+            custodyFilter: locationCustodyFilter,
+          }),
+          ...(append && locationsMeta.nextCursor ? { cursor: locationsMeta.nextCursor } : {}),
+        });
+
+        setLocations((prev) =>
+          append ? mergeById(prev, locationsResponse.data) : locationsResponse.data,
+        );
+        setLocationsMeta(locationsResponse.meta);
+
+        if (!append) {
+          const balancesDrain = await drainInventoryBalances((params) =>
+            inventoryApi.listBalances(params),
+          );
+          setBalances(balancesDrain.data);
+          setBalancesMeta(balancesDrain.meta);
+        }
+      } catch (loadError) {
+        setError(mapInventoryError(loadError));
+      } finally {
+        setIsLoadingMoreLocations(false);
+      }
+    },
+    [isLoadingMoreLocations, locationCustodyFilter, locationListFilters, locationsMeta.nextCursor],
+  );
+
+  const loadIssuesList = useCallback(
+    async (append = false) => {
+      if (append) {
+        if (!issuesMeta.nextCursor || isLoadingMoreIssues) return;
+        setIsLoadingMoreIssues(true);
+      }
+
+      try {
+        const issuesResponse = await inventoryApi.listIssues({
+          limit: INVENTORY_LIST_PAGE_SIZE,
+          ...(append && issuesMeta.nextCursor ? { cursor: issuesMeta.nextCursor } : {}),
+        });
+
+        setIssues((prev) => (append ? mergeById(prev, issuesResponse.data) : issuesResponse.data));
+        setIssuesMeta(issuesResponse.meta);
+      } catch (loadError) {
+        setError(mapInventoryError(loadError));
+      } finally {
+        setIsLoadingMoreIssues(false);
+      }
+    },
+    [isLoadingMoreIssues, issuesMeta.nextCursor],
+  );
+
+  const loadRequestsList = useCallback(
+    async (append = false) => {
+      if (append) {
+        if (!requestsMeta.nextCursor || isLoadingMoreRequests) return;
+        setIsLoadingMoreRequests(true);
+      }
+
+      try {
+        const requestsResponse = await purchasingApi.listRequests({
+          limit: INVENTORY_LIST_PAGE_SIZE,
+          ...(append && requestsMeta.nextCursor ? { cursor: requestsMeta.nextCursor } : {}),
+        });
+        setRequests((prev) =>
+          append ? mergeById(prev, requestsResponse.data) : requestsResponse.data,
+        );
+        setRequestsMeta(requestsResponse.meta);
+      } catch (loadError) {
+        setError(mapInventoryError(loadError));
+      } finally {
+        setIsLoadingMoreRequests(false);
+      }
+    },
+    [isLoadingMoreRequests, requestsMeta.nextCursor],
+  );
+
+  const loadTabData = useCallback(
+    async (tab: InventoryTab) => {
+      setIsLoadingTabLists(true);
+      try {
+        switch (tab) {
+          case 'stock':
+            await loadStockLists();
+            break;
+          case 'locations':
+            await loadLocationsTab(false);
+            break;
+          case 'assets':
+            // Listado self-fetch en AssetsWorkspace (Ola 6 pager).
+            break;
+          case 'issues':
+            // Listado self-fetch en StockIssuesWorkspace (Ola 6 pager).
+            break;
+          case 'counts':
+            // Listado self-fetch en StockCountsWorkspace (Ola 6 pager).
+            break;
+          case 'purchasing':
+            // Listado self-fetch en PurchaseWorkspace (Ola 6 pager).
+            break;
+          case 'suppliers':
+            // Listado self-fetch en SuppliersPanel (Ola 6 pager).
+            break;
+          case 'writeoffs':
+            // Pickers E-4: sin prefetch soft-cap de entidades.
+            break;
+          default:
+            break;
+        }
+      } finally {
+        setIsLoadingTabLists(false);
+      }
+    },
+    [loadLocationsTab, loadStockLists],
+  );
+
+  const loadData = useCallback(
+    async (silent = false) => {
+      await loadBootstrap(silent);
+      await loadTabData(activeTab);
+    },
+    [activeTab, loadBootstrap, loadTabData],
+  );
 
   const loadPendingWriteOffs = useCallback(async () => {
     setIsLoadingPendingWriteOffs(true);
@@ -540,7 +793,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       const response = await inventoryApi.writeOffs.list({
         status: WriteOffStatus.PENDING_APPROVAL,
         page: 1,
-        limit: 50,
+        limit: INVENTORY_SOFT_CAP_PAGE_SIZE,
       });
       setPendingWriteOffs(response.data);
     } catch (loadError) {
@@ -551,39 +804,22 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }, []);
 
-  const loadHistoryWriteOffs = useCallback(async () => {
-    setIsLoadingHistoryWriteOffs(true);
-    setHistoryWriteOffsError(null);
-    try {
-      const response = await inventoryApi.writeOffs.list({
-        ...(writeOffHistoryStatusFilter !== 'all' ? { status: writeOffHistoryStatusFilter } : {}),
-        page: 1,
-        limit: 50,
-      });
-      setHistoryWriteOffs(response.data);
-    } catch (loadError) {
-      setHistoryWriteOffsError(mapInventoryError(loadError));
-      setHistoryWriteOffs([]);
-    } finally {
-      setIsLoadingHistoryWriteOffs(false);
-    }
-  }, [writeOffHistoryStatusFilter]);
+  const bumpWriteOffHistory = useCallback(() => {
+    setWriteOffHistoryRevision((current) => current + 1);
+  }, []);
 
   const loadWriteOffs = useCallback(async () => {
-    await Promise.all([loadPendingWriteOffs(), loadHistoryWriteOffs()]);
-  }, [loadHistoryWriteOffs, loadPendingWriteOffs]);
+    await loadPendingWriteOffs();
+    bumpWriteOffHistory();
+  }, [bumpWriteOffHistory, loadPendingWriteOffs]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    void loadBootstrap();
+  }, [loadBootstrap]);
 
   useEffect(() => {
-    if (activeTab !== 'assets' || assetsSubview !== 'loans') {
-      return;
-    }
-
-    void loadLoans();
-  }, [activeTab, assetsSubview, loadLoans]);
+    void loadTabData(activeTab);
+  }, [activeTab, loadTabData]);
 
   useEffect(() => {
     if (activeTab === 'stock' || !stockSubviewPrefill) {
@@ -598,16 +834,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       return;
     }
 
-    void loadWriteOffs();
-  }, [activeTab, loadWriteOffs]);
-
-  useEffect(() => {
-    if (activeTab !== 'writeoffs') {
-      return;
-    }
-
-    void loadHistoryWriteOffs();
-  }, [activeTab, loadHistoryWriteOffs, writeOffHistoryStatusFilter]);
+    void loadPendingWriteOffs();
+  }, [activeTab, loadPendingWriteOffs]);
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
@@ -668,11 +896,13 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
   const loadCommercialProductOptions = useCallback(async () => {
     try {
-      const products: AdditionalProduct[] = await commercialApi.getAdditionalProducts();
+      const products = await commercialApi.getAdditionalProducts({
+        // Residual E-4: sin lookup commercial embebido en drawer; soft-cap con aviso pendiente.
+        limit: PICKER_SOFT_CAP,
+        isActive: true,
+      });
       setCommercialProductOptions(
-        products
-          .filter((product) => product.isActive)
-          .map((product) => ({ id: product.id, name: product.name })),
+        products.data.map((product) => ({ id: product.id, name: product.name })),
       );
     } catch {
       setCommercialProductOptions([]);
@@ -814,8 +1044,16 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   );
 
   const loadCatalogItems = useCallback(
-    async (filters: CatalogFilters, silent = false) => {
-      if (silent) {
+    async (filters: CatalogFilters, options?: { silent?: boolean; append?: boolean }) => {
+      const silent = options?.silent === true;
+      const append = options?.append === true;
+
+      if (append) {
+        if (!catalogMeta.nextCursor || isLoadingMoreCatalog) {
+          return;
+        }
+        setIsLoadingMoreCatalog(true);
+      } else if (silent) {
         setIsRefreshingCatalog(true);
       } else {
         setIsLoadingCatalog(true);
@@ -824,7 +1062,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setCatalogError(null);
 
       try {
-        const listParams: ListInventoryItemsParams = {};
+        const listParams: ListInventoryItemsParams = {
+          limit: INVENTORY_LIST_PAGE_SIZE,
+          ...(append && catalogMeta.nextCursor ? { cursor: catalogMeta.nextCursor } : {}),
+        };
         const trimmedSearch = filters.search?.trim();
         if (trimmedSearch) {
           listParams.search = trimmedSearch;
@@ -849,61 +1090,74 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         }
 
         const response = await inventoryApi.listItems(listParams);
-        setCatalogItems(response);
+        const page = response.data ?? [];
+        setCatalogItems((prev) => (append ? mergeById(prev, page) : page));
+        setCatalogMeta(
+          response.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length },
+        );
         await loadSupplierLabels(
-          response
-            .map((item) => item.preferredSupplierRefId)
-            .filter((id): id is string => Boolean(id)),
+          page.map((item) => item.preferredSupplierRefId).filter((id): id is string => Boolean(id)),
         );
       } catch (loadError) {
         setCatalogError(mapInventoryError(loadError));
       } finally {
         setIsLoadingCatalog(false);
         setIsRefreshingCatalog(false);
+        setIsLoadingMoreCatalog(false);
       }
     },
-    [loadSupplierLabels],
+    [catalogMeta.nextCursor, isLoadingMoreCatalog, loadSupplierLabels],
   );
 
-  const loadCategories = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshingCategories(true);
-    } else {
-      setIsLoadingCategories(true);
-    }
+  const loadCategories = useCallback(
+    async (options?: { silent?: boolean; append?: boolean; search?: string }) => {
+      const silent = options?.silent === true;
+      const append = options?.append === true;
+      const onCategoriesPanel = activeTab === 'catalog' && catalogSubView === 'categories';
+      const search = onCategoriesPanel ? (options?.search ?? categoriesSearch) : '';
+      // Residual E-4: no hay GET /inventory/categories/search; soft-cap solo para Select de categoría.
+      const limit = onCategoriesPanel ? INVENTORY_LIST_PAGE_SIZE : PICKER_SOFT_CAP;
 
-    setCategoriesError(null);
+      if (append) {
+        if (!categoriesMeta.nextCursor || isLoadingMoreCategories) {
+          return;
+        }
+        setIsLoadingMoreCategories(true);
+      } else if (silent) {
+        setIsRefreshingCategories(true);
+      } else {
+        setIsLoadingCategories(true);
+      }
 
-    try {
-      const response = await inventoryApi.listCategories();
-      setCategories(response);
-    } catch (loadError) {
-      setCategoriesError(mapInventoryError(loadError));
-    } finally {
-      setIsLoadingCategories(false);
-      setIsRefreshingCategories(false);
-    }
-  }, []);
+      setCategoriesError(null);
 
-  const loadSuppliers = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshingSuppliers(true);
-    } else {
-      setIsLoadingSuppliers(true);
-    }
-
-    setSuppliersError(null);
-
-    try {
-      const response = await purchasingApi.listSuppliers({ page: 1, limit: 100 });
-      setSuppliers(response.data);
-    } catch (loadError) {
-      setSuppliersError(mapInventoryError(loadError));
-    } finally {
-      setIsLoadingSuppliers(false);
-      setIsRefreshingSuppliers(false);
-    }
-  }, []);
+      try {
+        const response = await inventoryApi.listCategories({
+          limit,
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(append && categoriesMeta.nextCursor ? { cursor: categoriesMeta.nextCursor } : {}),
+        });
+        const page = response.data ?? [];
+        setCategories((prev) => (append ? mergeById(prev, page) : page));
+        setCategoriesMeta(
+          response.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length },
+        );
+      } catch (loadError) {
+        setCategoriesError(mapInventoryError(loadError));
+      } finally {
+        setIsLoadingCategories(false);
+        setIsRefreshingCategories(false);
+        setIsLoadingMoreCategories(false);
+      }
+    },
+    [
+      activeTab,
+      catalogSubView,
+      categoriesMeta.nextCursor,
+      categoriesSearch,
+      isLoadingMoreCategories,
+    ],
+  );
 
   useEffect(() => {
     if (activeTab !== 'catalog') {
@@ -925,16 +1179,42 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       return;
     }
 
-    void loadCategories();
-  }, [activeTab, loadCategories]);
+    const onCategoriesPanel = activeTab === 'catalog' && catalogSubView === 'categories';
+    const handle = window.setTimeout(
+      () => {
+        void loadCategories({ search: onCategoriesPanel ? categoriesSearch : '' });
+      },
+      onCategoriesPanel && categoriesSearch.trim() ? 300 : 0,
+    );
+
+    return () => window.clearTimeout(handle);
+  }, [activeTab, catalogSubView, categoriesSearch, loadCategories]);
 
   useEffect(() => {
-    if (activeTab !== 'suppliers') {
+    if (activeTab !== 'stock') {
       return;
     }
+    const handle = window.setTimeout(
+      () => {
+        void loadStockLists();
+      },
+      stockProductFilters.search.trim() ? 300 : 0,
+    );
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filtros producto
+  }, [stockProductFilters]);
 
-    void loadSuppliers();
-  }, [activeTab, loadSuppliers]);
+  useEffect(() => {
+    if (activeTab !== 'locations' && activeTab !== 'stock') {
+      return;
+    }
+    if (activeTab === 'locations') {
+      void loadLocationsTab(false);
+    } else {
+      void loadStockLists();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filtros ubicaciones + custody
+  }, [locationListFilters, locationCustodyFilter]);
 
   useEffect(() => {
     if (activeTab !== 'purchasing') {
@@ -1024,8 +1304,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       resetInlineCategoryState();
       await Promise.all([
         loadData(true),
-        loadCatalogItems(catalogFilters, true),
-        loadCategories(true),
+        loadCatalogItems(catalogFilters, { silent: true }),
+        loadCategories({ silent: true }),
       ]);
     } catch (submitError) {
       setCatalogSubmitError(mapInventoryError(submitError));
@@ -1043,8 +1323,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setCatalogEditItem(null);
       await Promise.all([
         loadData(true),
-        loadCatalogItems(catalogFilters, true),
-        loadCategories(true),
+        loadCatalogItems(catalogFilters, { silent: true }),
+        loadCategories({ silent: true }),
       ]);
       setCatalogFeedback('Producto actualizado.');
     } catch (submitError) {
@@ -1077,8 +1357,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setCatalogFeedback(`Producto "${item.name}" eliminado.`);
       await Promise.all([
         loadData(true),
-        loadCatalogItems(catalogFilters, true),
-        loadCategories(true),
+        loadCatalogItems(catalogFilters, { silent: true }),
+        loadCategories({ silent: true }),
         loadCatalogOptions(),
       ]);
     } catch (deleteError) {
@@ -1116,7 +1396,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       const detail = await purchasingApi.getSupplier(supplier.partyRefId);
       openSupplierDrawer(detail);
     } catch (detailError) {
-      setSuppliersError(mapInventoryError(detailError));
+      setSupplierSubmitError(mapInventoryError(detailError));
     }
   }
 
@@ -1128,7 +1408,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setSupplierDrawerOpen(false);
       setSupplierEditItem(null);
       setMovementNotice('Proveedor registrado.');
-      await loadSuppliers(true);
+      setSuppliersListRevision((value) => value + 1);
     } catch (submitError) {
       setSupplierSubmitError(mapInventoryError(submitError));
     } finally {
@@ -1143,7 +1423,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       const updated = await purchasingApi.updateSupplier(partyRefId, payload);
       setSupplierEditItem(updated);
       setMovementNotice('Proveedor actualizado.');
-      await loadSuppliers(true);
+      setSuppliersListRevision((value) => value + 1);
     } catch (submitError) {
       setSupplierSubmitError(mapInventoryError(submitError));
     } finally {
@@ -1158,7 +1438,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       const updated = await purchasingApi.setSupplierStatus(partyRefId, { status });
       setSupplierEditItem(updated);
       setMovementNotice('Estado del proveedor actualizado.');
-      await loadSuppliers(true);
+      setSuppliersListRevision((value) => value + 1);
     } catch (submitError) {
       setSupplierSubmitError(mapInventoryError(submitError));
     } finally {
@@ -1174,7 +1454,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setCategoryDrawerOpen(false);
       setCategoryEditItem(null);
       setCatalogFeedback('Categoría creada.');
-      await loadCategories(true);
+      await loadCategories({ silent: true });
     } catch (submitError) {
       setCategorySubmitError(mapInventoryError(submitError));
     } finally {
@@ -1189,7 +1469,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     try {
       const createdCategory = await inventoryApi.createCategory(payload);
-      await loadCategories(true);
+      await loadCategories({ silent: true });
       return createdCategory;
     } catch (submitError) {
       throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
@@ -1261,7 +1541,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setCategoryDrawerOpen(false);
       setCategoryEditItem(null);
       setCatalogFeedback('Categoría actualizada.');
-      await Promise.all([loadCategories(true), loadCatalogItems(catalogFilters, true)]);
+      await Promise.all([
+        loadCategories({ silent: true }),
+        loadCatalogItems(catalogFilters, { silent: true }),
+      ]);
     } catch (submitError) {
       setCategorySubmitError(mapInventoryError(submitError));
     } finally {
@@ -1535,7 +1818,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const loadOrderDetailForRequest = useCallback(
     async (requestId: string) => {
       try {
-        const orders = await purchasingApi.listOrders({ purchaseRequestId: requestId });
+        const ordersResponse = await purchasingApi.listOrders({
+          purchaseRequestId: requestId,
+          page: 1,
+          limit: 100,
+        });
+        const orders = ordersResponse.data;
         const receivable =
           orders.find((order) =>
             [PurchaseOrderStatus.APPROVED, PurchaseOrderStatus.PARTIALLY_RECEIVED].includes(
@@ -1632,6 +1920,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     try {
       await inventoryApi.createIssue(payload);
       setMovementNotice('Salida creada. Puedes despacharla cuando esté lista.');
+      setIssuesListRevision((value) => value + 1);
       await loadData(true);
     } catch (submitError) {
       setError(mapInventoryError(submitError));
@@ -1976,15 +2265,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 <div className="space-y-3">
                   {lowStockItems.map((row) => (
                     <div
-                      key={row.item.id}
+                      key={row.itemId}
                       className="rounded-xl border border-gray-100 px-3 py-3 dark:border-dark-border"
                     >
-                      <p className="font-medium text-gray-900 dark:text-white">{row.item.name}</p>
+                      <p className="font-medium text-gray-900 dark:text-white">{row.itemName}</p>
                       <p className="mt-1 text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                        {row.item.sku} · {STOCK_AVAILABLE_LABEL.toLowerCase()}{' '}
-                        {formatInventoryQuantity(row.available)} ·{' '}
-                        {STOCK_RESERVED_LABEL.toLowerCase()} {formatInventoryQuantity(row.reserved)}{' '}
-                        · mínimo {formatInventoryQuantity(row.minimumStock)}
+                        {row.itemSku} · {STOCK_AVAILABLE_LABEL.toLowerCase()}{' '}
+                        {formatInventoryQuantity(row.available)} · mínimo{' '}
+                        {formatInventoryQuantity(row.minimumStock)}
                       </p>
                     </div>
                   ))}
@@ -2029,6 +2317,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
           <InventoryCatalogSummaryPreview
             items={items}
+            totalCount={itemsMeta.total}
             isLoading={isLoading}
             onOpenCatalog={() => setActiveTab('catalog')}
           />
@@ -2118,11 +2407,11 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     type="button"
                     variant="secondary"
                     loading={isRefreshingCatalog}
-                    onClick={() => void loadCatalogItems(catalogFilters, true)}
+                    onClick={() => void loadCatalogItems(catalogFilters, { silent: true })}
                   >
                     Actualizar
                   </Button>
-                  <Button type="button" onClick={openCreateProductDialog}>
+                  <Button type="button" variant="primary" onClick={openCreateProductDialog}>
                     Nuevo producto
                   </Button>
                 </div>
@@ -2132,11 +2421,11 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     type="button"
                     variant="secondary"
                     loading={isRefreshingCategories}
-                    onClick={() => void loadCategories(true)}
+                    onClick={() => void loadCategories({ silent: true })}
                   >
                     Actualizar
                   </Button>
-                  <Button type="button" onClick={() => openCategoryDrawer()}>
+                  <Button type="button" variant="primary" onClick={() => openCategoryDrawer()}>
                     Nueva categoría
                   </Button>
                 </div>
@@ -2174,7 +2463,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 <InventoryCatalogProductsPanel
                   filters={catalogFilters}
                   items={catalogItems}
-                  totalCount={items.length}
+                  totalCount={catalogMeta.total}
+                  hasMore={inventoryHasMore(catalogMeta)}
+                  isLoadingMore={isLoadingMoreCatalog}
+                  onLoadMore={() => void loadCatalogItems(catalogFilters, { append: true })}
                   categoryOptions={activeCategoryOptions}
                   supplierLabels={supplierLabels}
                   isLoading={isLoadingCatalog}
@@ -2186,7 +2478,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                   onDelete={handleDeleteCatalogItem}
                   deletingItemId={deletingCatalogItemId}
                   createAction={
-                    <Button type="button" onClick={openCreateProductDialog}>
+                    <Button type="button" variant="primary" onClick={openCreateProductDialog}>
                       Nuevo producto
                     </Button>
                   }
@@ -2204,12 +2496,18 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
                 <InventoryCatalogCategoriesPanel
                   categories={categories}
+                  totalCount={categoriesMeta.total}
+                  hasMore={inventoryHasMore(categoriesMeta)}
+                  isLoadingMore={isLoadingMoreCategories}
+                  onLoadMore={() => void loadCategories({ append: true })}
+                  search={categoriesSearch}
+                  onSearchChange={setCategoriesSearch}
                   isLoading={isLoadingCategories}
                   isRefreshing={isRefreshingCategories}
                   onCreateCategory={() => openCategoryDrawer()}
                   onRowClick={(category) => void openCategoryDetail(category)}
                   createAction={
-                    <Button type="button" onClick={() => openCategoryDrawer()}>
+                    <Button type="button" variant="primary" onClick={() => openCategoryDrawer()}>
                       Nueva categoría
                     </Button>
                   }
@@ -2228,7 +2526,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             />
           ) : null}
           <PurchaseWorkspace
-            requests={requests}
             items={items}
             catalogOptions={catalogOptions}
             supplierLabels={supplierLabels}
@@ -2237,8 +2534,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             latestOrder={latestOrder}
             latestOrderLines={latestOrderLines}
             latestReceipt={latestReceipt}
-            isLoading={isLoading}
-            isRefreshing={isRefreshing}
+            listRevision={purchaseListRevision}
             isSubmittingRequest={isSubmittingRequest}
             isSubmittingQuote={isSubmittingQuote}
             isSubmittingApprove={isSubmittingApprove}
@@ -2285,7 +2581,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             }}
             onPrepareOrderDrawer={loadOrderDetailForRequest}
             onSelectOrder={loadOrderDetail}
-            onRefresh={() => loadData(true)}
+            onRefresh={async () => {
+              setPurchaseListRevision((value) => value + 1);
+              await loadData(true);
+            }}
             onCatalogSearch={handleCatalogSearch}
             createInitialValues={pendingComposerPrefill}
             onCreateInitialValuesConsumed={() => setPendingComposerPrefill(null)}
@@ -2302,34 +2601,23 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 <Button
                   type="button"
                   variant="secondary"
-                  loading={isRefreshingSuppliers}
-                  onClick={() => void loadSuppliers(true)}
+                  onClick={() => setSuppliersListRevision((value) => value + 1)}
                 >
                   Actualizar
                 </Button>
-                <Button type="button" onClick={() => openSupplierDrawer()}>
+                <Button type="button" variant="primary" onClick={() => openSupplierDrawer()}>
                   Nuevo proveedor
                 </Button>
               </div>
             }
             contentClassName="space-y-4"
           >
-            {suppliersError ? (
-              <PortalAlert
-                variant="error"
-                title="No fue posible cargar los proveedores"
-                description={suppliersError}
-              />
-            ) : null}
-
             <SuppliersPanel
-              suppliers={suppliers}
-              isLoading={isLoadingSuppliers}
-              isRefreshing={isRefreshingSuppliers}
+              listRevision={suppliersListRevision}
               onCreate={() => openSupplierDrawer()}
               onRowClick={(supplier) => void openSupplierDetail(supplier)}
               createAction={
-                <Button type="button" onClick={() => openSupplierDrawer()}>
+                <Button type="button" variant="primary" onClick={() => openSupplierDrawer()}>
                   Nuevo proveedor
                 </Button>
               }
@@ -2351,6 +2639,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               userLabelById={userLabelById}
               custodyFilter={locationCustodyFilter}
               canAdjust={canAdjustStock}
+              itemsTotal={itemsMeta.total}
+              itemsHasMore={inventoryHasMore(itemsMeta)}
+              locationsTotal={locationsMeta.total}
+              locationsHasMore={inventoryHasMore(locationsMeta)}
+              isLoadingMoreItems={isLoadingMoreItems}
+              isLoadingMoreLocations={isLoadingMoreLocations}
+              onLoadMoreItems={() => void loadStockLists({ appendItems: true })}
+              onLoadMoreLocations={() => void loadStockLists({ appendLocations: true })}
+              balancesHasMore={inventoryHasMore(balancesMeta)}
+              isLoadingMoreBalances={isLoadingMoreBalances}
+              onLoadMoreBalances={() => void loadMoreBalances()}
+              productFilters={stockProductFilters}
+              onProductFiltersChange={setStockProductFilters}
+              locationListFilters={locationListFilters}
+              onLocationListFiltersChange={setLocationListFilters}
               {...stockKardexInitial}
               onCustodyFilterChange={handleLocationCustodyFilterChange}
               onAdjustmentRegistered={(movementNumber) => {
@@ -2381,6 +2684,13 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               locations={locations}
               balances={balances}
               userLabelById={userLabelById}
+              totalCount={locationsMeta.total}
+              hasMore={inventoryHasMore(locationsMeta)}
+              isLoadingMore={isLoadingMoreLocations}
+              onLoadMore={() => void loadLocationsTab(true)}
+              balancesHasMore={inventoryHasMore(balancesMeta)}
+              isLoadingMoreBalances={isLoadingMoreBalances}
+              onLoadMoreBalances={() => void loadMoreBalances()}
               onCreateLocation={openLocationCreateDialog}
               onEditLocation={(location) => {
                 setLocationEditItem(location);
@@ -2393,20 +2703,17 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
         <TabsContent value="issues" className="space-y-6">
           <StockIssuesWorkspace
-            items={items}
-            balances={balances}
-            assets={assets}
-            locations={locations}
-            issues={issues}
-            isLoading={isLoading}
-            isRefreshing={isRefreshing}
             error={error}
+            listRevision={issuesListRevision}
             onCreate={handleCreateIssue}
             onUpdate={handleUpdateIssue}
             onCancel={handleCancelIssue}
             onDispatch={handleDispatchIssue}
             onOpenDetail={handleOpenIssueDetail}
-            onRefresh={() => void loadData(true)}
+            onRefresh={async () => {
+              setIssuesListRevision((value) => value + 1);
+              await loadData(true);
+            }}
           />
         </TabsContent>
 
@@ -2414,43 +2721,36 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           <StockCountsWorkspace
             locations={locations}
             categories={categories}
-            counts={counts}
-            isLoading={isLoading}
-            isRefreshing={isRefreshing}
-            error={error}
             canClose={canAdjustStock}
+            listRevision={countsListRevision}
+            error={error}
             onCreate={handleCreateCount}
             onUpdate={handleUpdateCount}
             onClose={handleCloseCount}
             onCancel={handleCancelCount}
             onOpenDetail={handleOpenCountDetail}
-            onRefresh={() => void loadData(true)}
+            onRefresh={async () => {
+              setCountsListRevision((value) => value + 1);
+              await loadData(true);
+            }}
           />
         </TabsContent>
 
         <TabsContent value="assets" className="space-y-6">
           <AssetsWorkspace
-            assets={assets}
             items={items}
             locations={locations}
-            loans={loans}
-            isLoading={isLoading}
-            isLoadingLoans={isLoadingLoans}
-            loansError={loansError}
-            loanStatusFilter={loanStatusFilter}
+            enrichmentAssets={assets}
+            listRevision={assetsListRevision}
             initialSubview={assetsSubview}
             onSubviewChange={setAssetsSubview}
-            onLoanStatusFilterChange={setLoanStatusFilter}
             onOpenAssetDetail={(assetId) => void openAssetDetail(assetId)}
-            onRefreshLoans={() => void loadLoans()}
             onNavigateToReplenishment={navigateToReplenishment}
           />
         </TabsContent>
 
         <TabsContent value="movements" className="space-y-6">
           <MovementsWorkspace
-            items={items}
-            locations={locations}
             saleForm={saleForm}
             onSaleFormChange={setSaleForm}
             returnForm={returnForm}
@@ -2465,12 +2765,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="writeoffs" className="space-y-6">
           <WriteOffsPanel
             pending={pendingWriteOffs}
-            history={historyWriteOffs}
-            historyStatusFilter={writeOffHistoryStatusFilter}
-            onHistoryStatusFilterChange={setWriteOffHistoryStatusFilter}
-            items={items}
-            assets={assets}
-            locations={locations}
             requestForm={writeOffForm}
             onRequestFormChange={setWriteOffForm}
             isSubmittingRequest={isSubmittingWriteOff}
@@ -2480,14 +2774,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             userLabelById={userLabelById}
             {...(user?.id ? { currentUserId: user.id } : {})}
             isLoadingPending={isLoadingPendingWriteOffs}
-            isLoadingHistory={isLoadingHistoryWriteOffs}
             pendingError={pendingWriteOffsError}
-            historyError={historyWriteOffsError}
             actionError={writeOffActionError}
             processingWriteOffId={processingWriteOffId}
             canApprove={canApproveWriteOff}
             onRefreshPending={() => void loadPendingWriteOffs()}
-            onRefreshHistory={() => void loadHistoryWriteOffs()}
+            historyRevision={writeOffHistoryRevision}
             onApprove={(writeOffId) => void handleApproveWriteOff(writeOffId)}
             onReject={(writeOffId, rejectionNotes) =>
               void handleRejectWriteOff(writeOffId, rejectionNotes)

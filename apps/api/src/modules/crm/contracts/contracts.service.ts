@@ -7,6 +7,9 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
+import type { ListResponse } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { Contract } from './entities/contract.entity';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
@@ -152,30 +155,74 @@ export class ContractsService {
 
   // ── Consulta ────────────────────────────────────────────────────────────────
 
-  async findAll(filters: { status?: ContractStatus; planId?: string }): Promise<Contract[]> {
+  async findAll(filters: {
+    status?: ContractStatus;
+    planId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ListResponse<Contract>> {
     const { schemaName } = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const where: Record<string, string> = {};
-      if (filters.status) where['status'] = filters.status;
-      if (filters.planId) where['planId'] = filters.planId;
+      const qb = qr.manager
+        .createQueryBuilder(Contract, 'c')
+        .orderBy('c.createdAt', 'DESC')
+        .addOrderBy('c.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
-      return qr.manager.find(Contract, {
-        where,
-        order: { createdAt: 'DESC' },
-      });
+      if (filters.status) {
+        qb.andWhere('c.status = :status', { status: filters.status });
+      }
+      if (filters.planId) {
+        qb.andWhere('c.planId = :planId', { planId: filters.planId });
+      }
+
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 
-  async findAllBySubscriber(subscriberId: string): Promise<Contract[]> {
+  async findAllBySubscriber(
+    subscriberId: string,
+    filters: { page?: number; limit?: number } = {},
+  ): Promise<ListResponse<Contract>> {
     const { schemaName } = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(Contract, {
-        where: { subscriberId },
-        order: { createdAt: 'DESC' },
-      }),
-    );
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const [data, total] = await qr.manager
+        .createQueryBuilder(Contract, 'c')
+        .where('c.subscriberId = :subscriberId', { subscriberId })
+        .orderBy('c.createdAt', 'DESC')
+        .addOrderBy('c.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
+    });
   }
 
   async findOne(id: string): Promise<Contract> {

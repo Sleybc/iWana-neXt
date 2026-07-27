@@ -104,7 +104,7 @@ describe('OperationalEventualitiesService', () => {
   });
 
   describe('findAllByTenant', () => {
-    it('debe retornar array filtrado por tenantId', async () => {
+    it('debe retornar listado paginado filtrado por tenantId', async () => {
       const entities: Partial<WfmOperationalEventuality>[] = [
         {
           id: 'oe-001',
@@ -120,8 +120,17 @@ describe('OperationalEventualitiesService', () => {
         },
       ];
 
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([entities, 2]),
+      };
       const mockManager = {
-        find: jest.fn().mockResolvedValue(entities),
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
       };
 
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => {
@@ -130,15 +139,24 @@ describe('OperationalEventualitiesService', () => {
 
       const result = await service.findAllByTenant();
 
-      expect(result).toEqual(entities);
-      expect(mockManager.find).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ where: { tenantId: TENANT_ID } }),
-      );
+      expect(result.data).toEqual(entities);
+      expect(result.meta.total).toBe(2);
+      expect(qb.where).toHaveBeenCalledWith('e.tenant_id = :tenantId', { tenantId: TENANT_ID });
     });
 
     it('debe aplicar filtro de userId cuando se proporciona', async () => {
-      const mockManager = { find: jest.fn().mockResolvedValue([]) };
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      const mockManager = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
 
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => {
         return cb({ manager: mockManager } as never);
@@ -146,12 +164,7 @@ describe('OperationalEventualitiesService', () => {
 
       await service.findAllByTenant({ userId: 'user-123' });
 
-      expect(mockManager.find).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          where: { tenantId: TENANT_ID, userId: 'user-123' },
-        }),
-      );
+      expect(qb.andWhere).toHaveBeenCalledWith('e.user_id = :userId', { userId: 'user-123' });
     });
   });
 

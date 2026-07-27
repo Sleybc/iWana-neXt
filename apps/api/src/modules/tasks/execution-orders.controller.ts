@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -40,6 +41,7 @@ import {
 } from './dto/execution-orders.dto';
 import type { ExecutionOrderCommandContext } from './services/execution-order-reliability.service';
 import { ExecutionOrdersService } from './services/execution-orders.service';
+import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
@@ -56,7 +58,10 @@ import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/executi
 @UseInterceptors(ExecutionOrderResponseHeadersInterceptor)
 @Controller('tasks/execution-orders')
 export class ExecutionOrdersController {
-  constructor(private readonly executionOrdersService: ExecutionOrdersService) {}
+  constructor(
+    private readonly executionOrdersService: ExecutionOrdersService,
+    private readonly projectionConvergenceService: ExecutionOrderProjectionConvergenceService,
+  ) {}
 
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
@@ -345,8 +350,36 @@ export class ExecutionOrdersController {
   @Roles(UserRole.ADMIN, UserRole.NOC)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_EVENTS_REDRIVE)
   @HttpCode(HttpStatus.ACCEPTED)
-  redrive(@Param('eventId', ParseUUIDPipe) eventId: string, @CurrentUser() actor: JwtPayload) {
+  redrive(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    if (!key) {
+      throw new BadRequestException({
+        code: 'IDEMPOTENCY_KEY_REQUIRED',
+        message: 'Idempotency-Key es obligatorio para redrive.',
+      });
+    }
     return this.executionOrdersService.redriveEvent(eventId, actor);
+  }
+
+  /** PLAT-P1-04: Health del relay de eventos outbox. */
+  @Get('health/relay')
+  @Roles(UserRole.ADMIN, UserRole.NOC)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
+  @ApiOperation({ summary: 'Estado del relay de eventos outbox' })
+  async getRelayHealth() {
+    return this.projectionConvergenceService.getRelayHealth();
+  }
+
+  /** Reconcilia las proyecciones de una OT. Solo supervisores. */
+  @Get(':id/reconciliation')
+  @Roles(UserRole.ADMIN, UserRole.NOC)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)
+  @ApiOperation({ summary: 'Verificar convergencia de proyecciones de la OT' })
+  async reconcileOrder(@Param('id', ParseUUIDPipe) id: string) {
+    return this.projectionConvergenceService.reconcileOrder(id);
   }
 
   private commandContext(

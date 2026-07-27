@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type {
   Control,
   FieldErrors,
@@ -9,11 +9,12 @@ import type {
   UseFormWatch,
 } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
-import { Button, Input, Select } from '@iwana/ui';
+import { Input, Select } from '@iwana/ui';
 import { TaskExecutionMode, TaskPriority, TaskRecipientType, TaskType } from '@iwana/shared';
 import type { ExpedienteRecord, SubscriberRecord } from '@/lib/api-client';
 import { crmApi, subscribersApi } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
 import {
   TASK_EXECUTION_MODE_LABELS,
   TASK_PRIORITY_LABELS,
@@ -33,12 +34,6 @@ export interface TaskCoreFieldsProps {
   internalAreaOptions: Array<{ value: string; label: string }>;
   internalUserOptions: Array<{ value: string; label: string }>;
   disabled?: boolean;
-}
-
-interface TaskRecipientSearchOption {
-  value: string;
-  label: string;
-  meta: string | null;
 }
 
 const TYPE_OPTIONS = Object.values(TaskType).map((value) => ({
@@ -61,15 +56,19 @@ const EXECUTION_MODE_OPTIONS = Object.values(TaskExecutionMode).map((value) => (
   label: TASK_EXECUTION_MODE_LABELS[value],
 }));
 
-function formatProspectOption(expediente: ExpedienteRecord): TaskRecipientSearchOption {
+/** Límite canónico E-4 typeahead (máx. dominio ≤20); no soft-cap silencioso de 6. */
+const RECIPIENT_PICKER_LIMIT = 20;
+
+function formatProspectOption(expediente: ExpedienteRecord): SearchablePickerItem {
   return {
-    value: expediente.id,
+    id: expediente.id,
     label: expediente.fullName,
-    meta: expediente.municipality ?? expediente.emailPrimary ?? expediente.documentNumber ?? null,
+    sublabel:
+      expediente.municipality ?? expediente.emailPrimary ?? expediente.documentNumber ?? null,
   };
 }
 
-function formatSubscriberOption(subscriber: SubscriberRecord): TaskRecipientSearchOption {
+function formatSubscriberOption(subscriber: SubscriberRecord): SearchablePickerItem {
   const label =
     subscriber.commercialName?.trim() ||
     subscriber.businessName?.trim() ||
@@ -79,9 +78,9 @@ function formatSubscriberOption(subscriber: SubscriberRecord): TaskRecipientSear
     `Suscriptor ${subscriber.id.slice(0, 8)}`;
 
   return {
-    value: subscriber.id,
+    id: subscriber.id,
     label,
-    meta: subscriber.city ?? subscriber.email ?? subscriber.documentNumber ?? null,
+    sublabel: subscriber.city ?? subscriber.email ?? subscriber.documentNumber ?? null,
   };
 }
 
@@ -101,12 +100,12 @@ export function TaskCoreFields({
   const selectedRecipientRefId = watch('recipientRefId');
   const selectedRecipientLabel = watch('recipientLabel');
 
-  const [recipientSearch, setRecipientSearch] = useState('');
-  const [recipientSearchResults, setRecipientSearchResults] = useState<TaskRecipientSearchOption[]>(
-    [],
+  const [selectedRecipientItem, setSelectedRecipientItem] = useState<Pick<
+    SearchablePickerItem,
+    'label' | 'sublabel'
+  > | null>(
+    selectedRecipientRefId && selectedRecipientLabel ? { label: selectedRecipientLabel } : null,
   );
-  const [isSearchingRecipients, setIsSearchingRecipients] = useState(false);
-  const [recipientSearchError, setRecipientSearchError] = useState<string | null>(null);
 
   const currentRecipientOptions =
     recipientType === TaskRecipientType.INTERNAL_USER ? internalUserOptions : internalAreaOptions;
@@ -116,78 +115,49 @@ export function TaskCoreFields({
     [recipientType],
   );
 
-  const recipientSearchLabel =
-    recipientType === TaskRecipientType.PROSPECT ? 'Buscar prospecto' : 'Buscar suscriptor';
-  const recipientSearchPlaceholder =
+  const recipientResource =
     recipientType === TaskRecipientType.PROSPECT
-      ? 'Nombre, documento o correo del prospecto'
-      : 'Nombre, documento o correo del suscriptor';
-  const recipientLoadErrorMessage =
-    recipientType === TaskRecipientType.PROSPECT
-      ? 'No fue posible consultar prospectos del CRM.'
-      : 'No fue posible consultar suscriptores creados.';
+      ? { singular: 'prospecto', plural: 'prospectos' }
+      : { singular: 'suscriptor', plural: 'suscriptores' };
 
-  useEffect(() => {
-    if (!usesRemoteRecipientLookup || selectedRecipientRefId) {
-      setRecipientSearchResults([]);
-      setRecipientSearchError(null);
-      setIsSearchingRecipients(false);
-      return;
-    }
-
-    const normalizedQuery = recipientSearch.trim();
-    if (normalizedQuery.length < 2) {
-      setRecipientSearchResults([]);
-      setRecipientSearchError(null);
-      setIsSearchingRecipients(false);
-      return;
-    }
-
-    let cancelled = false;
-    const timeoutId = window.setTimeout(async () => {
-      setIsSearchingRecipients(true);
-      setRecipientSearchError(null);
-
-      try {
-        if (recipientType === TaskRecipientType.PROSPECT) {
-          const response = await crmApi.listExpedientes({
-            search: normalizedQuery,
-            limit: 6,
+  const searchRecipients = useCallback(
+    async (query: string, signal: AbortSignal) => {
+      if (recipientType === TaskRecipientType.PROSPECT) {
+        const response = await crmApi.listExpedientes(
+          {
+            search: query,
+            limit: RECIPIENT_PICKER_LIMIT,
             view: 'all',
-          });
-          if (!cancelled) {
-            setRecipientSearchResults(response.data.map(formatProspectOption));
-          }
-          return;
-        }
-
-        const response = await subscribersApi.list({ search: normalizedQuery, limit: 6 });
-        if (!cancelled) {
-          setRecipientSearchResults(response.data.map(formatSubscriberOption));
-        }
-      } catch {
-        if (!cancelled) {
-          setRecipientSearchResults([]);
-          setRecipientSearchError(recipientLoadErrorMessage);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsSearchingRecipients(false);
-        }
+          },
+          undefined,
+          { signal },
+        );
+        return {
+          items: response.data.map(formatProspectOption),
+          total: response.total,
+        };
       }
-    }, 250);
 
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [
-    recipientSearch,
-    recipientType,
-    recipientLoadErrorMessage,
-    selectedRecipientRefId,
-    usesRemoteRecipientLookup,
-  ]);
+      // F4: `/crm/subscribers/search` es exacto-hash (documento/NIT/email/tel).
+      // Typeahead usable: listado con `search` (ILIKE sobre nombre comercial / razón social).
+      const response = await subscribersApi.list(
+        { search: query, limit: RECIPIENT_PICKER_LIMIT, page: 1 },
+        undefined,
+        { signal },
+      );
+      return {
+        items: response.data.map(formatSubscriberOption),
+        total: response.total,
+      };
+    },
+    [recipientType],
+  );
+
+  const clearRecipient = useCallback(() => {
+    setValue('recipientRefId', '', { shouldDirty: true, shouldValidate: true });
+    setValue('recipientLabel', '', { shouldDirty: true, shouldValidate: true });
+    setSelectedRecipientItem(null);
+  }, [setValue]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -287,12 +257,7 @@ export function TaskCoreFields({
             value={field.value}
             onChange={(event) => {
               field.onChange(event);
-              setValue('recipientRefId', '', { shouldDirty: true, shouldValidate: true });
-              setValue('recipientLabel', '', { shouldDirty: true, shouldValidate: true });
-              setRecipientSearch('');
-              setRecipientSearchResults([]);
-              setRecipientSearchError(null);
-              setIsSearchingRecipients(false);
+              clearRecipient();
             }}
             options={RECIPIENT_TYPE_OPTIONS}
             disabled={disabled}
@@ -319,19 +284,45 @@ export function TaskCoreFields({
         />
       ) : usesRemoteRecipientLookup ? (
         <div className="space-y-3 md:col-span-2">
-          <Input
+          <SearchablePicker
             id="task-recipient-search"
-            label={recipientSearchLabel}
-            value={recipientSearch}
-            onChange={(event) => setRecipientSearch(event.target.value)}
-            placeholder={recipientSearchPlaceholder}
-            disabled={disabled || Boolean(selectedRecipientRefId)}
-            helperText={
-              selectedRecipientRefId
-                ? 'Usa "Cambiar destinatario" si deseas escoger otro registro.'
-                : 'Escribe al menos 2 caracteres para consultar registros existentes.'
+            label={
+              recipientType === TaskRecipientType.PROSPECT
+                ? 'Buscar prospecto'
+                : 'Buscar suscriptor'
             }
-            error={errors.recipientRefId?.message ?? undefined}
+            resource={recipientResource}
+            value={selectedRecipientRefId || null}
+            selectedItem={selectedRecipientItem}
+            onChange={(item) => {
+              if (!item) {
+                clearRecipient();
+                return;
+              }
+              setValue('recipientRefId', item.id, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              setValue('recipientLabel', item.label, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              setSelectedRecipientItem({ label: item.label, sublabel: item.sublabel });
+            }}
+            onSearch={searchRecipients}
+            placeholder={
+              recipientType === TaskRecipientType.PROSPECT
+                ? 'Nombre, documento o correo del prospecto'
+                : 'Nombre o razón social del suscriptor'
+            }
+            disabled={disabled}
+            labels={{
+              empty: (resource) => `No hay ${resource.plural} que coincidan`,
+              error: (resource) =>
+                recipientType === TaskRecipientType.PROSPECT
+                  ? 'No fue posible consultar prospectos del CRM.'
+                  : `No fue posible cargar ${resource.plural}.`,
+            }}
           />
 
           <PortalAlert
@@ -340,83 +331,15 @@ export function TaskCoreFields({
             description={
               recipientType === TaskRecipientType.PROSPECT
                 ? 'Las tareas dirigidas a prospectos se vinculan con expedientes existentes del CRM.'
-                : 'Las tareas dirigidas a suscriptores se vinculan con registros comerciales existentes.'
+                : 'Las tareas dirigidas a suscriptores se vinculan con registros comerciales existentes. La búsqueda por documento exacto usa otro flujo; aquí se busca por nombre.'
             }
           />
 
-          {selectedRecipientRefId && selectedRecipientLabel && (
-            <div className="rounded-2xl border border-iwana-primary-100 bg-iwana-primary-50 px-4 py-3 text-sm dark:border-iwana-primary-800 dark:bg-iwana-primary-950/40">
-              <p className="portal-eyebrow">Destinatario seleccionado</p>
-              <p className="mt-1 font-medium text-iwana-primary dark:text-white">
-                {selectedRecipientLabel}
-              </p>
-              <button
-                type="button"
-                className="mt-2 text-xs font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-secondary-300"
-                disabled={disabled}
-                onClick={() => {
-                  setValue('recipientRefId', '', { shouldDirty: true, shouldValidate: true });
-                  setValue('recipientLabel', '', { shouldDirty: true, shouldValidate: true });
-                  setRecipientSearch('');
-                  setRecipientSearchResults([]);
-                  setRecipientSearchError(null);
-                }}
-              >
-                Cambiar destinatario
-              </button>
-            </div>
+          {errors.recipientRefId?.message && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {errors.recipientRefId.message}
+            </p>
           )}
-
-          {isSearchingRecipients && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Buscando coincidencias...</p>
-          )}
-
-          {recipientSearchError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{recipientSearchError}</p>
-          )}
-
-          {!isSearchingRecipients && recipientSearchResults.length > 0 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-              <ul className="space-y-1">
-                {recipientSearchResults.map((option) => (
-                  <li key={option.value}>
-                    <button
-                      type="button"
-                      className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-iwana-surface-soft dark:hover:bg-dark-surface-4"
-                      disabled={disabled}
-                      onClick={() => {
-                        setValue('recipientRefId', option.value, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                        setValue('recipientLabel', option.label, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                        setRecipientSearch(option.label);
-                        setRecipientSearchResults([]);
-                      }}
-                    >
-                      <p className="font-medium text-gray-900 dark:text-white">{option.label}</p>
-                      {option.meta && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{option.meta}</p>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {!isSearchingRecipients &&
-            !selectedRecipientRefId &&
-            recipientSearch.trim().length >= 2 &&
-            recipientSearchResults.length === 0 &&
-            !recipientSearchError && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                No encontramos coincidencias con ese criterio.
-              </p>
-            )}
         </div>
       ) : (
         <>

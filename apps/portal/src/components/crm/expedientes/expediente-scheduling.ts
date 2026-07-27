@@ -24,10 +24,6 @@ export function canScheduleInstallation({
   );
 }
 
-export function buildSchedulingHref(expedienteId: string): string {
-  return `/dashboard/crm/expedientes/${encodeURIComponent(expedienteId)}#programacion`;
-}
-
 function normalizeRequirementLabel(value: string): string {
   return value
     .normalize('NFD')

@@ -15,7 +15,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -337,8 +344,17 @@ export class WfmController {
   @Get('work-orders')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @ApiOperation({ summary: 'Listar Work Orders del tenant' })
-  listWorkOrders(@CurrentUser() actor: JwtPayload) {
-    return this.workOrdersService.list(actor);
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
+  listWorkOrders(
+    @CurrentUser() actor: JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.workOrdersService.list(actor, {
+      ...(page !== undefined ? { page: Number(page) } : {}),
+      ...(limit !== undefined ? { limit: Number(limit) } : {}),
+    });
   }
 
   // Sub-ruta especifica antes de /:id
@@ -407,13 +423,21 @@ export class WfmController {
   @Get('operational-eventualities')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Listar eventualidades operativas del tenant' })
+  @ApiQuery({ name: 'userId', required: false, type: String })
+  @ApiQuery({ name: 'organizationSiteId', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   listOperationalEventualities(
     @Query('userId') userId?: string,
     @Query('organizationSiteId') organizationSiteId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     return this.operationalEventualitiesService.findAllByTenant({
       ...(userId ? { userId } : {}),
       ...(organizationSiteId ? { organizationSiteId } : {}),
+      ...(page !== undefined ? { page: Number(page) } : {}),
+      ...(limit !== undefined ? { limit: Number(limit) } : {}),
     });
   }
 

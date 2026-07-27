@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
@@ -137,6 +137,108 @@ export class CompletenessCalculator {
 
       throw error;
     }
+  }
+
+  /**
+   * Versión batch: calcula la completitud de múltiples expedientes con una
+   * consulta por tabla usando `In(ids)`. No abre conexiones propias — usa el
+   * `EntityManager` del llamador.
+   *
+   * Reemplaza al `Promise.all` sobre `calculate()` en el listado de expedientes,
+   * que con `limit=100` abría 300 adquisiciones concurrentes contra DB_POOL_MAX=10.
+   */
+  async calculateBatch(
+    manager: EntityManager,
+    schemaName: string,
+    expedienteIds: string[],
+  ): Promise<Map<string, CompletenessResult>> {
+    const result = new Map<string, CompletenessResult>();
+
+    if (expedienteIds.length === 0) {
+      return result;
+    }
+
+    // 1 query: todos los expedientes del lote
+    const expedientes = await manager.find(ExpedienteRecord, {
+      where: { id: In(expedienteIds) },
+    });
+
+    // 1 query: todos los consentimientos
+    const consents = await manager.find(ConsentRecord, {
+      where: { expedienteId: In(expedienteIds) },
+    });
+
+    // 1 query: todos los chequeos de cobertura
+    const coverageChecks = await manager.find(CoverageCheck, {
+      where: { expedienteId: In(expedienteIds) },
+    });
+
+    // 1 query: todas las cotizaciones (vía port batch)
+    const quotes = await this.crmQuoteReadPort.findByExpedienteIds(manager, expedienteIds);
+
+    // Agrupar datos por expedienteId
+    const consentsByExpediente = new Map<string, ConsentRecord[]>();
+    for (const c of consents) {
+      const bucket = consentsByExpediente.get(c.expedienteId) ?? [];
+      bucket.push(c);
+      consentsByExpediente.set(c.expedienteId, bucket);
+    }
+
+    const coverageByExpediente = new Map<string, CoverageCheck[]>();
+    for (const c of coverageChecks) {
+      const bucket = coverageByExpediente.get(c.expedienteId) ?? [];
+      bucket.push(c);
+      coverageByExpediente.set(c.expedienteId, bucket);
+    }
+
+    const quotesByExpediente = new Map<string, CrmQuoteSnapshot[]>();
+    for (const q of quotes) {
+      const bucket = quotesByExpediente.get(q.expedienteId) ?? [];
+      bucket.push(q);
+      quotesByExpediente.set(q.expedienteId, bucket);
+    }
+
+    // Calcular completitud para cada expediente
+    for (const expediente of expedientes) {
+      const expedienteConsents = consentsByExpediente.get(expediente.id) ?? [];
+      const expedienteCoverage = coverageByExpediente.get(expediente.id) ?? [];
+      const expedienteQuotes = quotesByExpediente.get(expediente.id) ?? [];
+
+      try {
+        const commercial = this.calculateCommercial(expediente, expedienteQuotes);
+        const legal = this.calculateLegal(expediente, expedienteConsents);
+        const technical = Math.max(
+          this.calculateTechnical(expediente, expedienteCoverage),
+          this.calculateTechnicalFromStructuredFields(expediente),
+        );
+        const operational = this.calculateOperational(expediente);
+        const sectionSummary = this.sectionCompletenessService.calculateSummary({
+          expediente,
+          consents: expedienteConsents,
+          quotes: expedienteQuotes,
+          coverageChecks: expedienteCoverage,
+        });
+
+        result.set(expediente.id, {
+          commercial,
+          legal,
+          technical,
+          operational,
+          overall: sectionSummary.overallPercentage,
+          sectionCompleteness: sectionSummary.sections,
+          installationReadiness: sectionSummary.installationReadiness,
+          missingRequirements: sectionSummary.missingRequirements,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Error calculating completeness for expediente ${expediente.id}: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+        result.set(expediente.id, this.buildFallbackFromStoredCompleteness(expediente));
+      }
+    }
+
+    return result;
   }
 
   private buildFallbackFromStoredCompleteness(expediente: ExpedienteRecord): CompletenessResult {

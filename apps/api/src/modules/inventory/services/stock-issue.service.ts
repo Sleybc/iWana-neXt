@@ -28,6 +28,17 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
 import { InventoryDomainEventPublisher } from './inventory-domain-event-publisher.service';
 import { StockLedgerService } from './stock-ledger.service';
+import {
+  assertExclusivePageCursor,
+  buildCursorMeta,
+  buildPageMeta,
+  clampInventoryLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  sliceDateIdDescPage,
+} from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import type { ListResponse } from '@iwana/shared';
 
 export type StockIssueDetail = StockIssue & { lines: StockIssueLine[] };
 
@@ -360,23 +371,18 @@ export class StockIssueService {
     );
   }
 
-  async list(query: ListStockIssuesQueryInput): Promise<StockIssue[]> {
+  async list(query: ListStockIssuesQueryInput): Promise<ListResponse<StockIssue>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListStockIssuesQuerySchema.parse(query);
+    assertExclusivePageCursor(validated);
+    const limit = clampInventoryLimit(validated.limit);
+    const usePage = validated.page !== undefined;
+    const page = usePage ? clampPage(validated.page!, limit).page : 1;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(StockIssue, 'issue')
-        .where('issue.tenant_id = :tenantId', { tenantId })
-        .orderBy('issue.created_at', 'DESC');
-
-      qb.addSelect((subQuery) => {
-        return subQuery
-          .select('COUNT(1)', 'count')
-          .from(StockIssueLine, 'line')
-          .where('line.tenant_id = issue.tenant_id')
-          .andWhere('line.issue_id = issue.id');
-      }, 'lines_count');
+        .where('issue.tenant_id = :tenantId', { tenantId });
 
       if (validated.type) {
         qb.andWhere('issue.type = :type', { type: validated.type });
@@ -398,13 +404,69 @@ export class StockIssueService {
         });
       }
 
-      const { entities, raw } = await qb.getRawAndEntities();
-      return entities.map((entity, index) => {
+      const total = await qb.clone().getCount();
+
+      qb.addSelect((subQuery) => {
+        return subQuery
+          .select('COUNT(1)', 'count')
+          .from(StockIssueLine, 'line')
+          .where('line.tenant_id = issue.tenant_id')
+          .andWhere('line.issue_id = issue.id');
+      }, 'lines_count');
+
+      qb.orderBy('issue.created_at', 'DESC').addOrderBy('issue.id', 'DESC');
+
+      if (usePage) {
+        const { entities, raw } = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getRawAndEntities();
+        const data = entities.map((entity, index) => {
+          const count = raw[index]?.lines_count;
+          (entity as unknown as { linesCount?: number }).linesCount =
+            typeof count === 'string' ? Number.parseInt(count, 10) : Number(count ?? 0);
+          return entity;
+        });
+        return {
+          data,
+          meta: buildPageMeta({
+            total,
+            page,
+            limit,
+            randomAccess: false,
+            sortableFields: [],
+          }),
+        };
+      }
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('issue', 'created_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const { entities, raw } = await qb.take(limit + 1).getRawAndEntities();
+      const entitiesWithCount = entities.map((entity, index) => {
         const count = raw[index]?.lines_count;
         (entity as unknown as { linesCount?: number }).linesCount =
           typeof count === 'string' ? Number.parseInt(count, 10) : Number(count ?? 0);
         return entity;
       });
+
+      const { data, nextCursor } = sliceDateIdDescPage(
+        entitiesWithCount,
+        limit,
+        (row) => row.createdAt,
+      );
+      return {
+        data,
+        meta: buildCursorMeta({
+          nextCursor,
+          total,
+          limit,
+        }),
+      };
     });
   }
 

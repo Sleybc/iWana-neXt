@@ -40,6 +40,11 @@ export {
   runTenantMigrations,
   TENANT_MIGRATIONS,
 } from './migrations/tenant/runner';
+export type { TenantMigrationResult } from './migrations/tenant/runner';
+export {
+  PAGINATION_INDEX_NAMES,
+  verifyPaginationIndexes,
+} from './migrations/tenant/089_pagination_ordering_indexes';
 export {
   DESTRUCTIVE_DOWN_ENV_VAR,
   MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG,

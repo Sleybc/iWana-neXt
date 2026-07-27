@@ -87,3 +87,26 @@ export function resolveLocationStatusSelectValue(
 
   return statusFilter;
 }
+
+/** Query params Ola 6 para `GET /inventory/locations` (sin inventar agregación). */
+export function locationMatrixFiltersToListParams(filters: LocationMatrixFilters): {
+  search?: string;
+  type?: StockLocationType;
+  status?: StockLocationStatus;
+  custody?: 'mobile';
+  statusGroup?: 'inactive_group';
+  withStock?: boolean;
+} {
+  return {
+    ...(filters.search.trim() ? { search: filters.search.trim() } : {}),
+    ...(filters.typeFilter !== 'all' ? { type: filters.typeFilter } : {}),
+    ...(filters.statusFilter !== 'all' && filters.statusFilter !== 'inactive_group'
+      ? { status: filters.statusFilter }
+      : {}),
+    ...(filters.statusFilter === 'inactive_group'
+      ? { statusGroup: 'inactive_group' as const }
+      : {}),
+    ...(filters.custodyFilter === 'mobile' ? { custody: 'mobile' as const } : {}),
+    ...(filters.stockFilter === 'withStock' ? { withStock: true } : {}),
+  };
+}

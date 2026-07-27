@@ -9,10 +9,11 @@
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -25,8 +26,10 @@ import {
   SimulateTaxDto,
   UpdateTaxRuleApplicationDto,
 } from '../dto/tax.dto';
+import { CommercialListMetaDto, CommercialListQueryDto } from '../dto/commercial-list-query.dto';
 
 @ApiTags('commercial-tax')
+@ApiExtraModels(CommercialListMetaDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial')
@@ -37,10 +40,17 @@ export class TaxController {
 
   @Get('tax-rules')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Listar reglas tributarias del tenant' })
-  async findAllRules() {
-    const data = await this.taxApplicationService.listRules();
-    return { data };
+  @ApiOperation({
+    summary: 'Listar reglas tributarias del tenant (paginación cursor)',
+    description:
+      'ADR-064: limit default 20, max 100; meta.nextCursor + meta.total. Orden: createdAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Respuesta `{ data, meta: { nextCursor, total } }`',
+  })
+  async findAllRules(@Query() query: CommercialListQueryDto) {
+    return this.taxApplicationService.listRules(query);
   }
 
   @Post('tax-rules')
@@ -73,10 +83,17 @@ export class TaxController {
 
   @Get('tax-rule-applications')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Listar aplicaciones tributarias (tabla puente reglas ↔ catálogo)' })
-  async listApplications() {
-    const data = await this.taxApplicationService.listApplications();
-    return { data };
+  @ApiOperation({
+    summary: 'Listar aplicaciones tributarias (paginación cursor)',
+    description:
+      'Tabla puente reglas ↔ catálogo. ADR-064: limit default 20, max 100; meta.nextCursor + meta.total.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Respuesta `{ data, meta: { nextCursor, total } }`',
+  })
+  async listApplications(@Query() query: CommercialListQueryDto) {
+    return this.taxApplicationService.listApplications(query);
   }
 
   @Post('tax-rule-applications')

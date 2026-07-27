@@ -32,6 +32,7 @@ describe('useful-life-alerts aislamiento tenant', () => {
     where: jest.Mock;
     andWhere: jest.Mock;
     orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
     skip: jest.Mock;
     take: jest.Mock;
     getCount: jest.Mock;
@@ -43,6 +44,7 @@ describe('useful-life-alerts aislamiento tenant', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getCount: jest.fn().mockResolvedValue(0),
@@ -91,6 +93,9 @@ describe('useful-life-alerts aislamiento tenant', () => {
     expect(lastQb.where).toHaveBeenCalledWith('asset.tenant_id = :tenantId', {
       tenantId: 'tenant-a',
     });
+    // DEF-1: desempate por id (mismo orden que serialized-asset.service).
+    expect(lastQb.orderBy).toHaveBeenCalledWith('asset.updated_at', 'DESC');
+    expect(lastQb.addOrderBy).toHaveBeenCalledWith('asset.id', 'DESC');
     expect(iwanaDb.runInTenantSchema).toHaveBeenCalledWith(
       expect.anything(),
       'tenant_a',

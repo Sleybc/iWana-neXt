@@ -1,24 +1,27 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { StockMovementOrigin } from '@iwana/shared';
-import { Button, Input, Select } from '@iwana/ui';
-import {
-  inventoryApi,
-  type InventoryItemRecord,
-  type StockLocationRecord,
-  type StockMovementKardexRecord,
-} from '@/lib/api-client';
+import type { ListMeta } from '@iwana/shared';
+import { Badge, Button, Input, Select } from '@iwana/ui';
+import { inventoryApi, type StockMovementKardexRecord } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPageSizeSelect,
   PortalSearchField,
   PortalSkeletonBlock,
+  PortalTablePager,
+  PortalTablePagination,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
+  portalDataBusyRegionClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
@@ -35,62 +38,205 @@ import {
   hasActiveStockKardexFilters,
   type StockKardexFilters,
 } from './stock-kardex-filters';
+import { InventoryItemPicker } from './InventoryItemPicker';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 interface StockKardexPanelProps {
-  items: InventoryItemRecord[];
-  locations: StockLocationRecord[];
   initialFilters?: Partial<StockKardexFilters>;
 }
 
-export function StockKardexPanel({ items, locations, initialFilters }: StockKardexPanelProps) {
-  const [filters, setFilters] = useState<StockKardexFilters>(() => ({
-    ...EMPTY_STOCK_KARDEX_FILTERS,
-    ...initialFilters,
-  }));
-  const [page, setPage] = useState(1);
-  const [limit] = useState(20);
-  const [total, setTotal] = useState(0);
+const MOVEMENTS_RESOURCE = { singular: 'movimiento', plural: 'movimientos' } as const;
+const FILTER_KEYS = ['search', 'origin', 'locationId', 'itemId', 'dateFrom', 'dateTo'] as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
+
+function filtersFromUrl(
+  urlFilters: Record<string, string>,
+  initial?: Partial<StockKardexFilters>,
+): StockKardexFilters {
+  return {
+    search: urlFilters.search ?? initial?.search ?? '',
+    origin:
+      (urlFilters.origin as StockKardexFilters['origin'] | undefined) ?? initial?.origin ?? 'all',
+    locationId: urlFilters.locationId ?? initial?.locationId ?? '',
+    itemId: urlFilters.itemId ?? initial?.itemId ?? '',
+    serializedAssetId: initial?.serializedAssetId ?? '',
+    dateFrom: urlFilters.dateFrom ?? initial?.dateFrom ?? '',
+    dateTo: urlFilters.dateTo ?? initial?.dateTo ?? '',
+  };
+}
+
+function StockKardexPanelInner({ initialFilters }: StockKardexPanelProps) {
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const seededInitialRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+
+  const {
+    page,
+    pageSize,
+    filters: urlFilters,
+    setPage,
+    setPageSize,
+    setFilters,
+    setQuery,
+  } = useTableQueryState({
+    namespace: 'kardex',
+    filterKeys: FILTER_KEYS,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
+
+  const filters = useMemo(
+    () => filtersFromUrl(urlFilters, seededInitialRef.current ? undefined : initialFilters),
+    [initialFilters, urlFilters],
+  );
+
+  useEffect(() => {
+    if (seededInitialRef.current || !initialFilters) return;
+    seededInitialRef.current = true;
+    const seeded = filtersFromUrl({}, initialFilters);
+    if (!hasActiveStockKardexFilters(seeded)) return;
+    setFilters({
+      search: seeded.search || null,
+      origin: seeded.origin !== 'all' ? seeded.origin : null,
+      locationId: seeded.locationId || null,
+      itemId: seeded.itemId || null,
+      dateFrom: seeded.dateFrom || null,
+      dateTo: seeded.dateTo || null,
+    });
+  }, [initialFilters, setFilters]);
+
+  const [totalMeta, setTotalMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [movements, setMovements] = useState<StockMovementKardexRecord[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
+  const [locationFilterLabel, setLocationFilterLabel] = useState<string | null>(null);
+  const [itemFilterLabel, setItemFilterLabel] = useState<string | null>(null);
+
+  const urlSearch = filters.search ?? '';
+  const [searchDraft, setSearchDraft] = useState(urlSearch);
 
   useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
+    setSearchDraft(urlSearch);
+  }, [urlSearch]);
 
-    void inventoryApi
-      .listMovements(buildListMovementsParams(filters, { page, limit }))
-      .then((result) => {
-        if (cancelled) return;
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const trimmed = searchDraft.trim();
+      if (trimmed === urlSearch.trim()) return;
+      applyFilters({ ...filters, search: trimmed });
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchDraft]); // eslint-disable-line react-hooks/exhaustive-deps -- solo debounce searchDraft
+
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      try {
+        const result = await inventoryApi.listMovements(
+          buildListMovementsParams(filters, { page, limit: pageSize }),
+        );
+        const nextMeta = normalizeListMeta(
+          {
+            page: result.page,
+            limit: result.limit ?? pageSize,
+            total: result.total,
+            mode: 'page',
+            capabilities: { randomAccess: true, sortableFields: [] },
+          },
+          { dataLength: result.data.length, limit: pageSize },
+        );
+        const requestedPage = page;
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (result.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
         setMovements(result.data);
-        setTotal(result.total);
-      })
-      .catch(() => {
-        if (cancelled) return;
+        setTotalMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch {
         setError('No fue posible cargar el kardex.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+        if (!soft) {
+          setMovements([]);
+          setTotalMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [filters, page, pageSize, setQuery],
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [filters, limit, page]);
+  useEffect(() => {
+    void loadPage({ soft: true });
+  }, [loadPage]);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    if (prevPageRef.current === page) return;
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom
+      }
+    }
+  }, [page]);
+
+  function applyFilters(next: StockKardexFilters) {
+    setFilters({
+      search: next.search || null,
+      origin: next.origin !== 'all' ? next.origin : null,
+      locationId: next.locationId || null,
+      itemId: next.itemId || null,
+      dateFrom: next.dateFrom || null,
+      dateTo: next.dateTo || null,
+    });
+  }
+
+  const pageCount = totalMeta.totalPages ?? (totalMeta.total > 0 ? 1 : 0);
+  const effectivePage = totalMeta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: totalMeta.limit || pageSize,
+    total: totalMeta.total,
+  });
+  const randomAccess = totalMeta.capabilities.randomAccess;
+  const showPager = !isLoading && totalMeta.total > 0;
+  const showPageSize = showPager && randomAccess && totalMeta.total > Math.min(10, 20, 50);
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-3">
         <PortalSearchField
           id="stock-kardex-search"
-          value={filters.search}
+          value={searchDraft}
           onChange={(search) => {
-            setPage(1);
-            setFilters((current) => ({ ...current, search }));
+            setSearchDraft(search);
           }}
           placeholder="Número de movimiento"
           label="Buscar por número de movimiento"
@@ -99,11 +245,10 @@ export function StockKardexPanel({ items, locations, initialFilters }: StockKard
           label="Origen"
           value={filters.origin}
           onChange={(event) => {
-            setPage(1);
-            setFilters((current) => ({
-              ...current,
+            applyFilters({
+              ...filters,
               origin: event.target.value as StockKardexFilters['origin'],
-            }));
+            });
           }}
           options={[
             { value: 'all', label: 'Todos los orígenes' },
@@ -113,43 +258,34 @@ export function StockKardexPanel({ items, locations, initialFilters }: StockKard
             })),
           ]}
         />
-        <Select
+        <InventoryLocationPicker
+          id="stock-kardex-location"
           label="Bodega"
-          value={filters.locationId}
-          onChange={(event) => {
-            setPage(1);
-            setFilters((current) => ({ ...current, locationId: event.target.value }));
+          value={filters.locationId || null}
+          selectedLabel={locationFilterLabel}
+          placeholder="Todas las bodegas — busca para filtrar"
+          onChange={(locationId, item) => {
+            setLocationFilterLabel(item ? item.label : null);
+            applyFilters({ ...filters, locationId: locationId ?? '' });
           }}
-          options={[
-            { value: '', label: 'Todas las bodegas' },
-            ...locations.map((location) => ({
-              value: location.id,
-              label: `${location.code} · ${location.name}`,
-            })),
-          ]}
         />
-        <Select
+        <InventoryItemPicker
+          id="stock-kardex-item"
           label="Producto"
-          value={filters.itemId}
-          onChange={(event) => {
-            setPage(1);
-            setFilters((current) => ({ ...current, itemId: event.target.value }));
+          value={filters.itemId || null}
+          selectedLabel={itemFilterLabel}
+          placeholder="Todos los productos — busca para filtrar"
+          onChange={(itemId, item) => {
+            setItemFilterLabel(item ? item.label : null);
+            applyFilters({ ...filters, itemId: itemId ?? '' });
           }}
-          options={[
-            { value: '', label: 'Todos los productos' },
-            ...items.map((item) => ({
-              value: item.id,
-              label: `${item.sku} · ${item.name}`,
-            })),
-          ]}
         />
         <Input
           label="Desde"
           type="date"
           value={filters.dateFrom}
           onChange={(event) => {
-            setPage(1);
-            setFilters((current) => ({ ...current, dateFrom: event.target.value }));
+            applyFilters({ ...filters, dateFrom: event.target.value });
           }}
         />
         <Input
@@ -157,8 +293,7 @@ export function StockKardexPanel({ items, locations, initialFilters }: StockKard
           type="date"
           value={filters.dateTo}
           onChange={(event) => {
-            setPage(1);
-            setFilters((current) => ({ ...current, dateTo: event.target.value }));
+            applyFilters({ ...filters, dateTo: event.target.value });
           }}
         />
       </div>
@@ -168,10 +303,7 @@ export function StockKardexPanel({ items, locations, initialFilters }: StockKard
           type="button"
           size="sm"
           variant="secondary"
-          onClick={() => {
-            setPage(1);
-            setFilters(EMPTY_STOCK_KARDEX_FILTERS);
-          }}
+          onClick={() => applyFilters(EMPTY_STOCK_KARDEX_FILTERS)}
         >
           Limpiar filtros
         </Button>
@@ -179,6 +311,14 @@ export function StockKardexPanel({ items, locations, initialFilters }: StockKard
 
       {error ? (
         <PortalAlert variant="error" title="Error al cargar el kardex" description={error} />
+      ) : null}
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
       ) : null}
       {isLoading ? <PortalSkeletonBlock className="h-40" /> : null}
 
@@ -190,105 +330,127 @@ export function StockKardexPanel({ items, locations, initialFilters }: StockKard
       ) : null}
 
       {!isLoading && movements.length > 0 ? (
-        <div className={portalDataTableShellClassName}>
-          <table className="min-w-full">
-            <thead>
-              <tr>
-                <th className={portalDataTableHeadClassName} />
-                <th className={portalDataTableHeadClassName}>Número</th>
-                <th className={portalDataTableHeadClassName}>Origen</th>
-                <th className={portalDataTableHeadClassName}>Razón</th>
-                <th className={portalDataTableHeadClassName}>Fecha</th>
-                <th className={portalDataTableHeadClassName}>Líneas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movements.map((movement) => {
-                const expanded = expandedId === movement.id;
-                return (
-                  <Fragment key={movement.id}>
-                    <tr className={portalTableRowHoverClassName}>
-                      <td className={portalDataTableCellClassName}>
-                        <button
-                          type="button"
-                          className="inline-flex items-center text-iwana-secondary-700"
-                          aria-expanded={expanded}
-                          aria-label={expanded ? 'Contraer líneas' : 'Expandir líneas'}
-                          onClick={() =>
-                            setExpandedId((current) =>
-                              current === movement.id ? null : movement.id,
-                            )
-                          }
-                        >
-                          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                      </td>
-                      <td className={portalDataTableCellClassName}>{movement.movementNumber}</td>
-                      <td className={portalDataTableCellClassName}>
-                        {getStockMovementOriginLabel(movement.origin)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {movement.adjustmentReason
-                          ? getStockAdjustmentReasonLabel(movement.adjustmentReason)
-                          : '—'}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {formatInventoryDate(movement.createdAt)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>{movement.lines.length}</td>
-                    </tr>
-                    {expanded ? (
-                      <tr>
-                        <td colSpan={6} className={portalDataTableCellClassName}>
-                          <ul className="space-y-1 text-sm text-iwana-secondary-700">
-                            {movement.lines.map((line) => (
-                              <li key={line.id}>
-                                {line.itemSku ?? line.itemId} ·{' '}
-                                {line.locationName ?? line.locationId}
-                                {line.lotNumber ? ` · Lote ${line.lotNumber}` : ''} ·{' '}
-                                <span className="tabular-nums">
-                                  {formatInventoryQuantity(line.quantity)}
-                                  {line.unitCost != null && line.unitCost !== ''
-                                    ? ` · ${INVENTORY_UNIT_COST_LABEL} ${formatInventoryCostOrNone(line.unitCost)}`
-                                    : ''}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
+        <div ref={tableShellRef} className={portalDataTableShellClassName}>
+          <div
+            className={
+              refreshing ? `overflow-x-auto ${portalDataBusyRegionClassName}` : 'overflow-x-auto'
+            }
+            aria-busy={refreshing || undefined}
+          >
+            <table className="min-w-full">
+              <thead>
+                <tr>
+                  <th className={portalDataTableHeadClassName} />
+                  <th className={portalDataTableHeadClassName}>Número</th>
+                  <th className={portalDataTableHeadClassName}>Origen</th>
+                  <th className={portalDataTableHeadClassName}>Razón</th>
+                  <th className={portalDataTableHeadClassName}>Fecha</th>
+                  <th className={portalDataTableHeadClassName}>Líneas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((movement) => {
+                  const expanded = expandedId === movement.id;
+                  return (
+                    <Fragment key={movement.id}>
+                      <tr className={portalTableRowHoverClassName}>
+                        <td className={portalDataTableCellClassName}>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-iwana-secondary-700"
+                            aria-expanded={expanded}
+                            aria-label={expanded ? 'Contraer líneas' : 'Expandir líneas'}
+                            onClick={() =>
+                              setExpandedId((current) =>
+                                current === movement.id ? null : movement.id,
+                              )
+                            }
+                          >
+                            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
                         </td>
+                        <td className={portalDataTableCellClassName}>{movement.movementNumber}</td>
+                        <td className={portalDataTableCellClassName}>
+                          {getStockMovementOriginLabel(movement.origin)}
+                        </td>
+                        <td className={portalDataTableCellClassName}>
+                          {movement.adjustmentReason
+                            ? getStockAdjustmentReasonLabel(movement.adjustmentReason)
+                            : '—'}
+                        </td>
+                        <td className={portalDataTableCellClassName}>
+                          {formatInventoryDate(movement.createdAt)}
+                        </td>
+                        <td className={portalDataTableCellClassName}>{movement.lines.length}</td>
                       </tr>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                      {expanded ? (
+                        <tr>
+                          <td colSpan={6} className={portalDataTableCellClassName}>
+                            <ul className="space-y-1 text-sm text-iwana-secondary-700">
+                              {movement.lines.map((line) => (
+                                <li key={line.id}>
+                                  {line.itemSku ?? line.itemId} ·{' '}
+                                  {line.locationName ?? line.locationId}
+                                  {line.lotNumber ? ` · Lote ${line.lotNumber}` : ''} ·{' '}
+                                  <span className="tabular-nums">
+                                    {formatInventoryQuantity(line.quantity)}
+                                    {line.unitCost != null && line.unitCost !== ''
+                                      ? ` · ${INVENTORY_UNIT_COST_LABEL} ${formatInventoryCostOrNone(line.unitCost)}`
+                                      : ''}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {showPager && randomAccess ? (
+            <PortalTablePager
+              page={effectivePage}
+              pageCount={Math.max(1, pageCount)}
+              onPageChange={setPage}
+              from={from}
+              to={to}
+              total={totalMeta.total}
+              resource={MOVEMENTS_RESOURCE}
+              loading={refreshing}
+              pageSizeControl={
+                showPageSize ? (
+                  <PortalPageSizeSelect
+                    value={pageSize}
+                    onChange={setPageSize}
+                    disabled={refreshing}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
+          {showPager && !randomAccess ? (
+            <PortalTablePagination
+              hasMore={totalMeta.hasMore}
+              onLoadMore={() => setPage(page + 1)}
+              loading={refreshing}
+              resourceLabel="movimientos"
+              shown={to}
+              total={totalMeta.total}
+            />
+          ) : null}
         </div>
       ) : null}
-
-      <div className="flex items-center justify-between">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={page <= 1 || isLoading}
-          onClick={() => setPage((current) => Math.max(1, current - 1))}
-        >
-          Anterior
-        </Button>
-        <span className="text-sm text-iwana-secondary-700">
-          Página {page} de {totalPages} · {total} movimientos
-        </span>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={page >= totalPages || isLoading}
-          onClick={() => setPage((current) => current + 1)}
-        >
-          Siguiente
-        </Button>
-      </div>
     </div>
+  );
+}
+
+export function StockKardexPanel(props: StockKardexPanelProps) {
+  return (
+    <Suspense fallback={<PortalSkeletonBlock className="h-40" />}>
+      <StockKardexPanelInner {...props} />
+    </Suspense>
   );
 }

@@ -22,9 +22,15 @@ import {
   VisitRequestStatus,
   WfmWorkType,
   WorkOrderSourceContext,
+  type ListResponse,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { ExecutionOrdersService } from '../../tasks/services/execution-orders.service';
+import {
+  EXECUTION_ORDER_SCHEDULING_PORT,
+  ExecutionOrderSchedulingPort,
+} from '../../tasks/ports/execution-order-scheduling.port';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   CreateScheduleEventInput,
   CreateScheduleEventSchema,
@@ -77,19 +83,28 @@ export class ScheduleEventsService {
     private readonly conflictService: ScheduleConflictService,
     private readonly workOrdersService: WorkOrdersService,
     @Optional()
-    private readonly executionOrdersService?: ExecutionOrdersService,
+    @Inject(EXECUTION_ORDER_SCHEDULING_PORT)
+    private readonly executionOrdersService?: ExecutionOrderSchedulingPort,
   ) {}
 
   /** Lista eventos del tenant con filtros opcionales y control de acceso por rol. */
-  async list(query: ListScheduleEventsQueryDto, actor: JwtPayload): Promise<ScheduleEvent[]> {
+  async list(
+    query: ListScheduleEventsQueryDto,
+    actor: JwtPayload,
+  ): Promise<ListResponse<ScheduleEvent>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(query.limit);
+    const { page, limit } = clampPage(query.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(ScheduleEvent, 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
         .andWhere('se.deleted_at IS NULL')
-        .orderBy('se.scheduled_start_at', 'ASC');
+        .orderBy('se.scheduled_start_at', 'ASC')
+        .addOrderBy('se.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
       if (RESTRICTED_ROLES.includes(actor.role as UserRole)) {
         qb.andWhere('se.assigned_user_id = :uid', { uid: actor.sub });
@@ -126,7 +141,17 @@ export class ScheduleEventsService {
         qb.andWhere('se.sector ILIKE :sector', { sector: `%${query.sector}%` });
       }
 
-      return qb.getMany();
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 

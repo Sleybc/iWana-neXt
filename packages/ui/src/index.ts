@@ -35,6 +35,7 @@ export * from './components/Tabs';
 export * from './components/DropdownMenu';
 export * from './components/SectionAccordion';
 export * from './components/ProgressMeter';
+export * from './components/OperationalSidePeek';
 export * from './components/Popover';
 export * from './components/Calendar';
 export * from './components/DatePicker';

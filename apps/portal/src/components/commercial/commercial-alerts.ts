@@ -14,6 +14,8 @@ export interface CommercialAlert {
   tab: CommercialTab;
   /** Filtro que debe aplicarse al aterrizar en `tab`; ausente si no aplica. */
   status?: CommercialOfferStatusFilter;
+  /** Entidad a enfocar cuando la alerta puede resolver un id representativo. */
+  focus?: string;
 }
 
 export function resolveOffersRiskTab(summary: CommercialDashboardSummary): CommercialTab {
@@ -68,26 +70,38 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
 
   if (summary.offersAtRiskCount > 0) {
     const count = formatCompactNumber(summary.offersAtRiskCount);
+    const tab = resolveOffersRiskTab(summary);
+    const focusItem = summary.attentionItems.find(
+      (item) =>
+        (item.reason === 'expiring_soon' || item.reason === 'near_use_limit') &&
+        item.destinoTab === tab,
+    );
     alerts.push({
       key: 'offers-at-risk',
       variant: 'warning',
       title: 'Ofertas en riesgo',
       description: `${count} ${summary.offersAtRiskCount === 1 ? 'oferta vence' : 'ofertas vencen'} pronto o están cerca del límite de usos.`,
       ctaLabel: 'Ver ofertas',
-      tab: resolveOffersRiskTab(summary),
+      tab,
       status: 'expiring',
+      ...(focusItem ? { focus: focusItem.id } : {}),
     });
   }
 
   if (summary.catalogIncompleteActiveCount > 0) {
     const count = formatCompactNumber(summary.catalogIncompleteActiveCount);
+    const tab = resolveCatalogIncompleteTab(summary);
+    const focusItem = summary.attentionItems.find(
+      (item) => item.reason === 'missing_current_price' && item.destinoTab === tab,
+    );
     alerts.push({
       key: 'catalog-incomplete',
       variant: 'error',
       title: 'Catálogo incompleto',
       description: `${count} ${summary.catalogIncompleteActiveCount === 1 ? 'ítem activo está' : 'ítems activos están'} sin precio vigente.`,
       ctaLabel: 'Completar catálogo',
-      tab: resolveCatalogIncompleteTab(summary),
+      tab,
+      ...(focusItem ? { focus: focusItem.id } : {}),
     });
   }
 

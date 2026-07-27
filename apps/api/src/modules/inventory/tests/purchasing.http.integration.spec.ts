@@ -206,15 +206,8 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         .mockImplementation(async (work: (m: unknown) => Promise<unknown>) =>
           work(createManager()),
         ),
-      createQueryBuilder: jest.fn().mockImplementation((_entity, alias) => ({
-        select: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-        getRawOne: jest.fn().mockResolvedValue({ maxValue: null }),
-        getCount: jest.fn().mockResolvedValue(0),
-        getMany: jest.fn().mockImplementation(async () => {
+      createQueryBuilder: jest.fn().mockImplementation((_entity, alias) => {
+        const resolveData = () => {
           if (alias === 'request') {
             return [...state.requests];
           }
@@ -222,8 +215,25 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
             return [...state.orders];
           }
           return [];
-        }),
-      })),
+        };
+        return {
+          select: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          skip: jest.fn().mockReturnThis(),
+          take: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+          getRawOne: jest.fn().mockResolvedValue({ maxValue: null }),
+          getCount: jest.fn().mockResolvedValue(0),
+          getMany: jest.fn().mockImplementation(async () => resolveData()),
+          getManyAndCount: jest.fn().mockImplementation(async () => {
+            const data = resolveData();
+            return [data, data.length];
+          }),
+        };
+      }),
       count: jest.fn().mockResolvedValue(0),
       remove: jest.fn().mockImplementation(async (_entity, records: Array<{ id: string }>) => {
         for (const record of records) {
@@ -550,8 +560,8 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       .set('Authorization', 'Bearer support-token')
       .expect(200);
 
-    expect(listed.body).toHaveLength(1);
-    expect(listed.body[0].id).toBe(orderId);
+    expect(listed.body.data).toHaveLength(1);
+    expect(listed.body.data[0].id).toBe(orderId);
 
     const providerSummary = await request(app.getHttpServer())
       .get('/api/v1/purchasing/providers/55555555-5555-4555-8555-555555555555/summary')

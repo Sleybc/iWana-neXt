@@ -9,6 +9,8 @@
 **Ejecutor previsto:** Sr. Dev Fullstack  
 **Archivo destino:** docs/prompts/PROMPT-MOD09-MOD11-PROGRAMACION-CENTRO-AGENDAMIENTO-OT-v1.0.md
 
+> **ADVERTENCIA HISTORICA — NO REUTILIZAR PARA NUEVA EJECUCION.** Este prompt fue ejecutado bajo el alcance aprobado el 2026-06-24. La auditoria del 2026-07-27 reabrio el flujo en estado NO-GO y detecto requisitos adicionales de autorizacion, inmutabilidad, idempotencia, convergencia, plantillas e inventario. Toda nueva correccion o evolución debe usar `docs/plans/2026-07-27-mod09-mod11-ot-instalacion-redesign.md` y los prompts `PROMPT-MOD09-MOD11-OT-INSTALACION-FASE-00` a `FASE-04`, condicionados a aprobar ADR-068 (propuesto) y cerrar G1–G7.
+
 ---
 
 ## Modulo

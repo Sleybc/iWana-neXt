@@ -11,6 +11,7 @@ import {
   runInTenantSchema,
 } from '@iwana/db';
 import { StockAdjustmentReason, StockMovementOrigin } from '@iwana/shared';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { ListStockMovementsQueryInput, ListStockMovementsQuerySchema } from '../dto';
 
 export interface StockMovementKardexLine {
@@ -50,8 +51,8 @@ export class StockMovementQueryService {
   ): Promise<{ data: StockMovementKardexRecord[]; total: number; page: number; limit: number }> {
     const validated = ListStockMovementsQuerySchema.parse(query);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const { itemId, locationId, serializedAssetId, origin, dateFrom, dateTo, search, page, limit } =
-      validated;
+    const { itemId, locationId, serializedAssetId, origin, dateFrom, dateTo, search } = validated;
+    const { page, limit } = clampPage(validated.page, validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
@@ -110,7 +111,9 @@ export class StockMovementQueryService {
         qb.andWhere('movement.movement_number ILIKE :search', { search: `${search}%` });
       }
 
-      qb.orderBy('movement.created_at', 'DESC').addOrderBy('movement.movement_number', 'DESC');
+      qb.orderBy('movement.created_at', 'DESC')
+        .addOrderBy('movement.movement_number', 'DESC')
+        .addOrderBy('movement.id', 'DESC');
 
       const total = await qb.getCount();
       const movements = await qb
@@ -119,7 +122,18 @@ export class StockMovementQueryService {
         .getMany();
 
       const data = await this.enrichMovements(qr.manager, tenantId, movements);
-      return { data, total, page, limit };
+      return {
+        data,
+        total,
+        page,
+        limit,
+        meta: {
+          capabilities: {
+            randomAccess: false as const,
+            sortableFields: [] as const,
+          },
+        },
+      };
     });
   }
 

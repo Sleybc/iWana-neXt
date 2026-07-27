@@ -7,7 +7,12 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Brackets, DataSource, EntityManager } from 'typeorm';
 import { SupplierProfile, TenantContext, runInTenantSchema } from '@iwana/db';
-import { DocumentTypeParty, PartyRoleType, SupplierProfileStatus } from '@iwana/shared';
+import {
+  DocumentTypeParty,
+  PartyRoleType,
+  SupplierProfileStatus,
+  type ListMeta,
+} from '@iwana/shared';
 import { IPartyWritePort, EnsurePartyInput } from '../../parties/ports/party-write.port';
 import {
   CreateSupplierInput,
@@ -26,6 +31,8 @@ import {
   SupplierPartySummary,
 } from '../ports/supplier-party.port';
 import { isPostgresUniqueViolation } from './inventory-postgres.util';
+import { buildPageMeta } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 
 export interface SupplierProfileRecord {
   id: string;
@@ -153,12 +160,20 @@ export class SupplierProfileService {
     );
   }
 
-  async list(
-    query: ListSuppliersQueryInput,
-  ): Promise<{ data: SupplierProfileRecord[]; total: number; page: number; limit: number }> {
+  async list(query: ListSuppliersQueryInput): Promise<{
+    data: SupplierProfileRecord[];
+    meta: ListMeta;
+    /** @deprecated Dual-emit ADR-065 — leer `meta`. */
+    total: number;
+    /** @deprecated Dual-emit ADR-065 — leer `meta`. */
+    page: number;
+    /** @deprecated Dual-emit ADR-065 — leer `meta`. */
+    limit: number;
+  }> {
     const validated = ListSuppliersQuerySchema.parse(query);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const { status, search, page, limit } = validated;
+    const { status, search } = validated;
+    const { page, limit } = clampPage(validated.page, validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
@@ -176,7 +191,10 @@ export class SupplierProfileService {
 
         qb.andWhere(
           new Brackets((where) => {
-            where.where('sp.supplier_code ILIKE :searchPattern', { searchPattern });
+            where
+              .where('sp.supplier_code ILIKE :searchPattern', { searchPattern })
+              .orWhere('sp.purchasing_contact_name ILIKE :searchPattern', { searchPattern })
+              .orWhere('sp.purchasing_contact_email ILIKE :searchPattern', { searchPattern });
 
             if (partyRefIds.length > 0) {
               where.orWhere('sp.party_ref_id IN (:...partyRefIds)', { partyRefIds });
@@ -185,7 +203,7 @@ export class SupplierProfileService {
         );
       }
 
-      qb.orderBy('sp.created_at', 'DESC');
+      qb.orderBy('sp.created_at', 'DESC').addOrderBy('sp.id', 'DESC');
 
       const total = await qb.getCount();
       const profiles = await qb
@@ -194,7 +212,14 @@ export class SupplierProfileService {
         .getMany();
 
       const data = await this.enrichProfiles(profiles);
-      return { data, total, page, limit };
+      const meta = buildPageMeta({
+        total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: [],
+      });
+      return { data, meta, total, page, limit };
     });
   }
 

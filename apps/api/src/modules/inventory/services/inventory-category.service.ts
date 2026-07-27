@@ -35,6 +35,13 @@ import {
   type InventoryCategoryStatusChangedEvent,
   type InventoryCategoryUpdatedEvent,
 } from '../events/inventory.events';
+import {
+  buildSortNameIdNextCursor,
+  clampInventoryLimit,
+  InventoryPaginatedResult,
+  sortNameIdAscCursorParams,
+  sortNameIdAscCursorWhere,
+} from '../../../common/pagination';
 
 export interface InventoryCategoryWithProductCount extends InventoryCategory {
   productCount: number;
@@ -109,37 +116,21 @@ export class InventoryCategoryService {
     this.eventEmitter.emit(INVENTORY_EVENTS.CATEGORY_STATUS_CHANGED, payload);
   }
 
+  /**
+   * Lista categorías con paginación cursor (ADR-064).
+   * Orden: sortOrder ASC, name ASC, id ASC. `total` = conjunto filtrado.
+   */
   async list(
     query: ListInventoryCategoriesQueryInput,
-  ): Promise<InventoryCategoryWithProductCount[]> {
+  ): Promise<InventoryPaginatedResult<InventoryCategoryWithProductCount>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListInventoryCategoriesQuerySchema.parse(query);
+    const limit = clampInventoryLimit(validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(InventoryCategory, 'category')
-        .leftJoin(
-          InventoryItem,
-          'item',
-          'item.category_id = category.id AND item.tenant_id = category.tenant_id',
-        )
-        .select([
-          'category.id',
-          'category.tenantId',
-          'category.code',
-          'category.codePrefix',
-          'category.name',
-          'category.description',
-          'category.status',
-          'category.sortOrder',
-          'category.createdAt',
-          'category.updatedAt',
-        ])
-        .addSelect('COUNT(item.id)', 'productCount')
-        .where('category.tenant_id = :tenantId', { tenantId })
-        .groupBy('category.id')
-        .orderBy('category.sort_order', 'ASC')
-        .addOrderBy('category.name', 'ASC');
+        .where('category.tenant_id = :tenantId', { tenantId });
 
       if (validated.search) {
         const term = `%${validated.search.toLowerCase()}%`;
@@ -152,12 +143,53 @@ export class InventoryCategoryService {
         qb.andWhere('category.status = :status', { status: validated.status });
       }
 
-      const rows = await qb.getRawAndEntities();
+      const total = await qb.clone().getCount();
 
-      return rows.entities.map((category, index) => ({
-        ...category,
-        productCount: Number(rows.raw[index]?.productCount ?? 0),
-      }));
+      if (validated.cursor) {
+        qb.andWhere(
+          sortNameIdAscCursorWhere('category'),
+          sortNameIdAscCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb
+        .orderBy('category.sort_order', 'ASC')
+        .addOrderBy('category.name', 'ASC')
+        .addOrderBy('category.id', 'ASC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = rows.length > limit;
+      const page = hasNext ? rows.slice(0, limit) : rows;
+      const ids = page.map((category) => category.id);
+      const countMap = new Map<string, number>();
+
+      if (ids.length > 0) {
+        const countRows = await qr.manager
+          .createQueryBuilder(InventoryItem, 'item')
+          .select('item.category_id', 'categoryId')
+          .addSelect('COUNT(item.id)', 'productCount')
+          .where('item.tenant_id = :tenantId', { tenantId })
+          .andWhere('item.category_id IN (:...ids)', { ids })
+          .groupBy('item.category_id')
+          .getRawMany<{ categoryId: string; productCount: string }>();
+
+        for (const row of countRows) {
+          countMap.set(row.categoryId, Number(row.productCount ?? 0));
+        }
+      }
+
+      const last = page[page.length - 1];
+      return {
+        data: page.map((category) => ({
+          ...category,
+          productCount: countMap.get(category.id) ?? 0,
+        })),
+        meta: {
+          nextCursor: buildSortNameIdNextCursor(hasNext, last),
+          total,
+        },
+      };
     });
   }
 

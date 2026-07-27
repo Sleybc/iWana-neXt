@@ -14,6 +14,9 @@ import {
   TicketWorkOrderLink,
   runInTenantSchema,
 } from '@iwana/db';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import { applySort } from '../../../common/pagination/apply-sort';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import {
   TicketFieldDecision,
   SlaBreachStatus,
@@ -48,11 +51,18 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssuranceFieldServicePort } from '../ports/assurance-field-service.port';
 import { PqrService } from './pqr.service';
-import { SlaService } from './sla.service';
+import { AT_RISK_THRESHOLD_RATIO, SlaService } from './sla.service';
 import { TimelineService } from './timeline.service';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 const TICKET_NUMBER_RETRY_LIMIT = 3;
+
+/**
+ * Campos ordenables del recurso SupportTicket.
+ * Vacío hasta Ola 2 (creación de índices compuestos).
+ * ADR-065 Ola 1.
+ */
+const SORTABLE_FIELDS: string[] = [];
 
 const INSTALLATION_OPEN_STATUSES = [
   TicketStatus.OPEN,
@@ -266,12 +276,55 @@ export class TicketsService {
   async list(query: ListTicketsQueryInput, actor: JwtPayload): Promise<ListTicketsResponseDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListTicketsQuerySchema.parse(query);
+    const { page, limit } = clampPage(validated.page, validated.limit);
 
-    const tickets = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    // CASE espejo de SlaService.deriveBreachStatus (DEF-2 D-1 / ADR-065 DEF-4).
+    // Emite solo literales SlaBreachStatus sobre columnas reales — nunca sla_due_at.
+    const terminalStatusesSql = [TicketStatus.CANCELLED, TicketStatus.CLOSED, TicketStatus.RESOLVED]
+      .map((status) => `'${status}'`)
+      .join(', ');
+    const slaCaseExpr = `
+      CASE
+        WHEN st.status IN (${terminalStatusesSql}) THEN
+          CASE
+            WHEN st.resolved_at IS NOT NULL
+              AND st.sla_resolve_by_at IS NOT NULL
+              AND st.resolved_at > st.sla_resolve_by_at
+              THEN '${SlaBreachStatus.RESOLUTION_BREACHED}'
+            WHEN st.first_responded_at IS NOT NULL
+              AND st.sla_first_response_at IS NOT NULL
+              AND st.first_responded_at > st.sla_first_response_at
+              THEN '${SlaBreachStatus.FIRST_RESPONSE_BREACHED}'
+            ELSE '${SlaBreachStatus.OK}'
+          END
+        WHEN st.first_responded_at IS NULL AND st.sla_first_response_at IS NOT NULL THEN
+          CASE
+            WHEN st.sla_first_response_at <= NOW()
+              THEN '${SlaBreachStatus.FIRST_RESPONSE_BREACHED}'
+            WHEN EXTRACT(EPOCH FROM (st.sla_first_response_at - st.created_at)) > 0
+              AND EXTRACT(EPOCH FROM (st.sla_first_response_at - NOW()))
+                <= EXTRACT(EPOCH FROM (st.sla_first_response_at - st.created_at)) * ${AT_RISK_THRESHOLD_RATIO}
+              THEN '${SlaBreachStatus.AT_RISK}'
+            ELSE '${SlaBreachStatus.OK}'
+          END
+        WHEN st.resolved_at IS NULL AND st.sla_resolve_by_at IS NOT NULL THEN
+          CASE
+            WHEN st.sla_resolve_by_at <= NOW()
+              THEN '${SlaBreachStatus.RESOLUTION_BREACHED}'
+            WHEN EXTRACT(EPOCH FROM (st.sla_resolve_by_at - st.created_at)) > 0
+              AND EXTRACT(EPOCH FROM (st.sla_resolve_by_at - NOW()))
+                <= EXTRACT(EPOCH FROM (st.sla_resolve_by_at - st.created_at)) * ${AT_RISK_THRESHOLD_RATIO}
+              THEN '${SlaBreachStatus.AT_RISK}'
+            ELSE '${SlaBreachStatus.OK}'
+          END
+        ELSE '${SlaBreachStatus.OK}'
+      END`;
+
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(SupportTicket, 'st')
         .where('st.tenant_id = :tenantId', { tenantId })
-        .orderBy('st.created_at', 'DESC');
+        .addSelect(slaCaseExpr, 'sla_breach_status');
 
       if (RESTRICTED_ROLES.includes(actor.role as UserRole)) {
         qb.andWhere('st.assigned_user_id = :actorId', { actorId: actor.sub });
@@ -303,26 +356,47 @@ export class TicketsService {
         });
       }
 
-      return qb.getMany();
+      // Bajar filtro slaBreachStatus al WHERE (DEF-4)
+      if (validated.slaBreachStatus) {
+        qb.andWhere(`(${slaCaseExpr}) = :slaBreachStatus`, {
+          slaBreachStatus: validated.slaBreachStatus,
+        });
+      }
+
+      const totalCount = await qb.getCount();
+
+      // Default primero: TypeORM orderBy() reemplaza el ORDER BY acumulado (O-7(b)).
+      qb.orderBy('st.created_at', 'DESC').addOrderBy('st.id', 'DESC');
+      const sortResult = applySort(qb, SORTABLE_FIELDS, validated.sortBy, validated.sortDir);
+
+      const { entities, raw } = await qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getRawAndEntities();
+
+      // Merge: el campo derivado sla_breach_status viaja en raw
+      const data = entities.map((ticket, idx) => ({
+        ...ticket,
+        slaBreachStatus: (raw[idx] as Record<string, unknown>)?.sla_breach_status,
+      }));
+
+      return { data, total: totalCount, sortResult };
     });
 
-    const withDerivedSla = tickets.map((ticket) => ({
-      ...ticket,
-      slaBreachStatus: this.slaService.deriveBreachStatus(ticket),
-    }));
-
-    const filtered = validated.slaBreachStatus
-      ? withDerivedSla.filter((ticket) => ticket.slaBreachStatus === validated.slaBreachStatus)
-      : withDerivedSla;
-
-    const start = (validated.page - 1) * validated.limit;
-    const data = filtered.slice(start, start + validated.limit);
-
     return {
-      data,
-      total: filtered.length,
-      page: validated.page,
-      limit: validated.limit,
+      data: result.data,
+      total: result.total,
+      page,
+      limit,
+      meta: buildPageMeta({
+        total: result.total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: SORTABLE_FIELDS,
+        sortBy: result.sortResult.appliedSortBy ?? undefined,
+        sortDir: result.sortResult.appliedSortDir ?? undefined,
+      }),
     };
   }
 

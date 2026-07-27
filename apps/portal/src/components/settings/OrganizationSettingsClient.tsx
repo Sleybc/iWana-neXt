@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,6 +25,7 @@ import {
   UserRole,
   OrganizationSiteCapability,
   OrganizationSiteType,
+  type ListMeta,
 } from '@iwana/shared';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -40,19 +41,28 @@ import {
   type TenantSelfSettings,
   type UpdateOrganizationSiteDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import { CompanyProfileForm } from './CompanyProfileForm';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPageSizeSelect,
   PortalPanel,
   PortalSkeletonBlock,
+  PortalTablePager,
+  portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
 import {
   ORGANIZATION_SETTINGS_COPY,
   getOrganizationSiteCapabilityLabel,
   getOrganizationSiteTypeLabel,
 } from './mod00-settings-labels';
+
+const SITES_RESOURCE = { singular: 'sede', plural: 'sedes' } as const;
+const SITES_NAMESPACE = 'sites';
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
@@ -264,13 +274,35 @@ const organizationReadableRoles = new Set<UserRole>([
 ]);
 
 export function OrganizationSettingsClient() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <PageHeader
+            title="Perfil empresarial y organización"
+            subtitle="Cargando información de la empresa y sus sedes"
+          />
+          <PortalSkeletonBlock className="h-36" />
+          <PortalSkeletonBlock className="h-80" />
+        </div>
+      }
+    >
+      <OrganizationSettingsClientInner />
+    </Suspense>
+  );
+}
+
+function OrganizationSettingsClientInner() {
   const { user, isLoading: authLoading } = useAuth();
   const [profile, setProfile] = useState<TenantSelf | null>(null);
   const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
   const [sites, setSites] = useState<OrganizationSiteSummary[]>([]);
+  const [sitesMeta, setSitesMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [draftCapabilities, setDraftCapabilities] = useState<OrganizationSiteCapability[]>([]);
   const [hasManageSitesPermission, setHasManageSitesPermission] = useState(false);
+  const [canReadSites, setCanReadSites] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSitesRefreshing, setIsSitesRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sitesError, setSitesError] = useState<string | null>(null);
@@ -278,6 +310,18 @@ export function OrganizationSettingsClient() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [dialogTab, setDialogTab] = useState('informacion');
+  const hasLoadedSitesOnceRef = useRef(false);
+
+  const {
+    page: sitesPage,
+    pageSize: sitesPageSize,
+    setPage: setSitesPage,
+    setPageSize: setSitesPageSize,
+    setQuery: setSitesQuery,
+  } = useTableQueryState({
+    namespace: SITES_NAMESPACE,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
 
   const canEdit = user?.role === UserRole.ADMIN;
   const canRead = user?.role ? organizationReadableRoles.has(user.role as UserRole) : false;
@@ -295,11 +339,58 @@ export function OrganizationSettingsClient() {
     defaultValues: createDefaultSiteFormValues(),
   });
 
+  const loadSites = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      if (!canReadSites) {
+        setSites([]);
+        setSitesMeta(EMPTY_LIST_META);
+        return;
+      }
+
+      const soft = opts?.soft === true && hasLoadedSitesOnceRef.current;
+      if (soft) {
+        setIsSitesRefreshing(true);
+      }
+
+      setSitesError(null);
+
+      try {
+        const response = await organizationApi.list({
+          page: sitesPage,
+          limit: sitesPageSize,
+        });
+        const nextMeta = normalizeListMeta(response.meta, {
+          dataLength: response.data.length,
+          limit: sitesPageSize,
+        });
+        // sortableFields: [] — no inventar orden de columnas.
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (response.data.length === 0 && sitesPage > 1 && nextMeta.total > 0) {
+          setSitesQuery({ page: Math.max(1, totalPages || sitesPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setSites(response.data);
+        setSitesMeta(nextMeta);
+        hasLoadedSitesOnceRef.current = true;
+      } catch (loadError) {
+        setSites([]);
+        setSitesMeta(EMPTY_LIST_META);
+        setSitesError(mapSitesError(loadError));
+      } finally {
+        setIsSitesRefreshing(false);
+      }
+    },
+    [canReadSites, setSitesQuery, sitesPage, sitesPageSize],
+  );
+
   const loadOrganization = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     setSitesError(null);
     setHasManageSitesPermission(false);
+    setCanReadSites(true);
 
     try {
       const [profileResult, settingsResult, permissionsResult] = await Promise.allSettled([
@@ -335,23 +426,15 @@ export function OrganizationSettingsClient() {
       setHasManageSitesPermission(canManageSitesFromPermissions);
 
       if (canReadSitesFromPermissions === false) {
+        setCanReadSites(false);
         setSites([]);
+        setSitesMeta(EMPTY_LIST_META);
         setDraftCapabilities([]);
         setSitesError('No tienes permisos para ver o editar las sedes.');
         return;
       }
 
-      const sitesResult = await Promise.allSettled([organizationApi.list()]);
-      const sitesResponse = sitesResult[0];
-
-      if (sitesResponse.status !== 'fulfilled') {
-        setSites([]);
-        setDraftCapabilities([]);
-        setSitesError(mapSitesError(sitesResponse.reason));
-        return;
-      }
-
-      setSites(sitesResponse.value);
+      setCanReadSites(true);
     } catch (loadError) {
       setError(mapOrganizationError(loadError));
     } finally {
@@ -377,6 +460,14 @@ export function OrganizationSettingsClient() {
 
     void loadOrganization();
   }, [authLoading, canRead, loadOrganization, user]);
+
+  useEffect(() => {
+    if (authLoading || isLoading || !user || !canRead || !canReadSites) {
+      return;
+    }
+
+    void loadSites({ soft: true });
+  }, [authLoading, canRead, canReadSites, isLoading, loadSites, user]);
 
   function openCreateDialog() {
     setEditingSiteId(null);
@@ -448,7 +539,7 @@ export function OrganizationSettingsClient() {
 
       setIsDialogOpen(false);
       setFeedback(editingSiteId ? 'Sede actualizada correctamente.' : 'Sede creada correctamente.');
-      await loadOrganization();
+      await loadSites({ soft: true });
     } catch (submitError) {
       setError(mapOrganizationError(submitError));
     } finally {
@@ -468,7 +559,7 @@ export function OrganizationSettingsClient() {
     try {
       await organizationApi.delete(siteId);
       setFeedback('Sede dada de baja correctamente.');
-      await loadOrganization();
+      await loadSites({ soft: true });
     } catch (deleteError) {
       setError(mapOrganizationError(deleteError));
     } finally {
@@ -483,6 +574,18 @@ export function OrganizationSettingsClient() {
         : [...current, capability],
     );
   }
+
+  const sitesPageCount = sitesMeta.totalPages ?? (sitesMeta.total > 0 ? 1 : 0);
+  const effectiveSitesPage = sitesMeta.page ?? sitesPage;
+  const { from: sitesFrom, to: sitesTo } = listPageWindow({
+    page: effectiveSitesPage,
+    limit: sitesMeta.limit || sitesPageSize,
+    total: sitesMeta.total,
+  });
+  const sitesRandomAccess = sitesMeta.capabilities.randomAccess;
+  const showSitesPager = !isLoading && !sitesError && sitesMeta.total > 0;
+  const showSitesPageSize =
+    showSitesPager && sitesRandomAccess && sitesMeta.total > Math.min(...[10, 20, 50]);
 
   if (authLoading || isLoading) {
     return (
@@ -571,7 +674,23 @@ export function OrganizationSettingsClient() {
       </div>
 
       {sitesError ? (
-        <PortalAlert variant="warning" title="Sedes no disponibles" description={sitesError} />
+        <PortalAlert
+          variant="warning"
+          title="Sedes no disponibles"
+          description={sitesError}
+          action={
+            canReadSites ? (
+              <button
+                type="button"
+                onClick={() => void loadSites()}
+                className="inline-flex items-center gap-2 text-sm font-medium text-amber-800 underline decoration-amber-300 underline-offset-4 hover:no-underline dark:text-amber-200"
+              >
+                <RefreshCcw className="h-4 w-4" aria-hidden={true} />
+                Reintentar sedes
+              </button>
+            ) : undefined
+          }
+        />
       ) : null}
 
       {!sitesError ? (
@@ -579,7 +698,7 @@ export function OrganizationSettingsClient() {
           title={ORGANIZATION_SETTINGS_COPY.sitesPanelTitle}
           description={ORGANIZATION_SETTINGS_COPY.sitesPanelDescription}
         >
-          {sites.length === 0 ? (
+          {sites.length === 0 && !isSitesRefreshing ? (
             <PortalEmptyState
               title={ORGANIZATION_SETTINGS_COPY.emptySitesTitle}
               description={ORGANIZATION_SETTINGS_COPY.emptySitesDescription}
@@ -593,102 +712,129 @@ export function OrganizationSettingsClient() {
               icon={Building2}
             />
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
-                  <tr>
-                    <th className={tableHeadClass}>Sede</th>
-                    <th className={tableHeadClass}>Tipo</th>
-                    <th className={tableHeadClass}>Ubicación</th>
-                    <th className={tableHeadClass}>Servicios</th>
-                    <th className={tableHeadClass}>Estado</th>
-                    <th className={tableHeadClass}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
-                  {sites.map((site) => {
-                    const location = formatSiteLocation(site);
+            <div className="space-y-3">
+              <div className={portalDataTableShellClassName}>
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                  <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                    <tr>
+                      <th className={tableHeadClass}>Sede</th>
+                      <th className={tableHeadClass}>Tipo</th>
+                      <th className={tableHeadClass}>Ubicación</th>
+                      <th className={tableHeadClass}>Servicios</th>
+                      <th className={tableHeadClass}>Estado</th>
+                      <th className={tableHeadClass}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
+                    {sites.map((site) => {
+                      const location = formatSiteLocation(site);
 
-                    return (
-                      <tr key={site.id}>
-                        <td className={cellClass}>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">{site.name}</p>
-                            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">
-                              {site.code}
-                            </p>
-                          </div>
-                        </td>
-                        <td className={cellClass}>{getOrganizationSiteTypeLabel(site.siteType)}</td>
-                        <td className={cellClass}>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {location.primary}
-                            </p>
-                            {location.secondary ? (
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {location.secondary}
+                      return (
+                        <tr key={site.id}>
+                          <td className={cellClass}>
+                            <div>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {site.name}
                               </p>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className={cellClass}>
-                          <div className="flex flex-wrap gap-2">
-                            {site.capabilities.length > 0 ? (
-                              site.capabilities.map((capability) => (
-                                <span
-                                  key={capability}
-                                  className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
-                                >
-                                  {getOrganizationSiteCapabilityLabel(capability)}
+                              <p className="text-xs uppercase tracking-[0.14em] text-gray-500">
+                                {site.code}
+                              </p>
+                            </div>
+                          </td>
+                          <td className={cellClass}>
+                            {getOrganizationSiteTypeLabel(site.siteType)}
+                          </td>
+                          <td className={cellClass}>
+                            <div>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {location.primary}
+                              </p>
+                              {location.secondary ? (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {location.secondary}
+                                </p>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className={cellClass}>
+                            <div className="flex flex-wrap gap-2">
+                              {site.capabilities.length > 0 ? (
+                                site.capabilities.map((capability) => (
+                                  <span
+                                    key={capability}
+                                    className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
+                                  >
+                                    {getOrganizationSiteCapabilityLabel(capability)}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-sm text-gray-500">
+                                  {ORGANIZATION_SETTINGS_COPY.noServices}
                                 </span>
-                              ))
+                              )}
+                            </div>
+                          </td>
+                          <td className={cellClass}>
+                            {site.isActive
+                              ? ORGANIZATION_SETTINGS_COPY.activeStatus
+                              : ORGANIZATION_SETTINGS_COPY.inactiveStatus}
+                          </td>
+                          <td className={cellClass}>
+                            {canManageSites ? (
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => void openEditDialog(site.id)}
+                                >
+                                  {ORGANIZATION_SETTINGS_COPY.editSiteAction}
+                                  <span className="sr-only"> {site.name}</span>
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => void handleDeleteSite(site.id, site.name)}
+                                  disabled={isSaving}
+                                >
+                                  {ORGANIZATION_SETTINGS_COPY.deactivateSiteAction}
+                                  <span className="sr-only"> {site.name}</span>
+                                </Button>
+                              </div>
                             ) : (
                               <span className="text-sm text-gray-500">
-                                {ORGANIZATION_SETTINGS_COPY.noServices}
+                                {ORGANIZATION_SETTINGS_COPY.noActions}
                               </span>
                             )}
-                          </div>
-                        </td>
-                        <td className={cellClass}>
-                          {site.isActive
-                            ? ORGANIZATION_SETTINGS_COPY.activeStatus
-                            : ORGANIZATION_SETTINGS_COPY.inactiveStatus}
-                        </td>
-                        <td className={cellClass}>
-                          {canManageSites ? (
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => void openEditDialog(site.id)}
-                              >
-                                {ORGANIZATION_SETTINGS_COPY.editSiteAction}
-                                <span className="sr-only"> {site.name}</span>
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => void handleDeleteSite(site.id, site.name)}
-                                disabled={isSaving}
-                              >
-                                {ORGANIZATION_SETTINGS_COPY.deactivateSiteAction}
-                                <span className="sr-only"> {site.name}</span>
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-500">
-                              {ORGANIZATION_SETTINGS_COPY.noActions}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {showSitesPager && sitesRandomAccess ? (
+                <PortalTablePager
+                  page={effectiveSitesPage}
+                  pageCount={Math.max(1, sitesPageCount)}
+                  onPageChange={setSitesPage}
+                  from={sitesFrom}
+                  to={sitesTo}
+                  total={sitesMeta.total}
+                  resource={SITES_RESOURCE}
+                  loading={isSitesRefreshing}
+                  pageSizeControl={
+                    showSitesPageSize ? (
+                      <PortalPageSizeSelect
+                        value={sitesPageSize}
+                        onChange={setSitesPageSize}
+                        disabled={isSitesRefreshing}
+                      />
+                    ) : undefined
+                  }
+                />
+              ) : null}
             </div>
           )}
         </PortalPanel>

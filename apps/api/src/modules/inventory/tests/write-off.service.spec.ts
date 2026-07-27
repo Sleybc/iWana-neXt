@@ -387,8 +387,10 @@ describe('WriteOffService', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      clone: jest.fn().mockReturnThis(),
       getCount: jest.fn().mockResolvedValue(1),
       getMany: jest.fn().mockResolvedValue([writeOff]),
     };
@@ -423,7 +425,8 @@ describe('WriteOffService', () => {
     expect(qb.where).toHaveBeenCalledWith('writeOff.tenant_id = :tenantId', {
       tenantId: 'tenant-001',
     });
-    expect(result.total).toBe(1);
+    expect(result.meta.total).toBe(1);
+    expect(result.meta.capabilities.randomAccess).toBe(false);
     expect(result.data[0]?.id).toBe(WRITE_OFF_ID);
   });
 });

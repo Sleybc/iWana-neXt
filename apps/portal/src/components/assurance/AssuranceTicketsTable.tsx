@@ -3,7 +3,15 @@
 import { Search } from 'lucide-react';
 import { Badge, Button, Select } from '@iwana/ui';
 import type { AssuranceTicket, ListAssuranceTicketsParams } from '@/lib/api-client';
-import { PortalEmptyState, PortalSectionHeader } from '@/components/shared/portal-ui';
+import {
+  PortalEmptyState,
+  PortalPageSizeSelect,
+  PortalSectionHeader,
+  PortalTablePager,
+  PortalTablePagination,
+  portalDataTableShellClassName,
+  portalDataBusyRegionClassName,
+} from '@/components/shared/portal-ui';
 import {
   ASSURANCE_QUEUE_OPTIONS,
   ASSURANCE_TICKET_PRIORITY_OPTIONS,
@@ -21,15 +29,30 @@ import {
   getAssuranceUserDisplayName,
 } from './assurance-labels';
 
+const TICKETS_RESOURCE = { singular: 'ticket', plural: 'tickets' } as const;
+
 interface AssuranceTicketsTableProps {
   tickets: AssuranceTicket[];
   total: number;
   isLoading: boolean;
+  refreshing?: boolean;
+  /** Acceso aleatorio declarado por el servidor (`meta.capabilities.randomAccess`). */
+  randomAccess: boolean;
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  from: number;
+  to: number;
+  hasMore: boolean;
   filters: ListAssuranceTicketsParams;
   searchValue: string;
   assigneeLabelById: Map<string, string>;
   onFiltersChange: (filters: ListAssuranceTicketsParams) => void;
   onSearchChange: (value: string) => void;
+  onClearFilters: () => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  onLoadMore: () => void;
   onOpenTicket: (ticket: AssuranceTicket) => void;
   onOpenCreate: () => void;
   canManage: boolean;
@@ -39,216 +62,329 @@ export function AssuranceTicketsTable({
   tickets,
   total,
   isLoading,
+  refreshing = false,
+  randomAccess,
+  page,
+  pageCount,
+  pageSize,
+  from,
+  to,
+  hasMore,
   filters,
   searchValue,
   assigneeLabelById,
   onFiltersChange,
   onSearchChange,
+  onClearFilters,
+  onPageChange,
+  onPageSizeChange,
+  onLoadMore,
   onOpenTicket,
   onOpenCreate,
   canManage,
 }: AssuranceTicketsTableProps) {
+  const hasActiveFilters = Boolean(
+    searchValue.trim() ||
+    filters.status ||
+    filters.priority ||
+    filters.type ||
+    filters.queueName ||
+    filters.slaBreachStatus ||
+    filters.requesterRefId ||
+    filters.assignedUserId,
+  );
+  const showPager = !isLoading && total > 0;
+  const showPageSize = showPager && randomAccess && total > Math.min(10, 20, 50);
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-      <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
-        <PortalSectionHeader
-          eyebrow="Mesa de ayuda"
-          title="Cola operativa de tickets"
-          description="Filtra por estado, prioridad, tipo o cola para operar la bandeja de la empresa autenticada."
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant="neutral"
-                className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-              >
-                {total} casos
-              </Badge>
-              {canManage && (
-                <Button type="button" onClick={onOpenCreate}>
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
+          <PortalSectionHeader
+            eyebrow="Mesa de ayuda"
+            title="Cola operativa de tickets"
+            description="Filtra por estado, prioridad, tipo o cola para operar la bandeja de la empresa autenticada."
+            actions={
+              canManage ? (
+                <Button type="button" variant="primary" onClick={onOpenCreate}>
                   Nuevo ticket
                 </Button>
-              )}
+              ) : undefined
+            }
+          />
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_220px_220px_220px_220px_auto] lg:items-end">
+            <div className="relative">
+              <label htmlFor="assurance-search" className="sr-only">
+                Filtrar en esta página
+              </label>
+              <Search
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                aria-hidden="true"
+              />
+              <input
+                id="assurance-search"
+                type="search"
+                value={searchValue}
+                placeholder="Filtrar en esta página por número, asunto o referencia…"
+                onChange={(event) => onSearchChange(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
+              />
             </div>
-          }
-        />
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_220px_220px_220px_220px] lg:items-end">
-          <div className="relative">
-            <label htmlFor="assurance-search" className="sr-only">
-              Buscar ticket
-            </label>
-            <Search
-              className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-              aria-hidden="true"
+            <Select
+              id="assurance-filter-status"
+              label="Estado"
+              value={filters.status ?? ''}
+              options={[{ value: '', label: 'Todos' }, ...ASSURANCE_TICKET_STATUS_OPTIONS]}
+              onChange={(event) =>
+                onFiltersChange({
+                  ...filters,
+                  status: (event.target.value || undefined) as ListAssuranceTicketsParams['status'],
+                })
+              }
             />
-            <input
-              id="assurance-search"
-              type="search"
-              value={searchValue}
-              placeholder="Buscar por número, asunto o referencia…"
-              onChange={(event) => onSearchChange(event.target.value)}
-              className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
+            <Select
+              id="assurance-filter-priority"
+              label="Prioridad"
+              value={filters.priority ?? ''}
+              options={[{ value: '', label: 'Todas' }, ...ASSURANCE_TICKET_PRIORITY_OPTIONS]}
+              onChange={(event) =>
+                onFiltersChange({
+                  ...filters,
+                  priority: (event.target.value ||
+                    undefined) as ListAssuranceTicketsParams['priority'],
+                })
+              }
             />
+            <Select
+              id="assurance-filter-type"
+              label="Tipo"
+              value={filters.type ?? ''}
+              options={[{ value: '', label: 'Todos' }, ...ASSURANCE_TICKET_TYPE_OPTIONS]}
+              onChange={(event) =>
+                onFiltersChange({
+                  ...filters,
+                  type: (event.target.value || undefined) as ListAssuranceTicketsParams['type'],
+                })
+              }
+            />
+            <Select
+              id="assurance-filter-queue"
+              label="Cola"
+              value={filters.queueName ?? ''}
+              options={[{ value: '', label: 'Todas' }, ...ASSURANCE_QUEUE_OPTIONS]}
+              onChange={(event) =>
+                onFiltersChange({
+                  ...filters,
+                  queueName: (event.target.value ||
+                    undefined) as ListAssuranceTicketsParams['queueName'],
+                })
+              }
+            />
+            {hasActiveFilters ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onClearFilters}
+                className="h-12 px-4"
+              >
+                Limpiar filtros
+              </Button>
+            ) : null}
           </div>
-
-          <Select
-            id="assurance-filter-status"
-            label="Estado"
-            value={filters.status ?? ''}
-            options={[{ value: '', label: 'Todos' }, ...ASSURANCE_TICKET_STATUS_OPTIONS]}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                status: (event.target.value || undefined) as ListAssuranceTicketsParams['status'],
-              })
-            }
-          />
-          <Select
-            id="assurance-filter-priority"
-            label="Prioridad"
-            value={filters.priority ?? ''}
-            options={[{ value: '', label: 'Todas' }, ...ASSURANCE_TICKET_PRIORITY_OPTIONS]}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                priority: (event.target.value ||
-                  undefined) as ListAssuranceTicketsParams['priority'],
-              })
-            }
-          />
-          <Select
-            id="assurance-filter-type"
-            label="Tipo"
-            value={filters.type ?? ''}
-            options={[{ value: '', label: 'Todos' }, ...ASSURANCE_TICKET_TYPE_OPTIONS]}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                type: (event.target.value || undefined) as ListAssuranceTicketsParams['type'],
-              })
-            }
-          />
-          <Select
-            id="assurance-filter-queue"
-            label="Cola"
-            value={filters.queueName ?? ''}
-            options={[{ value: '', label: 'Todas' }, ...ASSURANCE_QUEUE_OPTIONS]}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                queueName: (event.target.value ||
-                  undefined) as ListAssuranceTicketsParams['queueName'],
-              })
-            }
-          />
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-[#f6f8f4] dark:border-dark-border dark:bg-dark-surface-3">
-              {[
-                'Ticket',
-                'Tipo',
-                'Estado',
-                'Prioridad',
-                'Cola y responsable',
-                'SLA',
-                'Actualización',
-                'Acciones',
-              ].map((label) => (
-                <th
-                  key={label}
-                  className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+      <div className={portalDataTableShellClassName}>
+        <div
+          className={
+            refreshing ? `overflow-x-auto ${portalDataBusyRegionClassName}` : 'overflow-x-auto'
+          }
+          aria-busy={refreshing || undefined}
+        >
+          <table className="w-full min-w-[980px] text-sm" aria-label="Cola operativa de tickets">
+            <thead>
+              <tr className="border-b border-gray-100 bg-[#f6f8f4] dark:border-dark-border dark:bg-dark-surface-3">
+                {[
+                  'Ticket',
+                  'Tipo',
+                  'Estado',
+                  'Prioridad',
+                  'Cola y responsable',
+                  'SLA',
+                  'Actualización',
+                  'Acciones',
+                ].map((label) => (
+                  <th
+                    key={label}
+                    className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && tickets.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-4 py-12 text-center text-gray-500 dark:text-gray-400"
+                  >
+                    Cargando tickets de la mesa de ayuda...
+                  </td>
+                </tr>
+              ) : null}
+
+              {!isLoading && tickets.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    {hasActiveFilters ? (
+                      <PortalEmptyState
+                        title="Sin resultados"
+                        description={
+                          searchValue.trim()
+                            ? 'Ningún ticket de esta página coincide con el filtro local. Limpia el texto o cambia de página.'
+                            : 'Ningún ticket coincide con los filtros actuales.'
+                        }
+                        className="mx-auto max-w-xl text-left"
+                        action={
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={onClearFilters}
+                          >
+                            Limpiar filtros
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      <div className="relative mx-auto max-w-xl overflow-hidden rounded-2xl">
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-iwana-secondary/5"
+                        />
+                        <PortalEmptyState
+                          title="Aún no hay tickets"
+                          description="Crea el primer ticket para operar la mesa de ayuda de tu empresa."
+                          className="relative text-left"
+                          action={
+                            canManage ? (
+                              <Button
+                                type="button"
+                                variant="primary"
+                                size="sm"
+                                onClick={onOpenCreate}
+                              >
+                                Nuevo ticket
+                              </Button>
+                            ) : undefined
+                          }
+                        />
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ) : null}
+
+              {tickets.map((ticket) => (
+                <tr
+                  key={ticket.id}
+                  className="border-b border-gray-50 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3"
                 >
-                  {label}
-                </th>
+                  <td className="align-middle px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onOpenTicket(ticket)}
+                        className="w-fit text-left font-semibold text-iwana-primary transition hover:text-iwana-primary-700 dark:text-iwana-primary-300"
+                      >
+                        {ticket.ticketNumber}
+                      </button>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {ticket.subject}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="align-middle px-4 py-3">
+                    <Badge variant="primary">{getAssuranceTicketTypeLabel(ticket.type)}</Badge>
+                  </td>
+                  <td className="align-middle px-4 py-3">
+                    <Badge variant={getAssuranceTicketStatusVariant(ticket.status)}>
+                      {getAssuranceTicketStatusLabel(ticket.status)}
+                    </Badge>
+                  </td>
+                  <td className="align-middle px-4 py-3">
+                    <Badge variant={getAssuranceTicketPriorityVariant(ticket.priority)}>
+                      {getAssuranceTicketPriorityLabel(ticket.priority)}
+                    </Badge>
+                  </td>
+                  <td className="align-middle px-4 py-3">
+                    <div className="space-y-1">
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {getAssuranceQueueLabel(ticket.queueName)}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {ticket.assignedUserId
+                          ? (assigneeLabelById.get(ticket.assignedUserId) ??
+                            getAssuranceUserDisplayName(null))
+                          : 'Sin asignar'}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="align-middle px-4 py-3">
+                    <Badge variant={getAssuranceSlaStatusVariant(ticket.slaBreachStatus)}>
+                      {getAssuranceSlaStatusLabel(ticket.slaBreachStatus)}
+                    </Badge>
+                  </td>
+                  <td className="align-middle px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                    {formatAssuranceDateTime(ticket.updatedAt)}
+                  </td>
+                  <td className="align-middle px-4 py-3 text-right">
+                    <Button type="button" variant="secondary" onClick={() => onOpenTicket(ticket)}>
+                      Ver detalle
+                    </Button>
+                  </td>
+                </tr>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && tickets.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
-                  Cargando tickets de la mesa de ayuda...
-                </td>
-              </tr>
-            ) : null}
+            </tbody>
+          </table>
+        </div>
 
-            {!isLoading && tickets.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8">
-                  <PortalEmptyState
-                    title="Sin tickets para el filtro actual"
-                    description="Ajusta los filtros o crea un ticket nuevo si el flujo lo requiere."
-                  />
-                </td>
-              </tr>
-            ) : null}
+        {showPager && randomAccess ? (
+          <PortalTablePager
+            page={page}
+            pageCount={Math.max(1, pageCount)}
+            onPageChange={onPageChange}
+            from={from}
+            to={to}
+            total={total}
+            resource={TICKETS_RESOURCE}
+            loading={refreshing}
+            pageSizeControl={
+              showPageSize ? (
+                <PortalPageSizeSelect
+                  value={pageSize}
+                  onChange={onPageSizeChange}
+                  disabled={refreshing}
+                />
+              ) : undefined
+            }
+          />
+        ) : null}
 
-            {tickets.map((ticket) => (
-              <tr
-                key={ticket.id}
-                className="border-b border-gray-50 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3"
-              >
-                <td className="align-middle px-4 py-3">
-                  <div className="flex flex-col gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onOpenTicket(ticket)}
-                      className="w-fit text-left font-semibold text-iwana-primary transition hover:text-iwana-primary-700 dark:text-iwana-primary-300"
-                    >
-                      {ticket.ticketNumber}
-                    </button>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {ticket.subject}
-                    </span>
-                  </div>
-                </td>
-                <td className="align-middle px-4 py-3">
-                  <Badge variant="primary">{getAssuranceTicketTypeLabel(ticket.type)}</Badge>
-                </td>
-                <td className="align-middle px-4 py-3">
-                  <Badge variant={getAssuranceTicketStatusVariant(ticket.status)}>
-                    {getAssuranceTicketStatusLabel(ticket.status)}
-                  </Badge>
-                </td>
-                <td className="align-middle px-4 py-3">
-                  <Badge variant={getAssuranceTicketPriorityVariant(ticket.priority)}>
-                    {getAssuranceTicketPriorityLabel(ticket.priority)}
-                  </Badge>
-                </td>
-                <td className="align-middle px-4 py-3">
-                  <div className="space-y-1">
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      {getAssuranceQueueLabel(ticket.queueName)}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {ticket.assignedUserId
-                        ? (assigneeLabelById.get(ticket.assignedUserId) ??
-                          getAssuranceUserDisplayName(null))
-                        : 'Sin asignar'}
-                    </p>
-                  </div>
-                </td>
-                <td className="align-middle px-4 py-3">
-                  <Badge variant={getAssuranceSlaStatusVariant(ticket.slaBreachStatus)}>
-                    {getAssuranceSlaStatusLabel(ticket.slaBreachStatus)}
-                  </Badge>
-                </td>
-                <td className="align-middle px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                  {formatAssuranceDateTime(ticket.updatedAt)}
-                </td>
-                <td className="align-middle px-4 py-3 text-right">
-                  <Button type="button" variant="secondary" onClick={() => onOpenTicket(ticket)}>
-                    Ver detalle
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {showPager && !randomAccess ? (
+          <PortalTablePagination
+            hasMore={hasMore}
+            onLoadMore={onLoadMore}
+            loading={refreshing}
+            resourceLabel="tickets"
+            shown={to}
+            total={total}
+          />
+        ) : null}
       </div>
     </div>
   );

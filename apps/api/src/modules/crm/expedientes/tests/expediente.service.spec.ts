@@ -18,6 +18,7 @@ import { CompletenessCalculator } from '../completeness-calculator.service';
 import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
 import { SubscribersService } from '../../subscribers/subscribers.service';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
+import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
 import { ExpedienteService } from '../expediente.service';
@@ -54,6 +55,7 @@ describe('ExpedienteService', () => {
 
   const completenessCalculatorMock = {
     calculate: jest.fn(),
+    calculateBatch: jest.fn(),
   };
 
   const crmActorReadPortMock = {
@@ -72,6 +74,16 @@ describe('ExpedienteService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     subscribersServiceMock.findSummaryByExpedienteId.mockReset();
+    // calculateBatch default: retorna mapa básico para findAll
+    completenessCalculatorMock.calculateBatch.mockImplementation(
+      async (_manager: unknown, _schema: string, ids: string[]) =>
+        new Map(
+          ids.map((id) => [
+            id,
+            { commercial: 0, legal: 0, technical: 0, operational: 0, overall: 0 },
+          ]),
+        ),
+    );
     mockTenantContextGetOrThrow.mockReturnValue({
       tenantId: 'ten-1',
       schemaName: 'tenant_test',
@@ -1470,6 +1482,7 @@ describe('ExpedienteService', () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[expediente], 1]),
@@ -1481,13 +1494,11 @@ describe('ExpedienteService', () => {
         },
       });
     });
-    completenessCalculatorMock.calculate.mockResolvedValue({
-      commercial: 70,
-      legal: 55,
-      technical: 40,
-      operational: 25,
-      overall: 48,
-    });
+    completenessCalculatorMock.calculateBatch.mockResolvedValue(
+      new Map([
+        [expediente.id, { commercial: 70, legal: 55, technical: 40, operational: 25, overall: 48 }],
+      ]),
+    );
 
     const result = await service.findAll({ search: 'Cliente', page: 1, limit: 10 });
 
@@ -1517,6 +1528,7 @@ describe('ExpedienteService', () => {
     const queryBuilder = {
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn().mockResolvedValue([[expediente], 1]),
@@ -1581,6 +1593,7 @@ describe('ExpedienteService', () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[expediente], 1]),
@@ -1592,33 +1605,38 @@ describe('ExpedienteService', () => {
         },
       });
     });
-    completenessCalculatorMock.calculate.mockResolvedValue({
-      commercial: 100,
-      legal: 100,
-      technical: 100,
-      operational: 0,
-      overall: 75,
-    });
+    completenessCalculatorMock.calculateBatch.mockResolvedValue(
+      new Map([
+        [
+          expediente.id,
+          { commercial: 100, legal: 100, technical: 100, operational: 0, overall: 75 },
+        ],
+      ]),
+    );
 
     const result = await service.findAll({ page: 1, limit: 10 });
 
     expect((result.data[0] as any).pipelineProgress).toBe(75);
   });
 
-  it('filtra por assignedTo y documentNumber exacto manteniendo PII oculta en listados', async () => {
+  it('filtra por assignedTo y documentNumber via hash SQL sin decrypt (D-4)', async () => {
     const encryptedDocument = encryptTestValue('900123456');
     const matchingExpediente = buildExpediente({
       id: 'exp-filter',
       assignedTo: 'advisor-1',
       documentNumberEncrypted: encryptedDocument,
+      documentNumberHash: hashDocumentNumber('900123456'),
       phonePrimaryEncrypted: 'enc-telefono-principal',
     });
+    const andWhere = jest.fn().mockReturnThis();
+    const skip = jest.fn().mockReturnThis();
+    const take = jest.fn().mockReturnThis();
     const createQueryBuilder = jest.fn().mockReturnValue({
-      andWhere: jest.fn().mockReturnThis(),
+      andWhere,
       orderBy: jest.fn().mockReturnThis(),
-      skip: jest.fn().mockReturnThis(),
-      take: jest.fn().mockReturnThis(),
-      getMany: jest.fn().mockResolvedValue([matchingExpediente]),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip,
+      take,
       getManyAndCount: jest.fn().mockResolvedValue([[matchingExpediente], 1]),
     });
 
@@ -1645,12 +1663,124 @@ describe('ExpedienteService', () => {
     } as any);
 
     expect(createQueryBuilder).toHaveBeenCalledWith(ExpedienteRecord, 'expediente');
+    expect(andWhere).toHaveBeenCalledWith('expediente.documentNumberHash = :docHash', {
+      docHash: hashDocumentNumber('900123456'),
+    });
+    expect(skip).toHaveBeenCalledWith(0);
+    expect(take).toHaveBeenCalledWith(10);
     expect(result.total).toBe(1);
+    expect(result.meta).toMatchObject({ page: 1, limit: 10, total: 1, mode: 'page' });
     expect(result.data).toHaveLength(1);
     expect(result.data[0]?.id).toBe('exp-filter');
     expect(result.data[0]?.assignedTo).toBe('advisor-1');
     expect(result.data[0]?.documentNumberEncrypted).toBeNull();
+    expect(result.data[0]?.documentNumberHash).toBeNull();
     expect(result.data[0]?.phonePrimaryEncrypted).toBeNull();
+  });
+
+  it('capa limit=10000 a ≤100 en findAll (H-1 residual P3)', async () => {
+    const take = jest.fn().mockReturnThis();
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take,
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: { createQueryBuilder },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    const result = await service.findAll({ page: 1, limit: 10_000 });
+
+    expect(take).toHaveBeenCalledWith(100);
+    expect(result.meta.limit).toBe(100);
+    expect(result.meta.limit).toBeLessThanOrEqual(100);
+  });
+
+  it('backfillDocumentNumberHashes rellena hash NULL sin loguear PII', async () => {
+    const plaintext = '900123456';
+    const encrypted = encryptTestValue(plaintext);
+    const pending = buildExpediente({
+      id: 'exp-backfill',
+      documentNumberEncrypted: encrypted,
+      documentNumberHash: null,
+    });
+    const getMany = jest.fn().mockResolvedValueOnce([pending]).mockResolvedValueOnce([]);
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany,
+    });
+    const save = jest
+      .fn()
+      .mockImplementation(async (_entity: unknown, row: ExpedienteRecord) => row);
+    const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: { createQueryBuilder, save },
+      }),
+    );
+
+    const result = await service.backfillDocumentNumberHashes(50);
+
+    expect(result).toEqual({ processed: 1, updated: 1, skipped: 0 });
+    expect(save).toHaveBeenCalledWith(
+      ExpedienteRecord,
+      expect.objectContaining({
+        id: 'exp-backfill',
+        documentNumberHash: hashDocumentNumber(plaintext),
+      }),
+    );
+    for (const call of warnSpy.mock.calls) {
+      expect(JSON.stringify(call)).not.toContain(plaintext);
+    }
+    warnSpy.mockRestore();
+  });
+
+  it('listContactAttempts emite meta vía buildPageMeta (R3)', async () => {
+    const expediente = buildExpediente({ id: 'exp-attempts' });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[{ id: 'att-1' }], 1]),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: { createQueryBuilder },
+      }),
+    );
+
+    const result = await service.listContactAttempts('exp-attempts', 1, 20);
+
+    expect(result.total).toBe(1);
+    expect(result.meta).toMatchObject({
+      page: 1,
+      limit: 20,
+      total: 1,
+      mode: 'page',
+      hasMore: false,
+    });
   });
 
   it('filtra open, converted, archive y all desde una sola regla de dominio', async () => {
@@ -2406,6 +2536,8 @@ describe('ExpedienteService', () => {
 
     expect(updated.fullName).toBe('Laura Perez');
     expect(updated.companyName).toBeNull();
+    expect(updated.documentNumberHash).toBe(hashDocumentNumber('1012345678'));
+    expect(updated.documentNumberEncrypted).toBeTruthy();
   });
 
   it('rechaza persona juridica sin contacto principal ni cargo', async () => {
@@ -2542,6 +2674,12 @@ describe('ExpedienteService', () => {
         }),
       }),
     );
+    const auditPayload = auditServiceMock.log.mock.calls[0]?.[0] as {
+      newValue: { changedFields: string[] };
+    };
+    expect(auditPayload.newValue.changedFields).not.toContain('documentNumberEncrypted');
+    expect(auditPayload.newValue.changedFields).not.toContain('documentNumberHash');
+    expect(auditPayload.newValue.changedFields).not.toContain('documentNumber');
   });
 
   it('rechaza viabilidad tecnica viable cuando falta tecnologia recomendada', async () => {
@@ -2858,6 +2996,7 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     fullName: 'Cliente Demo',
     documentType: null,
     documentNumberEncrypted: null,
+    documentNumberHash: null,
     gender: null,
     birthDate: null,
     personType: null,
@@ -2991,6 +3130,7 @@ function buildFindAllQueryBuilder(rows: ExpedienteRecord[]) {
       return qb;
     }),
     orderBy: jest.fn(() => qb),
+    addOrderBy: jest.fn(() => qb),
     skip: jest.fn(() => qb),
     take: jest.fn(() => qb),
     getManyAndCount: jest.fn(() => {

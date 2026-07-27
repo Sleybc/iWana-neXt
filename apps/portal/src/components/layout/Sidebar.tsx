@@ -162,7 +162,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                       <span
                         title={desktopCollapsed ? item.label : undefined}
                         className={cn(
-                          'flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 opacity-60 dark:text-gray-500',
+                          'flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 dark:text-gray-500',
                           desktopCollapsed && 'lg:justify-center lg:px-2',
                         )}
                         aria-disabled="true"

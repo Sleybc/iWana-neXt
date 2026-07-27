@@ -10,8 +10,11 @@ import type {
   StockLocationRecord,
 } from '@/lib/api-client';
 import {
+  PortalAlert,
   PortalEmptyState,
+  PortalResultsStrip,
   PortalSearchField,
+  PortalTablePagination,
   interactiveFocusClassName,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
@@ -40,6 +43,7 @@ import {
   getStockLocationTypeBadgeVariant,
   getStockLocationTypeLabel,
 } from './inventory-labels';
+import { formatInventoryResultsLabel } from './inventory-list-pagination';
 
 export type { LocationMatrixCustodyFilter } from './location-matrix-filters';
 
@@ -50,7 +54,24 @@ interface StockLocationsMatrixProps {
   userLabelById?: Map<string, string>;
   custodyFilter?: LocationMatrixCustodyFilter;
   isLoading?: boolean;
+  /** Total servidor de bodegas (meta.total). */
+  totalCount?: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  /** Balances truncados tras tope de seguridad — ocupación puede estar incompleta. */
+  balancesHasMore?: boolean;
+  isLoadingMoreBalances?: boolean;
+  onLoadMoreBalances?: () => void;
   onCustodyFilterChange?: (filter: LocationMatrixCustodyFilter) => void;
+  /**
+   * Filtros de lista en servidor (Ola 6). Si se pasa, no se filtra el buffer en cliente.
+   * La ocupación sigue dependiendo de balances drenados hasta endpoint de agregación.
+   */
+  listFilters?: Omit<LocationMatrixFilters, 'custodyFilter'>;
+  onListFiltersChange?: (filters: Omit<LocationMatrixFilters, 'custodyFilter'>) => void;
+  /** Aviso: sin endpoint de agregación de ocupación (Parte A residual). */
+  aggregationPendingNotice?: boolean;
   onCreateLocation?: () => void;
   onEditLocation?: (location: StockLocationRecord) => void;
 }
@@ -111,7 +132,17 @@ export function StockLocationsMatrix({
   userLabelById,
   custodyFilter = 'all',
   isLoading = false,
+  totalCount,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  balancesHasMore = false,
+  isLoadingMoreBalances = false,
+  onLoadMoreBalances,
   onCustodyFilterChange,
+  listFilters: listFiltersProp,
+  onListFiltersChange,
+  aggregationPendingNotice = true,
   onCreateLocation,
   onEditLocation,
 }: StockLocationsMatrixProps) {
@@ -123,12 +154,37 @@ export function StockLocationsMatrix({
   });
   const [expandedLocationId, setExpandedLocationId] = useState<string | null>(null);
 
+  const serverFiltered = Boolean(onListFiltersChange);
+  const listFilters = serverFiltered
+    ? (listFiltersProp ?? {
+        search: EMPTY_LOCATION_MATRIX_FILTERS.search,
+        typeFilter: EMPTY_LOCATION_MATRIX_FILTERS.typeFilter,
+        statusFilter: EMPTY_LOCATION_MATRIX_FILTERS.statusFilter,
+        stockFilter: EMPTY_LOCATION_MATRIX_FILTERS.stockFilter,
+      })
+    : localFilters;
+
+  const setListFilters = (
+    update:
+      | Omit<LocationMatrixFilters, 'custodyFilter'>
+      | ((
+          current: Omit<LocationMatrixFilters, 'custodyFilter'>,
+        ) => Omit<LocationMatrixFilters, 'custodyFilter'>),
+  ) => {
+    const next = typeof update === 'function' ? update(listFilters) : update;
+    if (onListFiltersChange) {
+      onListFiltersChange(next);
+    } else {
+      setLocalFilters(next);
+    }
+  };
+
   const effectiveFilters = useMemo<LocationMatrixFilters>(
     () => ({
-      ...localFilters,
+      ...listFilters,
       custodyFilter,
     }),
-    [custodyFilter, localFilters],
+    [custodyFilter, listFilters],
   );
 
   const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
@@ -162,6 +218,9 @@ export function StockLocationsMatrix({
   );
 
   const filteredRows = useMemo(() => {
+    if (serverFiltered) {
+      return rows;
+    }
     const normalizedSearch = effectiveFilters.search.trim().toLowerCase();
 
     return rows.filter(({ location, totalOnHand }) => {
@@ -184,7 +243,7 @@ export function StockLocationsMatrix({
           .includes(normalizedSearch)
       );
     });
-  }, [effectiveFilters, rows, userLabelById]);
+  }, [effectiveFilters, rows, serverFiltered, userLabelById]);
 
   const filterChips = useMemo(() => {
     const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
@@ -201,7 +260,7 @@ export function StockLocationsMatrix({
       chips.push({
         key: 'type',
         label: getStockLocationTypeLabel(effectiveFilters.typeFilter),
-        onRemove: () => setLocalFilters((current) => ({ ...current, typeFilter: 'all' })),
+        onRemove: () => setListFilters((current) => ({ ...current, typeFilter: 'all' })),
       });
     }
 
@@ -209,13 +268,13 @@ export function StockLocationsMatrix({
       chips.push({
         key: 'status',
         label: 'Pausadas o guardadas',
-        onRemove: () => setLocalFilters((current) => ({ ...current, statusFilter: 'all' })),
+        onRemove: () => setListFilters((current) => ({ ...current, statusFilter: 'all' })),
       });
     } else if (effectiveFilters.statusFilter !== 'all') {
       chips.push({
         key: 'status',
         label: getStockLocationStatusLabel(effectiveFilters.statusFilter),
-        onRemove: () => setLocalFilters((current) => ({ ...current, statusFilter: 'all' })),
+        onRemove: () => setListFilters((current) => ({ ...current, statusFilter: 'all' })),
       });
     }
 
@@ -223,7 +282,7 @@ export function StockLocationsMatrix({
       chips.push({
         key: 'stock',
         label: 'Con material disponible',
-        onRemove: () => setLocalFilters((current) => ({ ...current, stockFilter: 'all' })),
+        onRemove: () => setListFilters((current) => ({ ...current, stockFilter: 'all' })),
       });
     }
 
@@ -231,7 +290,7 @@ export function StockLocationsMatrix({
       chips.push({
         key: 'search',
         label: `Búsqueda: ${effectiveFilters.search.trim()}`,
-        onRemove: () => setLocalFilters((current) => ({ ...current, search: '' })),
+        onRemove: () => setListFilters((current) => ({ ...current, search: '' })),
       });
     }
 
@@ -239,7 +298,7 @@ export function StockLocationsMatrix({
   }, [effectiveFilters, onCustodyFilterChange]);
 
   function clearFilters() {
-    setLocalFilters({
+    setListFilters({
       search: '',
       typeFilter: 'all',
       statusFilter: 'all',
@@ -252,7 +311,7 @@ export function StockLocationsMatrix({
     return <StockLocationsMatrixSkeleton />;
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !hasActiveLocationMatrixFilters(effectiveFilters)) {
     return (
       <PortalEmptyState
         title="Sin bodegas creadas"
@@ -260,7 +319,7 @@ export function StockLocationsMatrix({
         icon={Warehouse}
         action={
           onCreateLocation ? (
-            <Button type="button" onClick={onCreateLocation}>
+            <Button type="button" variant="primary" onClick={onCreateLocation}>
               Crear bodega
             </Button>
           ) : undefined
@@ -269,30 +328,59 @@ export function StockLocationsMatrix({
     );
   }
 
-  const resultLabel =
-    filteredRows.length === rows.length
-      ? `${filteredRows.length} ubicaciones`
-      : `${filteredRows.length} de ${rows.length} ubicaciones`;
+  const resolvedTotal = totalCount ?? rows.length;
+  const clientFiltering = !serverFiltered && hasActiveLocationMatrixFilters(effectiveFilters);
+  const resultsLabel = formatInventoryResultsLabel({
+    loaded: filteredRows.length,
+    total: clientFiltering ? filteredRows.length : resolvedTotal,
+    hasMore: hasMore && !clientFiltering,
+    singular: 'ubicación',
+    plural: 'ubicaciones',
+  });
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{resultLabel}</p>
-      </div>
-
+      {aggregationPendingNotice ? (
+        <PortalAlert
+          variant="info"
+          title="Ocupación sin agregación servidor"
+          description="La matriz sigue calculando ocupación con balances drenados (tope de seguridad). No se inventó un endpoint nuevo; cuando exista agregación se retirará el drenado."
+        />
+      ) : null}
+      {balancesHasMore ? (
+        <PortalAlert
+          variant="warning"
+          title="Ocupación parcial"
+          description="Hay más existencias por cargar. La ocupación de bodega puede quedar corta hasta completar balances."
+          action={
+            onLoadMoreBalances ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={isLoadingMoreBalances}
+                disabled={isLoadingMoreBalances}
+                onClick={onLoadMoreBalances}
+              >
+                Cargar más existencias
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
       <div className="space-y-3 border-b border-gray-100 pb-4 dark:border-dark-border">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_200px_200px_auto] xl:items-end">
           <PortalSearchField
             id="locations-matrix-search"
             label="Buscar bodega"
             placeholder="Código, nombre o responsable"
-            value={localFilters.search}
-            onChange={(value) => setLocalFilters((current) => ({ ...current, search: value }))}
+            value={listFilters.search}
+            onChange={(value) => setListFilters((current) => ({ ...current, search: value }))}
           />
           <Select
             label="Tipo"
             className="h-12"
-            value={localFilters.typeFilter}
+            value={listFilters.typeFilter}
             options={[
               { value: 'all', label: 'Todos los tipos' },
               ...Object.values(StockLocationType).map((type) => ({
@@ -301,7 +389,7 @@ export function StockLocationsMatrix({
               })),
             ]}
             onChange={(event) =>
-              setLocalFilters((current) => ({
+              setListFilters((current) => ({
                 ...current,
                 typeFilter: event.target.value as 'all' | StockLocationType,
               }))
@@ -310,7 +398,7 @@ export function StockLocationsMatrix({
           <Select
             label="Estado"
             className="h-12"
-            value={resolveLocationStatusSelectValue(localFilters.statusFilter)}
+            value={resolveLocationStatusSelectValue(listFilters.statusFilter)}
             options={[
               { value: 'all', label: 'Todos los estados' },
               ...Object.values(StockLocationStatus).map((status) => ({
@@ -319,7 +407,7 @@ export function StockLocationsMatrix({
               })),
             ]}
             onChange={(event) =>
-              setLocalFilters((current) => ({
+              setListFilters((current) => ({
                 ...current,
                 statusFilter: event.target.value as 'all' | StockLocationStatus,
               }))
@@ -352,6 +440,8 @@ export function StockLocationsMatrix({
           </div>
         ) : null}
       </div>
+
+      <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
 
       {filteredRows.length === 0 ? (
         <PortalEmptyState
@@ -679,6 +769,16 @@ export function StockLocationsMatrix({
               </tbody>
             </table>
           </div>
+          {onLoadMore ? (
+            <PortalTablePagination
+              hasMore={hasMore && !clientFiltering}
+              onLoadMore={onLoadMore}
+              loading={isLoadingMore}
+              resourceLabel="ubicaciones"
+              shown={locations.length}
+              total={resolvedTotal}
+            />
+          ) : null}
           <p className="mt-3 text-xs text-iwana-secondary-700 dark:text-gray-400">
             {STOCK_RESERVED_HELP_TEXT}
           </p>

@@ -1,6 +1,46 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CommercialTabLayout } from './CommercialTabLayout';
+
+/**
+ * next/dynamic Jest-safe: resuelve el import mockeado de forma asincrona controlada
+ * para que findByTestId vea el panel sin warnings flaky de act.
+ */
+jest.mock('next/dynamic', () => ({
+  __esModule: true,
+  default: (loader: () => Promise<React.ComponentType<Record<string, unknown>>>) =>
+    function DynamicTestStub(props: Record<string, unknown>) {
+      const [Comp, setComp] = React.useState<React.ComponentType<Record<string, unknown>> | null>(
+        null,
+      );
+
+      React.useEffect(() => {
+        let cancelled = false;
+        void loader().then((Resolved) => {
+          if (cancelled) {
+            return;
+          }
+          // act evita warnings de actualización asíncrona en Jest
+          void import('@testing-library/react').then(({ act }) => {
+            act(() => {
+              if (!cancelled) {
+                setComp(() => Resolved);
+              }
+            });
+          });
+        });
+        return () => {
+          cancelled = true;
+        };
+      }, []);
+
+      if (!Comp) {
+        return <div data-testid="commercial-tab-loading" />;
+      }
+
+      return <Comp {...props} />;
+    },
+}));
 
 jest.mock('@/components/commercial/catalog/PlanCatalogPanel', () => ({
   PlanCatalogPanel: () => <div data-testid="plans-panel">Planes panel</div>,
@@ -51,34 +91,36 @@ const defaultProps = {
 };
 
 describe('CommercialTabLayout', () => {
-  it('no ofrece un tab de resumen', () => {
+  it('no ofrece un tab de resumen', async () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
     expect(screen.queryByRole('tab', { name: 'Resumen' })).not.toBeInTheDocument();
     expect(screen.queryByText('Operación')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('plans-panel')).toBeInTheDocument());
   });
 
-  it('aterriza en Planes con los tres grupos visibles', () => {
+  it('aterriza en Planes con los tres grupos visibles', async () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
     expect(screen.getByRole('tab', { name: 'Planes' })).toHaveAttribute('data-state', 'active');
     expect(screen.getByText('Catálogo')).toBeInTheDocument();
     expect(screen.getByText('Ofertas')).toBeInTheDocument();
     expect(screen.getByText('Reglas')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('plans-panel')).toBeInTheDocument());
   });
 
-  it('renderiza Planes al seleccionar el tab de catálogo', () => {
+  it('renderiza Planes al seleccionar el tab de catálogo', async () => {
     render(<CommercialTabLayout {...defaultProps} activeTab="plans" />);
 
     expect(screen.getByRole('tab', { name: 'Planes' })).toHaveAttribute('data-state', 'active');
-    expect(screen.getByTestId('plans-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('plans-panel')).toBeInTheDocument();
   });
 
-  it('renderiza Combos y Promociones bajo el grupo Ofertas', () => {
+  it('renderiza Combos y Promociones bajo el grupo Ofertas', async () => {
     const { rerender } = render(<CommercialTabLayout {...defaultProps} activeTab="bundles" />);
 
     expect(screen.getByRole('tab', { name: 'Combos' })).toHaveAttribute('data-state', 'active');
-    expect(screen.getByTestId('bundles-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('bundles-panel')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Combos y promociones' })).not.toBeInTheDocument();
 
     rerender(<CommercialTabLayout {...defaultProps} activeTab="promotions" />);
@@ -87,7 +129,7 @@ describe('CommercialTabLayout', () => {
       'data-state',
       'active',
     );
-    expect(screen.getByTestId('promotions-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('promotions-panel')).toBeInTheDocument();
   });
 
   it('no ubica Combos ni Promociones bajo Reglas', () => {
@@ -100,17 +142,17 @@ describe('CommercialTabLayout', () => {
     expect(rulesGroup).not.toContainElement(screen.getByRole('tab', { name: 'Promociones' }));
   });
 
-  it('renderiza Tributación al seleccionar el tab principal', () => {
+  it('renderiza Tributación al seleccionar el tab principal', async () => {
     render(<CommercialTabLayout {...defaultProps} activeTab="taxation" />);
 
     expect(screen.getByRole('tab', { name: 'Tributación' })).toHaveAttribute(
       'data-state',
       'active',
     );
-    expect(screen.getByTestId('tax-catalog-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('tax-catalog-panel')).toBeInTheDocument();
   });
 
-  it('renderiza Simulador tributario al seleccionar el subtab tributario', () => {
+  it('renderiza Simulador tributario al seleccionar el subtab tributario', async () => {
     render(
       <CommercialTabLayout {...defaultProps} activeTab="taxation" taxationSubTab="tax-simulator" />,
     );
@@ -119,7 +161,7 @@ describe('CommercialTabLayout', () => {
       'data-state',
       'active',
     );
-    expect(screen.getByTestId('tax-simulator-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('tax-simulator-panel')).toBeInTheDocument();
   });
 
   it('notifica cambio de tab principal', () => {

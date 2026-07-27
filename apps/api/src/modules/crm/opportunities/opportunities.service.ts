@@ -2,6 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
+import type { ListResponse } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { Opportunity } from './entities/opportunity.entity';
 import { CreateOpportunityDto } from './dto/create-opportunity.dto';
 import { UpdateOpportunityDto } from './dto/update-opportunity.dto';
@@ -27,14 +30,39 @@ export class OpportunitiesService {
     });
   }
 
-  async findAll(filters: { stage?: OpportunityStage }): Promise<Opportunity[]> {
+  async findAll(filters: {
+    stage?: OpportunityStage;
+    page?: number;
+    limit?: number;
+  }): Promise<ListResponse<Opportunity>> {
     const { schemaName } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(Opportunity, {
-        where: filters.stage ? { stage: filters.stage } : {},
-        order: { createdAt: 'DESC' },
-      }),
-    );
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const qb = qr.manager
+        .createQueryBuilder(Opportunity, 'o')
+        .orderBy('o.createdAt', 'DESC')
+        .addOrderBy('o.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      if (filters.stage) {
+        qb.andWhere('o.stage = :stage', { stage: filters.stage });
+      }
+
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
+    });
   }
 
   async findOne(id: string): Promise<Opportunity> {

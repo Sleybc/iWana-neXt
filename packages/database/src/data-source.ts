@@ -27,6 +27,11 @@ import { User } from './entities/user.entity';
 import { UserAccessProfile } from './entities/user-access-profile.entity';
 import { WorkOrder } from './entities/work-order.entity';
 import { WorkOrderTask } from './entities/work-order-task.entity';
+import { ExecutionOrder } from './entities/execution-order.entity';
+import { ExecutionOrderOutboxEvent } from './entities/execution-order-outbox-event.entity';
+import { ExecutionOrderInboxEvent } from './entities/execution-order-inbox-event.entity';
+import { ExecutionOrderIdempotencyRecord } from './entities/execution-order-idempotency.entity';
+import { ExecutionOrderAuditIntent } from './entities/execution-order-audit-intent.entity';
 
 /**
  * Carga variables de entorno cuando este archivo se ejecuta desde el runner
@@ -139,6 +144,11 @@ export const dataSourceOptions: DataSourceOptions = {
     WorkOrderTask,
     ScheduleRescheduleLog,
     TechnicianAvailability,
+    ExecutionOrder,
+    ExecutionOrderOutboxEvent,
+    ExecutionOrderInboxEvent,
+    ExecutionOrderIdempotencyRecord,
+    ExecutionOrderAuditIntent,
   ],
   migrations: ['dist/migrations/public/*.js'],
   migrationsTableName: 'typeorm_migrations',

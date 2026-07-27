@@ -24,10 +24,15 @@ import {
   PopoverContent,
   PopoverTrigger,
   Select,
+  cn,
 } from '@iwana/ui';
 import {
   ApiError,
+  COMMERCIAL_LIST_PAGE_SIZE,
+  COMMERCIAL_PICKER_LIMIT,
   commercialApi,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CreateTaxRuleApplicationDto,
   type TaxRule,
   type TaxDefinition,
@@ -46,8 +51,13 @@ import {
   PortalPanel,
   PortalSidePeek,
   PortalSkeletonBlock,
+  PortalResultsStrip,
   PortalSuccessAlert,
+  PortalTablePagination,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableInactiveRowClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
@@ -120,6 +130,10 @@ function SelectLabelWithHelp({
 
 export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManagerProps) {
   const [applications, setApplications] = useState<TaxRuleApplication[]>([]);
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+  });
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,18 +149,26 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState<AppFormState>(INITIAL_FORM);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (params: CommercialListParams, append = false) => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [apps, taxRules, taxDefs] = await Promise.all([
-        commercialApi.listTaxRuleApplications(),
-        commercialApi.getTaxRules(),
-        commercialApi.listTaxDefinitions({ isActive: true }),
+      const [appsResult, taxRules, taxDefs] = await Promise.all([
+        commercialApi.listTaxRuleApplications(params),
+        append
+          ? Promise.resolve(null)
+          : commercialApi.getTaxRules({ limit: COMMERCIAL_PICKER_LIMIT }),
+        append
+          ? Promise.resolve(null)
+          : commercialApi.listTaxDefinitions({ isActive: true, limit: COMMERCIAL_PICKER_LIMIT }),
       ]);
-      setApplications(apps);
-      setRules(taxRules);
-      setDefinitions(taxDefs);
+      setApplications((prev) => (append ? [...prev, ...appsResult.data] : appsResult.data));
+      setMeta(appsResult.meta);
+      setListParams(params);
+      if (!append && taxRules && taxDefs) {
+        setRules(taxRules.data);
+        setDefinitions(taxDefs.data);
+      }
     } catch (err) {
       setLoadError(
         err instanceof ApiError ? err.message : 'Error al cargar aplicaciones tributarias',
@@ -156,8 +178,14 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
     }
   }, []);
 
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void load({ ...listParams, cursor: meta.nextCursor }, true);
+    }
+  };
+
   useEffect(() => {
-    void load();
+    void load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
   }, [load]);
 
   const ruleName = (id: string) => {
@@ -181,6 +209,12 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const isEditing = formMode === 'edit';
   const isGuided = formMode === 'guided';
   const showLoadErrorOnly = Boolean(loadError) && applications.length === 0 && !loading;
+  const hasMore = meta?.nextCursor != null;
+  const totalApplications = meta?.total ?? applications.length;
+  const resourceWord = totalApplications === 1 ? 'aplicación' : 'aplicaciones';
+  const resultsLabel = hasMore
+    ? `${applications.length} de ${totalApplications} ${resourceWord}`
+    : `${totalApplications} ${resourceWord}`;
 
   function openCreateForm() {
     setEditTarget(null);
@@ -241,7 +275,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       };
       await commercialApi.createTaxRuleApplication(dto);
       handleFormOpenChange(false);
-      await load();
+      await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Vinculación creada.');
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Error al crear la vinculación.');
@@ -269,7 +303,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
           ...(form.priority !== undefined ? { priority: form.priority } : {}),
         });
       } catch (linkErr) {
-        await load();
+        await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
         setFormError(
           linkErr instanceof ApiError
             ? `Regla creada, pero falló el vínculo: ${linkErr.message}. Usa «Vincular regla» para reintentar.`
@@ -278,7 +312,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
         return;
       }
       handleFormOpenChange(false);
-      await load();
+      await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Regla y vinculación creadas.');
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Error al crear la regla tributaria.');
@@ -299,7 +333,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       if (form.isActive !== undefined) dto.isActive = form.isActive;
       await commercialApi.updateTaxRuleApplication(editTarget.id, dto);
       handleFormOpenChange(false);
-      await load();
+      await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Vinculación actualizada.');
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Error al actualizar la vinculación.');
@@ -315,7 +349,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
     try {
       await commercialApi.deleteTaxRuleApplication(deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Vinculación eliminada.');
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Error al eliminar aplicación');
@@ -339,7 +373,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             size="icon"
             aria-label="Actualizar reglas de aplicación"
             title="Actualizar reglas de aplicación"
-            onClick={() => void load()}
+            onClick={() => void load({ limit: COMMERCIAL_LIST_PAGE_SIZE })}
           >
             <RotateCcw className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -372,7 +406,12 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void load()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void load({ limit: COMMERCIAL_LIST_PAGE_SIZE })}
+            >
               Reintentar
             </Button>
           }
@@ -424,10 +463,12 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             />
           )}
 
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Regla comercial</PortalDataTableHead>
                     <PortalDataTableHead>Definición</PortalDataTableHead>
@@ -438,9 +479,15 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                <tbody className={portalDataTableBodyClassName}>
                   {applications.map((app) => (
-                    <tr key={app.id} className={portalTableRowHoverClassName}>
+                    <tr
+                      key={app.id}
+                      className={cn(
+                        portalTableRowHoverClassName,
+                        !app.isActive && portalDataTableInactiveRowClassName,
+                      )}
+                    >
                       <td className={portalDataTableCellClassName}>
                         <p className="font-medium text-gray-800 dark:text-gray-100">
                           {ruleName(app.taxRuleId)}
@@ -504,6 +551,14 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                 </tbody>
               </table>
             </div>
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={handleLoadMore}
+              loading={loading}
+              resourceLabel="aplicaciones"
+              shown={applications.length}
+              total={totalApplications}
+            />
           </div>
         </div>
       )}

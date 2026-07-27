@@ -131,6 +131,7 @@ describe('UsersController HTTP', () => {
 
   const usersServiceMock = {
     findAll: jest.fn(),
+    searchForPicker: jest.fn(),
     create: jest.fn(),
     findMe: jest.fn(),
     updateMe: jest.fn(),

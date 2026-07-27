@@ -155,6 +155,7 @@ export class ExecutionOrderReliabilityService {
         payload: input.payload,
         correlationId: input.correlationId,
         attemptCount: 0,
+        occurredAt: new Date(),
         availableAt: new Date(),
         leaseUntil: null,
         publishedAt: null,

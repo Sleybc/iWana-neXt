@@ -3,8 +3,16 @@
 
 import { useEffect, useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
 import type { InternalUser } from '@/lib/api-client';
+import { PortalAlert } from '@/components/shared/portal-ui';
 
 interface ResetPasswordDialogProps {
   isOpen: boolean;
@@ -59,7 +67,7 @@ export function ResetPasswordDialog({
             <KeyRound className="h-6 w-6 text-amber-600 dark:text-amber-400" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
+            <p className="portal-eyebrow text-amber-700 dark:text-amber-300">
               Credenciales temporales
             </p>
             <DialogTitle
@@ -74,7 +82,6 @@ export function ResetPasswordDialog({
           </div>
         </DialogHeader>
 
-        {/* Información del usuario afectado */}
         <div className="mb-6 rounded-2xl border border-gray-100 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-400">
@@ -106,54 +113,27 @@ export function ResetPasswordDialog({
         </p>
 
         {serverError && (
-          <div className="mb-4 rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-            <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
-          </div>
+          <PortalAlert
+            className="mb-4"
+            variant="error"
+            title="No fue posible reiniciar"
+            description={serverError}
+          />
         )}
 
         <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
-          >
+          <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
             onClick={() => void onConfirm()}
             disabled={isSubmitting}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
+            loading={isSubmitting}
           >
-            {isSubmitting ? (
-              <>
-                <svg
-                  className="h-4 w-4 animate-spin"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Reiniciando...
-              </>
-            ) : (
-              'Reiniciar contraseña'
-            )}
-          </button>
+            Reiniciar contraseña
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

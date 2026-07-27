@@ -9,9 +9,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -22,8 +23,10 @@ import {
   UpdateCompatibilityRuleDto,
   ValidateCombinationDto,
 } from '../dto/compatibility.dto';
+import { CommercialListMetaDto, CommercialListQueryDto } from '../dto/commercial-list-query.dto';
 
 @ApiTags('commercial-compatibility')
+@ApiExtraModels(CommercialListMetaDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial')
@@ -32,10 +35,17 @@ export class CompatibilityController {
 
   @Get('compatibility-rules')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Listar reglas de compatibilidad activas' })
-  async findAll() {
-    const data = await this.compatibilityService.findAll();
-    return { data };
+  @ApiOperation({
+    summary: 'Listar reglas de compatibilidad activas (paginación cursor)',
+    description:
+      'ADR-064: limit default 20, max 100; meta.nextCursor + meta.total. Orden: createdAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Respuesta `{ data, meta: { nextCursor, total } }`',
+  })
+  async findAll(@Query() query: CommercialListQueryDto) {
+    return this.compatibilityService.findAll(query);
   }
 
   @Post('compatibility-rules')

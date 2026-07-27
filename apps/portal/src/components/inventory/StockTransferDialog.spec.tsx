@@ -115,4 +115,43 @@ describe('StockTransferDialog', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Sin material disponible para salida')).toBeInTheDocument();
   });
+
+  it('conserva el producto seleccionado si la página de ítems se reemplaza', async () => {
+    const user = userEvent.setup();
+    const item = makeItem();
+    const { rerender } = render(
+      <StockTransferDialog
+        open
+        items={[item]}
+        locations={[makeLocation()]}
+        balances={[makeBalance()]}
+        isSubmitting={false}
+        error={null}
+        onClose={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Producto' }));
+    await user.click(screen.getByRole('option', { name: 'CAB-01 · Cable drop' }));
+
+    rerender(
+      <StockTransferDialog
+        open
+        items={[makeItem({ id: 'item-999', sku: 'OTR-99', name: 'Otro producto' })]}
+        locations={[makeLocation()]}
+        balances={[makeBalance()]}
+        isSubmitting={false}
+        error={null}
+        onClose={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Producto' })).toHaveTextContent(
+      'CAB-01 · Cable drop',
+    );
+    await user.click(screen.getByRole('combobox', { name: 'Producto' }));
+    expect(screen.getByRole('option', { name: 'CAB-01 · Cable drop' })).toBeInTheDocument();
+  });
 });

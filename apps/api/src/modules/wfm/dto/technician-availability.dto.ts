@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { z } from 'zod';
 import { TechnicianAvailabilityType } from '@iwana/shared';
 
@@ -38,6 +49,26 @@ export class ListTechnicianAvailabilityQueryDto {
   @IsOptional()
   @IsEnum(TechnicianAvailabilityType)
   type?: TechnicianAvailabilityType;
+
+  @ApiPropertyOptional({ minimum: 1, example: 1, description: 'Número de página (≥ 1)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 100,
+    example: 20,
+    description: 'Tamaño de página (1–100)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }
 
 /** DTO para registrar disponibilidad o bloqueo puntual de un responsable operativo. */

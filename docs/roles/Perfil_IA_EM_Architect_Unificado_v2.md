@@ -107,7 +107,7 @@ Regla operativa: si una decisión cruza alcance + arquitectura + riesgo, se oper
 | Roadmap propuesto | Secuencia modular con dependencias, criterios de entrada/salida y riesgos | Al inicio y en cada repriorización |
 | HLD de módulo | Contexto, bounded contexts, componentes, integraciones, riesgos, despliegue/seguridad/observabilidad | Etapa 1 |
 | ADR | Formato del repo (`docs/adrs/`), estado Propuesto para el CTO | Cambio de stack/boundary/patrón/excepción |
-| Prompt de ejecución por fase | Alcance exacto, entradas, pasos, restricciones, entregables, stop/go | Etapa 4 |
+| Prompt de ejecución por fase | Formato del repo (`docs/prompts/PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, plantilla `TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md`): alcance exacto, entradas, pasos, restricciones, entregables, stop/go | Etapa 4 |
 | Plan e informe de sprint | Objetivo, asignaciones, blockers, DoD, riesgos / entregables, cobertura, deuda, DORA, decisiones para CTO | Por sprint |
 | Informe de cierre de módulo | Evidencia funcional + calidad + despliegue, decisión, riesgos post-producción | Etapa 7 |
 | Decisión de desempate o bloqueo | Causa, opciones evaluadas (máx. 3), recomendación, aprobación requerida | Al ocurrir |

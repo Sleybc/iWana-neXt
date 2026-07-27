@@ -1,8 +1,8 @@
 # HLD - MOD12 Inventario / SCM
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-25  
+**Version:** 1.1  
+**Estado:** En revision — baseline v1.0 aprobado; addendum v1.1 sujeto a ADR-068 (Aprobado)  
+**Fecha:** 2026-07-27  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **Aprobado por:** CTO  
@@ -366,3 +366,37 @@ Logs:
 | Enums rigidos | Medio | Usar enums compartidos solo para estados estables; revisar text+check si evolucion esperada |
 | PII en comodato | Alto | Referencias logicas y labels minimos |
 | Compras sobrecrece | Medio | Dejar scoring, contratos marco y portal proveedor fuera de fase 1 |
+
+---
+
+## 13. Addendum 2026-07-27 — settlement asincrono de OT
+
+Este addendum reemplaza, para nuevos consumos de OT, la invocacion síncrona directa descrita en el baseline por la coreografia de ADR-068 (Aprobado). La implementación sigue sujeta a los gates G3–G6.
+
+### Contrato objetivo
+
+- MOD11 publica `InventoryConsumptionRequestedV1` durante la ejecución, con tenant, OT, item, cantidad, serial, accion, disposicion, asignacion y clave idempotente.
+- MOD12 valida tipo de custodia, `responsibleRefId`, membresia/vigencia de tecnico o cuadrilla, stock, serial y destino.
+- MOD12 registra el movimiento en su propia transaccion y publica `InventoryMovementConfirmedV1` o `InventoryMovementRejectedV1` por outbox.
+- MOD11 anexa un settlement técnico y referencia el movimiento; no escribe balances, ubicaciones ni ledger.
+- `ExecutionOrderClosedV1` no solicita movimientos.
+- Una confirmacion tardia no modifica el resultado/cierre de la OT; actualiza la proyeccion append-only de conciliacion.
+- Se elimina cualquier fallback que fabrique `stockMovementId` sin ledger real.
+
+### Idempotencia y recuperacion
+
+- la misma clave y hash devuelve el movimiento original;
+- la misma clave con payload distinto responde conflicto;
+- confirmacion duplicada o tardia no crea segundo uso/movimiento;
+- si MOD12 confirma y MOD11 falla, el reconciliador reentrega el settlement;
+- inbox por consumidor evita replays con efecto;
+- DLQ e intervencion operativa conservan `correlationId` sin PII.
+
+### Persistencia y pruebas
+
+- constraint coherente entre movimiento, OT e item;
+- índices tenant-aware para pendientes de conciliacion;
+- migraciones reversibles;
+- pruebas de dos tenants, stock concurrente, serial duplicado, cuadrilla revocada y fallo parcial.
+
+**Trazabilidad:** `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (Aprobado), `docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md`.

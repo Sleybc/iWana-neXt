@@ -4,7 +4,7 @@
 **Fecha:** 2026-04-30
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobador requerido:** CTO Humano
+**Aprobado por:** CTO Humano
 **Trazabilidad:** [ADR-016](ADR-016-Cierre-MOD01-Produccion.md) · [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md) <!-- ADR-021 retirado 2026-07-19 vía ADR-056: boilerplate sin relación sustantiva con storage; además Superado -->
 
 ---
@@ -125,6 +125,6 @@ Ver tabla en seccion 3.
 
 - ADR-034: Bounded Context Media/Assets (consumidor unico de `StoragePort`).
 
-## 9. Pendiente de aprobacion
+## 9. Aprobacion registrada
 
-- CTO Humano: aprobar adopcion operativa de MinIO en produccion y dependencia `@aws-sdk/client-s3`.
+- CTO Humano: aprobación confirmada para MinIO, `StoragePort` y la dependencia `@aws-sdk/client-s3`.

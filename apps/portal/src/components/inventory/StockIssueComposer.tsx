@@ -3,14 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select } from '@iwana/ui';
 import { StockIssueType, StockLocationType } from '@iwana/shared';
-import type {
-  CreateStockIssueDto,
-  InventoryItemRecord,
-  SerializedAssetRecord,
-  StockBalanceRecord,
-  StockIssueDetailRecord,
-  StockLocationRecord,
-  UpdateStockIssueDto,
+import {
+  inventoryApi,
+  mapPickerSearchResponse,
+  type CreateStockIssueDto,
+  type InventoryItemRecord,
+  type PickerSearchItemDto,
+  type SerializedAssetRecord,
+  type StockBalanceRecord,
+  type StockIssueDetailRecord,
+  type StockLocationRecord,
+  type UpdateStockIssueDto,
 } from '@/lib/api-client';
 import {
   PortalAlert,
@@ -25,7 +28,6 @@ import {
   formatInventoryQuantity,
   getStockIssueTypeHelperLabel,
   getStockIssueTypeLabel,
-  getStockLocationTypeLabel,
 } from './inventory-labels';
 import { PurchaseSelectionBar } from './PurchaseSelectionBar';
 import { PurchaseSuggestionList } from './PurchaseSuggestionList';
@@ -47,17 +49,32 @@ import {
   type StockIssueDraftLine,
 } from './stock-issue-draft';
 import { buildDraftFromIssueDetail } from './stock-issue-draft-from-detail';
-import {
-  getDestinationCandidates,
-  getSourceCandidates,
-  showDestinationForIssueType,
-} from './stock-issue-form-utils';
+import { showDestinationForIssueType } from './stock-issue-form-utils';
 import { buildCreateStockIssuePayload, buildUpdateStockIssuePayload } from './stock-issue-submit';
 import { buildAvailableQuantityByItemAtLocation } from './stock-issue-balance-utils';
 import { buildStockIssueSuggestions } from './stock-issue-suggestions';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
+import { inventoryHasMore } from './inventory-list-pagination';
 
 type DestinationOptionsByType = Map<StockLocationType, StockLocationRecord[]>;
 export type StockIssueComposerMode = 'create' | 'edit';
+
+/** Parse label/sublabel F4 → sku/name aproximados para el borrador. */
+function pickerItemToCatalogSelection(item: PickerSearchItemDto): {
+  id: string;
+  sku: string;
+  name: string;
+  unitOfMeasure: string;
+} {
+  const sub = item.sublabel?.trim() ?? '';
+  const skuFromSub = sub.replace(/^SKU\s+/i, '').trim();
+  return {
+    id: item.id,
+    sku: skuFromSub || item.id.slice(0, 8),
+    name: item.label,
+    unitOfMeasure: 'unidad',
+  };
+}
 
 interface ComposerSnapshot {
   type: StockIssueType;
@@ -126,11 +143,12 @@ const TYPE_OPTIONS = Object.values(StockIssueType).map((type) => ({
 export interface StockIssueComposerProps {
   mode?: StockIssueComposerMode;
   editIssue?: StockIssueDetailRecord | null;
-  items: InventoryItemRecord[];
+  /** Seed opcional; el composer carga catálogo vía lookup F4 y balances por origen. */
+  items?: InventoryItemRecord[];
   balances?: StockBalanceRecord[];
   assets?: SerializedAssetRecord[];
-  locations: StockLocationRecord[];
-  destinationOptions: DestinationOptionsByType;
+  locations?: StockLocationRecord[];
+  destinationOptions?: DestinationOptionsByType;
   issueItemFrequency?: Record<string, number>;
   isSubmitting?: boolean;
   error?: string | null;
@@ -143,11 +161,11 @@ export interface StockIssueComposerProps {
 export function StockIssueComposer({
   mode = 'create',
   editIssue = null,
-  items,
-  balances = [],
-  assets = [],
-  locations,
-  destinationOptions,
+  items: seedItems = [],
+  balances: seedBalances = [],
+  assets: seedAssets = [],
+  locations: _locations = [],
+  destinationOptions: _destinationOptions,
   issueItemFrequency = {},
   isSubmitting = false,
   error = null,
@@ -156,10 +174,14 @@ export function StockIssueComposer({
   onSubmit,
   onUpdate,
 }: StockIssueComposerProps) {
+  void _locations;
+  void _destinationOptions;
   const isEditMode = mode === 'edit';
   const [type, setType] = useState<StockIssueType>(StockIssueType.TECHNICIAN_CUSTODY);
   const [sourceLocationId, setSourceLocationId] = useState('');
+  const [sourceLocationLabel, setSourceLocationLabel] = useState<string | null>(null);
   const [destinationLocationId, setDestinationLocationId] = useState('');
+  const [destinationLocationLabel, setDestinationLocationLabel] = useState<string | null>(null);
   const [commercialRefId, setCommercialRefId] = useState('');
   const [originRefId, setOriginRefId] = useState('');
   const [costCenter, setCostCenter] = useState('');
@@ -174,8 +196,15 @@ export function StockIssueComposer({
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const [mobileStep, setMobileStep] = useState<'capture' | 'review'>('capture');
   const editBaselineRef = useRef<ComposerSnapshot | null>(null);
+  const [knownItems, setKnownItems] = useState<InventoryItemRecord[]>(seedItems);
+  const [balances, setBalances] = useState<StockBalanceRecord[]>(seedBalances);
+  const [assets, setAssets] = useState<SerializedAssetRecord[]>(seedAssets);
+  const [balancesTruncated, setBalancesTruncated] = useState(false);
+  const [catalogHits, setCatalogHits] = useState<PickerSearchItemDto[]>([]);
+  const [catalogSearching, setCatalogSearching] = useState(false);
+  const [catalogSearchError, setCatalogSearchError] = useState<string | null>(null);
 
-  const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const itemsById = useMemo(() => new Map(knownItems.map((item) => [item.id, item])), [knownItems]);
   const isDesktopLayout = useMinWidth(768);
   const showDestination = showDestinationForIssueType(type);
   const showStockContext = Boolean(sourceLocationId.trim());
@@ -188,13 +217,13 @@ export function StockIssueComposer({
   const suggestionRecords = useMemo(
     () =>
       buildStockIssueSuggestions({
-        items,
+        items: knownItems,
         balances,
         sourceLocationId,
         search: catalogSearch,
         issueItemFrequency,
       }),
-    [items, balances, sourceLocationId, catalogSearch, issueItemFrequency],
+    [knownItems, balances, sourceLocationId, catalogSearch, issueItemFrequency],
   );
 
   const suggestionRows = useMemo(
@@ -210,63 +239,28 @@ export function StockIssueComposer({
 
   const selectionCount = selectedSuggestionIds.length + selectedCatalogIds.length;
 
-  const sourceCandidates = useMemo(() => getSourceCandidates(type, locations), [type, locations]);
-
-  const destinationCandidates = useMemo(
-    () => getDestinationCandidates(type, locations, sourceLocationId, destinationOptions),
-    [type, locations, sourceLocationId, destinationOptions],
-  );
-
-  const sourceOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona una bodega' },
-      ...sourceCandidates.map((location) => ({
-        value: location.id,
-        label: `${location.code} · ${location.name} (${getStockLocationTypeLabel(location.type)})`,
-      })),
-    ],
-    [sourceCandidates],
-  );
-
-  const destinationSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona el destino' },
-      ...destinationCandidates.map((location) => ({
-        value: location.id,
-        label: `${location.code} · ${location.name} (${getStockLocationTypeLabel(location.type)})`,
-      })),
-    ],
-    [destinationCandidates],
-  );
-
   const catalogRows = useMemo(() => {
-    const query = catalogSearch.trim().toLowerCase();
-    return items
-      .filter((item) => {
-        if (!query) {
-          return true;
-        }
-        return item.sku.toLowerCase().includes(query) || item.name.toLowerCase().includes(query);
-      })
-      .map((item) => ({
-        id: item.id,
-        productLabel: `${item.sku} · ${item.name}`,
-        categoryName: item.categoryName ?? '—',
-        unitLabel: item.unitOfMeasure ?? '—',
+    return catalogHits.map((hit) => {
+      const selection = pickerItemToCatalogSelection(hit);
+      return {
+        id: hit.id,
+        productLabel: hit.sublabel ? `${hit.label} — ${hit.sublabel}` : hit.label,
+        categoryName: '—',
+        unitLabel: selection.unitOfMeasure,
         availableLabel: showStockContext
-          ? formatInventoryQuantity(availableByItemId.get(item.id) ?? 0)
+          ? formatInventoryQuantity(availableByItemId.get(hit.id) ?? 0)
           : null,
-        selected: selectedCatalogIds.includes(item.id),
-      }));
-  }, [items, catalogSearch, selectedCatalogIds, showStockContext, availableByItemId]);
+        selected: selectedCatalogIds.includes(hit.id),
+      };
+    });
+  }, [catalogHits, selectedCatalogIds, showStockContext, availableByItemId]);
 
   const summaryLabel = useMemo(() => {
     const destinationLabel = showDestination
-      ? (destinationCandidates.find((loc) => loc.id === destinationLocationId)?.name ??
-        'sin destino')
+      ? (destinationLocationLabel ?? 'sin destino')
       : getStockIssueTypeLabel(type);
     return `${getStockIssueTypeLabel(type)} · ${destinationLabel} · ${draft.lines.length} línea${draft.lines.length === 1 ? '' : 's'}`;
-  }, [type, showDestination, destinationLocationId, destinationCandidates, draft.lines.length]);
+  }, [type, showDestination, destinationLocationLabel, draft.lines.length]);
 
   const currentSnapshot = useMemo(
     () =>
@@ -368,18 +362,115 @@ export function StockIssueComposer({
     onDraftLineCountChange?.(draft.lines.length);
   }, [draft.lines.length, onDraftLineCountChange]);
 
+  useEffect(() => {
+    const query = catalogSearch.trim();
+    if (query.length < 2) {
+      setCatalogHits([]);
+      setCatalogSearching(false);
+      setCatalogSearchError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setCatalogSearching(true);
+      setCatalogSearchError(null);
+      void inventoryApi
+        .searchItemsForPicker({ q: query }, { signal: controller.signal })
+        .then((response) => {
+          const mapped = mapPickerSearchResponse(response);
+          setCatalogHits(mapped.items);
+        })
+        .catch((searchError: unknown) => {
+          if (controller.signal.aborted) return;
+          setCatalogHits([]);
+          setCatalogSearchError(
+            searchError instanceof Error ? searchError.message : 'No fue posible buscar productos.',
+          );
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setCatalogSearching(false);
+          }
+        });
+    }, 300);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [catalogSearch]);
+
+  useEffect(() => {
+    if (!sourceLocationId.trim()) {
+      setBalances([]);
+      setAssets([]);
+      setBalancesTruncated(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    void Promise.all([
+      inventoryApi.listBalances({ locationId: sourceLocationId, limit: 100 }),
+      inventoryApi.listAssets({ locationId: sourceLocationId, limit: 100 }),
+    ])
+      .then(async ([balancesResponse, assetsResponse]) => {
+        if (controller.signal.aborted) return;
+        setBalances(balancesResponse.data);
+        setAssets(assetsResponse.data);
+        setBalancesTruncated(inventoryHasMore(balancesResponse.meta));
+
+        const itemIds = [
+          ...new Set(balancesResponse.data.map((row) => row.itemId).filter(Boolean)),
+        ].slice(0, 40);
+        const missing = itemIds.filter((id) => !itemsById.has(id));
+        if (missing.length === 0) return;
+
+        const fetched = await Promise.all(
+          missing.map((id) => inventoryApi.getItem(id).catch(() => null)),
+        );
+        if (controller.signal.aborted) return;
+        const resolved = fetched.filter((row): row is InventoryItemRecord => row != null);
+        if (resolved.length === 0) return;
+        setKnownItems((prev) => {
+          const next = new Map(prev.map((item) => [item.id, item]));
+          for (const item of resolved) {
+            next.set(item.id, item);
+          }
+          return [...next.values()];
+        });
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setBalances([]);
+        setAssets([]);
+        setBalancesTruncated(false);
+      });
+
+    return () => controller.abort();
+    // itemsById intentionally omitted — enrichment uses latest map inside effect start
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch on source change
+  }, [sourceLocationId]);
+
   function handleAddSelectedProducts() {
-    const selectedFromSuggestions = items.filter((item) => selectedSuggestionIds.includes(item.id));
-    const selectedFromCatalog = items.filter((item) => selectedCatalogIds.includes(item.id));
+    const fromSuggestions = suggestionRecords
+      .filter((row) => selectedSuggestionIds.includes(row.itemId))
+      .map((row) => {
+        const known = itemsById.get(row.itemId);
+        return {
+          id: row.itemId,
+          sku: known?.sku ?? row.itemId.slice(0, 8),
+          name: known?.name ?? row.productLabel,
+          unitOfMeasure: known?.unitOfMeasure ?? 'unidad',
+        };
+      });
+    const fromCatalog = catalogHits
+      .filter((hit) => selectedCatalogIds.includes(hit.id))
+      .map(pickerItemToCatalogSelection);
     const uniqueItems = new Map(
-      [...selectedFromSuggestions, ...selectedFromCatalog].map((item) => [item.id, item]),
+      [...fromSuggestions, ...fromCatalog].map((item) => [item.id, item]),
     );
-    const selections = [...uniqueItems.values()].map((item) => ({
-      id: item.id,
-      sku: item.sku,
-      name: item.name,
-      unitOfMeasure: item.unitOfMeasure ?? 'unidad',
-    }));
+    const selections = [...uniqueItems.values()];
 
     const result = addCatalogSelectionToDraft(draft, selections);
     setDraft(result.draft);
@@ -413,12 +504,15 @@ export function StockIssueComposer({
   function resetComposer() {
     setType(StockIssueType.TECHNICIAN_CUSTODY);
     setSourceLocationId('');
+    setSourceLocationLabel(null);
     setDestinationLocationId('');
+    setDestinationLocationLabel(null);
     setCommercialRefId('');
     setOriginRefId('');
     setCostCenter('');
     setReason('');
     setCatalogSearch('');
+    setCatalogHits([]);
     setSourceTab('suggestions');
     setSelectedSuggestionIds([]);
     setSelectedCatalogIds([]);
@@ -427,6 +521,9 @@ export function StockIssueComposer({
     setValidationError(null);
     setDuplicateNotice(null);
     setMobileStep('capture');
+    setBalances([]);
+    setAssets([]);
+    setBalancesTruncated(false);
   }
 
   function mapDraftLinesForSubmit() {
@@ -502,30 +599,35 @@ export function StockIssueComposer({
           onChange={(event) => {
             setType(event.target.value as StockIssueType);
             setDestinationLocationId('');
+            setDestinationLocationLabel(null);
           }}
           options={TYPE_OPTIONS}
         />
-        <Select
+        <InventoryLocationPicker
           id="issue-source"
           label="Origen"
-          value={sourceLocationId}
-          onChange={(event) => {
-            const nextSource = event.target.value;
+          value={sourceLocationId || null}
+          selectedLabel={sourceLocationLabel}
+          onChange={(nextId, item) => {
+            const nextSource = nextId ?? '';
             setSourceLocationId(nextSource);
+            setSourceLocationLabel(item ? item.label : null);
             if (destinationLocationId === nextSource) {
               setDestinationLocationId('');
+              setDestinationLocationLabel(null);
             }
           }}
-          options={sourceOptions}
         />
         {showDestination ? (
-          <Select
+          <InventoryLocationPicker
             id="issue-destination"
             label="Destino"
-            className="md:col-span-2"
-            value={destinationLocationId}
-            onChange={(event) => setDestinationLocationId(event.target.value)}
-            options={destinationSelectOptions}
+            value={destinationLocationId || null}
+            selectedLabel={destinationLocationLabel}
+            onChange={(nextId, item) => {
+              setDestinationLocationId(nextId ?? '');
+              setDestinationLocationLabel(item ? item.label : null);
+            }}
           />
         ) : null}
         {type === StockIssueType.SALE_DISPATCH ? (
@@ -582,16 +684,23 @@ export function StockIssueComposer({
       <StockIssueSourceTabs
         value={sourceTab}
         suggestionCount={suggestionRecords.length}
-        catalogCount={items.length}
+        catalogCount={catalogHits.length}
         onValueChange={setSourceTab}
       />
       <Input
         id="issue-catalog-search"
         label="Buscar ítem"
-        placeholder="Código o nombre"
+        placeholder="Escribe al menos 2 caracteres"
         value={catalogSearch}
         onChange={(event) => setCatalogSearch(event.target.value)}
       />
+      {balancesTruncated && showStockContext ? (
+        <PortalAlert
+          variant="warning"
+          title="Existencias parciales en origen"
+          description="Hay más saldos en esta bodega de los cargados. Afina la búsqueda en catálogo si no ves un producto."
+        />
+      ) : null}
       {sourceTab === 'suggestions' ? (
         showStockContext ? (
           <PurchaseSuggestionList
@@ -613,9 +722,22 @@ export function StockIssueComposer({
             description="Con el origen definido verás el material disponible para agregar a la salida."
           />
         )
+      ) : catalogSearch.trim().length < 2 ? (
+        <PortalEmptyState
+          className="w-full"
+          title="Escribe al menos 2 caracteres"
+          description="La búsqueda consulta el catálogo en el servidor; ya no se precarga un tope silencioso."
+        />
+      ) : catalogSearchError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible buscar productos"
+          description={catalogSearchError}
+        />
       ) : (
         <StockIssueCatalogSelector
           rows={catalogRows}
+          isLoading={catalogSearching}
           showAvailableColumn={showStockContext}
           onToggle={(itemId) =>
             setSelectedCatalogIds((current) =>
@@ -660,7 +782,7 @@ export function StockIssueComposer({
       ) : (
         <StockIssueDraftLinesTable
           lines={draft.lines}
-          items={items}
+          items={knownItems}
           balances={balances}
           assets={assets}
           sourceLocationId={sourceLocationId}

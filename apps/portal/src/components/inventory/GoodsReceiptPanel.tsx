@@ -28,6 +28,7 @@ import {
   getPurchaseOrderStatusLabel,
   getSupplierDisplayLabel,
 } from './inventory-labels';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 interface GoodsReceiptPanelProps {
   order: PurchaseOrderRecord | null;
@@ -35,7 +36,8 @@ interface GoodsReceiptPanelProps {
   orders?: PurchaseOrderRecord[];
   orderLines: PurchaseOrderLineRecord[];
   items: InventoryItemRecord[];
-  locations: StockLocationRecord[];
+  /** @deprecated E-4: destino usa InventoryLocationPicker. */
+  locations?: StockLocationRecord[];
   supplierLabels?: Record<string, string>;
   /** Fallback de fecha si la OC se creó sin expectedDeliveryDate (p. ej. fecha requerida de la SC). */
   fallbackExpectedDeliveryDate?: string | null;
@@ -90,7 +92,7 @@ export function GoodsReceiptPanel({
   orders = [],
   orderLines,
   items,
-  locations,
+  locations: _locations,
   supplierLabels = {},
   fallbackExpectedDeliveryDate = null,
   isSubmitting,
@@ -101,6 +103,7 @@ export function GoodsReceiptPanel({
   onSubmit,
 }: GoodsReceiptPanelProps) {
   const [destinationLocationId, setDestinationLocationId] = useState('');
+  const [destinationLocationLabel, setDestinationLocationLabel] = useState<string | null>(null);
   const [receivedAt, setReceivedAt] = useState(() => toLocalDateValue(new Date()));
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<GoodsReceiptStatus>(GoodsReceiptStatus.COMPLETED);
@@ -114,25 +117,11 @@ export function GoodsReceiptPanel({
   const receiptForOrder =
     lastReceipt && order && lastReceipt.receipt.purchaseOrderId === order.id ? lastReceipt : null;
 
-  const locationOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona una ubicación' },
-      ...locations.map((location) => ({
-        value: location.id,
-        label: `${location.code} · ${location.name}`,
-      })),
-    ],
-    [locations],
-  );
-
   const summaryLabel = useMemo(() => {
     const activeLines = lines.filter((line) => Number(line.quantityReceived) > 0).length;
-    const destination = locations.find((location) => location.id === destinationLocationId);
-    const destinationLabel = destination
-      ? `${destination.code} · ${destination.name}`
-      : 'sin ubicación destino';
+    const destinationLabel = destinationLocationLabel?.trim() || 'sin ubicación destino';
     return `${order?.orderNumber ?? 'Orden'} · ${destinationLabel} · ${activeLines} línea${activeLines === 1 ? '' : 's'}`;
-  }, [lines, destinationLocationId, locations, order?.orderNumber]);
+  }, [lines, destinationLocationLabel, order?.orderNumber]);
 
   const orderOptions = useMemo(
     () =>
@@ -286,12 +275,15 @@ export function GoodsReceiptPanel({
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-3">
-            <Select
+            <InventoryLocationPicker
               id="goods-receipt-destination"
               label="Ubicación destino"
-              value={destinationLocationId}
-              onChange={(event) => setDestinationLocationId(event.target.value)}
-              options={locationOptions}
+              value={destinationLocationId || null}
+              selectedLabel={destinationLocationLabel}
+              onChange={(nextId, item) => {
+                setDestinationLocationId(nextId ?? '');
+                setDestinationLocationLabel(item ? item.label : null);
+              }}
             />
             <DatePicker
               id="goods-receipt-received-at"

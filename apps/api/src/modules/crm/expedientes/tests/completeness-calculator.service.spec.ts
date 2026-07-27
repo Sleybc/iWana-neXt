@@ -253,6 +253,7 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     fullName: 'Cliente Demo',
     documentType: null,
     documentNumberEncrypted: null,
+    documentNumberHash: null,
     gender: null,
     birthDate: null,
     personType: null,

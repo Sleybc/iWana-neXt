@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { emptyPageListMeta } from '@/lib/list-meta';
 import { OperationalEventualitiesPanel } from './OperationalEventualitiesPanel';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 
@@ -10,6 +11,24 @@ const mockCreate = jest.fn();
 const mockUpdateStatus = jest.fn();
 const mockDelete = jest.fn();
 const mockUsersList = jest.fn();
+const useAuthMock = jest.fn();
+const pushMock = jest.fn();
+const replaceMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
+const routerMock = {
+  push: (...args: unknown[]) => pushMock(...args),
+  replace: (...args: unknown[]) => replaceMock(...args),
+};
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => routerMock,
+  usePathname: () => '/dashboard/settings/calendar',
+  useSearchParams: () => searchParamsMock,
+}));
+
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => useAuthMock(),
+}));
 
 jest.mock('@/lib/api-client', () => ({
   wfmApi: {
@@ -52,6 +71,43 @@ jest.mock('@/components/shared/portal-ui', () => ({
       {description ? <span>{description}</span> : null}
     </div>
   ),
+  PortalTablePager: ({
+    page,
+    pageCount,
+    onPageChange,
+  }: {
+    page: number;
+    pageCount: number;
+    onPageChange: (page: number) => void;
+  }) => (
+    <div data-testid="portal-table-pager">
+      <button type="button" onClick={() => onPageChange(Math.max(1, page - 1))}>
+        Anterior
+      </button>
+      <span>{`Página ${page} de ${pageCount}`}</span>
+      <button type="button" onClick={() => onPageChange(Math.min(pageCount, page + 1))}>
+        Siguiente
+      </button>
+    </div>
+  ),
+  PortalPageSizeSelect: ({
+    value,
+    onChange,
+  }: {
+    value: number;
+    onChange: (value: number) => void;
+  }) => (
+    <select
+      data-testid="portal-page-size"
+      value={value}
+      onChange={(event) => onChange(Number(event.target.value))}
+    >
+      <option value={10}>10</option>
+      <option value={20}>20</option>
+      <option value={50}>50</option>
+    </select>
+  ),
+  portalDataTableShellClassName: 'portal-table-shell',
 }));
 
 jest.mock('@iwana/ui', () => {
@@ -174,12 +230,6 @@ jest.mock('./TimeFieldSelect', () => ({
   ),
 }));
 
-const useAuthMock = jest.fn();
-
-jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => useAuthMock(),
-}));
-
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const MOCK_USER_AUTH = { id: 'user-admin', role: 'ADMIN', tenantSlug: 'tenant-test' };
@@ -212,8 +262,18 @@ const MOCK_ITEMS = [
 describe('OperationalEventualitiesPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
     useAuthMock.mockReturnValue({ user: MOCK_USER_AUTH, isLoading: false });
-    mockList.mockResolvedValue(MOCK_ITEMS);
+    mockList.mockResolvedValue({
+      data: MOCK_ITEMS,
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: MOCK_ITEMS.length,
+        totalPages: 1,
+        hasMore: false,
+      }),
+    });
     mockUsersList.mockResolvedValue({ data: MOCK_USERS, meta: { total: 1 } });
   });
 
@@ -226,10 +286,14 @@ describe('OperationalEventualitiesPanel', () => {
       await waitFor(() => {
         expect(screen.getByTestId('eventualities-table')).toBeInTheDocument();
       });
+      expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
     });
 
     it('muestra estado vacío cuando no hay cambios puntuales', async () => {
-      mockList.mockResolvedValue([]);
+      mockList.mockResolvedValue({
+        data: [],
+        meta: emptyPageListMeta({ page: 1, limit: 20, total: 0, totalPages: 0, hasMore: false }),
+      });
 
       render(<OperationalEventualitiesPanel canEdit={false} />);
 
@@ -539,7 +603,16 @@ describe('OperationalEventualitiesPanel', () => {
     it('pide confirmación antes de eliminar y muestra feedback al completar', async () => {
       const originalConfirm = globalThis.confirm;
       globalThis.confirm = jest.fn(() => true);
-      mockList.mockResolvedValue([{ ...MOCK_ITEMS[0], status: 'confirmed' }]);
+      mockList.mockResolvedValue({
+        data: [{ ...MOCK_ITEMS[0], status: 'confirmed' }],
+        meta: emptyPageListMeta({
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+        }),
+      });
       mockDelete.mockResolvedValue(undefined);
 
       render(<OperationalEventualitiesPanel canEdit={true} />);

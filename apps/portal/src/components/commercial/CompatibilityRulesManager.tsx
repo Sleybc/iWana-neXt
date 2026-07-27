@@ -13,11 +13,16 @@ import {
   DialogTitle,
   DatePicker,
   Select,
+  cn,
 } from '@iwana/ui';
 import {
   ApiError,
+  COMMERCIAL_LIST_PAGE_SIZE,
+  COMMERCIAL_PICKER_LIMIT,
   commercialApi,
   type AdditionalProduct,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CompatibilityRule,
   type CreateCompatibilityRuleDto,
   type PlanCatalogItem,
@@ -34,13 +39,18 @@ import {
   PortalPanel,
   PortalSidePeek,
   PortalSkeletonBlock,
+  PortalResultsStrip,
   PortalSuccessAlert,
+  PortalTablePagination,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableInactiveRowClassName,
   portalDataTableShellClassName,
   portalFieldClassName,
   portalTableRowHoverClassName,
+  portalTextareaClassName,
 } from '@/components/shared/portal-ui';
-import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
 
 interface CompatibilityRulesManagerProps {
   canEdit: boolean;
@@ -102,6 +112,10 @@ function mapActionError(error: unknown, fallback: string): string {
 
 export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManagerProps) {
   const [rules, setRules] = useState<CompatibilityRule[]>([]);
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+  });
   const [catalogItems, setCatalogItems] = useState<CatalogSelectableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -119,26 +133,36 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
 
   // Solo REPLACES en scope v1 del diseño comercial.
   const replacesRules = rules.filter((r) => r.ruleType === 'REPLACES');
+  const hasMore = meta?.nextCursor != null;
+  const totalRules = meta?.total ?? rules.length;
+  const resourceWord = totalRules === 1 ? 'regla' : 'reglas';
+  const resultsLabel = hasMore
+    ? `${replacesRules.length} de ${totalRules} ${resourceWord}`
+    : `${totalRules} ${resourceWord}`;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (params: CommercialListParams, append = false) => {
     setIsLoading(true);
     setLoadError(null);
     setActionError(null);
     try {
-      const [rulesData, plans, products] = await Promise.all([
-        commercialApi.getCompatibilityRules(),
-        commercialApi.getPlans(),
-        commercialApi.getAdditionalProducts(),
+      const picker = { limit: COMMERCIAL_PICKER_LIMIT };
+      const [rulesResult, plans, products] = await Promise.all([
+        commercialApi.getCompatibilityRules(params),
+        append ? Promise.resolve(null) : commercialApi.getPlans(picker),
+        append ? Promise.resolve(null) : commercialApi.getAdditionalProducts(picker),
       ]);
 
-      setRules(rulesData);
+      setRules((prev) => (append ? [...prev, ...rulesResult.data] : rulesResult.data));
+      setMeta(rulesResult.meta);
+      setListParams(params);
 
-      // Combinar planes y productos del catálogo para los selectores de ítems.
-      const items: CatalogSelectableItem[] = [
-        ...plans.map((p: PlanCatalogItem) => ({ id: p.id, name: p.name })),
-        ...products.map((p: AdditionalProduct) => ({ id: p.id, name: p.name })),
-      ];
-      setCatalogItems(items);
+      if (!append && plans && products) {
+        const items: CatalogSelectableItem[] = [
+          ...plans.data.map((p: PlanCatalogItem) => ({ id: p.id, name: p.name })),
+          ...products.data.map((p: AdditionalProduct) => ({ id: p.id, name: p.name })),
+        ];
+        setCatalogItems(items);
+      }
     } catch (error) {
       setLoadError(mapLoadError(error));
     } finally {
@@ -146,8 +170,14 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
     }
   }, []);
 
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void loadData({ ...listParams, cursor: meta.nextCursor }, true);
+    }
+  };
+
   useEffect(() => {
-    void loadData();
+    void loadData({ limit: COMMERCIAL_LIST_PAGE_SIZE });
   }, [loadData]);
 
   function openCreateForm() {
@@ -218,8 +248,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
           isActive: form.isActive,
         };
         await commercialApi.updateCompatibilityRule(editingRule.id, dto);
-        const updated = await commercialApi.getCompatibilityRules();
-        setRules(updated);
+        void loadData({ limit: COMMERCIAL_LIST_PAGE_SIZE });
         handleFormOpenChange(false);
         setSuccessMessage('Regla actualizada.');
       } catch (error) {
@@ -243,8 +272,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
         ...(form.note.trim() && { note: form.note.trim() }),
       };
       await commercialApi.createCompatibilityRule(dto);
-      const updated = await commercialApi.getCompatibilityRules();
-      setRules(updated);
+      void loadData({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       handleFormOpenChange(false);
       setSuccessMessage('Regla de reemplazo creada.');
     } catch (error) {
@@ -261,8 +289,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
     setActionError(null);
     try {
       await commercialApi.deactivateCompatibilityRule(deactivateTarget.id);
-      const updated = await commercialApi.getCompatibilityRules();
-      setRules(updated);
+      void loadData({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setDeactivateTarget(null);
       setSuccessMessage('Regla desactivada.');
     } catch (error) {
@@ -270,7 +297,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
     } finally {
       setDeletingId(null);
     }
-  }, [deactivateTarget]);
+  }, [deactivateTarget, loadData]);
 
   const activeCount = replacesRules.filter((r) => r.isActive).length;
   const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
@@ -311,7 +338,12 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void loadData()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadData({ limit: COMMERCIAL_LIST_PAGE_SIZE })}
+            >
               Reintentar
             </Button>
           }
@@ -360,10 +392,12 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             />
           )}
 
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Ítem obsoleto → Sucesor</PortalDataTableHead>
                     <PortalDataTableHead>Desde</PortalDataTableHead>
@@ -372,9 +406,15 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                <tbody className={portalDataTableBodyClassName}>
                   {replacesRules.map((rule) => (
-                    <tr key={rule.id} className={portalTableRowHoverClassName}>
+                    <tr
+                      key={rule.id}
+                      className={cn(
+                        portalTableRowHoverClassName,
+                        !rule.isActive && portalDataTableInactiveRowClassName,
+                      )}
+                    >
                       <td className={portalDataTableCellClassName}>
                         <span className="font-medium text-gray-800 dark:text-gray-100">
                           {rule.sourceItem?.name ?? 'Ítem no disponible'}
@@ -440,6 +480,14 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                 </tbody>
               </table>
             </div>
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={handleLoadMore}
+              loading={isLoading}
+              resourceLabel="reglas"
+              shown={replacesRules.length}
+              total={totalRules}
+            />
           </div>
         </div>
       )}
@@ -562,7 +610,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                 onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
                 disabled={isSubmitting}
                 placeholder="Ej: Este plan fue migrado a la oferta Hogar 200 desde mayo 2025..."
-                className={commercialTextareaClassName}
+                className={portalTextareaClassName}
               />
               {formErrors.note && <p className="mt-1 text-sm text-error-600">{formErrors.note}</p>}
               <p className="mt-1 text-right text-xs text-gray-400">{form.note.length}/2000</p>

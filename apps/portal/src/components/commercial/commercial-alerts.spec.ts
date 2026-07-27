@@ -97,6 +97,7 @@ describe('buildCommercialAlerts', () => {
       key: 'catalog-incomplete',
       variant: 'error',
       tab: 'products',
+      focus: 'prod-1',
     });
     expect(alerts[0]?.status).toBeUndefined();
   });

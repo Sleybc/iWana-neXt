@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, X } from 'lucide-react';
-import type { PlanCatalogItem, Subscriber360Response } from '@/lib/api-client';
-import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
-import { CatalogPicker } from '@/components/shared/CatalogPicker';
+import { useCallback, useEffect, useState } from 'react';
+import { RefreshCw, X } from 'lucide-react';
+import type { Subscriber360Response } from '@/lib/api-client';
+import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
+import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -25,27 +25,46 @@ export function ConvertExpedienteToContractDialog({
 }: ConvertExpedienteToContractDialogProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
-  const [plansLoading, setPlansLoading] = useState(true);
-  // Inicializar con el plan de interés del expediente si existe
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     expedienteSummary.interestedPlanId ?? null,
   );
+  const [selectedPlanItem, setSelectedPlanItem] = useState<Pick<
+    SearchablePickerItem,
+    'label' | 'sublabel'
+  > | null>(null);
 
-  // Cargar planes al montar
   useEffect(() => {
-    const load = async () => {
-      setPlansLoading(true);
+    const planId = expedienteSummary.interestedPlanId;
+    if (!planId) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
       try {
-        const data = await commercialApi.getPlans();
-        setPlans(data.filter((p) => p.isActive));
+        const plan = await commercialApi.getPlanById(planId);
+        if (!cancelled) {
+          setSelectedPlanItem({
+            label: plan.name,
+            sublabel: `${plan.technology} · ↓${plan.downloadSpeedMbps}Mbps · ↑${plan.uploadSpeedMbps}Mbps`,
+          });
+        }
       } catch {
-        // Si falla la carga de planes, el usuario puede continuar con el plan del expediente
-      } finally {
-        setPlansLoading(false);
+        // El picker sigue usable; solo falta el label del plan del expediente.
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    void load();
+  }, [expedienteSummary.interestedPlanId]);
+
+  const searchPlans = useCallback(async (query: string, signal: AbortSignal) => {
+    const response = await commercialApi.searchPlansForPicker(
+      { q: query, isActive: true },
+      { signal },
+    );
+    return mapPickerSearchResponse(response);
   }, []);
 
   const handleConvert = async () => {
@@ -54,7 +73,6 @@ export function ConvertExpedienteToContractDialog({
     try {
       await contractsApi.createFromExpediente(subscriberId, {
         expedienteId: expedienteSummary.id,
-        // Si el usuario seleccionó un plan diferente, se pasará (el backend lo usa)
       });
       await onSuccess();
     } catch (err) {
@@ -133,34 +151,19 @@ export function ConvertExpedienteToContractDialog({
 
           {/* Selector de plan (confirmación / cambio) */}
           <div className="mt-5">
-            <label className="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Confirmar plan de conectividad
-            </label>
-            {plansLoading ? (
-              <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                Cargando planes...
-              </div>
-            ) : (
-              <CatalogPicker<PlanCatalogItem>
-                items={plans}
-                selectedId={selectedPlanId}
-                onChange={(p) => setSelectedPlanId(p?.id ?? null)}
-                getKey={(p) => p.id}
-                getLabel={(p) => p.name}
-                getDescription={(p) =>
-                  [p.technology, `↓${p.downloadSpeedMbps}Mbps`, `↑${p.uploadSpeedMbps}Mbps`].join(
-                    ' · ',
-                  )
-                }
-                placeholder="Seleccionar plan (opcional)..."
-              />
-            )}
-            {plans.length > 0 && !selectedPlanId && expedienteSummary.interestedPlanId && (
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                ID del plan registrado en expediente: {expedienteSummary.interestedPlanId}
-              </p>
-            )}
+            <SearchablePicker
+              label="Confirmar plan de conectividad"
+              resource={{ singular: 'plan', plural: 'planes' }}
+              value={selectedPlanId}
+              selectedItem={selectedPlanItem}
+              onChange={(item) => {
+                setSelectedPlanId(item?.id ?? null);
+                setSelectedPlanItem(item ? { label: item.label, sublabel: item.sublabel } : null);
+              }}
+              onSearch={searchPlans}
+              placeholder="Buscar plan (opcional)…"
+              disabled={loading}
+            />
           </div>
 
           {/* Error */}

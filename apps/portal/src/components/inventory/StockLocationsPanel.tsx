@@ -4,7 +4,10 @@ import { useMemo } from 'react';
 import { Badge, Button } from '@iwana/ui';
 import type { StockBalanceRecord, StockLocationRecord } from '@/lib/api-client';
 import {
+  PortalAlert,
   PortalEmptyState,
+  PortalResultsStrip,
+  PortalTablePagination,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
@@ -17,11 +20,19 @@ import {
   getStockLocationTypeBadgeVariant,
   getStockLocationTypeLabel,
 } from './inventory-labels';
+import { formatInventoryResultsLabel } from './inventory-list-pagination';
 
 interface StockLocationsPanelProps {
   locations: StockLocationRecord[];
   balances: StockBalanceRecord[];
   userLabelById?: Map<string, string>;
+  totalCount?: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  balancesHasMore?: boolean;
+  isLoadingMoreBalances?: boolean;
+  onLoadMoreBalances?: () => void;
   onCreateLocation?: () => void;
   onEditLocation?: (location: StockLocationRecord) => void;
 }
@@ -44,6 +55,13 @@ export function StockLocationsPanel({
   locations,
   balances,
   userLabelById,
+  totalCount,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  balancesHasMore = false,
+  isLoadingMoreBalances = false,
+  onLoadMoreBalances,
   onCreateLocation,
   onEditLocation,
 }: StockLocationsPanelProps) {
@@ -68,20 +86,61 @@ export function StockLocationsPanel({
     [balances, locations, userLabelById],
   );
 
+  const resolvedTotal = totalCount ?? locations.length;
+  const resultsLabel = formatInventoryResultsLabel({
+    loaded: locations.length,
+    total: resolvedTotal,
+    hasMore,
+    singular: 'bodega',
+    plural: 'bodegas',
+  });
+
   return (
     <div className="space-y-4">
+      {balancesHasMore ? (
+        <PortalAlert
+          variant="warning"
+          title="Ocupación parcial"
+          description="Hay más existencias por cargar. La ocupación de bodega puede quedar corta hasta completar balances."
+          action={
+            onLoadMoreBalances ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={isLoadingMoreBalances}
+                disabled={isLoadingMoreBalances}
+                onClick={onLoadMoreBalances}
+              >
+                Cargar más existencias
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
       <div className="flex justify-end">
         {onCreateLocation ? (
-          <Button type="button" onClick={onCreateLocation}>
+          <Button type="button" variant="primary" onClick={onCreateLocation}>
             Crear bodega
           </Button>
         ) : null}
       </div>
 
+      <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
       {rows.length === 0 ? (
         <PortalEmptyState
           title="Sin bodegas"
           description="Crea la primera bodega para operar existencias."
+          {...(onCreateLocation
+            ? {
+                action: (
+                  <Button type="button" variant="primary" onClick={onCreateLocation}>
+                    Crear bodega
+                  </Button>
+                ),
+              }
+            : {})}
         />
       ) : (
         <div className={portalDataTableShellClassName}>
@@ -131,6 +190,16 @@ export function StockLocationsPanel({
               ))}
             </tbody>
           </table>
+          {onLoadMore ? (
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={onLoadMore}
+              loading={isLoadingMore}
+              resourceLabel="bodegas"
+              shown={locations.length}
+              total={resolvedTotal}
+            />
+          ) : null}
         </div>
       )}
     </div>

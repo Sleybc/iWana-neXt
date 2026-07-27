@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AlertTriangle, CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Copy, UserPlus, X } from 'lucide-react';
 import { type AccessPermissionKey, TENANT_ASSIGNABLE_ROLES, UserRole } from '@iwana/shared';
 import {
   Button,
@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
   Select,
+  cn,
 } from '@iwana/ui';
 import type {
   AccessPermissionsCatalog,
@@ -22,7 +23,11 @@ import type {
   CreateInternalUserDto,
 } from '@/lib/api-client';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  portalFieldClassName,
+  portalSelectTriggerClassName,
+} from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 import { UserProfileFields } from './UserProfileFields';
 
@@ -44,20 +49,6 @@ type CreateUserFormValues = z.infer<typeof createUserSchema>;
 function getDefaultOperationalResource(role: string | UserRole | ''): boolean {
   return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
 }
-
-const selectClass = [
-  'h-10 rounded-lg border-gray-300 bg-white shadow-none',
-  'dark:bg-dark-surface-3',
-].join(' ');
-
-const createInputClass = [
-  'flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm',
-  'text-gray-900 placeholder:text-gray-400 transition-colors',
-  'focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent',
-  'disabled:cursor-not-allowed disabled:opacity-50',
-  'dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
-  'dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary',
-].join(' ');
 
 interface CreateUserModalProps {
   isOpen: boolean;
@@ -281,14 +272,15 @@ export function CreateUserModal({
               </DialogDescription>
             ) : null}
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={requestClose}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-iwana-surface-soft hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
             aria-label="Cerrar"
           >
             <X className="h-5 w-5" aria-hidden="true" />
-          </button>
+          </Button>
         </DialogHeader>
 
         {confirmClose && (
@@ -344,21 +336,20 @@ export function CreateUserModal({
             />
 
             <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-5 dark:border-amber-800 dark:bg-amber-900/20">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
+              <p className="portal-eyebrow-muted mb-2 text-amber-700 dark:text-amber-300">
                 Clave temporal
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded-2xl border border-amber-200 bg-white px-4 py-3 text-base font-mono font-bold tracking-wider text-gray-900 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-white">
                   {tempPassword}
                 </code>
-                <button
-                  type="button"
-                  onClick={() => void handleCopy()}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-amber-300 dark:hover:bg-amber-900/30"
-                >
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleCopy()}>
                   {copied ? (
                     <>
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                      <CheckCircle2
+                        className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                        aria-hidden="true"
+                      />
                       Copiado
                     </>
                   ) : (
@@ -367,18 +358,14 @@ export function CreateUserModal({
                       Copiar
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
 
             <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleDismiss}
-                className="inline-flex items-center justify-center rounded-2xl bg-iwana-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
-              >
+              <Button type="button" variant="primary" onClick={requestClose}>
                 Entendido
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
@@ -388,9 +375,7 @@ export function CreateUserModal({
                 <UserPlus className="h-5 w-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
-                  Alta controlada
-                </p>
+                <p className="portal-eyebrow-muted">Alta controlada</p>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   Los campos marcados como obligatorios definen identidad de acceso. Los demás
                   enriquecen el perfil operativo del colaborador.
@@ -399,9 +384,6 @@ export function CreateUserModal({
             </div>
 
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-              {/*
-                Email: siempre ancho completo (campos largos como emails se ven mejor en una fila)
-              */}
               <div className="col-span-full">
                 <label
                   htmlFor="create-email"
@@ -409,26 +391,15 @@ export function CreateUserModal({
                 >
                   Correo electrónico <span className="text-red-500">*</span>
                 </label>
-                {errors.email ? (
-                  <input
-                    id="create-email"
-                    type="email"
-                    autoComplete="email"
-                    disabled={isSubmitting}
-                    {...register('email')}
-                    className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                    aria-invalid="true"
-                  />
-                ) : (
-                  <input
-                    id="create-email"
-                    type="email"
-                    autoComplete="email"
-                    disabled={isSubmitting}
-                    {...register('email')}
-                    className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                  />
-                )}
+                <input
+                  id="create-email"
+                  type="email"
+                  autoComplete="email"
+                  disabled={isSubmitting}
+                  {...register('email')}
+                  className={portalFieldClassName}
+                  aria-invalid={errors.email ? 'true' : undefined}
+                />
                 {errors.email && (
                   <p className="mt-1 text-xs text-red-600 dark:text-red-400">
                     {errors.email.message}
@@ -436,10 +407,7 @@ export function CreateUserModal({
                 )}
               </div>
 
-              {/*
-                Campos en 2 columnas: rol y cargo
-              */}
-              <div>
+              <div className="col-span-full md:col-span-1">
                 <label
                   htmlFor="create-role"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
@@ -452,7 +420,7 @@ export function CreateUserModal({
                   {...register('role')}
                   aria-label="Categoría base"
                   aria-invalid={errors.role ? 'true' : undefined}
-                  className={selectClass}
+                  className={portalSelectTriggerClassName}
                 >
                   <option value="">Selecciona una categoría base</option>
                   {TENANT_ASSIGNABLE_ROLES.map((role) => (
@@ -468,81 +436,79 @@ export function CreateUserModal({
                 )}
               </div>
 
-              <div className="col-span-full">
-                <CompanyRolesAssignmentSection
-                  baseRole={selectedBaseRole || null}
-                  availableProfiles={availableProfiles}
-                  selectedProfileIds={selectedCompanyRoleIds}
-                  compatibilityMatrix={
-                    accessCatalog?.compatibilityMatrix ??
-                    ({} as Record<UserRole, AccessPermissionKey[]>)
-                  }
-                  catalog={accessCatalog}
-                  onToggleProfile={toggleCompanyRole}
-                />
-              </div>
+              {selectedBaseRole ? (
+                <div className="col-span-full">
+                  <CompanyRolesAssignmentSection
+                    baseRole={selectedBaseRole}
+                    availableProfiles={availableProfiles}
+                    selectedProfileIds={selectedCompanyRoleIds}
+                    compatibilityMatrix={
+                      accessCatalog?.compatibilityMatrix ??
+                      ({} as Record<UserRole, AccessPermissionKey[]>)
+                    }
+                    catalog={accessCatalog}
+                    onToggleProfile={toggleCompanyRole}
+                  />
+                </div>
+              ) : null}
 
-              <UserProfileFields
-                idPrefix="create"
-                register={register}
-                errors={errors}
-                isSubmitting={isSubmitting}
-                inputClassName={createInputClass}
-                selectClassName={selectClass}
-                documentNumberFullWidth={true}
-                phonePlaceholder="3001234567"
-                operationalResourceDescription="Si lo activas, esta persona podrá aparecer en agenda diaria, capacidad visible y recomendaciones operativas. Si lo desactivas, seguirá disponible para agenda general."
-              />
+              <details className="group col-span-full rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+                <summary
+                  className={cn(
+                    'flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary',
+                  )}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      Datos de perfil (opcional)
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Nombre, contacto, documento y preferencias operativas.
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className="h-4 w-4 shrink-0 text-iwana-primary transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="mt-4 grid gap-4 grid-cols-1 md:grid-cols-2">
+                  <UserProfileFields
+                    idPrefix="create"
+                    register={register}
+                    errors={errors}
+                    isSubmitting={isSubmitting}
+                    inputClassName={portalFieldClassName}
+                    selectClassName={portalSelectTriggerClassName}
+                    documentNumberFullWidth={true}
+                    phonePlaceholder="3001234567"
+                    operationalResourceDescription="Si lo activas, esta persona podrá aparecer en agenda diaria, capacidad visible y recomendaciones operativas. Si lo desactivas, seguirá disponible para agenda general."
+                  />
+                </div>
+              </details>
             </div>
 
-            {serverError && (
-              <div className="rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-                <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
-              </div>
-            )}
+            {serverError ? (
+              <PortalAlert
+                variant="error"
+                title="No se pudo crear el usuario"
+                description={serverError}
+                icon={AlertTriangle}
+              />
+            ) : null}
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
+              <Button
                 type="button"
-                onClick={onClose}
+                variant="outline"
+                onClick={requestClose}
                 disabled={isSubmitting}
-                className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
               >
                 Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting || !isDirty}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600 disabled:opacity-50 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
-              >
-                {isSubmitting ? (
-                  <>
-                    <svg
-                      className="h-4 w-4 animate-spin"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Creando...
-                  </>
-                ) : (
-                  'Crear usuario'
-                )}
-              </button>
+              </Button>
+              <Button type="submit" variant="primary" loading={isSubmitting} disabled={!isDirty}>
+                {isSubmitting ? 'Creando...' : 'Crear usuario'}
+              </Button>
             </div>
           </form>
         )}

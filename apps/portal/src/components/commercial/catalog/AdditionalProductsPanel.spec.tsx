@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdditionalProductsPanel } from './AdditionalProductsPanel';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 
 const mockGetAdditionalProducts = jest.fn();
 const mockCreateAdditionalProduct = jest.fn();
@@ -21,6 +22,7 @@ jest.mock('@/lib/api-client', () => ({
     updateAdditionalProduct: (...args: unknown[]) => mockUpdateAdditionalProduct(...args),
     deleteAdditionalProduct: (...args: unknown[]) => mockDeleteAdditionalProduct(...args),
   },
+  COMMERCIAL_LIST_PAGE_SIZE: 20,
 }));
 
 const sampleProduct = {
@@ -38,10 +40,13 @@ const sampleProduct = {
 describe('AdditionalProductsPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetAdditionalProducts.mockResolvedValue([sampleProduct]);
-    mockCreateAdditionalProduct.mockResolvedValue([]);
-    mockUpdateAdditionalProduct.mockResolvedValue([]);
-    mockDeleteAdditionalProduct.mockResolvedValue([]);
+    mockGetAdditionalProducts.mockResolvedValue({
+      data: [sampleProduct],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
+    mockCreateAdditionalProduct.mockResolvedValue(undefined);
+    mockUpdateAdditionalProduct.mockResolvedValue(undefined);
+    mockDeleteAdditionalProduct.mockResolvedValue(undefined);
   });
 
   it('muestra acciones accesibles para editar y eliminar productos', async () => {
@@ -80,9 +85,10 @@ describe('AdditionalProductsPanel', () => {
 
   it('ofrece reintentar cuando falla la carga inicial', async () => {
     const user = userEvent.setup();
-    mockGetAdditionalProducts
-      .mockRejectedValueOnce(new Error('network'))
-      .mockResolvedValueOnce([sampleProduct]);
+    mockGetAdditionalProducts.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({
+      data: [sampleProduct],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
 
     render(<AdditionalProductsPanel canEdit />);
 
@@ -101,5 +107,41 @@ describe('AdditionalProductsPanel', () => {
     expect(await screen.findByRole('button', { name: /Todas/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Red/i })).toBeInTheDocument();
     expect(screen.queryByLabelText('Categoría')).not.toBeInTheDocument();
+  });
+
+  it('envía category al servidor al filtrar por chip', async () => {
+    const user = userEvent.setup();
+    render(<AdditionalProductsPanel canEdit />);
+
+    expect(await screen.findByText('Router WiFi 6')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Red/i }));
+
+    await waitFor(() => {
+      expect(
+        mockGetAdditionalProducts.mock.calls.some((call) => call[0]?.category === 'NETWORKING'),
+      ).toBe(true);
+    });
+  });
+
+  it('ADR-064: envía sort al servidor y no reordena solo la página local', async () => {
+    const user = userEvent.setup();
+    render(<AdditionalProductsPanel canEdit />);
+
+    await waitFor(() => {
+      expect(mockGetAdditionalProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: 'ACTIVE_NAME', limit: 20 }),
+      );
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Orden' }));
+    await user.click(await screen.findByRole('option', { name: 'Recientes primero' }));
+
+    await waitFor(() => {
+      expect(
+        mockGetAdditionalProducts.mock.calls.some(
+          (call) => call[0]?.sort === 'RECENTLY_UPDATED' && call[0]?.cursor === undefined,
+        ),
+      ).toBe(true);
+    });
   });
 });

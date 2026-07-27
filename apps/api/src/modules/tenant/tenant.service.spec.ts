@@ -114,6 +114,7 @@ describe('TenantService', () => {
   };
   let queryBuilder: {
     orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
     take: jest.Mock;
     skip: jest.Mock;
     andWhere: jest.Mock;
@@ -123,6 +124,7 @@ describe('TenantService', () => {
   beforeEach(async () => {
     queryBuilder = {
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
@@ -369,7 +371,11 @@ describe('TenantService', () => {
       await service.findAll(10, 20);
 
       expect(repo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 10, skip: 20 }),
+        expect.objectContaining({
+          take: 10,
+          skip: 20,
+          order: { createdAt: 'DESC', id: 'DESC' },
+        }),
       );
     });
 

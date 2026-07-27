@@ -8,7 +8,7 @@ import { ScheduleConflictService } from './schedule-conflict.service';
 import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
-import { ExecutionOrdersService } from '../../tasks/services/execution-orders.service';
+import { EXECUTION_ORDER_SCHEDULING_PORT } from '../../tasks/ports/execution-order-scheduling.port';
 import {
   PlatformRole,
   UserRole,
@@ -148,7 +148,7 @@ describe('VisitRequestsService', () => {
         { provide: WorkOrdersService, useValue: workOrdersService },
         { provide: ExpedienteService, useValue: expedienteService },
         { provide: UsersService, useValue: usersService },
-        { provide: ExecutionOrdersService, useValue: executionOrdersService },
+        { provide: EXECUTION_ORDER_SCHEDULING_PORT, useValue: executionOrdersService },
       ],
     }).compile();
 

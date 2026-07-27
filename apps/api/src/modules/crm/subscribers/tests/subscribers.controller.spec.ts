@@ -10,6 +10,7 @@ import {
 } from '@iwana/shared';
 import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
+import { AuditService } from '../../../audit/audit.service';
 import { Subscriber } from '../entities/subscriber.entity';
 
 /**
@@ -97,7 +98,10 @@ describe('SubscribersController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SubscribersController],
-      providers: [{ provide: SubscribersService, useValue: subscribersServiceMock }],
+      providers: [
+        { provide: SubscribersService, useValue: subscribersServiceMock },
+        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile();
 
     controller = module.get<SubscribersController>(SubscribersController);
@@ -204,9 +208,24 @@ describe('SubscribersController', () => {
       subscribersServiceMock.findAll.mockResolvedValue({
         data: [mockSubscriber],
         total: 1,
+        meta: {
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+          mode: 'page',
+          nextCursor: null,
+          totalIsEstimate: false,
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
       });
 
+      const mockUser = { sub: 'user-1', role: 'ADMIN', tenantId: 't1', schemaName: 't1' } as any;
+
       const result = await controller.findAll(
+        mockUser,
         SubscriberStatus.LEAD,
         PersonType.NATURAL,
         CustomerSegment.RESIDENTIAL,
@@ -224,6 +243,8 @@ describe('SubscribersController', () => {
         search: 'Juan',
         page: 1,
         limit: 20,
+        sortBy: undefined,
+        sortDir: undefined,
       });
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -233,9 +254,24 @@ describe('SubscribersController', () => {
       subscribersServiceMock.findAll.mockResolvedValue({
         data: [mockSubscriber],
         total: 1,
+        meta: {
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+          mode: 'page',
+          nextCursor: null,
+          totalIsEstimate: false,
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
       });
 
+      const mockUser = { sub: 'user-1', role: 'ADMIN', tenantId: 't1', schemaName: 't1' } as any;
+
       const result = await controller.findAll(
+        mockUser,
         undefined,
         undefined,
         undefined,

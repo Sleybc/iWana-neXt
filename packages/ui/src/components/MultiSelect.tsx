@@ -142,7 +142,7 @@ export function MultiSelect({
                 );
               })
             ) : (
-              <span className="text-gray-400 dark:text-gray-500">{placeholder}</span>
+              <span className="text-gray-500 dark:text-gray-400">{placeholder}</span>
             )}
 
             {/* Ícono de apertura */}

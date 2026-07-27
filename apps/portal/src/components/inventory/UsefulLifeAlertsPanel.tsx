@@ -1,20 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Button, Select } from '@iwana/ui';
+import type { ListMeta } from '@iwana/shared';
 import {
   ApiError,
   inventoryApi,
   type UsefulLifeAlertRecord,
   type UsefulLifeAlertStatus,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPageSizeSelect,
   PortalSkeletonBlock,
+  PortalTablePager,
+  PortalTablePagination,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
+  portalDataBusyRegionClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
@@ -30,13 +38,15 @@ interface UsefulLifeAlertsPanelProps {
   onNavigateToReplenishment?: () => void;
 }
 
-const DEFAULT_PAGE_SIZE = 20;
-
 const STATUS_FILTER_OPTIONS: Array<{ value: UsefulLifeAlertStatusFilter; label: string }> = [
   { value: 'all', label: 'Por vencer y vencida' },
   { value: 'por-vencer', label: USEFUL_LIFE_STATUS_LABELS['por-vencer'] },
   { value: 'vencida', label: USEFUL_LIFE_STATUS_LABELS.vencida },
 ];
+
+const ALERTS_RESOURCE = { singular: 'alerta', plural: 'alertas' } as const;
+const FILTER_KEYS = ['status'] as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
 
 function mapInventoryError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -65,48 +75,117 @@ function formatMonthsRemaining(value: number | null): string {
   return String(value);
 }
 
-export function UsefulLifeAlertsPanel({
+function UsefulLifeAlertsPanelInner({
   onOpenAssetDetail,
   onNavigateToReplenishment,
 }: UsefulLifeAlertsPanelProps) {
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+
+  const { page, pageSize, filters, setPage, setPageSize, setFilters, setQuery } =
+    useTableQueryState({
+      namespace: 'usefulLife',
+      filterKeys: FILTER_KEYS,
+      defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+    });
+
+  const statusFilter = (filters.status as UsefulLifeAlertStatusFilter | undefined) ?? 'all';
   const [alerts, setAlerts] = useState<UsefulLifeAlertRecord[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<UsefulLifeAlertStatusFilter>('all');
+  const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
 
-  const totalPages = Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE));
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
 
-  const loadAlerts = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+      try {
+        const response = await inventoryApi.listUsefulLifeAlerts({
+          ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+          page,
+          pageSize,
+        });
+        const nextMeta = normalizeListMeta(
+          {
+            page: response.page,
+            limit: response.limit ?? response.pageSize ?? pageSize,
+            total: response.total,
+            mode: 'page',
+            capabilities: { randomAccess: true, sortableFields: [] },
+          },
+          { dataLength: response.data.length, limit: pageSize },
+        );
+        const requestedPage = page;
+        const totalPages = nextMeta.totalPages ?? 0;
 
-    try {
-      const response = await inventoryApi.listUsefulLifeAlerts({
-        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
-      });
-      setAlerts(response.data);
-      setTotal(response.total);
-    } catch (loadError: unknown) {
-      setError(mapInventoryError(loadError));
-      setAlerts([]);
-      setTotal(0);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, statusFilter]);
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setAlerts(response.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch (loadError: unknown) {
+        setError(mapInventoryError(loadError));
+        if (!soft) {
+          setAlerts([]);
+          setMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [page, pageSize, setQuery, statusFilter],
+  );
 
   useEffect(() => {
-    void loadAlerts();
-  }, [loadAlerts]);
+    void loadPage({ soft: true });
+  }, [loadPage]);
 
-  function handleStatusFilterChange(next: UsefulLifeAlertStatusFilter) {
-    setStatusFilter(next);
-    setPage(1);
-  }
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    if (prevPageRef.current === page) return;
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom
+      }
+    }
+  }, [page]);
+
+  const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
+  const effectivePage = meta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const randomAccess = meta.capabilities.randomAccess;
+  const showPager = !isLoading && meta.total > 0;
+  const showPageSize = showPager && randomAccess && meta.total > Math.min(10, 20, 50);
 
   return (
     <div className="space-y-4" data-testid="useful-life-alerts-panel">
@@ -116,7 +195,12 @@ export function UsefulLifeAlertsPanel({
             label="Estado"
             value={statusFilter}
             onChange={(event) =>
-              handleStatusFilterChange(event.target.value as UsefulLifeAlertStatusFilter)
+              setFilters({
+                status:
+                  event.target.value === 'all'
+                    ? null
+                    : (event.target.value as UsefulLifeAlertStatusFilter),
+              })
             }
             options={STATUS_FILTER_OPTIONS}
             data-testid="useful-life-alerts-status-filter"
@@ -134,7 +218,7 @@ export function UsefulLifeAlertsPanel({
               Ver reposición
             </Button>
           ) : null}
-          <Button type="button" size="sm" variant="secondary" onClick={() => void loadAlerts()}>
+          <Button type="button" size="sm" variant="secondary" onClick={() => void loadPage()}>
             Actualizar
           </Button>
         </div>
@@ -155,6 +239,15 @@ export function UsefulLifeAlertsPanel({
         />
       ) : null}
 
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
+      ) : null}
+
       {isLoading ? (
         <PortalSkeletonBlock className="h-72" />
       ) : alerts.length === 0 ? (
@@ -163,86 +256,104 @@ export function UsefulLifeAlertsPanel({
           description="No hay activos por vencer ni con vida útil vencida con los filtros actuales."
         />
       ) : (
-        <>
-          <div className={portalDataTableShellClassName}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-                <thead className="bg-gray-50 dark:bg-dark-surface-2">
-                  <tr>
-                    <th className={portalDataTableHeadClassName}>Activo</th>
-                    <th className={portalDataTableHeadClassName}>Producto</th>
-                    <th className={portalDataTableHeadClassName}>Estado</th>
-                    <th className={portalDataTableHeadClassName}>Meses restantes</th>
-                    <th className={portalDataTableHeadClassName}>Compra</th>
-                    <th className={portalDataTableHeadClassName}>Garantía</th>
-                    <th className={portalDataTableHeadClassName}>Acción</th>
+        <div ref={tableShellRef} className={portalDataTableShellClassName}>
+          <div
+            className={
+              refreshing ? `overflow-x-auto ${portalDataBusyRegionClassName}` : 'overflow-x-auto'
+            }
+            aria-busy={refreshing || undefined}
+          >
+            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
+              <thead className="bg-gray-50 dark:bg-dark-surface-2">
+                <tr>
+                  <th className={portalDataTableHeadClassName}>Activo</th>
+                  <th className={portalDataTableHeadClassName}>Producto</th>
+                  <th className={portalDataTableHeadClassName}>Estado</th>
+                  <th className={portalDataTableHeadClassName}>Meses restantes</th>
+                  <th className={portalDataTableHeadClassName}>Compra</th>
+                  <th className={portalDataTableHeadClassName}>Garantía</th>
+                  <th className={portalDataTableHeadClassName}>Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                {alerts.map((alert) => (
+                  <tr key={alert.id} data-testid={`useful-life-alert-row-${alert.id}`}>
+                    <td className={`${portalDataTableCellClassName} font-mono text-xs`}>
+                      {resolveAssetLabel(alert)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {alert.itemName?.trim() || 'Producto no identificado'}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      <Badge variant={getUsefulLifeStatusBadgeVariant(alert.status)}>
+                        {getUsefulLifeStatusLabel(alert.status)}
+                      </Badge>
+                    </td>
+                    <td className={`${portalDataTableCellClassName} tabular-nums`}>
+                      {formatMonthsRemaining(alert.monthsRemaining)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {formatInventoryDate(alert.purchaseDate)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {formatInventoryDate(alert.warrantyUntil)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => onOpenAssetDetail(alert.id)}
+                      >
+                        Ver ficha 360
+                      </Button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                  {alerts.map((alert) => (
-                    <tr key={alert.id} data-testid={`useful-life-alert-row-${alert.id}`}>
-                      <td className={`${portalDataTableCellClassName} font-mono text-xs`}>
-                        {resolveAssetLabel(alert)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {alert.itemName?.trim() || 'Producto no identificado'}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        <Badge variant={getUsefulLifeStatusBadgeVariant(alert.status)}>
-                          {getUsefulLifeStatusLabel(alert.status)}
-                        </Badge>
-                      </td>
-                      <td className={`${portalDataTableCellClassName} tabular-nums`}>
-                        {formatMonthsRemaining(alert.monthsRemaining)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {formatInventoryDate(alert.purchaseDate)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {formatInventoryDate(alert.warrantyUntil)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => onOpenAssetDetail(alert.id)}
-                        >
-                          Ver ficha 360
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-
-          <div className="flex items-center justify-between">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={page <= 1 || isLoading}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              Anterior
-            </Button>
-            <span className="text-sm text-iwana-secondary-700 dark:text-gray-300">
-              Página {page} de {totalPages} · {total} alertas
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={page >= totalPages || isLoading}
-              onClick={() => setPage((current) => current + 1)}
-            >
-              Siguiente
-            </Button>
-          </div>
-        </>
+          {showPager && randomAccess ? (
+            <PortalTablePager
+              page={effectivePage}
+              pageCount={Math.max(1, pageCount)}
+              onPageChange={setPage}
+              from={from}
+              to={to}
+              total={meta.total}
+              resource={ALERTS_RESOURCE}
+              loading={refreshing}
+              pageSizeControl={
+                showPageSize ? (
+                  <PortalPageSizeSelect
+                    value={pageSize}
+                    onChange={setPageSize}
+                    disabled={refreshing}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
+          {showPager && !randomAccess ? (
+            <PortalTablePagination
+              hasMore={meta.hasMore}
+              onLoadMore={() => setPage(page + 1)}
+              loading={refreshing}
+              resourceLabel="alertas"
+              shown={to}
+              total={meta.total}
+            />
+          ) : null}
+        </div>
       )}
     </div>
+  );
+}
+
+export function UsefulLifeAlertsPanel(props: UsefulLifeAlertsPanelProps) {
+  return (
+    <Suspense fallback={<PortalSkeletonBlock className="h-72" />}>
+      <UsefulLifeAlertsPanelInner {...props} />
+    </Suspense>
   );
 }

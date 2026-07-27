@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
 import { CustomerSegment } from '@iwana/shared';
-import type { AdditionalProduct, AdditionalService, PlanCatalogItem } from '@/lib/api-client';
-import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
-import { CatalogPicker, MultiCatalogPicker } from '@/components/shared/CatalogPicker';
+import type { PlanCatalogItem } from '@/lib/api-client';
+import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
+import {
+  SearchableMultiPicker,
+  SearchablePicker,
+  type SearchablePickerItem,
+} from '@/components/shared/SearchablePicker';
 
 // ── Opciones estáticas ────────────────────────────────────────────────────────
 
@@ -59,6 +63,7 @@ interface CreateContractDialogProps {
 interface FormState {
   planId: string | null;
   selectedPlan: PlanCatalogItem | null;
+  selectedPlanItem: Pick<SearchablePickerItem, 'label' | 'sublabel'> | null;
   alias: string;
   installationAddress: string;
   installationCity: string;
@@ -66,8 +71,8 @@ interface FormState {
   installationPostalCode: string;
   installationNotes: string;
   customerSegment: string;
-  additionalProductIds: string[];
-  additionalServiceIds: string[];
+  additionalProducts: SearchablePickerItem[];
+  additionalServices: SearchablePickerItem[];
   paymentMethod: string;
   billingCycle: string;
   fiscalName: string;
@@ -78,6 +83,7 @@ interface FormState {
 const INITIAL_FORM: FormState = {
   planId: null,
   selectedPlan: null,
+  selectedPlanItem: null,
   alias: '',
   installationAddress: '',
   installationCity: '',
@@ -85,8 +91,8 @@ const INITIAL_FORM: FormState = {
   installationPostalCode: '',
   installationNotes: '',
   customerSegment: '',
-  additionalProductIds: [],
-  additionalServiceIds: [],
+  additionalProducts: [],
+  additionalServices: [],
   paymentMethod: '',
   billingCycle: '',
   fiscalName: '',
@@ -102,36 +108,32 @@ export function CreateContractDialog({
   onSuccess,
 }: CreateContractDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
-  const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
-  const [products, setProducts] = useState<AdditionalProduct[]>([]);
-  const [services, setServices] = useState<AdditionalService[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [planResolving, setPlanResolving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Cargar catálogo al montar
-  useEffect(() => {
-    const load = async () => {
-      setCatalogLoading(true);
-      setCatalogError(null);
-      try {
-        const [p, pr, sv] = await Promise.all([
-          commercialApi.getPlans(),
-          commercialApi.getAdditionalProducts(),
-          commercialApi.getAdditionalServices(),
-        ]);
-        setPlans(p.filter((item) => item.isActive));
-        setProducts(pr.filter((item) => item.isActive));
-        setServices(sv.filter((item) => item.isActive));
-      } catch (err) {
-        setCatalogError(err instanceof ApiError ? err.message : 'Error al cargar catálogo.');
-      } finally {
-        setCatalogLoading(false);
-      }
-    };
+  const searchPlans = useCallback(async (query: string, signal: AbortSignal) => {
+    const response = await commercialApi.searchPlansForPicker(
+      { q: query, isActive: true },
+      { signal },
+    );
+    return mapPickerSearchResponse(response);
+  }, []);
 
-    void load();
+  const searchProducts = useCallback(async (query: string, signal: AbortSignal) => {
+    const response = await commercialApi.searchAdditionalProductsForPicker(
+      { q: query, isActive: true },
+      { signal },
+    );
+    return mapPickerSearchResponse(response);
+  }, []);
+
+  const searchServices = useCallback(async (query: string, signal: AbortSignal) => {
+    const response = await commercialApi.searchAdditionalServicesForPicker(
+      { q: query, isActive: true },
+      { signal },
+    );
+    return mapPickerSearchResponse(response);
   }, []);
 
   // ── Helpers del formulario ───────────────────────────────────────────────
@@ -141,12 +143,40 @@ export function CreateContractDialog({
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handlePlanSelect = (plan: PlanCatalogItem | null) => {
-    setForm((prev) => ({
-      ...prev,
-      planId: plan?.id ?? null,
-      selectedPlan: plan,
-    }));
+  const handlePlanSelect = async (item: SearchablePickerItem | null) => {
+    if (!item) {
+      setForm((prev) => ({
+        ...prev,
+        planId: null,
+        selectedPlan: null,
+        selectedPlanItem: null,
+      }));
+      return;
+    }
+
+    setPlanResolving(true);
+    setSaveError(null);
+    try {
+      const plan = await commercialApi.getPlanById(item.id);
+      setForm((prev) => ({
+        ...prev,
+        planId: plan.id,
+        selectedPlan: plan,
+        selectedPlanItem: { label: item.label, sublabel: item.sublabel },
+      }));
+    } catch (err) {
+      setSaveError(
+        err instanceof ApiError ? err.message : 'No fue posible cargar el detalle del plan.',
+      );
+      setForm((prev) => ({
+        ...prev,
+        planId: null,
+        selectedPlan: null,
+        selectedPlanItem: null,
+      }));
+    } finally {
+      setPlanResolving(false);
+    }
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────
@@ -161,7 +191,6 @@ export function CreateContractDialog({
     setSaving(true);
     setSaveError(null);
     try {
-      // Construir snapshot del plan seleccionado
       const planSnapshotJson: Record<string, unknown> = {
         id: form.selectedPlan.id,
         name: form.selectedPlan.name,
@@ -172,6 +201,9 @@ export function CreateContractDialog({
         installationFee: form.selectedPlan.installationFee,
         currentPrice: form.selectedPlan.currentPrice,
       };
+
+      const additionalProductIds = form.additionalProducts.map((item) => item.id);
+      const additionalServiceIds = form.additionalServices.map((item) => item.id);
 
       await contractsApi.createForSubscriber(subscriberId, {
         planId: form.planId,
@@ -189,12 +221,8 @@ export function CreateContractDialog({
         ...(form.customerSegment
           ? { customerSegment: form.customerSegment as CustomerSegment }
           : {}),
-        ...(form.additionalProductIds.length > 0
-          ? { additionalProductIds: form.additionalProductIds }
-          : {}),
-        ...(form.additionalServiceIds.length > 0
-          ? { additionalServiceIds: form.additionalServiceIds }
-          : {}),
+        ...(additionalProductIds.length > 0 ? { additionalProductIds } : {}),
+        ...(additionalServiceIds.length > 0 ? { additionalServiceIds } : {}),
         ...(form.paymentMethod ? { paymentMethod: form.paymentMethod } : {}),
         ...(form.billingCycle ? { billingCycle: form.billingCycle } : {}),
         ...(form.fiscalName ? { fiscalName: form.fiscalName } : {}),
@@ -260,20 +288,6 @@ export function CreateContractDialog({
             className="flex-1 overflow-y-auto"
           >
             <div className="space-y-6 p-6">
-              {/* Estado de carga del catálogo */}
-              {catalogLoading && (
-                <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:bg-dark-surface">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Cargando catálogo...
-                </div>
-              )}
-
-              {catalogError && (
-                <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                  {catalogError}
-                </div>
-              )}
-
               {saveError && (
                 <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
                   {saveError}
@@ -283,42 +297,34 @@ export function CreateContractDialog({
               {/* ── Plan ─────────────────────────────────────────────────── */}
               <div>
                 <p className={sectionTitleCls}>Plan de conectividad</p>
-                <div>
-                  <label className={labelCls}>
-                    Plan <span className="text-red-500">*</span>
-                  </label>
-                  <CatalogPicker<PlanCatalogItem>
-                    items={plans}
-                    selectedId={form.planId}
-                    onChange={handlePlanSelect}
-                    getKey={(p) => p.id}
-                    getLabel={(p) => p.name}
-                    getDescription={(p) =>
-                      [
-                        p.technology,
-                        `↓${p.downloadSpeedMbps}Mbps`,
-                        `↑${p.uploadSpeedMbps}Mbps`,
-                        p.basePrice
-                          ? new Intl.NumberFormat('es-CO', {
-                              style: 'currency',
-                              currency: 'COP',
-                              maximumFractionDigits: 0,
-                            }).format(p.basePrice)
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')
-                    }
-                    placeholder="Seleccionar plan..."
-                    disabled={catalogLoading}
-                  />
-                  {form.selectedPlan && (
-                    <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {form.selectedPlan.technology} · ↓{form.selectedPlan.downloadSpeedMbps} Mbps ·
-                      ↑{form.selectedPlan.uploadSpeedMbps} Mbps
-                    </p>
-                  )}
-                </div>
+                <SearchablePicker
+                  label={
+                    <>
+                      Plan <span className="text-red-500">*</span>
+                    </>
+                  }
+                  resource={{ singular: 'plan', plural: 'planes' }}
+                  value={form.planId}
+                  selectedItem={form.selectedPlanItem}
+                  onChange={(item) => {
+                    void handlePlanSelect(item);
+                  }}
+                  onSearch={searchPlans}
+                  placeholder="Buscar plan…"
+                  disabled={saving || planResolving}
+                />
+                {planResolving && (
+                  <p className="mt-1.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    Cargando detalle del plan…
+                  </p>
+                )}
+                {form.selectedPlan && !planResolving && (
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {form.selectedPlan.technology} · ↓{form.selectedPlan.downloadSpeedMbps} Mbps · ↑
+                    {form.selectedPlan.uploadSpeedMbps} Mbps
+                  </p>
+                )}
               </div>
 
               {/* ── Alias ────────────────────────────────────────────────── */}
@@ -412,47 +418,29 @@ export function CreateContractDialog({
               </div>
 
               {/* ── Productos y servicios adicionales ────────────────────── */}
-              {(products.length > 0 || services.length > 0) && (
-                <div>
-                  <p className={sectionTitleCls}>Complementos del plan</p>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {products.length > 0 && (
-                      <div>
-                        <label className={labelCls}>Productos adicionales</label>
-                        <MultiCatalogPicker<AdditionalProduct>
-                          items={products}
-                          selectedIds={form.additionalProductIds}
-                          onChange={(ids) =>
-                            setForm((prev) => ({ ...prev, additionalProductIds: ids }))
-                          }
-                          getKey={(p) => p.id}
-                          getLabel={(p) => p.name}
-                          getDescription={(p) => p.description ?? null}
-                          placeholder="Sin productos adicionales"
-                          disabled={catalogLoading}
-                        />
-                      </div>
-                    )}
-                    {services.length > 0 && (
-                      <div>
-                        <label className={labelCls}>Servicios adicionales</label>
-                        <MultiCatalogPicker<AdditionalService>
-                          items={services}
-                          selectedIds={form.additionalServiceIds}
-                          onChange={(ids) =>
-                            setForm((prev) => ({ ...prev, additionalServiceIds: ids }))
-                          }
-                          getKey={(s) => s.id}
-                          getLabel={(s) => s.name}
-                          getDescription={(s) => s.description ?? null}
-                          placeholder="Sin servicios adicionales"
-                          disabled={catalogLoading}
-                        />
-                      </div>
-                    )}
-                  </div>
+              <div>
+                <p className={sectionTitleCls}>Complementos del plan</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SearchableMultiPicker
+                    label="Productos adicionales"
+                    resource={{ singular: 'producto adicional', plural: 'productos adicionales' }}
+                    value={form.additionalProducts}
+                    onChange={(next) => setForm((prev) => ({ ...prev, additionalProducts: next }))}
+                    onSearch={searchProducts}
+                    placeholder="Buscar producto adicional…"
+                    disabled={saving}
+                  />
+                  <SearchableMultiPicker
+                    label="Servicios adicionales"
+                    resource={{ singular: 'servicio adicional', plural: 'servicios adicionales' }}
+                    value={form.additionalServices}
+                    onChange={(next) => setForm((prev) => ({ ...prev, additionalServices: next }))}
+                    onSearch={searchServices}
+                    placeholder="Buscar servicio adicional…"
+                    disabled={saving}
+                  />
                 </div>
-              )}
+              </div>
 
               {/* ── Facturación ───────────────────────────────────────────── */}
               <div>
@@ -543,7 +531,7 @@ export function CreateContractDialog({
             <button
               type="submit"
               form="create-contract-form"
-              disabled={saving || catalogLoading || !form.planId}
+              disabled={saving || planResolving || !form.planId}
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
             >
               {saving ? (

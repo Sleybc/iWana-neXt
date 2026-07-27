@@ -1,8 +1,8 @@
 # HLD - MOD11 Ejecucion Operativa / Tareas
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-24  
+**Version:** 1.1  
+**Estado:** En revision — baseline v1.0 aprobado; addendum v1.1 sujeto a ADR-068 (Aprobado)  
+**Fecha:** 2026-07-27  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD11-EJECUCION-OPERATIVA-TAREAS-v1.0.md  
@@ -327,3 +327,45 @@ Para la superficie `Programacion`, el flujo objetivo deja de ser event-first y p
 | Boundary duplicado con MOD09 | Alto | Mantener agenda/OT en WFM y `WorkOrderTask` como subtarea tecnica |
 | Modelo demasiado generico | Medio | Usar `OperationalTask` y no una entidad `Task` sin contexto |
 | PRD maestro sin MOD11 | Medio | Actualizar solo tras decision CTO |
+
+---
+
+## 13. Addendum 2026-07-27 — agregado ExecutionOrder e integracion
+
+Este addendum supera cualquier frase anterior que mantenga la OT ejecutable en WFM. MOD09 conserva agenda y compatibilidad ligera; MOD11 conserva la OT enriquecida.
+
+MOD11 es owner del agregado `ExecutionOrder`, incluyendo plantilla aplicada, estado/version, asignacion, actividades, evidencia, consumo referenciado, resultado y cierre.
+
+La arquitectura objetivo agrega:
+
+- permisos de capacidad y política de asignación/alcance;
+- control optimista e idempotencia por comando;
+- outbox dentro de la misma transacción tenant que cambia la OT;
+- publicación tenant-aware y consumidores idempotentes;
+- plantillas publicadas inmutables con snapshot por OT;
+- evaluación determinista del gate de cierre;
+- terminales append-only e inmutables;
+- seguimiento mediante nueva OT vinculada;
+- referencia a movimientos confirmados por MOD12, nunca escritura directa de inventario;
+- reconciliador de OT, proyecciones y movimientos pendientes.
+
+Persistencia minima:
+
+- constraint único `(tenant_id, schedule_event_id)` y retry de colisión;
+- `version` monotona para `If-Match`;
+- numerador OT con constraint/retry o asignador transaccional;
+- `followUpOfExecutionOrderId`/`supersedesExecutionOrderId` sin FK cross-module;
+- snapshot de plantilla y requisitos aplicados;
+- outbox owner, inbox/procesados por consumidor e idempotency record con hash;
+- settlement de inventario append-only y estado derivado de conciliacion;
+- evidencia con media ref, hash y metadata minimizada;
+- índices tenant-aware para outbox pendiente, idempotencia, seguimiento y conciliacion;
+- retención/limpieza aprobada para outbox, inbox e idempotency records.
+
+El relay vive en `apps/worker`, enumera tenants activos desde `public`, usa lease y marca publicado despues del enqueue. El crash commit→enqueue deja la fila pendiente; enqueue→mark puede duplicar y el inbox neutraliza el efecto. DLQ/re-drive son auditados.
+
+El endpoint actual `/api/v1/tasks/execution-orders` conserva compatibilidad durante la transición. El OpenAPI debe documentar version esperada, idempotencia, permisos y errores 403/404/409/422.
+
+Toda evidencia conserva hash y metadata autorizada; URLs y payloads sensibles no se registran. La suficiencia jurídica de firma, consentimiento y geolocalización queda sujeta a concepto Legal/Regulatorio.
+
+**ADR requerido:** `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (Aprobado).

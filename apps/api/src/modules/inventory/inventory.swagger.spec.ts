@@ -105,6 +105,42 @@ describe('InventoryController Swagger', () => {
     expect(suggestions?.summary).toBe('Consultar sugerencias de reposición de inventario');
   });
 
+  it('documenta paginación cursor ADR-064 en listados operativos', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const listItems = document.paths['/inventory/items']?.get;
+    const listBalances = document.paths['/inventory/balances']?.get;
+    const listAssets = document.paths['/inventory/assets']?.get;
+    const listCounts = document.paths['/inventory/counts']?.get;
+    const listCategories = document.paths['/inventory/categories']?.get;
+    const listIssues = document.paths['/inventory/issues']?.get;
+    const listLocations = document.paths['/inventory/locations']?.get;
+
+    expect(listItems?.description).toContain('ADR-064');
+    expect(listBalances?.description).toContain('ADR-064');
+    expect(listAssets?.description).toContain('ADR-064');
+    expect(listCounts?.description).toContain('ADR-064');
+    expect(listCategories?.description).toContain('ADR-064');
+    expect(listItems?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
+    expect(listItems?.parameters?.some((p) => 'name' in p && p.name === 'cursor')).toBe(true);
+    expect(listItems?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+    expect(listItems?.parameters?.some((p) => 'name' in p && p.name === 'belowMinimum')).toBe(true);
+    expect(listIssues?.parameters?.some((p) => 'name' in p && p.name === 'search')).toBe(true);
+    expect(listIssues?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+    expect(listLocations?.parameters?.some((p) => 'name' in p && p.name === 'search')).toBe(true);
+    expect(listLocations?.parameters?.some((p) => 'name' in p && p.name === 'withStock')).toBe(
+      true,
+    );
+    expect(listCounts?.parameters?.some((p) => 'name' in p && p.name === 'status')).toBe(true);
+    expect(listCounts?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+    expect(listAssets?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+    expect(listCategories?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
+    expect(listCategories?.parameters?.some((p) => 'name' in p && p.name === 'cursor')).toBe(true);
+  });
+
   it('documenta conteos físicos de inventario', () => {
     const document = SwaggerModule.createDocument(
       app,

@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { AssetLifecycleEvent, StockLocation, TenantContext, runInTenantSchema } from '@iwana/db';
 import { AssetLifecycleEventType, SerializedAssetStatus } from '@iwana/shared';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssetLifecycleEventRecord } from '../types/serialized-asset-detail.types';
 
@@ -36,9 +37,10 @@ export class AssetLifecycleService {
 
   async listPaginatedForAsset(
     serializedAssetId: string,
-    page: number,
-    limit: number,
+    rawPage: number,
+    rawLimit: number,
   ): Promise<{ data: AssetLifecycleEventRecord[]; total: number; page: number; limit: number }> {
+    const { page, limit } = clampPage(rawPage, rawLimit);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -46,7 +48,9 @@ export class AssetLifecycleService {
         .createQueryBuilder(AssetLifecycleEvent, 'event')
         .where('event.tenant_id = :tenantId', { tenantId })
         .andWhere('event.serialized_asset_id = :serializedAssetId', { serializedAssetId })
-        .orderBy('event.created_at', 'DESC');
+        // DEF-1: desempate por id para paginación offset estable.
+        .orderBy('event.created_at', 'DESC')
+        .addOrderBy('event.id', 'DESC');
 
       const total = await qb.getCount();
       const events = await qb

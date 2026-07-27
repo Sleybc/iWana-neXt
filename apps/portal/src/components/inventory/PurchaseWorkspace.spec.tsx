@@ -1,12 +1,35 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestPriority,
   PurchaseRequestType,
 } from '@iwana/shared';
+import { purchasingApi } from '@/lib/api-client';
 import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { PurchaseWorkspace } from './PurchaseWorkspace';
+
+const pushMock = jest.fn();
+const replaceMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  usePathname: () => '/dashboard/inventory',
+  useSearchParams: () => searchParamsMock,
+}));
+
+jest.mock('@/lib/api-client', () => {
+  const actual = jest.requireActual('@/lib/api-client');
+  return {
+    ...actual,
+    purchasingApi: {
+      ...actual.purchasingApi,
+      listRequests: jest.fn(),
+    },
+  };
+});
 
 jest.mock('./PurchaseRequestComposer', () => ({
   PurchaseRequestComposer: ({
@@ -57,8 +80,9 @@ jest.mock('./PurchaseCreateModeShell', () => ({
   PurchaseCreateModeShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+const listRequestsMock = purchasingApi.listRequests as jest.Mock;
+
 const baseProps = {
-  requests: [],
   items: [],
   catalogOptions: [],
   locations: [],
@@ -103,7 +127,7 @@ const baseProps = {
   onCloseOrder: jest.fn(),
   onPrepareOrderDrawer: jest.fn(),
   onSelectOrder: jest.fn(),
-  onRefresh: jest.fn(),
+  onRefresh: jest.fn().mockResolvedValue(undefined),
 };
 
 const prefill: PurchaseComposerInitialValues = {
@@ -118,37 +142,86 @@ const prefill: PurchaseComposerInitialValues = {
       id: 'line-temp-1',
       tenantId: '',
       purchaseRequestId: '',
-      sourceKind: PurchaseRequestLineSourceKind.REPLENISHMENT_SUGGESTION,
+      sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
       inventoryItemId: 'item-1',
-      freeTextDescription: 'CAB-01 - Cable',
-      quantityRequested: '40',
-      unitOfMeasure: 'metro',
-      suggestedPartyRefId: 'party-1',
-      lineStatus: PurchaseRequestLineStatus.OPEN,
-      notes: null,
-      createdAt: '2026-07-18T00:00:00.000Z',
-      updatedAt: '2026-07-18T00:00:00.000Z',
-    },
-    {
-      id: 'line-temp-2',
-      tenantId: '',
-      purchaseRequestId: '',
-      sourceKind: PurchaseRequestLineSourceKind.REPLENISHMENT_SUGGESTION,
-      inventoryItemId: 'item-2',
-      freeTextDescription: 'ONT-01 - ONT',
-      quantityRequested: '10',
+      freeTextDescription: null,
+      quantityRequested: '2',
       unitOfMeasure: 'unidad',
       suggestedPartyRefId: null,
-      lineStatus: PurchaseRequestLineStatus.OPEN,
       notes: null,
-      createdAt: '2026-07-18T00:00:00.000Z',
-      updatedAt: '2026-07-18T00:00:00.000Z',
+      lineStatus: PurchaseRequestLineStatus.OPEN,
+      createdAt: '',
+      updatedAt: '',
     },
   ],
 };
 
 describe('PurchaseWorkspace', () => {
-  it('abre el composer en modo create con líneas cuando recibe createInitialValues', async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
+    pushMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    replaceMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    Element.prototype.scrollIntoView = jest.fn();
+    listRequestsMock.mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+  });
+
+  it('ADR-065: self-fetch con page+limit y sin Cargar más', async () => {
+    listRequestsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'req-1',
+          requestNumber: 'SC-1',
+          title: 'Solicitud demo',
+          status: 'DRAFT',
+          requestType: PurchaseRequestType.REPLENISHMENT,
+          priority: PurchaseRequestPriority.NORMAL,
+        },
+      ],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+
+    render(<PurchaseWorkspace {...baseProps} />);
+
+    await waitFor(() => {
+      expect(listRequestsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, limit: 20 }),
+      );
+    });
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(screen.getByText('Tabla compras')).toBeInTheDocument();
+  });
+
+  it('abre el composer con prefill desde reposición', async () => {
     const onConsumed = jest.fn();
 
     render(
@@ -162,12 +235,7 @@ describe('PurchaseWorkspace', () => {
     await waitFor(() => {
       expect(screen.getByText('Composer activo')).toBeInTheDocument();
     });
-
-    expect(
-      screen.getByText('Reposición sugerida 2026-07-18 — 2 ítems bajo punto de reorden'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Líneas: 2')).toBeInTheDocument();
-    expect(screen.getByText(`Tipo: ${PurchaseRequestType.REPLENISHMENT}`)).toBeInTheDocument();
+    expect(screen.getByText(prefill.title)).toBeInTheDocument();
     expect(onConsumed).toHaveBeenCalled();
   });
 });

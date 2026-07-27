@@ -6,13 +6,17 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
 import { Quote } from './entities/quote.entity';
@@ -36,9 +40,17 @@ export class QuotesController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar cotizaciones comerciales' })
-  async findAll(): Promise<{ data: Quote[] }> {
-    const data = await this.quotesService.findAll();
-    return { data };
+  @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
+  async findAll(
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ): Promise<ListResponse<Quote>> {
+    return this.quotesService.findAll({
+      ...(page !== undefined ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
   }
 
   @Get(':id')

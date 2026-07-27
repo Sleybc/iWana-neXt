@@ -1,6 +1,6 @@
 # ADR-062 — Extensión `pg_trgm` para búsqueda de usuarios (MOD04)
 
-**Estado:** Aceptado  
+**Estado:** Aprobado  
 **Fecha:** 2026-07-22  
 **Decisión CTO:** D-2=A ([INFORME-MOD04-OLA-C-ESCALACION-CTO-v1.0](../informes/INFORME-MOD04-OLA-C-ESCALACION-CTO-v1.0.md) §5)  
 **GO plataforma:** AI-PLAT-OPS 2026-07-22 (`postgres:18-alpine`, trusted)

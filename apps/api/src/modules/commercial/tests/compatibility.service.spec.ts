@@ -166,15 +166,36 @@ describe('CompatibilityService', () => {
   });
 
   describe('findAll', () => {
-    it('retorna lista de reglas activas del tenant', async () => {
-      const rules = [{ id: 'rule-1', ruleType: CompatibilityRuleType.EXCLUDES, isActive: true }];
+    it('retorna lista paginada de reglas activas del tenant', async () => {
+      const rules = [
+        {
+          id: 'rule-1',
+          ruleType: CompatibilityRuleType.EXCLUDES,
+          isActive: true,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ];
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue(rules),
+      };
+      qb.clone.mockReturnValue(qb);
+
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({ manager: { find: async () => rules } }),
+        cb({ manager: { createQueryBuilder: () => qb } }),
       );
 
-      const result = await service.findAll();
-      expect(result).toHaveLength(1);
-      expect(result[0]?.id).toBe('rule-1');
+      const result = await service.findAll({ limit: 20 });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.id).toBe('rule-1');
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.nextCursor).toBeNull();
     });
   });
 

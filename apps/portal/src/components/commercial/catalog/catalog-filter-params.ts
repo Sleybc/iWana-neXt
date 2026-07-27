@@ -18,6 +18,13 @@ export interface ServiceCatalogFilters {
   charge: string;
 }
 
+export interface PlanCatalogFilters {
+  q: string;
+  status: CatalogStatusFilter;
+  /** Chip «Sin precio vigente»: solo activos sin precio current. */
+  missingPrice: boolean;
+}
+
 export const DEFAULT_PRODUCT_CATALOG_FILTERS: ProductCatalogFilters = {
   q: '',
   category: 'ALL',
@@ -32,8 +39,15 @@ export const DEFAULT_SERVICE_CATALOG_FILTERS: ServiceCatalogFilters = {
   charge: 'ALL',
 };
 
+export const DEFAULT_PLAN_CATALOG_FILTERS: PlanCatalogFilters = {
+  q: '',
+  status: 'ALL',
+  missingPrice: false,
+};
+
 const PRODUCT_FILTER_KEYS = ['q', 'category', 'status', 'model', 'sort'] as const;
 const SERVICE_FILTER_KEYS = ['q', 'status', 'charge'] as const;
+const PLAN_FILTER_KEYS = ['q', 'status', 'missingPrice'] as const;
 
 const STATUS_VALUES: CatalogStatusFilter[] = ['ALL', 'ACTIVE', 'INACTIVE'];
 const MODEL_VALUES: ProductCommercialModelFilter[] = ['ALL', 'SALE', 'LOAN'];
@@ -76,6 +90,15 @@ function parseCharge(value: string | null): string {
   return 'ALL';
 }
 
+/** `missingPrice=1` (u otros truthy canónicos) activa el chip; resto → false. */
+function parseMissingPrice(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 /** Hidrata filtros de productos desde query params (defaults si ausentes o inválidos). */
 export function parseProductCatalogFilters(
   params: URLSearchParams | ReadonlyURLSearchParamsLike,
@@ -97,6 +120,17 @@ export function parseServiceCatalogFilters(
     q: params.get('q')?.trim() ?? '',
     status: parseStatus(params.get('status')),
     charge: parseCharge(params.get('charge')),
+  };
+}
+
+/** Hidrata filtros de planes desde query params (defaults si ausentes o inválidos). */
+export function parsePlanCatalogFilters(
+  params: URLSearchParams | ReadonlyURLSearchParamsLike,
+): PlanCatalogFilters {
+  return {
+    q: params.get('q')?.trim() ?? '',
+    status: parseStatus(params.get('status')),
+    missingPrice: parseMissingPrice(params.get('missingPrice')),
   };
 }
 
@@ -147,6 +181,32 @@ export function applyServiceCatalogFilters(
   }
   if (filters.charge !== 'ALL') {
     params.set('charge', filters.charge);
+  }
+
+  return params;
+}
+
+/**
+ * Escribe filtros de planes omitiendo defaults.
+ * Preserva `tab`, `focus`, `offerStatus` y cualquier query ajena a planes.
+ */
+export function applyPlanCatalogFilters(
+  params: URLSearchParams,
+  filters: PlanCatalogFilters,
+): URLSearchParams {
+  for (const key of PLAN_FILTER_KEYS) {
+    params.delete(key);
+  }
+
+  const q = filters.q.trim();
+  if (q) {
+    params.set('q', q);
+  }
+  if (filters.status !== 'ALL') {
+    params.set('status', filters.status);
+  }
+  if (filters.missingPrice) {
+    params.set('missingPrice', '1');
   }
 
   return params;

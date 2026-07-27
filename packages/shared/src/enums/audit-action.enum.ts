@@ -24,4 +24,6 @@ export enum AuditAction {
   EMAIL_VERIFIED = 'EMAIL_VERIFIED',
   /** Reset de contrasena completado via token temporal — RF-AUD-02 (HLD-MOD02) */
   PASSWORD_RESET_COMPLETED = 'PASSWORD_RESET_COMPLETED',
+  /** Acceso de lectura masiva a listado con PII — ADR-067 §5 */
+  LIST_ACCESS = 'LIST_ACCESS',
 }

@@ -8,22 +8,26 @@ import { cn } from '../lib/utils';
 
 /**
  * Componente Button del sistema de diseño iWana neXt.
- * Variantes: lime (CTA de página, Firma iWana), primary (acción de sección),
+ * Variantes: primary (CTA de página y acción de sección/modal — Firma enmienda CTO 2026-07-23),
+ * lime (marca/auth/avance explícito; no es el default de header/empty operativo),
  * secondary/outline/ghost, destructive, link.
- * ADR-026: shadcn/ui + CVA. Spec Firma: lima = acción principal de página;
- * azul sólido = acciones de sección (no se invierte `primary` por compatibilidad).
+ * ADR-026: shadcn/ui + CVA. Spec Firma: azul noche = acción principal de página y sección;
+ * lima = avance/éxito/completitud fuera del botón filled operativo de listados.
  */
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed dark:focus-visible:ring-offset-dark-surface-2 [&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        // CTA de página — lima AA: fondo secondary-700 + texto blanco (patrón portal).
+        // Marca / auth / avance explícito — no es el CTA default de página (enmienda CTO 2026-07-23).
+        // Light: lima AA fondo secondary-700 + texto blanco.
         lime: 'rounded-full bg-iwana-secondary-700 text-white shadow-sm hover:bg-iwana-secondary-700/90 focus-visible:ring-iwana-secondary-700 active:bg-iwana-secondary-800 disabled:bg-gray-200 disabled:text-gray-500 dark:bg-iwana-secondary dark:text-iwana-primary dark:hover:bg-iwana-secondary-400 dark:focus-visible:ring-iwana-secondary dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
-        // Light: azul noche (#17163A) con texto blanco — acciones de sección.
-        // Dark: violeta medio (#534FD4, primary-400) con texto blanco — contraste 3.8:1 sobre #222 (WCAG AA para componentes UI).
+        // Light: azul noche (#17163A) — CTA de página y acciones de sección/modal.
+        // Dark: violeta medio (iwana-primary-500, #5A5190) con texto blanco — contraste ~7:1 (WCAG AA 4.5:1).
+        // El #534FD4 del comentario anterior era un hex obsoleto: la rampa real en globals.css es
+        // 400=#7B75AB, 500=#5A5190, 600=#4A4176. El 400 medía 4.22:1 con blanco — incumplía AA.
         primary:
-          'rounded-full bg-iwana-primary text-white shadow-sm hover:bg-iwana-primary-600 focus-visible:ring-iwana-primary active:bg-iwana-primary-800 disabled:bg-gray-200 disabled:text-gray-500 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 dark:active:bg-iwana-primary-500 dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
+          'rounded-full bg-iwana-primary text-white shadow-sm hover:bg-iwana-primary-600 focus-visible:ring-iwana-primary active:bg-iwana-primary-800 disabled:bg-gray-200 disabled:text-gray-500 dark:bg-iwana-primary-500 dark:hover:bg-iwana-primary-400 dark:active:bg-iwana-primary-600 dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
         // Light: borde+texto azul noche, fondo transparente.
         // Dark: borde+texto violeta claro (#7E7BDF, primary-300) — contraste 5.1:1 sobre #222.
         secondary:

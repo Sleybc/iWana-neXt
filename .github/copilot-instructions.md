@@ -20,16 +20,16 @@ Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sin
 - `.opencode/opencode.json` — declaracion explicita de OpenCode: `instructions`, `skills.paths` y `mcp`.
 - `CLAUDE.md` — bootstrap propio de Claude Code, leido automaticamente por esa CLI; reactivado el 2026-07-09.
 - `.github/instructions/*.instructions.md` — reglas contextuales por path, complementan a `AGENTS.md` en su `applyTo`.
-- `.github/prompts/*.prompt.md` — prompts operativos reutilizables, disponibles para cualquier asistente compatible.
+- `docs/prompts/PROMPT-*.md` — **todos** los prompts del workspace (ejecucion por fase y operativos reutilizables), disponibles para cualquier asistente compatible. Es la unica carpeta de prompts; `.github/prompts/` fue suprimida el 2026-07-27.
 - `.agents/skills/` — catalogo activo de skills; `INDEX.md` y `MANIFEST.json` son la fuente de verdad del catalogo.
 
-**Gobernanza vs modo Orquestador:** la identidad AI-EM-ARCH en `AGENTS.md` es autoridad de gobernanza del workspace, no el modo de sesion por defecto. Por defecto la sesion es **ejecutor**. El modo Orquestador (define/delega, sin codigo productivo) se activa solo con `.github/prompts/activar-ai-em-arch.prompt.md`. No crear catalogos paralelos de roles por cliente (p. ej. no duplicar en `.claude/skills/` ni poner la logica solo en `.cursor/rules/`).
+**Gobernanza vs modo Orquestador:** la identidad AI-EM-ARCH en `AGENTS.md` es autoridad de gobernanza del workspace, no el modo de sesion por defecto. Por defecto la sesion es **ejecutor**. El modo Orquestador (define/delega, sin codigo productivo) se activa solo con `docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md`. No crear catalogos paralelos de roles por cliente (p. ej. no duplicar en `.claude/skills/` ni poner la logica solo en `.cursor/rules/`).
 
 ## Flujo activo
 
 - Usa siempre `pnpm`; no uses `npm` ni `yarn` para flujos del repo.
 - Las reglas por archivo viven en `.github/instructions/*.instructions.md` y son complementos, no fuentes maestras.
-- Los prompts operativos viven en `.github/prompts/`.
+- **Todos** los prompts viven en `docs/prompts/`, sin excepcion: los de ejecucion por fase (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`) y los operativos reutilizables (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`). Depositar un prompt en cualquier otra carpeta es defecto bloqueante.
 - OpenCode, Codex y Claude Code quedan en paridad documental con Copilot; los cuatro leen `AGENTS.md` y este bootstrap.
 - Las skills del repo viven en `.agents/skills/` y deben reutilizarse desde cualquier cliente que soporte ese catalogo; no dupliques reglas en un sistema paralelo de agentes. Claude Code, al no tener `skills.paths`, las consume via `CLAUDE.md` leyendo el `SKILL.md` correspondiente por descripcion.
 

@@ -1,9 +1,9 @@
 // apps/portal/src/components/users/UsersClient.tsx
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Copy, Plus, ShieldAlert, Upload } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { AlertTriangle, Copy, Plus, ShieldAlert, Upload } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -33,13 +33,17 @@ import {
   ApiError,
 } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
+import { listPageWindow } from '@/lib/list-meta';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { isPlatformOnlyRole, UserRole } from '@iwana/shared';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalPanel, PortalSuccessAlert } from '@/components/shared/portal-ui';
 import {
   buildUsersListParams,
   emptyUsersQuery,
+  parseUsersQueryFromSearchParams,
+  serializeUsersQuery,
   USERS_PAGE_SIZE,
+  usersQueryToSearchParams,
   type UsersQueryState,
 } from './users-query';
 
@@ -65,6 +69,8 @@ function mapError(error: unknown): string {
 }
 
 export function UsersClient() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   // `user !== null` primero: TypeScript usa esta condicion con alias para
@@ -78,10 +84,14 @@ export function UsersClient() {
   const [error, setError] = useState<string | null>(null);
 
   /** Única fuente de verdad de criterios enviados al servidor (+ limit/cursor en listParams). */
-  const [query, setQuery] = useState<UsersQueryState>(emptyUsersQuery);
+  const [query, setQuery] = useState<UsersQueryState>(() =>
+    parseUsersQueryFromSearchParams(searchParams),
+  );
   const [listParams, setListParams] = useState<ListUsersParams>({ limit: USERS_PAGE_SIZE });
   /** Texto del input de búsqueda (inmediato); se sincroniza a `query.search` con debounce. */
-  const [searchDraft, setSearchDraft] = useState('');
+  const [searchDraft, setSearchDraft] = useState(
+    () => parseUsersQueryFromSearchParams(searchParams).search,
+  );
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -93,6 +103,7 @@ export function UsersClient() {
   const [preparingEditUserId, setPreparingEditUserId] = useState<string | null>(null);
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState<string | null>(null);
@@ -107,13 +118,34 @@ export function UsersClient() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryRef = useRef(query);
   queryRef.current = query;
+  const hasHydratedFromUrlRef = useRef(false);
+  /** Serialización que nosotros empujamos con router.replace; evita rehidratar sobre estado local. */
+  const lastPushedUrlRef = useRef<string | null>(null);
+  /** Trigger de fila (edit/delete/reset) para restaurar foco al cerrar dialogs. */
+  const actionTriggerRef = useRef<HTMLElement | null>(null);
 
   /** FE-02: una clave por intención (abrir modal / primer submit); se reutiliza en reintentos. */
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const editIdempotencyKeyRef = useRef<string | null>(null);
   const resetPasswordIdempotencyKeyRef = useRef<string | null>(null);
 
-  const searchParam = searchParams.get('search')?.trim() ?? '';
+  const captureActionTrigger = () => {
+    actionTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+
+  const restoreActionTriggerFocus = () => {
+    const trigger = actionTriggerRef.current;
+    actionTriggerRef.current = null;
+    if (trigger?.isConnected) {
+      trigger.focus();
+    }
+  };
+
+  const urlQuerySerialized = useMemo(
+    () => serializeUsersQuery(parseUsersQueryFromSearchParams(searchParams)),
+    [searchParams],
+  );
 
   useEffect(() => {
     setActiveBulkJobId(readActiveBulkJobId());
@@ -136,6 +168,19 @@ export function UsersClient() {
     }
   }, []);
 
+  const syncQueryToUrl = useCallback(
+    (nextQuery: UsersQueryState) => {
+      const nextSerialized = serializeUsersQuery(nextQuery);
+      if (nextSerialized === urlQuerySerialized) {
+        return;
+      }
+      lastPushedUrlRef.current = nextSerialized;
+      const qs = usersQueryToSearchParams(nextQuery).toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, urlQuerySerialized],
+  );
+
   const applyQueryPatch = useCallback(
     (patch: Partial<UsersQueryState>) => {
       const { nextQuery, params } = buildUsersListParams(queryRef.current, patch, USERS_PAGE_SIZE);
@@ -143,9 +188,10 @@ export function UsersClient() {
       if (patch.search !== undefined) {
         setSearchDraft(patch.search);
       }
+      syncQueryToUrl(nextQuery);
       void loadUsers(params);
     },
-    [loadUsers],
+    [loadUsers, syncQueryToUrl],
   );
 
   useEffect(() => {
@@ -153,15 +199,32 @@ export function UsersClient() {
       return;
     }
 
-    setSearchDraft(searchParam);
-    const { nextQuery, params } = buildUsersListParams(
-      emptyUsersQuery(),
-      { search: searchParam },
-      USERS_PAGE_SIZE,
-    );
+    const currentSerialized = serializeUsersQuery(queryRef.current);
+
+    // URL ya alineada con el estado local: no recargar.
+    if (hasHydratedFromUrlRef.current && currentSerialized === urlQuerySerialized) {
+      lastPushedUrlRef.current = urlQuerySerialized;
+      return;
+    }
+
+    // Acabamos de empujar esta query; el searchParams aún no refleja el replace.
+    if (
+      hasHydratedFromUrlRef.current &&
+      lastPushedUrlRef.current !== null &&
+      lastPushedUrlRef.current === currentSerialized &&
+      currentSerialized !== urlQuerySerialized
+    ) {
+      return;
+    }
+
+    hasHydratedFromUrlRef.current = true;
+    lastPushedUrlRef.current = urlQuerySerialized;
+    const fromUrl = parseUsersQueryFromSearchParams(new URLSearchParams(urlQuerySerialized));
+    setSearchDraft(fromUrl.search);
+    const { nextQuery, params } = buildUsersListParams(emptyUsersQuery(), fromUrl, USERS_PAGE_SIZE);
     setQuery(nextQuery);
     void loadUsers(params);
-  }, [isAdmin, loadUsers, searchParam]);
+  }, [isAdmin, loadUsers, urlQuerySerialized]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -178,13 +241,14 @@ export function UsersClient() {
 
         setAccessCatalog(catalogResponse);
         setAvailableProfiles(profilesResponse);
+        setCatalogError(null);
       })
       .catch((err: unknown) => {
         if (!mounted) {
           return;
         }
 
-        setActionError(mapError(err));
+        setCatalogError(mapError(err));
       });
 
     return () => {
@@ -206,6 +270,22 @@ export function UsersClient() {
       void loadUsers({ ...listParams, cursor: meta.nextCursor }, true);
     }
   };
+
+  /** ADR-065: navegación a página arbitraria (push para soportar Atrás del navegador). */
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      const { nextQuery, params } = buildUsersListParams(
+        queryRef.current,
+        { page: String(nextPage) },
+        USERS_PAGE_SIZE,
+      );
+      setQuery(nextQuery);
+      const qs = usersQueryToSearchParams(nextQuery).toString();
+      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      void loadUsers(params);
+    },
+    [loadUsers, pathname, router],
+  );
 
   /**
    * Actualiza el valor del input de búsqueda y dispara una nueva carga con debounce de 300ms.
@@ -232,6 +312,7 @@ export function UsersClient() {
     setSearchDraft('');
     const { nextQuery, params } = buildUsersListParams(emptyUsersQuery(), {}, USERS_PAGE_SIZE);
     setQuery(nextQuery);
+    syncQueryToUrl(nextQuery);
     void loadUsers(params);
   };
 
@@ -325,6 +406,9 @@ export function UsersClient() {
       setActionSuccess('Usuario eliminado correctamente.');
       setIsDeleteOpen(false);
       setSelectedUser(null);
+      window.requestAnimationFrame(() => {
+        restoreActionTriggerFocus();
+      });
       void loadUsers(listParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
@@ -353,6 +437,9 @@ export function UsersClient() {
       setTempPassword(result.temporaryPassword);
       setNewUserEmail(selectedUser.email);
       setIsResetPasswordOpen(false);
+      window.requestAnimationFrame(() => {
+        restoreActionTriggerFocus();
+      });
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -371,6 +458,8 @@ export function UsersClient() {
 
   /** FE-11: feedback inmediato en el botón Editar mientras cargan permisos. */
   const openEdit = async (userToEdit: InternalUser) => {
+    captureActionTrigger();
+    const editTrigger = actionTriggerRef.current;
     setPreparingEditUserId(userToEdit.id);
     setSelectedUser(userToEdit);
     setActionError(null);
@@ -387,10 +476,16 @@ export function UsersClient() {
     } finally {
       setPreparingEditUserId(null);
     }
+    // PortalSidePeek restaura foco al cerrar; reenfocar el trigger antes de abrir
+    // para que capture el elemento correcto tras el await de permisos.
+    if (editTrigger?.isConnected) {
+      editTrigger.focus();
+    }
     setIsEditOpen(true);
   };
 
   const openDelete = (userToDelete: InternalUser) => {
+    captureActionTrigger();
     setSelectedUser(userToDelete);
     setActionError(null);
     setActionSuccess(null);
@@ -404,6 +499,7 @@ export function UsersClient() {
    * Resetea los estados de acción previos para evitar mensajes residuales.
    */
   const openResetPassword = (userToReset: InternalUser) => {
+    captureActionTrigger();
     setSelectedUser(userToReset);
     setActionError(null);
     setActionSuccess(null);
@@ -414,6 +510,7 @@ export function UsersClient() {
   };
 
   const closeModals = () => {
+    const shouldRestoreFocus = isDeleteOpen || isResetPasswordOpen;
     setIsEditOpen(false);
     setIsDeleteOpen(false);
     setIsResetPasswordOpen(false);
@@ -426,6 +523,14 @@ export function UsersClient() {
     setPreparingEditUserId(null);
     editIdempotencyKeyRef.current = null;
     resetPasswordIdempotencyKeyRef.current = null;
+    // Edit usa PortalSidePeek (restaura foco solo). Delete/Reset necesitan restore explícito.
+    if (shouldRestoreFocus) {
+      window.requestAnimationFrame(() => {
+        restoreActionTriggerFocus();
+      });
+    } else {
+      actionTriggerRef.current = null;
+    }
   };
 
   const dismissTempPassword = () => {
@@ -457,6 +562,18 @@ export function UsersClient() {
     }
   };
 
+  // ADR-065: props page-based derivadas del meta del servidor.
+  // Mientras el backend emita solo cursor, meta.page / meta.totalPages son null
+  // y el PortalTablePager no se activa (fallback a PortalTablePagination).
+  const metaPage = meta?.page;
+  const metaTotalPages = meta?.totalPages;
+  const isPageMode = metaPage != null && metaTotalPages != null;
+  const effectivePage = metaPage ?? 1;
+  const pageCount = metaTotalPages ?? 1;
+  const metaLimit = meta?.limit ?? USERS_PAGE_SIZE;
+  const metaTotal = meta?.total ?? 0;
+  const { from, to } = listPageWindow({ page: effectivePage, limit: metaLimit, total: metaTotal });
+
   if (!isAdmin) {
     return (
       <div className="space-y-6">
@@ -472,13 +589,13 @@ export function UsersClient() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="Usuarios internos"
         subtitle={`${meta?.total ?? 0} usuario${(meta?.total ?? 0) !== 1 ? 's' : ''} en total`}
         actions={
           <>
-            <Button type="button" variant="lime" size="default" onClick={openCreate}>
+            <Button type="button" variant="primary" size="default" onClick={openCreate}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Nuevo usuario
             </Button>
@@ -501,58 +618,68 @@ export function UsersClient() {
         }
       />
 
-      <div className="space-y-4">
-        {activeBulkJobId && !isBulkImportOpen && (
-          <PortalAlert
-            variant="info"
-            title="Importación de usuarios en curso"
-            description="La importación sigue en segundo plano. Puedes ver el estado o el resultado cuando termine."
-            action={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setActionError(null);
-                  setActionSuccess(null);
-                  setTempPassword(null);
-                  setNewUserEmail(null);
-                  setIsBulkImportOpen(true);
-                }}
-              >
-                Ver estado
-              </Button>
-            }
-          />
-        )}
+      {activeBulkJobId && !isBulkImportOpen && (
+        <PortalAlert
+          variant="info"
+          title="Importación de usuarios en curso"
+          description="La importación sigue en segundo plano. Puedes ver el estado o el resultado cuando termine."
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setActionError(null);
+                setActionSuccess(null);
+                setTempPassword(null);
+                setNewUserEmail(null);
+                setIsBulkImportOpen(true);
+              }}
+            >
+              Ver estado
+            </Button>
+          }
+        />
+      )}
 
-        {actionSuccess && !actionError && !tempPassword && (
-          <PortalAlert
-            variant="success"
-            title="Operación completada"
-            description={actionSuccess}
-            icon={CheckCircle2}
-          />
-        )}
+      {actionSuccess && !actionError && !tempPassword && (
+        <PortalSuccessAlert message={actionSuccess} onDismiss={() => setActionSuccess(null)} />
+      )}
 
-        {error && (
-          <PortalAlert
-            variant="error"
-            title="Incidente en la carga"
-            description={error}
-            action={
-              <button
-                type="button"
-                onClick={() => void loadUsers(listParams)}
-                className="text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
-              >
-                Reintentar
-              </button>
-            }
-            icon={AlertTriangle}
-          />
-        )}
+      {catalogError && (
+        <PortalAlert
+          variant="warning"
+          title="Catálogo de perfiles"
+          description={catalogError}
+          icon={AlertTriangle}
+        />
+      )}
 
+      {error && (
+        <PortalAlert
+          variant="error"
+          title="Incidente en la carga"
+          description={error}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadUsers(listParams)}
+            >
+              Reintentar
+            </Button>
+          }
+          icon={AlertTriangle}
+        />
+      )}
+
+      <PortalPanel
+        eyebrow="Directorio"
+        title="Listado de usuarios"
+        description="Filtra y gestiona los accesos del equipo interno de la empresa."
+        contentClassName="space-y-4"
+      >
         <UsersTable
           users={users}
           isLoading={isLoading}
@@ -561,6 +688,11 @@ export function UsersClient() {
           onDelete={openDelete}
           onResetPassword={openResetPassword}
           onLoadMore={handleLoadMore}
+          page={isPageMode ? effectivePage : undefined}
+          pageCount={isPageMode ? pageCount : undefined}
+          from={isPageMode ? from : undefined}
+          to={isPageMode ? to : undefined}
+          onPageChange={isPageMode ? handlePageChange : undefined}
           searchValue={searchDraft}
           statusFilter={query.status}
           roleFilter={query.role}
@@ -573,7 +705,7 @@ export function UsersClient() {
           currentUserRole={user?.role}
           preparingEditUserId={preparingEditUserId}
         />
-      </div>
+      </PortalPanel>
 
       <CreateUserModal
         isOpen={isCreateOpen}
@@ -670,7 +802,10 @@ export function UsersClient() {
               </Button>
             </div>
             {copyFeedback === 'ok' && (
-              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400" role="status">
+              <p
+                className="mt-2 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-300"
+                role="status"
+              >
                 Contraseña copiada al portapapeles.
               </p>
             )}
@@ -683,7 +818,7 @@ export function UsersClient() {
               type="button"
               variant="primary"
               className="mt-4 w-full rounded-2xl"
-              onClick={dismissTempPassword}
+              onClick={requestDismissTempPassword}
             >
               Entendido
             </Button>

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 import { AssetLoanAssignment, TenantContext, runInTenantSchema } from '@iwana/db';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { ListLoansQueryInput, ListLoansQuerySchema } from '../dto';
 import { AssetLoanRecord } from '../types/serialized-asset-detail.types';
 
@@ -110,7 +111,8 @@ export class AssetLoanService {
   ): Promise<{ data: AssetLoanRecord[]; total: number; page: number; limit: number }> {
     const validated = ListLoansQuerySchema.parse(query);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const { status, subscriberRefId, contractRefId, serializedAssetId, page, limit } = validated;
+    const { status, subscriberRefId, contractRefId, serializedAssetId } = validated;
+    const { page, limit } = clampPage(validated.page, validated.limit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
@@ -135,7 +137,7 @@ export class AssetLoanService {
         qb.andWhere('loan.serialized_asset_id = :serializedAssetId', { serializedAssetId });
       }
 
-      qb.orderBy('loan.installed_at', 'DESC');
+      qb.orderBy('loan.installed_at', 'DESC').addOrderBy('loan.id', 'DESC');
 
       const total = await qb.getCount();
       const loans = await qb

@@ -22,6 +22,7 @@ import { TasksController } from './tasks.controller';
 import { ExecutionOrderInventoryService } from './services/execution-order-inventory.service';
 import { ExecutionOrdersService } from './services/execution-orders.service';
 import { ExecutionOrderReliabilityService } from './services/execution-order-reliability.service';
+import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
@@ -58,6 +59,7 @@ import { TasksService } from './services/tasks.service';
     ExecutionOrderInventoryService,
     ExecutionOrdersService,
     ExecutionOrderReliabilityService,
+    ExecutionOrderProjectionConvergenceService,
     ExecutionOrderAccessGuard,
     TenantAwareThrottlerGuard,
     ExecutionOrderResponseHeadersInterceptor,

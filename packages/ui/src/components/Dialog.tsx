@@ -258,7 +258,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
 
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [enableFocusTrap, getFocusableElements, open, setOpen]);
+    }, [enableFocusTrap, getFocusableElements, layerId, open, setOpen]);
 
     React.useEffect(() => {
       if (!open || typeof document === 'undefined') {

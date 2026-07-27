@@ -82,7 +82,21 @@ describe('CalendarSettingsClient', () => {
     });
 
     organizationApi.getCompanyHours.mockResolvedValue(mockCompanyHours);
-    organizationApi.list.mockResolvedValue(mockSites);
+    organizationApi.list.mockResolvedValue({
+      data: mockSites,
+      meta: {
+        nextCursor: null,
+        total: mockSites.length,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
     organizationApi.getExceptions.mockResolvedValue(mockExceptions);
     organizationApi.get.mockResolvedValue({
       ...mockSites[0],
@@ -193,9 +207,12 @@ describe('CalendarSettingsClient', () => {
 
     await waitFor(() => {
       expect(organizationApi.getCompanyHours).toHaveBeenCalledTimes(1);
-      expect(organizationApi.list).toHaveBeenCalledTimes(1);
+      expect(organizationApi.list).toHaveBeenCalledWith({ page: 1, limit: 100 });
       expect(organizationApi.getExceptions).toHaveBeenCalledTimes(1);
     });
+
+    // H-FE-ENVELOPE-OLA7: sedes desde envelope.data, no Array.isArray(response)
+    expect(await screen.findAllByText(/Sede centro/i)).not.toHaveLength(0);
   });
 
   it('muestra alerta de error cuando todos los recursos fallan', async () => {

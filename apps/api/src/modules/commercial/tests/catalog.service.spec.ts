@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DataSource, SelectQueryBuilder } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CatalogService } from '../services/catalog.service';
 import { CatalogItemType } from '@iwana/shared';
@@ -20,15 +20,24 @@ jest.mock('@iwana/db', () => {
   };
 });
 
-/** Mock de QueryBuilder para findAll */
-const buildQueryBuilderMock = (items: unknown[], total: number) => ({
-  where: jest.fn().mockReturnThis(),
-  andWhere: jest.fn().mockReturnThis(),
-  orderBy: jest.fn().mockReturnThis(),
-  skip: jest.fn().mockReturnThis(),
-  take: jest.fn().mockReturnThis(),
-  getManyAndCount: jest.fn().mockResolvedValue([items, total]),
-});
+/** Mock de QueryBuilder para findAll cursor/page */
+const buildQueryBuilderMock = (items: unknown[], total: number) => {
+  const qb = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
+    clone: jest.fn(),
+    getCount: jest.fn().mockResolvedValue(total),
+    getMany: jest.fn().mockResolvedValue(items),
+  };
+  qb.clone.mockReturnValue(qb);
+  return qb;
+};
 
 describe('CatalogService', () => {
   let service: CatalogService;
@@ -49,7 +58,7 @@ describe('CatalogService', () => {
   });
 
   describe('findAll', () => {
-    it('retorna items paginados', async () => {
+    it('retorna items paginados con meta.nextCursor y total', async () => {
       const items = [{ id: 'item-1', name: 'Plan Básico', type: CatalogItemType.PLAN }];
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
@@ -76,9 +85,205 @@ describe('CatalogService', () => {
         }),
       );
 
-      const result = await service.findAll({ page: 1, limit: 10 } as any);
+      const result = await service.findAll({ limit: 10 } as any);
       expect(result.data).toHaveLength(1);
-      expect(result.total).toBe(1);
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.nextCursor).toBeNull();
+      expect(result.meta.mode).toBe('cursor');
+      expect(result.meta.capabilities.randomAccess).toBe(true);
+    });
+
+    it('modo page emite ListMeta offset', async () => {
+      const items = [{ id: 'item-1', name: 'Plan Básico', type: CatalogItemType.PLAN }];
+      const qb = buildQueryBuilderMock(items, 42);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => ({
+              downloadSpeedMbps: 100,
+              uploadSpeedMbps: 100,
+              technology: 'FTTH',
+              installationRule: 'ALWAYS',
+              basePrice: '1000.00',
+              installationFee: '0.00',
+            }),
+          },
+        }),
+      );
+
+      const result = await service.findAll({ page: 2, limit: 10 } as any);
+      expect(qb.skip).toHaveBeenCalledWith(10);
+      expect(qb.take).toHaveBeenCalledWith(10);
+      expect(result.meta).toMatchObject({
+        mode: 'page',
+        page: 2,
+        limit: 10,
+        total: 42,
+        totalPages: 5,
+        hasMore: true,
+      });
+    });
+
+    it('rechaza page+cursor juntos', async () => {
+      await expect(service.findAll({ page: 1, cursor: 'abc', limit: 10 } as any)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('indica nextCursor cuando hay más ítems que el limit', async () => {
+      const items = [
+        { id: 'item-1', name: 'Plan A', type: CatalogItemType.PLAN },
+        { id: 'item-2', name: 'Plan B', type: CatalogItemType.PLAN },
+        { id: 'item-3', name: 'Plan C', type: CatalogItemType.PLAN },
+      ];
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => buildQueryBuilderMock(items, 3),
+            findOne: async () => ({
+              downloadSpeedMbps: 100,
+              uploadSpeedMbps: 100,
+              technology: 'FTTH',
+              installationRule: 'ALWAYS',
+              basePrice: '1000.00',
+              installationFee: '0.00',
+            }),
+          },
+        }),
+      );
+
+      const result = await service.findAll({ limit: 2 } as any);
+      expect(result.data).toHaveLength(2);
+      expect(result.meta.total).toBe(3);
+      expect(result.meta.nextCursor).toBeTruthy();
+    });
+
+    it('aplica default limit 20 cuando se omite', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({} as any);
+      expect(qb.take).toHaveBeenCalledWith(21); // limit+1
+    });
+
+    it('aplica missingPrice con NOT EXISTS de precio vigente RESIDENTIAL', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({ missingPrice: true } as any);
+      expect(qb.andWhere).toHaveBeenCalledWith('ci.is_active = true');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('NOT EXISTS'),
+        expect.objectContaining({ missingPriceSegment: 'RESIDENTIAL' }),
+      );
+    });
+
+    it('aplica category y model con join a product_details', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      (qb as any).innerJoin = jest.fn().mockReturnThis();
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({
+        category: 'NETWORKING',
+        model: 'LOAN',
+      } as any);
+
+      expect((qb as any).innerJoin).toHaveBeenCalled();
+      expect(qb.andWhere).toHaveBeenCalledWith('pd.category = :productCategory', {
+        productCategory: 'NETWORKING',
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('pd.is_loan = true');
+    });
+
+    it('aplica charge con join a service_details', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      (qb as any).innerJoin = jest.fn().mockReturnValue(qb);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({ charge: 'RECURRING' } as any);
+      expect((qb as any).innerJoin).toHaveBeenCalled();
+      expect(qb.andWhere).toHaveBeenCalledWith('sd.charge_type = :chargeType', {
+        chargeType: 'RECURRING',
+      });
+    });
+
+    it('sort ACTIVE_NAME ordena is_active DESC + name ASC', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({ sort: 'ACTIVE_NAME' } as any);
+      expect(qb.orderBy).toHaveBeenCalledWith('ci.is_active', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('ci.name', 'ASC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('ci.id', 'ASC');
+    });
+
+    it('sort RECENTLY_UPDATED ordena updated_at DESC', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({ sort: 'RECENTLY_UPDATED' } as any);
+      expect(qb.orderBy).toHaveBeenCalledWith('ci.updated_at', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('ci.id', 'DESC');
+    });
+
+    it('sort CATEGORY_NAME hace leftJoin product_details y ordena por rank', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      (qb as any).leftJoin = jest.fn().mockReturnThis();
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({ sort: 'CATEGORY_NAME' } as any);
+      expect((qb as any).leftJoin).toHaveBeenCalled();
+      expect(qb.orderBy).toHaveBeenCalledWith(expect.stringContaining('CASE'), 'ASC');
     });
   });
 
@@ -461,6 +666,45 @@ describe('CatalogService', () => {
       );
 
       await expect(service.remove('non-existent')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('searchForPicker', () => {
+    it('retorna vacío si q está en blanco', async () => {
+      mockRunInTenantSchema.mockClear();
+      const result = await service.searchForPicker({
+        type: CatalogItemType.PLAN,
+        q: '',
+      });
+      expect(result).toEqual({ data: [], total: 0 });
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('busca planes activos y mapea label/sublabel', async () => {
+      const items = [
+        {
+          id: 'plan-1',
+          name: 'Plan fibra 200',
+          isActive: true,
+          type: CatalogItemType.PLAN,
+        },
+      ];
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => buildQueryBuilderMock(items, 3),
+          },
+        }),
+      );
+
+      const result = await service.searchForPicker({
+        type: CatalogItemType.PLAN,
+        q: 'fibra',
+        limit: 20,
+      });
+
+      expect(result.total).toBe(3);
+      expect(result.data).toEqual([{ id: 'plan-1', label: 'Plan fibra 200', sublabel: 'Activo' }]);
     });
   });
 });

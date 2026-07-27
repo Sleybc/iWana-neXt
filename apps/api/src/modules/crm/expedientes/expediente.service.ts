@@ -5,7 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
-import { DataSource, In, Like } from 'typeorm';
+import { DataSource, EntityManager, In, Like } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { ExpedienteListView, resolveExpedienteStatusesForView } from './expediente-list-view';
 import {
@@ -26,12 +26,16 @@ import { ContactAttempt } from './entities/contact-attempt.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { AuditService } from '../../audit/audit.service';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import { clampLimit } from '../../../common/pagination/clamp-limit';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
   loadAesGcmKeyPair,
   looksLikeEncryptedAesGcm,
 } from '../../../common/crypto/aes-gcm.util';
+import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
@@ -607,10 +611,15 @@ export class ExpedienteService {
     view?: ExpedienteListView | undefined;
     page?: number | undefined;
     limit?: number | undefined;
-  }): Promise<{ data: ExpedienteRecord[]; total: number }> {
+  }): Promise<{
+    data: ExpedienteRecord[];
+    total: number;
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
     const { schemaName } = TenantContext.getOrThrow();
-    const page = filters.page ?? 1;
-    const limit = filters.limit ?? 20;
+    // H-1 / D-2: tope de limit 100 (Ley 1581). Control primario en service (dictamen SEC).
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
     const status = filters.status;
     const municipality = filters.municipality;
     const search = filters.search;
@@ -618,80 +627,156 @@ export class ExpedienteService {
     const documentNumber = filters.documentNumber?.trim();
     const includeCompleted = filters.includeCompleted ?? false;
 
-    const [data, total] = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
+    const { hydrated: hydratedData, count: total } = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr) => {
+        const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
 
-      if (municipality) query.andWhere('expediente.municipality = :municipality', { municipality });
-      if (search) query.andWhere('expediente.fullName ILIKE :search', { search: `%${search}%` });
-      if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
+        if (municipality)
+          query.andWhere('expediente.municipality = :municipality', { municipality });
+        if (search) query.andWhere('expediente.fullName ILIKE :search', { search: `%${search}%` });
+        if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
 
-      // Semántica de vista: `view` es fuente de verdad; `includeCompleted` es compatibilidad temporal.
-      const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
-      const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
+        // Semántica de vista: `view` es fuente de verdad; `includeCompleted` es compatibilidad temporal.
+        const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
+        const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
 
-      if (status) {
-        query.andWhere('expediente.status = :status', { status });
-        // Solo aplicar restricción de vista si no es 'all' (allowedStatuses !== null)
-        if (allowedStatuses !== null) {
+        if (status) {
+          query.andWhere('expediente.status = :status', { status });
+          // Solo aplicar restricción de vista si no es 'all' (allowedStatuses !== null)
+          if (allowedStatuses !== null) {
+            query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
+          }
+        } else if (allowedStatuses !== null) {
           query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
         }
-      } else if (allowedStatuses !== null) {
-        query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
-      }
 
-      query.orderBy('expediente.createdAt', 'DESC');
-
-      if (!documentNumber) {
-        query.skip((page - 1) * limit).take(limit);
-
-        const [items, count] = await query.getManyAndCount();
-        return [items, count] as const;
-      }
-
-      // Cuando hay búsqueda exacta por documento (campo cifrado), se filtra en memoria
-      // antes de paginar para evitar perder coincidencias por el recorte inicial.
-      const items = await query.getMany();
-      const filteredItems = items.filter((item) => {
-        if (!item.documentNumberEncrypted) {
-          return false;
+        // D-4: filtro por hash determinista (sin decrypt + SCAN_CAP).
+        if (documentNumber) {
+          query.andWhere('expediente.documentNumberHash = :docHash', {
+            docHash: hashDocumentNumber(documentNumber),
+          });
         }
 
-        try {
-          return this.decryptValue(item.documentNumberEncrypted) === documentNumber;
-        } catch {
-          return false;
+        // DEF-1: desempate por id para paginación offset estable.
+        query
+          .orderBy('expediente.createdAt', 'DESC')
+          .addOrderBy('expediente.id', 'DESC')
+          .skip((page - 1) * limit)
+          .take(limit);
+
+        const [rows, count] = await query.getManyAndCount();
+
+        // Batch: una consulta por tabla en vez de 3 por fila (ADR-065 S-1)
+        const ids = rows.map((r) => r.id);
+        const completenessMap = await this.completenessCalculator.calculateBatch(
+          qr.manager,
+          schemaName,
+          ids,
+        );
+
+        const hydrated = rows.map((item) => {
+          const completeness = completenessMap.get(item.id);
+          if (completeness) {
+            const pipelineProgress = this.calculatePipelineProgress(completeness);
+            Object.assign(item, {
+              completenessCommercial: completeness.commercial,
+              completenessLegal: completeness.legal,
+              completenessTechnical: completeness.technical,
+              completenessOperational: completeness.operational,
+              completenessOverall: completeness.overall,
+              pipelineProgress,
+            });
+          }
+          item.documentNumberEncrypted = null;
+          item.documentNumberHash = null;
+          item.phonePrimaryEncrypted = null;
+          item.phoneSecondaryEncrypted = null;
+          item.emailPrimaryEncrypted = null;
+          item.altContactPhoneEncrypted = null;
+          item.siteContactPhoneEncrypted = null;
+          return item;
+        });
+
+        return { hydrated, count };
+      },
+    );
+
+    return {
+      data: hydratedData,
+      total,
+      meta: buildPageMeta({ total, page, limit, randomAccess: true }),
+    };
+  }
+
+  /**
+   * Backfill de `document_number_hash` para filas legacy (ciphertext sin hash).
+   * Invocable por tenant; no loguea PII. La migración 088 cubre el despliegue;
+   * este método queda como reintento ops. La 087 solo añade columna/índice.
+   */
+  async backfillDocumentNumberHashes(batchSize = 100): Promise<{
+    processed: number;
+    updated: number;
+    skipped: number;
+  }> {
+    const safeBatch = Math.min(Math.max(Math.floor(batchSize) || 100, 1), 500);
+    const { schemaName } = TenantContext.getOrThrow();
+    let processed = 0;
+    let updated = 0;
+    let skipped = 0;
+    let afterId: string | null = null;
+
+    // Keyset por id: avanza aunque un decrypt falle (evita bucle infinito).
+    for (;;) {
+      const batch = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const qb = qr.manager
+          .createQueryBuilder(ExpedienteRecord, 'expediente')
+          .where('expediente.documentNumberHash IS NULL')
+          .andWhere('expediente.documentNumberEncrypted IS NOT NULL')
+          .orderBy('expediente.id', 'ASC')
+          .take(safeBatch);
+
+        if (afterId) {
+          qb.andWhere('expediente.id > :afterId', { afterId });
+        }
+
+        return qb.getMany();
+      });
+
+      if (batch.length === 0) {
+        break;
+      }
+
+      afterId = batch[batch.length - 1]!.id;
+
+      await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        for (const row of batch) {
+          processed += 1;
+          if (!row.documentNumberEncrypted) {
+            skipped += 1;
+            continue;
+          }
+          try {
+            const plaintext = this.decryptValue(row.documentNumberEncrypted);
+            row.documentNumberHash = hashDocumentNumber(plaintext);
+            await qr.manager.save(ExpedienteRecord, row);
+            updated += 1;
+          } catch {
+            skipped += 1;
+            this.logger.warn(
+              `No se pudo backfillear document_number_hash para expediente ${row.id}`,
+            );
+          }
         }
       });
 
-      const start = (page - 1) * limit;
-      const pagedItems = filteredItems.slice(start, start + limit);
+      if (batch.length < safeBatch) {
+        break;
+      }
+    }
 
-      return [pagedItems, filteredItems.length] as const;
-    });
-
-    const hydratedData = await Promise.all(
-      data.map(async (item) => {
-        const completeness = await this.completenessCalculator.calculate(item.id);
-        const pipelineProgress = this.calculatePipelineProgress(completeness);
-        Object.assign(item, {
-          completenessCommercial: completeness.commercial,
-          completenessLegal: completeness.legal,
-          completenessTechnical: completeness.technical,
-          completenessOperational: completeness.operational,
-          completenessOverall: completeness.overall,
-          pipelineProgress,
-        });
-        item.documentNumberEncrypted = null;
-        item.phonePrimaryEncrypted = null;
-        item.phoneSecondaryEncrypted = null;
-        item.emailPrimaryEncrypted = null;
-        item.altContactPhoneEncrypted = null;
-        item.siteContactPhoneEncrypted = null;
-        return item;
-      }),
-    );
-
-    return { data: hydratedData, total };
+    return { processed, updated, skipped };
   }
 
   async getPipelineSummary(): Promise<{ data: Record<string, number>; total: number }> {
@@ -817,6 +902,33 @@ export class ExpedienteService {
     );
 
     return entity ? this.resolveDisplayName(entity) : null;
+  }
+
+  /**
+   * Resolución batch de display names para evitar N+1 conexiones a la pool.
+   * Usa un EntityManager ya existente (no abre nuevas conexiones) y resuelve
+   * todos los IDs en una sola consulta con IN.
+   */
+  async findDisplayNamesByIds(
+    manager: EntityManager,
+    ids: string[],
+  ): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+
+    const uniqueIds = [...new Set(ids)];
+    const entities = await manager.find(ExpedienteRecord, {
+      where: { id: In(uniqueIds) },
+      select: ['id', 'fullName', 'firstName', 'lastName', 'companyName'],
+    });
+
+    const map = new Map<string, string | null>();
+    for (const id of uniqueIds) {
+      map.set(id, null);
+    }
+    for (const entity of entities) {
+      map.set(entity.id, this.resolveDisplayName(entity));
+    }
+    return map;
   }
 
   async findDisplayNameByShortCode(
@@ -1088,9 +1200,16 @@ export class ExpedienteService {
 
   async listContactAttempts(
     expedienteId: string,
-    page = 1,
-    limit = 20,
-  ): Promise<{ data: ContactAttempt[]; total: number }> {
+    rawPage = 1,
+    rawLimit = 20,
+  ): Promise<{
+    data: ContactAttempt[];
+    total: number;
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
+    // H-1 / D-2: tope de limit 100 también en intentos de contacto.
+    const cappedLimit = clampLimit(rawLimit);
+    const { page, limit } = clampPage(rawPage ?? 1, cappedLimit);
     const { schemaName } = TenantContext.getOrThrow();
     await this.findById(expedienteId);
 
@@ -1099,14 +1218,20 @@ export class ExpedienteService {
 
       query
         .where('attempt.expedienteId = :expedienteId', { expedienteId })
+        // DEF-1: desempate por id.
         .orderBy('attempt.attemptedAt', 'DESC')
+        .addOrderBy('attempt.id', 'DESC')
         .skip((page - 1) * limit)
         .take(limit);
 
       return query.getManyAndCount();
     });
 
-    return { data, total };
+    return {
+      data,
+      total,
+      meta: buildPageMeta({ total, page, limit, randomAccess: true }),
+    };
   }
 
   async createConsent(
@@ -1819,6 +1944,8 @@ export class ExpedienteService {
     );
     const documentNumber = this.requireNonEmptyText(data.documentNumber, 'Numero de documento');
 
+    const documentNumberHash = hashDocumentNumber(String(documentNumber));
+
     if (personType === 'PERSONA_NATURAL') {
       const firstName = this.requireNonEmptyText(data.firstName, 'Nombres');
       const lastName = this.requireNonEmptyText(data.lastName, 'Apellidos');
@@ -1831,6 +1958,7 @@ export class ExpedienteService {
         primaryContactRole: null,
         documentType,
         documentNumberEncrypted: this.encryptValue(String(documentNumber)),
+        documentNumberHash,
         fullName: `${firstName} ${lastName}`.trim(),
       };
     }
@@ -1853,6 +1981,7 @@ export class ExpedienteService {
       primaryContactRole: this.sanitizePlainText(String(primaryContactRole)),
       documentType,
       documentNumberEncrypted: this.encryptValue(String(documentNumber)),
+      documentNumberHash,
       fullName: String(companyName),
     };
   }
@@ -1877,7 +2006,9 @@ export class ExpedienteService {
     const changedFields = Object.keys(data);
 
     if (section === ExpedienteSection.IDENTIFICATION) {
-      return changedFields.filter((field) => field !== 'documentNumberEncrypted');
+      return changedFields.filter(
+        (field) => field !== 'documentNumberEncrypted' && field !== 'documentNumberHash',
+      );
     }
 
     return changedFields;

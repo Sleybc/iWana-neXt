@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { PurchaseOrderStatus } from '@iwana/shared';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PurchaseOrderStatus, type ListMeta } from '@iwana/shared';
+import { Badge } from '@iwana/ui';
 import type {
   AddSupplierQuoteDto,
   CancelPurchaseOrderDto,
@@ -25,9 +26,22 @@ import type {
   UpdatePurchaseRequestDto,
   CreateCounterPurchaseDto,
 } from '@/lib/api-client';
+import { ApiError, purchasingApi } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
+import {
+  PortalAlert,
+  PortalPageSizeSelect,
+  PortalPanel,
+  PortalResultsStrip,
+  PortalSkeletonBlock,
+  PortalTablePager,
+  PortalTablePagination,
+  portalDataTableShellClassName,
+  portalDataBusyRegionClassName,
+} from '@/components/shared/portal-ui';
 import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
-import { purchasingApi } from '@/lib/api-client';
-import { PortalPanel } from '@/components/shared/portal-ui';
 import { PurchaseCreateModeHeader } from './PurchaseCreateModeHeader';
 import { PurchaseCreateModeShell } from './PurchaseCreateModeShell';
 import { PurchaseOrderDrawer } from './PurchaseOrderDrawer';
@@ -38,7 +52,14 @@ import { PurchaseRequestsToolbar } from './PurchaseRequestsToolbar';
 import { PurchaseWorkspaceSummary } from './PurchaseWorkspaceSummary';
 import { CounterPurchasePanel } from './CounterPurchasePanel';
 import {
-  filterPurchaseRequests,
+  buildPurchaseRequestsListParams,
+  filtersFromTableQuery,
+  hasActivePurchaseFilters,
+  PURCHASE_REQUESTS_FILTER_KEYS,
+  PURCHASE_REQUESTS_NAMESPACE,
+  tableQueryFromFilters,
+} from './purchase-requests-list-query';
+import {
   findFirstRequestForKpiWorkbench,
   kpiPresetToFilters,
   type PurchaseKpiPreset,
@@ -62,8 +83,20 @@ interface PurchaseCreateRequestResult {
   requestId?: string;
 }
 
+const REQUESTS_RESOURCE = { singular: 'solicitud', plural: 'solicitudes' } as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
+
+function mapPurchaseListError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión de nuevo para continuar.';
+    if (error.status === 403) return 'No tienes permisos para consultar solicitudes de compra.';
+    if (error.status === 404) return 'El recurso solicitado ya no está disponible.';
+    return error.message;
+  }
+  return 'No fue posible cargar las solicitudes de compra.';
+}
+
 interface PurchaseWorkspaceProps {
-  requests: PurchaseRequestRecord[];
   items: InventoryItemRecord[];
   catalogOptions: InventoryCatalogOptionRecord[];
   supplierLabels?: Record<string, string>;
@@ -72,8 +105,8 @@ interface PurchaseWorkspaceProps {
   latestOrder: PurchaseOrderRecord | null;
   latestOrderLines: PurchaseOrderLineRecord[];
   latestReceipt: GoodsReceiptResultRecord | null;
-  isLoading?: boolean;
-  isRefreshing?: boolean;
+  /** Incrementar tras mutaciones del padre para recargar el listado. */
+  listRevision?: number;
   isSubmittingRequest: boolean;
   isSubmittingQuote: boolean;
   isSubmittingApprove: boolean;
@@ -122,13 +155,11 @@ interface PurchaseWorkspaceProps {
   onSelectOrder: (orderId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onCatalogSearch?: (search: string) => void;
-  /** Prefill de creación (p. ej. desde Reposición). Se consume al abrir el composer. */
   createInitialValues?: PurchaseComposerInitialValues | null;
   onCreateInitialValuesConsumed?: () => void;
 }
 
-export function PurchaseWorkspace({
-  requests,
+function PurchaseWorkspaceInner({
   items,
   catalogOptions,
   supplierLabels = {},
@@ -137,8 +168,7 @@ export function PurchaseWorkspace({
   latestOrder,
   latestOrderLines,
   latestReceipt,
-  isLoading = false,
-  isRefreshing = false,
+  listRevision = 0,
   isSubmittingRequest,
   isSubmittingQuote,
   isSubmittingApprove,
@@ -187,7 +217,39 @@ export function PurchaseWorkspace({
   createInitialValues = null,
   onCreateInitialValuesConsumed,
 }: PurchaseWorkspaceProps) {
-  const [filters, setFilters] = useState<PurchaseRequestFilters>({});
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+
+  const {
+    page,
+    pageSize,
+    filters: urlFilters,
+    setPage,
+    setPageSize,
+    setFilters: setUrlFilters,
+    setQuery,
+  } = useTableQueryState({
+    namespace: PURCHASE_REQUESTS_NAMESPACE,
+    filterKeys: PURCHASE_REQUESTS_FILTER_KEYS,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
+
+  const filters = useMemo(() => filtersFromTableQuery(urlFilters), [urlFilters]);
+  const setFilters = useCallback(
+    (next: PurchaseRequestFilters) => {
+      setUrlFilters(tableQueryFromFilters(next));
+    },
+    [setUrlFilters],
+  );
+
+  const [requests, setRequests] = useState<PurchaseRequestRecord[]>([]);
+  const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
+
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PurchaseRequestDetailRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -205,10 +267,94 @@ export function PurchaseWorkspace({
   const [prefillValues, setPrefillValues] = useState<PurchaseComposerInitialValues | null>(null);
   const [prefillKey, setPrefillKey] = useState<string | null>(null);
 
-  const filteredCount = useMemo(
-    () => filterPurchaseRequests(requests, filters).length,
-    [requests, filters],
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setListError(null);
+
+      try {
+        const response = await purchasingApi.listRequests(
+          buildPurchaseRequestsListParams(filters, page, pageSize),
+        );
+        const nextMeta = normalizeListMeta(response.meta, {
+          dataLength: response.data.length,
+          limit: pageSize,
+        });
+        // No inventar sortableFields — el servidor emite [].
+        const requestedPage = page;
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setRequests(response.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch (loadError: unknown) {
+        setListError(mapPurchaseListError(loadError));
+        if (!soft) {
+          setRequests([]);
+          setMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [filters, page, pageSize, setQuery],
   );
+
+  useEffect(() => {
+    void loadPage({ soft: true });
+  }, [loadPage, listRevision]);
+
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    if (prevPageRef.current === page) return;
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom
+      }
+    }
+  }, [page]);
+
+  const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
+  const effectivePage = meta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const randomAccess = meta.capabilities.randomAccess;
+  const showPager = !isLoading && meta.total > 0;
+  const showPageSize = showPager && randomAccess && meta.total > Math.min(...[10, 20, 50]);
+  const activeFilters = hasActivePurchaseFilters(filters);
+  const resultsLabel =
+    meta.total === 0 && !activeFilters
+      ? '0 solicitudes'
+      : requests.length === 0
+        ? 'Sin resultados con estos filtros'
+        : `${from}–${to} de ${meta.total} solicitud${meta.total === 1 ? '' : 'es'}`;
 
   const resolvedSupplierLabels = useMemo(
     () => ({ ...supplierLabels, ...detailSupplierLabels }),
@@ -302,12 +448,11 @@ export function PurchaseWorkspace({
   function handleKpiFilterChange(preset: PurchaseKpiPreset) {
     const isToggleOff = filters.kpiPreset === preset;
 
-    setFilters((current) => {
-      if (current.kpiPreset === preset) {
-        return {};
-      }
-      return kpiPresetToFilters(preset);
-    });
+    if (isToggleOff) {
+      setFilters({});
+    } else {
+      setFilters(kpiPresetToFilters(preset));
+    }
 
     if (!isToggleOff) {
       const workbenchTarget = findFirstRequestForKpiWorkbench(preset, requests);
@@ -315,6 +460,11 @@ export function PurchaseWorkspace({
         void openWorkbench(workbenchTarget.id, 'receipts');
       }
     }
+  }
+
+  async function handleToolbarRefresh() {
+    await onRefresh();
+    await loadPage();
   }
 
   function openCreateMode() {
@@ -397,7 +547,7 @@ export function PurchaseWorkspace({
     const result = await onCreateRequest(payload);
     if (result.ok) {
       closeCreateMode(true);
-      // InventoryClient.onCreateRequest ya retorna { ok, requestId }; abrimos el workbench aquí.
+      await loadPage({ soft: true });
       if (result.requestId) {
         await openWorkbench(result.requestId);
       }
@@ -448,7 +598,24 @@ export function PurchaseWorkspace({
 
   return (
     <div className="space-y-6">
+      {listError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar solicitudes"
+          description={listError}
+        />
+      ) : null}
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
+      ) : null}
+
       {workspaceMode === 'inbox' ? (
+        /* Conteos KPI son page-local hasta endpoint de agregación. */
         <PurchaseWorkspaceSummary
           requests={requests}
           filters={filters}
@@ -466,23 +633,65 @@ export function PurchaseWorkspace({
           <div className="space-y-4">
             <PurchaseRequestsToolbar
               filters={filters}
-              resultCount={filteredCount}
-              totalCount={requests.length}
+              resultCount={requests.length}
+              totalCount={meta.total}
               isRefreshing={isRefreshing}
+              hideResultsLabel
               onFiltersChange={setFilters}
-              onRefresh={() => void onRefresh()}
+              onRefresh={() => void handleToolbarRefresh()}
               onClearFilters={() => setFilters({})}
               onOpenComposer={openCreateMode}
               {...(onCounterPurchase ? { onOpenCounterPurchase: openCounterPurchaseMode } : {})}
             />
-            <PurchaseRequestsTable
-              requests={requests}
-              filters={filters}
-              selectedRequestId={selectedRequestId}
-              isLoading={isLoading}
-              onSelectRequest={(requestId) => void openWorkbench(requestId)}
-              onCreateRequest={openCreateMode}
-            />
+            {requests.length === 0 ? (
+              <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+            ) : null}
+            <div ref={tableShellRef} className={portalDataTableShellClassName}>
+              <div
+                className={isRefreshing ? `p-4 ${portalDataBusyRegionClassName}` : 'p-4'}
+                aria-busy={isRefreshing || undefined}
+              >
+                <PurchaseRequestsTable
+                  requests={requests}
+                  hasActiveFilters={activeFilters}
+                  selectedRequestId={selectedRequestId}
+                  isLoading={isLoading}
+                  onSelectRequest={(requestId) => void openWorkbench(requestId)}
+                  onCreateRequest={openCreateMode}
+                />
+              </div>
+              {showPager && randomAccess ? (
+                <PortalTablePager
+                  page={effectivePage}
+                  pageCount={Math.max(1, pageCount)}
+                  onPageChange={setPage}
+                  from={from}
+                  to={to}
+                  total={meta.total}
+                  resource={REQUESTS_RESOURCE}
+                  loading={isRefreshing}
+                  pageSizeControl={
+                    showPageSize ? (
+                      <PortalPageSizeSelect
+                        value={pageSize}
+                        onChange={setPageSize}
+                        disabled={isRefreshing}
+                      />
+                    ) : undefined
+                  }
+                />
+              ) : null}
+              {showPager && !randomAccess ? (
+                <PortalTablePagination
+                  hasMore={meta.hasMore}
+                  onLoadMore={() => setPage(page + 1)}
+                  loading={isRefreshing}
+                  resourceLabel="solicitudes"
+                  shown={to}
+                  total={meta.total}
+                />
+              ) : null}
+            </div>
           </div>
         </PortalPanel>
       ) : workspaceMode === 'create' ? (
@@ -665,6 +874,7 @@ export function PurchaseWorkspace({
             await loadDetail(selectedRequestId);
           }
           await onRefresh();
+          await loadPage({ soft: true });
         }}
         onOrderCreated={() => {
           setOrderDrawerOpen(false);
@@ -672,5 +882,13 @@ export function PurchaseWorkspace({
         }}
       />
     </div>
+  );
+}
+
+export function PurchaseWorkspace(props: PurchaseWorkspaceProps) {
+  return (
+    <Suspense fallback={<PortalSkeletonBlock className="h-96" />}>
+      <PurchaseWorkspaceInner {...props} />
+    </Suspense>
   );
 }

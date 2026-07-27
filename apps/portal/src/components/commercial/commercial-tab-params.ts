@@ -47,6 +47,8 @@ export interface ResolvedCommercialRoute {
   taxationSubTab: TaxationSubTab;
   /** Solo `expiring`; otros valores de `status` (p. ej. catálogo) se ignoran. */
   status?: CommercialOfferStatusFilter | null;
+  /** UUID de entidad a enfocar (peek / highlight); inválido se ignora. */
+  focus?: string | null;
 }
 
 const DEFAULT_ROUTE: ResolvedCommercialRoute = {
@@ -54,6 +56,32 @@ const DEFAULT_ROUTE: ResolvedCommercialRoute = {
   taxationSubTab: 'tax-catalog',
   status: null,
 };
+
+const FOCUS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseCommercialFocusId(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return FOCUS_UUID_RE.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Escribe/limpia solo `focus`.
+ */
+export function applyCommercialFocusToSearchParams(
+  params: URLSearchParams,
+  focus: string | null | undefined,
+): void {
+  if (focus) {
+    params.set('focus', focus);
+    return;
+  }
+
+  params.delete('focus');
+}
 
 function parseTaxationSubTab(value: string | undefined): TaxationSubTab {
   if (value && TAXATION_SUB_TABS.includes(value as TaxationSubTab)) {
@@ -122,6 +150,28 @@ export function resolveCommercialRoute(value: string | null | undefined): Resolv
   };
 }
 
+/**
+ * Escribe/limpia `offerStatus=expiring` (canónico).
+ * Compat: si queda `status=expiring` legacy, lo migra al borrar.
+ */
+export function applyCommercialOfferStatusToSearchParams(
+  params: URLSearchParams,
+  status: CommercialOfferStatusFilter | null | undefined,
+): void {
+  if (status === 'expiring') {
+    params.set('offerStatus', 'expiring');
+    if (params.get('status') === 'expiring') {
+      params.delete('status');
+    }
+    return;
+  }
+
+  params.delete('offerStatus');
+  if (params.get('status') === 'expiring') {
+    params.delete('status');
+  }
+}
+
 export function parseCommercialOfferStatus(
   value: string | null | undefined,
 ): CommercialOfferStatusFilter | null {
@@ -132,22 +182,14 @@ export function parseCommercialOfferStatus(
   return null;
 }
 
-/**
- * Escribe/limpia solo `status=expiring`.
- * No borra `status=ACTIVE|INACTIVE` del catálogo.
- */
-export function applyCommercialOfferStatusToSearchParams(
+/** Lee `offerStatus` canónico o `status=expiring` legacy. */
+export function parseCommercialOfferStatusFromSearchParams(
   params: URLSearchParams,
-  status: CommercialOfferStatusFilter | null | undefined,
-): void {
-  if (status === 'expiring') {
-    params.set('status', 'expiring');
-    return;
-  }
-
-  if (params.get('status') === 'expiring') {
-    params.delete('status');
-  }
+): CommercialOfferStatusFilter | null {
+  return (
+    parseCommercialOfferStatus(params.get('offerStatus')) ??
+    parseCommercialOfferStatus(params.get('status') === 'expiring' ? 'expiring' : null)
+  );
 }
 
 export function isCommercialValidToExpiringSoon(
@@ -258,6 +300,7 @@ export function needsCommercialUrlCanonicalization(
 
 export interface CommercialNavigateOptions {
   status?: CommercialOfferStatusFilter | null;
+  focus?: string | null;
 }
 
 export type CommercialNavigateHandler = (

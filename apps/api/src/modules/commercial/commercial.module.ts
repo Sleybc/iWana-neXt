@@ -30,6 +30,7 @@ import { CommercialDashboardService } from './services/commercial-dashboard.serv
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { CatalogController } from './controllers/catalog.controller';
 import { CommercialDashboardController } from './controllers/commercial-dashboard.controller';
+import { CommercialPickerSearchController } from './controllers/commercial-picker-search.controller';
 import { BundleController } from './controllers/bundle.controller';
 import { PromotionController } from './controllers/promotion.controller';
 import { CompatibilityController } from './controllers/compatibility.controller';
@@ -63,6 +64,7 @@ import { TaxationModule } from '../taxation/taxation.module';
   controllers: [
     CatalogController,
     CommercialDashboardController,
+    CommercialPickerSearchController,
     BundleController,
     PromotionController,
     CompatibilityController,

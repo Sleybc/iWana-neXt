@@ -4,6 +4,12 @@ module.exports = {
   rootDir: 'src',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testRegex: '.*\\.spec\\.tsx?$',
+  // R-14: el presupuesto de CPU se acota ARRIBA — `pnpm test` = `turbo run test
+  // --concurrency=1` (package.json raíz), una sola tarea `test` viva a la vez.
+  // Ver la nota extensa con la medición en apps/api/jest.config.js.
+  // Sin esa serialización, este '50%' se sumaba al '50%' de los demás paquetes.
+  testTimeout: 15000,
+  maxWorkers: '50%',
   transform: {
     '^.+\\.(t|j)sx?$': [
       'ts-jest',

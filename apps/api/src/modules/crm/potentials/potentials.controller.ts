@@ -5,15 +5,19 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
+import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { createPotentialSchema } from '../schemas/create-potential.schema';
 import { qualifyPotentialSchema } from '../schemas/qualify-potential.schema';
@@ -44,9 +48,17 @@ export class PotentialsController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar potenciales comerciales', deprecated: true })
-  async findAll(): Promise<{ data: PotentialResponseDto[] }> {
-    const data = await this.potentialsService.findAll();
-    return { data };
+  @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
+  async findAll(
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ): Promise<ListResponse<PotentialResponseDto>> {
+    return this.potentialsService.findAll({
+      ...(page !== undefined ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
   }
 
   @Post(':id/qualify')

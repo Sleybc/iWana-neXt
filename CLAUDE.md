@@ -126,7 +126,8 @@ Tenant isolation is **PostgreSQL schema per tenant**. `TenantMiddleware` runs on
 - Import grouping: external → workspace (`@iwana/*`) → relative.
 - User-visible text and business-logic comments are in **Spanish**, sentence case; never expose raw enums in final views.
 - No PII, secrets, tokens, or connection strings in code, tests, docs, or logs.
-- New docs follow `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md` (PRD, HLD, ADR, INFORME, PROMPT) under `docs/`; after a change, update or create the living report in `docs/informes/`.
+- New docs follow `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md` (PRD, HLD, ADR, INFORME, PROMPT) under `docs/`, one folder per type — `docs/prds/`, `docs/hlds/`, `docs/adrs/`, `docs/informes/`, **`docs/prompts/`**. After a change, update or create the living report in `docs/informes/`.
+- **Every prompt goes in `docs/prompts/`, without exception** — both phase-execution prompts (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`) and reusable operational ones (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`). There is no `.github/prompts/`: it was removed on 2026-07-27 and its 33 files migrated. See `AGENTS.md` → Documentation Rules.
 
 ## Tests
 

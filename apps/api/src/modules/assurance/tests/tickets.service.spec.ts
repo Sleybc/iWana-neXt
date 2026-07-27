@@ -15,11 +15,45 @@ import {
   UserRole,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { ListTicketsQuerySchema } from '../dto';
 import { AssuranceFieldServicePort } from '../ports/assurance-field-service.port';
 import { PqrService } from '../services/pqr.service';
-import { SlaService } from '../services/sla.service';
+import { AT_RISK_THRESHOLD_RATIO, SlaService } from '../services/sla.service';
 import { TicketsService } from '../services/tickets.service';
 import { TimelineService } from '../services/timeline.service';
+
+/** Literales THEN del CASE SQL en list() — contrato DEF-2 D-1 (= SlaBreachStatus). */
+const SLA_CASE_STATUS_VARIANTS = [
+  SlaBreachStatus.OK,
+  SlaBreachStatus.AT_RISK,
+  SlaBreachStatus.FIRST_RESPONSE_BREACHED,
+  SlaBreachStatus.RESOLUTION_BREACHED,
+] as const;
+
+/**
+ * Marcadores que congelan el CASE alineado a SlaService.deriveBreachStatus:
+ * columnas reales + literales del enum + umbral AT_RISK.
+ */
+const SLA_CASE_BRANCH_MARKERS = [
+  `st.status IN ('${TicketStatus.CANCELLED}', '${TicketStatus.CLOSED}', '${TicketStatus.RESOLVED}')`,
+  'st.sla_resolve_by_at',
+  'st.sla_first_response_at',
+  'st.first_responded_at',
+  'st.resolved_at',
+  'st.created_at',
+  `THEN '${SlaBreachStatus.RESOLUTION_BREACHED}'`,
+  `THEN '${SlaBreachStatus.FIRST_RESPONSE_BREACHED}'`,
+  `THEN '${SlaBreachStatus.AT_RISK}'`,
+  `ELSE '${SlaBreachStatus.OK}'`,
+  `* ${AT_RISK_THRESHOLD_RATIO}`,
+] as const;
+
+const SLA_CASE_FORBIDDEN_MARKERS = [
+  'sla_due_at',
+  'WITHIN_SLA',
+  'NOT_APPLICABLE',
+  "'BREACHED'",
+] as const;
 
 jest.mock('@iwana/db', () => ({
   TenantContext: {
@@ -292,9 +326,14 @@ describe('TicketsService', () => {
         manager: {
           createQueryBuilder: () => ({
             where: jest.fn().mockReturnThis(),
+            addSelect: jest.fn().mockReturnThis(),
             andWhere: andWhereMock,
+            getCount: jest.fn().mockResolvedValue(0),
             orderBy: jest.fn().mockReturnThis(),
-            getMany: jest.fn().mockResolvedValue([]),
+            addOrderBy: jest.fn().mockReturnThis(),
+            skip: jest.fn().mockReturnThis(),
+            take: jest.fn().mockReturnThis(),
+            getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
           }),
         },
       };
@@ -316,6 +355,244 @@ describe('TicketsService', () => {
     });
     expect(andWhereMock).toHaveBeenCalledWith('st.requester_ref_id = :requesterRefId', {
       requesterRefId: 'subscriber-002',
+    });
+  });
+
+  describe('list() slaBreachStatus — DEF-2 D-1', () => {
+    type ListQbMocks = {
+      addSelectMock: jest.Mock;
+      andWhereMock: jest.Mock;
+      getCountMock: jest.Mock;
+      skipMock: jest.Mock;
+      takeMock: jest.Mock;
+      getRawAndEntitiesMock: jest.Mock;
+      callOrder: string[];
+    };
+
+    const adminActor: JwtPayload = {
+      ...actor,
+      sub: 'admin-001',
+      email: 'admin@example.test',
+      role: UserRole.ADMIN,
+      jti: 'jti-admin',
+    };
+
+    function mockListQueryBuilder(opts: {
+      entities?: Array<{ id: string; subject?: string }>;
+      raw?: Array<Record<string, unknown>>;
+      total?: number;
+    }): ListQbMocks {
+      const callOrder: string[] = [];
+      const addSelectMock = jest.fn().mockReturnThis();
+      const andWhereMock = jest.fn().mockImplementation(function (this: unknown) {
+        callOrder.push('andWhere');
+        return this;
+      });
+      const getCountMock = jest.fn().mockImplementation(async () => {
+        callOrder.push('getCount');
+        return opts.total ?? 0;
+      });
+      const skipMock = jest.fn().mockReturnThis();
+      const takeMock = jest.fn().mockReturnThis();
+      const getRawAndEntitiesMock = jest.fn().mockImplementation(async () => {
+        callOrder.push('getRawAndEntities');
+        return {
+          entities: opts.entities ?? [],
+          raw: opts.raw ?? [],
+        };
+      });
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schemaName, fn) => {
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              where: jest.fn().mockReturnThis(),
+              addSelect: addSelectMock,
+              andWhere: andWhereMock,
+              getCount: getCountMock,
+              orderBy: jest.fn().mockReturnThis(),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: skipMock,
+              take: takeMock,
+              getRawAndEntities: getRawAndEntitiesMock,
+              alias: 'st',
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      return {
+        addSelectMock,
+        andWhereMock,
+        getCountMock,
+        skipMock,
+        takeMock,
+        getRawAndEntitiesMock,
+        callOrder,
+      };
+    }
+
+    it('congela el CASE SQL alineado a SlaBreachStatus y columnas reales', async () => {
+      const { addSelectMock } = mockListQueryBuilder({});
+
+      await service.list({ page: 1, limit: 20 }, adminActor);
+
+      expect(addSelectMock).toHaveBeenCalledTimes(1);
+      const [caseExpr, alias] = addSelectMock.mock.calls[0] as [string, string];
+      expect(alias).toBe('sla_breach_status');
+      for (const marker of SLA_CASE_BRANCH_MARKERS) {
+        expect(caseExpr).toContain(marker);
+      }
+      for (const forbidden of SLA_CASE_FORBIDDEN_MARKERS) {
+        expect(caseExpr).not.toContain(forbidden);
+      }
+    });
+
+    it.each(SLA_CASE_STATUS_VARIANTS)(
+      'alinea entities[idx]↔raw[idx] para status CASE %s',
+      async (caseStatus) => {
+        const entities = [
+          { id: 'ticket-a', subject: 'Primero' },
+          { id: 'ticket-b', subject: 'Segundo' },
+        ];
+        // Índice 0 y 1 con el mismo status; congela merge posicional (sin joins).
+        const raw = [
+          { sla_breach_status: caseStatus, st_id: 'ticket-a' },
+          { sla_breach_status: caseStatus, st_id: 'ticket-b' },
+        ];
+        mockListQueryBuilder({ entities, raw, total: 2 });
+
+        const result = await service.list({ page: 1, limit: 20 }, adminActor);
+
+        expect(result.data).toHaveLength(2);
+        const row0 = result.data[0] as { id: string; slaBreachStatus: string };
+        const row1 = result.data[1] as { id: string; slaBreachStatus: string };
+        expect(row0).toEqual(
+          expect.objectContaining({ id: 'ticket-a', slaBreachStatus: caseStatus }),
+        );
+        expect(row1).toEqual(
+          expect.objectContaining({ id: 'ticket-b', slaBreachStatus: caseStatus }),
+        );
+        // Regresión: si un join desalineara raw, el status del idx 0 no debe “saltar” al 1.
+        expect(row0.slaBreachStatus).toBe(raw[0]!.sla_breach_status);
+        expect(row1.slaBreachStatus).toBe(raw[1]!.sla_breach_status);
+      },
+    );
+
+    it('mantiene alineación posicional cuando raw trae estados CASE distintos por fila', async () => {
+      const entities = SLA_CASE_STATUS_VARIANTS.map((_, idx) => ({
+        id: `ticket-${idx}`,
+        subject: `Fila ${idx}`,
+      }));
+      const statuses = [...SLA_CASE_STATUS_VARIANTS];
+      const raw = statuses.map((sla_breach_status, idx) => ({
+        sla_breach_status,
+        st_id: `ticket-${idx}`,
+      }));
+      mockListQueryBuilder({ entities, raw, total: statuses.length });
+
+      const result = await service.list({ page: 1, limit: 20 }, adminActor);
+      const rows = result.data as Array<{ id: string; slaBreachStatus: string }>;
+
+      expect(rows.map((row) => row.slaBreachStatus)).toEqual([...statuses]);
+      expect(rows.map((row) => row.id)).toEqual(entities.map((e) => e.id));
+    });
+
+    it.each(SLA_CASE_STATUS_VARIANTS)(
+      'smoke: list acepta filtro slaBreachStatus=%s (Zod + WHERE)',
+      async (status) => {
+        const { andWhereMock } = mockListQueryBuilder({ total: 1 });
+
+        const parsed = ListTicketsQuerySchema.safeParse({
+          slaBreachStatus: status,
+          page: 1,
+          limit: 20,
+        });
+        expect(parsed.success).toBe(true);
+
+        await service.list({ slaBreachStatus: status, page: 1, limit: 20 }, adminActor);
+
+        const slaFilterCall = andWhereMock.mock.calls.find(
+          (call) =>
+            typeof call[0] === 'string' &&
+            call[0].includes('= :slaBreachStatus') &&
+            (call[1] as { slaBreachStatus?: string })?.slaBreachStatus === status,
+        );
+        expect(slaFilterCall).toBeDefined();
+        const whereSql = slaFilterCall![0] as string;
+        for (const marker of SLA_CASE_BRANCH_MARKERS) {
+          expect(whereSql).toContain(marker);
+        }
+        for (const forbidden of SLA_CASE_FORBIDDEN_MARKERS) {
+          expect(whereSql).not.toContain(forbidden);
+        }
+      },
+    );
+
+    it('baja slaBreachStatus al WHERE con el CASE y cuenta tras el filtro', async () => {
+      const { andWhereMock, getCountMock, callOrder } = mockListQueryBuilder({ total: 3 });
+
+      await service.list(
+        { slaBreachStatus: SlaBreachStatus.AT_RISK, page: 1, limit: 20 },
+        adminActor,
+      );
+
+      const slaFilterCall = andWhereMock.mock.calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('= :slaBreachStatus') &&
+          (call[1] as { slaBreachStatus?: string })?.slaBreachStatus === SlaBreachStatus.AT_RISK,
+      );
+      expect(slaFilterCall).toBeDefined();
+      const whereSql = slaFilterCall![0] as string;
+      for (const marker of SLA_CASE_BRANCH_MARKERS) {
+        expect(whereSql).toContain(marker);
+      }
+      expect(getCountMock).toHaveBeenCalledTimes(1);
+      expect(callOrder.indexOf('andWhere')).toBeGreaterThanOrEqual(0);
+      expect(callOrder.indexOf('getCount')).toBeGreaterThan(callOrder.indexOf('andWhere'));
+      expect(callOrder.indexOf('getRawAndEntities')).toBeGreaterThan(callOrder.indexOf('getCount'));
+    });
+
+    it('pagina página 2 con skip/take tras filtro slaBreachStatus', async () => {
+      const limit = 10;
+      const page = 2;
+      const entities = [{ id: 'ticket-page-2', subject: 'Página 2' }];
+      const raw = [{ sla_breach_status: SlaBreachStatus.AT_RISK }];
+      const { skipMock, takeMock, getCountMock } = mockListQueryBuilder({
+        entities,
+        raw,
+        total: 25,
+      });
+
+      const result = await service.list(
+        { slaBreachStatus: SlaBreachStatus.AT_RISK, page, limit },
+        adminActor,
+      );
+
+      expect(skipMock).toHaveBeenCalledWith((page - 1) * limit);
+      expect(takeMock).toHaveBeenCalledWith(limit);
+      expect(getCountMock).toHaveBeenCalledTimes(1);
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(10);
+      expect(result.total).toBe(25);
+      expect(result.data[0] as { id: string; slaBreachStatus: string }).toEqual(
+        expect.objectContaining({
+          id: 'ticket-page-2',
+          slaBreachStatus: SlaBreachStatus.AT_RISK,
+        }),
+      );
+    });
+
+    it('rechaza literales legacy fuera de SlaBreachStatus en el query del list', () => {
+      for (const literal of ['WITHIN_SLA', 'BREACHED', 'NOT_APPLICABLE'] as const) {
+        const parsed = ListTicketsQuerySchema.safeParse({ slaBreachStatus: literal });
+        expect(parsed.success).toBe(false);
+      }
+      for (const status of SLA_CASE_STATUS_VARIANTS) {
+        expect(ListTicketsQuerySchema.safeParse({ slaBreachStatus: status }).success).toBe(true);
+      }
     });
   });
 

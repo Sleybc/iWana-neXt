@@ -4,7 +4,7 @@
 **Fecha:** 2026-04-30
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobador requerido:** CTO Humano
+**Aprobado por:** CTO Humano
 **Trazabilidad:** [ADR-035](ADR-035-Storage-MinIO-StoragePort.md) · [ADR-016](ADR-016-Cierre-MOD01-Produccion.md) <!-- ADR-021 retirado 2026-07-19 vía ADR-056: boilerplate sin relación sustantiva con media assets; además Superado -->
 
 ---
@@ -162,6 +162,6 @@ Ver tabla en seccion 3.
 - Seguridad: validacion MIME por magic bytes, sanitizacion SVG, HTTPS only, audit trail.
 - Sin PII en metadata o filenames sin sanitizar.
 
-## 8. Pendiente de aprobacion
+## 8. Aprobacion registrada
 
-- CTO Humano: aprobar creacion de bounded context Media/Assets como modulo transversal del Modulith.
+- CTO Humano: aprobación confirmada para el bounded context Media/Assets como módulo transversal del Modulith.

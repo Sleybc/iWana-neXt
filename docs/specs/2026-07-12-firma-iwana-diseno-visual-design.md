@@ -46,10 +46,13 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 
 ### Reglas semánticas del lima (no negociables)
 
-- Lima = avance, éxito, acción principal de página, señal de interacción.
+- Lima = avance, éxito, completitud, señal de interacción (nav activa, progreso, badges tonales, focus/acento).
+- Lima **≠** botón filled de CTA de página del portal operativo (enmienda CTO 2026-07-23).
 - Lima **nunca** = urgencia, prioridad alta, alerta (usar escalas `warning`/`error`).
 - Lima **nunca** como fondo base de paneles/toolbars/empty states (regla existente de `iwana-secondary-50`; el fondo suave es `iwana-surface-soft`).
-- Jerarquía de botones: lima = acción principal de página; azul sólido = acciones de sección; ghost/outline = secundarias.
+- Jerarquía de botones: **acción principal de página** = azul sólido (`primary`); **submit de modal/sección** = `primary`; ghost/outline/link = secundarias. `variant="lime"` permanece en `@iwana/ui` para marca/auth/avances explícitos fuera del default de header/empty operativo.
+
+> **Enmienda CTO 2026-07-23:** evaluación visual post-adopción UI-18 — CTAs de página leídos mejor en azul noche. Ver `docs/informes/INFORME-PORTAL-CTA-LIMA-VS-AZUL-DESEMPATE-v1.0.md`.
 
 ## 4. Plan por fases
 
@@ -72,7 +75,7 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 | --- | --- | --- |
 | 2.1 | KPI card única | Fusión de los dos sistemas actuales: eyebrow + cifra en rol `title` azul noche + icono neutro + **delta como badge tonal** + hueco para sparkline (anatomía Stripe/Tremor). Vive en `portal-ui.tsx`, se promueve a `@iwana/ui` al estabilizarse. Máximo 5-9 métricas núcleo por vista. |
 | 2.2 | Sidebar firma unificada | Barra lima + sidebar atenuada; un solo componente para portal y web. |
-| 2.3 | `DataTable` enterprise | TanStack Table headless + patrón tabla-en-card de TailAdmin: sticky header, densidad configurable (cómoda/compacta), filtros persistidos en URL (compartibles y restaurables al volver atrás), vistas guardadas, bulk actions con checkbox on-hover, virtualización desde ~1k filas. |
+| 2.3 | `DataTable` enterprise | **Piso normativo (ADR-065, supersede ADR-064 §§2/3/5/9):** paginación servidor obligatoria, `limit` 20. **El modo lo declara el servidor** vía `meta.capabilities.randomAccess`: `true` → `PortalTablePager` (Anterior · 1…N · Siguiente + `PortalPageSizeSelect` + conteo `Mostrando 21–40 de 128 usuarios` **en el pie**); `false` → `PortalTablePagination` («Cargar más», conteo en `PortalResultsStrip`). Una tabla monta un pie o el otro, nunca los dos; un solo conteo visible; sin ornamento de fin. `page`/`pageSize`/`sort`/filtros **en URL** (`push` al paginar, `replace` al filtrar). Números ghost sin borde, targets 44 px, **lima fuera del pager** (es avance, no posición). **Orden por columna:** `PortalDataTableSortableHead` solo en las columnas que `meta.capabilities.sortableFields` declare, con `aria-sort` y ciclo `asc → desc → sin orden`; un solo ícono, estado activo también por peso (WCAG 1.4.1); bajo `sm` el orden sale del encabezado a la barra de filtros. Anatomía: `PortalPanel` → filtros → strip → `portalDataTableShellClassName` solo en grilla. Evolución: TanStack Table headless + patrón tabla-en-card TailAdmin: sticky header, densidad, vistas guardadas, bulk actions, **virtualización ≥~1k** (complemento, no sustituto) — **esta decisión no los cancela ni los pospone**. |
 | 2.4 | Escala tipográfica dual | Tokens `--text-title-*` / `--text-theme-*` con Exo 2; jerarquía real de página (h1 > panel > cuerpo). |
 | 2.5 | Gramática de 3 estados | Primitive para acordeones/wizards/checklists (§3.5); aplica a expedientes y alta de proveedores MOD12. |
 | 2.6 | Empty states con intención | Distinguir "primera vez" (ilustración ligera + explicación + CTA primario) de "sin resultados de filtro" (acción de limpiar filtros). |
@@ -130,6 +133,24 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 - Skill alineada: `.agents/skills/iwana-identity-ui-review` incorpora esta spec como fuente de verdad y sus reglas semánticas del lima como criterios de review.
 - Protocolo alineado: `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md` v1.2 — esta spec es entrada obligatoria de la etapa 2 (solución UX/UI) y criterio de bloqueo de DS-OWNER en el gate G6.
 - Los ítems que introducen dependencias nuevas (TanStack Table, Recharts, cmdk) requieren su ADR según gobernanza del repo antes de implementarse.
+
+## 9. Registro de cambios de primitives compartidos (changelog DS)
+
+Sección creada el 2026-07-26 por AI-DS-OWNER. Es el artefacto físico del entregable «changelog del DS» (perfil DS-OWNER §7): toda modificación de apariencia, token o estado de una primitive compartida de `@iwana/ui` se registra aquí con fecha, motivo y veredicto, aunque el cambio llegue por otra vía (p. ej. una remediación de pruebas E2E). Las entradas nuevas se añaden al final de la tabla; un cambio post-congelación se versiona y se notifica a AI-FE-PLATFORM y AI-SR-QA vía el orquestador (protocolo §3bis).
+
+| Fecha | Primitive | Cambio | Motivo | Alcance | Origen | Veredicto |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-07-26 | `Select` (`Select.tsx:479`) | Texto guía del estado vacío (placeholder): `text-gray-400` → `text-gray-500`, **solo variante clara**; `dark:text-gray-500` ya existía y no se tocó | WCAG AA 1.4.3 (contraste de texto): 2.6:1 → ~5.3:1 sobre blanco; corrección necesaria | 88 archivos consumidores productivos (~90 con specs), portal y web; cambio visual global **menor**: no toca API, layout ni tokens de marca | D-3 / ADR-065 ronda 3 (remediación E2E); A-3 de `INFORME-ADR065-GATE-CIERRE-AUDITADO-v1.0` por omitir el paso por DS-OWNER | **Conforme con ajuste** (nota 9.1) |
+| 2026-07-26 | `Button` (`Button.tsx:28`) + `PortalTablePager` página activa (`portal-ui.tsx:704`) | Botón primario y página activa del pager en oscuro: `dark:bg-iwana-primary-400` → `dark:bg-iwana-primary-500` (#5A5190, ~7:1 sobre blanco); hover 400, active 600; conserva texto blanco | WCAG AA 1.4.3: blanco sobre `#7B75AB` = 4,22:1 (exige 4,5:1). Escalón dentro de la rampa `iwana-primary` existente en `globals.css:32-43` — sin token nuevo | 2 superficies compartidas (botón primario = todo el producto; pager activo = todas las tablas del portal) | N-11 de `INFORME-ADR065-DISPOSICION-CIERRE-v1.0`; descubierto por endurecimiento del test dark (SR-QA, `portal-pager-a11y.spec.ts`). Veredicto AI-EM-ARCH en gobernanza (protocolo §5). Registro post-congelación | **Conforme — carril rápido** (nota 9.2) |
+| 2026-07-26 | `MultiSelect` (`MultiSelect.tsx:145`) | Texto guía del estado vacío: `text-gray-400 dark:text-gray-500` → `text-gray-500 dark:text-gray-400` | WCAG AA 1.4.3: 2,60:1 (claro) y 2,97:1 (oscuro) → 4,84:1 y 5,52:1. Misma causa raíz que D-3 | ~30 archivos consumidores | N-12 de `INFORME-ADR065-DISPOSICION-CIERRE-v1.0`; alineación ordenada en Firma §9 nota 9.1, ejecutada por AI-EM-ARCH | **Conforme** |
+
+### Nota 9.1 — veredicto D-3 (2026-07-26)
+
+- **Variante clara: aprobada.** `text-gray-500` es el valor correcto y queda consistente con las primitives hermanas: la pareja canónica de texto atenuado en controles de formulario del DS es `text-gray-500 dark:text-gray-400` (estado vacío de `DatePicker`, textos de ayuda de `Input` y `Select`). No se migra a un token semántico como cambio aislado: sería un valor paralelo. La pregunta semántica —llevar el texto neutro a la familia `iwana-neutral-*`, con `iwana-neutral-700` (~5.0:1 sobre blanco) como candidato— se evalúa en la consolidación de tokens de la Fase 1 (ítems 1.1 y 1.3), con justificación, impacto y plan de migración.
+- **Variante oscura: pendiente, ya contratada.** `dark:text-gray-500` (~3.0:1 sobre `dark-surface-3`) no cumple AA y viola el emparejamiento de ADR-056 §2; es deuda preexistente registrada en §4 ítem 1.2bis(b), no introducida por D-3. Objetivo contraído para el barrido 1.2/1.2bis: `dark:text-gray-400` (4.86:1 peor caso, par canónico de `DatePicker`), dejando la pareja `text-gray-500 dark:text-gray-400`. Ejecuta AI-FE-PLATFORM.
+- **Divergencia de la misma causa raíz:** `MultiSelect` (`MultiSelect.tsx:145`) mantiene su texto guía claro en `text-gray-400` (2.6:1, fuera de AA). Se ordena su alineación al mismo valor dentro del barrido 1.2/1.2bis; no requiere contrato nuevo.
+- **Distinción placeholder/valor: confirmada.** El valor seleccionado se renderiza en `text-iwana-primary` (claro) y `dark:text-white/90` (oscuro); el texto guía en gris medio se distingue visualmente del valor real en ambos modos. El estado atenuado del texto guía es legítimo y no compite con los estados disabled ni error.
+- **Comunicación:** cambio de carril rápido (§3bis.3: no altera alcance, contrato de datos, boundary ni tokens de marca). Se comunica como **breaking visual menor** a AI-FE-PLATFORM y AI-SR-QA vía el orquestador: todo selector vacío del producto muestra su texto guía un paso más oscuro.
 
 ---
 

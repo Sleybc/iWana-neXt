@@ -52,7 +52,7 @@ Hallazgo estructural (P0): muchos servicios ya escriben audit “limpio” a man
    - omitido si `key === 'email'` **exacto**, o
    - omitido si `typeof value === 'string'` y `SECRET_KEY_PATTERN.test(key)`.
 6. Buscar `auditService.log` / `platformAuditService.log` manuales (doble escritura).
-7. Confirmar presencia referenciable de clave débil: `rg "'0'\\.repeat\\(64\\)"` / documentación ADR-058 (sin volcar hex en este informe).
+7. Confirmar presencia referenciable de clave débil: `rg "'0'\\.repeat\\(64\\)"` / documentación ADR-058 — sin volcar hex en este informe.
 8. Validar SEC-03 en `AuthService.forgotPassword` / `resetPassword` / `hasExpiredTemporaryPassword`.
 9. Validar SEC-04: migraciones `014`/`075` + `POSTGRES_USER` en `docker-compose.yml`.
 

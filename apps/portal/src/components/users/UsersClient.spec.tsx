@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { UserRole, UserStatus } from '@iwana/shared';
 import { UsersClient } from './UsersClient';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 
 const listMock = jest.fn();
 const createMock = jest.fn();
@@ -12,8 +13,15 @@ const listProfilesMock = jest.fn();
 const getEffectivePermissionsMock = jest.fn();
 const useAuthMock = jest.fn();
 
+const mockSearchParams = new URLSearchParams();
+const mockReplace = jest.fn();
+
 jest.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
+  usePathname: () => '/dashboard/users',
+  useRouter: () => ({
+    replace: mockReplace,
+  }),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
@@ -115,11 +123,15 @@ jest.mock('./ResetPasswordDialog', () => ({
     ) : null,
 }));
 
-const emptyList = { data: [], meta: { nextCursor: null, total: 0 } };
+const emptyList = { data: [], meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 } };
 
 describe('UsersClient Ola B1', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    for (const key of [...mockSearchParams.keys()]) {
+      mockSearchParams.delete(key);
+    }
+    mockReplace.mockReset();
     listMock.mockReset().mockResolvedValue(emptyList);
     createMock.mockReset();
     updateMock.mockReset();
@@ -154,6 +166,15 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => {
       expect(listMock).toHaveBeenCalled();
     });
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Usuarios internos' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Directorio')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Listado de usuarios' }),
+    ).toBeInTheDocument();
+
     listMock.mockClear();
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Estado' }));
@@ -195,7 +216,7 @@ describe('UsersClient Ola B1', () => {
     render(<UsersClient />);
     await waitFor(() => expect(listMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Nuevo usuario' })[0]!);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
 
     await waitFor(() => {
@@ -221,7 +242,7 @@ describe('UsersClient Ola B1', () => {
     render(<UsersClient />);
     await waitFor(() => expect(listMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Nuevo usuario' })[0]!);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
 
     await waitFor(() => {
@@ -230,5 +251,58 @@ describe('UsersClient Ola B1', () => {
       ).toBeInTheDocument();
     });
     expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('ADR-065: muestra PortalTablePager cuando el API devuelve meta page-based', async () => {
+    const pageUser = {
+      id: 'u-1',
+      email: 'page@test.com',
+      role: UserRole.NOC,
+      status: UserStatus.ACTIVE,
+      tenantId: 'tenant-1',
+      mfaEnabled: false,
+      mfaRequired: false,
+      isOperationalResource: false,
+      emailVerified: true,
+      passwordResetRequired: false,
+      lastLoginAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+      firstName: 'Page',
+      lastName: 'Test',
+      phone: null,
+      jobTitle: null,
+      documentType: null,
+      documentNumber: null,
+      avatarUrl: null,
+    };
+
+    listMock.mockResolvedValue({
+      data: [pageUser],
+      meta: {
+        ...EMPTY_LIST_META,
+        page: 1,
+        totalPages: 2,
+        limit: 10,
+        total: 15,
+        mode: 'page' as const,
+        nextCursor: null,
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+
+    render(<UsersClient />);
+
+    await waitFor(() => {
+      // PortalTablePager con 2 páginas: botón Siguiente visible y habilitado
+      expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument();
+    });
+
+    // Cargar más no aparece porque el pager está activo
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    // El pager muestra el rango (visible + sr-only → múltiples matches)
+    expect(screen.getAllByText(/Mostrando 1–10 de 15 usuarios/).length).toBeGreaterThan(0);
   });
 });

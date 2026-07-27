@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull, SelectQueryBuilder } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { CatalogItemType } from '@iwana/shared';
+import { CatalogItemType, CustomerSegment, type ListResponse } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { PlanDetail } from '../entities/plan-detail.entity';
 import { ProductDetail } from '../entities/product-detail.entity';
@@ -11,9 +11,31 @@ import { ServiceDetail } from '../entities/service-detail.entity';
 import { CatalogPriceHistory } from '../entities/catalog-price-history.entity';
 import { CreateCatalogItemDto } from '../dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from '../dto/update-catalog-item.dto';
-import { CatalogQueryDto } from '../dto/catalog-query.dto';
+import {
+  CATALOG_CATEGORY_SORT_ORDER,
+  CatalogQueryDto,
+  CatalogSortMode,
+} from '../dto/catalog-query.dto';
 import { COMMERCIAL_EVENTS } from '../events/commercial.events';
-import { CustomerSegment } from '@iwana/shared';
+import {
+  assertExclusivePageCursor,
+  buildActiveNameIdNextCursor,
+  buildCategoryRankNameIdNextCursor,
+  buildCursorMeta,
+  buildDateIdNextCursor,
+  buildNameIdNextCursor,
+  buildPageMeta,
+  clampCommercialLimit,
+  clampPickerSearchLimit,
+  decodeActiveNameIdCursor,
+  decodeCategoryRankNameIdCursor,
+  decodeDateIdCursor,
+  decodeNameIdCursor,
+  escapePickerLikePattern,
+  normalizePickerQuery,
+  type PickerSearchResult,
+} from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 
 export interface CatalogItemWithDetail extends CatalogItem {
   downloadSpeedMbps?: number | undefined;
@@ -37,26 +59,111 @@ export class CatalogService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async findAll(query: CatalogQueryDto): Promise<{ data: CatalogItemWithDetail[]; total: number }> {
+  /**
+   * Lista ítems del catálogo con paginación híbrida (ADR-064/065 Ola 6).
+   * Orden default: name ASC, id ASC. Con `sort`: keyset coherente con el modo.
+   * `total` = conjunto filtrado; cursor aplica después del filtro.
+   * `page` y `cursor` excluyentes; sin ambos = primera página keyset.
+   */
+  async findAll(query: CatalogQueryDto): Promise<ListResponse<CatalogItemWithDetail>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    const { page = 1, limit = 20, type, name, isActive } = query;
+    assertExclusivePageCursor(query);
+    const { type, name, isActive, cursor, missingPrice, category, model, charge, sort } = query;
+    const limit = clampCommercialLimit(query.limit);
+    const usePage = query.page !== undefined;
+    const page = usePage ? clampPage(query.page!, limit).page : 1;
+    const categoryRankSql = this._categoryRankSql('pd.category');
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(CatalogItem, 'ci')
         .where('ci.tenant_id = :tenantId', { tenantId })
-        .andWhere('ci.deleted_at IS NULL')
-        .orderBy('ci.name', 'ASC')
-        .skip((page - 1) * limit)
-        .take(limit);
+        .andWhere('ci.deleted_at IS NULL');
 
       if (type) qb.andWhere('ci.type = :type', { type });
       if (name) qb.andWhere('ci.name ILIKE :name', { name: `%${name}%` });
       if (isActive !== undefined) qb.andWhere('ci.is_active = :isActive', { isActive });
 
-      const [data, total] = await qb.getManyAndCount();
-      const hydrated = await Promise.all(data.map((item) => this._hydrateItem(qr.manager, item)));
-      return { data: hydrated, total };
+      // Chip «Sin precio vigente»: activos sin precio current RESIDENTIAL (misma semántica FE).
+      if (missingPrice === true) {
+        qb.andWhere('ci.is_active = true').andWhere(
+          `NOT EXISTS (
+            SELECT 1 FROM catalog_price_history ph
+            WHERE ph.item_id = ci.id
+              AND ph.is_current = true
+              AND ph.customer_segment = :missingPriceSegment
+          )`,
+          { missingPriceSegment: CustomerSegment.RESIDENTIAL },
+        );
+      }
+
+      const needsProductJoin =
+        category !== undefined || model !== undefined || sort === 'CATEGORY_NAME';
+      if (needsProductJoin) {
+        // Filtro category/model: inner; solo sort CATEGORY_NAME: left (planes/servicios al final).
+        if (category !== undefined || model !== undefined) {
+          qb.innerJoin(ProductDetail, 'pd', 'pd.item_id = ci.id');
+        } else {
+          qb.leftJoin(ProductDetail, 'pd', 'pd.item_id = ci.id');
+        }
+        if (category !== undefined) {
+          qb.andWhere('pd.category = :productCategory', { productCategory: category });
+        }
+        if (model === 'LOAN') {
+          qb.andWhere('pd.is_loan = true');
+        } else if (model === 'SALE') {
+          qb.andWhere('pd.is_loan = false');
+        }
+      }
+
+      if (charge !== undefined) {
+        qb.innerJoin(ServiceDetail, 'sd', 'sd.item_id = ci.id').andWhere(
+          'sd.charge_type = :chargeType',
+          { chargeType: charge },
+        );
+      }
+
+      const total = await qb.clone().getCount();
+
+      if (usePage) {
+        this._applySortAndCursor(qb, sort, undefined, categoryRankSql);
+        const rows = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getMany();
+        const hydrated = await Promise.all(rows.map((item) => this._hydrateItem(qr.manager, item)));
+        return {
+          data: hydrated,
+          meta: buildPageMeta({
+            total,
+            page,
+            limit,
+            randomAccess: true,
+            sortableFields: [],
+          }),
+        };
+      }
+
+      this._applySortAndCursor(qb, sort, cursor, categoryRankSql);
+
+      const rows = await qb.take(limit + 1).getMany();
+
+      const hasNext = rows.length > limit;
+      const pageRows = hasNext ? rows.slice(0, limit) : rows;
+      const hydrated = await Promise.all(
+        pageRows.map((item) => this._hydrateItem(qr.manager, item)),
+      );
+      const last = pageRows[pageRows.length - 1];
+
+      return {
+        data: hydrated,
+        meta: buildCursorMeta({
+          nextCursor: this._buildNextCursor(sort, hasNext, last, hydrated[hydrated.length - 1]),
+          total,
+          limit,
+          randomAccess: true,
+        }),
+      };
     });
   }
 
@@ -177,6 +284,116 @@ export class CatalogService {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
+  /** CASE WHEN alineado a chips FE / ProductCategory. */
+  private _categoryRankSql(columnExpr: string): string {
+    const whens = CATALOG_CATEGORY_SORT_ORDER.map(
+      (cat, index) => `WHEN '${cat}' THEN ${index}`,
+    ).join(' ');
+    return `CASE ${columnExpr} ${whens} ELSE ${CATALOG_CATEGORY_SORT_ORDER.length} END`;
+  }
+
+  private _applySortAndCursor(
+    qb: SelectQueryBuilder<CatalogItem>,
+    sort: CatalogSortMode | undefined,
+    cursor: string | undefined,
+    categoryRankSql: string,
+  ): void {
+    if (sort === 'RECENTLY_UPDATED') {
+      if (cursor) {
+        const decoded = decodeDateIdCursor(cursor);
+        qb.andWhere(
+          '(ci.updated_at < :cursorUpdated OR (ci.updated_at = :cursorUpdated AND ci.id < :cursorId))',
+          { cursorUpdated: decoded.d, cursorId: decoded.i },
+        );
+      }
+      qb.orderBy('ci.updated_at', 'DESC').addOrderBy('ci.id', 'DESC');
+      return;
+    }
+
+    if (sort === 'ACTIVE_NAME') {
+      if (cursor) {
+        const decoded = decodeActiveNameIdCursor(cursor);
+        qb.andWhere(
+          `(ci.is_active < :cursorActive
+            OR (ci.is_active = :cursorActive AND ci.name > :cursorName)
+            OR (ci.is_active = :cursorActive AND ci.name = :cursorName AND ci.id > :cursorId))`,
+          {
+            cursorActive: decoded.a === 1,
+            cursorName: decoded.n,
+            cursorId: decoded.i,
+          },
+        );
+      }
+      qb.orderBy('ci.is_active', 'DESC').addOrderBy('ci.name', 'ASC').addOrderBy('ci.id', 'ASC');
+      return;
+    }
+
+    if (sort === 'CATEGORY_NAME') {
+      if (cursor) {
+        const decoded = decodeCategoryRankNameIdCursor(cursor);
+        qb.andWhere(
+          `((${categoryRankSql}) > :cursorRank
+            OR ((${categoryRankSql}) = :cursorRank AND ci.name > :cursorName)
+            OR ((${categoryRankSql}) = :cursorRank AND ci.name = :cursorName AND ci.id > :cursorId))`,
+          {
+            cursorRank: decoded.r,
+            cursorName: decoded.n,
+            cursorId: decoded.i,
+          },
+        );
+      }
+      qb.orderBy(categoryRankSql, 'ASC').addOrderBy('ci.name', 'ASC').addOrderBy('ci.id', 'ASC');
+      return;
+    }
+
+    if (cursor) {
+      const decoded = decodeNameIdCursor(cursor);
+      qb.andWhere('(ci.name > :cursorName OR (ci.name = :cursorName AND ci.id > :cursorId))', {
+        cursorName: decoded.n,
+        cursorId: decoded.i,
+      });
+    }
+    qb.orderBy('ci.name', 'ASC').addOrderBy('ci.id', 'ASC');
+  }
+
+  private _buildNextCursor(
+    sort: CatalogSortMode | undefined,
+    hasNext: boolean,
+    last: CatalogItem | undefined,
+    lastHydrated: CatalogItemWithDetail | undefined,
+  ): string | null {
+    if (!hasNext || !last) return null;
+
+    if (sort === 'RECENTLY_UPDATED') {
+      return buildDateIdNextCursor(true, { date: last.updatedAt, id: last.id });
+    }
+
+    if (sort === 'ACTIVE_NAME') {
+      return buildActiveNameIdNextCursor(true, {
+        isActive: last.isActive,
+        name: last.name,
+        id: last.id,
+      });
+    }
+
+    if (sort === 'CATEGORY_NAME') {
+      const category = lastHydrated?.category;
+      const rank =
+        category != null
+          ? CATALOG_CATEGORY_SORT_ORDER.indexOf(
+              category as (typeof CATALOG_CATEGORY_SORT_ORDER)[number],
+            )
+          : CATALOG_CATEGORY_SORT_ORDER.length;
+      return buildCategoryRankNameIdNextCursor(true, {
+        rank: rank < 0 ? CATALOG_CATEGORY_SORT_ORDER.length : rank,
+        name: last.name,
+        id: last.id,
+      });
+    }
+
+    return buildNameIdNextCursor(true, last);
+  }
+
   private _validateDetailRequired(dto: CreateCatalogItemDto): void {
     if (dto.type === CatalogItemType.PLAN) {
       if (!dto.downloadSpeedMbps || !dto.uploadSpeedMbps || !dto.technology) {
@@ -254,11 +471,20 @@ export class CatalogService {
 
     if (item.type === CatalogItemType.PRODUCT) {
       const detail = await manager.findOne(ProductDetail, { where: { itemId: item.id } });
+      const price = await manager.findOne(CatalogPriceHistory, {
+        where: {
+          itemId: item.id,
+          customerSegment: CustomerSegment.RESIDENTIAL,
+          isCurrent: true,
+        },
+      });
       return {
         ...base,
         category: detail?.category,
         isLoan: detail?.isLoan,
         requiresInventory: detail?.requiresInventory,
+        currentPrice: price?.basePrice ?? null,
+        installationFee: price?.installationFee ?? null,
       };
     }
 
@@ -276,5 +502,53 @@ export class CatalogService {
       currentPrice: price?.basePrice ?? null,
       installationFee: price?.installationFee ?? null,
     };
+  }
+
+  /**
+   * Lookup typeahead E-4 para pickers de catálogo (planes / productos / servicios).
+   * `total` = coincidencias filtradas; `data` acotado a máx. 20.
+   */
+  async searchForPicker(params: {
+    type: CatalogItemType;
+    q?: string | undefined;
+    isActive?: boolean | undefined;
+    limit?: number | undefined;
+  }): Promise<PickerSearchResult> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const limit = clampPickerSearchLimit(params.limit);
+    const q = normalizePickerQuery(params.q);
+    const isActive = params.isActive ?? true;
+
+    if (!q) {
+      return { data: [], total: 0 };
+    }
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const like = `%${escapePickerLikePattern(q)}%`;
+      const qb = qr.manager
+        .createQueryBuilder(CatalogItem, 'ci')
+        .where('ci.tenant_id = :tenantId', { tenantId })
+        .andWhere('ci.deleted_at IS NULL')
+        .andWhere('ci.type = :type', { type: params.type })
+        .andWhere('ci.is_active = :isActive', { isActive })
+        .andWhere('ci.name ILIKE :like ESCAPE :esc', { like, esc: '\\' });
+
+      const total = await qb.clone().getCount();
+
+      const rows = await qb
+        .orderBy('ci.name', 'ASC')
+        .addOrderBy('ci.id', 'ASC')
+        .take(limit)
+        .getMany();
+
+      return {
+        data: rows.map((item) => ({
+          id: item.id,
+          label: item.name,
+          sublabel: item.isActive ? 'Activo' : 'Inactivo',
+        })),
+        total,
+      };
+    });
   }
 }

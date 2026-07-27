@@ -11,9 +11,17 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExtraModels,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { PickerSearchResponseDto } from '../../common/pagination';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -57,10 +65,14 @@ import {
   SuggestInventoryCategoryPrefixResponseDto,
   ListInventoryItemsQueryDto,
   ListInventoryItemsQuerySchema,
+  InventoryPickerSearchQueryDto,
+  InventoryPickerSearchQuerySchema,
   ListLoansQueryDto,
   ListLoansQuerySchema,
   ListSerializedAssetsQueryDto,
   ListSerializedAssetsQuerySchema,
+  SerializedAssetPickerSearchQueryDto,
+  SerializedAssetPickerSearchQuerySchema,
   GetSerializedAssetDetailQueryDto,
   GetSerializedAssetDetailQuerySchema,
   ListUsefulLifeAlertsQueryDto,
@@ -71,6 +83,8 @@ import {
   ListStockIssuesQuerySchema,
   ListStockLocationsQueryDto,
   ListStockLocationsQuerySchema,
+  StockLocationPickerSearchQueryDto,
+  StockLocationPickerSearchQuerySchema,
   ListStockMovementsQueryDto,
   ListStockMovementsQuerySchema,
   ReturnAssetDto,
@@ -91,6 +105,7 @@ import {
   WriteOffAssetSchema,
   ListWriteOffsQueryDto,
   ListWriteOffsQuerySchema,
+  InventoryListMetaDto,
   ApproveWriteOffDto,
   ApproveWriteOffSchema,
   RejectWriteOffDto,
@@ -113,6 +128,7 @@ import { CycleCountService } from './services/cycle-count.service';
 import { WriteOffService } from './services/write-off.service';
 
 @ApiTags('inventory')
+@ApiExtraModels(InventoryListMetaDto, PickerSearchResponseDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inventory')
@@ -136,11 +152,36 @@ export class InventoryController {
 
   @Get('items')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar items del inventario' })
+  @ApiOperation({
+    summary: 'Listar items del inventario',
+    description:
+      'ADR-064/065: limit default 20, max 100; cursor o page (excluyentes). ' +
+      'Filtros Ola 6: `belowMinimum` (+ `stockLocationId` opcional) para overview «solo bajo mínimo». ' +
+      '`total` = tamaño del conjunto filtrado. Orden: createdAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor)',
+  })
   listItems(
     @Query(new ZodValidationPipe(ListInventoryItemsQuerySchema)) query: ListInventoryItemsQueryDto,
   ) {
     return this.inventoryItemService.list(ListInventoryItemsQuerySchema.parse(query));
+  }
+
+  @Get('items/search')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Buscar ítems de inventario para picker (typeahead)',
+    description:
+      'Lookup E-4: `q` sobre nombre/SKU/marca/modelo. Máx. 20. `{ data: { id, label, sublabel }[], total }`.',
+  })
+  @ApiResponse({ status: 200, type: PickerSearchResponseDto })
+  searchItems(
+    @Query(new ZodValidationPipe(InventoryPickerSearchQuerySchema))
+    query: InventoryPickerSearchQueryDto,
+  ) {
+    return this.inventoryItemService.searchForPicker(InventoryPickerSearchQuerySchema.parse(query));
   }
 
   @Get('items/catalog/options')
@@ -194,7 +235,16 @@ export class InventoryController {
 
   @Get('categories')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar categorias de inventario' })
+  @ApiOperation({
+    summary: 'Listar categorias de inventario',
+    description:
+      'Paginación cursor (ADR-064): `limit` default 20, max 100; `cursor` = meta.nextCursor previo. ' +
+      '`total` = conjunto filtrado. Orden: sortOrder ASC, name ASC, id ASC. Filtros: search, status.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta: { nextCursor, total } }`',
+  })
   listCategories(
     @Query(new ZodValidationPipe(ListInventoryCategoriesQuerySchema))
     query: ListInventoryCategoriesQueryDto,
@@ -248,11 +298,37 @@ export class InventoryController {
 
   @Get('locations')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar ubicaciones de stock' })
+  @ApiOperation({
+    summary: 'Listar ubicaciones de stock',
+    description:
+      'ADR-064: limit default 20, max 100; meta.nextCursor + meta.total. Orden: createdAt DESC, id DESC. ' +
+      'Filtros Ola 6 (matriz): search, custody=mobile, statusGroup=inactive_group, withStock.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta: { nextCursor, total } }`',
+  })
   listLocations(
     @Query(new ZodValidationPipe(ListStockLocationsQuerySchema)) query: ListStockLocationsQueryDto,
   ) {
     return this.stockLocationService.list(ListStockLocationsQuerySchema.parse(query));
+  }
+
+  @Get('locations/search')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Buscar ubicaciones de stock para picker (typeahead)',
+    description:
+      'Lookup E-4: `q` sobre nombre/código. Máx. 20. `{ data: { id, label, sublabel }[], total }`.',
+  })
+  @ApiResponse({ status: 200, type: PickerSearchResponseDto })
+  searchLocations(
+    @Query(new ZodValidationPipe(StockLocationPickerSearchQuerySchema))
+    query: StockLocationPickerSearchQueryDto,
+  ) {
+    return this.stockLocationService.searchForPicker(
+      StockLocationPickerSearchQuerySchema.parse(query),
+    );
   }
 
   @Post('locations')
@@ -276,12 +352,37 @@ export class InventoryController {
 
   @Get('assets')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar activos serializados' })
+  @ApiOperation({
+    summary: 'Listar activos serializados',
+    description:
+      'ADR-064/065: limit default 20, max 100; cursor o page (excluyentes). ' +
+      'Orden: updatedAt DESC, id DESC. Desbloquea lista de activos diferida Ola 5.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor)',
+  })
   listAssets(
     @Query(new ZodValidationPipe(ListSerializedAssetsQuerySchema))
     query: ListSerializedAssetsQueryDto,
   ) {
     return this.serializedAssetService.list(ListSerializedAssetsQuerySchema.parse(query));
+  }
+
+  @Get('assets/search')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Buscar activos serializados para picker (typeahead)',
+    description: 'Lookup E-4: `q` sobre serial/asset tag/MAC/SKU. Máx. 20. `{ data, total }`.',
+  })
+  @ApiResponse({ status: 200, type: PickerSearchResponseDto })
+  searchAssets(
+    @Query(new ZodValidationPipe(SerializedAssetPickerSearchQuerySchema))
+    query: SerializedAssetPickerSearchQueryDto,
+  ) {
+    return this.serializedAssetService.searchForPicker(
+      SerializedAssetPickerSearchQuerySchema.parse(query),
+    );
   }
 
   @Get('assets/useful-life-alerts')
@@ -332,7 +433,15 @@ export class InventoryController {
 
   @Get('balances')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Consultar balances de stock' })
+  @ApiOperation({
+    summary: 'Consultar balances de stock',
+    description:
+      'ADR-064: limit default 20, max 100; meta.nextCursor + meta.total. Orden: updatedAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta: { nextCursor, total } }`',
+  })
   listBalances(
     @Query(new ZodValidationPipe(ListStockBalancesQuerySchema)) query: ListStockBalancesQueryDto,
   ) {
@@ -368,7 +477,16 @@ export class InventoryController {
 
   @Get('issues')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar salidas (StockIssue)' })
+  @ApiOperation({
+    summary: 'Listar salidas (StockIssue)',
+    description:
+      'ADR-064/065: limit default 20, max 100; cursor o page (excluyentes). ' +
+      'Filtros Ola 6: type, status, search (bodegas/refs). Orden: createdAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor)',
+  })
   listIssues(
     @Query(new ZodValidationPipe(ListStockIssuesQuerySchema)) query: ListStockIssuesQueryDto,
   ) {
@@ -581,7 +699,16 @@ export class InventoryController {
 
   @Get('counts')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar conteos físicos de inventario' })
+  @ApiOperation({
+    summary: 'Listar conteos físicos de inventario',
+    description:
+      'ADR-064/065: limit default 20, max 100; cursor o page (excluyentes). Orden: createdAt DESC, id DESC. ' +
+      'Filtro Ola 6: `status` en servidor (no filtrar en cliente sobre buffer paginado).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor)',
+  })
   listCounts(
     @Query(new ZodValidationPipe(ListStockCountsQuerySchema)) query: ListStockCountsQueryDto,
   ) {

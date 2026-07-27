@@ -1,0 +1,1705 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "iWana Operations Execution Orders API",
+    "description": "Contrato congelado v1 para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "tags": [{ "name": "tasks-execution-orders" }],
+  "security": [{ "access-token": [] }],
+  "components": {
+    "securitySchemes": {
+      "access-token": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "ExecutionOrderId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Identificador UUID de la OT de ejecución.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "MediaAssetId": {
+        "name": "mediaAssetId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador UUID del asset de evidencia.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "EvidenceId": {
+        "name": "evidenceId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador UUID de la evidencia.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "EventId": {
+        "name": "eventId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador UUID del evento a re-encolar.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "TemplateId": {
+        "name": "templateId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador UUID de la plantilla.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "TemplateVersionId": {
+        "name": "versionId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador UUID de la versión de plantilla.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "Versión esperada de la OT para control optimista (ETag).",
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Clave de idempotencia estable por intención de mutación.",
+        "schema": { "type": "string", "minLength": 16, "maxLength": 200 }
+      },
+      "CorrelationId": {
+        "name": "X-Correlation-Id",
+        "in": "header",
+        "required": false,
+        "description": "UUID de correlación opcional; si falta o es inválido el servidor genera uno.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "description": "Número de página (1-based).",
+        "schema": { "type": "integer", "minimum": 1, "default": 1 }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Tamaño de página.",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Payload o regla de plantilla inválida.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Sesión ausente o inválida.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Permiso, asignación o alcance insuficiente.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Recurso no visible en el tenant.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Versión, transición, idempotencia o inventario en conflicto.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "Validation": {
+        "description": "Gate de cierre incompleto.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit excedido.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Dependencia operativa temporalmente no disponible; comando reintentable.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ExecutionOrderError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "correlationId"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "BAD_REQUEST",
+              "UNAUTHORIZED",
+              "FORBIDDEN",
+              "NOT_FOUND",
+              "VERSION_CONFLICT",
+              "IDEMPOTENCY_CONFLICT",
+              "IDEMPOTENCY_EXPIRED",
+              "TRANSITION_CONFLICT",
+              "INVENTORY_CONFLICT",
+              "VALIDATION_ERROR",
+              "CLOSURE_GATE_INCOMPLETE",
+              "SERVICE_UNAVAILABLE"
+            ]
+          },
+          "message": { "type": "string" },
+          "correlationId": { "type": "string", "format": "uuid" },
+          "missingRequirements": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ExecutionOrderAllowedAction": {
+        "type": "string",
+        "enum": [
+          "ASSIGN",
+          "REASSIGN",
+          "START",
+          "REGISTER_ACTIVITY",
+          "REGISTER_ITEM_USAGE",
+          "REGISTER_EVIDENCE",
+          "BLOCK",
+          "UNBLOCK",
+          "CLOSE",
+          "CREATE_FOLLOW_UP",
+          "OPEN"
+        ]
+      },
+      "ExecutionOrderTemplateReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "key", "version", "label"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "key": { "type": "string" },
+          "version": { "type": "integer", "minimum": 1 },
+          "label": { "type": "string" }
+        }
+      },
+      "ExecutionOrderScheduleView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["eventId", "window"],
+        "properties": {
+          "eventId": { "type": "string", "format": "uuid" },
+          "window": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["startAt", "endAt"],
+            "properties": {
+              "startAt": { "type": "string", "format": "date-time" },
+              "endAt": { "type": "string", "format": "date-time" }
+            }
+          },
+          "plannedResource": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "id"],
+            "properties": {
+              "type": { "type": "string", "enum": ["TECHNICIAN", "CREW"] },
+              "id": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ExecutionOrderAssigneeView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "id"],
+        "properties": {
+          "type": { "type": "string", "enum": ["TECHNICIAN", "CREW"] },
+          "id": { "type": "string" },
+          "displayLabel": { "type": "string" }
+        }
+      },
+      "ExecutionOrderSiteView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "address": { "type": "string" }
+        }
+      },
+      "ExecutionOrderCompletionView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["progress"],
+        "properties": {
+          "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "closedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExecutionOrderDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "number",
+          "version",
+          "status",
+          "workType",
+          "template",
+          "schedule",
+          "site",
+          "completion",
+          "syncState",
+          "inventoryReconciliation",
+          "allowedActions",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "number": { "type": "string" },
+          "version": { "type": "integer", "minimum": 1 },
+          "status": {
+            "type": "string",
+            "enum": [
+              "CREATED",
+              "ASSIGNED",
+              "EN_ROUTE",
+              "IN_PROGRESS",
+              "BLOCKED",
+              "COMPLETED",
+              "COMPLETED_WITH_OBSERVATIONS",
+              "NOT_EXECUTED",
+              "CANCELLED"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "EXECUTED",
+              "EXECUTED_WITH_OBSERVATIONS",
+              "NOT_EXECUTED",
+              "REQUIRES_FOLLOW_UP",
+              "CANCELLED"
+            ]
+          },
+          "workType": {
+            "type": "string",
+            "enum": ["INSTALLATION", "SUPPORT", "TECHNICAL_VISIT", "RETIREMENT", "MAINTENANCE"]
+          },
+          "template": { "$ref": "#/components/schemas/ExecutionOrderTemplateReference" },
+          "schedule": { "$ref": "#/components/schemas/ExecutionOrderScheduleView" },
+          "assignee": { "$ref": "#/components/schemas/ExecutionOrderAssigneeView" },
+          "site": { "$ref": "#/components/schemas/ExecutionOrderSiteView" },
+          "completion": { "$ref": "#/components/schemas/ExecutionOrderCompletionView" },
+          "syncState": { "type": "string", "enum": ["IN_SYNC", "PENDING", "DIVERGED", "FAILED"] },
+          "inventoryReconciliation": {
+            "type": "string",
+            "enum": ["NOT_REQUIRED", "PENDING", "CONFIRMED", "REJECTED", "DIVERGED"]
+          },
+          "allowedActions": {
+            "type": ["array", "null"],
+            "items": { "$ref": "#/components/schemas/ExecutionOrderAllowedAction" }
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AssignExecutionOrderCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assigneeType", "assigneeId"],
+        "properties": {
+          "assigneeType": { "type": "string", "enum": ["TECHNICIAN", "CREW"] },
+          "assigneeId": { "type": "string" },
+          "reason": { "type": "string", "maxLength": 1000 }
+        }
+      },
+      "StartExecutionOrderCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startedAt": { "type": "string", "format": "date-time" },
+          "note": { "type": "string", "maxLength": 2000 }
+        }
+      },
+      "RegisterActivityCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["activityType", "description"],
+        "properties": {
+          "activityType": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "occurredAt": { "type": "string", "format": "date-time" },
+          "measurements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "value"],
+              "properties": {
+                "key": { "type": "string" },
+                "value": {
+                  "oneOf": [{ "type": "number" }, { "type": "string" }, { "type": "boolean" }]
+                },
+                "unit": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "RegisterItemUsageCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["itemId", "quantity", "action", "finalDisposition"],
+        "properties": {
+          "itemId": { "type": "string" },
+          "quantity": { "type": "number", "exclusiveMinimum": 0 },
+          "serial": { "type": "string" },
+          "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },
+          "finalDisposition": {
+            "type": "string",
+            "enum": [
+              "INSTALLED_AT_CUSTOMER",
+              "INTERNAL_CONSUMPTION",
+              "RETURNED_TO_TECHNICIAN_STOCK",
+              "RETURNED_TO_WAREHOUSE",
+              "DAMAGED_OR_LOST"
+            ]
+          },
+          "custodySelection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "id"],
+            "properties": {
+              "type": { "type": "string", "enum": ["TECHNICIAN", "CREW"] },
+              "id": { "type": "string" }
+            }
+          }
+        }
+      },
+      "RegisterEvidenceCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["mediaAssetId", "evidenceType", "requirementKey"],
+        "properties": {
+          "mediaAssetId": { "type": "string", "format": "uuid" },
+          "evidenceType": { "type": "string", "enum": ["PHOTO", "DOCUMENT", "SIGNATURE"] },
+          "requirementKey": { "type": "string" },
+          "capturedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "BlockExecutionOrderCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reasonCode"],
+        "properties": {
+          "reasonCode": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "note": { "type": "string", "maxLength": 2000 }
+        }
+      },
+      "UnblockExecutionOrderCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resolutionCode"],
+        "properties": {
+          "resolutionCode": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "note": { "type": "string", "maxLength": 2000 }
+        }
+      },
+      "CloseExecutionOrderCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["result", "summary"],
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "EXECUTED",
+              "EXECUTED_WITH_OBSERVATIONS",
+              "NOT_EXECUTED",
+              "REQUIRES_FOLLOW_UP",
+              "CANCELLED"
+            ]
+          },
+          "reasonCode": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "customerAcceptance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["artifactId", "method"],
+            "properties": {
+              "artifactId": { "type": "string" },
+              "method": { "type": "string", "enum": ["SIGNATURE", "OTP", "OTHER"] }
+            }
+          },
+          "followUp": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reasonCode"],
+            "properties": {
+              "reasonCode": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "dueAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "CreateFollowUpCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reasonCode"],
+        "properties": {
+          "reasonCode": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "dueAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ListMeta": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nextCursor",
+          "total",
+          "totalIsEstimate",
+          "page",
+          "limit",
+          "totalPages",
+          "hasMore",
+          "mode",
+          "capabilities",
+          "sort"
+        ],
+        "properties": {
+          "nextCursor": { "type": ["string", "null"] },
+          "total": { "type": "integer" },
+          "totalIsEstimate": { "type": "boolean" },
+          "page": { "type": ["integer", "null"] },
+          "limit": { "type": "integer" },
+          "totalPages": { "type": ["integer", "null"] },
+          "hasMore": { "type": "boolean" },
+          "mode": { "type": "string", "enum": ["page", "cursor"] },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["randomAccess", "sortableFields"],
+            "properties": {
+              "randomAccess": { "type": "boolean" },
+              "sortableFields": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "sort": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["by", "dir"],
+                "properties": {
+                  "by": { "type": "string" },
+                  "dir": { "type": "string", "enum": ["asc", "desc"] }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ExecutionOrderActivity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "activityType", "description", "actorRef", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "activityType": { "type": "string" },
+          "description": { "type": "string" },
+          "occurredAt": { "type": "string", "format": "date-time" },
+          "actorRef": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "id"],
+            "properties": {
+              "type": { "type": "string", "enum": ["USER", "SYSTEM"] },
+              "id": { "type": "string" }
+            }
+          },
+          "measurements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "value"],
+              "properties": {
+                "key": { "type": "string" },
+                "value": {
+                  "oneOf": [{ "type": "number" }, { "type": "string" }, { "type": "boolean" }]
+                },
+                "unit": { "type": "string" }
+              }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExecutionOrderItemUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "itemId",
+          "quantity",
+          "action",
+          "finalDisposition",
+          "inventoryRequestId",
+          "movementStatus",
+          "createdAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "itemId": { "type": "string" },
+          "quantity": { "type": "number" },
+          "serial": { "type": "string" },
+          "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },
+          "finalDisposition": {
+            "type": "string",
+            "enum": [
+              "INSTALLED_AT_CUSTOMER",
+              "INTERNAL_CONSUMPTION",
+              "RETURNED_TO_TECHNICIAN_STOCK",
+              "RETURNED_TO_WAREHOUSE",
+              "DAMAGED_OR_LOST"
+            ]
+          },
+          "inventoryRequestId": { "type": "string", "format": "uuid" },
+          "movementStatus": { "type": "string", "enum": ["PENDING", "CONFIRMED", "REJECTED"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExecutionOrderEvidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "mediaAssetId",
+          "evidenceType",
+          "requirementKey",
+          "receivedAt",
+          "status",
+          "createdAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "mediaAssetId": { "type": "string", "format": "uuid" },
+          "evidenceType": { "type": "string", "enum": ["PHOTO", "DOCUMENT", "SIGNATURE"] },
+          "requirementKey": { "type": "string" },
+          "capturedAt": { "type": "string", "format": "date-time" },
+          "receivedAt": { "type": "string", "format": "date-time" },
+          "verifiedAt": { "type": "string", "format": "date-time" },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING_ANALYSIS", "AVAILABLE", "REJECTED", "EXPIRED"]
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExecutionOrderActivityPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderActivity" }
+          },
+          "meta": { "$ref": "#/components/schemas/ListMeta" }
+        }
+      },
+      "ExecutionOrderItemUsagePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderItemUsage" }
+          },
+          "meta": { "$ref": "#/components/schemas/ListMeta" }
+        }
+      },
+      "ExecutionOrderEvidencePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderEvidence" }
+          },
+          "meta": { "$ref": "#/components/schemas/ListMeta" }
+        }
+      },
+      "InventoryRequestReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intentId", "inventoryRequestId", "status", "version"],
+        "properties": {
+          "intentId": { "type": "string", "format": "uuid" },
+          "inventoryRequestId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["PENDING", "ACCEPTED", "REJECTED"] },
+          "version": { "type": "integer" }
+        }
+      },
+      "EvidenceAssetReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intentId", "mediaAssetId", "status"],
+        "properties": {
+          "intentId": { "type": "string", "format": "uuid" },
+          "mediaAssetId": { "type": "string", "format": "uuid" },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING_ANALYSIS", "AVAILABLE", "REJECTED", "EXPIRED"]
+          },
+          "uploadedAt": { "type": "string", "format": "date-time" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "FollowUpReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intentId", "resourceRef", "status", "version"],
+        "properties": {
+          "intentId": { "type": "string", "format": "uuid" },
+          "resourceRef": { "type": "string" },
+          "status": { "type": "string", "enum": ["ACCEPTED", "PENDING", "COMPLETED", "REJECTED"] },
+          "version": { "type": "integer" }
+        }
+      },
+      "EventRedriveReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["eventId", "status"],
+        "properties": {
+          "eventId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["QUEUED"] }
+        }
+      },
+      "ExecutionOrderTemplateRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": {
+            "type": "string",
+            "enum": ["FIELD", "ACTIVITY", "MEASUREMENT", "EVIDENCE", "MATERIAL", "COMPLIANCE"]
+          }
+        },
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "FIELD": "#/components/schemas/ExecutionOrderTemplateFieldRequirement",
+            "ACTIVITY": "#/components/schemas/ExecutionOrderTemplateActivityRequirement",
+            "MEASUREMENT": "#/components/schemas/ExecutionOrderTemplateMeasurementRequirement",
+            "EVIDENCE": "#/components/schemas/ExecutionOrderTemplateEvidenceRequirement",
+            "MATERIAL": "#/components/schemas/ExecutionOrderTemplateMaterialRequirement",
+            "COMPLIANCE": "#/components/schemas/ExecutionOrderTemplateComplianceRequirement"
+          }
+        },
+        "oneOf": [
+          { "$ref": "#/components/schemas/ExecutionOrderTemplateFieldRequirement" },
+          { "$ref": "#/components/schemas/ExecutionOrderTemplateActivityRequirement" },
+          { "$ref": "#/components/schemas/ExecutionOrderTemplateMeasurementRequirement" },
+          { "$ref": "#/components/schemas/ExecutionOrderTemplateEvidenceRequirement" },
+          { "$ref": "#/components/schemas/ExecutionOrderTemplateMaterialRequirement" },
+          { "$ref": "#/components/schemas/ExecutionOrderTemplateComplianceRequirement" }
+        ]
+      },
+      "ExecutionOrderTemplateFieldRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind", "fieldType"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["FIELD"] },
+          "fieldType": { "type": "string", "enum": ["TEXT", "NUMBER", "BOOLEAN", "SELECT"] },
+          "options": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ExecutionOrderTemplateActivityRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind", "activityType"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["ACTIVITY"] },
+          "activityType": { "type": "string" }
+        }
+      },
+      "ExecutionOrderTemplateMeasurementRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind", "measurement"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["MEASUREMENT"] },
+          "measurement": { "type": "string", "enum": ["NUMBER", "TEXT"] },
+          "unit": { "type": "string" }
+        }
+      },
+      "ExecutionOrderTemplateEvidenceRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind", "evidenceType"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["EVIDENCE"] },
+          "evidenceType": { "type": "string", "enum": ["PHOTO", "DOCUMENT", "SIGNATURE"] }
+        }
+      },
+      "ExecutionOrderTemplateMaterialRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind", "itemCategory"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["MATERIAL"] },
+          "itemCategory": { "type": "string" }
+        }
+      },
+      "ExecutionOrderTemplateComplianceRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "required", "kind", "policyKey"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "required": { "type": "boolean" },
+          "kind": { "type": "string", "enum": ["COMPLIANCE"] },
+          "policyKey": { "type": "string" }
+        }
+      },
+      "ExecutionOrderTemplateVersion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "templateId",
+          "key",
+          "version",
+          "label",
+          "workType",
+          "status",
+          "requirements",
+          "reasonCatalogs"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "templateId": { "type": "string", "format": "uuid" },
+          "key": { "type": "string" },
+          "version": { "type": "integer", "minimum": 1 },
+          "label": { "type": "string" },
+          "workType": {
+            "type": "string",
+            "enum": ["INSTALLATION", "SUPPORT", "TECHNICAL_VISIT", "RETIREMENT", "MAINTENANCE"]
+          },
+          "status": { "type": "string", "enum": ["DRAFT", "PUBLISHED", "RETIRED"] },
+          "effectiveFrom": { "type": "string", "format": "date-time" },
+          "requirements": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderTemplateRequirement" }
+          },
+          "reasonCatalogs": { "type": "array", "items": { "type": "string" } },
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "retiredAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ExecutionOrderTemplateVersionPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderTemplateVersion" }
+          },
+          "meta": { "$ref": "#/components/schemas/ListMeta" }
+        }
+      },
+      "CreateExecutionOrderTemplateCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "workType", "requirements"],
+        "properties": {
+          "key": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "workType": {
+            "type": "string",
+            "enum": ["INSTALLATION", "SUPPORT", "TECHNICAL_VISIT", "RETIREMENT", "MAINTENANCE"]
+          },
+          "requirements": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderTemplateRequirement" }
+          },
+          "reasonCatalogs": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "CreateExecutionOrderTemplateVersionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "requirements"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "requirements": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderTemplateRequirement" }
+          },
+          "reasonCatalogs": { "type": "array", "items": { "type": "string" } },
+          "effectiveFrom": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PublishExecutionOrderTemplateVersionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["versionId"],
+        "properties": {
+          "versionId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "RetireExecutionOrderTemplateVersionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["versionId"],
+        "properties": {
+          "versionId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "OperationalEventEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "eventId",
+          "eventType",
+          "tenantId",
+          "aggregateId",
+          "aggregateVersion",
+          "occurredAt",
+          "correlationId",
+          "payload"
+        ],
+        "properties": {
+          "eventId": { "type": "string", "format": "uuid" },
+          "eventType": { "type": "string" },
+          "tenantId": { "type": "string", "format": "uuid" },
+          "aggregateId": { "type": "string", "format": "uuid" },
+          "aggregateVersion": { "type": "integer" },
+          "occurredAt": { "type": "string", "format": "date-time" },
+          "correlationId": { "type": "string", "format": "uuid" },
+          "payload": { "type": "object" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/tasks/execution-orders/{id}": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "getExecutionOrder",
+        "summary": "Obtener OT de ejecución por id",
+        "parameters": [{ "$ref": "#/components/parameters/ExecutionOrderId" }],
+        "responses": {
+          "200": {
+            "description": "OT de ejecución.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/activities": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "listExecutionOrderActivities",
+        "summary": "Listar actividades registradas en la OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de actividades.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderActivityPage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "registerExecutionOrderActivity",
+        "summary": "Registrar actividad en la OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterActivityCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Actividad registrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderActivity" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Validation" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/item-usage": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "listExecutionOrderItemUsage",
+        "summary": "Listar consumos e instalaciones registradas en la OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de consumos.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderItemUsagePage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "registerExecutionOrderItemUsage",
+        "summary": "Registrar consumo o instalación desde custodia técnica",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterItemUsageCommand" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Solicitud de inventario aceptada; MOD12 procesa asíncronamente.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InventoryRequestReceipt" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/evidences": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "listExecutionOrderEvidences",
+        "summary": "Listar evidencias autorizadas de la OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de evidencias.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderEvidencePage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "registerExecutionOrderEvidence",
+        "summary": "Vincular evidencia validada a la OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterEvidenceCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Evidencia registrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderEvidence" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/evidences/{evidenceId}/content": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "getExecutionOrderEvidenceContent",
+        "summary": "Obtener contenido de evidencia (URL firmada o stream)",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/EvidenceId" }
+        ],
+        "responses": {
+          "302": { "description": "Redirección a URL firmada corta." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/evidence-assets": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "createExecutionOrderEvidenceAsset",
+        "summary": "Crear upload-intent para evidencia de la OT",
+        "description": "MIME allowlist (SEC-F04): image/jpeg, image/png, image/heic, application/pdf. Tamaño máximo 20 MB. El servidor valida magic bytes, no confía en Content-Type del cliente.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": { "type": "string", "format": "binary" },
+                  "usage": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Recibo de carga en análisis.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EvidenceAssetReceipt" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/evidence-assets/{mediaAssetId}": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "getExecutionOrderEvidenceAsset",
+        "summary": "Consultar recibo de asset de evidencia",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/MediaAssetId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recibo del asset.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EvidenceAssetReceipt" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/assign": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "assignExecutionOrder",
+        "summary": "Asignar o reasignar OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AssignExecutionOrderCommand" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OT asignada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/start": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "startExecutionOrder",
+        "summary": "Iniciar OT de ejecución",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartExecutionOrderCommand" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OT iniciada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/block": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "blockExecutionOrder",
+        "summary": "Bloquear OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BlockExecutionOrderCommand" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OT bloqueada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/unblock": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "unblockExecutionOrder",
+        "summary": "Desbloquear OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UnblockExecutionOrderCommand" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OT desbloqueada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/close": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "closeExecutionOrder",
+        "summary": "Cerrar OT de ejecución",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CloseExecutionOrderCommand" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OT cerrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Validation" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/follow-ups": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "createExecutionOrderFollowUp",
+        "summary": "Crear seguimiento vinculado a la OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateFollowUpCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Seguimiento creado.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FollowUpReceipt" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/field-work": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "registerExecutionOrderFieldWork",
+        "summary": "Registrar trabajo realizado en campo",
+        "deprecated": true,
+        "description": "Compatibilidad temporal; delega en /activities. Se retirará con telemetría.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterActivityCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Actividad registrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderActivity" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/events/{eventId}/redrive": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "redriveExecutionOrderEvent",
+        "summary": "Re-encolar evento OT desde DLQ",
+        "parameters": [
+          { "$ref": "#/components/parameters/EventId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "responses": {
+          "202": {
+            "description": "Evento re-encolado.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EventRedriveReceipt" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-order-templates": {
+      "get": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "listExecutionOrderTemplates",
+        "summary": "Listar plantillas de OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de versiones de plantillas.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderTemplateVersionPage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "createExecutionOrderTemplate",
+        "summary": "Crear plantilla de OT en borrador",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateExecutionOrderTemplateCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Plantilla creada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderTemplateVersion" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/tasks/execution-order-templates/{templateId}/versions": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "createExecutionOrderTemplateVersion",
+        "summary": "Crear nueva versión de plantilla",
+        "parameters": [
+          { "$ref": "#/components/parameters/TemplateId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExecutionOrderTemplateVersionCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Versión creada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderTemplateVersion" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/tasks/execution-order-template-versions/{versionId}/publish": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "publishExecutionOrderTemplateVersion",
+        "summary": "Publicar versión de plantilla",
+        "parameters": [
+          { "$ref": "#/components/parameters/TemplateVersionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishExecutionOrderTemplateVersionCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Versión publicada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderTemplateVersion" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/tasks/execution-order-template-versions/{versionId}/retire": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "retireExecutionOrderTemplateVersion",
+        "summary": "Retirar versión de plantilla para nuevas OT",
+        "parameters": [
+          { "$ref": "#/components/parameters/TemplateVersionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireExecutionOrderTemplateVersionCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Versión retirada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderTemplateVersion" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      }
+    }
+  }
+}

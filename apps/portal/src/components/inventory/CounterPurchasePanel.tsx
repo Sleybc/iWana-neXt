@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { Button, DatePicker, Input, Select } from '@iwana/ui';
+import { Button, DatePicker, Input } from '@iwana/ui';
 import { InventoryItemKind, InventoryTrackingMode } from '@iwana/shared';
 import type {
   CreateCounterPurchaseDto,
@@ -27,11 +27,13 @@ import {
   type CounterPurchaseLineDraft,
 } from './CounterPurchaseLinesTable';
 import { SupplierPicker } from './SupplierPicker';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 interface CounterPurchasePanelProps {
   items: InventoryItemRecord[];
   catalogOptions: InventoryCatalogOptionRecord[];
-  locations: StockLocationRecord[];
+  /** @deprecated E-4: la bodega destino usa InventoryLocationPicker; prop opcional por compat. */
+  locations?: StockLocationRecord[];
   isSubmitting: boolean;
   error: string | null;
   lastResult: StockMovementResultRecord | null;
@@ -84,7 +86,7 @@ function buildLineFromCatalog(
 export function CounterPurchasePanel({
   items,
   catalogOptions,
-  locations,
+  locations: _locations,
   isSubmitting,
   error,
   lastResult,
@@ -101,20 +103,10 @@ export function CounterPurchasePanel({
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(toLocalDateValue(new Date()));
   const [destinationLocationId, setDestinationLocationId] = useState('');
+  const [destinationLocationLabel, setDestinationLocationLabel] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<CounterPurchaseLineDraft[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
-
-  const locationOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona una bodega destino' },
-      ...locations.map((location) => ({
-        value: location.id,
-        label: `${location.code} · ${location.name}`,
-      })),
-    ],
-    [locations],
-  );
 
   const activeLines = useMemo(
     () =>
@@ -133,13 +125,10 @@ export function CounterPurchasePanel({
   }, [destinationLocationId, invoiceNumber, lines.length, notes, partyRefId]);
 
   const summaryLabel = useMemo(() => {
-    const destination = locations.find((location) => location.id === destinationLocationId);
-    const destinationLabel = destination
-      ? `${destination.code} · ${destination.name}`
-      : 'sin bodega destino';
+    const destinationLabel = destinationLocationLabel?.trim() || 'sin bodega destino';
     const supplier = supplierLabel?.trim() || 'sin proveedor';
     return `${supplier} · ${invoiceNumber.trim() || 'sin factura'} · ${destinationLabel} · ${activeLines.length} línea${activeLines.length === 1 ? '' : 's'}`;
-  }, [activeLines.length, destinationLocationId, invoiceNumber, locations, supplierLabel]);
+  }, [activeLines.length, destinationLocationLabel, invoiceNumber, supplierLabel]);
 
   const estimatedTotal = useMemo(() => {
     return activeLines.reduce((total, line) => {
@@ -155,6 +144,7 @@ export function CounterPurchasePanel({
     setInvoiceNumber('');
     setPurchaseDate(toLocalDateValue(new Date()));
     setDestinationLocationId('');
+    setDestinationLocationLabel(null);
     setNotes('');
     setLines([]);
     setValidationError(null);
@@ -344,15 +334,16 @@ export function CounterPurchasePanel({
               value={toDateFromLocalDateValue(purchaseDate)}
               onChange={(date) => setPurchaseDate(toLocalDateValue(date))}
             />
-            <Select
+            <InventoryLocationPicker
               id="counter-purchase-destination"
               label="Bodega destino"
-              value={destinationLocationId}
-              onChange={(event) => {
-                setDestinationLocationId(event.target.value);
+              value={destinationLocationId || null}
+              selectedLabel={destinationLocationLabel}
+              onChange={(nextId, item) => {
+                setDestinationLocationId(nextId ?? '');
+                setDestinationLocationLabel(item ? item.label : null);
                 setValidationError(null);
               }}
-              options={locationOptions}
             />
           </div>
         </section>

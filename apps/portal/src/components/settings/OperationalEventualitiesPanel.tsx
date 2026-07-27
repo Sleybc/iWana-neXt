@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, DatePicker, Select, type SelectOption } from '@iwana/ui';
+import type { ListMeta } from '@iwana/shared';
 import {
   wfmApi,
   usersApi,
@@ -12,13 +13,26 @@ import {
   type InternalUser,
   type ListUsersResponse,
 } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalPageSizeSelect,
+  PortalPanel,
+  PortalTablePager,
+  portalDataTableShellClassName,
+} from '@/components/shared/portal-ui';
 import {
   CALENDAR_SETTINGS_COPY,
   OPERATIONAL_EVENTUALITY_STATUS_LABELS,
   OPERATIONAL_EVENTUALITY_TYPE_LABELS,
 } from './mod00-settings-labels';
 import { TimeFieldSelect } from './TimeFieldSelect';
+
+const EVENTUALITIES_RESOURCE = { singular: 'eventualidad', plural: 'eventualidades' } as const;
+const EVENTUALITIES_NAMESPACE = 'eventualities';
 
 const STATUS_BADGE_CLASSES: Record<OperationalEventualityStatus, string> = {
   pending:
@@ -121,9 +135,30 @@ interface Props {
 }
 
 export function OperationalEventualitiesPanel({ canEdit }: Props) {
+  return (
+    <Suspense
+      fallback={
+        <PortalPanel
+          title={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
+          description={CALENDAR_SETTINGS_COPY.eventualitiesDescription}
+        >
+          <p className="text-sm text-gray-500">
+            {CALENDAR_SETTINGS_COPY.eventualitiesLoadingStatus}
+          </p>
+        </PortalPanel>
+      }
+    >
+      <OperationalEventualitiesPanelInner canEdit={canEdit} />
+    </Suspense>
+  );
+}
+
+function OperationalEventualitiesPanelInner({ canEdit }: Props) {
   const [items, setItems] = useState<OperationalEventuality[]>([]);
+  const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [users, setUsers] = useState<InternalUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [usersUnavailable, setUsersUnavailable] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -132,6 +167,7 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<EmptyDraft>(EMPTY_DRAFT);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const hasLoadedOnceRef = useRef(false);
   const eventualityFormRegionId = 'operational-eventuality-form-region';
   const eventualityFormHeadingId = 'operational-eventuality-form-heading';
   const eventualityUserId = 'eventuality-user-id';
@@ -140,6 +176,12 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
   const eventualityEndsAtId = 'eventuality-ends-at-id';
   const eventualityReasonId = 'eventuality-reason-id';
   const eventualityOriginId = 'eventuality-origin-id';
+
+  const { page, pageSize, setPage, setPageSize, setQuery } = useTableQueryState({
+    namespace: EVENTUALITIES_NAMESPACE,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
+
   const canOpenCreateForm =
     canEdit && !isLoading && !loadFailed && !usersUnavailable && users.length > 0;
   const userOptions = useMemo<SelectOption[]>(
@@ -168,45 +210,70 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
     [],
   );
 
-  useEffect(() => {
-    void load();
+  const loadUsers = useCallback(async () => {
+    try {
+      const usersResult = await usersApi.list();
+      const usersData = usersResult as ListUsersResponse | InternalUser[];
+      setUsers(
+        Array.isArray(usersData) ? usersData : ((usersData as ListUsersResponse).data ?? []),
+      );
+      setUsersUnavailable(false);
+    } catch {
+      setUsers([]);
+      setUsersUnavailable(true);
+    }
   }, []);
 
-  async function load() {
-    setIsLoading(true);
-    setError(null);
-    setLoadFailed(false);
-    setUsersUnavailable(false);
-    try {
-      const [itemsResult, usersResult] = await Promise.allSettled([
-        wfmApi.operationalEventualities.list(),
-        usersApi.list(),
-      ]);
-
-      if (itemsResult.status === 'fulfilled') {
-        setItems(Array.isArray(itemsResult.value) ? itemsResult.value : []);
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean; withUsers?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setIsRefreshing(true);
       } else {
+        setIsLoading(true);
+      }
+      setError(null);
+      setLoadFailed(false);
+
+      try {
+        const itemsPromise = wfmApi.operationalEventualities.list({
+          page,
+          limit: pageSize,
+        });
+        const usersPromise = opts?.withUsers ? loadUsers() : Promise.resolve();
+        const [itemsResult] = await Promise.all([itemsPromise, usersPromise]);
+
+        const nextMeta = normalizeListMeta(itemsResult.meta, {
+          dataLength: itemsResult.data.length,
+          limit: pageSize,
+        });
+        // sortableFields: [] — no inventar orden.
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (itemsResult.data.length === 0 && page > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || page - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setItems(itemsResult.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch {
         setItems([]);
+        setMeta(EMPTY_LIST_META);
         setLoadFailed(true);
         setError(CALENDAR_SETTINGS_COPY.eventualitiesLoadError);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
       }
+    },
+    [loadUsers, page, pageSize, setQuery],
+  );
 
-      if (usersResult.status === 'fulfilled') {
-        const usersData = usersResult.value as ListUsersResponse | InternalUser[];
-        setUsers(
-          Array.isArray(usersData) ? usersData : ((usersData as ListUsersResponse).data ?? []),
-        );
-      } else {
-        setUsers([]);
-        setUsersUnavailable(true);
-      }
-    } catch {
-      setLoadFailed(true);
-      setError(CALENDAR_SETTINGS_COPY.eventualitiesLoadError);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  useEffect(() => {
+    void loadPage({ withUsers: !hasLoadedOnceRef.current });
+  }, [loadPage]);
 
   function updateDraft<K extends keyof EmptyDraft>(key: K, value: EmptyDraft[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -245,11 +312,11 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
         origin: draft.origin.trim() || null,
         requiresHrReview: draft.requiresHrReview,
       };
-      const created = await wfmApi.operationalEventualities.create(dto);
-      setItems((prev) => [created as OperationalEventuality, ...prev]);
+      await wfmApi.operationalEventualities.create(dto);
       setDraft(EMPTY_DRAFT);
       setShowForm(false);
       setFeedback(CALENDAR_SETTINGS_COPY.eventualitiesCreated);
+      await loadPage({ soft: true });
     } catch {
       setError(CALENDAR_SETTINGS_COPY.eventualitiesCreateError);
     } finally {
@@ -290,8 +357,8 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
 
     try {
       await wfmApi.operationalEventualities.delete(id);
-      setItems((prev) => prev.filter((item) => item.id !== id));
       setFeedback(CALENDAR_SETTINGS_COPY.eventualitiesDeleted);
+      await loadPage({ soft: true });
     } catch {
       setError(CALENDAR_SETTINGS_COPY.eventualitiesDeleteError);
     } finally {
@@ -321,6 +388,17 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
       return iso;
     }
   }
+
+  const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
+  const effectivePage = meta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const randomAccess = meta.capabilities.randomAccess;
+  const showPager = !isLoading && !loadFailed && meta.total > 0;
+  const showPageSize = showPager && randomAccess && meta.total > Math.min(...[10, 20, 50]);
 
   function updateDraftDateTimeField(
     key: 'startsAt' | 'endsAt',
@@ -363,95 +441,118 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
           description={CALENDAR_SETTINGS_COPY.eventualitiesEmptyDescription}
         />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
-          <table
-            className="min-w-full divide-y divide-gray-200 dark:divide-dark-border"
-            data-testid="eventualities-table"
-          >
-            <thead className="bg-gray-50 dark:bg-dark-surface-2">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {CALENDAR_SETTINGS_COPY.eventualitiesTableUserColumn}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {CALENDAR_SETTINGS_COPY.eventualitiesTableTypeColumn}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {CALENDAR_SETTINGS_COPY.eventualitiesTableStartsAtColumn}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {CALENDAR_SETTINGS_COPY.eventualitiesTableEndsAtColumn}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {CALENDAR_SETTINGS_COPY.eventualitiesTableStatusColumn}
-                </th>
-                {canEdit && (
+        <div className="space-y-3">
+          <div className={portalDataTableShellClassName}>
+            <table
+              className="min-w-full divide-y divide-gray-200 dark:divide-dark-border"
+              data-testid="eventualities-table"
+            >
+              <thead className="bg-gray-50 dark:bg-dark-surface-2">
+                <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {CALENDAR_SETTINGS_COPY.eventualitiesTableActionsColumn}
+                    {CALENDAR_SETTINGS_COPY.eventualitiesTableUserColumn}
                   </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface">
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                    {getUserName(item.userId)}
-                  </td>
-                  <td className="px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                    {OPERATIONAL_EVENTUALITY_TYPE_LABELS[item.type] ?? item.type}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                    {formatDateLocal(item.startsAt)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                    {formatDateLocal(item.endsAt)}
-                  </td>
-                  <td className="px-4 py-3.5 align-middle">
-                    <span className={STATUS_BADGE_CLASSES[item.status]}>
-                      {OPERATIONAL_EVENTUALITY_STATUS_LABELS[item.status] ?? item.status}
-                    </span>
-                  </td>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {CALENDAR_SETTINGS_COPY.eventualitiesTableTypeColumn}
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {CALENDAR_SETTINGS_COPY.eventualitiesTableStartsAtColumn}
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {CALENDAR_SETTINGS_COPY.eventualitiesTableEndsAtColumn}
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {CALENDAR_SETTINGS_COPY.eventualitiesTableStatusColumn}
+                  </th>
                   {canEdit && (
-                    <td className="px-4 py-3.5 align-middle">
-                      <div className="flex items-center gap-2">
-                        {item.status === 'pending' && (
-                          <>
-                            <button
-                              className="text-xs font-medium text-green-600 hover:underline dark:text-green-400"
-                              onClick={() => void handleUpdateStatus(item.id, 'confirmed')}
-                              disabled={pendingActionId === item.id}
-                              data-testid={`confirm-eventuality-${item.id}`}
-                            >
-                              {CALENDAR_SETTINGS_COPY.eventualitiesConfirmAction}
-                            </button>
-                            <button
-                              className="text-xs font-medium text-red-500 hover:underline dark:text-red-400"
-                              onClick={() => void handleUpdateStatus(item.id, 'cancelled')}
-                              disabled={pendingActionId === item.id}
-                              data-testid={`cancel-eventuality-${item.id}`}
-                            >
-                              {CALENDAR_SETTINGS_COPY.eventualitiesCancelAction}
-                            </button>
-                          </>
-                        )}
-                        {item.status !== 'pending' && (
-                          <button
-                            className="text-xs font-medium text-gray-400 hover:underline dark:text-gray-500"
-                            onClick={() => void handleDelete(item.id)}
-                            disabled={pendingActionId === item.id}
-                            data-testid={`delete-eventuality-${item.id}`}
-                          >
-                            {CALENDAR_SETTINGS_COPY.eventualitiesDeleteAction}
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {CALENDAR_SETTINGS_COPY.eventualitiesTableActionsColumn}
+                    </th>
                   )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface">
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
+                      {getUserName(item.userId)}
+                    </td>
+                    <td className="px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
+                      {OPERATIONAL_EVENTUALITY_TYPE_LABELS[item.type] ?? item.type}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
+                      {formatDateLocal(item.startsAt)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
+                      {formatDateLocal(item.endsAt)}
+                    </td>
+                    <td className="px-4 py-3.5 align-middle">
+                      <span className={STATUS_BADGE_CLASSES[item.status]}>
+                        {OPERATIONAL_EVENTUALITY_STATUS_LABELS[item.status] ?? item.status}
+                      </span>
+                    </td>
+                    {canEdit && (
+                      <td className="px-4 py-3.5 align-middle">
+                        <div className="flex items-center gap-2">
+                          {item.status === 'pending' && (
+                            <>
+                              <button
+                                className="text-xs font-medium text-green-600 hover:underline dark:text-green-400"
+                                onClick={() => void handleUpdateStatus(item.id, 'confirmed')}
+                                disabled={pendingActionId === item.id}
+                                data-testid={`confirm-eventuality-${item.id}`}
+                              >
+                                {CALENDAR_SETTINGS_COPY.eventualitiesConfirmAction}
+                              </button>
+                              <button
+                                className="text-xs font-medium text-red-500 hover:underline dark:text-red-400"
+                                onClick={() => void handleUpdateStatus(item.id, 'cancelled')}
+                                disabled={pendingActionId === item.id}
+                                data-testid={`cancel-eventuality-${item.id}`}
+                              >
+                                {CALENDAR_SETTINGS_COPY.eventualitiesCancelAction}
+                              </button>
+                            </>
+                          )}
+                          {item.status !== 'pending' && (
+                            <button
+                              className="text-xs font-medium text-gray-400 hover:underline dark:text-gray-500"
+                              onClick={() => void handleDelete(item.id)}
+                              disabled={pendingActionId === item.id}
+                              data-testid={`delete-eventuality-${item.id}`}
+                            >
+                              {CALENDAR_SETTINGS_COPY.eventualitiesDeleteAction}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {showPager && randomAccess ? (
+            <PortalTablePager
+              page={effectivePage}
+              pageCount={Math.max(1, pageCount)}
+              onPageChange={setPage}
+              from={from}
+              to={to}
+              total={meta.total}
+              resource={EVENTUALITIES_RESOURCE}
+              loading={isRefreshing}
+              pageSizeControl={
+                showPageSize ? (
+                  <PortalPageSizeSelect
+                    value={pageSize}
+                    onChange={setPageSize}
+                    disabled={isRefreshing}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
         </div>
       )}
 

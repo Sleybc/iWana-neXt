@@ -10,13 +10,16 @@ import { AuditAction } from '@iwana/shared';
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 4 (GET /api/v1/audit-logs)
  */
 export class QueryAuditLogsDto {
-  /** Cursor UUID para paginacion (id del ultimo registro de la pagina anterior) */
+  /**
+   * Cursor compuesto base64url para paginación keyset (ADR-065 DEF-3).
+   * Codifica `{ d: createdAt ISO, i: id }` del último registro de la página anterior.
+   */
   @ApiPropertyOptional({
-    format: 'uuid',
-    description: 'Cursor UUID para paginación (id del último registro de la página anterior)',
+    description:
+      'Cursor compuesto base64url para paginación keyset (createdAt + id del último registro de la página anterior).',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   cursor?: string;
 
   /** Limite de registros por pagina (default 50, max 100) */

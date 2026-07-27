@@ -6,9 +6,23 @@ import {
   OrganizationSiteType,
   UserRole,
 } from '@iwana/shared';
+import { emptyPageListMeta } from '@/lib/list-meta';
 import { OrganizationSettingsClient } from './OrganizationSettingsClient';
 
 const useAuthMock = jest.fn();
+const pushMock = jest.fn();
+const replaceMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
+const routerMock = {
+  push: (...args: unknown[]) => pushMock(...args),
+  replace: (...args: unknown[]) => replaceMock(...args),
+};
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => routerMock,
+  usePathname: () => '/dashboard/settings/organization',
+  useSearchParams: () => searchParamsMock,
+}));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
@@ -157,6 +171,9 @@ describe('OrganizationSettingsClient', () => {
     };
 
     jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
+    pushMock.mockReset();
+    replaceMock.mockReset();
     useAuthMock.mockReturnValue({
       user: { id: 'user-1', role: UserRole.ADMIN },
       isLoading: false,
@@ -173,7 +190,16 @@ describe('OrganizationSettingsClient', () => {
     });
     tenantSelfApi.getProfile.mockResolvedValue(tenantProfile);
     tenantSelfApi.getSettings.mockResolvedValue(tenantSettings);
-    organizationApi.list.mockResolvedValue(organizationSummary);
+    organizationApi.list.mockResolvedValue({
+      data: organizationSummary,
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: organizationSummary.length,
+        totalPages: 1,
+        hasMore: false,
+      }),
+    });
     organizationApi.get.mockResolvedValue(organizationDetail);
     organizationApi.create.mockResolvedValue({
       ...organizationDetail,
@@ -521,7 +547,29 @@ describe('OrganizationSettingsClient', () => {
     };
     let deleted = false;
 
-    organizationApi.list.mockImplementation(async () => (deleted ? [] : organizationSummary));
+    organizationApi.list.mockImplementation(async () =>
+      deleted
+        ? {
+            data: [],
+            meta: emptyPageListMeta({
+              page: 1,
+              limit: 20,
+              total: 0,
+              totalPages: 0,
+              hasMore: false,
+            }),
+          }
+        : {
+            data: organizationSummary,
+            meta: emptyPageListMeta({
+              page: 1,
+              limit: 20,
+              total: organizationSummary.length,
+              totalPages: 1,
+              hasMore: false,
+            }),
+          },
+    );
     organizationApi.delete.mockImplementation(async () => {
       deleted = true;
     });

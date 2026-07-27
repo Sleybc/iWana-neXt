@@ -8,7 +8,6 @@ import {
 import { EditUserModal } from './EditUserModal';
 
 const changeLoginEmailAsAdminMock = jest.fn();
-const resetPasswordMock = jest.fn();
 
 jest.mock('@/lib/api-client', () => {
   class ApiError extends Error {
@@ -23,7 +22,6 @@ jest.mock('@/lib/api-client', () => {
     ApiError,
     usersApi: {
       changeLoginEmailAsAdmin: (...args: unknown[]) => changeLoginEmailAsAdminMock(...args),
-      resetPassword: (...args: unknown[]) => resetPasswordMock(...args),
     },
   };
 });
@@ -82,7 +80,6 @@ const compatibilityMatrix: Record<UserRole, AccessPermissionKey[]> = {
 describe('EditUserModal', () => {
   beforeEach(() => {
     changeLoginEmailAsAdminMock.mockReset();
-    resetPasswordMock.mockReset();
     let uuidSeq = 0;
     Object.defineProperty(globalThis, 'crypto', {
       value: {
@@ -95,7 +92,7 @@ describe('EditUserModal', () => {
     });
   });
 
-  it('should render separate sections for profile data and credentials', async () => {
+  it('should render access section without credentials reset; profile fields stay collapsed', async () => {
     render(
       <EditUserModal
         isOpen={true}
@@ -134,12 +131,17 @@ describe('EditUserModal', () => {
 
     await screen.findByRole('dialog', { name: 'Editar usuario' });
 
-    expect(screen.getByText('Perfil y accesos')).toBeInTheDocument();
-    expect(screen.getByText('Credenciales y acceso')).toBeInTheDocument();
-    expect(screen.getByLabelText('Restablecer contraseña')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Acceso' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Correo de inicio de sesión' })).toBeInTheDocument();
+    expect(screen.getByText('Datos de perfil')).toBeInTheDocument();
+    expect(screen.queryByText('Credenciales y acceso')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Restablecer contraseña')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Estado' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Categoría base' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Datos de perfil'));
     expect(screen.getByRole('combobox', { name: 'Tipo de documento' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/cargo/i)).toBeInTheDocument();
   });
 
   it('should close the dialog when pressing Escape', async () => {
@@ -228,7 +230,8 @@ describe('EditUserModal', () => {
       />,
     );
 
-    // Cambiar un campo no relacionado con roles para habilitar el boton de guardado
+    // Abrir perfil colapsado y cambiar un campo no relacionado con roles
+    fireEvent.click(screen.getByText('Datos de perfil'));
     fireEvent.change(screen.getByLabelText(/cargo/i), {
       target: { value: 'Nuevo cargo' },
     });
@@ -312,7 +315,6 @@ describe('EditUserModal', () => {
     );
 
     expect(await screen.findByText('Perfiles de acceso')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /perfiles de acceso/i }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Técnico de campo' }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
@@ -360,41 +362,13 @@ describe('EditUserModal', () => {
       />,
     );
 
+    fireEvent.click(screen.getByText('Datos de perfil'));
     fireEvent.click(screen.getByLabelText(/disponible para despacho operativo/i));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({ isOperationalResource: false }, []);
     });
-  });
-
-  it('G5 FE-02: reutiliza Idempotency-Key en reintentos de reset password', async () => {
-    resetPasswordMock
-      .mockRejectedValueOnce(new Error('fallo transitorio'))
-      .mockResolvedValueOnce({ temporaryPassword: 'tmp-pass-1' });
-
-    render(<EditUserModal {...defaultModalProps} />);
-
-    await screen.findByRole('dialog', { name: 'Editar usuario' });
-    const passwordResetButton = screen.getByRole('button', { name: 'Restablecer' });
-    fireEvent.click(passwordResetButton);
-
-    await waitFor(() => {
-      expect(resetPasswordMock).toHaveBeenCalledTimes(1);
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Restablecer' }));
-
-    await waitFor(() => {
-      expect(resetPasswordMock).toHaveBeenCalledTimes(2);
-    });
-
-    const firstKey = (resetPasswordMock.mock.calls[0]?.[1] as { idempotencyKey?: string })
-      ?.idempotencyKey;
-    const secondKey = (resetPasswordMock.mock.calls[1]?.[1] as { idempotencyKey?: string })
-      ?.idempotencyKey;
-    expect(firstKey).toBe('22222222-2222-4222-8222-222222222221');
-    expect(secondKey).toBe(firstKey);
   });
 
   it('G5: guarda email admin vía changeLoginEmailAsAdmin y reutiliza Idempotency-Key', async () => {

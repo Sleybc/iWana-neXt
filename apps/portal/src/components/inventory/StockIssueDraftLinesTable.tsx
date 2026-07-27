@@ -2,10 +2,11 @@
 
 import { StockBalanceCondition } from '@iwana/shared';
 import { Button, Input, Select } from '@iwana/ui';
-import type {
-  InventoryItemRecord,
-  SerializedAssetRecord,
-  StockBalanceRecord,
+import {
+  inventoryApi,
+  type InventoryItemRecord,
+  type SerializedAssetRecord,
+  type StockBalanceRecord,
 } from '@/lib/api-client';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import type { StockIssueDraftLine } from './stock-issue-draft';
@@ -25,6 +26,7 @@ import {
   listLotOptionsForItemAtLocation,
   listSerializedAssetsForItemAtLocation,
 } from './stock-issue-line-utils';
+import { InventoryItemPicker } from './InventoryItemPicker';
 
 const CONDITION_OPTIONS = Object.values(StockBalanceCondition).map((condition) => ({
   value: condition,
@@ -77,14 +79,6 @@ export function StockIssueDraftLinesTable({
 }: StockIssueDraftLinesTableProps) {
   const allSelected = lines.length > 0 && selectedLineIds.length === lines.length;
   const itemsById = new Map(items.map((item) => [item.id, item]));
-
-  const itemOptions = [
-    { value: '', label: 'Selecciona un producto' },
-    ...items.map((item) => ({
-      value: item.id,
-      label: `${item.sku} · ${item.name}`,
-    })),
-  ];
 
   return (
     <div className="space-y-3">
@@ -197,20 +191,37 @@ export function StockIssueDraftLinesTable({
                   </td>
                   <td className="px-4 py-3">
                     {line.isManual ? (
-                      <Select
-                        aria-label={`Producto línea ${line.id}`}
-                        value={line.itemId}
-                        onChange={(event) => {
-                          const itemId = event.target.value;
-                          const nextItem = items.find((entry) => entry.id === itemId);
-                          onItemChange(
-                            line.id,
-                            itemId,
-                            nextItem ? `${nextItem.sku} · ${nextItem.name}` : '',
-                            nextItem?.unitOfMeasure ?? '',
-                          );
+                      <InventoryItemPicker
+                        id={`issue-draft-item-${line.id}`}
+                        label="Producto"
+                        value={line.itemId || null}
+                        selectedLabel={line.productLabel || null}
+                        onChange={(itemId, picked) => {
+                          if (!itemId || !picked) {
+                            onItemChange(line.id, '', '', '');
+                            return;
+                          }
+                          void inventoryApi
+                            .getItem(itemId)
+                            .then((item) => {
+                              onItemChange(
+                                line.id,
+                                item.id,
+                                `${item.sku} · ${item.name}`,
+                                item.unitOfMeasure ?? 'unidad',
+                              );
+                            })
+                            .catch(() => {
+                              onItemChange(
+                                line.id,
+                                itemId,
+                                picked.sublabel
+                                  ? `${picked.label} · ${picked.sublabel}`
+                                  : picked.label,
+                                'unidad',
+                              );
+                            });
                         }}
-                        options={itemOptions}
                       />
                     ) : (
                       <span className="font-medium text-gray-900 dark:text-white">

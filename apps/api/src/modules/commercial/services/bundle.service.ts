@@ -9,7 +9,15 @@ import { CatalogBundleItem } from '../entities/catalog-bundle-item.entity';
 import { CatalogPriceHistory } from '../entities/catalog-price-history.entity';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { CreateBundleDto, UpdateBundleDto } from '../dto/bundle.dto';
+import { CommercialOfferListQueryDto } from '../dto/commercial-offer-list-query.dto';
 import { COMMERCIAL_EVENTS } from '../events/commercial.events';
+import { BUNDLE_EXPIRING_SQL, commercialExpiringParams } from '../utils/commercial-offer-filters';
+import {
+  buildNameIdNextCursor,
+  clampCommercialLimit,
+  CommercialPaginatedResult,
+  decodeNameIdCursor,
+} from '../../../common/pagination';
 
 export interface BundleDetailResult extends CatalogBundle {
   items: Array<{
@@ -41,39 +49,74 @@ export class BundleService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async findAll(): Promise<BundleListItem[]> {
+  /**
+   * Lista bundles activos con paginación cursor (ADR-064).
+   * Orden: name ASC, id ASC. Incluye itemCount por bundle de la página.
+   * `offerStatus=expiring` → vigencia en ventana de 7 días.
+   */
+  async findAll(
+    query: CommercialOfferListQueryDto = {},
+  ): Promise<CommercialPaginatedResult<BundleListItem>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const rows = await qr.manager
-        .createQueryBuilder(CatalogBundle, 'bundle')
-        .leftJoin(CatalogBundleItem, 'item', 'item.bundle_id = bundle.id')
-        .select([
-          'bundle.id',
-          'bundle.tenantId',
-          'bundle.name',
-          'bundle.description',
-          'bundle.discountType',
-          'bundle.discountValue',
-          'bundle.validFrom',
-          'bundle.validTo',
-          'bundle.isActive',
-          'bundle.createdAt',
-          'bundle.updatedAt',
-        ])
-        .addSelect('COUNT(item.id)', 'itemCount')
-        .where('bundle.tenant_id = :tenantId', { tenantId })
-        .andWhere('bundle.is_active = true')
-        .groupBy('bundle.id')
-        .orderBy('bundle.name', 'ASC')
-        .getRawAndEntities();
+    const limit = clampCommercialLimit(query.limit);
+    const { cursor, offerStatus } = query;
 
-      return rows.entities.map((bundle, index) => {
-        const raw = rows.raw[index] as { itemCount?: string | number } | undefined;
-        return {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const qb = qr.manager
+        .createQueryBuilder(CatalogBundle, 'bundle')
+        .where('bundle.tenant_id = :tenantId', { tenantId })
+        .andWhere('bundle.is_active = true');
+
+      if (offerStatus === 'expiring') {
+        qb.andWhere(BUNDLE_EXPIRING_SQL, commercialExpiringParams());
+      }
+
+      const total = await qb.clone().getCount();
+
+      if (cursor) {
+        const decoded = decodeNameIdCursor(cursor);
+        qb.andWhere(
+          '(bundle.name > :cursorName OR (bundle.name = :cursorName AND bundle.id > :cursorId))',
+          { cursorName: decoded.n, cursorId: decoded.i },
+        );
+      }
+
+      const bundles = await qb
+        .orderBy('bundle.name', 'ASC')
+        .addOrderBy('bundle.id', 'ASC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = bundles.length > limit;
+      const page = hasNext ? bundles.slice(0, limit) : bundles;
+      const ids = page.map((b) => b.id);
+      const countMap = new Map<string, number>();
+
+      if (ids.length > 0) {
+        const countRows = await qr.manager
+          .createQueryBuilder(CatalogBundleItem, 'item')
+          .select('item.bundle_id', 'bundleId')
+          .addSelect('COUNT(item.id)', 'itemCount')
+          .where('item.bundle_id IN (:...ids)', { ids })
+          .groupBy('item.bundle_id')
+          .getRawMany<{ bundleId: string; itemCount: string }>();
+
+        for (const row of countRows) {
+          countMap.set(row.bundleId, Number(row.itemCount ?? 0));
+        }
+      }
+
+      const last = page[page.length - 1];
+      return {
+        data: page.map((bundle) => ({
           ...bundle,
-          itemCount: Number(raw?.itemCount ?? 0),
-        };
-      });
+          itemCount: countMap.get(bundle.id) ?? 0,
+        })),
+        meta: {
+          nextCursor: buildNameIdNextCursor(hasNext, last),
+          total,
+        },
+      };
     });
   }
 

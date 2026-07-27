@@ -5,6 +5,13 @@ import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { CompatibilityRuleType } from '@iwana/shared';
 import { CompatibilityRule } from '../entities/compatibility-rule.entity';
 import { CreateCompatibilityRuleDto, UpdateCompatibilityRuleDto } from '../dto/compatibility.dto';
+import { CommercialListQueryDto } from '../dto/commercial-list-query.dto';
+import {
+  buildDateIdNextCursor,
+  clampCommercialLimit,
+  CommercialPaginatedResult,
+  decodeDateIdCursor,
+} from '../../../common/pagination';
 
 export interface CompatibilityValidationResult {
   valid: boolean;
@@ -16,14 +23,54 @@ export interface CompatibilityValidationResult {
 export class CompatibilityService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async findAll(): Promise<CompatibilityRule[]> {
+  /**
+   * Lista reglas de compatibilidad activas con paginación cursor (ADR-064 / P1).
+   * Orden: createdAt DESC, id DESC.
+   */
+  async findAll(
+    query: CommercialListQueryDto = {},
+  ): Promise<CommercialPaginatedResult<CompatibilityRule>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(CompatibilityRule, {
-        where: { tenantId, isActive: true },
-        order: { createdAt: 'DESC' },
-      }),
-    );
+    const limit = clampCommercialLimit(query.limit);
+    const { cursor } = query;
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const qb = qr.manager
+        .createQueryBuilder(CompatibilityRule, 'cr')
+        .where('cr.tenant_id = :tenantId', { tenantId })
+        .andWhere('cr.is_active = true');
+
+      const total = await qb.clone().getCount();
+
+      if (cursor) {
+        const decoded = decodeDateIdCursor(cursor);
+        qb.andWhere(
+          '(cr.created_at < :cursorDate OR (cr.created_at = :cursorDate AND cr.id < :cursorId))',
+          { cursorDate: decoded.d, cursorId: decoded.i },
+        );
+      }
+
+      const rows = await qb
+        .orderBy('cr.created_at', 'DESC')
+        .addOrderBy('cr.id', 'DESC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = rows.length > limit;
+      const page = hasNext ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+
+      return {
+        data: page,
+        meta: {
+          nextCursor: buildDateIdNextCursor(
+            hasNext,
+            last ? { date: last.createdAt, id: last.id } : undefined,
+          ),
+          total,
+        },
+      };
+    });
   }
 
   async create(dto: CreateCompatibilityRuleDto): Promise<CompatibilityRule> {

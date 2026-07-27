@@ -1,8 +1,8 @@
 # PRD - MOD12 Inventario / SCM
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-25  
+**Version:** 1.1  
+**Estado:** En revision — baseline v1.0 aprobado; ampliacion OT v1.1 sujeta a ADR-068 (propuesto)  
+**Fecha:** 2026-07-27  
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Aprobado por:** CTO  
@@ -338,3 +338,23 @@ Resumen al 2026-07-21 (post H4): **22 de 22 requisitos MVP construidos (100 % al
 | Bajas con aprobación | [PRD-MOD12-BAJAS-APROBACION-v1.0.md](PRD-MOD12-BAJAS-APROBACION-v1.0.md) | **Cerrado** (H3, 2026-07-21) |
 | Vida útil / StockLow / eventos | [PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md](PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md) | **Cerrado** (H4, 2026-07-21) |
 | Cierre de módulo (H6) | [INFORME-MOD12-CIERRE-MODULO-v1.0.md](../informes/INFORME-MOD12-CIERRE-MODULO-v1.0.md) | **G7 NO-GO** — remediación H6-R1 |
+
+---
+
+## Ampliacion 2026-07-27 — conciliacion con OT de instalacion
+
+MOD12 sigue siendo la unica verdad de custodia, saldo, serial y movimiento. La ampliacion propone:
+
+- recibir `InventoryConsumptionRequestedV1` desde MOD11 durante ejecución;
+- validar item, cantidad, serial, tipo de ubicación, `responsibleRefId`, tecnico/cuadrilla, membresia y vigencia;
+- publicar `InventoryMovementConfirmedV1` o `InventoryMovementRejectedV1`;
+- garantizar idempotencia por tenant, intención y hash de payload;
+- permitir conciliacion/re-drive sin duplicar movimiento;
+- prohibir referencias de movimiento fabricadas;
+- conservar settlement append-only aunque la OT ya sea terminal.
+
+`ExecutionOrderClosedV1` no origina consumo. MOD11 no escribe ledger ni comparte transacción/repositorio con MOD12.
+
+**Gate:** esta ampliacion no altera el baseline aprobado hasta que ADR-068 (propuesto) sea promovido a `Aprobado` y G4 congele los contratos.
+
+**Trazabilidad:** `docs/hlds/HLD-MOD12-INVENTARIO-SCM-v1.0.md`, `docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md`.

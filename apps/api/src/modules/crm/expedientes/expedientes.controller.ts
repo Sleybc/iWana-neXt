@@ -15,7 +15,14 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiExtraModels,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PlatformRole, UserRole, ExpedienteStatus } from '@iwana/shared';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -26,6 +33,8 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
+import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
@@ -101,12 +110,15 @@ export class ExpedientesController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar expedientes con filtros' })
+  @ApiExtraModels(CrmListPaginationDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   async findAll(
     @Query('status') status?: string,
     @Query('municipality') municipality?: string,
     @Query('search') search?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
     @Query('assignedTo') assignedTo?: string,
     @Query('documentNumber') documentNumber?: string,
     @Query('includeCompleted') includeCompleted?: string,
@@ -116,8 +128,8 @@ export class ExpedientesController {
       status: status as ExpedienteStatus | undefined,
       municipality: municipality ?? undefined,
       search: search ?? undefined,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
+      page,
+      limit,
       assignedTo: assignedTo ?? undefined,
       documentNumber: documentNumber ?? undefined,
       includeCompleted: includeCompleted === 'true',
@@ -350,16 +362,15 @@ export class ExpedientesController {
   @Get(':id/contact-attempts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar intentos de contacto del expediente' })
+  @ApiExtraModels(CrmListPaginationDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   async listContactAttempts(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
   ) {
-    return this.expedienteService.listContactAttempts(
-      id,
-      page ? Number(page) : undefined,
-      limit ? Number(limit) : undefined,
-    );
+    return this.expedienteService.listContactAttempts(id, page, limit);
   }
 
   @Post(':id/consents')

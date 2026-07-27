@@ -18,6 +18,11 @@
  * SEGURIDAD: sin PII real. Emails de dominio `.test` y contrasenas sinteticas.
  */
 
+jest.mock('bcryptjs', () => ({
+  hash: jest.fn(async (value: string) => `hashed:${value}`),
+  compare: jest.fn(),
+}));
+
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';

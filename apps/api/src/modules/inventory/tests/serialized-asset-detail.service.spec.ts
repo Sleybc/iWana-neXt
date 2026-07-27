@@ -467,6 +467,7 @@ describe('AssetLifecycleService.listPaginatedForAsset', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getCount: jest.fn().mockResolvedValue(1),
@@ -485,6 +486,7 @@ describe('AssetLifecycleService.listPaginatedForAsset', () => {
     const result = await lifecycleService.listPaginatedForAsset(ASSET_ID, 1, 20);
 
     expect(qb.orderBy).toHaveBeenCalledWith('event.created_at', 'DESC');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('event.id', 'DESC');
     expect(result.data[0]).toMatchObject({
       id: 'evt-001',
       locationName: 'Bodega central',

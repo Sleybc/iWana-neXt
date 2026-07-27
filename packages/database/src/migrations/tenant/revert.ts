@@ -6,7 +6,9 @@ import {
   acquireGlobalLock,
   createTenantDataSource,
   ensureTenantMigrationsTable,
+  isTenantMigrationTransactional,
   releaseGlobalLock,
+  type TenantMigrationLike,
 } from './runner';
 
 /**
@@ -135,13 +137,15 @@ export async function planTenantRevert(
 /**
  * Revierte las últimas `steps` migraciones aplicadas a UN schema de tenant.
  *
- * Consistencia transaccional (criterio 5): cada paso ejecuta `down()` y el
+ * Consistencia transaccional (default, ADR-066): cada paso ejecuta `down()` y el
  * `DELETE` de su fila en `typeorm_migrations` dentro de la misma transacción.
  * En PostgreSQL el DDL es transaccional, así que un `down()` que falle a mitad
- * deja el schema y el registro en el mismo estado previo — no hay ventana en la
- * que el registro afirme algo que el schema no cumple. Si falla el paso N de M,
- * los pasos anteriores ya commiteados siguen siendo válidos y el registro los
- * refleja con exactitud.
+ * deja el schema y el registro en el mismo estado previo.
+ *
+ * Migraciones con `transactional = false`: `down()` corre fuera de TX y el
+ * bookkeeping se elimina en una TX aparte. No hay atomicidad DDL↔registro; el
+ * `down()` debe ser idempotente (`IF EXISTS`). Si falla el paso N de M, los
+ * pasos anteriores ya commiteados siguen siendo válidos.
  */
 export async function revertTenantMigrations(
   baseDataSource: DataSource,
@@ -200,6 +204,60 @@ export async function revertTenantMigrations(
   }
 }
 
+function wrapNonTransactionalRevertFailure(migrationName: string, error: unknown): Error {
+  const detail = error instanceof Error ? error.message : String(error);
+  const wrapped = new Error(
+    `El revert no transaccional de "${migrationName}" falló. ` +
+      `Verifique manualmente el estado del schema: el DDL pudo haberse revertido parcialmente. ` +
+      `Detalle: ${detail}`,
+  );
+  if (error instanceof Error) {
+    wrapped.cause = error;
+  }
+  return wrapped;
+}
+
+/**
+ * Revierte un paso: camino transaccional (default) o down() fuera de TX +
+ * DELETE de bookkeeping en TX (ADR-066). Exportada para tests unitarios.
+ */
+export async function revertTenantMigrationStep(
+  queryRunner: QueryRunner,
+  migration: TenantMigrationLike,
+  registryId: number,
+  migrationName: string,
+): Promise<void> {
+  const transactional = isTenantMigrationTransactional(migration);
+
+  if (transactional) {
+    await queryRunner.startTransaction();
+    try {
+      await migration.down(queryRunner);
+      await queryRunner.query(`DELETE FROM "typeorm_migrations" WHERE "id" = $1`, [registryId]);
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    }
+    return;
+  }
+
+  try {
+    await migration.down(queryRunner);
+  } catch (error) {
+    throw wrapNonTransactionalRevertFailure(migrationName, error);
+  }
+
+  await queryRunner.startTransaction();
+  try {
+    await queryRunner.query(`DELETE FROM "typeorm_migrations" WHERE "id" = $1`, [registryId]);
+    await queryRunner.commitTransaction();
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw wrapNonTransactionalRevertFailure(migrationName, error);
+  }
+}
+
 async function revertSingleStep(queryRunner: QueryRunner, step: TenantRevertStep): Promise<void> {
   const MigrationClass = migrationClassByName(step.name);
 
@@ -208,15 +266,6 @@ async function revertSingleStep(queryRunner: QueryRunner, step: TenantRevertStep
     throw new Error(`Migración "${step.name}" no resoluble en este build.`);
   }
 
-  const migration = new MigrationClass();
-
-  await queryRunner.startTransaction();
-  try {
-    await migration.down(queryRunner);
-    await queryRunner.query(`DELETE FROM "typeorm_migrations" WHERE "id" = $1`, [step.registryId]);
-    await queryRunner.commitTransaction();
-  } catch (error) {
-    await queryRunner.rollbackTransaction();
-    throw error;
-  }
+  const migration = new MigrationClass() as TenantMigrationLike;
+  await revertTenantMigrationStep(queryRunner, migration, step.registryId, step.name);
 }

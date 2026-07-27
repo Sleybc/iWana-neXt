@@ -99,7 +99,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     },
     ref,
   ) => {
-    const selectId = id ?? React.useId();
+    const generatedId = React.useId();
+    const selectId = id ?? generatedId;
     const nativeSelectId = `${selectId}-native`;
     const labelId = `${selectId}-label`;
     const invalidState = error ? ({ 'aria-invalid': 'true' } as const) : {};
@@ -307,7 +308,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         window.removeEventListener('resize', updateMenuPosition);
         window.removeEventListener('scroll', updateMenuPosition, true);
       };
-    }, [open, normalizedOptions.length]);
+    }, [open, normalizedOptions.length, menuHorizontalAlign, menuMaxHeight, menuWidth]);
 
     React.useEffect(() => {
       if (!open) {
@@ -475,7 +476,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               'dark:focus:border-iwana-secondary dark:focus:ring-iwana-secondary/30',
               open && 'border-iwana-secondary ring-2 ring-iwana-secondary/20',
               error && 'border-iwana-error focus:ring-iwana-error/50',
-              !selectedOption && 'text-gray-400 dark:text-gray-500',
+              !selectedOption && 'text-gray-500 dark:text-gray-400',
               className,
             )}
             onClick={() => {

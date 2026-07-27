@@ -9,11 +9,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CreateOpportunityDto } from './dto/create-opportunity.dto';
 import { UpdateOpportunityDto } from './dto/update-opportunity.dto';
 import { OpportunitiesService } from './opportunities.service';
@@ -38,15 +41,20 @@ export class OpportunitiesController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar oportunidades comerciales' })
+  @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
   @ApiQuery({ name: 'stage', required: false, enum: OpportunityStage })
-  async findAll(@Query('stage') stage?: OpportunityStage): Promise<{ data: Opportunity[] }> {
-    const filters: { stage?: OpportunityStage } = {};
-    if (stage !== undefined) {
-      filters.stage = stage;
-    }
-
-    const data = await this.opportunitiesService.findAll(filters);
-    return { data };
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
+  async findAll(
+    @Query('stage') stage?: OpportunityStage,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ): Promise<ListResponse<Opportunity>> {
+    return this.opportunitiesService.findAll({
+      ...(stage !== undefined ? { stage } : {}),
+      ...(page !== undefined ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
   }
 
   @Get(':id')

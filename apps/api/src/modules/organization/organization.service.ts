@@ -23,9 +23,12 @@ import {
   OrganizationSiteCapability,
   OrganizationSiteResponsibility,
   OrganizationSiteType,
+  type ListResponse,
 } from '@iwana/shared';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
+import { buildPageMeta, clampLimit } from '../../common/pagination';
+import { clampPage } from '../../common/pagination/clamp-page';
 import {
   CreateOrganizationSiteDto,
   CreateBusinessHoursExceptionDto,
@@ -112,16 +115,37 @@ export class OrganizationService {
     private readonly auditService: AuditService,
   ) {}
 
-  async findAll(): Promise<OrganizationSiteSummary[]> {
+  async findAll(
+    filters: {
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<ListResponse<OrganizationSiteSummary>> {
     const ctx = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
-      const sites = await qr.manager.find(OrganizationSite, {
-        where: { tenantId: ctx.tenantId },
-        order: { name: 'ASC' },
-      });
+      const [sites, total] = await qr.manager
+        .createQueryBuilder(OrganizationSite, 's')
+        .where('s.tenant_id = :tenantId', { tenantId: ctx.tenantId })
+        .orderBy('s.name', 'ASC')
+        .addOrderBy('s.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
 
-      return this.toSummaries(qr.manager, ctx.tenantId, sites);
+      const data = await this.toSummaries(qr.manager, ctx.tenantId, sites);
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 

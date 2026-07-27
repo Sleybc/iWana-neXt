@@ -1,6 +1,9 @@
 # INFORME-MOD11-EJECUCION-OPERATIVA-HARDENING-v1.0
 
+**Version:** 1.1  
+**Estado:** Reabierto — alcance ampliado a ExecutionOrder  
 **Fecha:** 2026-06-23  
+**Actualizacion:** 2026-07-27  
 **Módulo:** MOD11 — Ejecución operativa / tareas  
 **Objetivo:** Corrección post-auditoría de hallazgos funcionales, de seguridad y de UX
 
@@ -74,3 +77,21 @@ Resultado: `4` suites, `12` pruebas en verde.
 - El módulo sigue sin pruebas de integración tenant-aware con DB real y guards reales.
 - La minimización de datos en respuestas REST de MOD11 puede endurecerse más con DTOs de salida dedicados por rol.
 - La validación de responsables `TEAM` y `QUEUE` queda diferida hasta existir catálogo/puerto formal de asignación para esos tipos.
+
+---
+
+## Ampliacion post-auditoria 2026-07-27
+
+El hardening del 2026-06-23 cubrio principalmente el agregado `Task`. No constituye evidencia de que `ExecutionOrder` herede las mismas restricciones. La auditoria del flujo de instalacion identifica deuda independiente:
+
+- **P0:** BOLA/IDOR dentro del tenant si conocer la OT permite consultar o comandar sin alcance/asignacion.
+- **P0:** una OT terminal puede aceptar mutaciones posteriores.
+- **P0:** cierre, actividad, evidencia y consumo carecen de garantia idempotente/concurrente integral.
+- **P0:** MOD11 y MOD12 requieren boundary transaccional por evento/outbox, no acceso o transaccion cruzada.
+- **P0:** faltan pruebas multi-tenant con contexto/DB real y worker tenant-aware.
+- **P1:** permisos nominales no distinguen ejecutar, supervisar y administrar plantillas.
+- **P1:** firma/evidencia y gate de cierre no tienen contrato completo.
+
+**Veredicto actualizado:** NO-GO para OT de instalación hasta cerrar `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md`.
+
+**Plan de correccion:** `docs/plans/2026-07-27-mod09-mod11-ot-instalacion-redesign.md`.

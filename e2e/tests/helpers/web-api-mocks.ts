@@ -267,13 +267,27 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
       }
 
       if (url.includes('/platform-audit-logs') && method === 'GET') {
+        const searchParams = new URL(url).searchParams;
+        const fromParam = searchParams.get('fromDate');
+        const toParam = searchParams.get('toDate');
+
+        let filtered = platformAuditData;
+        if (fromParam) {
+          const fromDate = new Date(fromParam);
+          filtered = filtered.filter((entry) => new Date(entry.createdAt) >= fromDate);
+        }
+        if (toParam) {
+          const toDate = new Date(toParam);
+          filtered = filtered.filter((entry) => new Date(entry.createdAt) <= toDate);
+        }
+
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            data: platformAuditData,
+            data: filtered,
             nextCursor: null,
-            total: platformAuditData.length,
+            total: filtered.length,
           }),
         });
         return;
@@ -298,13 +312,27 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
         const fallbackData = tenantAuditDataBySlug['demo-isp'] ?? [];
         const data = tenantAuditDataBySlug[tenantSlug] ?? fallbackData;
 
+        const searchParams = new URL(url).searchParams;
+        const fromParam = searchParams.get('fromDate');
+        const toParam = searchParams.get('toDate');
+
+        let filtered = data;
+        if (fromParam) {
+          const fromDate = new Date(fromParam);
+          filtered = filtered.filter((entry) => new Date(entry.createdAt) >= fromDate);
+        }
+        if (toParam) {
+          const toDate = new Date(toParam);
+          filtered = filtered.filter((entry) => new Date(entry.createdAt) <= toDate);
+        }
+
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            data,
+            data: filtered,
             nextCursor: null,
-            total: data.length,
+            total: filtered.length,
           }),
         });
         return;

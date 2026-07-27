@@ -296,7 +296,10 @@ describe('ScheduleEventsService', () => {
               where: jest.fn().mockReturnThis(),
               andWhere: andWhereMock,
               orderBy: jest.fn().mockReturnThis(),
-              getMany: jest.fn().mockResolvedValue([]),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
             }),
           },
         };
@@ -322,7 +325,10 @@ describe('ScheduleEventsService', () => {
               where: jest.fn().mockReturnThis(),
               andWhere: andWhereMock,
               orderBy: jest.fn().mockReturnThis(),
-              getMany: jest.fn().mockResolvedValue([]),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
             }),
           },
         };
@@ -349,7 +355,12 @@ describe('ScheduleEventsService', () => {
               where: jest.fn().mockReturnThis(),
               andWhere: andWhereMock,
               orderBy: jest.fn().mockReturnThis(),
-              getMany: jest.fn().mockResolvedValue([{ id: 'evt-expediente', expedienteId }]),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest
+                .fn()
+                .mockResolvedValue([[{ id: 'evt-expediente', expedienteId }], 1]),
             }),
           },
         };
@@ -361,7 +372,9 @@ describe('ScheduleEventsService', () => {
       expect(andWhereMock).toHaveBeenCalledWith('se.expediente_id = :expedienteId', {
         expedienteId,
       });
-      expect(result).toEqual([{ id: 'evt-expediente', expedienteId }]);
+      expect(result.data).toEqual([{ id: 'evt-expediente', expedienteId }]);
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.mode).toBe('page');
     });
   });
 
@@ -378,7 +391,10 @@ describe('ScheduleEventsService', () => {
               where: jest.fn().mockReturnThis(),
               andWhere: andWhereMock,
               orderBy: jest.fn().mockReturnThis(),
-              getMany: jest.fn().mockResolvedValue([]),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
             }),
           },
         };
@@ -404,7 +420,10 @@ describe('ScheduleEventsService', () => {
               where: jest.fn().mockReturnThis(),
               andWhere: andWhereMock,
               orderBy: jest.fn().mockReturnThis(),
-              getMany: jest.fn().mockResolvedValue([]),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
             }),
           },
         };

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ExpedientesPage from './page';
 import { crmApi, usersApi, type InternalUser } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -113,7 +114,7 @@ describe('ExpedientesPage', () => {
             status: 'ACTIVE',
           }),
         ],
-        meta: { nextCursor: 'page-2', total: 2 },
+        meta: { ...EMPTY_LIST_META, nextCursor: 'page-2', total: 2 },
       })
       .mockResolvedValueOnce({
         data: [
@@ -125,7 +126,7 @@ describe('ExpedientesPage', () => {
             status: 'INACTIVE',
           }),
         ],
-        meta: { nextCursor: null, total: 2 },
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 2 },
       });
   });
 

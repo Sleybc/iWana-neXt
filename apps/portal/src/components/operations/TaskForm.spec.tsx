@@ -166,10 +166,14 @@ describe('TaskForm', () => {
     await user.type(screen.getByLabelText('Buscar prospecto'), 'Ac');
 
     await waitFor(() => {
-      expect(crmApi.listExpedientes).toHaveBeenCalledWith({ search: 'Ac', limit: 6, view: 'all' });
+      expect(crmApi.listExpedientes).toHaveBeenCalledWith(
+        { search: 'Ac', limit: 20, view: 'all' },
+        undefined,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
 
-    await user.click(await screen.findByRole('button', { name: /Acme Prospecto/i }));
+    await user.click(await screen.findByRole('option', { name: /Acme Prospecto/i }));
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
     await waitFor(() => {
@@ -209,10 +213,14 @@ describe('TaskForm', () => {
     await user.type(screen.getByLabelText('Buscar suscriptor'), 'Su');
 
     await waitFor(() => {
-      expect(subscribersApi.list).toHaveBeenCalledWith({ search: 'Su', limit: 6 });
+      expect(subscribersApi.list).toHaveBeenCalledWith(
+        { search: 'Su', limit: 20, page: 1 },
+        undefined,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
 
-    await user.click(await screen.findByRole('button', { name: /Suscriptor Demo/i }));
+    await user.click(await screen.findByRole('option', { name: /Suscriptor Demo/i }));
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
     await waitFor(() => {

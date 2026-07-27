@@ -64,7 +64,7 @@
 
 - PRD actualizado: Ninguno.
 - HLD actualizado: Ninguno.
-- ADR nuevo o referenciado: ADR-022, ADR-019 (referenciados estructuralmente).
+- ADR nuevo o referenciado: ADR-022 y ADR-019, ambos referenciados estructuralmente.
 - Otros documentos afectados: Este documento reemplaza/complementa a `INFORME-MOD02-DEFINICION-v1.0.md` en el seguimiento operativo del código Frontend.
 
 ## 6. Riesgos y bloqueos

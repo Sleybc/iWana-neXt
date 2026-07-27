@@ -11,7 +11,23 @@ import {
 const ACTIVE_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const PREVIOUS_HEX = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210';
 
+/**
+ * R-9 — vector de frontera como dato (no import cruzado).
+ * Mismo literal embebido en packages/database util.spec; generado una vez con
+ * esta utilidad (AES-256-GCM, iv:tag:ciphertext hex) bajo ACTIVE_HEX.
+ */
+const R9_PLAINTEXT = '900123456';
+const R9_CIPHERTEXT_LITERAL =
+  'd55c0fcd467d2a23bfb48839:d3e049c6d77ae2d4357a83ce94d28e8f:27e5a87c5c2fbfb966';
+
 describe('aes-gcm.util (SEC-02)', () => {
+  describe('R-9: vector ciphertext literal (frontera formato)', () => {
+    it('descifra el literal embebido al plaintext esperado con la util de la API', () => {
+      const activeKey = parseEncryptionKeyHex(ACTIVE_HEX);
+      expect(decryptAes256Gcm(R9_CIPHERTEXT_LITERAL, activeKey, null)).toBe(R9_PLAINTEXT);
+    });
+  });
+
   describe('isWeakMfaEncryptionKeyHex', () => {
     it('rechaza all-zero, all-f y un solo nibble repetido', () => {
       expect(isWeakMfaEncryptionKeyHex('0'.repeat(64))).toBe(true);

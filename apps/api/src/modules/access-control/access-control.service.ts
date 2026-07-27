@@ -89,6 +89,7 @@ export class AccessControlService {
       const permissions = await qr.manager.find(AccessPermissionCatalog, {
         where: { tenantId: ctx.tenantId, isActive: true },
         order: { moduleKey: 'ASC', permissionKey: 'ASC' },
+        take: 100,
       });
 
       return {
@@ -108,6 +109,7 @@ export class AccessControlService {
       const profiles = await qr.manager.find(AccessProfile, {
         where: { tenantId: ctx.tenantId, isActive: true },
         order: { isSystem: 'DESC', name: 'ASC' },
+        take: 100,
       });
 
       return this.toProfileViews(qr.manager, ctx.tenantId, profiles);

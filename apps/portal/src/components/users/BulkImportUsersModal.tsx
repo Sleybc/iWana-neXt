@@ -13,13 +13,12 @@ import {
 } from '@iwana/ui';
 import {
   DocumentType,
-  UserRole,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
 import { usersApi, type CreateInternalUserDto, ApiError } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
-import { getPortalUserRoleLabel } from '@/lib/user-labels';
+import { getPortalUserRoleLabel, resolveUserRoleFromCsv } from '@/lib/user-labels';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { readActiveBulkJobId, writeActiveBulkJobId } from './bulk-import-job-storage';
 
@@ -27,7 +26,6 @@ const MAX_FILE_SIZE_BYTES = 1_048_576; // 1MB
 const MAX_USERS = 100;
 const POLL_INTERVAL_MS = 2000;
 
-const VALID_ROLES = Object.values(UserRole) as string[];
 const VALID_DOCUMENT_TYPES = Object.values(DocumentType) as string[];
 
 interface ParsedRow {
@@ -107,6 +105,7 @@ function escapeCsv(value: string): string {
 
 function validateRow(row: ParsedRow): ValidatedRow {
   const errors: string[] = [];
+  let resolvedRole = row.role;
 
   if (!row.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
     errors.push('Email inválido');
@@ -117,8 +116,13 @@ function validateRow(row: ParsedRow): ValidatedRow {
 
   if (!row.role) {
     errors.push('Rol requerido');
-  } else if (!VALID_ROLES.includes(row.role)) {
-    errors.push(`Rol inválido: "${row.role}"`);
+  } else {
+    const mapped = resolveUserRoleFromCsv(row.role);
+    if (!mapped) {
+      errors.push(`Rol inválido: "${row.role}"`);
+    } else {
+      resolvedRole = mapped;
+    }
   }
 
   if (row.firstName && row.firstName.length > 100) {
@@ -144,7 +148,7 @@ function validateRow(row: ParsedRow): ValidatedRow {
     errors.push('Número de documento demasiado largo (max 30)');
   }
 
-  return { ...row, isValid: errors.length === 0, errors };
+  return { ...row, role: resolvedRole, isValid: errors.length === 0, errors };
 }
 
 function mapToDto(row: ParsedRow): CreateInternalUserDto {

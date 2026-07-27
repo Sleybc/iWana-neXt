@@ -70,6 +70,38 @@ export function getPortalUserRoleLabel(role: string): string {
   return getSystemBaseRoleLabel(role);
 }
 
+/**
+ * Resuelve un rol de CSV: acepta enum (`ADMIN`) o etiqueta amigable (`Administrador`).
+ * Devuelve `null` si no hay coincidencia con `UserRole`.
+ */
+export function resolveUserRoleFromCsv(value: string): UserRole | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const userRoleValues = Object.values(UserRole) as string[];
+  if (userRoleValues.includes(trimmed)) {
+    return trimmed as UserRole;
+  }
+
+  const upper = trimmed.toUpperCase();
+  const byEnum = userRoleValues.find((role) => role.toUpperCase() === upper);
+  if (byEnum) {
+    return byEnum as UserRole;
+  }
+
+  const normalized = trimmed.toLocaleLowerCase('es-CO');
+  for (const role of userRoleValues) {
+    const label = PORTAL_USER_ROLE_LABELS[role as UserRole];
+    if (label.toLocaleLowerCase('es-CO') === normalized) {
+      return role as UserRole;
+    }
+  }
+
+  return null;
+}
+
 export function getPortalUserStatusLabel(status: string): string {
   return PORTAL_USER_STATUS_LABELS[status as UserStatus] ?? formatEnumFallback(status);
 }

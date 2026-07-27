@@ -832,7 +832,7 @@ export function AccessControlSettingsClient() {
         title={ACCESS_SETTINGS_COPY.pageTitle}
         subtitle={ACCESS_SETTINGS_COPY.pageSubtitle}
         actions={
-          <Button type="button" onClick={openCreateDialog}>
+          <Button type="button" variant="primary" onClick={openCreateDialog}>
             <Plus className="mr-2 h-4 w-4" aria-hidden={true} />
             Crear perfil
           </Button>
@@ -1039,7 +1039,7 @@ export function AccessControlSettingsClient() {
               title="Aún no has creado perfiles personalizados"
               description={ACCESS_SETTINGS_COPY.profilesEmptyDescription}
               action={
-                <Button type="button" onClick={openCreateDialog}>
+                <Button type="button" variant="primary" onClick={openCreateDialog}>
                   Crear perfil
                 </Button>
               }

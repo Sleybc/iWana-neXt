@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In, QueryRunner } from 'typeorm';
 import { PlatformUser, runInTenantSchema, TenantContext, User } from '@iwana/db';
+import { clampPage, clampLimit } from '../../../common/pagination';
 import { OperationalResponsibilityHistory } from './entities/operational-responsibility-history.entity';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { UpdateResponsibilityDto } from './dto';
@@ -149,6 +150,8 @@ export class ResponsibilitiesService {
     limit = 20,
   ): Promise<{ data: OperationalHistoryItem[]; total: number }> {
     const { schemaName } = TenantContext.getOrThrow();
+    const safeLimit = clampLimit(limit);
+    const { page: safePage, limit: clampedLimit } = clampPage(page, safeLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const entity = await this.findResponsibilitySource(qr, expedienteId, schemaName);
@@ -162,8 +165,8 @@ export class ResponsibilitiesService {
         [items, total] = await qr.manager.findAndCount(OperationalResponsibilityHistory, {
           where: { expedienteId },
           order: { changedAt: 'DESC' },
-          skip: (page - 1) * limit,
-          take: limit,
+          skip: (safePage - 1) * clampedLimit,
+          take: clampedLimit,
         });
       } catch (err) {
         if (this.isSchemaCompatibilityError(err)) {

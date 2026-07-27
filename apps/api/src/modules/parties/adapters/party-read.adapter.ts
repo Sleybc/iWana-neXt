@@ -6,6 +6,7 @@ import { DocumentTypeParty, PartyRoleStatus, PartyRoleType } from '@iwana/shared
 import { Party } from '../entities/party.entity';
 import { PartyContact } from '../entities/party-contact.entity';
 import { PartyRole } from '../entities/party-role.entity';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   IPartyReadPort,
   PartySnapshot,
@@ -57,12 +58,12 @@ export class PartyReadAdapter extends IPartyReadPort {
     },
   ): Promise<PartySearchResult> {
     const { schemaName } = TenantContext.getOrThrow();
+    // D-5 / R-4: validar paginación antes de ocupar conexión del pool.
+    const { page, limit } = clampPage(options.page ?? 1, options.limit ?? 20);
+    const skip = (page - 1) * limit;
+    const search = options.search?.trim();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const page = options.page ?? 1;
-      const limit = options.limit ?? 20;
-      const skip = (page - 1) * limit;
-      const search = options.search?.trim();
       const qb = qr.manager
         .createQueryBuilder(Party, 'p')
         .where('p.deleted_at IS NULL')
@@ -78,8 +79,10 @@ export class PartyReadAdapter extends IPartyReadPort {
       }
 
       // TypeORM 0.3: orderBy exige propiedad de entidad (displayName), no columna SQL.
+      // DEF-1: desempate por id para paginación offset estable.
       const [data, total] = await qb
         .orderBy('p.displayName', 'ASC')
+        .addOrderBy('p.id', 'ASC')
         .skip(skip)
         .take(limit)
         .getManyAndCount();

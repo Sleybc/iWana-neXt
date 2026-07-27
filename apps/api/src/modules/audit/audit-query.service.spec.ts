@@ -18,12 +18,50 @@ jest.mock('@iwana/db', () => {
   };
 });
 
+/** Crea un mock chaineable de query builder con los métodos usados por el servicio. */
+function createMockQueryBuilder(returnData: unknown[] = []) {
+  const qb = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue(returnData),
+    getCount: jest.fn().mockResolvedValue(returnData.length),
+    getRawAndEntities: jest.fn().mockResolvedValue({
+      entities: returnData,
+      raw: returnData.map(() => ({ sla_breach_status: 'NOT_APPLICABLE' })),
+    }),
+  };
+  return qb;
+}
+
+type MockQueryBuilder = ReturnType<typeof createMockQueryBuilder>;
+
 describe('AuditQueryService', () => {
   const dataSource = {} as DataSource;
   let resolver: jest.Mocked<AuditActorResolver>;
   let service: AuditQueryService;
-  let findAndCount: jest.Mock;
   let find: jest.Mock;
+  let queryBuilder: MockQueryBuilder;
+  let countBuilder: MockQueryBuilder;
+
+  const baseEntry = {
+    id: 'audit-1',
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    action: AuditAction.UPDATE,
+    entityType: 'User',
+    entityId: 'entity-1',
+    oldValue: null,
+    newValue: { firstName: 'Ana' },
+    ipAddress: '127.0.0.1',
+    userAgent: 'UA',
+    requestId: 'req-1',
+    createdAt: new Date('2026-04-30T00:00:00.000Z'),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -31,30 +69,26 @@ describe('AuditQueryService', () => {
       tenantId: 'tenant-1',
       schemaName: 'tenant_demo',
     });
-    findAndCount = jest.fn().mockResolvedValue([
-      [
-        {
-          id: 'audit-1',
-          tenantId: 'tenant-1',
-          userId: 'user-1',
-          action: AuditAction.UPDATE,
-          entityType: 'User',
-          entityId: 'entity-1',
-          oldValue: null,
-          newValue: { firstName: 'Ana' },
-          ipAddress: '127.0.0.1',
-          userAgent: 'UA',
-          requestId: 'req-1',
-          createdAt: new Date('2026-04-30T00:00:00.000Z'),
-        },
-      ],
-      1,
-    ]);
+
+    queryBuilder = createMockQueryBuilder([baseEntry]);
+    countBuilder = createMockQueryBuilder([]);
+    countBuilder.getCount.mockResolvedValue(1);
+
+    // Mock createQueryBuilder: primer llamado → query builder; segundo → count builder
+    let callCount = 0;
+    const mockCreateQueryBuilder = jest.fn().mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? queryBuilder : countBuilder;
+    });
+
     find = jest.fn().mockResolvedValue([]);
     mockRunInTenantSchema.mockImplementation(
       async (_ds: DataSource, _schemaName: string, callback: (qr: unknown) => Promise<unknown>) =>
         callback({
-          manager: { getRepository: jest.fn().mockReturnValue({ findAndCount, find }) },
+          manager: {
+            createQueryBuilder: mockCreateQueryBuilder,
+            getRepository: jest.fn().mockReturnValue({ find }),
+          },
         }),
     );
     resolver = {
@@ -102,41 +136,87 @@ describe('AuditQueryService', () => {
   });
 
   it('usa actor de sistema cuando userId es null', async () => {
-    findAndCount.mockResolvedValueOnce([
-      [
-        {
-          id: 'audit-system',
-          tenantId: 'tenant-1',
-          userId: null,
-          action: AuditAction.CREATE,
-          entityType: 'Job',
-          entityId: 'job-1',
-          oldValue: null,
-          newValue: null,
-          ipAddress: null,
-          userAgent: null,
-          requestId: null,
-          createdAt: new Date('2026-04-30T00:00:00.000Z'),
-        },
-      ],
-      1,
+    (queryBuilder.getMany as jest.Mock).mockResolvedValueOnce([
+      {
+        id: 'audit-system',
+        tenantId: 'tenant-1',
+        userId: null,
+        action: AuditAction.CREATE,
+        entityType: 'Job',
+        entityId: 'job-1',
+        oldValue: null,
+        newValue: null,
+        ipAddress: null,
+        userAgent: null,
+        requestId: null,
+        createdAt: new Date('2026-04-30T00:00:00.000Z'),
+      },
     ]);
+    countBuilder.getCount.mockResolvedValue(1);
 
     const result = await service.query({ limit: 50 });
 
     expect(result.data[0]?.actor).toEqual({ id: null, type: 'system', displayName: 'Sistema' });
   });
 
-  it('aplica filtro fromDate/toDate en query', async () => {
+  it('aplica filtro fromDate/toDate como rango en query', async () => {
     await service.query({
       limit: 50,
       fromDate: '2026-01-01T00:00:00.000Z',
       toDate: '2026-06-30T23:59:59.999Z',
     });
 
-    expect(findAndCount).toHaveBeenCalledWith(
+    // applyCreatedAtFilter emite BETWEEN con parámetros escalares, no un FindOperator
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'audit.createdAt BETWEEN :fromDate AND :toDate',
       expect.objectContaining({
-        where: expect.objectContaining({ createdAt: expect.anything() }),
+        fromDate: expect.any(Date),
+        toDate: expect.any(Date),
+      }),
+    );
+  });
+
+  it('aplica filtro solo fromDate con >=', async () => {
+    await service.query({
+      limit: 50,
+      fromDate: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'audit.createdAt >= :fromDate',
+      expect.objectContaining({
+        fromDate: expect.any(Date),
+      }),
+    );
+  });
+
+  it('aplica filtro solo toDate con <=', async () => {
+    await service.query({
+      limit: 50,
+      toDate: '2026-06-30T23:59:59.999Z',
+    });
+
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'audit.createdAt <= :toDate',
+      expect.objectContaining({
+        toDate: expect.any(Date),
+      }),
+    );
+  });
+
+  it('aplica filtro de rango también en la query de conteo', async () => {
+    await service.query({
+      limit: 50,
+      fromDate: '2026-01-01T00:00:00.000Z',
+      toDate: '2026-06-30T23:59:59.999Z',
+    });
+
+    // countBuilder (segundo llamado a createQueryBuilder) también recibe el BETWEEN
+    expect(countBuilder.andWhere).toHaveBeenCalledWith(
+      'audit.createdAt BETWEEN :fromDate AND :toDate',
+      expect.objectContaining({
+        fromDate: expect.any(Date),
+        toDate: expect.any(Date),
       }),
     );
   });

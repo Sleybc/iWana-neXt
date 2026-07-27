@@ -1,15 +1,64 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  StockIssueStatus,
-  StockIssueType,
-  StockBalanceCondition,
-  StockLocationType,
-} from '@iwana/shared';
+import { StockIssueStatus, StockIssueType, StockLocationType } from '@iwana/shared';
+import { inventoryApi } from '@/lib/api-client';
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
+
+const pushMock = jest.fn();
+const replaceMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  usePathname: () => '/dashboard/inventory',
+  useSearchParams: () => searchParamsMock,
+}));
+
+jest.mock('@/lib/api-client', () => {
+  const actual = jest.requireActual('@/lib/api-client');
+  return {
+    ...actual,
+    inventoryApi: {
+      ...actual.inventoryApi,
+      listIssues: jest.fn(),
+    },
+  };
+});
+
+jest.mock('./StockIssueComposer', () => ({
+  StockIssueComposer: () => <div>Composer salidas</div>,
+}));
+
+jest.mock('./StockIssueDetailDrawer', () => ({
+  StockIssueDetailDrawer: () => null,
+}));
+
+const listIssuesMock = inventoryApi.listIssues as jest.Mock;
+
+const emptyMeta = {
+  nextCursor: null,
+  total: 0,
+  totalIsEstimate: false,
+  page: 1,
+  limit: 20,
+  totalPages: 0,
+  hasMore: false,
+  mode: 'page' as const,
+  capabilities: { randomAccess: true, sortableFields: [] as string[] },
+  sort: null,
+};
 
 describe('StockIssuesWorkspace', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
+    pushMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    replaceMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    Element.prototype.scrollIntoView = jest.fn();
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       configurable: true,
@@ -21,24 +70,15 @@ describe('StockIssuesWorkspace', () => {
         removeEventListener: jest.fn(),
       })),
     });
+    listIssuesMock.mockResolvedValue({ data: [], meta: emptyMeta });
   });
 
-  it('renders empty state and opens create mode', async () => {
+  it('ADR-065: self-fetch page+limit, empty state y create mode', async () => {
     const user = userEvent.setup();
     const onCreate = jest.fn().mockResolvedValue(undefined);
 
     render(
       <StockIssuesWorkspace
-        items={[
-          {
-            id: 'item-1',
-            tenantId: 'tenant-1',
-            sku: 'ONT-001',
-            name: 'ONT WiFi 6',
-            categoryName: 'Equipos',
-            unitOfMeasure: 'unidad',
-          } as any,
-        ]}
         locations={[
           {
             id: 'loc-1',
@@ -51,243 +91,59 @@ describe('StockIssuesWorkspace', () => {
             maxCapacity: null,
             createdAt: '2026-07-01T00:00:00.000Z',
             updatedAt: '2026-07-01T00:00:00.000Z',
-          } as any,
+          } as never,
         ]}
-        balances={[]}
-        assets={[]}
-        issues={[]}
-        isLoading={false}
         onCreate={onCreate}
         onUpdate={jest.fn().mockResolvedValue(undefined)}
         onCancel={jest.fn().mockResolvedValue(undefined)}
         onDispatch={jest.fn().mockResolvedValue(undefined)}
-        onOpenDetail={jest.fn().mockResolvedValue({ id: 'issue-1', lines: [] } as any)}
+        onOpenDetail={jest.fn().mockResolvedValue({ id: 'issue-1', lines: [] } as never)}
         onRefresh={jest.fn()}
       />,
     );
-
-    expect(screen.getByText('Sin salidas registradas')).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole('button', { name: 'Crear salida' })[0]!);
-
-    expect(await screen.findByRole('heading', { name: 'Nueva salida' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Agregar productos' })).toBeInTheDocument();
-  });
-
-  it('lists issue rows and opens detail drawer', async () => {
-    const user = userEvent.setup();
-    const onOpenDetail = jest.fn().mockResolvedValue({
-      id: 'issue-1',
-      tenantId: 'tenant-1',
-      type: StockIssueType.TECHNICIAN_CUSTODY,
-      status: StockIssueStatus.APPROVED,
-      sourceLocationId: 'loc-1',
-      destinationLocationId: 'loc-2',
-      destinationRefId: null,
-      originRefId: null,
-      commercialRefId: null,
-      reason: null,
-      costCenter: null,
-      handoffMethod: null,
-      handoffNotes: null,
-      handoffAttachments: null,
-      createdByUserId: null,
-      dispatchedByUserId: null,
-      closedAt: null,
-      stockMovementId: null,
-      createdAt: '2026-07-01T00:00:00.000Z',
-      updatedAt: '2026-07-01T00:00:00.000Z',
-      lines: [
-        {
-          id: 'line-1',
-          tenantId: 'tenant-1',
-          issueId: 'issue-1',
-          itemId: 'item-1',
-          requestedQty: '1.00',
-          dispatchedQty: null,
-          lotId: null,
-          serializedAssetId: null,
-          condition: 'NEW',
-          createdAt: '2026-07-01T00:00:00.000Z',
-          updatedAt: '2026-07-01T00:00:00.000Z',
-        },
-      ],
-    } as any);
-
-    render(
-      <StockIssuesWorkspace
-        items={[{ id: 'item-1', tenantId: 'tenant-1', sku: 'ONT-001', name: 'ONT WiFi 6' } as any]}
-        locations={[
-          {
-            id: 'loc-1',
-            tenantId: 'tenant-1',
-            code: 'BOD-01',
-            name: 'Bodega principal',
-            type: StockLocationType.MAIN_WAREHOUSE,
-          } as any,
-          {
-            id: 'loc-2',
-            tenantId: 'tenant-1',
-            code: 'MOV-01',
-            name: 'Técnico zona norte',
-            type: StockLocationType.MOBILE_TECHNICIAN,
-          } as any,
-        ]}
-        balances={[]}
-        assets={[]}
-        issues={[
-          {
-            id: 'issue-1',
-            tenantId: 'tenant-1',
-            type: StockIssueType.TECHNICIAN_CUSTODY,
-            status: StockIssueStatus.APPROVED,
-            sourceLocationId: 'loc-1',
-            destinationLocationId: 'loc-2',
-            destinationRefId: null,
-            originRefId: null,
-            commercialRefId: null,
-            reason: null,
-            costCenter: null,
-            handoffMethod: null,
-            handoffNotes: null,
-            handoffAttachments: null,
-            createdByUserId: null,
-            dispatchedByUserId: null,
-            closedAt: null,
-            stockMovementId: null,
-            createdAt: '2026-07-01T00:00:00.000Z',
-            updatedAt: '2026-07-01T00:00:00.000Z',
-          } as any,
-        ]}
-        isLoading={false}
-        onCreate={jest.fn().mockResolvedValue(undefined)}
-        onUpdate={jest.fn().mockResolvedValue(undefined)}
-        onCancel={jest.fn().mockResolvedValue(undefined)}
-        onDispatch={jest.fn().mockResolvedValue(undefined)}
-        onOpenDetail={onOpenDetail}
-        onRefresh={jest.fn()}
-      />,
-    );
-
-    expect(screen.getByRole('table', { name: 'Salidas de bodega' })).toBeInTheDocument();
-    expect(screen.getAllByText('Entrega a técnico').length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole('button', { name: 'Despachar' }));
 
     await waitFor(() => {
-      expect(onOpenDetail).toHaveBeenCalledWith('issue-1');
+      expect(listIssuesMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
     });
 
-    expect(await screen.findByText('Detalle de salida')).toBeInTheDocument();
+    expect(await screen.findByText('Sin salidas registradas')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: 'Crear salida' })[0]!);
+    expect(await screen.findByText('Composer salidas')).toBeInTheDocument();
   });
 
-  it('opens edit mode for requested issues from detail drawer', async () => {
-    const user = userEvent.setup();
-    const onOpenDetail = jest.fn().mockResolvedValue({
-      id: 'issue-1',
-      tenantId: 'tenant-1',
-      type: StockIssueType.TECHNICIAN_CUSTODY,
-      status: StockIssueStatus.REQUESTED,
-      sourceLocationId: 'loc-1',
-      destinationLocationId: 'loc-2',
-      destinationRefId: null,
-      originRefId: null,
-      commercialRefId: null,
-      reason: null,
-      costCenter: null,
-      handoffMethod: null,
-      handoffNotes: null,
-      handoffAttachments: null,
-      createdByUserId: null,
-      dispatchedByUserId: null,
-      closedAt: null,
-      stockMovementId: null,
-      createdAt: '2026-07-01T00:00:00.000Z',
-      updatedAt: '2026-07-01T00:00:00.000Z',
-      lines: [
+  it('lista salidas de la página servidor', async () => {
+    listIssuesMock.mockResolvedValue({
+      data: [
         {
-          id: 'line-1',
+          id: 'issue-1',
           tenantId: 'tenant-1',
-          issueId: 'issue-1',
-          itemId: 'item-1',
-          requestedQty: '2.00',
-          dispatchedQty: null,
-          lotId: null,
-          serializedAssetId: null,
-          condition: StockBalanceCondition.NEW,
+          type: StockIssueType.INTERNAL_CONSUMPTION,
+          status: StockIssueStatus.REQUESTED,
+          sourceLocationId: 'loc-1',
+          destinationLocationId: null,
           createdAt: '2026-07-01T00:00:00.000Z',
           updatedAt: '2026-07-01T00:00:00.000Z',
         },
       ],
-    } as any);
+      meta: { ...emptyMeta, total: 1, totalPages: 1 },
+    });
 
     render(
       <StockIssuesWorkspace
-        items={[
-          {
-            id: 'item-1',
-            tenantId: 'tenant-1',
-            sku: 'ONT-001',
-            name: 'ONT WiFi 6',
-            unitOfMeasure: 'unidad',
-          } as any,
-        ]}
-        locations={[
-          {
-            id: 'loc-1',
-            tenantId: 'tenant-1',
-            code: 'BOD-01',
-            name: 'Bodega principal',
-            type: StockLocationType.MAIN_WAREHOUSE,
-          } as any,
-          {
-            id: 'loc-2',
-            tenantId: 'tenant-1',
-            code: 'MOV-01',
-            name: 'Técnico zona norte',
-            type: StockLocationType.MOBILE_TECHNICIAN,
-          } as any,
-        ]}
-        balances={[]}
-        assets={[]}
-        issues={[
-          {
-            id: 'issue-1',
-            tenantId: 'tenant-1',
-            type: StockIssueType.TECHNICIAN_CUSTODY,
-            status: StockIssueStatus.REQUESTED,
-            sourceLocationId: 'loc-1',
-            destinationLocationId: 'loc-2',
-            destinationRefId: null,
-            originRefId: null,
-            commercialRefId: null,
-            reason: null,
-            costCenter: null,
-            handoffMethod: null,
-            handoffNotes: null,
-            handoffAttachments: null,
-            createdByUserId: null,
-            dispatchedByUserId: null,
-            closedAt: null,
-            stockMovementId: null,
-            createdAt: '2026-07-01T00:00:00.000Z',
-            updatedAt: '2026-07-01T00:00:00.000Z',
-          } as any,
-        ]}
-        isLoading={false}
-        onCreate={jest.fn().mockResolvedValue(undefined)}
-        onUpdate={jest.fn().mockResolvedValue(undefined)}
-        onCancel={jest.fn().mockResolvedValue(undefined)}
-        onDispatch={jest.fn().mockResolvedValue(undefined)}
-        onOpenDetail={onOpenDetail}
+        onCreate={jest.fn()}
+        onUpdate={jest.fn()}
+        onCancel={jest.fn()}
+        onDispatch={jest.fn()}
+        onOpenDetail={jest.fn()}
         onRefresh={jest.fn()}
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Despachar' }));
-    await user.click(await screen.findByRole('button', { name: 'Editar' }));
-
-    expect(await screen.findByRole('heading', { name: 'Editar salida' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('1–1 de 1 salida')).toBeInTheDocument();
+    });
+    expect(listIssuesMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
   });
 });

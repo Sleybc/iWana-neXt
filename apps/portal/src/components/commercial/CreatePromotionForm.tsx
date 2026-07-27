@@ -7,11 +7,15 @@ import { z } from 'zod';
 import { CircleAlert } from 'lucide-react';
 import { CheckboxCard, DatePicker, Input, Select } from '@iwana/ui';
 import { CatalogItemType, CustomerSegment, DiscountType, PromotionScope } from '@iwana/shared';
-import type { CommercialBundle, CreatePromotionDto } from '@/lib/api-client';
-import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import type {
+  CommercialBundle,
+  CommercialPromotion,
+  CreatePromotionDto,
+  UpdatePromotionDto,
+} from '@/lib/api-client';
+import { PortalAlert, portalTextareaClassName } from '@/components/shared/portal-ui';
 
-const promotionFormSchema = z
+const createPromotionFormSchema = z
   .object({
     name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(200, 'Máximo 200 caracteres.'),
     code: z
@@ -77,12 +81,32 @@ const promotionFormSchema = z
     }
   });
 
-type PromotionFormValues = z.infer<typeof promotionFormSchema>;
+const editPromotionFormSchema = z.object({
+  name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(200, 'Máximo 200 caracteres.'),
+  code: z.string(),
+  description: z.string().trim().max(400, 'Máximo 400 caracteres.').optional(),
+  discountType: z.nativeEnum(DiscountType),
+  discountValue: z.coerce.number().min(0, 'No puede ser negativo.'),
+  appliesTo: z.nativeEnum(PromotionScope),
+  targetItemId: z.string().optional(),
+  targetBundleId: z.string().optional(),
+  segmentResidential: z.boolean().default(false),
+  segmentBusiness: z.boolean().default(false),
+  maxUses: z.string().optional(),
+  validFrom: z.string(),
+  validTo: z.string().min(1, 'Ingresa la fecha final.'),
+});
+
+type PromotionFormValues = z.infer<typeof createPromotionFormSchema>;
 
 export interface PromotionTargetItem {
   id: string;
   name: string;
   type: CatalogItemType;
+}
+
+function toDateInputValue(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
 }
 
 function getDefaultPromotionFormValues(): PromotionFormValues {
@@ -103,6 +127,26 @@ function getDefaultPromotionFormValues(): PromotionFormValues {
   };
 }
 
+function toPromotionFormValues(promotion: CommercialPromotion): PromotionFormValues {
+  const segments = promotion.targetSegments ?? [];
+
+  return {
+    name: promotion.name,
+    code: promotion.code,
+    description: promotion.description ?? '',
+    discountType: promotion.discountType,
+    discountValue: Number(promotion.discountValue),
+    appliesTo: promotion.appliesTo,
+    targetItemId: promotion.targetItemId ?? '',
+    targetBundleId: promotion.targetBundleId ?? '',
+    segmentResidential: segments.includes(CustomerSegment.RESIDENTIAL),
+    segmentBusiness: segments.includes(CustomerSegment.CORPORATE),
+    maxUses: promotion.maxUses != null ? String(promotion.maxUses) : '',
+    validFrom: toDateInputValue(promotion.validFrom),
+    validTo: toDateInputValue(promotion.validTo),
+  };
+}
+
 interface CreatePromotionFormProps {
   formId: string;
   open: boolean;
@@ -111,7 +155,9 @@ interface CreatePromotionFormProps {
   serverError: string | null;
   bundles: CommercialBundle[];
   items: PromotionTargetItem[];
-  onSubmit: (dto: CreatePromotionDto) => Promise<void>;
+  mode?: 'create' | 'edit';
+  initialPromotion?: CommercialPromotion | null;
+  onSubmit: (dto: CreatePromotionDto | UpdatePromotionDto) => Promise<void>;
 }
 
 function getTypeLabel(type: CatalogItemType): string {
@@ -128,8 +174,11 @@ export function CreatePromotionForm({
   serverError,
   bundles,
   items,
+  mode = 'create',
+  initialPromotion = null,
   onSubmit,
 }: CreatePromotionFormProps) {
+  const isEditMode = mode === 'edit';
   const {
     register,
     watch,
@@ -139,15 +188,22 @@ export function CreatePromotionForm({
     control,
     formState: { errors },
   } = useForm<PromotionFormValues>({
-    resolver: zodResolver(promotionFormSchema),
+    resolver: zodResolver(isEditMode ? editPromotionFormSchema : createPromotionFormSchema),
     defaultValues: getDefaultPromotionFormValues(),
   });
 
   useEffect(() => {
-    if (open) {
-      reset(getDefaultPromotionFormValues());
+    if (!open) {
+      return;
     }
-  }, [open, reset]);
+
+    if (isEditMode && initialPromotion) {
+      reset(toPromotionFormValues(initialPromotion));
+      return;
+    }
+
+    reset(getDefaultPromotionFormValues());
+  }, [open, isEditMode, initialPromotion, reset]);
 
   const appliesTo = watch('appliesTo');
   const segmentResidential = watch('segmentResidential');
@@ -161,6 +217,17 @@ export function CreatePromotionForm({
   }, [segmentBusiness, segmentResidential]);
 
   const submitPromotion = async (values: PromotionFormValues) => {
+    if (isEditMode) {
+      const payload: UpdatePromotionDto = {
+        name: values.name.trim(),
+        validTo: new Date(`${values.validTo}T23:59:59`).toISOString(),
+        ...(values.description?.trim() && { description: values.description.trim() }),
+      };
+
+      await onSubmit(payload);
+      return;
+    }
+
     const payload: CreatePromotionDto = {
       name: values.name.trim(),
       code: values.code.trim().toUpperCase(),
@@ -191,7 +258,9 @@ export function CreatePromotionForm({
         <div>
           <p className="portal-eyebrow">Información básica</p>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Define el incentivo, el código comercial y la vigencia de la promoción.
+            {isEditMode
+              ? 'Actualiza el nombre, la descripción y la vigencia de la promoción.'
+              : 'Define el incentivo, el código comercial y la vigencia de la promoción.'}
           </p>
         </div>
 
@@ -211,14 +280,21 @@ export function CreatePromotionForm({
               label="Código"
               placeholder="PROMO25"
               aria-invalid={errors.code ? 'true' : 'false'}
-              disabled={!canEdit || isSubmitting}
+              disabled={isEditMode || !canEdit || isSubmitting}
+              readOnly={isEditMode}
               {...register('code', {
                 onChange: (event) => {
+                  if (isEditMode) return;
                   const value = String(event.target.value ?? '').toUpperCase();
                   setValue('code', value, { shouldDirty: true, shouldValidate: true });
                 },
               })}
             />
+            {isEditMode ? (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                El código no se puede modificar.
+              </p>
+            ) : null}
             {errors.code && <p className="mt-1 text-sm text-error-600">{errors.code.message}</p>}
           </div>
           <div className="md:col-span-2">
@@ -228,7 +304,7 @@ export function CreatePromotionForm({
             <textarea
               id="promotion-description"
               rows={3}
-              className={`mt-2 ${commercialTextareaClassName}`}
+              className={`mt-2 ${portalTextareaClassName}`}
               placeholder="Beneficio temporal para reactivar cartera"
               disabled={!canEdit || isSubmitting}
               {...register('description')}
@@ -237,86 +313,105 @@ export function CreatePromotionForm({
               <p className="mt-1 text-sm text-error-600">{errors.description.message}</p>
             )}
           </div>
-          <Select
-            id="promotion-discount-type"
-            label="Tipo de descuento"
-            disabled={!canEdit || isSubmitting}
-            {...register('discountType')}
-          >
-            <option value={DiscountType.PERCENTAGE}>Porcentaje</option>
-            <option value={DiscountType.FIXED_AMOUNT}>Monto fijo</option>
-            <option value={DiscountType.FREE_MONTHS}>Meses gratis</option>
-          </Select>
-          <div>
-            <Input
-              label="Valor de descuento"
-              type="number"
-              min={0}
-              step="0.01"
-              aria-invalid={errors.discountValue ? 'true' : 'false'}
-              disabled={!canEdit || isSubmitting}
-              {...register('discountValue')}
+
+          {isEditMode ? (
+            <Controller
+              name="validTo"
+              control={control}
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <DatePicker
+                  label="Vigencia hasta"
+                  value={value ? new Date(`${value}T00:00:00`) : undefined}
+                  onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                  error={error?.message}
+                  disabled={!canEdit || isSubmitting}
+                />
+              )}
             />
-            {errors.discountValue && (
-              <p className="mt-1 text-sm text-error-600">{errors.discountValue.message}</p>
-            )}
-          </div>
-          <Select
-            id="promotion-scope"
-            label="Alcance"
-            disabled={!canEdit || isSubmitting}
-            {...register('appliesTo')}
-          >
-            <option value={PromotionScope.ALL}>Todo</option>
-            <option value={PromotionScope.ITEM}>Ítem específico</option>
-            <option value={PromotionScope.BUNDLE}>Combo específico</option>
-            <option value={PromotionScope.INSTALLATION}>Instalación</option>
-          </Select>
-          <div>
-            <Input
-              label="Máximo de usos"
-              type="number"
-              min={1}
-              step={1}
-              aria-invalid={errors.maxUses ? 'true' : 'false'}
-              disabled={!canEdit || isSubmitting}
-              {...register('maxUses')}
-            />
-            {errors.maxUses && (
-              <p className="mt-1 text-sm text-error-600">{errors.maxUses.message}</p>
-            )}
-          </div>
-          <Controller
-            name="validFrom"
-            control={control}
-            render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <DatePicker
-                label="Vigencia desde"
-                value={value ? new Date(`${value}T00:00:00`) : undefined}
-                onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
-                error={error?.message}
+          ) : (
+            <>
+              <Select
+                id="promotion-discount-type"
+                label="Tipo de descuento"
                 disabled={!canEdit || isSubmitting}
-              />
-            )}
-          />
-          <Controller
-            name="validTo"
-            control={control}
-            render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <DatePicker
-                label="Vigencia hasta"
-                value={value ? new Date(`${value}T00:00:00`) : undefined}
-                onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
-                error={error?.message}
+                {...register('discountType')}
+              >
+                <option value={DiscountType.PERCENTAGE}>Porcentaje</option>
+                <option value={DiscountType.FIXED_AMOUNT}>Monto fijo</option>
+                <option value={DiscountType.FREE_MONTHS}>Meses gratis</option>
+              </Select>
+              <div>
+                <Input
+                  label="Valor de descuento"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  aria-invalid={errors.discountValue ? 'true' : 'false'}
+                  disabled={!canEdit || isSubmitting}
+                  {...register('discountValue')}
+                />
+                {errors.discountValue && (
+                  <p className="mt-1 text-sm text-error-600">{errors.discountValue.message}</p>
+                )}
+              </div>
+              <Select
+                id="promotion-scope"
+                label="Alcance"
                 disabled={!canEdit || isSubmitting}
+                {...register('appliesTo')}
+              >
+                <option value={PromotionScope.ALL}>Todo</option>
+                <option value={PromotionScope.ITEM}>Ítem específico</option>
+                <option value={PromotionScope.BUNDLE}>Combo específico</option>
+                <option value={PromotionScope.INSTALLATION}>Instalación</option>
+              </Select>
+              <div>
+                <Input
+                  label="Máximo de usos"
+                  type="number"
+                  min={1}
+                  step={1}
+                  aria-invalid={errors.maxUses ? 'true' : 'false'}
+                  disabled={!canEdit || isSubmitting}
+                  {...register('maxUses')}
+                />
+                {errors.maxUses && (
+                  <p className="mt-1 text-sm text-error-600">{errors.maxUses.message}</p>
+                )}
+              </div>
+              <Controller
+                name="validFrom"
+                control={control}
+                render={({ field: { value, onChange }, fieldState: { error } }) => (
+                  <DatePicker
+                    label="Vigencia desde"
+                    value={value ? new Date(`${value}T00:00:00`) : undefined}
+                    onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                    error={error?.message}
+                    disabled={!canEdit || isSubmitting}
+                  />
+                )}
               />
-            )}
-          />
+              <Controller
+                name="validTo"
+                control={control}
+                render={({ field: { value, onChange }, fieldState: { error } }) => (
+                  <DatePicker
+                    label="Vigencia hasta"
+                    value={value ? new Date(`${value}T00:00:00`) : undefined}
+                    onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                    error={error?.message}
+                    disabled={!canEdit || isSubmitting}
+                  />
+                )}
+              />
+            </>
+          )}
         </div>
         {errors.validTo && <p className="text-sm text-error-600">{errors.validTo.message}</p>}
       </section>
 
-      {appliesTo === PromotionScope.ITEM && (
+      {!isEditMode && appliesTo === PromotionScope.ITEM && (
         <section className="space-y-2">
           <Select
             id="promotion-target-item"
@@ -338,7 +433,7 @@ export function CreatePromotionForm({
         </section>
       )}
 
-      {appliesTo === PromotionScope.BUNDLE && (
+      {!isEditMode && appliesTo === PromotionScope.BUNDLE && (
         <section className="space-y-2">
           <Select
             id="promotion-target-bundle"
@@ -362,51 +457,55 @@ export function CreatePromotionForm({
         </section>
       )}
 
-      <section className="space-y-3">
-        <div>
-          <p className="portal-eyebrow">Segmentos objetivo</p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Si no seleccionas ninguno, la promoción aplica a todos.
-          </p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Controller
-            name="segmentResidential"
-            control={control}
-            render={({ field }) => (
-              <CheckboxCard
-                label="Residencial"
-                checked={field.value}
-                onChange={(event) => field.onChange(event.target.checked)}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                name={field.name}
-                disabled={!canEdit || isSubmitting}
-              />
-            )}
-          />
-          <Controller
-            name="segmentBusiness"
-            control={control}
-            render={({ field }) => (
-              <CheckboxCard
-                label="Empresarial"
-                checked={field.value}
-                onChange={(event) => field.onChange(event.target.checked)}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                name={field.name}
-                disabled={!canEdit || isSubmitting}
-              />
-            )}
-          />
-        </div>
-      </section>
+      {!isEditMode && (
+        <section className="space-y-3">
+          <div>
+            <p className="portal-eyebrow">Segmentos objetivo</p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Si no seleccionas ninguno, la promoción aplica a todos.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Controller
+              name="segmentResidential"
+              control={control}
+              render={({ field }) => (
+                <CheckboxCard
+                  label="Residencial"
+                  checked={field.value}
+                  onChange={(event) => field.onChange(event.target.checked)}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  name={field.name}
+                  disabled={!canEdit || isSubmitting}
+                />
+              )}
+            />
+            <Controller
+              name="segmentBusiness"
+              control={control}
+              render={({ field }) => (
+                <CheckboxCard
+                  label="Empresarial"
+                  checked={field.value}
+                  onChange={(event) => field.onChange(event.target.checked)}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  name={field.name}
+                  disabled={!canEdit || isSubmitting}
+                />
+              )}
+            />
+          </div>
+        </section>
+      )}
 
       {serverError && (
         <PortalAlert
           variant="error"
-          title="No fue posible crear la promoción"
+          title={
+            isEditMode ? 'No fue posible guardar la promoción' : 'No fue posible crear la promoción'
+          }
           description={serverError}
           icon={CircleAlert}
         />

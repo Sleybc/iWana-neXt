@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   PlatformRole,
   PersonType,
@@ -34,6 +34,10 @@ import {
   TransitionSubscriberStatusDto,
   TransitionSubscriberStatusSchema,
 } from './dto/transition-subscriber-status.dto';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
+import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '@iwana/shared';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -55,7 +59,10 @@ type SubscriberWithDecryptedFields = Subscriber & {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('crm/subscribers')
 export class SubscribersController {
-  constructor(private readonly subscribersService: SubscribersService) {}
+  constructor(
+    private readonly subscribersService: SubscribersService,
+    private readonly auditService: AuditService,
+  ) {}
 
   /**
    * POST /crm/subscribers
@@ -90,28 +97,66 @@ export class SubscribersController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @ApiOperation({ summary: 'Listar suscriptores con filtros' })
+  @ApiExtraModels(CrmListPaginationDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   async findAll(
+    @CurrentUser() user: JwtPayload,
     @Query('status') status?: SubscriberStatus,
     @Query('personType') personType?: PersonType,
     @Query('customerSegment') customerSegment?: CustomerSegment,
     @Query('stratum') stratum?: number,
     @Query('search') search?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
   ) {
-    const result = await this.subscribersService.findAll({
+    const filters = {
       status: status ?? undefined,
       personType: personType ?? undefined,
       customerSegment: customerSegment ?? undefined,
       stratum: stratum ? Number(stratum) : undefined,
       search: search ?? undefined,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
+      page,
+      limit,
+      sortBy: sortBy ?? undefined,
+      sortDir: sortDir ?? undefined,
+    };
+
+    const result = await this.subscribersService.findAll(filters);
+
+    // ADR-067 §5: registro de acceso masivo a PII — se registran filtros y
+    // dimensiones, nunca los datos leídos.
+    void this.auditService.log({
+      action: AuditAction.LIST_ACCESS,
+      entityType: 'SubscriberList',
+      entityId: 'N/A',
+      userId: user.sub,
+      newValue: {
+        role: user.role,
+        filters: {
+          status: filters.status ?? null,
+          personType: filters.personType ?? null,
+          customerSegment: filters.customerSegment ?? null,
+          stratum: filters.stratum ?? null,
+          search: filters.search ? '(aplicado)' : null,
+          sortBy: filters.sortBy ?? null,
+          sortDir: filters.sortDir ?? null,
+        },
+        pagination: {
+          page: result.meta.page,
+          limit: result.meta.limit,
+          totalServed: result.data.length,
+          totalAvailable: result.meta.total,
+        },
+      },
     });
 
     return {
       data: result.data.map((s) => this.sanitizeResponse(s)),
       total: result.total,
+      meta: result.meta,
     };
   }
 
@@ -119,6 +164,13 @@ export class SubscribersController {
    * GET /crm/subscribers/search
    * Búsqueda determinista por documento, NIT, email o teléfono.
    * Roles: ADMIN, NOC, SALES, SUPPORT, ACCOUNTANT
+   *
+   * E-4 dual-emit / gap documentado:
+   * - Este endpoint NO es typeahead `q` (lookup exacto por hash de PII).
+   * - El typeahead de suscriptores para pickers usa hoy `GET /crm/subscribers?search=`
+   *   (listado) o se añadirá `?q=` en una ola posterior sin romper este contrato.
+   * - FE E-4 (TaskCoreFields) debe mapear listado→`{ id, label, sublabel, total }`
+   *   hasta que exista un `/search` typeahead dedicado.
    */
   @Get('search')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)

@@ -84,7 +84,7 @@ describe('ResponsibilitiesController', () => {
       total: 1,
     });
 
-    const result = await controller.getResponsibilityHistory(mockUuid, '1', '20');
+    const result = await controller.getResponsibilityHistory(mockUuid, 1, 20);
 
     expect(mockService.getResponsibilityHistory).toHaveBeenCalledWith(mockUuid, 1, 20);
     expect(result.data).toHaveLength(1);

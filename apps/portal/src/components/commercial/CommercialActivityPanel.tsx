@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, cn } from '@iwana/ui';
+import { Button } from '@iwana/ui';
 import type {
   CommercialAttentionItem,
   CommercialAttentionReason,
@@ -9,12 +9,13 @@ import type {
   CommercialRecentChangeAction,
 } from '@/lib/api-client';
 import type { CommercialNavigateHandler } from '@/components/commercial/commercial-tab-params';
+import { resolveCatalogIncompleteTab } from '@/components/commercial/commercial-alerts';
 import { formatCompactNumber } from '@/components/commercial/commercial-format';
 import {
   PortalEmptyState,
   PortalMetricCard,
+  PortalNavListRow,
   PortalSkeletonBlock,
-  interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 
 interface CommercialActivityPanelProps {
@@ -83,41 +84,26 @@ function AttentionRow({
     );
   }
 
-  const body = (
-    <>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{detailParts.join(' · ')}</p>
-      </div>
-      <span className="shrink-0 text-sm font-medium text-iwana-secondary-700 dark:text-iwana-primary-300">
-        Revisar
-      </span>
-    </>
-  );
-
-  if (onNavigate) {
-    const offerRisk =
-      item.reason === 'expiring_soon' || item.reason === 'near_use_limit'
-        ? ({ status: 'expiring' } as const)
-        : undefined;
-    return (
-      <button
-        type="button"
-        className={cn(
-          'flex w-full items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left dark:border-dark-border',
-          interactiveFocusClassName,
-        )}
-        onClick={() => onNavigate(item.destinoTab, offerRisk)}
-      >
-        {body}
-      </button>
-    );
-  }
+  const offerRisk =
+    item.reason === 'expiring_soon' || item.reason === 'near_use_limit'
+      ? ({ status: 'expiring' } as const)
+      : undefined;
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 dark:border-dark-border">
-      {body}
-    </div>
+    <PortalNavListRow
+      title={item.name}
+      meta={detailParts.join(' · ')}
+      trailing="Revisar"
+      {...(onNavigate
+        ? {
+            onClick: () =>
+              onNavigate(item.destinoTab, {
+                ...offerRisk,
+                focus: item.id,
+              }),
+          }
+        : {})}
+    />
   );
 }
 
@@ -135,39 +121,13 @@ function RecentChangeRow({
     timeStyle: 'short',
   }).format(new Date(change.occurredAt));
 
-  const body = (
-    <>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-gray-900 dark:text-white">{change.entityName}</p>
-        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-          {entityLabel} · {actionLabel} · {whenLabel}
-        </p>
-      </div>
-      <span className="shrink-0 text-sm font-medium text-iwana-secondary-700 dark:text-iwana-primary-300">
-        Ver
-      </span>
-    </>
-  );
-
-  if (onNavigate) {
-    return (
-      <button
-        type="button"
-        className={cn(
-          'flex w-full items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left dark:border-dark-border',
-          interactiveFocusClassName,
-        )}
-        onClick={() => onNavigate(change.destinoTab)}
-      >
-        {body}
-      </button>
-    );
-  }
-
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 dark:border-dark-border">
-      {body}
-    </div>
+    <PortalNavListRow
+      title={change.entityName}
+      meta={`${entityLabel} · ${actionLabel} · ${whenLabel}`}
+      trailing="Ver"
+      {...(onNavigate ? { onClick: () => onNavigate(change.destinoTab) } : {})}
+    />
   );
 }
 
@@ -190,7 +150,16 @@ function OperationalSummaryBody({
           title="Listos para vender"
           description="Planes, productos y servicios activos con precio vigente."
           accent={summary.catalogIncompleteActiveCount > 0 ? 'danger' : 'neutral'}
-          {...(onNavigateTab ? { onClick: () => onNavigateTab('plans') } : {})}
+          {...(onNavigateTab
+            ? {
+                onClick: () =>
+                  onNavigateTab(
+                    summary.catalogIncompleteActiveCount > 0
+                      ? resolveCatalogIncompleteTab(summary)
+                      : 'plans',
+                  ),
+              }
+            : {})}
         />
       </div>
 
@@ -275,7 +244,12 @@ export function CommercialActivityPanel({
         {...(onNavigateTab
           ? {
               action: (
-                <Button type="button" size="sm" onClick={() => onNavigateTab('plans')}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onNavigateTab('plans')}
+                >
                   Crear plan
                 </Button>
               ),

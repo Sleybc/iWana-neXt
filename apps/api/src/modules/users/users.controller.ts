@@ -45,6 +45,7 @@ import {
   UpdateUserDto,
   UserResponseDto,
 } from './dto/user.dto';
+import { PickerSearchResponseDto, UsersPickerSearchQueryDto } from '../../common/pagination';
 
 /**
  * Controlador de gestion de usuarios por tenant.
@@ -132,6 +133,34 @@ export class UsersController {
     if (search) params.search = search;
     const result = await this.usersService.findAll(params);
     return { data: result };
+  }
+
+  /**
+   * Lookup typeahead E-4 (pickers). No pagina; máx. 20 resultados.
+   * Contrato: `{ data: { id, label, sublabel }[], total }`.
+   * Roles: mismos que listado (ADMIN + USERS_READ).
+   */
+  @Get('search')
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_READ)
+  @ApiOperation({
+    summary: 'Buscar usuarios para picker (typeahead)',
+    description:
+      'Lookup E-4: `q` sobre email/nombre/cargo (pg_trgm + ILIKE). ' +
+      '`limit` default/máx 20. `total` = coincidencias filtradas (alimenta aviso truncado S6). ' +
+      'Label = nombre o email; sublabel = email si hay nombre. Sin documento/teléfono.',
+  })
+  @ApiResponse({ status: 200, description: 'Resultados typeahead.', type: PickerSearchResponseDto })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos USERS_READ.' })
+  async searchForPicker(
+    @Query() query: UsersPickerSearchQueryDto,
+  ): Promise<PickerSearchResponseDto> {
+    return this.usersService.searchForPicker({
+      ...(query.q !== undefined ? { q: query.q } : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+    });
   }
 
   /**

@@ -74,7 +74,8 @@ Blob lima al 5% (`bg-iwana-secondary/5 rounded-full blur-3xl`) o patrón de punt
 
 ## Reglas semánticas del lima (no negociables)
 
-- Lima **=** avance, éxito, completitud, acción principal de página, señal de interacción.
+- Lima **=** avance, éxito, completitud, señal de interacción (nav, progreso, badges tonales, focus/acento).
+- Lima **≠** botón filled de CTA de página del portal operativo (enmienda CTO 2026-07-23).
 - Lima **nunca =** urgencia, prioridad alta, alerta → eso usa las escalas `warning`/`error`.
 - Lima **nunca** como fondo base de paneles, toolbars o empty states → el fondo suave es `iwana-surface-soft`.
 - Texto lima siempre `iwana-secondary-700+` sobre claro (AA).
@@ -83,8 +84,9 @@ Blob lima al 5% (`bg-iwana-secondary/5 rounded-full blur-3xl`) o patrón de punt
 
 | Nivel | Receta |
 | --- | --- |
-| Acción principal de página (una por vista) | Lima — `<Button variant="secondary">` de `@iwana/ui` según su contrato CVA |
-| Acciones de sección | Azul sólido — `<Button variant="primary">` (`bg-iwana-primary`, pill) |
+| Acción principal de página (una por vista) | Azul noche — `<Button variant="primary">` (default CVA) |
+| Acciones de sección / submit modal | Azul sólido — `<Button variant="primary">` |
 | Secundarias / terciarias | `ghost` / `outline` / `link` (link usa `iwana-secondary-700`) |
+| Marca / auth / avance explícito (no default operativo) | `<Button variant="lime">` — API conservada; no es el opener de header/empty del portal |
 
-Verifica las variantes reales en `packages/ui/src/components/Button.tsx` antes de citar una — el contrato CVA del componente manda sobre esta tabla.
+Manda el CVA de `packages/ui/src/components/Button.tsx` — verifica las variantes ahí antes de citar; esta tabla no redefine el contrato.

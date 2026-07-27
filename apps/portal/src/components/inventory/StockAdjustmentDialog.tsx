@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StockAdjustmentReason, StockBalanceCondition } from '@iwana/shared';
 import {
   Button,
@@ -12,23 +12,18 @@ import {
   Input,
   Select,
 } from '@iwana/ui';
-import {
-  ApiError,
-  inventoryApi,
-  type InventoryItemRecord,
-  type StockLocationRecord,
-} from '@/lib/api-client';
+import { ApiError, inventoryApi } from '@/lib/api-client';
 import { PortalAlert, portalTextareaClassName } from '@/components/shared/portal-ui';
 import { STOCK_ADJUSTMENT_REASON_LABELS, getStockBalanceConditionLabel } from './inventory-labels';
-import { isStockAdjustableItem } from './stock-overview';
+import { InventoryItemPicker } from './InventoryItemPicker';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 type AdjustmentDirection = 'in' | 'out';
 
 interface StockAdjustmentDialogProps {
   open: boolean;
-  items: InventoryItemRecord[];
-  locations: StockLocationRecord[];
   preselectedItemId?: string | null;
+  preselectedItemLabel?: string | null;
   onClose: () => void;
   onAdjustmentRegistered: (movementNumber: string) => void;
 }
@@ -46,15 +41,15 @@ function mapInventoryError(error: unknown): string {
 
 export function StockAdjustmentDialog({
   open,
-  items,
-  locations,
   preselectedItemId = null,
+  preselectedItemLabel = null,
   onClose,
   onAdjustmentRegistered,
 }: StockAdjustmentDialogProps) {
-  const adjustableItems = useMemo(() => items.filter(isStockAdjustableItem), [items]);
   const [itemId, setItemId] = useState('');
+  const [itemLabel, setItemLabel] = useState<string | null>(null);
   const [locationId, setLocationId] = useState('');
+  const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [condition, setCondition] = useState<StockBalanceCondition>(StockBalanceCondition.NEW);
   const [direction, setDirection] = useState<AdjustmentDirection>('in');
   const [quantity, setQuantity] = useState('1');
@@ -69,12 +64,10 @@ export function StockAdjustmentDialog({
       return;
     }
 
-    setItemId(
-      preselectedItemId && adjustableItems.some((item) => item.id === preselectedItemId)
-        ? preselectedItemId
-        : (adjustableItems[0]?.id ?? ''),
-    );
-    setLocationId(locations[0]?.id ?? '');
+    setItemId(preselectedItemId ?? '');
+    setItemLabel(preselectedItemLabel);
+    setLocationId('');
+    setLocationLabel(null);
     setCondition(StockBalanceCondition.NEW);
     setDirection('in');
     setQuantity('1');
@@ -83,7 +76,7 @@ export function StockAdjustmentDialog({
     setIdempotencyKey(crypto.randomUUID());
     setError(null);
     setIsSubmitting(false);
-  }, [adjustableItems, locations, open, preselectedItemId]);
+  }, [open, preselectedItemId, preselectedItemLabel]);
 
   async function handleSubmit() {
     const parsedQuantity = Number.parseFloat(quantity);
@@ -133,24 +126,26 @@ export function StockAdjustmentDialog({
             />
           ) : null}
 
-          <Select
+          <InventoryItemPicker
+            id="adjustment-item"
             label="Producto"
-            value={itemId}
-            onChange={(event) => setItemId(event.target.value)}
-            options={adjustableItems.map((item) => ({
-              value: item.id,
-              label: `${item.sku} · ${item.name}`,
-            }))}
+            value={itemId || null}
+            selectedLabel={itemLabel}
+            onChange={(nextId, item) => {
+              setItemId(nextId ?? '');
+              setItemLabel(item ? item.label : null);
+            }}
           />
 
-          <Select
+          <InventoryLocationPicker
+            id="adjustment-location"
             label="Bodega"
-            value={locationId}
-            onChange={(event) => setLocationId(event.target.value)}
-            options={locations.map((location) => ({
-              value: location.id,
-              label: `${location.code} · ${location.name}`,
-            }))}
+            value={locationId || null}
+            selectedLabel={locationLabel}
+            onChange={(nextId, item) => {
+              setLocationId(nextId ?? '');
+              setLocationLabel(item ? item.label : null);
+            }}
           />
 
           <Select

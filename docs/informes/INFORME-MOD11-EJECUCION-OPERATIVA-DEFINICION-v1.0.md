@@ -1,8 +1,8 @@
 # INFORME - MOD11 Ejecucion Operativa / Tareas Definicion
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-23  
+**Version:** 1.2  
+**Estado:** Ejecución autorizada — G1 aprobado; G4 en curso  
+**Fecha:** 2026-07-27  
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Clasificacion:** Uso interno
@@ -129,3 +129,106 @@ Paquete documental listo para ejecucion fullstack. La siguiente accion recomenda
 ### Salvedad vigente
 
 La trazabilidad de materiales ya opera desde `technicianCustodyId` y `finalDisposition`, pero el bounded context formal de Inventario/Almacen aun no existe en el repo. La integracion actual queda implementada como adaptador MVP de custodia operativa, lista para sustituirse por puerto tipado cuando Inventario sea owner activo.
+
+---
+
+## 11. Ampliacion de definicion 2026-07-27
+
+La auditoria multiagente del flujo `/dashboard/scheduling/agenda` → tarea → OT de instalación concluye:
+
+- `ExecutionOrder` debe ser la única verdad visible de ejecución.
+- Agenda debe supervisar y resolver excepciones, no ejecutar.
+- la `WorkOrder` ligera permanece temporalmente como proyección oculta;
+- una OT terminal es inmutable y las correcciones crean seguimiento;
+- técnico o contratista asignado ejecuta mediante permiso de capacidad;
+- el cierre se gobierna por plantilla versionada;
+- sincronización e inventario requieren el patrón tenant-aware de ADR-068 (Aprobado).
+
+### Paquete documental agregado
+
+| Artefacto | Ruta | Estado |
+| --- | --- | --- |
+| ADR de integracion | `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (Aprobado) | CTO aprobó el 2026-07-27 |
+| Spec UX | `docs/specs/2026-07-27-mod09-mod11-ot-instalacion-coordinador-design.md` | En revisión |
+| Contrato DS | `docs/specs/2026-07-27-mod09-mod11-ot-instalacion-ds-contrato.md` | En revisión |
+| Contrato API/eventos | `docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md` | En revisión |
+| Plan de ejecución | `docs/plans/2026-07-27-mod09-mod11-ot-instalacion-redesign.md` | En revisión |
+| Checklist QA/AppSec | `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` | NO-GO |
+| Prompts por fase | `docs/prompts/PROMPT-MOD09-MOD11-OT-INSTALACION-FASE-00-CONTENCION-v1.0.md` a `FASE-04-GATE-QA-v1.0.md` | Bloqueados por gates |
+
+### Estado de salida actualizado
+
+**G4 EN CURSO.** CTO aprobó ADR-068 y reconcilió la gobernanza de Media/Assets. La implementación se ejecuta contract-first; G5/G6/G7 siguen pendientes de evidencia real. AI-EM-ARCH mantiene decisiones y gates; los agentes ejecutores son responsables del código por carril.
+
+### Estado de implementación verificado — 2026-07-27
+
+La revisión independiente confirma materializados los controles estructurales de tenant, outbox/relay, idempotencia HMAC, tombstone transaccional, guards, versionado optimista y DTOs mínimos base. El estado de producción permanece **NO-GO** por P1 pendientes: proyecciones efectivas de eventos; receipt/saga de inventario; plantilla y acciones permitidas; contrato OpenAPI completo; rate limiting `429`; y boundaries Media, cuadrillas, follow-up y redrive. Estos últimos permanecen fail-closed (`503`) sin recibos ni URLs ficticias.
+
+---
+
+## 12. Review cruzado multiagente 2026-07-27
+
+| Rol | Dictamen | Ajustes incorporados | Estado |
+| --- | --- | --- | --- |
+| AI-DS-OWNER | Aprobable en G2; 0 bloqueantes documentales | ownership `OperationalSidePeek`/`ExecutionOrderSummary`, API/estados, primitives reales, tokens/contraste, sizes, extensión `ProgressMeter`, congelación G2/G3/G4 | Firma G2 espera G1 |
+| AI-SR-FULL | G3 documental aprobable; costo XL; 0 bloqueantes documentales | coreografia MOD09→MOD11, saga MOD11→MOD12, API/eventos exactos, ADR-048, persistencia, relay/crash-window, MOD12 y ownership | G3 espera tipos/OpenAPI reales |
+| AI-SR-QA | Cobertura documental suficiente | QA-01 a QA-50, E2E vertical, convergencia completa, cuadrillas, outbox/DLQ, numeración, evidencia y gates G1–G7 | G6 futuro; G4 bloqueado |
+| AI-SEC-ENG | G3 técnicamente viable; 0 bloqueantes documentales | Atomicidad idempotencia/audit-intent, evidencia Media/Assets, autorización exhaustiva, offline seguro y STRIDE/ASVS incorporados | G1 humano pendiente; G6 futuro |
+
+### Correcciones de arquitectura registradas
+
+- MOD09 publica `VisitScheduledV1`, cambios de ventana/recurso y cancelación; no importa servicios MOD11.
+- MOD11 solicita `InventoryConsumptionRequestedV1` durante ejecución; el cierre no dispara movimientos.
+- Confirmaciones MOD12 posteriores son settlements append-only y no mutan el resultado terminal.
+- El contrato API exige tipos en `@iwana/shared` y OpenAPI máquina-legible antes de congelar.
+- MOD12 queda alineado en `docs/prds/PRD-MOD12-INVENTARIO-SCM-v1.0.md` y `docs/hlds/HLD-MOD12-INVENTARIO-SCM-v1.0.md`.
+- Fase 00 puede contener P0 bajo ADR-046/047 mediante G4 separado; Fases 01–03 esperan G1.
+- Cada CUD sensible vincula atómicamente idempotencia, mutación, outbox y audit-intent; la saga propaga un `intentId` estable.
+- La evidencia consume Media/Assets (ADR-034/035), no acepta URL arbitraria y exige tenant+OT, MIME real, cuarentena, hash/timestamps de servidor y reautorización.
+- La autorización queda cerrada endpoint×permiso×ABAC, incluida administración de plantillas, acceso a media y re-drive.
+- Idempotencia usa HMAC versionado, recibo minimizado y tombstone no-PII; Task 7A gobierna el lifecycle y la reconciliación PostgreSQL↔MinIO.
+- ADR-034/035 quedan reconciliados como aprobados por la confirmación explícita del CTO.
+
+### Próximo gate
+
+1. AI-SR-FULL materializa contrato tipado/OpenAPI y ejecuta el carril backend G3.
+2. AI-EM-ARCH valida el diff y mantiene G4 congelado.
+3. AI-FE-PLATFORM ejecuta experiencia después de que el contrato real esté publicado.
+4. AI-SR-QA/AI-SEC-ENG realizan G6; AI-EM-ARCH recomienda G7.
+
+No se escribió código productivo durante esta fase arquitectónica.
+
+---
+
+## 13. Threat model STRIDE y trazabilidad ASVS L2
+
+### Trust boundaries
+
+1. Portal autenticado → API MOD11.
+2. API → transacción PostgreSQL del schema tenant.
+3. Outbox tenant → worker/BullMQ → consumidores MOD09/MOD12/Auditoría.
+4. MOD11 → Media/Assets → StoragePort/MinIO privado.
+5. URL firmada temporal → cliente autorizado.
+
+| STRIDE | Amenaza principal | Control contractual | Evidencia G6 |
+| --- | --- | --- | --- |
+| Spoofing | suplantar actor, tenant, técnico o cuadrilla | JWT/tenant aprobado, tenant explícito en jobs, asignación y membresía revalidadas | QA-01, QA-03, QA-04, QA-10, QA-32 |
+| Tampering | alterar versión, comando, evento, evidencia o movimiento | `If-Match`, hash idempotente, outbox/inbox, checksum de servidor, ledger/settlement append-only | QA-06 a QA-09, QA-28, QA-38, QA-42, QA-45, QA-46 |
+| Repudiation | negar un CUD o re-drive | audit-intent durable y fail-closed, `intentId`, `correlationId`, actor y timestamps de servidor | QA-39, QA-42 a QA-44 |
+| Information disclosure | BOLA/cross-tenant, PII en DTO/log o media expuesta | matriz permiso×ABAC, 404 antienumeración, DTO minimizado, bucket privado y URL firmada corta | QA-01, QA-02, QA-21, QA-30, QA-35, QA-45, QA-48 |
+| Denial of service | abuso de endpoints, uploads, retries o DLQ | rate limit, límites de tamaño/tipo, retry/backoff/DLQ y re-drive restringido | QA-33, QA-39, QA-46, QA-47 |
+| Elevation of privilege | usar permisos implícitos, assignment revocado o administración indebida | capabilities explícitas sin herencia, ABAC por recurso y revalidación por comando | QA-02 a QA-04, QA-31, QA-32, QA-40, QA-47 |
+
+Trazabilidad al baseline OWASP ASVS L2 del repo:
+
+| Familia de control ASVS L2 | Contrato/plan | Evidencia |
+| --- | --- | --- |
+| Autenticación y sesión | pipeline JWT/tenant; ningún dato del payload concede identidad | QA-01, QA-10 |
+| Control de acceso | matriz exhaustiva endpoint×permiso×ABAC y política uniforme 401/403/404 | QA-02 a QA-04, QA-47, QA-48 |
+| Validación y lógica de negocio | DTO/Zod, `If-Match`, gate de cierre, terminalidad, idempotencia | QA-05 a QA-08, QA-23, QA-29, QA-31, QA-42, QA-43 |
+| Protección de datos y comunicaciones | minimización PII, storage privado, URL firmada y TLS | QA-21, QA-30, QA-34, QA-45, QA-48, QA-49 |
+| Archivos y recursos | magic bytes, allowlist, tamaño, cuarentena, checksum y vínculo tenant+OT | QA-45, QA-46, QA-48 |
+| Logging y auditoría | audit-intent durable, redacción, retry/DLQ y correlación | QA-21, QA-30, QA-39, QA-42, QA-44 |
+| API y servicios | OpenAPI, errores tipados, rate limit, replay, eventos versionados | QA-22, QA-29, QA-33, QA-35, QA-38, QA-43, QA-47 |
+
+El modelado es documental. AI-SEC-ENG debe confirmar controles reales y cerrar QA-50 en G6; no sustituye pruebas ni concepto Legal.

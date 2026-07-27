@@ -40,6 +40,7 @@ import { TasksToolbar } from './TasksToolbar';
 import { createTaskVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 
 const USERS_PAGE_SIZE = 100;
+const TASKS_PAGE_SIZE = 20;
 const INTERNAL_AREA_OPTIONS = [
   { value: 'operations-area', label: 'Operaciones' },
   { value: 'noc-area', label: 'NOC' },
@@ -92,9 +93,12 @@ export function OperationsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<OperationalTaskRecord[]>([]);
+  const [tasksPage, setTasksPage] = useState(1);
+  const [tasksTotal, setTasksTotal] = useState(0);
   const [users, setUsers] = useState<InternalUser[]>([]);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | ''>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,23 +150,55 @@ export function OperationsClient() {
   const initialOriginContext =
     initialTicketId && fromAssurance ? TaskOriginContext.ASSURANCE : undefined;
 
-  const loadTasks = useCallback(async () => {
-    setIsRefreshing(true);
-    setError(null);
-    try {
-      const response = await tasksApi.list(statusFilter ? { status: statusFilter } : undefined);
-      setTasks(response.data);
-    } catch (loadError) {
-      setError(mapOperationsError(loadError));
-    } finally {
-      setIsRefreshing(false);
-      setIsLoading(false);
-    }
-  }, [statusFilter]);
+  const loadTasks = useCallback(
+    async (options?: { append?: boolean }) => {
+      const append = options?.append === true;
+      const nextPage = append ? tasksPage + 1 : 1;
 
+      if (append) {
+        if (isLoadingMore || tasks.length >= tasksTotal) {
+          return;
+        }
+        setIsLoadingMore(true);
+      } else {
+        setIsRefreshing(true);
+      }
+
+      setError(null);
+      try {
+        const response = await tasksApi.list({
+          ...(statusFilter ? { status: statusFilter } : {}),
+          page: nextPage,
+          limit: TASKS_PAGE_SIZE,
+        });
+        setTasks((prev) => (append ? [...prev, ...response.data] : response.data));
+        setTasksTotal(response.total);
+        setTasksPage(response.page);
+      } catch (loadError) {
+        setError(mapOperationsError(loadError));
+        if (!append) {
+          setTasks([]);
+          setTasksTotal(0);
+          setTasksPage(1);
+        }
+      } finally {
+        if (append) {
+          setIsLoadingMore(false);
+        } else {
+          setIsRefreshing(false);
+          setIsLoading(false);
+        }
+      }
+    },
+    [isLoadingMore, statusFilter, tasks.length, tasksPage, tasksTotal],
+  );
+
+  // Reset al filtrar.
   useEffect(() => {
     void loadTasks();
-  }, [loadTasks]);
+  }, [statusFilter]);
+
+  const hasMoreTasks = tasks.length < tasksTotal;
 
   useEffect(() => {
     void loadOperationalUsers()
@@ -448,6 +484,10 @@ export function OperationsClient() {
               <TasksTable
                 tasks={tasks}
                 selectedTaskId={selectedTask?.id ?? null}
+                totalCount={tasksTotal}
+                hasMore={hasMoreTasks}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={() => void loadTasks({ append: true })}
                 onSelect={(task) => void openTaskDetail(task)}
               />
             )}

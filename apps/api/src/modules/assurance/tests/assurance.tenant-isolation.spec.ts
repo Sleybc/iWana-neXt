@@ -50,10 +50,15 @@ describe('Assurance tenant isolation', () => {
       return fn({
         manager: {
           createQueryBuilder: () => ({
+            addSelect: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             andWhere: jest.fn().mockReturnThis(),
+            getCount: jest.fn().mockResolvedValue(0),
             orderBy: jest.fn().mockReturnThis(),
-            getMany: jest.fn().mockResolvedValue([]),
+            addOrderBy: jest.fn().mockReturnThis(),
+            skip: jest.fn().mockReturnThis(),
+            take: jest.fn().mockReturnThis(),
+            getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
           }),
         },
       } as any);

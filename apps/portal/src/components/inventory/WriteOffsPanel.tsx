@@ -1,24 +1,33 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { WriteOffReason, WriteOffStatus } from '@iwana/shared';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { WriteOffReason, WriteOffStatus, type ListMeta } from '@iwana/shared';
 import { Button, cn, Input, Select } from '@iwana/ui';
-import type {
-  InventoryItemRecord,
-  InventoryWriteOffRecord,
-  SerializedAssetRecord,
-  StockLocationRecord,
+import {
+  ApiError,
+  inventoryApi,
+  type InventoryItemRecord,
+  type InventoryWriteOffRecord,
+  type SerializedAssetRecord,
+  type StockLocationRecord,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
   interactiveFocusClassName,
   PortalAlert,
   PortalEmptyState,
+  PortalPageSizeSelect,
   PortalPanel,
   PortalSkeletonBlock,
+  PortalTablePager,
+  PortalTablePagination,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
   portalTextareaClassName,
+  portalDataBusyRegionClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDateTime,
@@ -28,6 +37,9 @@ import {
   WRITE_OFF_REASON_LABELS,
   WRITE_OFF_STATUS_LABELS,
 } from './inventory-labels';
+import { InventoryAssetPicker } from './InventoryAssetPicker';
+import { InventoryItemPicker } from './InventoryItemPicker';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 export type WriteOffHistoryStatusFilter = WriteOffStatus | 'all';
 
@@ -42,12 +54,10 @@ export interface WriteOffRequestFormState {
 
 interface WriteOffsPanelProps {
   pending: InventoryWriteOffRecord[];
-  history: InventoryWriteOffRecord[];
-  historyStatusFilter: WriteOffHistoryStatusFilter;
-  onHistoryStatusFilterChange: (status: WriteOffHistoryStatusFilter) => void;
-  items: InventoryItemRecord[];
-  assets: SerializedAssetRecord[];
-  locations: StockLocationRecord[];
+  /** Opcional: solo enriquecer etiquetas de listados (ya no alimenta pickers). */
+  items?: InventoryItemRecord[];
+  assets?: SerializedAssetRecord[];
+  locations?: StockLocationRecord[];
   requestForm: WriteOffRequestFormState;
   onRequestFormChange: (next: WriteOffRequestFormState) => void;
   isSubmittingRequest: boolean;
@@ -57,15 +67,14 @@ interface WriteOffsPanelProps {
   userLabelById: Map<string, string>;
   currentUserId?: string;
   isLoadingPending: boolean;
-  isLoadingHistory: boolean;
   pendingError: string | null;
-  historyError: string | null;
   actionError: string | null;
   processingWriteOffId: string | null;
   /** Aprobación de bajas (flag independiente de canAdjustStock). El API sigue siendo autoridad. */
   canApprove?: boolean;
   onRefreshPending: () => void;
-  onRefreshHistory: () => void;
+  /** Incrementar tras mutaciones para recargar historial. */
+  historyRevision?: number;
   onApprove: (writeOffId: string) => void;
   onReject: (writeOffId: string, rejectionNotes?: string | null) => void;
   onOpenMovement: (stockMovementId: string) => void;
@@ -123,14 +132,308 @@ const HISTORY_STATUS_OPTIONS: Array<{ value: WriteOffHistoryStatusFilter; label:
   },
 ];
 
-export function WriteOffsPanel({
-  pending,
-  history,
-  historyStatusFilter,
-  onHistoryStatusFilterChange,
+const HISTORY_RESOURCE = { singular: 'baja', plural: 'bajas' } as const;
+const HISTORY_FILTER_KEYS = ['status'] as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
+
+function mapHistoryError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión de nuevo para continuar.';
+    if (error.status === 403) return 'No tienes permisos para consultar bajas.';
+    if (error.status === 404) return 'El recurso solicitado ya no está disponible.';
+    return error.message;
+  }
+
+  return 'No fue posible cargar el historial de bajas.';
+}
+
+interface WriteOffHistorySectionProps {
+  items: InventoryItemRecord[];
+  assets: SerializedAssetRecord[];
+  userLabelById: Map<string, string>;
+  historyRevision: number;
+  onOpenMovement: (stockMovementId: string) => void;
+}
+
+function WriteOffHistorySectionInner({
   items,
   assets,
-  locations,
+  userLabelById,
+  historyRevision,
+  onOpenMovement,
+}: WriteOffHistorySectionProps) {
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+
+  const { page, pageSize, filters, setPage, setPageSize, setFilters, setQuery } =
+    useTableQueryState({
+      namespace: 'writeOffHistory',
+      filterKeys: HISTORY_FILTER_KEYS,
+      defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+    });
+
+  const statusFilter = (filters.status as WriteOffHistoryStatusFilter | undefined) ?? 'all';
+  const [history, setHistory] = useState<InventoryWriteOffRecord[]>([]);
+  const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
+
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      try {
+        const response = await inventoryApi.writeOffs.list({
+          ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+          page,
+          limit: pageSize,
+        });
+        const nextMeta = normalizeListMeta(
+          {
+            page: response.page,
+            limit: response.limit ?? pageSize,
+            total: response.total,
+            mode: 'page',
+            capabilities: { randomAccess: true, sortableFields: [] },
+          },
+          { dataLength: response.data.length, limit: pageSize },
+        );
+        const requestedPage = page;
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setHistory(response.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch (loadError: unknown) {
+        setError(mapHistoryError(loadError));
+        if (!soft) {
+          setHistory([]);
+          setMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [page, pageSize, setQuery, statusFilter],
+  );
+
+  useEffect(() => {
+    void loadPage({ soft: true });
+  }, [loadPage, historyRevision]);
+
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    if (prevPageRef.current === page) return;
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom
+      }
+    }
+  }, [page]);
+
+  const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
+  const effectivePage = meta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const randomAccess = meta.capabilities.randomAccess;
+  const showPager = !isLoading && meta.total > 0;
+  const showPageSize = showPager && randomAccess && meta.total > Math.min(10, 20, 50);
+
+  return (
+    <PortalPanel
+      eyebrow="Historial"
+      title="Solicitudes de baja"
+      description="Consulta el estado de las solicitudes y accede al movimiento cuando esté completada."
+    >
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="w-full max-w-xs">
+          <Select
+            label="Estado"
+            value={statusFilter}
+            onChange={(event) =>
+              setFilters({
+                status:
+                  event.target.value === 'all'
+                    ? null
+                    : (event.target.value as WriteOffHistoryStatusFilter),
+              })
+            }
+            options={HISTORY_STATUS_OPTIONS}
+            data-testid="write-offs-history-status-filter"
+          />
+        </div>
+        <Button type="button" size="sm" variant="secondary" onClick={() => void loadPage()}>
+          Actualizar
+        </Button>
+      </div>
+
+      {error ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar el historial"
+          description={error}
+        />
+      ) : null}
+
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
+      ) : null}
+
+      {isLoading ? (
+        <PortalSkeletonBlock className="h-48" />
+      ) : history.length === 0 ? (
+        <PortalEmptyState
+          title="Sin solicitudes registradas"
+          description="Las bajas solicitadas aparecerán aquí con su estado y trazabilidad."
+        />
+      ) : (
+        <div ref={tableShellRef} className={portalDataTableShellClassName}>
+          <div
+            className={
+              refreshing ? `overflow-x-auto ${portalDataBusyRegionClassName}` : 'overflow-x-auto'
+            }
+            aria-busy={refreshing || undefined}
+          >
+            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
+              <thead className="bg-gray-50 dark:bg-dark-surface-2">
+                <tr>
+                  <th className={portalDataTableHeadClassName}>Referencia</th>
+                  <th className={portalDataTableHeadClassName}>Motivo</th>
+                  <th className={portalDataTableHeadClassName}>Estado</th>
+                  <th className={portalDataTableHeadClassName}>Solicitante</th>
+                  <th className={portalDataTableHeadClassName}>Solicitada el</th>
+                  <th className={portalDataTableHeadClassName}>Movimiento</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                {history.map((writeOff) => (
+                  <tr key={writeOff.id} data-testid={`write-off-history-row-${writeOff.id}`}>
+                    <td className={portalDataTableCellClassName}>
+                      {resolveSubjectLabel(writeOff, items, assets)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {getWriteOffReasonLabel(writeOff.reason)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {getWriteOffStatusLabel(writeOff.status)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {resolveUserLabel(userLabelById, writeOff.requestedByUserId)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {formatInventoryDateTime(writeOff.createdAt)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {writeOff.status === WriteOffStatus.COMPLETED && writeOff.stockMovementId ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => onOpenMovement(writeOff.stockMovementId!)}
+                        >
+                          {writeOff.movementNumber
+                            ? `Ver ${writeOff.movementNumber}`
+                            : 'Ver en kardex'}
+                        </Button>
+                      ) : writeOff.status === WriteOffStatus.REJECTED && writeOff.rejectionNotes ? (
+                        <span className="text-gray-600 dark:text-gray-300">
+                          {writeOff.rejectionNotes}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {showPager && randomAccess ? (
+            <PortalTablePager
+              page={effectivePage}
+              pageCount={Math.max(1, pageCount)}
+              onPageChange={setPage}
+              from={from}
+              to={to}
+              total={meta.total}
+              resource={HISTORY_RESOURCE}
+              loading={refreshing}
+              pageSizeControl={
+                showPageSize ? (
+                  <PortalPageSizeSelect
+                    value={pageSize}
+                    onChange={setPageSize}
+                    disabled={refreshing}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
+          {showPager && !randomAccess ? (
+            <PortalTablePagination
+              hasMore={meta.hasMore}
+              onLoadMore={() => setPage(page + 1)}
+              loading={refreshing}
+              resourceLabel="bajas"
+              shown={to}
+              total={meta.total}
+            />
+          ) : null}
+        </div>
+      )}
+    </PortalPanel>
+  );
+}
+
+function WriteOffHistorySection(props: WriteOffHistorySectionProps) {
+  return (
+    <Suspense fallback={<PortalSkeletonBlock className="h-48" />}>
+      <WriteOffHistorySectionInner {...props} />
+    </Suspense>
+  );
+}
+
+export function WriteOffsPanel({
+  pending,
+  items = [],
+  assets = [],
+  locations = [],
   requestForm,
   onRequestFormChange,
   isSubmittingRequest,
@@ -140,42 +443,21 @@ export function WriteOffsPanel({
   userLabelById,
   currentUserId,
   isLoadingPending,
-  isLoadingHistory,
   pendingError,
-  historyError,
   actionError,
   processingWriteOffId,
   canApprove = false,
   onRefreshPending,
-  onRefreshHistory,
+  historyRevision = 0,
   onApprove,
   onReject,
   onOpenMovement,
 }: WriteOffsPanelProps) {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState('');
-
-  const itemSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona un producto' },
-      ...items.map((item) => ({
-        value: item.id,
-        label: `${item.sku} · ${item.name}`,
-      })),
-    ],
-    [items],
-  );
-
-  const locationSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona una bodega' },
-      ...locations.map((location) => ({
-        value: location.id,
-        label: `${location.code} · ${location.name}`,
-      })),
-    ],
-    [locations],
-  );
+  const [itemSelectedLabel, setItemSelectedLabel] = useState<string | null>(null);
+  const [locationSelectedLabel, setLocationSelectedLabel] = useState<string | null>(null);
+  const [assetSelectedLabel, setAssetSelectedLabel] = useState<string | null>(null);
 
   const writeOffReasonOptions = useMemo(
     () =>
@@ -217,31 +499,42 @@ export function WriteOffsPanel({
         description="Registra una solicitud de salida definitiva por daño, pérdida u obsolescencia. Un segundo usuario debe aprobarla antes de afectar el inventario."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Select
+          <InventoryItemPicker
+            id="write-off-item"
             label="Producto"
-            value={requestForm.itemId}
-            onChange={(event) =>
-              onRequestFormChange({ ...requestForm, itemId: event.target.value })
-            }
-            options={itemSelectOptions}
+            value={requestForm.itemId || null}
+            selectedLabel={itemSelectedLabel}
+            minChars={0}
+            debounceMs={0}
+            onChange={(itemId, item) => {
+              setItemSelectedLabel(item ? item.label : null);
+              onRequestFormChange({ ...requestForm, itemId: itemId ?? '' });
+            }}
           />
-          <Input
+          <InventoryAssetPicker
+            id="write-off-asset"
             label="Equipo con serial (opcional)"
-            value={requestForm.serializedAssetId}
-            onChange={(event) =>
+            value={requestForm.serializedAssetId || null}
+            selectedLabel={assetSelectedLabel}
+            onChange={(assetId, item) => {
+              setAssetSelectedLabel(item ? item.label : null);
               onRequestFormChange({
                 ...requestForm,
-                serializedAssetId: event.target.value,
-              })
-            }
+                serializedAssetId: assetId ?? '',
+              });
+            }}
           />
-          <Select
+          <InventoryLocationPicker
+            id="write-off-location"
             label="Ubicación"
-            value={requestForm.locationId}
-            onChange={(event) =>
-              onRequestFormChange({ ...requestForm, locationId: event.target.value })
-            }
-            options={locationSelectOptions}
+            value={requestForm.locationId || null}
+            selectedLabel={locationSelectedLabel}
+            minChars={0}
+            debounceMs={0}
+            onChange={(locationId, item) => {
+              setLocationSelectedLabel(item ? item.label : null);
+              onRequestFormChange({ ...requestForm, locationId: locationId ?? '' });
+            }}
           />
           <Input
             label="Cantidad"
@@ -455,103 +748,13 @@ export function WriteOffsPanel({
         )}
       </PortalPanel>
 
-      <PortalPanel
-        eyebrow="Historial"
-        title="Solicitudes de baja"
-        description="Consulta el estado de las solicitudes y accede al movimiento cuando esté completada."
-      >
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <Select
-            label="Estado"
-            value={historyStatusFilter}
-            onChange={(event) =>
-              onHistoryStatusFilterChange(event.target.value as WriteOffHistoryStatusFilter)
-            }
-            options={HISTORY_STATUS_OPTIONS}
-            data-testid="write-offs-history-status-filter"
-          />
-          <Button type="button" size="sm" variant="secondary" onClick={onRefreshHistory}>
-            Actualizar
-          </Button>
-        </div>
-
-        {historyError ? (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar el historial"
-            description={historyError}
-          />
-        ) : null}
-
-        {isLoadingHistory ? (
-          <PortalSkeletonBlock className="h-48" />
-        ) : history.length === 0 ? (
-          <PortalEmptyState
-            title="Sin solicitudes registradas"
-            description="Las bajas solicitadas aparecerán aquí con su estado y trazabilidad."
-          />
-        ) : (
-          <div className={portalDataTableShellClassName}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-                <thead className="bg-gray-50 dark:bg-dark-surface-2">
-                  <tr>
-                    <th className={portalDataTableHeadClassName}>Referencia</th>
-                    <th className={portalDataTableHeadClassName}>Motivo</th>
-                    <th className={portalDataTableHeadClassName}>Estado</th>
-                    <th className={portalDataTableHeadClassName}>Solicitante</th>
-                    <th className={portalDataTableHeadClassName}>Solicitada el</th>
-                    <th className={portalDataTableHeadClassName}>Movimiento</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                  {history.map((writeOff) => (
-                    <tr key={writeOff.id} data-testid={`write-off-history-row-${writeOff.id}`}>
-                      <td className={portalDataTableCellClassName}>
-                        {resolveSubjectLabel(writeOff, items, assets)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {getWriteOffReasonLabel(writeOff.reason)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {getWriteOffStatusLabel(writeOff.status)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {resolveUserLabel(userLabelById, writeOff.requestedByUserId)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {formatInventoryDateTime(writeOff.createdAt)}
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        {writeOff.status === WriteOffStatus.COMPLETED &&
-                        writeOff.stockMovementId ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => onOpenMovement(writeOff.stockMovementId!)}
-                          >
-                            {writeOff.movementNumber
-                              ? `Ver ${writeOff.movementNumber}`
-                              : 'Ver en kardex'}
-                          </Button>
-                        ) : writeOff.status === WriteOffStatus.REJECTED &&
-                          writeOff.rejectionNotes ? (
-                          <span className="text-gray-600 dark:text-gray-300">
-                            {writeOff.rejectionNotes}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </PortalPanel>
+      <WriteOffHistorySection
+        items={items}
+        assets={assets}
+        userLabelById={userLabelById}
+        historyRevision={historyRevision}
+        onOpenMovement={onOpenMovement}
+      />
     </div>
   );
 }

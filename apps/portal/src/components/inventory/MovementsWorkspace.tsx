@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState } from 'react';
 import { Button, cn, Input, Select } from '@iwana/ui';
 import { SerializedAssetStatus } from '@iwana/shared';
-import type { InventoryItemRecord, StockLocationRecord } from '@/lib/api-client';
 import { interactiveFocusClassName, PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 import { getSerializedAssetStatusLabel } from './inventory-labels';
+import { InventoryItemPicker } from './InventoryItemPicker';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 export interface SaleFormState {
   itemId: string;
@@ -27,8 +28,6 @@ export interface ReturnFormState {
 }
 
 interface MovementsWorkspaceProps {
-  items: InventoryItemRecord[];
-  locations: StockLocationRecord[];
   saleForm: SaleFormState;
   onSaleFormChange: (next: SaleFormState) => void;
   returnForm: ReturnFormState;
@@ -50,8 +49,6 @@ const fieldClassName = cn(
 );
 
 export function MovementsWorkspace({
-  items,
-  locations,
   saleForm,
   onSaleFormChange,
   returnForm,
@@ -61,36 +58,16 @@ export function MovementsWorkspace({
   onSale,
   onReturn,
 }: MovementsWorkspaceProps) {
-  const itemSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona un producto' },
-      ...items.map((item) => ({
-        value: item.id,
-        label: `${item.sku} · ${item.name}`,
-      })),
-    ],
-    [items],
-  );
+  const [saleItemLabel, setSaleItemLabel] = useState<string | null>(null);
+  const [saleLocationLabel, setSaleLocationLabel] = useState<string | null>(null);
+  const [returnItemLabel, setReturnItemLabel] = useState<string | null>(null);
+  const [returnSourceLabel, setReturnSourceLabel] = useState<string | null>(null);
+  const [returnDestinationLabel, setReturnDestinationLabel] = useState<string | null>(null);
 
-  const locationSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona una bodega' },
-      ...locations.map((location) => ({
-        value: location.id,
-        label: `${location.code} · ${location.name}`,
-      })),
-    ],
-    [locations],
-  );
-
-  const returnTargetStatusOptions = useMemo(
-    () =>
-      RETURN_TARGET_STATUSES.map((status) => ({
-        value: status,
-        label: getSerializedAssetStatusLabel(status),
-      })),
-    [],
-  );
+  const returnTargetStatusOptions = RETURN_TARGET_STATUSES.map((status) => ({
+    value: status,
+    label: getSerializedAssetStatusLabel(status),
+  }));
 
   return (
     <div className="space-y-6" data-testid="movements-workspace">
@@ -101,19 +78,25 @@ export function MovementsWorkspace({
           description="Descuenta unidades desde una bodega y asocia la salida a una referencia comercial."
         >
           <div className="grid gap-4">
-            <Select
+            <InventoryItemPicker
+              id="sale-item"
               label="Producto"
-              value={saleForm.itemId}
-              onChange={(event) => onSaleFormChange({ ...saleForm, itemId: event.target.value })}
-              options={itemSelectOptions}
+              value={saleForm.itemId || null}
+              selectedLabel={saleItemLabel}
+              onChange={(itemId, item) => {
+                setSaleItemLabel(item ? item.label : null);
+                onSaleFormChange({ ...saleForm, itemId: itemId ?? '' });
+              }}
             />
-            <Select
+            <InventoryLocationPicker
+              id="sale-location"
               label="Ubicación"
-              value={saleForm.locationId}
-              onChange={(event) =>
-                onSaleFormChange({ ...saleForm, locationId: event.target.value })
-              }
-              options={locationSelectOptions}
+              value={saleForm.locationId || null}
+              selectedLabel={saleLocationLabel}
+              onChange={(locationId, item) => {
+                setSaleLocationLabel(item ? item.label : null);
+                onSaleFormChange({ ...saleForm, locationId: locationId ?? '' });
+              }}
             />
             <Input
               label="Cantidad"
@@ -163,35 +146,41 @@ export function MovementsWorkspace({
           description="Registra material o activo devuelto por un técnico o cliente y muévelo a la bodega que corresponda."
         >
           <div className="grid gap-4">
-            <Select
+            <InventoryItemPicker
+              id="return-item"
               label="Producto"
-              value={returnForm.itemId}
-              onChange={(event) =>
-                onReturnFormChange({ ...returnForm, itemId: event.target.value })
-              }
-              options={itemSelectOptions}
+              value={returnForm.itemId || null}
+              selectedLabel={returnItemLabel}
+              onChange={(itemId, item) => {
+                setReturnItemLabel(item ? item.label : null);
+                onReturnFormChange({ ...returnForm, itemId: itemId ?? '' });
+              }}
             />
-            <Select
+            <InventoryLocationPicker
+              id="return-source"
               label="Bodega de origen"
-              value={returnForm.sourceLocationId}
-              onChange={(event) =>
+              value={returnForm.sourceLocationId || null}
+              selectedLabel={returnSourceLabel}
+              onChange={(locationId, item) => {
+                setReturnSourceLabel(item ? item.label : null);
                 onReturnFormChange({
                   ...returnForm,
-                  sourceLocationId: event.target.value,
-                })
-              }
-              options={locationSelectOptions}
+                  sourceLocationId: locationId ?? '',
+                });
+              }}
             />
-            <Select
+            <InventoryLocationPicker
+              id="return-destination"
               label="Bodega de destino"
-              value={returnForm.destinationLocationId}
-              onChange={(event) =>
+              value={returnForm.destinationLocationId || null}
+              selectedLabel={returnDestinationLabel}
+              onChange={(locationId, item) => {
+                setReturnDestinationLabel(item ? item.label : null);
                 onReturnFormChange({
                   ...returnForm,
-                  destinationLocationId: event.target.value,
-                })
-              }
-              options={locationSelectOptions}
+                  destinationLocationId: locationId ?? '',
+                });
+              }}
             />
             <Input
               label="Cantidad"
@@ -242,7 +231,7 @@ export function MovementsWorkspace({
               }
               onClick={onReturn}
             >
-              Registrar retorno
+              Registrar devolución
             </Button>
           </div>
         </PortalPanel>

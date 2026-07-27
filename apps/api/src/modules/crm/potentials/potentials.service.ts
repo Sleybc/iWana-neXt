@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { AuditAction } from '@iwana/shared';
+import { AuditAction, type ListResponse } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { CoverageReadPort } from '../ports/coverage-read.port';
 import { PlanCatalogReadPort } from '../ports/plan-catalog-read.port';
 import { AuditService } from '../../audit/audit.service';
@@ -68,12 +70,37 @@ export class PotentialsService {
     return this.toDto(created);
   }
 
-  async findAll(): Promise<PotentialResponseDto[]> {
+  async findAll(
+    filters: {
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<ListResponse<PotentialResponseDto>> {
     const { schemaName } = TenantContext.getOrThrow();
-    const items = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(PotentialLead, { order: { createdAt: 'DESC' } }),
-    );
-    return items.map((item) => this.toDto(item));
+    const cappedLimit = clampLimit(filters.limit);
+    const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
+
+    const { items, total } = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const [rows, count] = await qr.manager
+        .createQueryBuilder(PotentialLead, 'p')
+        .orderBy('p.createdAt', 'DESC')
+        .addOrderBy('p.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+      return { items: rows, total: count };
+    });
+
+    return {
+      data: items.map((item) => this.toDto(item)),
+      meta: buildPageMeta({
+        total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: [],
+      }),
+    };
   }
 
   async qualify(id: string, dto: QualifyPotentialDto): Promise<ProspectResponseDto> {

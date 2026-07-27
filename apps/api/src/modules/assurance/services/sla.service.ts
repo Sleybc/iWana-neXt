@@ -6,7 +6,9 @@ import { CreateSlaPolicyInput, CreateSlaPolicySchema } from '../dto';
 import { SlaBreachStatus, TicketPriority, TicketStatus, TicketType } from '@iwana/shared';
 
 const PQR_INITIAL_RESPONSE_MINUTES = 15 * 24 * 60;
-const AT_RISK_THRESHOLD_RATIO = 0.2;
+
+/** Fracción restante de la ventana SLA que marca AT_RISK (espejo SQL en tickets.list). */
+export const AT_RISK_THRESHOLD_RATIO = 0.2;
 
 @Injectable()
 export class SlaService {
@@ -162,6 +164,7 @@ export class SlaService {
         .createQueryBuilder(TicketSlaPolicy, 'p')
         .where('p.tenant_id = :tenantId', { tenantId })
         .orderBy('p.created_at', 'DESC')
+        .take(100)
         .getMany(),
     );
   }

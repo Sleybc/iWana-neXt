@@ -12,11 +12,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
@@ -47,11 +50,18 @@ export class ContractsController {
   @Get('crm/subscribers/:subscriberId/contracts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar servicios contratados de un suscriptor' })
+  @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   async findAllBySubscriber(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
-  ): Promise<{ data: Contract[] }> {
-    const data = await this.contractsService.findAllBySubscriber(subscriberId);
-    return { data };
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ): Promise<ListResponse<Contract>> {
+    return this.contractsService.findAllBySubscriber(subscriberId, {
+      ...(page !== undefined ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
   }
 
   @Post('crm/subscribers/:subscriberId/contracts/from-expediente')
@@ -80,18 +90,23 @@ export class ContractsController {
   @Get('crm/contracts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar contratos con filtros opcionales' })
+  @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
   @ApiQuery({ name: 'status', required: false, enum: ContractStatus })
   @ApiQuery({ name: 'planId', required: false })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   async findAll(
     @Query('status') status?: ContractStatus,
     @Query('planId') planId?: string,
-  ): Promise<{ data: Contract[] }> {
-    const filters: { status?: ContractStatus; planId?: string } = {};
-    if (status !== undefined) filters.status = status;
-    if (planId !== undefined) filters.planId = planId;
-
-    const data = await this.contractsService.findAll(filters);
-    return { data };
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ): Promise<ListResponse<Contract>> {
+    return this.contractsService.findAll({
+      ...(status !== undefined ? { status } : {}),
+      ...(planId !== undefined ? { planId } : {}),
+      ...(page !== undefined ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
   }
 
   @Get('crm/contracts/:id')

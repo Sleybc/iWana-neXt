@@ -14,7 +14,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -49,6 +49,7 @@ import {
   ListPurchaseOrdersQuerySchema,
   ListPurchaseRequestsQueryDto,
   ListPurchaseRequestsQuerySchema,
+  InventoryListMetaDto,
   ListSuppliersQueryDto,
   ListSuppliersQuerySchema,
   LookupSupplierDocumentQueryDto,
@@ -74,6 +75,7 @@ import { RfqService } from './services/rfq.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
 
 @ApiTags('purchasing')
+@ApiExtraModels(InventoryListMetaDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('purchasing')
@@ -89,7 +91,16 @@ export class PurchasingController {
 
   @Get('requests')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar solicitudes de compra' })
+  @ApiOperation({
+    summary: 'Listar solicitudes de compra',
+    description:
+      'ADR-064/065: limit default 20, max 100; cursor o page (excluyentes). ' +
+      'Filtros Ola 6: search, kpiPreset, status, requestType, priority. Orden: createdAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor)',
+  })
   listRequests(
     @Query(new ZodValidationPipe(ListPurchaseRequestsQuerySchema))
     query: ListPurchaseRequestsQueryDto,
@@ -298,7 +309,17 @@ export class PurchasingController {
 
   @Get('suppliers')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar proveedores con perfil comercial' })
+  @ApiOperation({
+    summary: 'Listar proveedores con perfil comercial',
+    description:
+      'ADR-065: paginación offset (`page`/`limit`). Emite ListMeta completo + dual-emit legacy ' +
+      '`total`/`page`/`limit` planos. `sortableFields: []` (sin p95). Orden: createdAt DESC, id DESC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Lista `{ data, meta }` (ListMeta mode=page) + campos planos legacy total/page/limit',
+  })
   listSuppliers(
     @Query(new ZodValidationPipe(ListSuppliersQuerySchema)) query: ListSuppliersQueryDto,
   ) {
@@ -307,7 +328,14 @@ export class PurchasingController {
 
   @Get('suppliers/lookup')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Buscar tercero por documento para reutilizar su identidad en el alta' })
+  @ApiOperation({
+    summary: 'Buscar tercero por documento para reutilizar su identidad en el alta',
+    description:
+      'E-4 dual-emit / gap: este lookup es por documento (alta de proveedor), NO typeahead `q`. ' +
+      'El typeahead de pickers usa `GET /purchasing/suppliers` (list/search, limit≤20) vía ' +
+      '`purchasingApi.searchSuppliers`. No romper este contrato; uniformizar a `{ id, label, sublabel, total }` ' +
+      'queda como residual FE/API en migración SupplierPicker → SearchablePicker.',
+  })
   lookupSupplierByDocument(
     @Query(new ZodValidationPipe(LookupSupplierDocumentSchema))
     query: LookupSupplierDocumentQueryDto,

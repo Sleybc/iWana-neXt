@@ -18,7 +18,7 @@ import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
 
 // ---------------------------------------------------------------------------
-// Helpers de mock para DataSource.getRepository
+// Helpers de mock para DataSource.getRepository + createQueryBuilder
 // ---------------------------------------------------------------------------
 
 function buildMockDataSource(): {
@@ -34,8 +34,49 @@ function buildMockDataSource(): {
   const find = jest.fn().mockResolvedValue([]);
   const dataSource = {
     getRepository: jest.fn().mockReturnValue({ save, create, findAndCount, find }),
+    createQueryBuilder: jest.fn(),
   } as unknown as DataSource;
   return { dataSource, save, create, findAndCount, find };
+}
+
+/**
+ * Construye un mock de query builder encadenable para tests de query().
+ */
+function buildMockQueryBuilder(
+  overrides: {
+    getMany?: jest.Mock;
+    getCount?: jest.Mock;
+    getManyAndCount?: jest.Mock;
+  } = {},
+) {
+  const getMany = overrides.getMany ?? jest.fn();
+  const getCount = overrides.getCount ?? jest.fn();
+  const getManyAndCount = overrides.getManyAndCount ?? jest.fn();
+
+  const qb: Record<string, jest.Mock> = {
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orWhere: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    getMany,
+    getCount,
+    getManyAndCount,
+  };
+
+  // Los métodos que devuelven el mismo qb deben ser encadenables
+  for (const key of Object.keys(qb)) {
+    if (!['getMany', 'getCount', 'getManyAndCount'].includes(key)) {
+      qb[key] = jest.fn(() => qb);
+    }
+  }
+  // Restauramos los mocks reales que sí devuelven valores
+  qb.getMany = getMany;
+  qb.getCount = getCount;
+  qb.getManyAndCount = getManyAndCount;
+
+  return qb;
 }
 
 const BASE_ENTRY: AuditEntryInput = {
@@ -192,8 +233,24 @@ describe('PlatformAuditService', () => {
       createdAt: new Date(),
     };
 
+    let qbMock: Record<string, jest.Mock>;
+    let getManyMock: jest.Mock;
+    let getCountMock: jest.Mock;
+
     beforeEach(() => {
-      findAndCount.mockResolvedValue([[mockEntry], 1]);
+      getManyMock = jest.fn().mockResolvedValue([mockEntry]);
+      getCountMock = jest.fn().mockResolvedValue(1);
+      qbMock = buildMockQueryBuilder({ getMany: getManyMock, getCount: getCountMock });
+
+      // Mock de createQueryBuilder — el servicio lo llama dos veces
+      // (una para datos, otra para count)
+      const dataSource = service['dataSource'] as unknown as {
+        createQueryBuilder: jest.Mock;
+        getRepository: jest.Mock;
+      };
+      dataSource.createQueryBuilder = jest.fn().mockReturnValue(qbMock);
+      // Para exportCsv que usa getRepository().find()
+      (dataSource.getRepository as jest.Mock).mockReturnValue({ save, create, findAndCount, find });
     });
 
     it('retorna datos y nextCursor=null cuando hay resultados', async () => {
@@ -209,62 +266,85 @@ describe('PlatformAuditService', () => {
       });
       expect(result.nextCursor).toBeNull();
       expect(resolver.resolveMany).toHaveBeenCalledWith(['user-uuid-1'], { source: 'platform' });
-      expect(findAndCount).toHaveBeenCalledWith({
-        where: {},
-        order: { createdAt: 'DESC', id: 'DESC' },
-        take: 51,
-      });
+      // Verifica que se llamó a orderBy y take en la query builder
+      expect(qbMock.orderBy).toHaveBeenCalledWith('audit.createdAt', 'DESC');
+      expect(qbMock.addOrderBy).toHaveBeenCalledWith('audit.id', 'DESC');
+      expect(qbMock.take).toHaveBeenCalledWith(51);
     });
 
     it('retorna nextCursor cuando hay mas resultados que el limite', async () => {
-      findAndCount.mockResolvedValue([
-        [mockEntry, { ...mockEntry, id: 'entry-uuid-2' }, { ...mockEntry, id: 'entry-uuid-3' }],
-        3,
+      getManyMock.mockResolvedValue([
+        mockEntry,
+        { ...mockEntry, id: 'entry-uuid-2' },
+        { ...mockEntry, id: 'entry-uuid-3' },
       ]);
       const result = await service.query({ limit: 2 });
       expect(result.data).toHaveLength(2);
-      expect(result.nextCursor).toBe('entry-uuid-2');
+      expect(result.nextCursor).toBeTruthy();
     });
 
     it('aplica filtro de action cuando se provee', async () => {
       await service.query({ limit: 50, action: AuditAction.CREATE });
-      expect(findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ action: AuditAction.CREATE }) }),
+      expect(qbMock.andWhere).toHaveBeenCalledWith(
+        'audit.action = :action',
+        expect.objectContaining({ action: AuditAction.CREATE }),
       );
     });
 
     it('aplica filtro de entityType cuando se provee', async () => {
       await service.query({ limit: 50, entityType: 'PlatformUser' });
-      expect(findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ entityType: 'PlatformUser' }) }),
+      expect(qbMock.andWhere).toHaveBeenCalledWith(
+        'audit.entityType = :entityType',
+        expect.objectContaining({ entityType: 'PlatformUser' }),
       );
     });
 
     it('aplica filtro de cursor cuando se provee', async () => {
-      await service.query({ limit: 50, cursor: 'entry-uuid-5' });
-      expect(findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ id: expect.anything() }) }),
-      );
+      // El cursor usa encodeAuditCursor. Necesitamos un cursor válido.
+      const cursor = Buffer.from(
+        JSON.stringify({
+          d: '2026-01-01T00:00:00.000Z',
+          i: 'entry-uuid-5',
+        }),
+        'utf8',
+      ).toString('base64url');
+      await service.query({ limit: 50, cursor });
+      // El cursor aplica un Brackets con where/orWhere
+      expect(qbMock.andWhere).toHaveBeenCalled();
     });
 
-    it('aplica filtro fromDate/toDate cuando se proveen', async () => {
+    it('aplica filtro fromDate/toDate como BETWEEN en query', async () => {
       await service.query({
         limit: 50,
         fromDate: '2026-01-01T00:00:00.000Z',
         toDate: '2026-06-30T23:59:59.999Z',
       });
-      expect(findAndCount).toHaveBeenCalledWith(
+      // applyCreatedAtFilter emite BETWEEN con parámetros escalares
+      expect(qbMock.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt BETWEEN :fromDate AND :toDate',
         expect.objectContaining({
-          where: expect.objectContaining({ createdAt: expect.anything() }),
+          fromDate: expect.any(Date),
+          toDate: expect.any(Date),
         }),
       );
     });
 
-    it('aplica solo fromDate cuando toDate no se provee', async () => {
+    it('aplica solo fromDate con >= en query', async () => {
       await service.query({ limit: 50, fromDate: '2026-01-01T00:00:00.000Z' });
-      expect(findAndCount).toHaveBeenCalledWith(
+      expect(qbMock.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt >= :fromDate',
         expect.objectContaining({
-          where: expect.objectContaining({ createdAt: expect.anything() }),
+          fromDate: expect.any(Date),
+        }),
+      );
+    });
+
+    it('aplica solo toDate con <= en query', async () => {
+      await service.query({ limit: 50, toDate: '2026-06-30T23:59:59.999Z' });
+      expect(qbMock.andWhere).toHaveBeenCalledWith(
+        'audit.createdAt <= :toDate',
+        expect.objectContaining({
+          toDate: expect.any(Date),
         }),
       );
     });

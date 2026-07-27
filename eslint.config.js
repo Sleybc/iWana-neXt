@@ -10,6 +10,7 @@
  */
 import tsParser from '@typescript-eslint/parser';
 import tsEslintPlugin from '@typescript-eslint/eslint-plugin';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -29,6 +30,7 @@ export default [
     files: ['**/*.ts', '**/*.tsx'],
     plugins: {
       '@typescript-eslint': tsEslintPlugin,
+      'react-hooks': reactHooks,
     },
     languageOptions: {
       parser: tsParser,
@@ -37,7 +39,9 @@ export default [
         sourceType: 'module',
       },
     },
-    // Sin reglas en Sprint 0 — 0 errores garantizados
-    rules: {},
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
   },
 ];

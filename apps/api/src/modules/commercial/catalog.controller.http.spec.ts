@@ -155,23 +155,46 @@ describe('CatalogController HTTP', () => {
   });
 
   it('GET /api/v1/commercial/catalog retorna lista paginada y propaga filtros', async () => {
-    catalogServiceMock.findAll.mockResolvedValue({ data: [], total: 0 });
+    catalogServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: { nextCursor: null, total: 0 },
+    });
 
     await request(app.getHttpServer())
-      .get('/api/v1/commercial/catalog?type=PLAN&name=fibra&page=2&limit=5&isActive=true')
+      .get('/api/v1/commercial/catalog?type=PLAN&name=fibra&limit=5&isActive=true')
       .set('Authorization', 'Bearer sales-token')
       .expect(200)
       .expect(({ body }) => {
-        expect(body.meta.total).toBe(0);
+        expect(body.data.meta.total).toBe(0);
+        expect(body.data.meta.nextCursor).toBeNull();
+        expect(Array.isArray(body.data.data)).toBe(true);
       });
 
     expect(catalogServiceMock.findAll).toHaveBeenCalledWith(
       expect.objectContaining({
         type: CatalogItemType.PLAN,
         name: 'fibra',
-        page: 2,
         limit: 5,
         isActive: true,
+      }),
+    );
+  });
+
+  it('GET /api/v1/commercial/catalog aplica limit default 20 si se omite', async () => {
+    catalogServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: { nextCursor: null, total: 0 },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/catalog?type=PLAN')
+      .set('Authorization', 'Bearer sales-token')
+      .expect(200);
+
+    expect(catalogServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CatalogItemType.PLAN,
+        limit: 20,
       }),
     );
   });

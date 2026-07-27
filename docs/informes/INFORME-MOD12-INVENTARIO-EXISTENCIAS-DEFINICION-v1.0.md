@@ -136,7 +136,7 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 | 2026-07-20 | **G6 Fase 3B GO:** PROD-UX/DS-OWNER/SR-QA; remediación UX-H1 (next-step en StockIssueComposer) por FE-PLATFORM; Jest composer 4/4. Condición Playwright Reservas + traza 073 → G7. |
 | 2026-07-20 | **Cierre G7 Fase 3B (AI-EM-ARCH):** re-run independiente — Playwright Reservas **4/4**, EV-1 TX **3/3**, Jest balance/issue **28/28**, UX-H1 y mig 073 verificados. **Recomendación: GO a producción**, pendiente CTO. Habilita definición Fase 4. |
 | 2026-07-20 | **CTO confirma G7 Fase 3B (GO producción).** Se abre definición Fase 4 (costeo / valoración). |
-| 2026-07-20 | **Definición Fase 4 emitida (AI-EM-ARCH):** ADR-059 (Propuesto) + spec + prompt NO ejecutable; factibilidad SR-FULL (avg por ítem, mig 080). Pendiente: viabilidad PROD-UX G1 + aprobación CTO del ADR. |
+| 2026-07-20 | **Definición Fase 4 emitida (AI-EM-ARCH):** ADR-059 (emitido como Propuesto; hoy Aprobado) + spec + prompt NO ejecutable; factibilidad SR-FULL (avg por ítem, mig 080). Pendiente: viabilidad PROD-UX G1 + aprobación CTO del ADR. |
 | 2026-07-20 | **G1 Fase 4:** PROD-UX **viable con ajustes** (vocabulario «Costo promedio»; KPI sigue «Valor estimado…» + nota; sin pantalla nueva). Factibilidad SR-FULL OK. **Pendiente solo: CTO aprueba ADR-059** → luego prompt EJECUTABLE. |
 | 2026-07-20 | **CTO aprueba ADR-059.** Prompt F4 marcado **EJECUTABLE**; fase en ejecución (SR-FULL + FE-PLATFORM). |
 | 2026-07-20 | **Fase 4 implementada** (BE+FE) + **G5 GO** (AI-EM-ARCH): Jest 43+9, typecheck limpio tras rebuild `@iwana/db`. Habilita G6. |

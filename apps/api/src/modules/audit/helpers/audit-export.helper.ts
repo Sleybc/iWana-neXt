@@ -1,4 +1,10 @@
-import { Between, FindOperator, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+  Between,
+  FindOperator,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  SelectQueryBuilder,
+} from 'typeorm';
 
 /** Máximo de filas en export CSV sync (sin BullMQ). */
 export const AUDIT_EXPORT_MAX_ROWS = 5000;
@@ -40,6 +46,40 @@ export function buildCreatedAtFilter(
     return LessThanOrEqual(new Date(toDate));
   }
   return undefined;
+}
+
+/**
+ * Aplica filtro de rango de fechas `createdAt` sobre un QueryBuilder.
+ *
+ * Variante para QueryBuilder (a diferencia de `buildCreatedAtFilter` que
+ * retorna `FindOperator` para `repo.find`). Usa predicados SQL escalares
+ * (`>=`, `<=`, `BETWEEN`) con parámetros nombrados.
+ *
+ * @param qb — QueryBuilder sobre el que se aplica el filtro.
+ * @param alias — Alias de la entidad (ej. 'audit').
+ * @param fromDate — ISO inicio del rango (inclusivo).
+ * @param toDate — ISO fin del rango (inclusivo).
+ */
+export function applyCreatedAtFilter(
+  qb: SelectQueryBuilder<any>,
+  alias: string,
+  fromDate?: string,
+  toDate?: string,
+): void {
+  if (fromDate && toDate) {
+    qb.andWhere(`${alias}.createdAt BETWEEN :fromDate AND :toDate`, {
+      fromDate: new Date(fromDate),
+      toDate: new Date(toDate),
+    });
+  } else if (fromDate) {
+    qb.andWhere(`${alias}.createdAt >= :fromDate`, {
+      fromDate: new Date(fromDate),
+    });
+  } else if (toDate) {
+    qb.andWhere(`${alias}.createdAt <= :toDate`, {
+      toDate: new Date(toDate),
+    });
+  }
 }
 
 function escapeCsvCell(value: string): string {

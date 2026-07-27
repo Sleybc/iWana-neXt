@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, LessThan } from 'typeorm';
+import { Brackets, DataSource } from 'typeorm';
 import { PlatformAuditLog } from '@iwana/db';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
@@ -8,10 +8,12 @@ import { AuditLogResponseDto, PlatformAuditLogListResponseDto } from './dto/audi
 import { QueryPlatformAuditLogsDto } from './dto/query-platform-audit-logs.dto';
 import {
   AUDIT_EXPORT_MAX_ROWS,
+  applyCreatedAtFilter,
   AuditCsvExportResult,
   buildAuditCsv,
   buildCreatedAtFilter,
 } from './helpers/audit-export.helper';
+import { encodeAuditCursor, decodeAuditCursor } from '../../common/pagination';
 
 /**
  * Servicio de audit trail para operaciones de plataforma.
@@ -69,21 +71,57 @@ export class PlatformAuditService {
    * Consulta platform_audit_logs con filtros opcionales y paginación cursor-based.
    * Sin dependencia de TenantContext — opera siempre sobre el schema público.
    * Soporta fromDate/toDate (ISO) en paridad con AuditQueryService.
+   *
+   * Cursor compuesto (DEF-3): (createdAt, id) en lugar de id < cursor.
    */
   async query(dto: QueryPlatformAuditLogsDto = {}): Promise<PlatformAuditLogListResponseDto> {
     const limit = dto.limit ?? 50;
-    const repo = this.dataSource.getRepository(PlatformAuditLog);
-    const where = this.buildWhere(dto);
 
-    const [data, total] = await repo.findAndCount({
-      where,
-      order: { createdAt: 'DESC', id: 'DESC' },
-      take: limit + 1,
-    });
+    const qb = this.dataSource
+      .createQueryBuilder(PlatformAuditLog, 'audit')
+      .orderBy('audit.createdAt', 'DESC')
+      .addOrderBy('audit.id', 'DESC')
+      .take(limit + 1);
+
+    if (dto.action) qb.andWhere('audit.action = :action', { action: dto.action });
+    if (dto.entityType)
+      qb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
+    if (dto.userId) qb.andWhere('audit.userId = :userId', { userId: dto.userId });
+
+    applyCreatedAtFilter(qb, 'audit', dto.fromDate, dto.toDate);
+
+    // Cursor compuesto (DEF-3)
+    if (dto.cursor) {
+      const { d: cursorDate, i: cursorId } = decodeAuditCursor(dto.cursor);
+      qb.andWhere(
+        new Brackets((innerQb) => {
+          innerQb
+            .where('audit.createdAt < :cursorDate', { cursorDate })
+            .orWhere('audit.createdAt = :cursorDate AND audit.id < :cursorId', {
+              cursorDate,
+              cursorId,
+            });
+        }),
+      );
+    }
+
+    const data = await qb.getMany();
+
+    // Total sin cursor
+    const countQb = this.dataSource.createQueryBuilder(PlatformAuditLog, 'audit');
+    if (dto.action) countQb.andWhere('audit.action = :action', { action: dto.action });
+    if (dto.entityType)
+      countQb.andWhere('audit.entityType = :entityType', { entityType: dto.entityType });
+    if (dto.userId) countQb.andWhere('audit.userId = :userId', { userId: dto.userId });
+    applyCreatedAtFilter(countQb, 'audit', dto.fromDate, dto.toDate);
+    const total = await countQb.getCount();
 
     const hasNext = data.length > limit;
     const slice = hasNext ? data.slice(0, limit) : data;
-    const nextCursor = hasNext ? (slice[slice.length - 1]?.id ?? null) : null;
+    const lastItem = slice[slice.length - 1];
+    const nextCursor =
+      hasNext && lastItem ? encodeAuditCursor(lastItem.createdAt, lastItem.id) : null;
+
     const actors = await this.auditActorResolver.resolveMany(
       slice.map((entry) => entry.userId),
       { source: 'platform' },
@@ -102,7 +140,7 @@ export class PlatformAuditService {
    */
   async exportCsv(dto: QueryPlatformAuditLogsDto = {}): Promise<AuditCsvExportResult> {
     const repo = this.dataSource.getRepository(PlatformAuditLog);
-    const where = this.buildWhere(dto, { includeCursor: false });
+    const where = this.buildExportWhere(dto);
 
     const data = await repo.find({
       where,
@@ -133,11 +171,7 @@ export class PlatformAuditService {
     return { csv, truncated, rowCount: rows.length };
   }
 
-  private buildWhere(
-    dto: QueryPlatformAuditLogsDto,
-    options: { includeCursor?: boolean } = {},
-  ): Record<string, unknown> {
-    const includeCursor = options.includeCursor !== false;
+  private buildExportWhere(dto: QueryPlatformAuditLogsDto): Record<string, unknown> {
     const where: Record<string, unknown> = {};
 
     if (dto.action) where['action'] = dto.action;
@@ -146,8 +180,6 @@ export class PlatformAuditService {
 
     const createdAt = buildCreatedAtFilter(dto.fromDate, dto.toDate);
     if (createdAt) where['createdAt'] = createdAt;
-
-    if (includeCursor && dto.cursor) where['id'] = LessThan(dto.cursor);
 
     return where;
   }

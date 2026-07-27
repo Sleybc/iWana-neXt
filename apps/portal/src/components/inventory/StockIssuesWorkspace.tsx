@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Button } from '@iwana/ui';
-import { StockIssueStatus, StockLocationType } from '@iwana/shared';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Badge, Button } from '@iwana/ui';
+import { StockIssueStatus, type ListMeta } from '@iwana/shared';
 import type {
   CreateStockIssueDto,
   DispatchStockIssueDto,
@@ -14,8 +14,30 @@ import type {
   StockLocationRecord,
   UpdateStockIssueDto,
 } from '@/lib/api-client';
-import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
-import { filterStockIssues, hasActiveIssueFilters, type StockIssueFilters } from './issue-filters';
+import { ApiError, inventoryApi } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
+import {
+  PortalAlert,
+  PortalPageSizeSelect,
+  PortalPanel,
+  PortalResultsStrip,
+  PortalSkeletonBlock,
+  PortalTablePager,
+  PortalTablePagination,
+  portalDataTableShellClassName,
+  portalDataBusyRegionClassName,
+} from '@/components/shared/portal-ui';
+import {
+  buildStockIssuesListParams,
+  hasActiveIssueFilters,
+  issueFiltersFromTableQuery,
+  STOCK_ISSUES_FILTER_KEYS,
+  STOCK_ISSUES_NAMESPACE,
+  tableQueryFromIssueFilters,
+} from './issue-list-query';
+import type { StockIssueFilters } from './issue-filters';
 import { getStockIssueStatusLabel } from './inventory-labels';
 import { PurchaseCreateModeShell } from './PurchaseCreateModeShell';
 import { StockIssueComposer } from './StockIssueComposer';
@@ -25,19 +47,29 @@ import { StockIssuesSummary } from './StockIssuesSummary';
 import { StockIssuesTable } from './StockIssuesTable';
 import { StockIssuesToolbar } from './StockIssuesToolbar';
 
-const EMPTY_FILTERS: StockIssueFilters = {};
-
 type StockIssuesWorkspaceMode = 'inbox' | 'create' | 'edit';
 
+const ISSUES_RESOURCE = { singular: 'salida', plural: 'salidas' } as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
+
+function mapIssuesListError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión de nuevo para continuar.';
+    if (error.status === 403) return 'No tienes permisos para consultar salidas.';
+    if (error.status === 404) return 'El recurso solicitado ya no está disponible.';
+    return error.message;
+  }
+  return 'No fue posible cargar las salidas.';
+}
+
 export interface StockIssuesWorkspaceProps {
-  items: InventoryItemRecord[];
-  balances: StockBalanceRecord[];
-  assets: SerializedAssetRecord[];
-  locations: StockLocationRecord[];
-  issues: StockIssueRecord[];
+  items?: InventoryItemRecord[];
+  balances?: StockBalanceRecord[];
+  assets?: SerializedAssetRecord[];
+  locations?: StockLocationRecord[];
   issueItemFrequency?: Record<string, number>;
-  isLoading: boolean;
-  isRefreshing?: boolean;
+  /** Incrementar tras mutaciones del padre. */
+  listRevision?: number;
   isSubmitting?: boolean;
   error?: string | null;
   onCreate: (dto: CreateStockIssueDto) => Promise<void>;
@@ -45,18 +77,16 @@ export interface StockIssuesWorkspaceProps {
   onCancel: (id: string) => Promise<void>;
   onDispatch: (id: string, dto: DispatchStockIssueDto) => Promise<void>;
   onOpenDetail: (id: string) => Promise<StockIssueDetailRecord>;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
 }
 
-export function StockIssuesWorkspace({
-  items,
-  balances,
-  assets,
-  locations,
-  issues,
+function StockIssuesWorkspaceInner({
+  items = [],
+  balances = [],
+  assets = [],
+  locations = [],
   issueItemFrequency = {},
-  isLoading,
-  isRefreshing = false,
+  listRevision = 0,
   isSubmitting,
   error,
   onCreate,
@@ -66,6 +96,39 @@ export function StockIssuesWorkspace({
   onOpenDetail,
   onRefresh,
 }: StockIssuesWorkspaceProps) {
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+
+  const {
+    page,
+    pageSize,
+    filters: urlFilters,
+    setPage,
+    setPageSize,
+    setFilters: setUrlFilters,
+    setQuery,
+  } = useTableQueryState({
+    namespace: STOCK_ISSUES_NAMESPACE,
+    filterKeys: STOCK_ISSUES_FILTER_KEYS,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
+
+  const filters = useMemo(() => issueFiltersFromTableQuery(urlFilters), [urlFilters]);
+  const setFilters = useCallback(
+    (next: StockIssueFilters) => {
+      setUrlFilters(tableQueryFromIssueFilters(next));
+    },
+    [setUrlFilters],
+  );
+
+  const [issues, setIssues] = useState<StockIssueRecord[]>([]);
+  const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
+
   const [workspaceMode, setWorkspaceMode] = useState<StockIssuesWorkspaceMode>('inbox');
   const [editingIssue, setEditingIssue] = useState<StockIssueDetailRecord | null>(null);
   const [composerDirty, setComposerDirty] = useState(false);
@@ -74,34 +137,101 @@ export function StockIssuesWorkspace({
   const [detail, setDetail] = useState<StockIssueDetailRecord | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<StockIssueFilters>(EMPTY_FILTERS);
 
-  const issueLocations = useMemo(
-    () => locations.filter((loc) => loc.type !== StockLocationType.CUSTOMER_SITE),
-    [locations],
-  );
-
-  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
-  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const locationMap = useMemo(
     () => new Map(locations.map((location) => [location.id, location])),
     [locations],
   );
+  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
 
-  const filteredIssues = useMemo(
-    () => filterStockIssues(issues, filters, locationMap),
-    [issues, filters, locationMap],
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setListError(null);
+
+      try {
+        const response = await inventoryApi.listIssues(
+          buildStockIssuesListParams(filters, page, pageSize),
+        );
+        const nextMeta = normalizeListMeta(response.meta, {
+          dataLength: response.data.length,
+          limit: pageSize,
+        });
+        const requestedPage = page;
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setIssues(response.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch (loadError: unknown) {
+        setListError(mapIssuesListError(loadError));
+        if (!soft) {
+          setIssues([]);
+          setMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [filters, page, pageSize, setQuery],
   );
 
-  const destinationOptions = useMemo(() => {
-    const byType = new Map<StockLocationType, StockLocationRecord[]>();
-    issueLocations.forEach((loc) => {
-      const next = byType.get(loc.type) ?? [];
-      next.push(loc);
-      byType.set(loc.type, next);
-    });
-    return byType;
-  }, [issueLocations]);
+  useEffect(() => {
+    void loadPage({ soft: true });
+  }, [loadPage, listRevision]);
+
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    if (prevPageRef.current === page) return;
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom
+      }
+    }
+  }, [page]);
+
+  const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
+  const effectivePage = meta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const randomAccess = meta.capabilities.randomAccess;
+  const showPager = !isLoading && meta.total > 0;
+  const showPageSize = showPager && randomAccess && meta.total > Math.min(10, 20, 50);
+  const activeFilters = hasActiveIssueFilters(filters);
+  const resultsLabel =
+    meta.total === 0 && !activeFilters
+      ? '0 salidas'
+      : issues.length === 0
+        ? 'Sin resultados con estos filtros'
+        : `${from}–${to} de ${meta.total} salida${meta.total === 1 ? '' : 's'}`;
 
   function openCreateMode() {
     setDetailOpen(false);
@@ -136,20 +266,24 @@ export function StockIssuesWorkspace({
   }
 
   const createAction = (
-    <Button type="button" onClick={openCreateMode} disabled={isLoading}>
+    <Button type="button" variant="primary" onClick={openCreateMode} disabled={isLoading}>
       Crear salida
     </Button>
   );
 
   function handleStatusKpiChange(status: StockIssueStatus) {
-    setFilters((current) => {
-      if (current.status === status) {
-        const next = { ...current };
-        delete next.status;
-        return next;
-      }
-      return { ...current, status };
-    });
+    if (filters.status === status) {
+      const next = { ...filters };
+      delete next.status;
+      setFilters(next);
+      return;
+    }
+    setFilters({ ...filters, status });
+  }
+
+  async function handleToolbarRefresh() {
+    await onRefresh();
+    await loadPage();
   }
 
   async function openDetail(issueId: string) {
@@ -171,6 +305,7 @@ export function StockIssuesWorkspace({
     try {
       await onCreate(dto);
       closeComposerMode(true);
+      await loadPage({ soft: true });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No fue posible crear la salida.');
       throw err instanceof Error ? err : new Error('No fue posible crear la salida.');
@@ -182,6 +317,7 @@ export function StockIssuesWorkspace({
     try {
       await onUpdate(issueId, dto);
       closeComposerMode(true);
+      await loadPage({ soft: true });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No fue posible guardar la salida.');
       throw err instanceof Error ? err : new Error('No fue posible guardar la salida.');
@@ -195,8 +331,6 @@ export function StockIssuesWorkspace({
       items={items}
       balances={balances}
       assets={assets}
-      locations={issueLocations}
-      destinationOptions={destinationOptions}
       issueItemFrequency={issueItemFrequency}
       isSubmitting={Boolean(isSubmitting)}
       error={actionError}
@@ -209,8 +343,20 @@ export function StockIssuesWorkspace({
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <PortalAlert variant="error" title="No fue posible cargar salidas" description={error} />
+      {error || listError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar salidas"
+          description={listError ?? error}
+        />
+      ) : null}
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
       ) : null}
       {detailError ? (
         <PortalAlert
@@ -229,6 +375,7 @@ export function StockIssuesWorkspace({
 
       {workspaceMode === 'inbox' ? (
         <>
+          {/* Conteos KPI page-local hasta agregación servidor. */}
           <StockIssuesSummary
             issues={issues}
             activeStatus={filters.status}
@@ -245,24 +392,66 @@ export function StockIssuesWorkspace({
             <div className="space-y-4">
               <StockIssuesToolbar
                 filters={filters}
-                resultCount={filteredIssues.length}
-                totalCount={issues.length}
+                resultCount={issues.length}
+                totalCount={meta.total}
                 isRefreshing={isRefreshing}
                 onFiltersChange={setFilters}
-                onRefresh={onRefresh}
-                onClearFilters={() => setFilters(EMPTY_FILTERS)}
+                onRefresh={() => void handleToolbarRefresh()}
+                onClearFilters={() => setFilters({})}
+                hideResultsLabel
               />
-              <StockIssuesTable
-                issues={filteredIssues}
-                locationMap={locationMap}
-                isLoading={isLoading}
-                isRefreshing={isRefreshing}
-                hasActiveFilters={hasActiveIssueFilters(filters)}
-                issuesIsEmpty={issues.length === 0}
-                onOpenDetail={(issueId) => void openDetail(issueId)}
-                emptyAction={createAction}
-                onClearFilters={() => setFilters(EMPTY_FILTERS)}
-              />
+              {issues.length === 0 ? (
+                <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+              ) : null}
+              <div ref={tableShellRef} className={portalDataTableShellClassName}>
+                <div
+                  className={isRefreshing ? `p-4 ${portalDataBusyRegionClassName}` : 'p-4'}
+                  aria-busy={isRefreshing || undefined}
+                >
+                  <StockIssuesTable
+                    issues={issues}
+                    locationMap={locationMap}
+                    isLoading={isLoading}
+                    isRefreshing={isRefreshing}
+                    hasActiveFilters={activeFilters}
+                    issuesIsEmpty={meta.total === 0 && !activeFilters}
+                    onOpenDetail={(issueId) => void openDetail(issueId)}
+                    emptyAction={createAction}
+                    onClearFilters={() => setFilters({})}
+                  />
+                </div>
+                {showPager && randomAccess ? (
+                  <PortalTablePager
+                    page={effectivePage}
+                    pageCount={Math.max(1, pageCount)}
+                    onPageChange={setPage}
+                    from={from}
+                    to={to}
+                    total={meta.total}
+                    resource={ISSUES_RESOURCE}
+                    loading={isRefreshing}
+                    pageSizeControl={
+                      showPageSize ? (
+                        <PortalPageSizeSelect
+                          value={pageSize}
+                          onChange={setPageSize}
+                          disabled={isRefreshing}
+                        />
+                      ) : undefined
+                    }
+                  />
+                ) : null}
+                {showPager && !randomAccess ? (
+                  <PortalTablePagination
+                    hasMore={meta.hasMore}
+                    onLoadMore={() => setPage(page + 1)}
+                    loading={isRefreshing}
+                    resourceLabel="salidas"
+                    shown={to}
+                    total={meta.total}
+                  />
+                ) : null}
+              </div>
             </div>
           </PortalPanel>
         </>
@@ -316,6 +505,7 @@ export function StockIssuesWorkspace({
             await onCancel(issueId);
             setDetailOpen(false);
             setDetail(null);
+            await loadPage({ soft: true });
           } catch (err) {
             setActionError(
               err instanceof Error ? err.message : 'No fue posible cancelar la salida.',
@@ -329,6 +519,7 @@ export function StockIssuesWorkspace({
             await onDispatch(issueId, dto);
             const refreshed = await onOpenDetail(issueId);
             setDetail(refreshed);
+            await loadPage({ soft: true });
           } catch (err) {
             setActionError(
               err instanceof Error ? err.message : 'No fue posible despachar la salida.',
@@ -338,5 +529,13 @@ export function StockIssuesWorkspace({
         }}
       />
     </div>
+  );
+}
+
+export function StockIssuesWorkspace(props: StockIssuesWorkspaceProps) {
+  return (
+    <Suspense fallback={<PortalSkeletonBlock className="h-96" />}>
+      <StockIssuesWorkspaceInner {...props} />
+    </Suspense>
   );
 }

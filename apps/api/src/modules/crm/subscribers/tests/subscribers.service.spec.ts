@@ -9,6 +9,7 @@ import {
   TaxRegime,
   DocumentType,
 } from '@iwana/shared';
+import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { SubscribersService } from '../subscribers.service';
 import { VatTreatmentService } from '../vat-treatment.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
@@ -101,10 +102,10 @@ describe('SubscribersService', () => {
       );
     });
 
-    it('genera hash SHA-256 determinista para búsqueda', () => {
+    it('genera hash SHA-256 determinista para búsqueda de documento', () => {
       const value = '12345678';
-      const hash1 = (service as any).sha256Hash(value);
-      const hash2 = (service as any).sha256Hash(value);
+      const hash1 = hashDocumentNumber(value);
+      const hash2 = hashDocumentNumber(value);
 
       expect(hash1).toBe(hash2);
       expect(hash1).toHaveLength(64); // SHA-256 hex = 64 caracteres
@@ -299,7 +300,7 @@ describe('SubscribersService', () => {
 
     it('search por documento usa hash SHA-256', async () => {
       const docNumber = '12345678';
-      const expectedHash = (service as any).sha256Hash(docNumber);
+      const expectedHash = hashDocumentNumber(docNumber);
       const subscriber = buildSubscriber({
         documentNumberHash: expectedHash,
       });
@@ -606,6 +607,7 @@ describe('SubscribersService', () => {
     const chainable: Record<string, any> = {};
     chainable.andWhere = () => chainable;
     chainable.orderBy = () => chainable;
+    chainable.addOrderBy = () => chainable;
     chainable.skip = () => chainable;
     chainable.take = () => chainable;
     chainable.getManyAndCount = async () => [subscribers, total];
@@ -628,6 +630,7 @@ describe('SubscribersService', () => {
     const chainable: Record<string, any> = {};
     chainable.where = () => chainable;
     chainable.andWhere = () => chainable;
+    chainable.take = () => chainable;
     chainable.getMany = async () => subscribers;
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>

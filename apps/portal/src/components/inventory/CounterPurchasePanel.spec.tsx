@@ -23,6 +23,24 @@ jest.mock('./SupplierPicker', () => ({
   ),
 }));
 
+jest.mock('./InventoryLocationPicker', () => ({
+  InventoryLocationPicker: ({
+    label,
+    onChange,
+  }: {
+    label?: string;
+    onChange: (id: string | null, item: { id: string; label: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      aria-label={label ?? 'Bodega destino'}
+      onClick={() => onChange('loc-1', { id: 'loc-1', label: 'BOD-01 · Bodega central' })}
+    >
+      Elegir bodega
+    </button>
+  ),
+}));
+
 const catalogOptions: InventoryCatalogOptionRecord[] = [
   {
     id: 'item-1',
@@ -124,9 +142,7 @@ describe('CounterPurchasePanel', () => {
     await user.click(screen.getByRole('button', { name: /Seleccionar Proveedor/i }));
     await user.type(screen.getByLabelText(/Factura o soporte/i), 'FAC-001');
 
-    const destination = screen.getByRole('combobox', { name: /Bodega destino/i });
-    await user.click(destination);
-    await user.click(await screen.findByRole('option', { name: /BOD-01/i }));
+    await user.click(screen.getByRole('button', { name: /Bodega destino/i }));
 
     const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
     await user.type(searchInput, 'ONT');

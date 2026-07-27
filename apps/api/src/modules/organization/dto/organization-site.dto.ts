@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsArray,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -31,6 +32,29 @@ const datePattern = /^\d{4}-\d{2}-\d{2}$/u;
 
 function hasDuplicates<T>(values: T[]): boolean {
   return new Set(values).size !== values.length;
+}
+
+/** Query de listado de sedes — ADR-065 Ola 7 (page/limit). */
+export class ListOrganizationSitesQueryDto {
+  @ApiPropertyOptional({ minimum: 1, example: 1, description: 'Número de página (≥ 1)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 100,
+    example: 20,
+    description: 'Tamaño de página (1–100)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }
 
 export class CreateOrganizationSiteDto {

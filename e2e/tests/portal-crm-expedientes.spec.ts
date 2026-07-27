@@ -63,6 +63,15 @@ const convertedExpediente = {
   lastName: null,
 };
 
+const installationReadyExpediente = {
+  ...mockExpediente,
+  status: 'LISTO_PARA_INSTALACION',
+  completenessOverall: 80,
+  pipelineProgress: 80,
+  latitude: '4.7110000',
+  longitude: '-74.0721000',
+};
+
 const mockResponsibility = {
   currentResponsibleUserId: 'user-uuid-admin-test',
   currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
@@ -120,12 +129,16 @@ async function setAuthSession(page: import('@playwright/test').Page) {
   );
 }
 
-async function setupCrmMocks(page: import('@playwright/test').Page) {
+async function setupCrmMocks(
+  page: import('@playwright/test').Page,
+  options: { installationReady?: boolean } = {},
+) {
   let capturedExpedientesQuery = '';
   let capturedTechnicalPayload: Record<string, unknown> | null = null;
   let contactAttemptCreated = false;
   let consentRevoked = false;
   const capturedCommercialCatalogRequests: string[] = [];
+  let capturedVisitRequestPayload: Record<string, unknown> | null = null;
   type MockDocumentSupportVersion = {
     id: string;
     fileName: string;
@@ -812,18 +825,104 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (
+      options.installationReady &&
+      pathname.endsWith('/assurance/tickets/find-or-create-installation') &&
+      method === 'POST'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ticket: { id: 'ticket-crm-001', code: 'TK-CRM-001' },
+          created: true,
+        }),
+      });
+      return;
+    }
+
+    if (
+      options.installationReady &&
+      pathname.endsWith('/wfm/visit-requests') &&
+      method === 'POST'
+    ) {
+      capturedVisitRequestPayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'vr-crm-001' }),
+      });
+      return;
+    }
+
+    if (
+      options.installationReady &&
+      pathname.endsWith('/wfm/visit-requests/vr-crm-001') &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'vr-crm-001',
+          tenantId: MOCK_TENANT_SLUG,
+          status: 'READY_TO_SCHEDULE',
+          originContext: 'CRM',
+          originRef: mockExpediente.id,
+          originLabel: 'Cliente Empresa Demo SAS',
+          workType: 'INSTALLATION',
+          priority: 'NORMAL',
+          title: 'Instalación para Empresa Demo SAS',
+          description: null,
+          requestedWindowStartAt: null,
+          requestedWindowEndAt: null,
+          slaDueAt: null,
+          address: mockExpediente.address,
+          municipality: mockExpediente.municipality,
+          sector: null,
+          latitude: 4.711,
+          longitude: -74.0721,
+          expedienteId: mockExpediente.id,
+          subscriberId: null,
+          ticketId: 'ticket-crm-001',
+          contractId: null,
+          scheduleEventId: null,
+          workOrderId: null,
+          requestedByUserId: 'user-uuid-admin-test',
+          scheduledByUserId: null,
+          scheduledAt: null,
+          cancelledAt: null,
+          cancelledByUserId: null,
+          cancelReason: null,
+          createdAt: '2026-03-26T12:00:00.000Z',
+          updatedAt: '2026-03-26T12:00:00.000Z',
+          deletedAt: null,
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}`) && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: mockExpediente,
+          data: options.installationReady ? installationReadyExpediente : mockExpediente,
           completeness: {
             commercial: 70,
             legal: 50,
             technical: 40,
             operational: 30,
-            overall: 48,
+            overall: options.installationReady ? 80 : 48,
+            installationReadiness: options.installationReady
+              ? {
+                  status: 'READY_COMPLETE',
+                  canTransition: true,
+                  title: 'Listo para instalación',
+                  message: 'La instalación puede coordinarse.',
+                }
+              : undefined,
+            missingRequirements: [],
           },
         }),
       });
@@ -837,6 +936,7 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
     getCapturedExpedientesQuery: () => capturedExpedientesQuery,
     getCapturedTechnicalPayload: () => capturedTechnicalPayload,
     getCapturedCommercialCatalogRequests: () => capturedCommercialCatalogRequests,
+    getCapturedVisitRequestPayload: () => capturedVisitRequestPayload,
   };
 }
 
@@ -858,6 +958,25 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
       '1012345678',
     );
+  });
+
+  test('admin coordina una instalación desde el detalle CRM', async ({ page }) => {
+    const mocks = await setupCrmMocks(page, { installationReady: true });
+    await setAuthSession(page);
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
+
+    await page.getByRole('button', { name: 'Coordinar visita de instalación' }).first().click();
+
+    await expect(page).toHaveURL(
+      /\/dashboard\/scheduling\/agenda\?source=pending-visits&visitRequestId=vr-crm-001/,
+    );
+    expect(mocks.getCapturedVisitRequestPayload()).toMatchObject({
+      originContext: 'CRM',
+      expedienteId: mockExpediente.id,
+      workType: 'INSTALLATION',
+      latitude: 4.711,
+      longitude: -74.0721,
+    });
   });
 
   test('CRM oculta PII en listados y mantiene detalle operativo', async ({ page }) => {

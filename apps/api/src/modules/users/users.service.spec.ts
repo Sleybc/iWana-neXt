@@ -379,6 +379,44 @@ describe('UsersService', () => {
     });
   });
 
+  describe('searchForPicker()', () => {
+    it('retorna vacío si q está en blanco', async () => {
+      const result = await service.searchForPicker({ q: '  ', status: UserStatus.ACTIVE });
+      expect(result).toEqual({ data: [], total: 0 });
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('mapea label/sublabel y respeta total > data.length', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce(undefined) // set_config
+        .mockResolvedValueOnce([{ total: 25 }])
+        .mockResolvedValueOnce([
+          {
+            id: 'usr-1',
+            email: 'ana@empresa.com',
+            first_name: 'Ana',
+            last_name: 'Lopez',
+            job_title: 'Soporte',
+          },
+        ]);
+
+      setupRunInTenantSchema({}, query);
+
+      const result = await service.searchForPicker({
+        q: 'ana',
+        status: UserStatus.ACTIVE,
+        limit: 20,
+      });
+
+      expect(result.total).toBe(25);
+      expect(result.data).toEqual([
+        { id: 'usr-1', label: 'Ana Lopez', sublabel: 'ana@empresa.com' },
+      ]);
+      expect(result.data.length).toBeLessThan(result.total);
+    });
+  });
+
   describe('resetPassword()', () => {
     it('genera password temporal y activa passwordResetRequired cuando no se provee password', async () => {
       const targetUser = buildUserEntity({ id: 'usr-target', role: UserRole.NOC });

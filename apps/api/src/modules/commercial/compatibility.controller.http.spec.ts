@@ -136,10 +136,11 @@ describe('CompatibilityController HTTP', () => {
     jest.clearAllMocks();
   });
 
-  it('GET /api/v1/commercial/compatibility-rules retorna lista de reglas activas', async () => {
-    compatibilityServiceMock.findAll.mockResolvedValue([
-      { id: RULE_ID, ruleType: CompatibilityRuleType.EXCLUDES, isActive: true },
-    ]);
+  it('GET /api/v1/commercial/compatibility-rules retorna lista paginada de reglas activas', async () => {
+    compatibilityServiceMock.findAll.mockResolvedValue({
+      data: [{ id: RULE_ID, ruleType: CompatibilityRuleType.EXCLUDES, isActive: true }],
+      meta: { nextCursor: null, total: 1 },
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/commercial/compatibility-rules')
@@ -148,9 +149,13 @@ describe('CompatibilityController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data).toHaveLength(1);
         expect(body.data[0].id).toBe(RULE_ID);
+        expect(body.meta.total).toBe(1);
+        expect(body.meta.nextCursor).toBeNull();
       });
 
-    expect(compatibilityServiceMock.findAll).toHaveBeenCalled();
+    expect(compatibilityServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 20 }),
+    );
   });
 
   it('GET /api/v1/commercial/compatibility-rules retorna 401 sin JWT', async () => {

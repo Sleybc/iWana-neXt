@@ -145,8 +145,11 @@ describe('TaxController HTTP', () => {
 
   // ─── GET /commercial/tax-rules ────────────────────────────────────────────
 
-  it('GET /api/v1/commercial/tax-rules retorna 200 con lista de reglas', async () => {
-    taxApplicationServiceMock.listRules.mockResolvedValue([]);
+  it('GET /api/v1/commercial/tax-rules retorna 200 con lista paginada de reglas', async () => {
+    taxApplicationServiceMock.listRules.mockResolvedValue({
+      data: [],
+      meta: { nextCursor: null, total: 0 },
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/commercial/tax-rules')
@@ -154,9 +157,13 @@ describe('TaxController HTTP', () => {
       .expect(200)
       .expect(({ body }) => {
         expect(body.data).toEqual([]);
+        expect(body.meta.total).toBe(0);
+        expect(body.meta.nextCursor).toBeNull();
       });
 
-    expect(taxApplicationServiceMock.listRules).toHaveBeenCalled();
+    expect(taxApplicationServiceMock.listRules).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 20 }),
+    );
   });
 
   it('GET /api/v1/commercial/tax-rules retorna 403 con rol no permitido', async () => {

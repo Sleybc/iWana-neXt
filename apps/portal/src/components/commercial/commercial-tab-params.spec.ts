@@ -1,11 +1,14 @@
 import {
+  applyCommercialFocusToSearchParams,
   applyCommercialOfferStatusToSearchParams,
   buildCommercialTabQuery,
   isCommercialTabParam,
   isCommercialValidToExpiringSoon,
   matchesCommercialExpiringOfferFilter,
   needsCommercialUrlCanonicalization,
+  parseCommercialFocusId,
   parseCommercialOfferStatus,
+  parseCommercialOfferStatusFromSearchParams,
   resolveCommercialRoute,
 } from './commercial-tab-params';
 
@@ -155,17 +158,46 @@ describe('commercial-tab-params', () => {
     expect(parseCommercialOfferStatus(undefined)).toBeNull();
   });
 
-  it('escribe status=expiring sin borrar ACTIVE del catálogo', () => {
+  it('parsea focus UUID y rechaza valores inválidos', () => {
+    expect(parseCommercialFocusId('550e8400-e29b-41d4-a716-446655440000')).toBe(
+      '550e8400-e29b-41d4-a716-446655440000',
+    );
+    expect(parseCommercialFocusId('no-uuid')).toBeNull();
+    expect(parseCommercialFocusId(undefined)).toBeNull();
+  });
+
+  it('escribe y limpia focus en la query', () => {
+    const params = new URLSearchParams('tab=plans');
+    applyCommercialFocusToSearchParams(params, '550e8400-e29b-41d4-a716-446655440000');
+    expect(params.get('focus')).toBe('550e8400-e29b-41d4-a716-446655440000');
+    applyCommercialFocusToSearchParams(params, null);
+    expect(params.has('focus')).toBe(false);
+  });
+
+  it('escribe offerStatus=expiring sin borrar ACTIVE del catálogo', () => {
     const withCatalog = new URLSearchParams('tab=products&status=ACTIVE');
     applyCommercialOfferStatusToSearchParams(withCatalog, null);
     expect(withCatalog.get('status')).toBe('ACTIVE');
 
     const params = new URLSearchParams('tab=bundles');
     applyCommercialOfferStatusToSearchParams(params, 'expiring');
-    expect(params.get('status')).toBe('expiring');
+    expect(params.get('offerStatus')).toBe('expiring');
+    expect(params.has('status')).toBe(false);
 
     applyCommercialOfferStatusToSearchParams(params, null);
-    expect(params.has('status')).toBe(false);
+    expect(params.has('offerStatus')).toBe(false);
+  });
+
+  it('lee offerStatus canónico y status=expiring legacy', () => {
+    expect(
+      parseCommercialOfferStatusFromSearchParams(new URLSearchParams('offerStatus=expiring')),
+    ).toBe('expiring');
+    expect(parseCommercialOfferStatusFromSearchParams(new URLSearchParams('status=expiring'))).toBe(
+      'expiring',
+    );
+    expect(
+      parseCommercialOfferStatusFromSearchParams(new URLSearchParams('status=ACTIVE')),
+    ).toBeNull();
   });
 
   it('detecta vigencia en ventana de 7 días y usos cerca del límite', () => {

@@ -1,9 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PromotionsManager } from './PromotionsManager';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 
 const mockGetPromotions = jest.fn();
 const mockCreatePromotion = jest.fn();
+const mockUpdatePromotion = jest.fn();
 const mockDeactivatePromotion = jest.fn();
 const mockGetBundles = jest.fn();
 const mockGetPlans = jest.fn();
@@ -27,9 +29,12 @@ jest.mock('@/lib/api-client', () => ({
       this.status = status;
     }
   },
+  COMMERCIAL_LIST_PAGE_SIZE: 20,
+  COMMERCIAL_PICKER_LIMIT: 100,
   commercialApi: {
     getPromotions: (...args: unknown[]) => mockGetPromotions(...args),
     createPromotion: (...args: unknown[]) => mockCreatePromotion(...args),
+    updatePromotion: (...args: unknown[]) => mockUpdatePromotion(...args),
     deactivatePromotion: (...args: unknown[]) => mockDeactivatePromotion(...args),
     getBundles: (...args: unknown[]) => mockGetBundles(...args),
     getPlans: (...args: unknown[]) => mockGetPlans(...args),
@@ -57,13 +62,73 @@ describe('PromotionsManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSearchParams = new URLSearchParams('tab=promotions');
-    mockGetPromotions.mockResolvedValue([samplePromotion]);
-    mockGetBundles.mockResolvedValue([]);
-    mockGetPlans.mockResolvedValue([]);
-    mockGetAdditionalProducts.mockResolvedValue([]);
-    mockGetAdditionalServices.mockResolvedValue([]);
-    mockCreatePromotion.mockResolvedValue([samplePromotion]);
-    mockDeactivatePromotion.mockResolvedValue([{ ...samplePromotion, isActive: false }]);
+    mockGetPromotions.mockResolvedValue({
+      data: [samplePromotion],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
+    mockGetBundles.mockResolvedValue({
+      data: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
+    mockGetPlans.mockResolvedValue({
+      data: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
+    mockGetAdditionalProducts.mockResolvedValue({
+      data: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
+    mockGetAdditionalServices.mockResolvedValue({
+      data: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
+    mockCreatePromotion.mockResolvedValue(samplePromotion);
+    mockUpdatePromotion.mockResolvedValue({ ...samplePromotion, name: 'Promo abril actualizada' });
+    mockDeactivatePromotion.mockResolvedValue(undefined);
+  });
+
+  it('abre side peek de edición desde la acción Editar', async () => {
+    const user = userEvent.setup();
+
+    render(<PromotionsManager canEdit />);
+
+    expect(await screen.findByText('Promo abril')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Editar promoción Promo abril/i }));
+
+    expect(await screen.findByRole('dialog', { name: 'Editar promoción' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Código')).toBeDisabled();
+    expect(screen.queryByLabelText('Tipo de descuento')).not.toBeInTheDocument();
+  });
+
+  it('abre peek de edición cuando focusId encuentra la promoción', async () => {
+    const onFocusConsumed = jest.fn();
+
+    render(<PromotionsManager canEdit focusId="promo-1" onFocusConsumed={onFocusConsumed} />);
+
+    expect(await screen.findByRole('dialog', { name: 'Editar promoción' })).toBeInTheDocument();
+    expect(onFocusConsumed).toHaveBeenCalled();
+  });
+
+  it('llama updatePromotion al guardar desde el peek de edición', async () => {
+    const user = userEvent.setup();
+
+    render(<PromotionsManager canEdit />);
+
+    expect(await screen.findByText('Promo abril')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Editar promoción Promo abril/i }));
+
+    const nameInput = await screen.findByLabelText('Nombre');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Promo mayo');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(mockUpdatePromotion).toHaveBeenCalledWith(
+      'promo-1',
+      expect.objectContaining({ name: 'Promo mayo' }),
+    );
+    expect(await screen.findByText('Promoción actualizada.')).toBeInTheDocument();
   });
 
   it('muestra CTA default y abre side peek al crear', async () => {
@@ -99,9 +164,10 @@ describe('PromotionsManager', () => {
 
   it('ofrece reintentar cuando falla la carga inicial', async () => {
     const user = userEvent.setup();
-    mockGetPromotions
-      .mockRejectedValueOnce(new Error('network'))
-      .mockResolvedValueOnce([samplePromotion]);
+    mockGetPromotions.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({
+      data: [samplePromotion],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
 
     render(<PromotionsManager canEdit />);
 
@@ -113,10 +179,13 @@ describe('PromotionsManager', () => {
   });
 
   it('muestra columna Estado con canEdit={false}', async () => {
-    mockGetPromotions.mockResolvedValueOnce([
-      samplePromotion,
-      { ...samplePromotion, id: 'promo-2', name: 'Promo inactiva', isActive: false },
-    ]);
+    mockGetPromotions.mockResolvedValueOnce({
+      data: [
+        samplePromotion,
+        { ...samplePromotion, id: 'promo-2', name: 'Promo inactiva', isActive: false },
+      ],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 2 },
+    });
 
     render(<PromotionsManager canEdit={false} />);
 
@@ -127,51 +196,46 @@ describe('PromotionsManager', () => {
     expect(screen.queryByRole('columnheader', { name: 'Acciones' })).not.toBeInTheDocument();
   });
 
-  it('filtra promociones con status=expiring (vigencia o cerca de usos)', async () => {
-    mockSearchParams = new URLSearchParams('tab=promotions&status=expiring');
-    mockGetPromotions.mockResolvedValue([
-      {
-        ...samplePromotion,
-        id: 'promo-ok',
-        name: 'Promo estable',
-        validTo: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-        maxUses: 100,
-        currentUses: 1,
-      },
-      {
-        ...samplePromotion,
-        id: 'promo-soon',
-        name: 'Promo por vencer',
-        validTo: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        ...samplePromotion,
-        id: 'promo-uses',
-        name: 'Promo cerca de usos',
-        validTo: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-        maxUses: 10,
-        currentUses: 9,
-      },
-    ]);
+  it('filtra promociones con offerStatus=expiring en el fetch', async () => {
+    mockSearchParams = new URLSearchParams('tab=promotions&offerStatus=expiring');
+    mockGetPromotions.mockResolvedValue({
+      data: [
+        {
+          ...samplePromotion,
+          id: 'promo-soon',
+          name: 'Promo por vencer',
+          validTo: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          ...samplePromotion,
+          id: 'promo-uses',
+          name: 'Promo cerca de usos',
+          validTo: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+          maxUses: 10,
+          currentUses: 9,
+        },
+      ],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 2 },
+    });
 
     render(<PromotionsManager canEdit />);
 
+    await waitFor(() => {
+      expect(mockGetPromotions.mock.calls.some((call) => call[0]?.offerStatus === 'expiring')).toBe(
+        true,
+      );
+    });
     expect(await screen.findByText('Promo por vencer')).toBeInTheDocument();
     expect(screen.getByText('Promo cerca de usos')).toBeInTheDocument();
-    expect(screen.queryByText('Promo estable')).not.toBeInTheDocument();
     expect(screen.getByText('Filtro activo')).toBeInTheDocument();
   });
 
   it('muestra empty de filtro cuando no hay promociones en riesgo', async () => {
-    mockSearchParams = new URLSearchParams('tab=promotions&status=expiring');
-    mockGetPromotions.mockResolvedValue([
-      {
-        ...samplePromotion,
-        validTo: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-        maxUses: 100,
-        currentUses: 1,
-      },
-    ]);
+    mockSearchParams = new URLSearchParams('tab=promotions&offerStatus=expiring');
+    mockGetPromotions.mockResolvedValue({
+      data: [],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+    });
 
     render(<PromotionsManager canEdit />);
 

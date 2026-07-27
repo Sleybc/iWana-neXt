@@ -50,20 +50,23 @@ describe('MOD05 — Aislamiento multi-tenant en PotentialsService', () => {
 
   it('findAll llama a runInTenantSchema con el schema de TenantContext', async () => {
     mockTenantContextGetOrThrow.mockReturnValue({ tenantId: 't-a', schemaName: 'tenant_a' });
-    mockRunInTenantSchema.mockResolvedValue([
-      {
-        id: 'p1',
-        tenantId: 't-a',
-        fullName: 'Test',
-        qualified: false,
-        emailEncrypted: null,
-        phoneEncrypted: null,
-        source: 'web',
-        notes: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]);
+    mockRunInTenantSchema.mockResolvedValue({
+      items: [
+        {
+          id: 'p1',
+          tenantId: 't-a',
+          fullName: 'Test',
+          qualified: false,
+          emailEncrypted: null,
+          phoneEncrypted: null,
+          source: 'web',
+          notes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      total: 1,
+    });
 
     const svc = newService('tenant_a', 't-a');
     await svc.findAll();

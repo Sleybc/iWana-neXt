@@ -22,10 +22,25 @@ describe('OpportunitiesController', () => {
   });
 
   it('retorna lista de oportunidades', async () => {
-    serviceMock.findAll.mockResolvedValue([{ id: 'opp-1' }]);
+    serviceMock.findAll.mockResolvedValue({
+      data: [{ id: 'opp-1' }],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
 
     const result = await controller.findAll();
 
     expect(result.data).toHaveLength(1);
+    expect(result.meta.total).toBe(1);
   });
 });

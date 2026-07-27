@@ -1,13 +1,14 @@
 # PRD - MOD11 Ejecucion Operativa / Tareas
 
-**Version:** 1.1  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-24  
+**Version:** 1.2  
+**Estado:** En revision — baseline v1.1 aprobado; ampliacion v1.2 sujeta a ADR-068 (propuesto)  
+**Fecha:** 2026-07-27  
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Clasificacion:** Confidencial - Uso interno  
 **Trazabilidad base:** docs/prds/PRD_Sistema_ISP_Colombia_v2_4.md, docs/specs/2026-06-22-mod11-operaciones-tareas-design.md  
 **Referencias relacionadas:** docs/prds/PRD-MOD10-SERVICE-ASSURANCE-v1.0.md, docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md, docs/hlds/HLD-MOD10-SERVICE-ASSURANCE-v1.0.md, docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md, docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md, docs/adrs/ADR-038-Bounded-Context-Service-Assurance.md, docs/adrs/ADR-046-Bounded-Context-Tasks-Ejecucion-Operativa.md, docs/adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md
+**Ampliacion OT instalacion:** docs/specs/2026-07-27-mod09-mod11-ot-instalacion-coordinador-design.md
 
 > Nota de numeracion: el PRD maestro vigente no asigna aun un modulo explicito para ejecucion operativa transversal. Se propone `MOD11` por estar libre en el repositorio actual. La incorporacion al mapa maestro requiere aprobacion via ADR.
 > Correccion documental 2026-06-24: este PRD evoluciona para cubrir no solo `Task` transversal sino tambien la OT enriquecida de ejecucion de campo, manteniendo a `Programacion` fuera del detalle tecnico y de inventario operativo.
@@ -266,3 +267,35 @@ Reglas de acceso:
 - Contratos REST y reglas de acceso definidos.
 - Trazabilidad explicita con MOD10 y MOD09.
 - Sin PII real ni secretos en artefactos.
+
+---
+
+## 11. Ampliacion 2026-07-27 — contrato de OT enriquecida
+
+`ExecutionOrder` es la unica verdad visible de ejecución de campo. Para una instalacion, la OT debe conservar como minimo identidad y origen, sitio/ventana/asignacion, plantilla versionada, alcance, checklist, actividades, materiales/equipos, evidencia, conformidad, resultado y auditoria.
+
+Requisitos adicionales:
+
+- una OT por visita/sitio;
+- plantilla versionada por tipo de trabajo y snapshot inmutable;
+- cierre condicionado por requisitos deterministas;
+- tecnico o contratista asignado con permiso de capacidad;
+- coordinador con permiso de supervision, sin privilegio implícito de ejecución;
+- comandos idempotentes y control optimista;
+- estados terminales inmutables;
+- correcciones mediante OT de seguimiento vinculada;
+- inventario validado y confirmado por MOD12;
+- evidencia y firma sujetas a autorización, integridad, retención y validación Legal/Regulatorio.
+
+Permisos canónicos:
+
+- `operations.execution_orders.read`
+- `operations.execution_orders.execute`
+- `operations.execution_orders.supervise`
+- `operations.execution_order_templates.read`
+- `operations.execution_order_templates.manage`
+- `operations.execution_events.redrive`
+
+La ampliacion propone integrar MOD09 y MOD12 según ADR-068 (propuesto), mediante outbox/eventos tenant-aware y consumidores idempotentes. El alias legado `wfm.work_orders.execute` es transitorio, medible y deprecable.
+
+**Gate:** no implementar la ampliación hasta promover ADR-068 (propuesto) a `Aprobado` y congelar contratos UX, DS, API y seguridad.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,16 +20,24 @@ import {
   cn,
 } from '@iwana/ui';
 import {
+  COMMERCIAL_LIST_PAGE_SIZE,
   commercialApi,
   type AdditionalService,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CreateAdditionalServiceDto,
   type UpdateAdditionalServiceDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { ChargeType } from '@iwana/shared';
 import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
+import {
+  hasMissingCurrentPrice,
+  MissingCurrentPriceBadge,
+} from '@/components/commercial/catalog/MissingCurrentPriceBadge';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -40,18 +48,22 @@ import {
   PortalSidePeek,
   PortalSkeletonBlock,
   PortalSuccessAlert,
+  PortalTablePagination,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableInactiveRowClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
+  portalTextareaClassName,
 } from '@/components/shared/portal-ui';
-import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
+import { useCommercialFocusConsume } from '@/components/commercial/useCommercialFocusConsume';
 import {
   applyServiceCatalogFilters,
   parseServiceCatalogFilters,
   type CatalogStatusFilter,
   type ServiceCatalogFilters,
 } from '@/components/commercial/catalog/catalog-filter-params';
-
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
   ChargeType.ON_DEMAND,
@@ -71,6 +83,8 @@ type ServiceFormValues = z.infer<typeof serviceFormSchema>;
 
 interface AdditionalServicesPanelProps {
   canEdit: boolean;
+  focusId?: string | null | undefined;
+  onFocusConsumed?: (() => void) | undefined;
 }
 
 function getDefaultServiceFormValues(): ServiceFormValues {
@@ -89,7 +103,7 @@ function toServiceFormValues(service: AdditionalService): ServiceFormValues {
     name: service.name,
     description: service.description ?? '',
     chargeType: service.chargeType,
-    basePrice: service.basePrice,
+    basePrice: service.basePrice ?? 0,
     installationFee: service.installationFee,
     isActive: service.isActive,
   };
@@ -123,7 +137,11 @@ function filtersEqual(a: ServiceCatalogFilters, b: ServiceCatalogFilters): boole
   return a.q === b.q && a.status === b.status && a.charge === b.charge;
 }
 
-export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProps) {
+export function AdditionalServicesPanel({
+  canEdit,
+  focusId = null,
+  onFocusConsumed,
+}: AdditionalServicesPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -199,23 +217,67 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
     syncFiltersToUrl(next);
   }
 
-  useEffect(() => {
-    void loadServices();
-  }, []);
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+  });
+  const [debouncedSearch, setDebouncedSearch] = useState(filtersFromUrl.q);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function loadServices() {
+  function buildServiceListParams(filters: {
+    q: string;
+    status: CatalogStatusFilter;
+    charge: ServiceCatalogFilters['charge'];
+  }): CommercialListParams {
+    const params: CommercialListParams = { limit: COMMERCIAL_LIST_PAGE_SIZE };
+    const q = filters.q.trim();
+    if (q) params.name = q;
+    if (filters.status === 'ACTIVE') params.isActive = true;
+    else if (filters.status === 'INACTIVE') params.isActive = false;
+    if (filters.charge !== 'ALL') params.charge = filters.charge as ChargeType;
+    return params;
+  }
+
+  const loadServices = useCallback(async (params: CommercialListParams, append = false) => {
     setLoading(true);
     setLoadError(null);
     setActionError(null);
     try {
-      const data = await commercialApi.getAdditionalServices();
-      setServices(data);
+      const result = await commercialApi.getAdditionalServices(params);
+      const page = result.data ?? [];
+      setServices((prev) => (append ? [...prev, ...page] : page));
+      setMeta(result.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length });
+      setListParams(params);
     } catch {
       setLoadError('No se pudieron cargar los servicios adicionales.');
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void loadServices({ ...listParams, cursor: meta.nextCursor }, true);
+    }
+  };
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(searchValue), 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchValue]);
+
+  useEffect(() => {
+    void loadServices(
+      buildServiceListParams({
+        q: debouncedSearch,
+        status: statusFilter,
+        charge: chargeTypeFilter,
+      }),
+    );
+  }, [chargeTypeFilter, debouncedSearch, loadServices, statusFilter]);
 
   function openCreateForm() {
     setEditingServiceId(null);
@@ -234,6 +296,17 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
     reset(toServiceFormValues(service));
     setIsFormOpen(true);
   }
+
+  useCommercialFocusConsume({
+    focusId,
+    isLoading: loading,
+    items: services,
+    getId: (item) => item.id,
+    onMatch: (service) => {
+      openEditForm(service);
+    },
+    onFocusConsumed,
+  });
 
   function handleFormOpenChange(nextOpen: boolean) {
     setIsFormOpen(nextOpen);
@@ -263,8 +336,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
           installationFee: values.installationFee,
           isActive: values.isActive,
         };
-        const updated = await commercialApi.updateAdditionalService(editingServiceId, dto);
-        setServices(updated);
+        await commercialApi.updateAdditionalService(editingServiceId, dto);
         setSuccessMessage('Servicio actualizado.');
       } else {
         const dto: CreateAdditionalServiceDto = {
@@ -275,11 +347,17 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
           installationFee: values.installationFee,
           isActive: values.isActive,
         };
-        const created = await commercialApi.createAdditionalService(dto);
-        setServices(created);
+        await commercialApi.createAdditionalService(dto);
         setSuccessMessage('Servicio creado.');
       }
 
+      void loadServices(
+        buildServiceListParams({
+          q: debouncedSearch,
+          status: statusFilter,
+          charge: chargeTypeFilter,
+        }),
+      );
       handleFormOpenChange(false);
     } catch {
       setFormError('No se pudo guardar el servicio.');
@@ -295,10 +373,16 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
     setActionError(null);
 
     try {
-      const updated = await commercialApi.deleteAdditionalService(deleteTarget.id);
-      setServices(updated);
+      await commercialApi.deleteAdditionalService(deleteTarget.id);
       setDeleteTarget(null);
       setSuccessMessage('Servicio eliminado.');
+      void loadServices(
+        buildServiceListParams({
+          q: debouncedSearch,
+          status: statusFilter,
+          charge: chargeTypeFilter,
+        }),
+      );
     } catch {
       setActionError('No se pudo eliminar el servicio.');
     } finally {
@@ -306,44 +390,12 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
     }
   }
 
-  const totalServices = services.length;
+  const hasMore = meta?.nextCursor != null;
+  const totalServices = meta?.total ?? services.length;
   const activeServicesCount = services.filter((service) => service.isActive).length;
   const inactiveServicesCount = totalServices - activeServicesCount;
 
-  const filteredServices = useMemo(() => {
-    const normalizedSearch = normalizeSearchValue(searchValue);
-
-    return [...services]
-      .filter((service) => {
-        if (statusFilter === 'ACTIVE' && !service.isActive) {
-          return false;
-        }
-
-        if (statusFilter === 'INACTIVE' && service.isActive) {
-          return false;
-        }
-
-        if (chargeTypeFilter !== 'ALL' && service.chargeType !== chargeTypeFilter) {
-          return false;
-        }
-
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        return [service.name, service.description ?? '', chargeTypeLabel(service.chargeType)]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedSearch);
-      })
-      .sort((left, right) => {
-        if (left.isActive !== right.isActive) {
-          return left.isActive ? -1 : 1;
-        }
-
-        return left.name.localeCompare(right.name, 'es', { sensitivity: 'base' });
-      });
-  }, [chargeTypeFilter, searchValue, services, statusFilter]);
+  const filteredServices = services;
 
   const hasActiveFilters =
     Boolean(searchValue.trim()) || statusFilter !== 'ALL' || chargeTypeFilter !== 'ALL';
@@ -356,10 +408,10 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
     });
   }
 
-  const resultsLabel =
-    filteredServices.length === totalServices
-      ? `${totalServices} registros`
-      : `${filteredServices.length} de ${totalServices} registros`;
+  const resourceWord = totalServices === 1 ? 'servicio' : 'servicios';
+  const resultsLabel = hasMore
+    ? `${filteredServices.length} de ${totalServices} ${resourceWord}`
+    : `${totalServices} ${resourceWord}`;
 
   const showLoadErrorOnly = Boolean(loadError) && services.length === 0 && !loading;
 
@@ -378,7 +430,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
             {inactiveServicesCount} inactivo{inactiveServicesCount === 1 ? '' : 's'}
           </Badge>
           {canEdit && (
-            <Button onClick={openCreateForm}>
+            <Button variant="primary" onClick={openCreateForm}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Agregar servicio
             </Button>
@@ -401,12 +453,25 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void loadServices()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                void loadServices(
+                  buildServiceListParams({
+                    q: debouncedSearch,
+                    status: statusFilter,
+                    charge: chargeTypeFilter,
+                  }),
+                )
+              }
+            >
               Reintentar
             </Button>
           }
         />
-      ) : services.length === 0 ? (
+      ) : services.length === 0 && !hasActiveFilters ? (
         <PortalEmptyState
           title="Catálogo listo para servicios"
           description="No hay servicios adicionales. Crea uno para empezar."
@@ -414,7 +479,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
           {...(canEdit
             ? {
                 action: (
-                  <Button onClick={openCreateForm}>
+                  <Button variant="primary" onClick={openCreateForm}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     Agregar servicio
                   </Button>
@@ -524,7 +589,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
             <div className={portalDataTableShellClassName}>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                  <thead className={portalDataTableHeadRowClassName}>
                     <tr>
                       <PortalDataTableHead>Servicio</PortalDataTableHead>
                       <PortalDataTableHead>Tipo de cobro</PortalDataTableHead>
@@ -536,13 +601,13 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
+                  <tbody className={portalDataTableBodyClassName}>
                     {filteredServices.map((service) => (
                       <tr
                         key={service.id}
                         className={cn(
                           portalTableRowHoverClassName,
-                          !service.isActive && 'opacity-70',
+                          !service.isActive && portalDataTableInactiveRowClassName,
                         )}
                       >
                         <td className={portalDataTableCellClassName}>
@@ -561,7 +626,11 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                         <td className={portalDataTableCellClassName}>
                           <div className="space-y-1">
                             <p className="font-mono font-medium tabular-nums text-gray-900 dark:text-white">
-                              {formatCurrency(service.basePrice)}
+                              {hasMissingCurrentPrice(service) ? (
+                                <MissingCurrentPriceBadge />
+                              ) : (
+                                formatCurrency(service.basePrice ?? 0)
+                              )}
                             </p>
                             <p className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
                               Instalación: {formatCurrency(service.installationFee)}
@@ -617,6 +686,14 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                   </tbody>
                 </table>
               </div>
+              <PortalTablePagination
+                hasMore={hasMore}
+                onLoadMore={handleLoadMore}
+                loading={loading}
+                resourceLabel="servicios"
+                shown={filteredServices.length}
+                total={totalServices}
+              />
             </div>
           )}
         </div>
@@ -711,7 +788,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                   {...register('description')}
                   rows={4}
                   placeholder="Describe el servicio y cuándo debe aplicarse en la operación comercial."
-                  className={`mt-2 ${commercialTextareaClassName}`}
+                  className={`mt-2 ${portalTextareaClassName}`}
                 />
                 {errors.description && (
                   <p className="mt-1 text-sm text-error-600">{errors.description.message}</p>

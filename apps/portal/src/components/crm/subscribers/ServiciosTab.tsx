@@ -2,14 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronUp, FileText, Plus, Wifi } from 'lucide-react';
-import type {
-  AdditionalProduct,
-  AdditionalService,
-  Contract,
-  ContractStatus,
-  PlanCatalogItem,
-  Subscriber360Response,
-} from '@/lib/api-client';
+import type { Contract, ContractStatus, Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
 import { ContractCard } from './ContractCard';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
@@ -55,47 +48,100 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
-  // ── Catálogo comercial (para resolver IDs a nombres legibles) ─────────────
-  const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
-  const [additionalProducts, setAdditionalProducts] = useState<AdditionalProduct[]>([]);
-  const [additionalServices, setAdditionalServices] = useState<AdditionalService[]>([]);
+  // Resolución puntual por ID (sin soft-cap / prefetch de catálogo).
+  const [planNameById, setPlanNameById] = useState<Record<string, string>>({});
+  const [productNameById, setProductNameById] = useState<Record<string, string>>({});
+  const [serviceNameById, setServiceNameById] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    void Promise.all([
-      commercialApi.getPlans(),
-      commercialApi.getAdditionalProducts(),
-      commercialApi.getAdditionalServices(),
-    ]).then(([p, ap, as_]) => {
-      setPlans(p);
-      setAdditionalProducts(ap);
-      setAdditionalServices(as_);
-    });
-  }, []);
+    const planIds = new Set<string>();
+    const productIds = new Set<string>();
+    const serviceIds = new Set<string>();
+
+    if (expedienteSummary?.interestedPlanId) {
+      planIds.add(expedienteSummary.interestedPlanId);
+    }
+    for (const id of expedienteSummary?.additionalProductIds ?? []) {
+      productIds.add(id);
+    }
+    for (const id of expedienteSummary?.additionalServiceIds ?? []) {
+      serviceIds.add(id);
+    }
+
+    if (planIds.size === 0 && productIds.size === 0 && serviceIds.size === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const planEntries = await Promise.all(
+        [...planIds].map(async (id) => {
+          try {
+            const plan = await commercialApi.getPlanById(id);
+            return [
+              id,
+              `${plan.name} (${plan.technology} · ${plan.downloadSpeedMbps}/${plan.uploadSpeedMbps} Mbps)`,
+            ] as const;
+          } catch {
+            return [id, id] as const;
+          }
+        }),
+      );
+
+      const productEntries = await Promise.all(
+        [...productIds].map(async (id) => {
+          try {
+            const item = await commercialApi.getCatalogItemById(id);
+            return [id, item.name] as const;
+          } catch {
+            return [id, id] as const;
+          }
+        }),
+      );
+
+      const serviceEntries = await Promise.all(
+        [...serviceIds].map(async (id) => {
+          try {
+            const item = await commercialApi.getCatalogItemById(id);
+            return [id, item.name] as const;
+          } catch {
+            return [id, id] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      setPlanNameById(Object.fromEntries(planEntries));
+      setProductNameById(Object.fromEntries(productEntries));
+      setServiceNameById(Object.fromEntries(serviceEntries));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expedienteSummary]);
 
   /** Resuelve un ID de plan a su nombre legible. */
   const resolvePlanName = (id: string | null): string => {
     if (!id) return '—';
-    const plan = plans.find((p) => p.id === id);
-    return plan
-      ? `${plan.name} (${plan.technology} · ${plan.downloadSpeedMbps}/${plan.uploadSpeedMbps} Mbps)`
-      : id;
+    return planNameById[id] ?? id;
   };
 
-  /** Resuelve una lista de IDs de productos a nombres legibles (omite IDs no encontrados). */
+  /** Resuelve una lista de IDs de productos a nombres legibles. */
   const resolveProductNames = (ids: string[]): string => {
     if (!ids.length) return '—';
-    const names = ids
-      .map((id) => additionalProducts.find((p) => p.id === id)?.name)
-      .filter((n): n is string => Boolean(n));
+    const names = ids.map((id) => productNameById[id]).filter(Boolean);
     return names.length ? names.join(', ') : '—';
   };
 
-  /** Resuelve una lista de IDs de servicios a nombres legibles (omite IDs no encontrados). */
+  /** Resuelve una lista de IDs de servicios a nombres legibles. */
   const resolveServiceNames = (ids: string[]): string => {
     if (!ids.length) return '—';
-    const names = ids
-      .map((id) => additionalServices.find((s) => s.id === id)?.name)
-      .filter((n): n is string => Boolean(n));
+    const names = ids.map((id) => serviceNameById[id]).filter(Boolean);
     return names.length ? names.join(', ') : '—';
   };
 

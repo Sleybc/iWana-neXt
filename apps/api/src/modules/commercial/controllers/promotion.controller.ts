@@ -7,10 +7,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -18,8 +19,11 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PromotionService } from '../services/promotion.service';
 import { CreatePromotionDto, UpdatePromotionDto } from '../dto/promotion.dto';
+import { CommercialListMetaDto } from '../dto/commercial-list-query.dto';
+import { CommercialOfferListQueryDto } from '../dto/commercial-offer-list-query.dto';
 
 @ApiTags('commercial-promotions')
+@ApiExtraModels(CommercialListMetaDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial/promotions')
@@ -34,10 +38,18 @@ export class PromotionController {
     UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @ApiOperation({ summary: 'Listar promociones activas del tenant' })
-  async findAll() {
-    const data = await this.promotionService.findAll();
-    return { data };
+  @ApiOperation({
+    summary: 'Listar promociones activas del tenant (paginación cursor)',
+    description:
+      'ADR-064: limit default 20, max 100; meta.nextCursor + meta.total. Orden: validFrom DESC, id DESC. ' +
+      'Filtro `offerStatus=expiring`: vigencia ≤7 días o cerca del límite de usos.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Respuesta `{ data, meta: { nextCursor, total } }`',
+  })
+  async findAll(@Query() query: CommercialOfferListQueryDto) {
+    return this.promotionService.findAll(query);
   }
 
   @Get(':id')

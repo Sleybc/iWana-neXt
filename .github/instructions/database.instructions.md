@@ -17,3 +17,15 @@ Referencia maestra: `AGENTS.md`.
 - Mantener el patron de `main()` con importacion dinamica del DataSource cuando el script de migracion se ejecute directamente desde `dist`.
 - Mantener comentarios en espanol cuando la logica de migracion, tenancy o seguridad de datos no sea trivial.
 - Antes de proponer cambios de persistencia, revisar entidades, `data-source.ts`, migraciones existentes y ADRs aplicables.
+
+## Flag `transactional` (ADR-066)
+
+El runner/revert tenant (`migrations/tenant/runner.ts`, `revert.ts`) envuelve cada migración en una transacción por defecto (`transactional ?? true`). Para DDL que PostgreSQL prohíbe dentro de TX (`CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`, etc.):
+
+1. Declarar en la clase de migración: `transactional = false`.
+2. El runner ejecuta `up()`/`down()` **fuera** de transacción e inserta/elimina el bookkeeping en `typeorm_migrations` en una TX aparte.
+3. **Idempotencia obligatoria:** `up()` con `IF NOT EXISTS` / `down()` con `IF EXISTS` (reintento seguro si el bookkeeping falla tras el DDL).
+4. **Sin DML** en la misma migración no transaccional. Si hace falta DML + índices CONCURRENTLY, separar en dos migraciones (transaccional + no transaccional).
+5. TypeORM nativo expone `transaction` en `MigrationInterface`; el runner tenant lee **`transactional`** (contrato ADR-066), no el flag nativo del CLI.
+6. Default `true`: las migraciones 000–086 y cualquier otra sin el flag siguen el camino atómico actual.
+7. Un fallo en camino no transaccional no garantiza atomicidad DDL↔registro; el mensaje de error pide verificar el schema a mano.

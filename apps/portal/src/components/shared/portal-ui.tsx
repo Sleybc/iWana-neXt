@@ -7,12 +7,28 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
+  useSyncExternalStore,
 } from 'react';
-import { AlertTriangle, CheckCircle2, CircleAlert, Info, Search } from 'lucide-react';
-import { Button, Input, SkeletonBlock, cn, interactiveFocusClassName } from '@iwana/ui';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CircleAlert,
+  Info,
+  Search,
+} from 'lucide-react';
+import { Button, Input, Select, SkeletonBlock, cn, interactiveFocusClassName } from '@iwana/ui';
+import { PORTAL_DEFAULT_PAGE_SIZE, PORTAL_PAGE_SIZE_OPTIONS } from '@/lib/portal-page-size';
+import type { PortalSortDirection } from '@/lib/use-table-query-state';
 
 export { interactiveFocusClassName };
+export { PORTAL_DEFAULT_PAGE_SIZE, PORTAL_PAGE_SIZE_OPTIONS };
+export type { PortalSortDirection };
 
 export const portalTextareaClassName = cn(
   'portal-input-surface min-h-24 w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
@@ -24,6 +40,43 @@ export const portalTableRowHoverClassName =
 
 export const portalDataTableShellClassName =
   'overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
+
+/** Fila `<thead>` / `<tr>` de tablas operativas (fondo soft). */
+export const portalDataTableHeadRowClassName =
+  'border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
+
+/** Cuerpo `<tbody>` — divisores soft (alineados a `border-gray-100` del thead); fondo opaco = shell. */
+export const portalDataTableBodyClassName =
+  'divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2';
+
+/**
+ * Fila inactiva (`!isActive`) — estado NO exento (contrato de estados atenuados
+ * §4.3, docs/specs/2026-07-26-estados-atenuados-contraste-ds-contrato.md):
+ * escalón de token aplicado sobre los `<td>`, NUNCA opacidad (la opacidad
+ * compone el texto contra el fondo y destruye el contraste, §3). El estado lo
+ * confirma además el `Badge` de la columna de estado (SC 1.4.1).
+ * La variante `[&_td]:` es obligatoria: cada `<td>` fija su propio token de
+ * texto, así que un token sobre el `<tr>` no tendría efecto (§3.3).
+ */
+export const portalDataTableInactiveRowClassName = '[&_td]:text-gray-500 dark:[&_td]:text-gray-400';
+
+/**
+ * Atenuación única del sistema para controles `disabled` (§4.1 del mismo
+ * contrato): `opacity-50` sobre el token normal del control, nunca apilada
+ * sobre un token de texto ya atenuado. Exige `disabled` o `aria-disabled`
+ * declarado en el DOM; sin eso el estado no está exento de contraste.
+ */
+export const portalDisabledControlClassName = 'opacity-50';
+
+/**
+ * Región de datos durante la carga (`refreshing`/`aria-busy`) — estado NO
+ * exento (§4.2 del mismo contrato): la señal la portan los controles
+ * `disabled`, `aria-busy="true"`, el anuncio `aria-live` y este cursor.
+ * PROHIBIDO aplicar `opacity-*` a esta región: el texto debe permanecer en su
+ * token pleno. Si el contenido debe ceder visiblemente, se sustituye por
+ * `SkeletonBlock`, nunca se atenúa.
+ */
+export const portalDataBusyRegionClassName = 'cursor-progress';
 
 /** Encabezado de columna para tablas operativas del portal — alineado a `.portal-eyebrow-muted`. */
 export const portalDataTableHeadClassName = 'px-4 py-3 text-left portal-eyebrow-muted';
@@ -50,6 +103,137 @@ export function PortalDataTableHead({
     <th scope={scope} className={cn(portalDataTableHeadClassName, className)} {...props}>
       {children}
     </th>
+  );
+}
+
+export interface PortalDataTableSortableHeadProps extends Omit<
+  PortalDataTableHeadProps,
+  'onClick' | 'children'
+> {
+  /** Campo lógico de esta columna; debe estar en meta.capabilities.sortableFields. */
+  field: string;
+  /** Rótulo visible; alimenta también el nombre accesible del botón. */
+  children: ReactNode;
+  /** Orden vigente de la tabla; null = orden por defecto del recurso. */
+  activeSort: { by: string; dir: PortalSortDirection } | null;
+  /** `null` = tercer paso del ciclo: volver al orden por defecto. */
+  onSortChange: (next: { by: string; dir: PortalSortDirection } | null) => void;
+  /** Orden en vuelo: control disabled. Default false. */
+  loading?: boolean | undefined;
+  /** Alineación del contenido; en columnas numéricas el control va a la derecha. */
+  align?: 'left' | 'right' | undefined;
+}
+
+function sortableLabelText(children: ReactNode): string {
+  if (typeof children === 'string' || typeof children === 'number') {
+    return String(children);
+  }
+  return 'columna';
+}
+
+function nextSortState(
+  field: string,
+  activeSort: { by: string; dir: PortalSortDirection } | null,
+): { by: string; dir: PortalSortDirection } | null {
+  if (activeSort?.by !== field) {
+    return { by: field, dir: 'asc' };
+  }
+  if (activeSort.dir === 'asc') {
+    return { by: field, dir: 'desc' };
+  }
+  return null;
+}
+
+function sortButtonAccessibleName(label: string, activeDir: PortalSortDirection | null): string {
+  if (activeDir === 'asc') return `Ordenar por ${label}, descendente`;
+  if (activeDir === 'desc') return `Quitar orden por ${label}`;
+  return `Ordenar por ${label}, ascendente`;
+}
+
+function useMinWidthSm(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        return () => undefined;
+      }
+      const mq = window.matchMedia('(min-width: 640px)');
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    },
+    () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(min-width: 640px)').matches,
+    () => true,
+  );
+}
+
+/**
+ * Encabezado ordenable (ADR-065 §5-bis). Extiende `PortalDataTableHead`;
+ * el ciclo `sin orden → asc → desc → sin orden` lo calcula el primitive.
+ * Bajo `sm` el botón no se renderiza (orden vía Select en barra de filtros).
+ */
+export function PortalDataTableSortableHead({
+  field,
+  children,
+  activeSort,
+  onSortChange,
+  loading = false,
+  align = 'left',
+  className,
+  ...props
+}: PortalDataTableSortableHeadProps) {
+  const isSmUp = useMinWidthSm();
+  const label = sortableLabelText(children);
+  const isActive = activeSort?.by === field;
+  const activeDir = isActive ? activeSort.dir : null;
+  const ariaSort = isActive ? (activeDir === 'asc' ? 'ascending' : 'descending') : 'none';
+  const Icon = activeDir === 'desc' ? ChevronDown : ChevronUp;
+
+  if (!isSmUp) {
+    return (
+      <PortalDataTableHead
+        className={cn(align === 'right' ? 'text-right' : undefined, className)}
+        {...props}
+      >
+        {children}
+      </PortalDataTableHead>
+    );
+  }
+
+  return (
+    <PortalDataTableHead
+      aria-sort={ariaSort}
+      className={cn(align === 'right' ? 'text-right' : undefined, className)}
+      {...props}
+    >
+      <button
+        type="button"
+        className={cn(
+          'group inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-left transition-colors',
+          interactiveFocusClassName,
+          'disabled:pointer-events-none disabled:opacity-50',
+          align === 'right' && 'ml-auto flex-row-reverse text-right',
+          isActive
+            ? 'font-semibold text-iwana-primary dark:text-white'
+            : 'text-gray-500 hover:text-iwana-primary dark:text-gray-400 dark:hover:text-white',
+        )}
+        disabled={loading}
+        aria-label={sortButtonAccessibleName(label, activeDir)}
+        onClick={() => onSortChange(nextSortState(field, activeSort))}
+      >
+        <span>{children}</span>
+        <Icon
+          className={cn(
+            'h-3.5 w-3.5 shrink-0',
+            isActive
+              ? 'text-iwana-primary dark:text-white'
+              : 'text-gray-300 group-hover:text-iwana-primary dark:text-dark-border-2',
+          )}
+          aria-hidden="true"
+        />
+      </button>
+    </PortalDataTableHead>
   );
 }
 
@@ -167,7 +351,7 @@ export const portalFilterChipGroupClassName =
   'flex flex-wrap gap-2 rounded-2xl border border-gray-100 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2';
 
 export const portalResultsStripClassName =
-  'flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3';
+  'flex flex-wrap items-center gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3';
 
 interface PortalMetricCardProps {
   eyebrow: string;
@@ -234,6 +418,67 @@ export function PortalMetricCard({
   return <article className={shellClassName}>{body}</article>;
 }
 
+export interface PortalNavListRowProps {
+  title: ReactNode;
+  meta?: ReactNode;
+  trailing?: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+  'aria-label'?: string;
+}
+
+export const portalNavListRowClassName =
+  'flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 dark:border-dark-border';
+
+export function PortalNavListRow({
+  title,
+  meta,
+  trailing,
+  onClick,
+  disabled = false,
+  className,
+  'aria-label': ariaLabel,
+}: PortalNavListRowProps) {
+  const body = (
+    <>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-gray-900 dark:text-white">{title}</p>
+        {meta != null && meta !== false ? (
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{meta}</p>
+        ) : null}
+      </div>
+      {trailing != null ? (
+        <span className="shrink-0 text-sm font-medium text-iwana-secondary-700 dark:text-iwana-primary-300">
+          {trailing}
+        </span>
+      ) : null}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        disabled={disabled}
+        className={cn(
+          portalNavListRowClassName,
+          'w-full text-left',
+          interactiveFocusClassName,
+          disabled && portalDisabledControlClassName,
+          className,
+        )}
+        onClick={onClick}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={cn(portalNavListRowClassName, className)}>{body}</div>;
+}
+
 interface PortalFilterChipProps {
   active: boolean;
   onClick: () => void;
@@ -266,11 +511,467 @@ export function PortalFilterChip({
 
 interface PortalResultsStripProps {
   badge: ReactNode;
+  /** Controles a la izquierda (modo paginado cede el conteo). Sin `controls` → `justify-end`. */
+  controls?: ReactNode | undefined;
   className?: string | undefined;
 }
 
-export function PortalResultsStrip({ badge, className }: PortalResultsStripProps) {
-  return <div className={cn(portalResultsStripClassName, className)}>{badge}</div>;
+export function PortalResultsStrip({ badge, controls, className }: PortalResultsStripProps) {
+  return (
+    <div
+      className={cn(
+        portalResultsStripClassName,
+        controls != null ? 'justify-between' : 'justify-end',
+        className,
+      )}
+    >
+      {controls != null ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-3">{controls}</div>
+      ) : null}
+      {badge}
+    </div>
+  );
+}
+
+/** Footer de tabla operativa (ADR-064): solo «Cargar más» si hay más páginas. */
+export interface PortalTablePaginationProps {
+  hasMore: boolean;
+  onLoadMore: () => void;
+  loading: boolean;
+  /** Vocabulario del recurso para aria / sr-only (p. ej. «usuarios»). */
+  resourceLabel?: string | undefined;
+  className?: string | undefined;
+  /** Texto del CTA; default «Cargar más». */
+  loadMoreLabel?: string | undefined;
+  /** Conteo cargado — solo sr-only / aria-live; no pintar en el pie. */
+  shown?: number | undefined;
+  /** Total del listado — solo sr-only / aria-live; no pintar en el pie. */
+  total?: number | undefined;
+}
+
+export function PortalTablePagination({
+  hasMore,
+  onLoadMore,
+  loading,
+  resourceLabel,
+  className,
+  loadMoreLabel = 'Cargar más',
+  shown,
+  total,
+}: PortalTablePaginationProps) {
+  if (!hasMore) {
+    return null;
+  }
+
+  const hasCounts = typeof shown === 'number' && typeof total === 'number';
+  const liveStatus = hasCounts
+    ? resourceLabel
+      ? `Mostrando ${shown} de ${total} ${resourceLabel}`
+      : `Mostrando ${shown} de ${total}`
+    : null;
+
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-center border-t border-gray-100 px-5 py-4 dark:border-dark-border',
+        className,
+      )}
+    >
+      {liveStatus ? (
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {liveStatus}
+        </p>
+      ) : null}
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="min-h-11"
+        onClick={onLoadMore}
+        disabled={loading}
+        loading={loading}
+      >
+        {loadMoreLabel}
+      </Button>
+    </div>
+  );
+}
+
+export interface PortalTablePagerLabels {
+  previous: string;
+  next: string;
+  page: (n: number) => string;
+  position: (p: number, c: number) => string;
+  nav: (resource?: string) => string;
+}
+
+/** Sustantivo del recurso en singular y plural, minúscula. */
+export interface PortalResourceNoun {
+  singular: string;
+  plural: string;
+}
+
+export interface PortalTablePagerProps {
+  page: number;
+  pageCount: number;
+  onPageChange: (page: number) => void;
+  from: number;
+  to: number;
+  total: number;
+  resource: PortalResourceNoun;
+  totalIsEstimate?: boolean | undefined;
+  loading?: boolean | undefined;
+  siblingCount?: number | undefined;
+  boundaryCount?: number | undefined;
+  pageSizeControl?: ReactNode | undefined;
+  labels?: Partial<PortalTablePagerLabels> | undefined;
+  className?: string | undefined;
+}
+
+const DEFAULT_PAGER_LABELS: PortalTablePagerLabels = {
+  previous: 'Anterior',
+  next: 'Siguiente',
+  page: (n) => `Página ${n}`,
+  position: (p, c) => `Página ${p} de ${c}`,
+  nav: (r) => (r ? `Paginación de ${r}` : 'Paginación'),
+};
+
+function formatEsInt(n: number): string {
+  return n.toLocaleString('es-CO');
+}
+
+function formatPagerCount(options: {
+  from: number;
+  to: number;
+  total: number;
+  pageCount: number;
+  resource: PortalResourceNoun;
+  totalIsEstimate: boolean;
+}): string {
+  const { from, to, total, pageCount, resource, totalIsEstimate } = options;
+  if (total === 1) return `${from}\u2013${to} de 1 ${resource.singular}`;
+  if (pageCount <= 1) return `${formatEsInt(total)} ${resource.plural}`;
+  if (totalIsEstimate) {
+    return `Mostrando ${from}\u2013${to} de más de ${formatEsInt(total)} ${resource.plural}`;
+  }
+  return `Mostrando ${from}\u2013${to} de ${formatEsInt(total)} ${resource.plural}`;
+}
+
+type PageWindowItem = number | 'ellipsis';
+
+/** Ventana de páginas con elipsis (máx. ~7 slots con defaults). */
+export function buildPageWindow(
+  page: number,
+  pageCount: number,
+  siblingCount = 1,
+  boundaryCount = 1,
+): PageWindowItem[] {
+  const siblings = Math.min(2, Math.max(0, siblingCount));
+  const boundaries = Math.min(2, Math.max(1, boundaryCount));
+  if (pageCount <= 0) return [];
+
+  const totalNumbers = siblings * 2 + boundaries * 2 + 3;
+  if (pageCount <= totalNumbers) {
+    return Array.from({ length: pageCount }, (_, i) => i + 1);
+  }
+
+  const startPages = Array.from({ length: boundaries }, (_, i) => i + 1);
+  const endPages = Array.from({ length: boundaries }, (_, i) => pageCount - boundaries + 1 + i);
+  const leftSibling = Math.max(page - siblings, boundaries + 1);
+  const rightSibling = Math.min(page + siblings, pageCount - boundaries);
+  const showLeftEllipsis = leftSibling > boundaries + 2;
+  const showRightEllipsis = rightSibling < pageCount - (boundaries + 1);
+
+  const items: PageWindowItem[] = [...startPages];
+
+  if (!showLeftEllipsis && !showRightEllipsis) {
+    for (let n = boundaries + 1; n <= pageCount - boundaries; n += 1) items.push(n);
+  } else if (!showLeftEllipsis) {
+    const rightLimit = Math.min(pageCount - boundaries, boundaries + siblings * 2 + 2);
+    for (let n = boundaries + 1; n <= rightLimit; n += 1) items.push(n);
+    items.push('ellipsis');
+    items.push(...endPages);
+    return items;
+  } else if (!showRightEllipsis) {
+    items.push('ellipsis');
+    const leftStart = Math.max(boundaries + 1, pageCount - boundaries - (siblings * 2 + 1));
+    for (let n = leftStart; n <= pageCount - boundaries; n += 1) items.push(n);
+    items.push(...endPages);
+    return items;
+  } else {
+    items.push('ellipsis');
+    for (let n = leftSibling; n <= rightSibling; n += 1) items.push(n);
+    items.push('ellipsis');
+    items.push(...endPages);
+    return items;
+  }
+
+  items.push(...endPages);
+  return items;
+}
+
+const pageButtonBaseClassName = cn(
+  'inline-flex h-11 min-w-11 items-center justify-center rounded-xl px-3',
+  'text-sm font-semibold tabular-nums transition-colors',
+  interactiveFocusClassName,
+  'disabled:pointer-events-none disabled:opacity-50',
+);
+
+const pageButtonInactiveClassName = cn(
+  'text-gray-700 hover:bg-iwana-surface-soft hover:text-iwana-primary',
+  'active:bg-iwana-primary-100',
+  'dark:text-gray-200 dark:hover:bg-dark-surface-4 dark:hover:text-white',
+);
+
+const pageButtonActiveClassName = cn(
+  'cursor-default bg-iwana-primary text-white shadow-sm',
+  'dark:bg-iwana-primary-500 dark:text-white',
+  'dark:ring-1 dark:ring-inset dark:ring-iwana-primary-300',
+);
+
+/**
+ * Pie numerado de tablas operativas (ADR-065). Controlado puro; hermano del
+ * contenedor con overflow-x, nunca hijo.
+ */
+export function PortalTablePager({
+  page,
+  pageCount,
+  onPageChange,
+  from,
+  to,
+  total,
+  resource,
+  totalIsEstimate = false,
+  loading = false,
+  siblingCount = 1,
+  boundaryCount = 1,
+  pageSizeControl,
+  labels: labelsProp,
+  className,
+}: PortalTablePagerProps) {
+  const labels = { ...DEFAULT_PAGER_LABELS, ...labelsProp };
+  const liveId = useId();
+  const pendingFocusRef = useRef<'prev' | 'next' | number | null>(null);
+  const prevBtnRef = useRef<HTMLButtonElement | null>(null);
+  const nextBtnRef = useRef<HTMLButtonElement | null>(null);
+  const pageBtnRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
+  const showFooter = total > 0;
+  const countText = showFooter
+    ? formatPagerCount({
+        from,
+        to,
+        total,
+        pageCount,
+        resource,
+        totalIsEstimate,
+      })
+    : '';
+  const showNav = showFooter && pageCount > 1;
+  const liveAnnouncement = showNav
+    ? `${labels.position(page, pageCount)}. ${countText}.`
+    : showFooter
+      ? `${labels.position(page, 1)}. ${countText}.`
+      : '';
+  const windowItems = showNav ? buildPageWindow(page, pageCount, siblingCount, boundaryCount) : [];
+  const prevDisabled = loading || page <= 1;
+  const nextDisabled = loading || page >= pageCount;
+  const controlsDisabled = loading;
+
+  useLayoutEffect(() => {
+    if (!showFooter) return;
+    const target = pendingFocusRef.current;
+    if (target == null) return;
+
+    const focusSafe = (el: HTMLButtonElement | null | undefined) => {
+      if (el && !el.disabled) {
+        el.focus();
+        return true;
+      }
+      return false;
+    };
+
+    let focused = false;
+    if (target === 'prev') {
+      focused =
+        focusSafe(prevBtnRef.current) ||
+        focusSafe(nextBtnRef.current) ||
+        focusSafe(pageBtnRefs.current.get(page));
+    } else if (target === 'next') {
+      focused =
+        focusSafe(nextBtnRef.current) ||
+        focusSafe(prevBtnRef.current) ||
+        focusSafe(pageBtnRefs.current.get(page));
+    } else if (typeof target === 'number') {
+      focused =
+        focusSafe(pageBtnRefs.current.get(target)) ||
+        focusSafe(pageBtnRefs.current.get(page)) ||
+        focusSafe(nextBtnRef.current) ||
+        focusSafe(prevBtnRef.current);
+    }
+
+    if (focused) {
+      pendingFocusRef.current = null;
+    }
+  }, [page, pageCount, loading, showFooter]);
+
+  const goTo = (nextPage: number, focusTarget: 'prev' | 'next' | number) => {
+    if (nextPage < 1 || nextPage > pageCount || nextPage === page || loading) return;
+    pendingFocusRef.current = focusTarget;
+    onPageChange(nextPage);
+  };
+
+  if (!showFooter) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex flex-col gap-3 border-t border-gray-100 px-5 py-4 dark:border-dark-border',
+        'sm:flex-row sm:items-center sm:justify-between',
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{countText}</p>
+        {pageSizeControl}
+      </div>
+
+      <p id={liveId} className="sr-only" aria-live="polite" aria-atomic="true">
+        {liveAnnouncement}
+      </p>
+
+      {showNav ? (
+        <nav
+          aria-label={labels.nav(resource.plural)}
+          aria-busy={loading || undefined}
+          data-loading={loading ? 'true' : undefined}
+          className="flex items-center justify-between gap-1 sm:justify-start"
+        >
+          <Button
+            ref={prevBtnRef}
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="min-h-11 gap-1 px-3"
+            disabled={prevDisabled}
+            aria-label={labels.previous}
+            onClick={() => goTo(page - 1, 'prev')}
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">{labels.previous}</span>
+          </Button>
+
+          <span className="px-2 text-sm tabular-nums text-gray-700 sm:hidden dark:text-gray-200">
+            {labels.position(page, pageCount)}
+          </span>
+
+          {windowItems.map((item, index) => {
+            if (item === 'ellipsis') {
+              return (
+                <span
+                  key={`ellipsis-${index}`}
+                  aria-hidden="true"
+                  className="hidden h-11 min-w-11 items-center justify-center text-sm text-gray-500 sm:inline-flex dark:text-gray-400"
+                >
+                  …
+                </span>
+              );
+            }
+
+            const isCurrent = item === page;
+            return (
+              <button
+                key={item}
+                ref={(el) => {
+                  if (el) pageBtnRefs.current.set(item, el);
+                  else pageBtnRefs.current.delete(item);
+                }}
+                type="button"
+                className={cn(
+                  pageButtonBaseClassName,
+                  'hidden sm:inline-flex',
+                  isCurrent ? pageButtonActiveClassName : pageButtonInactiveClassName,
+                )}
+                aria-label={labels.page(item)}
+                aria-current={isCurrent ? 'page' : undefined}
+                disabled={controlsDisabled}
+                onClick={() => goTo(item, item)}
+              >
+                {item}
+              </button>
+            );
+          })}
+
+          <Button
+            ref={nextBtnRef}
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="min-h-11 gap-1 px-3"
+            disabled={nextDisabled}
+            aria-label={labels.next}
+            onClick={() => goTo(page + 1, 'next')}
+          >
+            <span className="hidden sm:inline">{labels.next}</span>
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </nav>
+      ) : null}
+    </div>
+  );
+}
+
+export interface PortalPageSizeSelectProps {
+  value: number;
+  onChange: (pageSize: number) => void;
+  options?: readonly number[] | undefined;
+  disabled?: boolean | undefined;
+  id?: string | undefined;
+  className?: string | undefined;
+}
+
+/** Selector de filas por página — siempre sobre `Select` de `@iwana/ui`. */
+export function PortalPageSizeSelect({
+  value,
+  onChange,
+  options = PORTAL_PAGE_SIZE_OPTIONS,
+  disabled = false,
+  id,
+  className,
+}: PortalPageSizeSelectProps) {
+  const autoId = useId();
+  const selectId = id ?? autoId;
+  const minOption = Math.min(...options);
+
+  if (process.env.NODE_ENV !== 'production') {
+    if (value < 10 || value > 50) {
+      console.error(
+        `[PortalPageSizeSelect] value=${value} fuera del rango 10–50; usar PORTAL_PAGE_SIZE_OPTIONS.`,
+      );
+    }
+  }
+
+  return (
+    <div
+      className={cn('flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400', className)}
+      data-min-option={minOption}
+    >
+      <Select
+        id={selectId}
+        label="Filas por página"
+        value={String(value)}
+        disabled={disabled}
+        className="h-11 w-auto min-w-[5.5rem]"
+        onChange={(event) => {
+          const next = Number.parseInt(event.target.value, 10);
+          if (Number.isFinite(next)) onChange(next);
+        }}
+        options={options.map((n) => ({ value: String(n), label: String(n) }))}
+      />
+    </div>
+  );
 }
 
 interface PortalSidePeekProps {

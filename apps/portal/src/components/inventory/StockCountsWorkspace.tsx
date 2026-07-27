@@ -1,25 +1,35 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Input, Select } from '@iwana/ui';
-import { StockCountStatus } from '@iwana/shared';
-import type {
-  CreateStockCountDto,
-  InventoryCategoryRecord,
-  StockCountDetailRecord,
-  StockCountRecord,
-  StockLocationRecord,
-  UpdateStockCountDto,
+import { StockCountStatus, type ListMeta } from '@iwana/shared';
+import {
+  ApiError,
+  inventoryApi,
+  type CreateStockCountDto,
+  type InventoryCategoryRecord,
+  type StockCountDetailRecord,
+  type StockCountRecord,
+  type StockLocationRecord,
+  type UpdateStockCountDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPageSizeSelect,
   PortalPanel,
+  PortalResultsStrip,
   PortalSkeletonBlock,
+  PortalTablePager,
+  PortalTablePagination,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
+  portalDataBusyRegionClassName,
 } from '@/components/shared/portal-ui';
 import {
   STOCK_COMMITTED_NEXT_STEP_TEXT,
@@ -27,6 +37,7 @@ import {
   getStockCountStatusBadgeVariant,
   getStockCountStatusLabel,
 } from './inventory-labels';
+import { InventoryLocationPicker } from './InventoryLocationPicker';
 
 /**
  * El backend explica por qué se bloqueó el movimiento pero no el próximo paso.
@@ -58,28 +69,41 @@ function StockCountErrorAlert({ message }: { message: string }) {
 export interface StockCountsWorkspaceProps {
   locations: StockLocationRecord[];
   categories: InventoryCategoryRecord[];
-  counts: StockCountRecord[];
-  isLoading: boolean;
-  isRefreshing?: boolean;
-  error?: string | null;
   canClose: boolean;
+  /** Incrementar tras mutaciones del padre. */
+  listRevision?: number;
+  error?: string | null;
   onCreate: (dto: CreateStockCountDto) => Promise<StockCountDetailRecord>;
   onUpdate: (id: string, dto: UpdateStockCountDto) => Promise<StockCountDetailRecord>;
   onClose: (id: string) => Promise<void>;
   onCancel: (id: string) => Promise<void>;
   onOpenDetail: (id: string) => Promise<StockCountDetailRecord>;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
 }
 
 type WorkspaceMode = 'inbox' | 'create' | 'detail';
 
-export function StockCountsWorkspace({
+const COUNTS_RESOURCE = { singular: 'conteo', plural: 'conteos' } as const;
+const COUNTS_NAMESPACE = 'counts';
+const COUNTS_FILTER_KEYS = ['status'] as const;
+const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
+
+function mapCountsListError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión de nuevo para continuar.';
+    if (error.status === 403) return 'No tienes permisos para consultar conteos.';
+    if (error.status === 404) return 'El recurso solicitado ya no está disponible.';
+    return error.message;
+  }
+  return 'No fue posible cargar los conteos.';
+}
+
+function StockCountsWorkspaceInner({
   locations,
   categories,
-  counts,
-  isLoading,
-  error,
   canClose,
+  listRevision = 0,
+  error,
   onCreate,
   onUpdate,
   onClose,
@@ -87,25 +111,129 @@ export function StockCountsWorkspace({
   onOpenDetail,
   onRefresh,
 }: StockCountsWorkspaceProps) {
+  const outOfRangeShownRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+
+  const { page, pageSize, filters, setPage, setPageSize, setFilters, setQuery } =
+    useTableQueryState({
+      namespace: COUNTS_NAMESPACE,
+      filterKeys: COUNTS_FILTER_KEYS,
+      defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+    });
+
+  const statusFilter = (filters.status as StockCountStatus | undefined) ?? '';
+
+  const [counts, setCounts] = useState<StockCountRecord[]>([]);
+  const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
+
   const [mode, setMode] = useState<WorkspaceMode>('inbox');
   const [locationId, setLocationId] = useState('');
+  const [locationSelectedLabel, setLocationSelectedLabel] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState('');
   const [notes, setNotes] = useState('');
   const [detail, setDetail] = useState<StockCountDetailRecord | null>(null);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StockCountStatus | ''>('');
 
   const locationMap = useMemo(
     () => new Map(locations.map((location) => [location.id, location])),
     [locations],
   );
 
-  const filteredCounts = useMemo(
-    () => (statusFilter ? counts.filter((row) => row.status === statusFilter) : counts),
-    [counts, statusFilter],
+  const loadPage = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      const soft = opts?.soft === true && hasLoadedOnceRef.current;
+      if (soft) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setListError(null);
+
+      try {
+        const response = await inventoryApi.listCounts({
+          page,
+          limit: pageSize,
+          ...(statusFilter ? { status: statusFilter } : {}),
+        });
+        const nextMeta = normalizeListMeta(response.meta, {
+          dataLength: response.data.length,
+          limit: pageSize,
+        });
+        const requestedPage = page;
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        setCounts(response.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch (loadError: unknown) {
+        setListError(mapCountsListError(loadError));
+        if (!soft) {
+          setCounts([]);
+          setMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [page, pageSize, setQuery, statusFilter],
   );
+
+  useEffect(() => {
+    void loadPage({ soft: true });
+  }, [loadPage, listRevision]);
+
+  const prevPageRef = useRef(page);
+  useEffect(() => {
+    if (prevPageRef.current === page) return;
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom
+      }
+    }
+  }, [page]);
+
+  const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
+  const effectivePage = meta.page ?? page;
+  const { from, to } = listPageWindow({
+    page: effectivePage,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const randomAccess = meta.capabilities.randomAccess;
+  const showPager = !isLoading && meta.total > 0;
+  const showPageSize = showPager && randomAccess && meta.total > Math.min(10, 20, 50);
+  const resultsLabel =
+    meta.total === 0 && !statusFilter
+      ? '0 conteos'
+      : counts.length === 0
+        ? 'Sin resultados con estos filtros'
+        : `${from}–${to} de ${meta.total} conteo${meta.total === 1 ? '' : 's'}`;
 
   const kpis = useMemo(() => {
     const byStatus = {
@@ -141,7 +269,7 @@ export function StockCountsWorkspace({
         ),
       );
       setMode('detail');
-      onRefresh();
+      await onRefresh();
     } catch (createError) {
       setActionError(
         createError instanceof Error ? createError.message : 'No fue posible crear el conteo.',
@@ -185,7 +313,7 @@ export function StockCountsWorkspace({
         })),
       });
       setDetail(updated);
-      onRefresh();
+      await onRefresh();
     } catch (updateError) {
       setActionError(
         updateError instanceof Error
@@ -219,7 +347,7 @@ export function StockCountsWorkspace({
       await onClose(updated.id);
       setMode('inbox');
       setDetail(null);
-      onRefresh();
+      await onRefresh();
     } catch (closeError) {
       setActionError(
         closeError instanceof Error ? closeError.message : 'No fue posible cerrar el conteo.',
@@ -244,7 +372,7 @@ export function StockCountsWorkspace({
       await onCancel(detail.id);
       setMode('inbox');
       setDetail(null);
-      onRefresh();
+      await onRefresh();
     } catch (cancelError) {
       setActionError(
         cancelError instanceof Error ? cancelError.message : 'No fue posible cancelar el conteo.',
@@ -271,15 +399,15 @@ export function StockCountsWorkspace({
       >
         <div className="space-y-4">
           {actionError ? <StockCountErrorAlert message={actionError} /> : null}
-          <Select
+          <InventoryLocationPicker
+            id="count-location"
             label="Bodega"
-            aria-label="Bodega del conteo"
-            value={locationId}
-            onChange={(event) => setLocationId(event.target.value)}
-            options={[
-              { value: '', label: 'Selecciona bodega' },
-              ...locations.map((location) => ({ value: location.id, label: location.name })),
-            ]}
+            value={locationId || null}
+            selectedLabel={locationSelectedLabel}
+            onChange={(nextId, item) => {
+              setLocationId(nextId ?? '');
+              setLocationSelectedLabel(item ? item.label : null);
+            }}
           />
           <Select
             label="Categoría (opcional)"
@@ -408,14 +536,24 @@ export function StockCountsWorkspace({
       title="Conteos físicos"
       description="Reconcilia el saldo del sistema contra lo contado en bodega."
       actions={
-        <Button type="button" onClick={() => setMode('create')}>
+        <Button type="button" variant="primary" onClick={() => setMode('create')}>
           Nuevo conteo
         </Button>
       }
     >
       <div className="space-y-4">
         {error ? <StockCountErrorAlert message={error} /> : null}
+        {listError ? <StockCountErrorAlert message={listError} /> : null}
         {actionError ? <StockCountErrorAlert message={actionError} /> : null}
+
+        {outOfRangeNotice ? (
+          <PortalAlert
+            variant="warning"
+            title="Página fuera de rango"
+            description={outOfRangeNotice}
+            live="polite"
+          />
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-gray-200 p-4">
@@ -439,7 +577,11 @@ export function StockCountsWorkspace({
             label="Estado"
             aria-label="Filtrar conteos por estado"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as StockCountStatus | '')}
+            onChange={(event) =>
+              setFilters({
+                status: event.target.value ? event.target.value : null,
+              })
+            }
             options={[
               { value: '', label: 'Todos' },
               ...Object.values(StockCountStatus).map((status) => ({
@@ -450,53 +592,128 @@ export function StockCountsWorkspace({
           />
         </div>
 
+        {counts.length === 0 && !isLoading ? (
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+        ) : null}
+
         {isLoading ? (
           <PortalSkeletonBlock className="h-48 rounded-xl" />
-        ) : filteredCounts.length === 0 ? (
+        ) : counts.length === 0 ? (
           <PortalEmptyState
-            title="Sin conteos"
-            description="Crea un conteo por bodega para capturar diferencias y cerrar el ajuste."
+            title={statusFilter ? 'Sin resultados con estos filtros' : 'Sin conteos'}
+            description={
+              statusFilter
+                ? 'Cambia el filtro de estado o limpia el filtro para ver otros conteos.'
+                : 'Crea un conteo por bodega para capturar diferencias y cerrar el ajuste.'
+            }
+            action={
+              statusFilter ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFilters({ status: null })}
+                >
+                  Limpiar filtro
+                </Button>
+              ) : (
+                <Button type="button" variant="primary" onClick={() => setMode('create')}>
+                  Nuevo conteo
+                </Button>
+              )
+            }
           />
         ) : (
-          <div className={portalDataTableShellClassName}>
-            <table className="min-w-full">
-              <thead>
-                <tr>
-                  <th className={portalDataTableHeadClassName}>Número</th>
-                  <th className={portalDataTableHeadClassName}>Bodega</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  <th className={portalDataTableHeadClassName}>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCounts.map((row) => (
-                  <tr key={row.id} className={portalTableRowHoverClassName}>
-                    <td className={portalDataTableCellClassName}>{row.countNumber}</td>
-                    <td className={portalDataTableCellClassName}>
-                      {locationMap.get(row.locationId)?.name ?? row.locationId}
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <Badge variant={getStockCountStatusBadgeVariant(row.status)}>
-                        {getStockCountStatusLabel(row.status)}
-                      </Badge>
-                    </td>
-                    <td className={portalDataTableCellClassName}>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void handleOpen(row.id)}
-                      >
-                        Abrir
-                      </Button>
-                    </td>
+          <div ref={tableShellRef} className={portalDataTableShellClassName}>
+            <div
+              className={
+                isRefreshing
+                  ? `overflow-x-auto ${portalDataBusyRegionClassName}`
+                  : 'overflow-x-auto'
+              }
+              aria-busy={isRefreshing || undefined}
+            >
+              <table className="min-w-full">
+                <thead>
+                  <tr>
+                    <th className={portalDataTableHeadClassName}>Número</th>
+                    <th className={portalDataTableHeadClassName}>Bodega</th>
+                    <th className={portalDataTableHeadClassName}>Estado</th>
+                    <th className={portalDataTableHeadClassName}>Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {counts.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={portalTableRowHoverClassName}
+                      data-testid={`count-row-${row.id}`}
+                    >
+                      <td className={portalDataTableCellClassName}>{row.countNumber}</td>
+                      <td className={portalDataTableCellClassName}>
+                        {locationMap.get(row.locationId)?.name ?? row.locationId}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <Badge variant={getStockCountStatusBadgeVariant(row.status)}>
+                          {getStockCountStatusLabel(row.status)}
+                        </Badge>
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void handleOpen(row.id)}
+                        >
+                          Abrir
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {showPager && randomAccess ? (
+              <PortalTablePager
+                page={effectivePage}
+                pageCount={Math.max(1, pageCount)}
+                onPageChange={setPage}
+                from={from}
+                to={to}
+                total={meta.total}
+                resource={COUNTS_RESOURCE}
+                loading={isRefreshing}
+                pageSizeControl={
+                  showPageSize ? (
+                    <PortalPageSizeSelect
+                      value={pageSize}
+                      onChange={setPageSize}
+                      disabled={isRefreshing}
+                    />
+                  ) : undefined
+                }
+              />
+            ) : null}
+            {showPager && !randomAccess ? (
+              <PortalTablePagination
+                hasMore={meta.hasMore}
+                onLoadMore={() => setPage(page + 1)}
+                loading={isRefreshing}
+                resourceLabel="conteos"
+                shown={to}
+                total={meta.total}
+              />
+            ) : null}
           </div>
         )}
       </div>
     </PortalPanel>
+  );
+}
+
+export function StockCountsWorkspace(props: StockCountsWorkspaceProps) {
+  return (
+    <Suspense fallback={<PortalSkeletonBlock className="h-72" />}>
+      <StockCountsWorkspaceInner {...props} />
+    </Suspense>
   );
 }

@@ -4,12 +4,17 @@ import userEvent from '@testing-library/user-event';
 import { TicketFieldDecision, TicketPriority, TicketStatus, UserRole } from '@iwana/shared';
 import { AssuranceClient } from './AssuranceClient';
 import { assuranceApi, wfmApi } from '@/lib/api-client';
+import type { ListAssuranceTicketsParams } from '@/lib/api-client';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 
 const mockRouterPush = jest.fn();
+const mockRouterReplace = jest.fn();
+let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockRouterPush }),
+  useRouter: () => ({ push: mockRouterPush, replace: mockRouterReplace }),
+  usePathname: () => '/dashboard/assurance',
+  useSearchParams: () => searchParamsMock,
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
@@ -24,6 +29,9 @@ jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
 }));
 
 jest.mock('@/lib/api-client', () => {
+  const { EMPTY_LIST_META } = jest.requireActual(
+    '@/lib/list-meta',
+  ) as typeof import('@/lib/list-meta');
   class MockApiError extends Error {
     status: number;
     code: string;
@@ -40,7 +48,22 @@ jest.mock('@/lib/api-client', () => {
     ApiError: MockApiError,
     assuranceApi: {
       tickets: {
-        list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 }),
+        list: jest.fn().mockResolvedValue({
+          data: [],
+          total: 0,
+          page: 1,
+          limit: 20,
+          meta: {
+            ...EMPTY_LIST_META,
+            mode: 'page',
+            page: 1,
+            limit: 20,
+            total: 0,
+            totalPages: 0,
+            hasMore: false,
+            capabilities: { randomAccess: true, sortableFields: [] },
+          },
+        }),
         get: jest.fn(),
         listComments: jest.fn().mockResolvedValue([]),
         listTimeline: jest.fn().mockResolvedValue([]),
@@ -60,7 +83,10 @@ jest.mock('@/lib/api-client', () => {
       },
     },
     usersApi: {
-      list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
+      list: jest.fn().mockResolvedValue({
+        data: [],
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 },
+      }),
     },
     wfmApi: {
       visitRequests: {
@@ -113,6 +139,14 @@ const createAssuranceVisitRequestAndRouteMock = jest.mocked(createAssuranceVisit
 describe('AssuranceClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
+    mockRouterPush.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    mockRouterReplace.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    Element.prototype.scrollIntoView = jest.fn();
   });
 
   it('creates a ticket and routes to pending visits when field service is requested later', async () => {
@@ -203,5 +237,80 @@ describe('AssuranceClient', () => {
     expect(mockRouterPush).toHaveBeenCalledWith(
       '/dashboard/operations?ticketId=ticket-123&fromAssurance=1',
     );
+  });
+
+  it('ADR-065: con total>20 muestra pie numerado y reemplaza la página (sin acumular)', async () => {
+    const user = userEvent.setup();
+    const page1 = Array.from({ length: 20 }, (_, index) => ({
+      id: `ticket-${index + 1}`,
+      ticketNumber: `TK-${String(index + 1).padStart(3, '0')}`,
+      subject: `Asunto ${index + 1}`,
+      status: TicketStatus.OPEN,
+      priority: TicketPriority.NORMAL,
+      type: 'INCIDENT',
+      queueName: 'SUPPORT_L1',
+      assignedUserId: null,
+      slaBreachStatus: 'OK',
+      requesterRefId: `req-${index + 1}`,
+      subjectRefId: `subj-${index + 1}`,
+      updatedAt: '2026-07-24T12:00:00.000Z',
+    }));
+    const page2 = [
+      {
+        id: 'ticket-21',
+        ticketNumber: 'TK-021',
+        subject: 'Asunto 21',
+        status: TicketStatus.OPEN,
+        priority: TicketPriority.NORMAL,
+        type: 'INCIDENT',
+        queueName: 'SUPPORT_L1',
+        assignedUserId: null,
+        slaBreachStatus: 'OK',
+        requesterRefId: 'req-21',
+        subjectRefId: 'subj-21',
+        updatedAt: '2026-07-24T12:05:00.000Z',
+      },
+    ];
+
+    listTicketsMock.mockImplementation(async (params?: ListAssuranceTicketsParams) => {
+      const page = params?.page ?? 1;
+      const data = page === 1 ? page1 : page2;
+      const total = 21;
+      return {
+        data,
+        total,
+        page,
+        limit: 20,
+        meta: {
+          nextCursor: null,
+          total,
+          totalIsEstimate: false,
+          page,
+          limit: 20,
+          totalPages: 2,
+          hasMore: page < 2,
+          mode: 'page' as const,
+          capabilities: { randomAccess: true, sortableFields: [] as string[] },
+          sort: null,
+        },
+      } as never;
+    });
+
+    const { rerender } = render(<AssuranceClient />);
+
+    expect(await screen.findByText('TK-001')).toBeInTheDocument();
+    expect(screen.queryByText('TK-021')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Mostrando 1\u201320 de 21 tickets/i).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    rerender(<AssuranceClient />);
+
+    await waitFor(() => {
+      expect(listTicketsMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, limit: 20 }));
+    });
+
+    expect(await screen.findByText('TK-021')).toBeInTheDocument();
+    expect(screen.queryByText('TK-001')).not.toBeInTheDocument();
   });
 });

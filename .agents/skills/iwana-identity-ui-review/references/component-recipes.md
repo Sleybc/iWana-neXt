@@ -15,14 +15,50 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 
 ## 2. Tabla operativa (DataTable)
 
+- **Anatomía obligatoria** (contenedor → filtros → conteo → grilla):
+  ```text
+  PortalPanel (§3)
+    ├── filtros / chips (fuera del shell)
+    ├── PortalResultsStrip          ← conteo SOLO en modo cursor; en modo paginado cede el conteo al pie
+    └── portalDataTableShellClassName
+          ├── <table> …
+          └── pie — EXACTAMENTE UNO, nunca los dos:
+                ├── PortalTablePagination   randomAccess:false · «Cargar más» (omitido si !hasMore)
+                └── PortalTablePager        DEFAULT · «Mostrando 21–40 de 128 usuarios»
+                                            + PortalPageSizeSelect + Anterior · 1 … 12 · Siguiente
+                                            (nav omitida si pageCount <= 1)
+  ```
 - **Usa los class-tokens de `portal-ui.tsx`:**
-  - Shell: `portalDataTableShellClassName` (rounded-2xl + borde + overflow contenido — evita scroll horizontal del layout).
-  - Encabezados: `portalDataTableHeadClassName` (eyebrow-muted) / `portalDataTableNestedHeadClassName`.
-  - Celdas: `portalDataTableCellClassName`; hover de fila: `portalTableRowHoverClassName` (hover `iwana-surface-soft`).
+  - Shell: `portalDataTableShellClassName` (rounded-2xl + borde + overflow contenido — evita scroll horizontal del layout). **Solo envuelve la grilla**, no los filtros.
+  - Encabezados: `portalDataTableHeadRowClassName` + `PortalDataTableHead` / `portalDataTableHeadClassName` (eyebrow-muted) / `portalDataTableNestedHeadClassName`.
+  - Cuerpo: `portalDataTableBodyClassName` (`divide-y`); celdas: `portalDataTableCellClassName`; hover: `portalTableRowHoverClassName`.
+- **Paginación (ADR-065 — supersede ADR-064 §§2/3/5/9):**
+  - **El modo lo declara el servidor**, no la pantalla: `meta.capabilities.randomAccess`. Nunca lo infieras en el frontend ni lo codifiques por módulo.
+  - **Default `randomAccess: true` → `PortalTablePager`**: `Anterior · 1 … N · Siguiente` + `PortalPageSizeSelect` (`[10, 20, 50]`, default 20) + conteo `Mostrando {desde}-{hasta} de {total} {recurso}` **en el pie**. Si `pageCount <= 1` → sin nav; si no hay resultados → sin pie.
+  - **`randomAccess: false` → `PortalTablePagination`** (feeds cronológicos y colas de alto volumen): «Cargar más» solo si `hasMore`, conteo en `PortalResultsStrip` con la gramática de ADR-064 §3.
+  - **Una tabla monta un pie o el otro, nunca los dos** — hallazgo P1.
+  - **Un solo conteo visible por tabla.** En modo paginado el strip cede el conteo; duplicarlo es hallazgo.
+  - `page`, `pageSize`, `sort`, filtros y búsqueda **en la URL**: `push` al cambiar de página (el botón Atrás debe funcionar), `replace` para filtros y búsqueda. Cambiar filtro, orden o tamaño → vuelve a página 1.
+  - **Prohibido** ornamento en el pie: «Fin de resultados», filas de relleno, badges decorativos.
+  - Detalles rechazados del demo TailAdmin: números **con borde** (fallan WCAG 1.4.11 como único identificador), targets de 40 px (el mínimo es 44), opciones 5/8/10.
+  - **El lima no entra en el pager** — ni relleno, ni borde, ni subrayado del activo. Página activa = `bg-iwana-primary text-white`; en dark, `bg-iwana-primary-400` **obliga** a `ring-iwana-primary-300`. El lima significa avance; la página actual es posición.
+  - El FE **no** materializa listados unbounded como estrategia permanente.
+  - Excepciones: preview ≤10 filas, matrices/settings de cardinalidad fija pequeña, pickers en modal (búsqueda tipo-ahead) — documentar en el módulo.
+  - Contrato completo: `docs/specs/2026-07-24-paginacion-numerada-ds-contrato.md`; criterios CA-PAG v2 en `docs/specs/2026-07-24-paginacion-numerada-ux.md`.
+- **Orden por columna (ADR-065 §Decisión 17-22):**
+  - **Qué columnas son ordenables lo declara el servidor** en `meta.capabilities.sortableFields`. Nunca una lista local en la pantalla.
+  - Ordenable → `PortalDataTableSortableHead`; no ordenable → `PortalDataTableHead` **sin botón y sin `aria-sort`** (un control deshabilitado sugiere una capacidad que no existe).
+  - Ciclo de tres estados calculado por el primitive: `sin orden → asc → desc → sin orden`. El tercer paso restituye el orden por defecto del recurso.
+  - `aria-sort` en el `<th>`; exactamente **uno** distinto de `none` por tabla. El nombre accesible del botón enuncia la **acción siguiente**, no el estado actual.
+  - El estado activo **no se comunica solo con el ícono**: el rótulo pasa a `font-semibold` + `text-iwana-primary` (WCAG 1.4.1).
+  - **Un solo ícono**, no el par de carets apilados de TailAdmin: a 8×5 px no hay estado distinguible y el encabezado se vuelve una rejilla de ruido.
+  - Bajo `sm` el orden **sale del encabezado** y se expone con el `Select` de `@iwana/ui` en la barra de filtros — pulsar un caret dentro de una tabla que se desplaza horizontalmente es una trampa táctil.
+  - **El lima no entra en el orden** (igual que en el pager): el orden es posición, no avance.
+  - Solo en recursos con `randomAccess: true`; en modo cursor cada orden exigiría su propio codificador keyset.
 - **Cifras:** `tabular-nums` o `font-mono` en columnas numéricas, IDs y timestamps.
 - **Estados por fila:** columna de estado con `<Badge variant={...}>` de `@iwana/ui` mapeada por severidad — nunca enum crudo.
-- **Dirección aprobada (Firma §2.3, aún sin primitive):** sticky header, densidad configurable (cómoda/compacta), filtros persistidos en URL, bulk actions con checkbox on-hover, virtualización desde ~1k filas. Proponer como evolución, no citar como existente.
-- **Nunca:** tabla sin empty state; spinner como carga primaria; acciones solo visibles en hover.
+- **Dirección aprobada (Firma §2.3):** sticky header, densidad configurable, filtros en URL, bulk actions, virtualización desde ~1k filas — **complementa** la paginación servidor, no la sustituye.
+- **Nunca:** tabla sin empty state; spinner como carga primaria; acciones solo visibles en hover; filtros metidos dentro del borde del shell; listado operativo sin cota de página.
 
 ## 3. Panel / card de contenido
 

@@ -44,6 +44,29 @@ describe('PurchasingController Swagger', () => {
     await app.close();
   });
 
+  it('documenta paginación cursor ADR-064 en solicitudes de compra', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Purchasing Test').setVersion('1.0').build(),
+    );
+
+    const listRequests = document.paths['/purchasing/requests']?.get;
+    expect(listRequests?.description).toContain('ADR-064');
+    expect(listRequests?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
+    expect(listRequests?.parameters?.some((p) => 'name' in p && p.name === 'cursor')).toBe(true);
+    expect(listRequests?.parameters?.some((p) => 'name' in p && p.name === 'search')).toBe(true);
+    expect(listRequests?.parameters?.some((p) => 'name' in p && p.name === 'kpiPreset')).toBe(true);
+    expect(listRequests?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+
+    const listSuppliers = document.paths['/purchasing/suppliers']?.get;
+    expect(listSuppliers?.description).toContain('ListMeta');
+    expect(listSuppliers?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+
+    const listOrders = document.paths['/purchasing/orders']?.get;
+    expect(listOrders?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+    expect(listOrders?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
+  });
+
   it('documenta endpoints RFQ del modulo purchasing', () => {
     const document = SwaggerModule.createDocument(
       app,

@@ -27,21 +27,29 @@ import {
 } from '@iwana/ui';
 import {
   ApiError,
+  COMMERCIAL_LIST_PAGE_SIZE,
   commercialApi,
+  type CommercialListMeta,
+  type CommercialListParams,
   type CreateTaxDefinitionDto,
   type TaxDefinition,
   type UpdateTaxDefinitionDto,
 } from '@/lib/api-client';
+import { EMPTY_LIST_META } from '@/lib/list-meta';
 import {
   interactiveFocusClassName,
   PortalAlert,
   PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
+  PortalResultsStrip,
   PortalSidePeek,
   PortalSkeletonBlock,
   PortalSuccessAlert,
+  PortalTablePagination,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
@@ -123,7 +131,13 @@ function normalizeTaxCode(value: string): string {
 
 export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
   const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
+  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
+  const [listParams, setListParams] = useState<CommercialListParams>({
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+    isActive: true,
+  });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -139,21 +153,44 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
   // true = código generado automáticamente desde el nombre; false = editado manualmente
   const codeAutoRef = useRef(true);
 
-  const loadDefinitions = useCallback(async () => {
-    setLoading(true);
+  const refreshParams: CommercialListParams = {
+    limit: COMMERCIAL_LIST_PAGE_SIZE,
+    isActive: true,
+  };
+
+  const loadDefinitions = useCallback(async (params: CommercialListParams, append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
-      const data = await commercialApi.listTaxDefinitions({ isActive: true });
-      setDefinitions(data);
+      const result = await commercialApi.listTaxDefinitions({
+        ...params,
+        limit: params.limit ?? COMMERCIAL_LIST_PAGE_SIZE,
+        isActive: params.isActive ?? true,
+      });
+      const page = result.data ?? [];
+      setDefinitions((prev) => (append ? [...prev, ...page] : page));
+      setMeta(result.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length });
+      setListParams(params);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Error al cargar el catálogo');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
+  const handleLoadMore = () => {
+    if (meta?.nextCursor) {
+      void loadDefinitions({ ...listParams, cursor: meta.nextCursor }, true);
+    }
+  };
+
   useEffect(() => {
-    void loadDefinitions();
+    void loadDefinitions({ limit: COMMERCIAL_LIST_PAGE_SIZE, isActive: true });
   }, [loadDefinitions]);
 
   function openCreateForm() {
@@ -226,7 +263,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
       await commercialApi.createTaxDefinition(payload);
       handleFormOpenChange(false);
-      await loadDefinitions();
+      await loadDefinitions(refreshParams);
       setSuccessMessage('Definición tributaria creada.');
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Error al crear la definición.');
@@ -248,7 +285,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       if (form.notes !== undefined) patch.notes = form.notes;
       await commercialApi.updateTaxDefinition(editingTarget.id, patch);
       handleFormOpenChange(false);
-      await loadDefinitions();
+      await loadDefinitions(refreshParams);
       setSuccessMessage('Definición tributaria actualizada.');
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Error al actualizar la definición.');
@@ -264,7 +301,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
     try {
       await commercialApi.deleteTaxDefinition(deleteTarget.id);
       setDeleteTarget(null);
-      await loadDefinitions();
+      await loadDefinitions(refreshParams);
       setSuccessMessage('Definición tributaria eliminada.');
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Error al eliminar la definición.');
@@ -275,6 +312,12 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
   const showLoadErrorOnly = Boolean(loadError) && definitions.length === 0 && !loading;
   const isEditing = Boolean(editingTarget);
+  const hasMore = meta?.nextCursor != null;
+  const totalDefinitions = meta?.total ?? definitions.length;
+  const resourceWord = totalDefinitions === 1 ? 'definición' : 'definiciones';
+  const resultsLabel = hasMore
+    ? `${definitions.length} de ${totalDefinitions} ${resourceWord}`
+    : `${totalDefinitions} ${resourceWord}`;
 
   return (
     <PortalPanel
@@ -283,15 +326,12 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       description="Consulta y administra definiciones tributarias del tenant (lectura y edición según origen)."
       actions={
         <>
-          <Badge variant="neutral">
-            {definitions.length} definición{definitions.length === 1 ? '' : 'es'}
-          </Badge>
           <Button
             variant="ghost"
             size="icon"
             aria-label="Actualizar catálogo de impuestos"
             title="Actualizar catálogo de impuestos"
-            onClick={() => void loadDefinitions()}
+            onClick={() => void loadDefinitions(refreshParams)}
           >
             <RotateCcw className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -323,7 +363,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => void loadDefinitions()}
+              onClick={() => void loadDefinitions(refreshParams)}
             >
               Reintentar
             </Button>
@@ -372,10 +412,12 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
             />
           )}
 
+          <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Definición</PortalDataTableHead>
                     <PortalDataTableHead>Código</PortalDataTableHead>
@@ -387,7 +429,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                <tbody className={portalDataTableBodyClassName}>
                   {definitions.map((def) => (
                     <tr key={def.id} className={portalTableRowHoverClassName}>
                       <td className={portalDataTableCellClassName}>
@@ -468,6 +510,14 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                 </tbody>
               </table>
             </div>
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={handleLoadMore}
+              loading={loadingMore}
+              resourceLabel="definiciones"
+              shown={definitions.length}
+              total={totalDefinitions}
+            />
           </div>
         </div>
       )}
@@ -546,7 +596,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                 className="pr-16"
                 endAdornment={
                   codeAutoRef.current && (form.code ?? '').length > 0 ? (
-                    <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-iwana-primary">
+                    <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-xs font-semibold text-iwana-primary">
                       Auto
                     </span>
                   ) : undefined

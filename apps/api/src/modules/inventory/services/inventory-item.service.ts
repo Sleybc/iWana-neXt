@@ -16,11 +16,14 @@ import {
   InventoryCategoryStatus,
   InventoryTrackingMode,
   buildCompositeSku,
+  type ListResponse,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
   CreateInventoryItemInput,
   CreateInventoryItemSchema,
+  InventoryPickerSearchQueryInput,
+  InventoryPickerSearchQuerySchema,
   ListCatalogOptionsQueryInput,
   ListCatalogOptionsQuerySchema,
   ListInventoryItemsQueryInput,
@@ -38,6 +41,20 @@ import {
 } from '../events/inventory.events';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { InventoryCategoryService } from './inventory-category.service';
+import {
+  assertExclusivePageCursor,
+  buildCursorMeta,
+  buildPageMeta,
+  clampInventoryLimit,
+  clampPickerSearchLimit,
+  dateIdDescCursorParams,
+  dateIdDescCursorWhere,
+  escapePickerLikePattern,
+  normalizePickerQuery,
+  sliceDateIdDescPage,
+  type PickerSearchResult,
+} from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 
 const SKU_GENERATION_RETRY_LIMIT = 3;
 
@@ -496,15 +513,23 @@ export class InventoryItemService {
     this.eventEmitter.emit(INVENTORY_EVENTS.CATALOG_OPTION_REQUESTED, payload);
   }
 
-  async list(query: ListInventoryItemsQueryInput): Promise<InventoryItemResponse[]> {
+  /**
+   * Lista ítems con paginación híbrida (ADR-064/065 Ola 6).
+   * Orden: createdAt DESC, id DESC. `total` = conjunto filtrado; cursor aplica después del filtro.
+   * `page` y `cursor` excluyentes; sin ambos = primera página keyset.
+   */
+  async list(query: ListInventoryItemsQueryInput): Promise<ListResponse<InventoryItemResponse>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListInventoryItemsQuerySchema.parse(query);
+    assertExclusivePageCursor(validated);
+    const limit = clampInventoryLimit(validated.limit);
+    const usePage = validated.page !== undefined;
+    const page = usePage ? clampPage(validated.page!, limit).page : 1;
 
-    const items = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const { items, total } = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(InventoryItem, 'item')
-        .where('item.tenant_id = :tenantId', { tenantId })
-        .orderBy('item.created_at', 'DESC');
+        .where('item.tenant_id = :tenantId', { tenantId });
 
       if (validated.search) {
         const term = `%${validated.search.toLowerCase()}%`;
@@ -548,18 +573,139 @@ export class InventoryItemService {
         });
       }
 
-      return qb.getMany();
+      if (validated.belowMinimum === true) {
+        const locationFilter = validated.stockLocationId
+          ? 'AND bal.location_id = :stockLocationId'
+          : '';
+        if (validated.stockLocationId) {
+          qb.setParameter('stockLocationId', validated.stockLocationId);
+        }
+        qb.andWhere(
+          `(
+            COALESCE((
+              SELECT SUM(bal.quantity_on_hand::numeric - bal.quantity_reserved::numeric)
+              FROM stock_balances bal
+              WHERE bal.tenant_id = item.tenant_id
+                AND bal.item_id = item.id
+                ${locationFilter}
+            ), 0) <= 0
+            OR COALESCE((
+              SELECT SUM(bal.quantity_on_hand::numeric - bal.quantity_reserved::numeric)
+              FROM stock_balances bal
+              WHERE bal.tenant_id = item.tenant_id
+                AND bal.item_id = item.id
+                ${locationFilter}
+            ), 0) < item.minimum_stock::numeric
+          )`,
+        );
+      }
+
+      const totalCount = await qb.clone().getCount();
+
+      qb.orderBy('item.created_at', 'DESC').addOrderBy('item.id', 'DESC');
+
+      if (usePage) {
+        const rows = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getMany();
+        return { items: rows, total: totalCount };
+      }
+
+      if (validated.cursor) {
+        qb.andWhere(
+          dateIdDescCursorWhere('item', 'created_at'),
+          dateIdDescCursorParams(validated.cursor),
+        );
+      }
+
+      const rows = await qb.take(limit + 1).getMany();
+
+      return { items: rows, total: totalCount };
     });
 
-    const categoryMap = await this.loadCategoryMap(items.map((item) => item.categoryId));
+    const sliced = usePage
+      ? { data: items, nextCursor: null as string | null }
+      : sliceDateIdDescPage(items, limit, (row) => row.createdAt);
 
-    return items.map((item) => {
+    const categoryMap = await this.loadCategoryMap(sliced.data.map((item) => item.categoryId));
+
+    const data = sliced.data.map((item) => {
       const category = categoryMap.get(item.categoryId);
       if (!category) {
         throw new NotFoundException('No se pudo resolver la categoria del producto.');
       }
 
       return mapItemToResponse(item, category);
+    });
+
+    if (usePage) {
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
+    }
+
+    return {
+      data,
+      meta: buildCursorMeta({
+        nextCursor: sliced.nextCursor,
+        total,
+        limit,
+        randomAccess: true,
+      }),
+    };
+  }
+
+  /**
+   * Lookup typeahead E-4 para pickers de ítems de inventario.
+   * Label = nombre; sublabel = SKU (sin enums crudos).
+   */
+  async searchForPicker(query: InventoryPickerSearchQueryInput): Promise<PickerSearchResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = InventoryPickerSearchQuerySchema.parse(query);
+    const limit = clampPickerSearchLimit(validated.limit);
+    const q = normalizePickerQuery(validated.q);
+
+    if (!q) {
+      return { data: [], total: 0 };
+    }
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const like = `%${escapePickerLikePattern(q.toLowerCase())}%`;
+      const qb = qr.manager
+        .createQueryBuilder(InventoryItem, 'item')
+        .where('item.tenant_id = :tenantId', { tenantId })
+        .andWhere(
+          "(LOWER(item.sku) LIKE :like ESCAPE '\\' OR LOWER(item.name) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.brand, '')) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.model, '')) LIKE :like ESCAPE '\\')",
+          { like },
+        );
+
+      if (validated.status) {
+        qb.andWhere('item.status = :status', { status: validated.status });
+      }
+
+      const total = await qb.clone().getCount();
+      const rows = await qb
+        .orderBy('item.name', 'ASC')
+        .addOrderBy('item.id', 'ASC')
+        .take(limit)
+        .getMany();
+
+      return {
+        data: rows.map((item) => ({
+          id: item.id,
+          label: item.name,
+          sublabel: `SKU ${item.sku}`,
+        })),
+        total,
+      };
     });
   }
 
@@ -834,7 +980,8 @@ export class InventoryItemService {
         .where('item.tenant_id = :tenantId', { tenantId })
         .andWhere('item.status = :status', { status: InventoryItemStatus.ACTIVE })
         .andWhere('item.purchasable = TRUE')
-        .orderBy('item.name', 'ASC');
+        .orderBy('item.name', 'ASC')
+        .take(100);
 
       if (validated.search) {
         const term = `%${validated.search.toLowerCase()}%`;

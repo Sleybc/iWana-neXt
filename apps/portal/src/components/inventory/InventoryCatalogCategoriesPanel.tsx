@@ -1,20 +1,29 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
 import { FolderTree } from 'lucide-react';
-import { Button } from '@iwana/ui';
+import { Badge, Button } from '@iwana/ui';
 import type { InventoryCategoryRecord } from '@/lib/api-client';
 import {
   PortalEmptyState,
+  PortalResultsStrip,
   PortalSearchField,
+  PortalTablePagination,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
 import { InventoryCategoriesTable } from './InventoryCategoriesTable';
 import { InventoryCatalogProductsSkeleton } from './InventoryCatalogProductsSkeleton';
+import { formatInventoryResultsLabel } from './inventory-list-pagination';
 
 interface InventoryCatalogCategoriesPanelProps {
   categories: InventoryCategoryRecord[];
+  /** Total servidor (meta.total). */
+  totalCount: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  search: string;
+  onSearchChange: (search: string) => void;
   isLoading: boolean;
   isRefreshing?: boolean;
   onCreateCategory: () => void;
@@ -24,34 +33,27 @@ interface InventoryCatalogCategoriesPanelProps {
 
 export function InventoryCatalogCategoriesPanel({
   categories,
+  totalCount,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  search,
+  onSearchChange,
   isLoading,
   isRefreshing = false,
   onCreateCategory,
   onRowClick,
   createAction,
 }: InventoryCatalogCategoriesPanelProps) {
-  const [search, setSearch] = useState('');
-
-  const filteredCategories = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    if (!query) {
-      return categories;
-    }
-
-    return categories.filter((category) => {
-      const haystack = [
-        category.name,
-        category.code,
-        category.codePrefix,
-        category.description ?? '',
-      ]
-        .join(' ')
-        .toLowerCase();
-
-      return haystack.includes(query);
-    });
-  }, [categories, search]);
+  const resultCount = categories.length;
+  const hasSearch = Boolean(search.trim());
+  const resultsLabel = formatInventoryResultsLabel({
+    loaded: resultCount,
+    total: totalCount,
+    hasMore,
+    singular: 'categoría',
+    plural: 'categorías',
+  });
 
   const emptyAction = createAction ?? (
     <Button type="button" onClick={onCreateCategory}>
@@ -59,16 +61,11 @@ export function InventoryCatalogCategoriesPanel({
     </Button>
   );
 
-  const hasSearch = Boolean(search.trim());
-  const counterLabel = hasSearch
-    ? `${filteredCategories.length} de ${categories.length} categorías`
-    : `${categories.length} categorías`;
-
-  if (isLoading && categories.length === 0) {
+  if (isLoading && totalCount === 0 && resultCount === 0) {
     return <InventoryCatalogProductsSkeleton />;
   }
 
-  if (categories.length === 0) {
+  if (totalCount === 0 && !hasSearch) {
     return (
       <PortalEmptyState
         title="Sin categorías registradas"
@@ -81,10 +78,6 @@ export function InventoryCatalogCategoriesPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{counterLabel}</p>
-      </div>
-
       <div className="space-y-3 border-b border-gray-100 pb-4 dark:border-dark-border">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_auto] xl:items-end">
           <PortalSearchField
@@ -92,14 +85,14 @@ export function InventoryCatalogCategoriesPanel({
             label="Buscar categoría"
             placeholder="Nombre, código o prefijo"
             value={search}
-            onChange={setSearch}
+            onChange={onSearchChange}
           />
           {hasSearch ? (
             <Button
               type="button"
               variant="secondary"
               className="h-12 px-4"
-              onClick={() => setSearch('')}
+              onClick={() => onSearchChange('')}
             >
               Limpiar búsqueda
             </Button>
@@ -107,12 +100,14 @@ export function InventoryCatalogCategoriesPanel({
         </div>
       </div>
 
-      {filteredCategories.length === 0 ? (
+      <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
+
+      {resultCount === 0 ? (
         <PortalEmptyState
           title="Sin resultados con esta búsqueda"
           description="Cambia la búsqueda para encontrar otra categoría."
           action={
-            <Button type="button" variant="secondary" onClick={() => setSearch('')}>
+            <Button type="button" variant="secondary" onClick={() => onSearchChange('')}>
               Limpiar búsqueda
             </Button>
           }
@@ -121,13 +116,23 @@ export function InventoryCatalogCategoriesPanel({
         <div className={portalDataTableShellClassName}>
           <div className="overflow-x-auto">
             <InventoryCategoriesTable
-              categories={filteredCategories}
+              categories={categories}
               isLoading={isLoading}
               isRefreshing={isRefreshing}
               suppressEmptyState
               onRowClick={onRowClick}
             />
           </div>
+          {onLoadMore ? (
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={onLoadMore}
+              loading={isLoadingMore}
+              resourceLabel="categorías"
+              shown={resultCount}
+              total={totalCount}
+            />
+          ) : null}
         </div>
       )}
     </div>

@@ -263,11 +263,13 @@ export function PendingVisitRequestsView() {
     buildDefaultPendingVisitFilters(),
   );
   const [response, setResponse] = useState<ListWfmVisitRequestsResponse | null>(null);
-  const [selectedVisitRequestId, setSelectedVisitRequestId] = useState<string | null>(null);
+  /** Selección fuera del buffer de página (no derivar con `items.find` al paginar). */
+  const [selectedVisitRequest, setSelectedVisitRequest] = useState<WfmVisitRequest | null>(null);
   const [filterOptions, setFilterOptions] = useState<WfmVisitRequestFilterOptionsResponse | null>(
     null,
   );
   const [isLoadingInbox, setIsLoadingInbox] = useState(false);
+  const [isLoadingMoreInbox, setIsLoadingMoreInbox] = useState(false);
   const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false);
   const [isSavingContext, setIsSavingContext] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -296,10 +298,7 @@ export function PendingVisitRequestsView() {
   const canAccess = canAccessPendingVisits(user?.role);
   const canAccessDetailedAgenda = canViewScheduling(user?.role);
   const isSalesRole = user?.role === UserRole.SALES;
-  const selectedVisitRequest = useMemo(
-    () => response?.items.find((item) => item.id === selectedVisitRequestId) ?? null,
-    [response?.items, selectedVisitRequestId],
-  );
+  const selectedVisitRequestId = selectedVisitRequest?.id ?? null;
   const selectedVisitRequestCustomerName = useMemo(() => {
     if (
       !selectedVisitRequest ||
@@ -338,9 +337,24 @@ export function PendingVisitRequestsView() {
   }, [crmCustomerNames, selectedVisitRequest]);
 
   function handleOpenDispatch(visitRequestId: string) {
-    setSelectedVisitRequestId(visitRequestId);
-    resetRecommendationState();
-    setIsDispatchDrawerOpen(true);
+    const fromPage = response?.items.find((item) => item.id === visitRequestId) ?? null;
+    if (fromPage) {
+      setSelectedVisitRequest(fromPage);
+      resetRecommendationState();
+      setIsDispatchDrawerOpen(true);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const visitRequest = await wfmApi.visitRequests.get(visitRequestId);
+        setSelectedVisitRequest(visitRequest);
+        resetRecommendationState();
+        setIsDispatchDrawerOpen(true);
+      } catch (loadError) {
+        setError(mapPendingVisitError(loadError));
+      }
+    })();
   }
 
   function clearCrmQueryParams() {
@@ -387,7 +401,12 @@ export function PendingVisitRequestsView() {
 
     const loadSequence = inboxLoadSequenceRef.current + 1;
     inboxLoadSequenceRef.current = loadSequence;
-    setIsLoadingInbox(true);
+    const append = nextFilters.page > 1;
+    if (append) {
+      setIsLoadingMoreInbox(true);
+    } else {
+      setIsLoadingInbox(true);
+    }
     setError(null);
 
     try {
@@ -422,18 +441,32 @@ export function PendingVisitRequestsView() {
         pinnedCrmVisitRequestRef.current = null;
       }
 
-      setResponse(visibleResponse);
-      setSelectedVisitRequestId((current) => {
-        if (effectivePinnedVisitRequest) {
-          return effectivePinnedVisitRequest.id;
-        }
+      if (append) {
+        setResponse((current) => {
+          if (!current) {
+            return visibleResponse;
+          }
+          const seen = new Set(current.items.map((item) => item.id));
+          const appended = visibleResponse.items.filter((item) => !seen.has(item.id));
+          return {
+            ...visibleResponse,
+            items: [...current.items, ...appended],
+          };
+        });
+      } else {
+        setResponse(visibleResponse);
+        setSelectedVisitRequest((current) => {
+          if (effectivePinnedVisitRequest) {
+            return effectivePinnedVisitRequest;
+          }
 
-        if (current && visibleResponse.items.some((item) => item.id === current)) {
-          return current;
-        }
+          if (current) {
+            return visibleResponse.items.find((item) => item.id === current.id) ?? current;
+          }
 
-        return visibleResponse.items[0]?.id ?? null;
-      });
+          return visibleResponse.items[0] ?? null;
+        });
+      }
     } catch (loadError) {
       if (loadSequence === inboxLoadSequenceRef.current) {
         setError(mapPendingVisitError(loadError));
@@ -441,6 +474,7 @@ export function PendingVisitRequestsView() {
     } finally {
       if (loadSequence === inboxLoadSequenceRef.current) {
         setIsLoadingInbox(false);
+        setIsLoadingMoreInbox(false);
       }
     }
   }
@@ -491,8 +525,12 @@ export function PendingVisitRequestsView() {
         return;
       }
 
-      const expedienteEvents = await wfmApi.events.list({ expedienteId: response.data.id });
-      const existingActiveEvent = expedienteEvents.find(
+      const expedienteEventsResponse = await wfmApi.events.list({
+        expedienteId: response.data.id,
+        page: 1,
+        limit: 100,
+      });
+      const existingActiveEvent = expedienteEventsResponse.data.find(
         (event) => !isScheduleEventTerminalStatus(event.status),
       );
 
@@ -516,7 +554,7 @@ export function PendingVisitRequestsView() {
       const clearedFilters = buildDefaultPendingVisitFilters();
       setFilters(clearedFilters);
       setResponse((current) => upsertVisitRequestResponse(current, visitRequest));
-      setSelectedVisitRequestId(visitRequest.id);
+      setSelectedVisitRequest(visitRequest);
       setIsDispatchDrawerOpen(true);
       setFeedback(`La solicitud ${visitRequest.title} quedó abierta en la bandeja.`);
 
@@ -706,14 +744,24 @@ export function PendingVisitRequestsView() {
     }
 
     handledSelectedVisitRequestRef.current = queryKey;
-    setSelectedVisitRequestId(selectedFromQuery);
     setIsDispatchDrawerOpen(true);
+
+    void (async () => {
+      try {
+        const fromPage = response?.items.find((item) => item.id === selectedFromQuery) ?? null;
+        const visitRequest = fromPage ?? (await wfmApi.visitRequests.get(selectedFromQuery));
+        setSelectedVisitRequest(visitRequest);
+      } catch (loadError) {
+        setError(mapPendingVisitError(loadError));
+        setIsDispatchDrawerOpen(false);
+      }
+    })();
 
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete('selectedVisitRequestId');
     const nextQuery = nextParams.toString();
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-  }, [authLoading, canAccess, pathname, router, searchParams, user]);
+  }, [authLoading, canAccess, pathname, response?.items, router, searchParams, user]);
 
   useEffect(() => {
     if (authLoading || !user || !canAccess) {
@@ -930,16 +978,28 @@ export function PendingVisitRequestsView() {
           openDispatchVisitRequestId={isDispatchDrawerOpen ? selectedVisitRequestId : null}
           filterOptions={filterOptions}
           isLoading={isLoadingInbox}
+          isLoadingMore={isLoadingMoreInbox}
           isLoadingFilterOptions={isLoadingFilterOptions}
           onFiltersChange={(next) => {
             setFeedback(null);
             setFilters(next);
           }}
+          onLoadMore={() => {
+            setFeedback(null);
+            setFilters((current) => ({
+              ...current,
+              page: current.page + 1,
+            }));
+          }}
           onOpenDispatch={handleOpenDispatch}
           onRefresh={() => {
             setFeedback(null);
             if (!isSalesRole) {
-              void loadInbox();
+              if (filters.page > 1) {
+                setFilters({ ...filters, page: 1 });
+              } else {
+                void loadInbox({ ...filters, page: 1 });
+              }
               void loadFilterOptions();
             }
           }}
@@ -973,6 +1033,7 @@ export function PendingVisitRequestsView() {
                   selectedVisitRequest.id,
                   payload,
                 );
+                setSelectedVisitRequest(updated);
                 setFeedback(`La solicitud ${updated.title} actualizó su contexto operativo.`);
                 if (isSalesRole) {
                   setResponse((current) => upsertVisitRequestResponse(current, updated));
@@ -1020,6 +1081,7 @@ export function PendingVisitRequestsView() {
                 selectedVisitRequest.id,
                 payload,
               );
+              setSelectedVisitRequest(updated);
               setFeedback(`La solicitud ${updated.title} actualizó su contexto operativo.`);
               if (isSalesRole) {
                 setResponse((current) => upsertVisitRequestResponse(current, updated));

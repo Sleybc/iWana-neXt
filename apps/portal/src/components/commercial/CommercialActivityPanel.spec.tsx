@@ -222,7 +222,43 @@ describe('CommercialActivityPanel', () => {
     expect(within(section).queryByText('missing_current_price')).not.toBeInTheDocument();
 
     await user.click(within(section).getByRole('button', { name: /Promo fibra/i }));
-    expect(onNavigateTab).toHaveBeenCalledWith('promotions', { status: 'expiring' });
+    expect(onNavigateTab).toHaveBeenCalledWith('promotions', {
+      status: 'expiring',
+      focus: 'promo-1',
+    });
+  });
+
+  it('KPI Listos navega al tab con más incompletos', async () => {
+    const user = userEvent.setup();
+    const onNavigateTab = jest.fn();
+
+    render(
+      <CommercialActivityPanel
+        summary={buildSummary({
+          catalogIncompleteActiveCount: 2,
+          attentionItems: [
+            {
+              id: 'prod-1',
+              entityType: 'product',
+              name: 'TV Box',
+              reason: 'missing_current_price',
+              destinoTab: 'products',
+            },
+            {
+              id: 'prod-2',
+              entityType: 'product',
+              name: 'Cámara',
+              reason: 'missing_current_price',
+              destinoTab: 'products',
+            },
+          ],
+        })}
+        onNavigateTab={onNavigateTab}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Listos para vender/i }));
+    expect(onNavigateTab).toHaveBeenCalledWith('products');
   });
 
   it('CTA de primera vez navega a planes', async () => {

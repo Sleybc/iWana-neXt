@@ -187,7 +187,10 @@ describe('TaxationController HTTP', () => {
 
   describe('GET /api/v1/taxation/definitions', () => {
     it('retorna 200 con array vacío cuando no hay definiciones', async () => {
-      taxDefinitionServiceMock.findAll.mockResolvedValue([]);
+      taxDefinitionServiceMock.findAll.mockResolvedValue({
+        data: [],
+        meta: { nextCursor: null, total: 0 },
+      });
 
       await request(app.getHttpServer())
         .get('/api/v1/taxation/definitions')
@@ -195,13 +198,19 @@ describe('TaxationController HTTP', () => {
         .expect(200)
         .expect(({ body }) => {
           expect(body.data).toEqual([]);
+          expect(body.meta).toEqual({ nextCursor: null, total: 0 });
         });
 
-      expect(taxDefinitionServiceMock.findAll).toHaveBeenCalledWith({});
+      expect(taxDefinitionServiceMock.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 20 }),
+      );
     });
 
     it('retorna 200 con array de definiciones', async () => {
-      taxDefinitionServiceMock.findAll.mockResolvedValue([validTaxDef]);
+      taxDefinitionServiceMock.findAll.mockResolvedValue({
+        data: [validTaxDef],
+        meta: { nextCursor: null, total: 1 },
+      });
 
       await request(app.getHttpServer())
         .get('/api/v1/taxation/definitions')
@@ -210,21 +219,28 @@ describe('TaxationController HTTP', () => {
         .expect(({ body }) => {
           expect(body.data).toHaveLength(1);
           expect(body.data[0].code).toBe('IVA_19');
+          expect(body.meta.total).toBe(1);
         });
     });
 
     it('propaga query params category y context al servicio', async () => {
-      taxDefinitionServiceMock.findAll.mockResolvedValue([]);
+      taxDefinitionServiceMock.findAll.mockResolvedValue({
+        data: [],
+        meta: { nextCursor: null, total: 0 },
+      });
 
       await request(app.getHttpServer())
         .get('/api/v1/taxation/definitions?category=VAT&context=SALES')
         .set('Authorization', 'Bearer accountant-token')
         .expect(200);
 
-      expect(taxDefinitionServiceMock.findAll).toHaveBeenCalledWith({
-        category: 'VAT',
-        context: 'SALES',
-      });
+      expect(taxDefinitionServiceMock.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: 'VAT',
+          context: 'SALES',
+          limit: 20,
+        }),
+      );
     });
 
     it('retorna 403 con rol no permitido', async () => {

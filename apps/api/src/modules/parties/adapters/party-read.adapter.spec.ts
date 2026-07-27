@@ -204,6 +204,7 @@ describe('PartyReadAdapter', () => {
 
     it('ordena por displayName (propiedad TypeORM) y no por display_name SQL', async () => {
       const orderBy = jest.fn().mockReturnThis();
+      const addOrderBy = jest.fn().mockReturnThis();
       const skip = jest.fn().mockReturnThis();
       const take = jest.fn().mockReturnThis();
       const getManyAndCount = jest.fn().mockResolvedValue([[buildParty()], 1]);
@@ -213,6 +214,7 @@ describe('PartyReadAdapter', () => {
         innerJoin: jest.fn().mockReturnThis(),
         andWhere,
         orderBy,
+        addOrderBy,
         skip,
         take,
         getManyAndCount,
@@ -239,6 +241,7 @@ describe('PartyReadAdapter', () => {
       // Regresión: orderBy con snake_case dispara TypeError databaseName en TypeORM 0.3
       expect(orderBy).toHaveBeenCalledWith('p.displayName', 'ASC');
       expect(orderBy).not.toHaveBeenCalledWith('p.display_name', 'ASC');
+      expect(addOrderBy).toHaveBeenCalledWith('p.id', 'ASC');
       expect(result.total).toBe(1);
       expect(result.data[0]!.displayName).toBe('Macrotics SAS');
       expect(result.page).toBe(1);
@@ -252,6 +255,7 @@ describe('PartyReadAdapter', () => {
         innerJoin: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy,
+        addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),

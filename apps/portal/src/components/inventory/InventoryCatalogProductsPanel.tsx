@@ -2,14 +2,20 @@
 
 import type { ReactNode } from 'react';
 import { Package } from 'lucide-react';
-import { Button } from '@iwana/ui';
+import { Badge, Button } from '@iwana/ui';
 import type { InventoryItemRecord } from '@/lib/api-client';
-import { PortalEmptyState, portalDataTableShellClassName } from '@/components/shared/portal-ui';
+import {
+  PortalEmptyState,
+  PortalResultsStrip,
+  PortalTablePagination,
+  portalDataTableShellClassName,
+} from '@/components/shared/portal-ui';
 import { InventoryCatalogFilters } from './InventoryCatalogFilters';
 import { InventoryCatalogProductsSkeleton } from './InventoryCatalogProductsSkeleton';
 import { InventoryItemsTable } from './InventoryItemsTable';
 import type { CatalogFilters } from './catalog-filters';
 import { hasActiveCatalogFilters } from './catalog-filters';
+import { formatInventoryResultsLabel } from './inventory-list-pagination';
 
 interface CategoryOption {
   value: string;
@@ -19,7 +25,11 @@ interface CategoryOption {
 interface InventoryCatalogProductsPanelProps {
   filters: CatalogFilters;
   items: InventoryItemRecord[];
+  /** Total servidor (meta.total), no el universo materializado. */
   totalCount: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   categoryOptions: CategoryOption[];
   supplierLabels: Record<string, string>;
   isLoading: boolean;
@@ -37,6 +47,9 @@ export function InventoryCatalogProductsPanel({
   filters,
   items,
   totalCount,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
   categoryOptions,
   supplierLabels,
   isLoading,
@@ -51,10 +64,13 @@ export function InventoryCatalogProductsPanel({
 }: InventoryCatalogProductsPanelProps) {
   const resultCount = items.length;
   const hasFilters = hasActiveCatalogFilters(filters);
-  const resultLabel =
-    resultCount === totalCount
-      ? `${resultCount} productos`
-      : `${resultCount} de ${totalCount} productos`;
+  const resultsLabel = formatInventoryResultsLabel({
+    loaded: resultCount,
+    total: totalCount,
+    hasMore,
+    singular: 'producto',
+    plural: 'productos',
+  });
 
   const emptyAction = createAction ?? (
     <Button type="button" onClick={onCreateProduct}>
@@ -62,7 +78,7 @@ export function InventoryCatalogProductsPanel({
     </Button>
   );
 
-  if (isLoading && totalCount === 0) {
+  if (isLoading && totalCount === 0 && resultCount === 0) {
     return <InventoryCatalogProductsSkeleton />;
   }
 
@@ -79,16 +95,14 @@ export function InventoryCatalogProductsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{resultLabel}</p>
-      </div>
-
       <InventoryCatalogFilters
         filters={filters}
         categoryOptions={categoryOptions}
         onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
       />
+
+      <PortalResultsStrip badge={<Badge variant="neutral">{resultsLabel}</Badge>} />
 
       {resultCount === 0 ? (
         <PortalEmptyState
@@ -115,6 +129,16 @@ export function InventoryCatalogProductsPanel({
               deletingItemId={deletingItemId}
             />
           </div>
+          {onLoadMore ? (
+            <PortalTablePagination
+              hasMore={hasMore}
+              onLoadMore={onLoadMore}
+              loading={isLoadingMore}
+              resourceLabel="productos"
+              shown={resultCount}
+              total={totalCount}
+            />
+          ) : null}
         </div>
       )}
     </div>

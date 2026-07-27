@@ -65,6 +65,87 @@ describe('visit-request-origin-orchestration', () => {
     );
   });
 
+  it('normalizes CRM coordinates serialized as PostgreSQL numeric strings', async () => {
+    findOrCreateInstallationMock.mockResolvedValue({
+      ticket: { id: 'TK-002' } as never,
+      created: true,
+    });
+    visitRequestsCreateMock.mockResolvedValue({
+      id: 'vr-002',
+      title: 'Instalación',
+      originContext: WorkOrderSourceContext.CRM,
+    } as never);
+
+    await createCrmVisitRequestAndRoute({
+      expedienteId: '550e8400-e29b-41d4-a716-446655440000',
+      customerLabel: 'Cliente Demo',
+      latitude: '4,7110000',
+      longitude: '-74,0721000',
+      nextAction: 'schedule-now',
+    });
+
+    expect(visitRequestsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitude: 4.711,
+        longitude: -74.0721,
+      }),
+    );
+  });
+
+  it('omits the coordinate pair when one CRM coordinate is not normalizable', async () => {
+    findOrCreateInstallationMock.mockResolvedValue({
+      ticket: { id: 'TK-003' } as never,
+      created: true,
+    });
+    visitRequestsCreateMock.mockResolvedValue({
+      id: 'vr-003',
+      title: 'Instalación',
+      originContext: WorkOrderSourceContext.CRM,
+    } as never);
+
+    await createCrmVisitRequestAndRoute({
+      expedienteId: '550e8400-e29b-41d4-a716-446655440000',
+      customerLabel: 'Cliente Demo',
+      latitude: 'sin coordenada',
+      longitude: '-74.0721',
+      nextAction: 'schedule-now',
+    });
+
+    expect(visitRequestsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitude: null,
+        longitude: null,
+      }),
+    );
+  });
+
+  it('omits the coordinate pair when CRM coordinates are outside WFM geographic bounds', async () => {
+    findOrCreateInstallationMock.mockResolvedValue({
+      ticket: { id: 'TK-004' } as never,
+      created: true,
+    });
+    visitRequestsCreateMock.mockResolvedValue({
+      id: 'vr-004',
+      title: 'Instalación',
+      originContext: WorkOrderSourceContext.CRM,
+    } as never);
+
+    await createCrmVisitRequestAndRoute({
+      expedienteId: '550e8400-e29b-41d4-a716-446655440000',
+      customerLabel: 'Cliente Demo',
+      latitude: '91',
+      longitude: '-74.0721',
+      nextAction: 'schedule-now',
+    });
+
+    expect(visitRequestsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitude: null,
+        longitude: null,
+      }),
+    );
+  });
+
   it('routes task scheduling-later to pending inbox with selection', async () => {
     visitRequestsCreateMock.mockResolvedValue({
       id: 'vr-task-1',

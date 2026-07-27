@@ -3,13 +3,7 @@
 import { useState } from 'react';
 import { Button, SectionAccordion } from '@iwana/ui';
 import { FolderOpen } from 'lucide-react';
-import type {
-  AdditionalProduct,
-  AdditionalService,
-  CompletenessResult,
-  ExpedienteRecord,
-  PlanCatalogItem,
-} from '@/lib/api-client';
+import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
 import {
   SECTIONS,
   calculateDocumentSupportCompletion,
@@ -41,9 +35,6 @@ interface ExpedienteSectionsProps {
   lockedSections: Set<SectionId>;
   onUnlockIdentification: () => void;
   savingSection: SectionId | null;
-  planCatalog: PlanCatalogItem[];
-  additionalProducts: AdditionalProduct[];
-  additionalServices: AdditionalService[];
   actionMessage: string | null;
   actionMessageTone: 'success' | 'error' | 'info';
   onDocumentSupportSaved: () => Promise<void>;
@@ -59,9 +50,6 @@ export function ExpedienteSections({
   lockedSections,
   onUnlockIdentification,
   savingSection,
-  planCatalog,
-  additionalProducts,
-  additionalServices,
   actionMessage,
   actionMessageTone,
   onDocumentSupportSaved,
@@ -158,9 +146,6 @@ export function ExpedienteSections({
             onChange={onDraftChange}
             saving={savingSection === 'commercial_interest'}
             onSave={() => onSaveSection('commercial_interest')}
-            planCatalog={planCatalog}
-            additionalProducts={additionalProducts}
-            additionalServices={additionalServices}
           />
         );
       case 'technical_feasibility':

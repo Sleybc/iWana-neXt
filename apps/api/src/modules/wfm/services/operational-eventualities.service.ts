@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DataSource } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { runInTenantSchema, TenantContext, WfmOperationalEventuality } from '@iwana/db';
-import { OperationalEventualityStatus } from '@iwana/shared';
+import { OperationalEventualityStatus, type ListResponse } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   CreateOperationalEventualityDto,
   UpdateOperationalEventualityStatusDto,
@@ -47,24 +49,43 @@ export class OperationalEventualitiesService {
   async findAllByTenant(filters?: {
     userId?: string;
     organizationSiteId?: string;
-  }): Promise<WfmOperationalEventuality[]> {
+    page?: number;
+    limit?: number;
+  }): Promise<ListResponse<WfmOperationalEventuality>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(filters?.limit);
+    const { page, limit } = clampPage(filters?.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const where: Record<string, unknown> = { tenantId };
+      const qb = qr.manager
+        .createQueryBuilder(WfmOperationalEventuality, 'e')
+        .where('e.tenant_id = :tenantId', { tenantId })
+        .andWhere('e.deleted_at IS NULL')
+        .orderBy('e.starts_at', 'DESC')
+        .addOrderBy('e.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
       if (filters?.userId) {
-        where['userId'] = filters.userId;
+        qb.andWhere('e.user_id = :userId', { userId: filters.userId });
       }
       if (filters?.organizationSiteId) {
-        where['organizationSiteId'] = filters.organizationSiteId;
+        qb.andWhere('e.organization_site_id = :organizationSiteId', {
+          organizationSiteId: filters.organizationSiteId,
+        });
       }
 
-      return qr.manager.find(WfmOperationalEventuality, {
-        where,
-        order: { startsAt: 'DESC' },
-        withDeleted: false,
-      });
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 

@@ -1,8 +1,8 @@
 # PRD - MOD09 Programacion / WFM
 
-**Version:** 1.3  
-**Estado:** Aprobado  
-**Fecha:** 2026-06-24  
+**Version:** 1.4  
+**Estado:** En revision — baseline v1.3 aprobado; ampliacion v1.4 sujeta a ADR-068 (propuesto)  
+**Fecha:** 2026-07-27  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **Trazabilidad base:** docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md  
@@ -17,6 +17,7 @@
 **Prompt de ejecucion:** docs/prompts/PROMPT-MOD09-PROGRAMACION-WFM-FASE-01-v1.0.md  
 **Prompt complementario:** docs/prompts/PROMPT-MOD09-PROGRAMACION-WFM-FASE-02-v1.0.md  
 **Informe vivo relacionado:** docs/informes/INFORME-MOD09-FASE-02-v1.0.md
+**Ampliacion OT instalacion:** docs/specs/2026-07-27-mod09-mod11-ot-instalacion-coordinador-design.md
 
 > Aprobacion CTO registrada: ADR-037 autoriza `WfmModule` como nuevo bounded context para MOD09 Programacion / WFM.
 > Consolidacion documental 2026-06-23: este PRD absorbe el alcance funcional que antes estaba separado en un addendum de command center y queda como fuente canonica unica de MOD09.
@@ -322,3 +323,21 @@ Todos los endpoints deben documentarse con Swagger/OpenAPI y usar DTOs tipados c
 - Sin PII real, secretos ni logs sensibles.
 - Informe de fase actualizado en `docs/informes/`.
 - Evidencia de calidad registrada en `docs/quality/`.
+
+---
+
+## 11. Ampliacion 2026-07-27 — supervision de OT de instalacion
+
+Esta ampliacion prevalece sobre cualquier interpretacion anterior que permita ejecutar trabajo tecnico desde Agenda.
+
+- MOD09 conserva solicitud de visita, ventana, recurso, reprogramacion, cancelacion y supervision.
+- El detalle lateral de Agenda es un panel de contexto y excepciones; no contiene actividad, consumos, evidencias, firma ni cierre de OT.
+- El coordinador puede supervisar y resolver excepciones con `operations.execution_orders.supervise`; solo ejecuta si ademas posee `operations.execution_orders.execute` y es responsable elegible.
+- MOD09 muestra un resumen de `ExecutionOrder`, su progreso, ultima sincronizacion y acciones de coordinacion.
+- `WorkOrder` ligera permanece como compatibilidad oculta y no como segunda OT visible o mutable.
+- La ampliacion propone proyectar estados terminales conforme a ADR-068 (propuesto); una proyeccion atrasada bloquearía decisiones terminales.
+- Una correccion posterior crea seguimiento/nueva visita; nunca reabre la OT original.
+
+**Gate:** ADR-068 (propuesto) debe promoverse a `Aprobado` y los contratos UX/DS/API deben congelarse antes de implementar esta ampliacion.
+
+**Trazabilidad:** `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (propuesto), `docs/plans/2026-07-27-mod09-mod11-ot-instalacion-redesign.md`.

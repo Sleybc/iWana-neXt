@@ -9,17 +9,20 @@ const PREVIEW_LIMIT = 6;
 
 interface InventoryCatalogSummaryPreviewProps {
   items: InventoryItemRecord[];
+  totalCount?: number;
   isLoading?: boolean;
   onOpenCatalog: () => void;
 }
 
 export function InventoryCatalogSummaryPreview({
   items,
+  totalCount,
   isLoading = false,
   onOpenCatalog,
 }: InventoryCatalogSummaryPreviewProps) {
   const previewItems = items.slice(0, PREVIEW_LIMIT);
-  const hasMore = items.length > PREVIEW_LIMIT;
+  const resolvedTotal = totalCount ?? items.length;
+  const hasMore = resolvedTotal > PREVIEW_LIMIT;
 
   return (
     <PortalPanel
@@ -49,7 +52,7 @@ export function InventoryCatalogSummaryPreview({
           <InventoryItemsTable items={previewItems} />
           {hasMore ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Mostrando {PREVIEW_LIMIT} de {items.length} productos.
+              Mostrando {PREVIEW_LIMIT} de {resolvedTotal} productos.
             </p>
           ) : null}
         </div>

@@ -18,6 +18,17 @@
  * un informe. Mismo contrato que `.agents/skills/iwana-identity-ui-review/
  * scripts/audit-ui.mjs`.
  *
+ * Barrido de estados independiente de las citas (PROMPT ADR-065 cierre V-3):
+ *   [D] ADR uncited con estado ausente o no canónico        → AVISO
+ *       La validación de estado vivía solo dentro del bucle de citas (reglas
+ *       `adr-no-status` y `adr-status-invalid`). Un ADR con estado roto era
+ *       invisible hasta que alguien lo citara — exactamente como ADR-064, que
+ *       generó 60 defectos el día que este programa lo referenció (hallazgo A-5).
+ *       El barrido recorre TODOS los ADR del índice; los no citados reportan
+ *       AVISO (no BLOQUEANTE) porque resolver su estado puede requerir decisión
+ *       del CTO. Los citados conservan la severidad que ya tienen en el bucle.
+ *       Implementado 2026-07-27 — Addendum V-3 del cierre de ADR-065.
+ *
  * Uso:
  *   node scripts/audit-adr-citations.mjs [rutas...] [--json]
  *   (sin rutas: docs, .agents/skills)
@@ -270,6 +281,7 @@ function termInBody(term, body) {
 
 const adrIndex = buildAdrIndex();
 const findings = [];
+const citedAdrs = new Set();
 
 for (const target of targets) {
   if (!existsSync(target)) continue;
@@ -312,6 +324,7 @@ for (const target of targets) {
           });
 
         const entry = adrIndex.get(num);
+        if (entry) citedAdrs.add(num);
 
         // (a) existencia
         if (!entry) {
@@ -379,6 +392,34 @@ for (const target of targets) {
           );
         }
       }
+    });
+  }
+}
+
+// Barrido de estados independiente de las citas (V-3, ADR-065 cierre 2026-07-27)
+for (const [num, entry] of adrIndex) {
+  if (citedAdrs.has(num)) continue;
+  if (!entry.state) {
+    findings.push({
+      rule: 'adr-uncited-no-status',
+      kind: 'D',
+      sev: 'AVISO',
+      adr: `ADR-${num}`,
+      file: entry.file,
+      line: 0,
+      desc: `${entry.file} no declara estado — no está citado, por lo que es AVISO (un BLOQUEANTE requeriría decisión del CTO)`,
+      evidence: '(barrido de estados independiente)',
+    });
+  } else if (!CANONICAL_STATES.has(entry.state.key)) {
+    findings.push({
+      rule: 'adr-uncited-status-invalid',
+      kind: 'D',
+      sev: 'AVISO',
+      adr: `ADR-${num}`,
+      file: entry.file,
+      line: 0,
+      desc: `Estado "${entry.state.raw}" fuera del vocabulario canónico en ${entry.file} — no está citado, por lo que es AVISO (un BLOQUEANTE requeriría decisión del CTO); vocabulario: Aprobado · En revisión · Propuesto · Superado`,
+      evidence: '(barrido de estados independiente)',
     });
   }
 }

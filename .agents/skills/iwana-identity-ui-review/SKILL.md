@@ -154,6 +154,14 @@ Estas reglas son mecanicamente comprobables en el codigo (el script cubre las ma
 | ⚙ Degradado azul→lima fuera de indicadores de progreso — es firma de avance, no decoracion | `from-iwana-primary to-iwana-secondary` (o `.iwana-gradient`) en fondos, headers o cards sin semantica de progreso | P2 |
 | ⚙ Guerra de z-index heredada de template (`z-9999+`) — la escala iWana es corta (0/10/20/40/100/1000) | grep `z-[9]{3,}` | P2 |
 | Variante local nueva de un patron firma ya unificado (KPI card, tabla, page header, sidebar) en vez del primitive/contrato vigente | componente ad hoc que duplica un patron cubierto por `portal-ui.tsx` / `@iwana/ui` | P2 |
+| ⚙ Tabla operativa sin cota de pagina / listado unbounded (ADR-064 §8, vigente) — o pie ornamental «Fin de resultados» / conteo duplicado | fetch sin `limit` materializado en grilla; conteo repetido en strip y pie | P1 |
+| Tabla que monta los dos pies a la vez, o que decide el modo en el frontend en vez de leer `meta.capabilities.randomAccess` (ADR-065) | `PortalTablePagination` y `PortalTablePager` en el mismo shell; condicional por modulo | P1 |
+| Pagina, tamaño de pagina, filtros u orden fuera de la URL en una tabla paginada (ADR-065 §9) | estado de paginacion solo en `useState`; el boton Atras no vuelve a la pagina anterior | P1 |
+| Lima en el pager de paginacion o en el encabezado ordenable — el lima es avance; pagina y orden son posicion | `iwana-secondary*` en botones de pagina o en el control de orden | P2 |
+| ⚙ Encabezado ordenable sin `aria-sort` en el `<th>`, o mas de un `aria-sort` distinto de `none` por tabla (ADR-065 §22) | control de orden en `<th>` sin `aria-sort` | P1 |
+| Columna con control de orden que no esta declarada en `meta.capabilities.sortableFields`, o lista de columnas ordenables hardcodeada en la pantalla (ADR-065 §18) | array local de campos ordenables en el componente | P1 |
+| Estado de orden comunicado solo por el icono, sin cambio de peso ni texto accesible (WCAG 1.4.1) | encabezado activo identico al inactivo salvo el caret | P2 |
+| Ciclo de orden reimplementado en la pantalla en vez de delegarlo al primitive | logica `asc`/`desc` local en un componente de tabla | P2 |
 | ⚙ Spinner bloqueante en vista principal en vez de skeleton con forma de contenido | spinner/`animate-spin` como estado de carga primario de una pagina o tabla | P3 |
 | Cifras en columnas de datos sin figuras tabulares o mono — provocan saltos de layout | columnas numericas de tabla sin `font-mono` / `tabular-nums` | P3 |
 | Eyebrow manual en vez de `.portal-eyebrow` / `.portal-eyebrow-muted`, o letter-spacing exagerado | estilos de eyebrow ad hoc | P3 |

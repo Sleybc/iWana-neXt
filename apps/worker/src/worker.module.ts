@@ -11,16 +11,25 @@ import {
   SEARCH_INDEX_QUEUE,
   TENANT_PROVISIONING_QUEUE,
   TENANT_SCHEMA_PURGE_QUEUE,
+  OPERATIONS_EXECUTION_EVENTS_QUEUE,
+  OPERATIONS_EXECUTION_RELAY_QUEUE,
+  OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
+  OPERATIONS_EXECUTION_DLQ,
 } from '@iwana/shared';
 import { AssuranceFieldServiceProcessor } from './processors/assurance-field-service.processor';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
-import { SearchIndexProcessor } from './processors/search-index.processor';
 import { TenantSchemaPurgeProcessor } from './processors/tenant-schema-purge.processor';
 import { TenantProvisioningProcessor } from './processors/tenant-provisioning.processor';
+import { SearchIndexProcessor } from './processors/search-index.processor';
 import { SearchIndexWorkerService } from './search/search-index.worker.service';
 import { SearchNavigationCatalogService } from './search/search-navigation-catalog.service';
 import { SearchTypesenseClient } from './search/search-typesense.client';
 import { SchedulerService } from './services/scheduler.service';
+import { ExecutionOrderRelayService } from './services/execution-order-relay.service';
+import { ExecutionOrderEventsProcessor } from './processors/execution-order-events.processor';
+import { ExecutionOrderRelayProcessor } from './processors/execution-order-relay.processor';
+import { ExecutionOrderTombstoneProcessor } from './processors/execution-order-tombstone.processor';
+import { ExecutionOrderDlqProcessor } from './processors/execution-order-dlq.processor';
 import { TenantSeedService } from './services/tenant-seed.service';
 
 const runtimeEnv = process.env['NODE_ENV'];
@@ -155,6 +164,10 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({
       name: ASSURANCE_FIELD_SERVICE_QUEUE,
     }),
+    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_EVENTS_QUEUE }),
+    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_RELAY_QUEUE }),
+    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_TOMBSTONE_QUEUE }),
+    BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
   ],
   providers: [
     TenantProvisioningProcessor,
@@ -167,6 +180,11 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     SearchNavigationCatalogService,
     SearchTypesenseClient,
     SchedulerService,
+    ExecutionOrderRelayService,
+    ExecutionOrderEventsProcessor,
+    ExecutionOrderRelayProcessor,
+    ExecutionOrderTombstoneProcessor,
+    ExecutionOrderDlqProcessor,
   ],
 })
 export class WorkerModule {}

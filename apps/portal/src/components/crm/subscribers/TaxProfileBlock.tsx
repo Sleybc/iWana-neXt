@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import {
   ApiError,
+  COMMERCIAL_PICKER_LIMIT,
   commercialApi,
   type SubscriberTaxProfileSnapshot,
   type TaxAssignmentSnapshot,
@@ -108,8 +109,8 @@ function AddTributosModal({
     setErrorMsg(null);
     setLoadingCatalog(true);
     commercialApi
-      .listTaxDefinitions({ isActive: true })
-      .then((res) => setCatalog(res))
+      .listTaxDefinitions({ isActive: true, limit: COMMERCIAL_PICKER_LIMIT })
+      .then((res) => setCatalog(res.data))
       .catch(() => setErrorMsg('No fue posible cargar el catálogo de tributos.'))
       .finally(() => setLoadingCatalog(false));
   }, [open]);

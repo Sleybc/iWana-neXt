@@ -44,7 +44,8 @@ export function DatePicker({
   disabled = false,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
-  const triggerId = id ?? React.useId();
+  const generatedId = React.useId();
+  const triggerId = id ?? generatedId;
   const labelId = `${triggerId}-label`;
   const helperId = `${triggerId}-helper`;
   const errorId = `${triggerId}-error`;

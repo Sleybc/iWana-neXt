@@ -51,7 +51,7 @@ CTO Humano (decisión estratégica, presupuesto, ADRs, excepciones)
 
 **Roles que no existen en esta estructura no son destinos de escalación.** Un perfil que necesite escalar algo sin dueño aquí lo escala a AI-EM-ARCH, quien lo resuelve o lo sube al CTO. (Corrige los destinos fantasma "Staff Engineer" y "Architect de Datos" que arrastraban los perfiles v1.)
 
-**Gobernanza vs modo de sesión (multi-IDE):** la gobernanza de AI-EM-ARCH (boundaries, gates, este protocolo) rige **siempre** vía `AGENTS.md`; pero el modo de sesión por defecto de cualquier cliente (Cursor, Copilot, Claude Code, Codex, OpenCode) es **ejecutor** — puede implementar código respetando los gates. El modo Orquestador (con su límite de "no código productivo") solo aplica con activación explícita ([.github/prompts/activar-ai-em-arch.prompt.md](../../.github/prompts/activar-ai-em-arch.prompt.md)). Detalle en el informe vivo de roles §4.
+**Gobernanza vs modo de sesión (multi-IDE):** la gobernanza de AI-EM-ARCH (boundaries, gates, este protocolo) rige **siempre** vía `AGENTS.md`; pero el modo de sesión por defecto de cualquier cliente (Cursor, Copilot, Claude Code, Codex, OpenCode) es **ejecutor** — puede implementar código respetando los gates. El modo Orquestador (con su límite de "no código productivo") solo aplica con activación explícita ([PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md)). Detalle en el informe vivo de roles §4.
 
 Separación de responsabilidades de la cadena de UI (reduce solapamiento):
 **qué/flujo** = AI-PROD-UX · **con qué/contrato** = AI-DS-OWNER · **cómo/código** = AI-FE-PLATFORM · **datos/servidor** = AI-SR-FULL · **verifica** = AI-SR-QA.
@@ -110,7 +110,7 @@ Siete etapas con gates. Ningún gate se auto-aprueba: el aprobador es siempre di
 
 Reglas del workflow:
 
-- **Handoff explícito:** cada etapa termina con un artefacto nombrado y localizado en `docs/` (`docs/prds/`, `docs/specs/`, `docs/plans/`, `docs/informes/`); un handoff verbal o implícito no cuenta.
+- **Handoff explícito:** cada etapa termina con un artefacto nombrado y localizado en `docs/` — `docs/prds/`, `docs/specs/`, `docs/plans/`, `docs/informes/` y **`docs/prompts/`** (etapa 4: el prompt de ejecución); un handoff verbal o implícito no cuenta. La enumeración es **cerrada**: no hay artefacto de etapa fuera de `docs/`.
 - **Iteración corta permitida:** las etapas 2–3 pueden iterar entre sí sin pasar por EM-ARCH mientras no cambien alcance, contrato ni boundary.
 - **Bloqueos (SLA en unidades de sesión):** un agente que no puede resolver un bloqueo dentro de su sesión actual con la información disponible emite `[BLOQUEO]` a EM-ARCH **antes de cerrar la sesión** — nunca asume para "seguir avanzando". Los bloqueos silenciosos son un anti-patrón de todo el sistema. (Los SLAs en horas de versiones anteriores eran una metáfora humana sin significado operativo para agentes que trabajan por sesiones.)
 - **Cambios tardíos:** un cambio de alcance descubierto en etapas 5–7 regresa a la etapa 1 ó 2 según su naturaleza; no se "parchea" en implementación.
@@ -146,7 +146,7 @@ Ambos se **congelan temprano** (al inicio de la fase). Un contrato sin artefacto
 1. **El contrato es la interfaz estable.** Un track solo se bloquea si el contrato del que depende cambia. Un cambio de contrato es el **único** evento que fuerza re-sync y se coordina vía EM-ARCH (se versiona y notifica; no se parchea en silencio).
 2. **Autonomía dentro del track.** Cada agente decide y ejecuta sin gate mientras respete su contrato y no toque alcance, boundary, tokens de marca ni dependencias nuevas (ver la sección "Autonomía" de cada perfil).
 3. **Carril rápido de UI.** Los cambios de componente/token/estado que **no** alteran alcance, contrato de datos, boundary ni tokens de marca los aprueba **AI-DS-OWNER** por delegación de EM-ARCH, sin gate de las 7 etapas. EM-ARCH solo interviene cuando sí se alteran. Esto quita el cuello de botella de serialización en trabajo de UI de bajo riesgo.
-4. **Handoff por artefacto.** Cada contrato y cada spec es un artefacto localizable en `docs/` o en el repo; un contrato verbal no cuenta.
+4. **Handoff por artefacto.** Cada contrato y cada spec es un artefacto localizable **en `docs/`**, en la carpeta que le corresponde por tipo (`AGENTS.md` → Documentation Rules); un contrato verbal no cuenta. *(El inciso "o en el repo" de v1.3 se suprime el 2026-07-27: la disyunción anulaba la restricción de carpeta y fue una de las vías por las que 30 prompts de ejecución acabaron fuera de `docs/prompts/`.)*
 
 ## 4. Gates técnicos comunes (merge / producción)
 

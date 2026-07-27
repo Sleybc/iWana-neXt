@@ -1,25 +1,16 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SerializedAssetStatus } from '@iwana/shared';
-import type { InventoryItemRecord, StockLocationRecord } from '@/lib/api-client';
 import { getSerializedAssetStatusLabel } from './inventory-labels';
 import { MovementsWorkspace, type ReturnFormState, type SaleFormState } from './MovementsWorkspace';
 
-const mockItems = [
-  {
-    id: 'item-1',
-    sku: 'ONT-001',
-    name: 'ONT WiFi 6',
-  },
-] as InventoryItemRecord[];
+jest.mock('./InventoryItemPicker', () => ({
+  InventoryItemPicker: ({ label }: { label?: string }) => <div>{label ?? 'Producto'}</div>,
+}));
 
-const mockLocations = [
-  {
-    id: 'loc-1',
-    code: 'BOD-01',
-    name: 'Bodega central',
-  },
-] as StockLocationRecord[];
+jest.mock('./InventoryLocationPicker', () => ({
+  InventoryLocationPicker: ({ label }: { label?: string }) => <div>{label ?? 'Bodega'}</div>,
+}));
 
 const defaultSaleForm: SaleFormState = {
   itemId: '',
@@ -44,8 +35,6 @@ describe('MovementsWorkspace · Fase H5', () => {
   it('renderiza paneles de venta y devolución', () => {
     render(
       <MovementsWorkspace
-        items={mockItems}
-        locations={mockLocations}
         saleForm={defaultSaleForm}
         onSaleFormChange={jest.fn()}
         returnForm={defaultReturnForm}
@@ -61,7 +50,7 @@ describe('MovementsWorkspace · Fase H5', () => {
     expect(screen.getByRole('heading', { name: 'Registrar venta' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Recibir devolución' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Registrar venta' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Registrar retorno' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Registrar devolución' })).toBeDisabled();
   });
 
   it('expone opciones de estado de retorno en español', async () => {
@@ -70,8 +59,6 @@ describe('MovementsWorkspace · Fase H5', () => {
 
     render(
       <MovementsWorkspace
-        items={mockItems}
-        locations={mockLocations}
         saleForm={defaultSaleForm}
         onSaleFormChange={jest.fn()}
         returnForm={defaultReturnForm}

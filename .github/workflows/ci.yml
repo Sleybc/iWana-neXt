@@ -1,5 +1,8 @@
 # .github/workflows/ci.yml
-# CI pipeline iWana neXt — Lint + Typecheck + Build + least-privilege gate (SEC-04 / GSEC-N1)
+# CI pipeline iWana neXt — Lint + Typecheck + Build + Unit tests + integración DB + least-privilege gate (SEC-04 / GSEC-N1)
+# R-13: pnpm test (turbo) es gate rojo; sin umbral cobertura 80% en este paso.
+# R-14: pnpm test serializa las tareas `test` (--concurrency=1) para que la suite sea
+# determinista en un runner de 2 cores. Ver nota en el paso «Unit tests».
 # Ejecuta en push y PR a main
 
 name: CI
@@ -11,10 +14,14 @@ on:
     branches: [main]
 
 jobs:
-  # Gate de integridad de citas normativas ADR (protocolo §7.4, ADR-056 propuesta SR-QA #13).
-  # Job propio y no el paso dentro de `ci`: el validador es Node puro sin dependencias,
-  # no necesita pnpm install, build ni PostgreSQL. Separado da señal en segundos en vez
-  # de esperar al pipeline pesado.
+  # Gate de integridad documental: dos validadores Node puros sin dependencias —
+  #  1. citas normativas ADR (protocolo §7.4, ADR-056 propuesta SR-QA #13)
+  #  2. ubicación documental TIPO → carpeta (AGENTS.md → Documentation Rules,
+  #     PROMPT-TRANSVERSAL-GATE-UBICACION-DOCUMENTAL-v1.0)
+  # Job propio y no el paso dentro de `ci`: no necesita pnpm install, build ni
+  # PostgreSQL. Separado da señal en segundos en vez de esperar al pipeline pesado.
+  # El id `adr-citations` y el display name se conservan: pueden estar referenciados
+  # en branch protection (renombrarlos es un cambio de plataforma aparte).
   adr-citations:
     name: Integridad de citas ADR
     runs-on: ubuntu-latest
@@ -31,8 +38,11 @@ jobs:
       - name: Auditar citas ADR
         run: node scripts/audit-adr-citations.mjs
 
+      - name: Auditar ubicación documental
+        run: node scripts/audit-doc-locations.mjs
+
   ci:
-    name: Lint + Typecheck + Build
+    name: Lint + Typecheck + Build + Unit tests
     runs-on: ubuntu-latest
 
     # Ephemeral CI DB only — passwords are disposable lab values, not production secrets.
@@ -109,6 +119,25 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # R-6.2 / R-13: clave AES efímera antes de unit tests y migraciones tenant.
+      # Joi de AppModule se omite con NODE_ENV=test; la suite mockea ConfigService,
+      # pero CLI/crypto specs y cualquier boot parcial leen process.env.
+      - name: Generar MFA_ENCRYPTION_KEY efímera para CI (no persistida en repo)
+        shell: bash
+        run: echo "MFA_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      # R-13: turbo test dependsOn ^build — tras Build. Fallo = job rojo (sin continue-on-error).
+      # Sin --coverage / umbral 80% (fase posterior). Suite unit/HTTP mocked; no requiere Postgres.
+      # R-14 (hallazgo A-1): `pnpm test` es `turbo run test --concurrency=1`. Las tareas
+      # `test` se serializan a propósito — jest ya paraleliza dentro de cada paquete, y
+      # antes 6 jest concurrentes pedían más workers que cores (en este runner de 2 cores
+      # el reparto es imposible: el mínimo por paquete ya es 1 worker). Los `^build` de
+      # los que depende son cache HIT de turbo porque el paso Build ya corrió en este job,
+      # así que serializar no cuesta tiempo de pipeline. No subir testTimeout para tapar
+      # contención: si vuelve a fallar por reloj de pared, es planificación, no timeout.
+      - name: Unit tests
+        run: pnpm test
+
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update -qq
@@ -147,6 +176,36 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -c "INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email) VALUES (gen_random_uuid(), 'CI Test Tenant', 'test', 'tenant_test', 'ACTIVE', 'ci-tenant@example.invalid');"
           pnpm --filter @iwana/db migration:tenant:run
+
+      # Auditoría ADR-065 (A-1 / A-2): la migración 089 sólo tenía 14 tests contra un
+      # QueryRunner mockeado, que no pueden detectar los defectos para los que se
+      # escribieron — BL-1 era un error de RUNTIME de PostgreSQL y D-1 un fallo
+      # semántico de filtrado por schema. Un mock registra la cadena SQL; no la ejecuta.
+      # Este paso ejecuta `up()` contra PostgreSQL real.
+      # Va aquí porque el paso anterior ya dejó base migrada, roles least-privilege y
+      # schema tenant_test. La suite crea y destruye sus propios schemas efímeros
+      # (it_089_a/b/c) usando DB_MIGRATOR_USER/PASSWORD, ya presentes en el env del job:
+      # no requiere ninguna variable nueva. Gate rojo: sin continue-on-error.
+      - name: Integration tests — migración 089 contra PostgreSQL real
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @iwana/db test:integration 2>&1 | tee /tmp/089-integration.log
+
+          # El spec emite `describe.skip` si su probe no alcanza PostgreSQL, y el script
+          # lleva `--passWithNoTests`: ambos caminos darían VERDE sin ejercitar nada.
+          # En CI la base SIEMPRE está levantada, así que un skip aquí es un fallo de
+          # infraestructura y tiene que ser rojo, no un banner que nadie lee. Sin esta
+          # comprobación el paso sería otra compuerta incapaz de fallar (hallazgo A-2).
+          if grep -q "SUITE OMITIDA" /tmp/089-integration.log; then
+            echo "❌ Suite de integración 089 OMITIDA: PostgreSQL no fue alcanzable en CI."
+            exit 1
+          fi
+          if grep -qE "^Tests:[[:space:]]+0 total" /tmp/089-integration.log; then
+            echo "❌ Suite de integración 089 no ejecutó ningún test."
+            exit 1
+          fi
+          echo "✅ Suite de integración 089 ejecutada contra PostgreSQL real"
 
       - name: Re-apply least-privilege (tenant audit)
         shell: bash

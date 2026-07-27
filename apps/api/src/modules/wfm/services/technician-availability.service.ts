@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema, TechnicianAvailability } from '@iwana/db';
+import type { ListResponse } from '@iwana/shared';
+import { buildPageMeta, clampLimit } from '../../../common/pagination';
+import { clampPage } from '../../../common/pagination/clamp-page';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
   CreateTechnicianAvailabilityInput,
@@ -14,14 +17,21 @@ export class TechnicianAvailabilityService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   /** Lista registros de disponibilidad/bloqueo de responsables operativos con filtros opcionales. */
-  async list(query: ListTechnicianAvailabilityQueryDto): Promise<TechnicianAvailability[]> {
+  async list(
+    query: ListTechnicianAvailabilityQueryDto,
+  ): Promise<ListResponse<TechnicianAvailability>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const cappedLimit = clampLimit(query.limit);
+    const { page, limit } = clampPage(query.page ?? 1, cappedLimit);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(TechnicianAvailability, 'ta')
         .where('ta.tenant_id = :tenantId', { tenantId })
-        .orderBy('ta.starts_at', 'ASC');
+        .orderBy('ta.starts_at', 'ASC')
+        .addOrderBy('ta.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit);
 
       if (query.userId) {
         qb.andWhere('ta.user_id = :userId', { userId: query.userId });
@@ -36,7 +46,17 @@ export class TechnicianAvailabilityService {
         qb.andWhere('ta.type = :type', { type: query.type });
       }
 
-      return qb.getMany();
+      const [data, total] = await qb.getManyAndCount();
+      return {
+        data,
+        meta: buildPageMeta({
+          total,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
     });
   }
 

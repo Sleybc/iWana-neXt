@@ -5,6 +5,24 @@ import { GoodsReceiptPanel } from './GoodsReceiptPanel';
 import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
 import { formatInventoryDate, formatInventoryDateTime } from './inventory-labels';
 
+jest.mock('./InventoryLocationPicker', () => ({
+  InventoryLocationPicker: ({
+    label,
+    onChange,
+  }: {
+    label?: string;
+    onChange: (id: string | null, item: { id: string; label: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      aria-label={label ?? 'Ubicación destino'}
+      onClick={() => onChange('loc-1', { id: 'loc-1', label: 'BOD-01 · Bodega principal' })}
+    >
+      Elegir bodega
+    </button>
+  ),
+}));
+
 function formatLocalDayMonthYear(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -262,8 +280,8 @@ describe('GoodsReceiptPanel', () => {
       />,
     );
 
-    await user.click(screen.getByRole('combobox', { name: 'Ubicación destino' }));
-    await user.click(screen.getByRole('option', { name: /BOD-01 · Bodega principal/i }));
+    await user.click(screen.getByRole('button', { name: 'Ubicación destino' }));
+    // mock InventoryLocationPicker selecciona loc-1 al click
     await user.click(screen.getByRole('button', { name: 'Registrar recepción' }));
 
     const expectedReceivedAt = toDateFromLocalDateValue(

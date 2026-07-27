@@ -10,7 +10,18 @@ import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { CatalogPromotion } from '../entities/catalog-promotion.entity';
 import { CreatePromotionDto, UpdatePromotionDto } from '../dto/promotion.dto';
+import { CommercialOfferListQueryDto } from '../dto/commercial-offer-list-query.dto';
 import { COMMERCIAL_EVENTS } from '../events/commercial.events';
+import {
+  PROMOTION_EXPIRING_SQL,
+  commercialExpiringParams,
+} from '../utils/commercial-offer-filters';
+import {
+  buildDateIdNextCursor,
+  clampCommercialLimit,
+  CommercialPaginatedResult,
+  decodeDateIdCursor,
+} from '../../../common/pagination';
 
 @Injectable()
 export class PromotionService {
@@ -19,14 +30,59 @@ export class PromotionService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async findAll(): Promise<CatalogPromotion[]> {
+  /**
+   * Lista promociones activas con paginación cursor (ADR-064).
+   * Orden: validFrom DESC, id DESC.
+   * `offerStatus=expiring` → vigencia en ≤7 días o cerca del límite de usos.
+   */
+  async findAll(
+    query: CommercialOfferListQueryDto = {},
+  ): Promise<CommercialPaginatedResult<CatalogPromotion>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(CatalogPromotion, {
-        where: { tenantId, isActive: true },
-        order: { validFrom: 'DESC' },
-      }),
-    );
+    const limit = clampCommercialLimit(query.limit);
+    const { cursor, offerStatus } = query;
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const qb = qr.manager
+        .createQueryBuilder(CatalogPromotion, 'promo')
+        .where('promo.tenant_id = :tenantId', { tenantId })
+        .andWhere('promo.is_active = true');
+
+      if (offerStatus === 'expiring') {
+        qb.andWhere(PROMOTION_EXPIRING_SQL, commercialExpiringParams());
+      }
+
+      const total = await qb.clone().getCount();
+
+      if (cursor) {
+        const decoded = decodeDateIdCursor(cursor);
+        qb.andWhere(
+          '(promo.valid_from < :cursorDate OR (promo.valid_from = :cursorDate AND promo.id < :cursorId))',
+          { cursorDate: decoded.d, cursorId: decoded.i },
+        );
+      }
+
+      const rows = await qb
+        .orderBy('promo.valid_from', 'DESC')
+        .addOrderBy('promo.id', 'DESC')
+        .take(limit + 1)
+        .getMany();
+
+      const hasNext = rows.length > limit;
+      const page = hasNext ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+
+      return {
+        data: page,
+        meta: {
+          nextCursor: buildDateIdNextCursor(
+            hasNext,
+            last ? { date: last.validFrom, id: last.id } : undefined,
+          ),
+          total,
+        },
+      };
+    });
   }
 
   async findOne(id: string): Promise<CatalogPromotion> {
