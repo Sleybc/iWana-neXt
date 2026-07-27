@@ -43,6 +43,12 @@ import { AlignUsersEntityDdl0830000000000 } from './083_align_users_entity_ddl';
 import { UsersSearchTrgmIndexes0840000000000 } from './084_users_search_trgm_indexes';
 import { NarrowUsersRoleToTenantDomain0850000000000 } from './085_narrow_users_role_to_tenant_domain';
 import { TaxRulesClassificationNullable0860000000000 } from './086_tax_rules_classification_nullable';
+import { AddExpedienteDocumentNumberHash0870000000000 } from './087_add_expediente_document_number_hash';
+import { BackfillExpedienteDocumentNumberHash0880000000000 } from './088_backfill_expediente_document_number_hash';
+import { PaginationOrderingIndexes0890000000000 } from './089_pagination_ordering_indexes';
+import { ExecutionOrderContractReliability0900000000000 } from './090_execution_order_contract_reliability';
+import { ExecutionOrderScheduleUnique0910000000000 } from './091_execution_order_schedule_unique';
+import { SeedExecutionOrderPermissions0920000000000 } from './092_seed_execution_order_permissions';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -73,6 +79,7 @@ import { ExtendContractsForServices1700000000029 } from './029_extend_contracts_
 import { CreateWfmModule1700000000030 } from './030_create_wfm_module';
 import { CreateAssuranceModule1700000000031 } from './031_create_assurance_module';
 import { AddExpedienteToTicketSubjectType1700000000032 } from './032_add_expediente_to_ticket_subject_type';
+import { AddScheduleEventSector1700000000033 } from './033_add_schedule_event_sector';
 import { CreateVisitRequests1700000000034 } from './034_create_visit_requests';
 import { HardenVisitRequestsIndexes1700000000035 } from './035_harden_visit_requests_indexes';
 import { CreateWfmOperatingHoursModule1700000000036 } from './036_create_wfm_operating_hours_module';
@@ -111,6 +118,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateWfmModule1700000000030,
   CreateAssuranceModule1700000000031,
   AddExpedienteToTicketSubjectType1700000000032,
+  AddScheduleEventSector1700000000033,
   CreateVisitRequests1700000000034,
   HardenVisitRequestsIndexes1700000000035,
   CreateWfmOperatingHoursModule1700000000036,
@@ -163,6 +171,12 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   UsersSearchTrgmIndexes0840000000000,
   NarrowUsersRoleToTenantDomain0850000000000,
   TaxRulesClassificationNullable0860000000000,
+  AddExpedienteDocumentNumberHash0870000000000,
+  BackfillExpedienteDocumentNumberHash0880000000000,
+  PaginationOrderingIndexes0890000000000,
+  ExecutionOrderContractReliability0900000000000,
+  ExecutionOrderScheduleUnique0910000000000,
+  SeedExecutionOrderPermissions0920000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
@@ -184,6 +198,87 @@ function extractMigrationTimestamp(name: string): number {
   }
 
   return Number(match[1]);
+}
+
+/**
+ * Extensión local del contrato TypeORM (ADR-066).
+ * TypeORM expone `transaction` en MigrationInterface; el runner tenant usa
+ * `transactional` (nombre del ADR) para no acoplarse al modo nativo del CLI.
+ */
+export type TenantMigrationLike = MigrationInterface & {
+  /** false = DDL fuera de TX (p. ej. CREATE INDEX CONCURRENTLY). Default true. */
+  transactional?: boolean;
+};
+
+/** Default true: las migraciones existentes (000–086) siguen el camino atómico. */
+export function isTenantMigrationTransactional(migration: TenantMigrationLike): boolean {
+  return migration.transactional ?? true;
+}
+
+function wrapNonTransactionalFailure(migrationName: string, error: unknown): Error {
+  const detail = error instanceof Error ? error.message : String(error);
+  const wrapped = new Error(
+    `La migración no transaccional "${migrationName}" falló. ` +
+      `Verifique manualmente el estado del schema: el DDL pudo haberse aplicado parcialmente. ` +
+      `Detalle: ${detail}`,
+  );
+  if (error instanceof Error) {
+    wrapped.cause = error;
+  }
+  return wrapped;
+}
+
+/**
+ * Aplica una migración tenant pendiente: camino transaccional (default) o
+ * DDL fuera de TX + bookkeeping en TX (ADR-066). Exportada para tests unitarios.
+ */
+export async function applyTenantMigrationStep(
+  queryRunner: QueryRunner,
+  migration: TenantMigrationLike,
+  migrationName: string,
+): Promise<void> {
+  const transactional = isTenantMigrationTransactional(migration);
+
+  if (transactional) {
+    await queryRunner.startTransaction();
+    try {
+      await migration.up(queryRunner);
+      await queryRunner.query(
+        `
+          INSERT INTO "typeorm_migrations" ("timestamp", "name")
+          VALUES ($1, $2)
+        `,
+        [extractMigrationTimestamp(migrationName), migrationName],
+      );
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    }
+    return;
+  }
+
+  // DDL fuera de transacción; bookkeeping atómico aparte.
+  try {
+    await migration.up(queryRunner);
+  } catch (error) {
+    throw wrapNonTransactionalFailure(migrationName, error);
+  }
+
+  await queryRunner.startTransaction();
+  try {
+    await queryRunner.query(
+      `
+        INSERT INTO "typeorm_migrations" ("timestamp", "name")
+        VALUES ($1, $2)
+      `,
+      [extractMigrationTimestamp(migrationName), migrationName],
+    );
+    await queryRunner.commitTransaction();
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw wrapNonTransactionalFailure(migrationName, error);
+  }
 }
 
 export async function ensureTenantMigrationsTable(queryRunner: QueryRunner): Promise<void> {
@@ -215,54 +310,74 @@ export async function applyTenantMigrationsInOrder(dataSource: DataSource): Prom
     const appliedNames = await getAppliedTenantMigrationNames(queryRunner);
 
     for (const MigrationClass of TENANT_MIGRATIONS) {
-      const migration = new MigrationClass();
+      const migration = new MigrationClass() as TenantMigrationLike;
       const migrationName = migration.name ?? MigrationClass.name;
 
       if (appliedNames.has(migrationName)) {
         continue;
       }
 
-      await queryRunner.startTransaction();
-      try {
-        await migration.up(queryRunner);
-        await queryRunner.query(
-          `
-            INSERT INTO "typeorm_migrations" ("timestamp", "name")
-            VALUES ($1, $2)
-          `,
-          [extractMigrationTimestamp(migrationName), migrationName],
-        );
-        await queryRunner.commitTransaction();
-        appliedNames.add(migrationName);
-      } catch (error) {
-        await queryRunner.rollbackTransaction();
-        throw error;
-      }
+      await applyTenantMigrationStep(queryRunner, migration, migrationName);
+      appliedNames.add(migrationName);
     }
   } finally {
     await queryRunner.release();
   }
 }
 
-export async function runTenantMigrations(dataSource: DataSource): Promise<void> {
+export interface TenantMigrationResult {
+  schemaName: string;
+  ok: boolean;
+  elapsedMs: number;
+  error?: string;
+}
+
+export async function runTenantMigrations(
+  dataSource: DataSource,
+): Promise<TenantMigrationResult[]> {
+  const results: TenantMigrationResult[] = [];
   await acquireGlobalLock(dataSource);
   try {
     const tenants = await getActiveTenants(dataSource);
-    console.log(`[MIGRATOR] Starting migrations for ${tenants.length} tenant(s)`);
+    const totalTenants = tenants.length;
+    console.log(`[MIGRATOR] Starting migrations for ${totalTenants} tenant(s)`);
     for (const tenant of tenants) {
       console.log(`[MIGRATOR] Migrating ${tenant.schema_name}`);
       const startTime = Date.now();
       try {
         await runMigrationsForTenant(dataSource, tenant.schema_name);
-        console.log(`[MIGRATOR] Done ${tenant.schema_name} in ${Date.now() - startTime}ms`);
+        const elapsed = Date.now() - startTime;
+        console.log(`[MIGRATOR] Done ${tenant.schema_name} in ${elapsed}ms`);
+        results.push({ schemaName: tenant.schema_name, ok: true, elapsedMs: elapsed });
       } catch (err) {
+        const elapsed = Date.now() - startTime;
+        const detail = err instanceof Error ? err.message : String(err);
         console.error(`[MIGRATOR] Failed ${tenant.schema_name}`, err);
-        throw err;
+        results.push({
+          schemaName: tenant.schema_name,
+          ok: false,
+          elapsedMs: elapsed,
+          error: detail,
+        });
       }
+    }
+
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      const failedNames = failed.map((f) => f.schemaName).join(', ');
+      console.error(
+        `[MIGRATOR] ${failed.length} of ${totalTenants} tenant(s) failed migration: ${failedNames}`,
+      );
+      throw new Error(
+        `Tenant migration failed for ${failed.length} schema(s): ${failedNames}. ` +
+          `Los ${results.length - failed.length} restantes se completaron correctamente.`,
+      );
     }
   } finally {
     await releaseGlobalLock(dataSource);
   }
+
+  return results;
 }
 
 /**

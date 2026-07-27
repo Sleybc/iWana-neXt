@@ -13,7 +13,17 @@ export enum AccessPermissionKey {
   ACCESS_ASSIGNMENTS_MANAGE = 'access.assignments.manage',
   WFM_SCHEDULE_READ = 'wfm.schedule.read',
   WFM_SCHEDULE_MANAGE = 'wfm.schedule.manage',
+  /**
+   * @deprecated Usar {@link OPERATIONS_EXECUTION_ORDERS_EXECUTE}.
+   * Retirable cuando cero consumidores y Task 10 complete (ver INFORME-MOD11-FLOW-CABLEADO-v1.0.md §9.3).
+   */
   WFM_WORK_ORDERS_EXECUTE = 'wfm.work_orders.execute',
+  OPERATIONS_EXECUTION_ORDERS_READ = 'operations.execution_orders.read',
+  OPERATIONS_EXECUTION_ORDERS_EXECUTE = 'operations.execution_orders.execute',
+  OPERATIONS_EXECUTION_ORDERS_SUPERVISE = 'operations.execution_orders.supervise',
+  OPERATIONS_EXECUTION_ORDER_TEMPLATES_READ = 'operations.execution_order_templates.read',
+  OPERATIONS_EXECUTION_ORDER_TEMPLATES_MANAGE = 'operations.execution_order_templates.manage',
+  OPERATIONS_EXECUTION_EVENTS_REDRIVE = 'operations.execution_events.redrive',
   CRM_CUSTOMERS_READ = 'crm.customers.read',
   CRM_CUSTOMERS_MANAGE = 'crm.customers.manage',
   COMMERCIAL_CATALOG_READ = 'commercial.catalog.read',

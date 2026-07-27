@@ -1,7 +1,17 @@
-import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  INestApplication,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { ExecutionOrderResult, ExecutionOrderStatus, UserRole } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  ExecutionOrderResult,
+  ExecutionOrderStatus,
+  UserRole,
+} from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -83,6 +93,45 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
           tenantId: 'tenant-001',
           schemaName: 'tenant_001',
           jti: 'jti-coord',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
+      if (authHeader === 'Bearer coordinator-readonly-token') {
+        req.user = {
+          sub: 'coord-readonly-001',
+          email: 'coord-readonly@example.test',
+          role: UserRole.NOC,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-coord-ro',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
+      if (authHeader === 'Bearer contractor-token') {
+        req.user = {
+          sub: 'contractor-001',
+          email: 'contractor@example.test',
+          role: UserRole.CONTRACTOR,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-contractor',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
+      if (authHeader === 'Bearer contractor-tenantb-token') {
+        req.user = {
+          sub: 'contractor-tb-001',
+          email: 'contractor-tb@example.test',
+          role: UserRole.CONTRACTOR,
+          tenantId: 'tenant-002',
+          schemaName: 'tenant_002',
+          jti: 'jti-contractor-tb',
           type: 'tenant',
         } as JwtPayload;
         return true;
@@ -440,5 +489,427 @@ describe('ExecutionOrdersController HTTP', () => {
       .expect(200);
 
     expect(res.headers['x-correlation-id']).toBeDefined();
+  });
+});
+
+// ─── Permisos por capacidad (Task 2) ─────────────────────────────────────
+
+describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
+  let app: INestApplication;
+  let effectivePermissionsMock: jest.Mock;
+
+  const ORDER_UUID = '22222222-2222-4222-8222-222222222222';
+
+  const buildExecutionOrdersServiceMock = () => ({
+    assertActorAccess: jest.fn().mockResolvedValue(undefined),
+    getById: jest.fn().mockResolvedValue({
+      id: ORDER_UUID,
+      executionOrderNumber: 'OTE-20260727-001',
+      version: 1,
+      status: ExecutionOrderStatus.ASSIGNED,
+      result: null,
+      workType: 'INSTALLATION',
+      scheduleEventId: '33333333-3333-4333-8333-333333333333',
+      plannedWindowStartAt: '2026-07-27T14:00:00.000Z',
+      plannedWindowEndAt: '2026-07-27T16:00:00.000Z',
+      assignedTechnicianId: 'tech-001',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      startedAt: null,
+      closedAt: null,
+      createdAt: '2026-07-27T10:00:00.000Z',
+      updatedAt: '2026-07-27T10:00:00.000Z',
+    }),
+    listActivities: jest.fn().mockResolvedValue([]),
+    listItemUsage: jest.fn().mockResolvedValue([]),
+    start: jest.fn().mockResolvedValue({
+      id: ORDER_UUID,
+      status: ExecutionOrderStatus.IN_PROGRESS,
+      version: 2,
+    }),
+    registerFieldWork: jest.fn().mockResolvedValue({
+      id: 'activity-001',
+      activityType: 'INSTALLATION',
+      description: 'Trabajo completado',
+    }),
+    registerItemUsage: jest.fn().mockResolvedValue({
+      id: 'usage-001',
+      itemId: 'item-001',
+      quantity: '1',
+    }),
+    close: jest.fn().mockResolvedValue({
+      id: ORDER_UUID,
+      status: ExecutionOrderStatus.COMPLETED,
+      result: ExecutionOrderResult.EXECUTED,
+      version: 2,
+    }),
+    assign: jest.fn().mockResolvedValue({
+      id: ORDER_UUID,
+      status: ExecutionOrderStatus.ASSIGNED,
+      version: 2,
+    }),
+    block: jest.fn().mockResolvedValue({
+      id: ORDER_UUID,
+      status: ExecutionOrderStatus.BLOCKED,
+      version: 2,
+    }),
+    unblock: jest.fn().mockResolvedValue({
+      id: ORDER_UUID,
+      status: ExecutionOrderStatus.IN_PROGRESS,
+      version: 2,
+    }),
+    createEvidenceAssetReceipt: jest.fn().mockResolvedValue({
+      intentId: 'intent-001',
+      mediaAssetId: 'media-001',
+      status: 'PENDING_ANALYSIS',
+    }),
+    getEvidenceAssetReceipt: jest.fn().mockResolvedValue({
+      mediaAssetId: 'media-001',
+      status: 'PENDING_ANALYSIS',
+    }),
+    registerEvidence: jest.fn().mockResolvedValue({
+      id: 'evidence-001',
+      mediaAssetId: 'media-001',
+    }),
+    createFollowUp: jest.fn().mockResolvedValue({
+      intentId: 'followup-001',
+      resourceRef: 'resource-001',
+      status: 'ACCEPTED',
+    }),
+    redriveEvent: jest.fn().mockResolvedValue({
+      eventId: 'event-001',
+      status: 'QUEUED',
+    }),
+  });
+
+  beforeAll(async () => {
+    effectivePermissionsMock = jest.fn();
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [ExecutionOrdersController],
+      providers: [
+        {
+          provide: ExecutionOrdersService,
+          useFactory: buildExecutionOrdersServiceMock,
+        },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: effectivePermissionsMock },
+        },
+        PermissionsGuard,
+        { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+        { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        JwtAuthGuard,
+        RolesGuard,
+        ExecutionOrderResponseHeadersInterceptor,
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // ─── CA-00-02: Coordinador sin permiso execute ─────────────────────────
+
+  describe('CA-00-02: Coordinador sin permiso execute', () => {
+    beforeEach(() => {
+      // NOC con read + supervise, pero SIN execute
+      effectivePermissionsMock.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+      ]);
+    });
+
+    const executeEndpoints = [
+      { path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/start`, body: { notes: 'intento' } },
+      {
+        path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/field-work`,
+        body: { activityType: 'TEST', description: 'intento' },
+      },
+      {
+        path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/item-usage`,
+        body: {
+          itemId: 'item-001',
+          quantity: 1,
+          action: 'INSTALL',
+          finalDisposition: 'INSTALLED_AT_CUSTOMER',
+        },
+      },
+      {
+        path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence`,
+        body: { mediaAssetId: 'media-001', evidenceType: 'PHOTO', requirementKey: 'req-1' },
+      },
+      {
+        path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/block`,
+        body: { reasonCode: 'WEATHER' },
+      },
+      {
+        path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/unblock`,
+        body: { resolutionCode: 'CLEARED' },
+      },
+      {
+        path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/close`,
+        body: { result: ExecutionOrderResult.EXECUTED, summary: 'Cierre de prueba' },
+      },
+    ];
+
+    executeEndpoints.forEach(({ path, body }) => {
+      it(`retorna 403 en POST ${path}`, async () => {
+        const req = request(app.getHttpServer())
+          .post(path)
+          .set('Authorization', 'Bearer coordinator-readonly-token')
+          .set('If-Match', '1')
+          .set('Idempotency-Key', `coord-readonly-post-${Date.now()}`);
+
+        if (body) req.send(body);
+
+        await req.expect(403);
+      });
+    });
+
+    it('el coordinador puede leer la OT con permiso read', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
+        .set('Authorization', 'Bearer coordinator-readonly-token')
+        .expect(200);
+    });
+
+    it('el coordinador puede asignar con permiso supervise', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/assign`)
+        .set('Authorization', 'Bearer coordinator-readonly-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'coord-assign-00000001')
+        .send({ assigneeType: 'TECHNICIAN', assigneeId: 'tech-001' })
+        .expect(200);
+    });
+  });
+
+  // ─── Técnico con execute pero sin read ─────────────────────────────────
+
+  describe('Técnico con execute pero sin read', () => {
+    beforeEach(() => {
+      // Solo execute — sin read
+      effectivePermissionsMock.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+      ]);
+    });
+
+    const readEndpoints = [
+      `/api/v1/tasks/execution-orders/${ORDER_UUID}`,
+      `/api/v1/tasks/execution-orders/${ORDER_UUID}/activities`,
+      `/api/v1/tasks/execution-orders/${ORDER_UUID}/item-usage`,
+      `/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets/media-001`,
+    ];
+
+    readEndpoints.forEach((path) => {
+      it(`retorna 403 en GET ${path}`, async () => {
+        await request(app.getHttpServer())
+          .get(path)
+          .set('Authorization', 'Bearer tech-token')
+          .expect(403);
+      });
+    });
+
+    it('el técnico puede ejecutar start con permiso execute', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/start`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'tech-exec-start-00001')
+        .send({ notes: 'Técnico con execute' })
+        .expect(200);
+    });
+  });
+
+  // ─── Supervisión: solo NOC/ADMIN/SUPPORT ──────────────────────────────
+
+  describe('Técnico sin permiso supervise', () => {
+    beforeEach(() => {
+      effectivePermissionsMock.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+      ]);
+    });
+
+    it('retorna 403 en assign', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/assign`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'tech-assign-00000001')
+        .send({ assigneeType: 'TECHNICIAN', assigneeId: 'tech-002' })
+        .expect(403);
+    });
+
+    it('retorna 403 en createFollowUp', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/follow-ups`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('Idempotency-Key', 'tech-followup-00001')
+        .send({ reasonCode: 'REVISIT' })
+        .expect(403);
+    });
+  });
+
+  // ─── Redrive: solo ADMIN/NOC con permiso dedicado ──────────────────────
+
+  describe('events.redrive', () => {
+    const EVENT_UUID = '44444444-4444-4444-8444-444444444444';
+
+    it('usuario sin permiso events.redrive recibe 403', async () => {
+      effectivePermissionsMock.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+      ]);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/events/${EVENT_UUID}/redrive`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(403);
+    });
+
+    it('usuario con permiso events.redrive recibe 202', async () => {
+      effectivePermissionsMock.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_EVENTS_REDRIVE,
+      ]);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/events/${EVENT_UUID}/redrive`)
+        .set('Authorization', 'Bearer coordinator-token')
+        .expect(202);
+    });
+  });
+
+  // ─── ABAC: Contratista no asignado no puede ejecutar ───────────────────
+
+  describe('ABAC: Contratista no asignado', () => {
+    let appWithAbac: INestApplication;
+    let serviceMock: ReturnType<typeof buildExecutionOrdersServiceMock>;
+
+    beforeAll(async () => {
+      serviceMock = buildExecutionOrdersServiceMock();
+      // assertActorAccess lanza ForbiddenException para contratista no asignado
+      serviceMock.assertActorAccess.mockRejectedValue(
+        new ForbiddenException('El recurso no pertenece al actor autenticado.'),
+      );
+
+      const moduleRef: TestingModule = await Test.createTestingModule({
+        controllers: [ExecutionOrdersController],
+        providers: [
+          { provide: ExecutionOrdersService, useValue: serviceMock },
+          {
+            provide: EffectivePermissionsService,
+            useValue: {
+              getEffectivePermissionsForUser: jest
+                .fn()
+                .mockResolvedValue([
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+                ]),
+            },
+          },
+          PermissionsGuard,
+          // ABAC en acción: ExecutionOrderAccessGuard es real con el mock service
+          ExecutionOrderAccessGuard,
+          { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+          JwtAuthGuard,
+          RolesGuard,
+          ExecutionOrderResponseHeadersInterceptor,
+        ],
+      }).compile();
+
+      appWithAbac = moduleRef.createNestApplication();
+      appWithAbac.setGlobalPrefix('api/v1');
+      await appWithAbac.init();
+    });
+
+    afterAll(async () => {
+      await appWithAbac.close();
+    });
+
+    it('contratista sin asignación recibe 403 en start a pesar de tener execute', async () => {
+      await request(appWithAbac.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/start`)
+        .set('Authorization', 'Bearer contractor-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'contractor-start-00001')
+        .send({ note: 'Contratista sin asignación' })
+        .expect(403);
+    });
+
+    it('contratista sin asignación recibe 403 en GET', async () => {
+      await request(appWithAbac.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
+        .set('Authorization', 'Bearer contractor-token')
+        .expect(403);
+    });
+  });
+
+  // ─── Multi-tenant Isolation ────────────────────────────────────────────
+
+  describe('aislamiento multi-tenant', () => {
+    let appWithTenantIsolation: INestApplication;
+
+    beforeAll(async () => {
+      const serviceMock = buildExecutionOrdersServiceMock();
+      // assertActorAccess lanza NotFoundException para cross-tenant: el
+      // usuario de tenant-002 no debería ver recursos de tenant-001.
+      serviceMock.assertActorAccess.mockRejectedValue(
+        new NotFoundException('Recurso no encontrado en este tenant.'),
+      );
+
+      const moduleRef: TestingModule = await Test.createTestingModule({
+        controllers: [ExecutionOrdersController],
+        providers: [
+          { provide: ExecutionOrdersService, useValue: serviceMock },
+          {
+            provide: EffectivePermissionsService,
+            useValue: {
+              getEffectivePermissionsForUser: jest
+                .fn()
+                .mockResolvedValue([
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+                  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+                ]),
+            },
+          },
+          PermissionsGuard,
+          ExecutionOrderAccessGuard,
+          { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+          JwtAuthGuard,
+          RolesGuard,
+          ExecutionOrderResponseHeadersInterceptor,
+        ],
+      }).compile();
+
+      appWithTenantIsolation = moduleRef.createNestApplication();
+      appWithTenantIsolation.setGlobalPrefix('api/v1');
+      await appWithTenantIsolation.init();
+    });
+
+    afterAll(async () => {
+      await appWithTenantIsolation.close();
+    });
+
+    it('usuario Tenant B con permisos correctos recibe 404 para recurso de Tenant A', async () => {
+      // El usuario es de tenant-002 (Tenant B), el ORDER_UUID apunta a
+      // tenant-001 en el mock. El tenantId en el JWT no coincide con
+      // el recurso, y el sistema debe devolver 404 (no 403) para no
+      // filtrar existencia de recursos cross-tenant.
+      await request(appWithTenantIsolation.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
+        .set('Authorization', 'Bearer contractor-tenantb-token')
+        .expect(404);
+    });
   });
 });

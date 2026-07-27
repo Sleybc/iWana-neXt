@@ -221,6 +221,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/evidence-assets')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.ACCEPTED)
   createEvidenceAsset(
@@ -232,6 +233,7 @@ export class ExecutionOrdersController {
   }
 
   @Get(':id/evidence-assets/:mediaAssetId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   getEvidenceAsset(
     @Param('id', ParseUUIDPipe) id: string,
@@ -241,6 +243,7 @@ export class ExecutionOrdersController {
   }
 
   @Get(':id/evidence-assets/:mediaAssetId/content')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   getEvidenceContent(
     @Param('id', ParseUUIDPipe) id: string,
@@ -250,6 +253,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/evidence')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   registerEvidence(
     @Param('id', ParseUUIDPipe) id: string,
@@ -268,6 +272,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/block')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.OK)
   block(
@@ -287,6 +292,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/unblock')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.OK)
   unblock(
@@ -306,6 +312,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/follow-ups')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)
   @HttpCode(HttpStatus.CREATED)
   createFollowUp(
@@ -324,6 +331,7 @@ export class ExecutionOrdersController {
   }
 
   @Post('events/:eventId/redrive')
+  @Roles(UserRole.ADMIN, UserRole.NOC)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_EVENTS_REDRIVE)
   @HttpCode(HttpStatus.ACCEPTED)
   redrive(@Param('eventId', ParseUUIDPipe) eventId: string, @CurrentUser() actor: JwtPayload) {
