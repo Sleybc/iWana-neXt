@@ -18,6 +18,7 @@ import type {
 } from '@/lib/api-client';
 import { UserRole } from '@iwana/shared';
 import { ApiError, assuranceApi, crmApi, wfmApi } from '@/lib/api-client';
+import { collectListPages } from '@/lib/list-meta';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   INSTALLATION_SCHEDULING_MIN_PROGRESS,
@@ -76,8 +77,6 @@ import {
   formatWfmDayLabel,
   getDefaultSchedulingViewForRole,
   getRecommendedSchedulingViewForDensity,
-  getScheduleEventStatusLabel,
-  getWorkOrderStatusLabel,
   isHighDensityScheduleDay,
   isScheduleEventTerminalStatus,
   toApiDateRange,
@@ -251,8 +250,6 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   const [isMoveToPendingSubmitting, setIsMoveToPendingSubmitting] = useState(false);
   const [shouldRestoreDrawerAfterPendingMove, setShouldRestoreDrawerAfterPendingMove] =
     useState(false);
-  const [isEventTransitioning, setIsEventTransitioning] = useState(false);
-  const [isWorkOrderTransitioning, setIsWorkOrderTransitioning] = useState(false);
 
   const loadSequenceRef = useRef(0);
   const handledCreateQueryRef = useRef<string | null>(null);
@@ -360,8 +357,36 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
       const draft = buildDailyDraftFromDrop(payload);
       setDailyDraft(validateDailyDraft(draft, dailyOperatingWindow, events));
+
+      const fromPage =
+        pendingVisitResponse?.items.find((item) => item.id === payload.visitRequestId) ?? null;
+      if (fromPage) {
+        setSelectedPendingVisitRequest(fromPage);
+        return;
+      }
+
+      if (selectedPendingVisitRequest?.id === payload.visitRequestId) {
+        return;
+      }
+
+      void wfmApi.visitRequests
+        .get(payload.visitRequestId)
+        .then((visitRequest) => {
+          setSelectedPendingVisitRequest(visitRequest);
+        })
+        .catch((pendingVisitError) => {
+          setError(
+            `No fue posible fijar la solicitud arrastrada. ${mapSchedulingError(pendingVisitError)}`,
+          );
+        });
     },
-    [canManage, dailyOperatingWindow, events],
+    [
+      canManage,
+      dailyOperatingWindow,
+      events,
+      pendingVisitResponse?.items,
+      selectedPendingVisitRequest?.id,
+    ],
   );
 
   const handleDailyDraftChange = useCallback(
@@ -382,9 +407,9 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
     try {
       const visitRequest =
-        pendingVisitResponse?.items.find((item) => item.id === dailyDraft.visitRequestId) ??
-        selectedPendingVisitRequest ??
-        (await wfmApi.visitRequests.get(dailyDraft.visitRequestId));
+        selectedPendingVisitRequest?.id === dailyDraft.visitRequestId
+          ? selectedPendingVisitRequest
+          : await wfmApi.visitRequests.get(dailyDraft.visitRequestId);
 
       setSelectedPendingVisitRequest(visitRequest);
       setPendingManualSelectionDraft({
@@ -405,7 +430,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         `No fue posible preparar la confirmación del borrador. ${mapSchedulingError(confirmError)}`,
       );
     }
-  }, [dailyDraft, pendingVisitResponse?.items, selectedPendingVisitRequest]);
+  }, [dailyDraft, selectedPendingVisitRequest]);
 
   useEffect(() => {
     setDailyDraft((current) =>
@@ -473,8 +498,12 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
           return false;
         }
 
-        const expedienteEvents = await wfmApi.events.list({ expedienteId: response.data.id });
-        const existingActiveEvent = expedienteEvents.find(
+        const expedienteEventsResponse = await wfmApi.events.list({
+          expedienteId: response.data.id,
+          page: 1,
+          limit: 100,
+        });
+        const existingActiveEvent = expedienteEventsResponse.data.find(
           (event) => !isScheduleEventTerminalStatus(event.status),
         );
 
@@ -579,8 +608,11 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         : Promise.resolve<WfmDashboardSummary | null>(null);
     const workOrdersPromise =
       canManage && (isDashboardSurface || isAgendaSurface)
-        ? wfmApi.workOrders.list()
-        : Promise.resolve<WfmWorkOrder[]>([]);
+        ? collectListPages((page) => wfmApi.workOrders.list({ page, limit: 100 }), {
+            maxPages: 20,
+            limit: 100,
+          })
+        : Promise.resolve({ data: [] as WfmWorkOrder[], meta: null });
     const pendingVisitPromise =
       canManage && (isDashboardSurface || (isAgendaSurface && filters.view === 'day'))
         ? wfmApi.visitRequests.list({
@@ -591,7 +623,10 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
     const [eventsResult, summaryResult, techniciansResult, workOrdersResult, pendingVisitResult] =
       await Promise.allSettled([
-        wfmApi.events.list(eventParams),
+        collectListPages((page) => wfmApi.events.list({ ...eventParams, page, limit: 100 }), {
+          maxPages: 20,
+          limit: 100,
+        }),
         summaryPromise,
         loadSchedulableUsers(),
         workOrdersPromise,
@@ -609,7 +644,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     }
 
     const warnings: string[] = [];
-    const resolvedEvents = Array.isArray(eventsResult.value) ? eventsResult.value : [];
+    const resolvedEvents = eventsResult.value.data;
     const resolvedTechnicians =
       techniciansResult.status === 'fulfilled' ? techniciansResult.value : null;
     const resolvedPendingVisitResponse =
@@ -652,7 +687,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     }
 
     if (workOrdersResult.status === 'fulfilled') {
-      setWorkOrders(Array.isArray(workOrdersResult.value) ? workOrdersResult.value : []);
+      setWorkOrders(workOrdersResult.value.data);
     } else {
       warnings.push(
         'No fue posible actualizar la lista de ordenes de trabajo. Se mantiene la última versión disponible.',
@@ -1469,7 +1504,6 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         open={isDrawerOpen}
         event={selectedEvent}
         technician={selectedTechnician}
-        workOrder={selectedWorkOrder}
         onOpenChange={(open) => {
           setIsDrawerOpen(open);
           if (!open) {
@@ -1477,7 +1511,6 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
             setSelectedEvent(null);
             setSelectedWorkOrder(null);
             setDrawerError(null);
-            setDrawerActionError(null);
           }
         }}
         onOpenMoveToPending={() => {
@@ -1486,54 +1519,9 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
           setIsDrawerOpen(false);
           setIsMoveToPendingOpen(true);
         }}
-        onTransitionEventStatus={async (status) => {
-          if (!selectedEventId) {
-            return;
-          }
-
-          setDrawerActionError(null);
-          setIsEventTransitioning(true);
-          try {
-            await wfmApi.events.transitionStatus(selectedEventId, { status });
-            setFeedback(
-              `El evento pasó a estado ${getScheduleEventStatusLabel(status).toLowerCase()}.`,
-            );
-            await loadData();
-            await loadEventDetails(selectedEventId);
-          } catch (transitionError) {
-            setDrawerActionError(mapSchedulingError(transitionError));
-          } finally {
-            setIsEventTransitioning(false);
-          }
-        }}
-        onTransitionWorkOrderStatus={async (status) => {
-          if (!selectedWorkOrder) {
-            return;
-          }
-
-          setDrawerActionError(null);
-          setIsWorkOrderTransitioning(true);
-          try {
-            await wfmApi.workOrders.transitionStatus(selectedWorkOrder.id, { status });
-            setFeedback(
-              `La orden de trabajo quedó en estado ${getWorkOrderStatusLabel(status).toLowerCase()}.`,
-            );
-            await loadData();
-            if (selectedEventId) {
-              await loadEventDetails(selectedEventId);
-            }
-          } catch (transitionError) {
-            setDrawerActionError(mapSchedulingError(transitionError));
-          } finally {
-            setIsWorkOrderTransitioning(false);
-          }
-        }}
         canReschedule={canManage}
         isLoading={isDrawerLoading}
         error={drawerError}
-        actionError={drawerActionError}
-        isEventTransitioning={isEventTransitioning}
-        isWorkOrderTransitioning={isWorkOrderTransitioning}
         onRetry={() => {
           if (!selectedEventId) {
             return Promise.resolve();

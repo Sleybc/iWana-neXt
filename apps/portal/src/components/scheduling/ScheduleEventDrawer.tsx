@@ -1,498 +1,294 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Crosshair, MapPin, Route, Ticket } from 'lucide-react';
+import { Badge, Button, OperationalSidePeek } from '@iwana/ui';
+import { ScheduleEventStatus } from '@iwana/shared';
+import type { ExecutionOrderDetail } from '@iwana/shared';
+import type { InternalUser, WfmScheduleEvent, ExecutionOrderRecord } from '@/lib/api-client';
+import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import { ExecutionOrderSummary } from '@/components/operations/ExecutionOrderSummary';
+import type { ExecutionOrderSyncState } from '@/components/operations/ExecutionOrderSummary';
 import {
-  CalendarClock,
-  ChevronDown,
-  ChevronUp,
-  Crosshair,
-  MapPin,
-  Route,
-  Ticket,
-  Wrench,
-} from 'lucide-react';
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Select,
-} from '@iwana/ui';
-import { ScheduleEventStatus, WorkOrderStatus } from '@iwana/shared';
-import type { InternalUser, WfmScheduleEvent, WfmWorkOrder } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
-import {
-  SCHEDULE_EVENT_STATUS_OPTIONS,
-  WORK_ORDER_STATUS_OPTIONS,
   formatWfmDateRange,
   formatScheduleEventCoordinates,
   getEventReferenceLabel,
   getScheduleEventStatusLabel,
   getScheduleEventStatusVariant,
   getTechnicianDisplayName,
-  getWorkOrderPriorityLabel,
-  getWorkOrderPriorityVariant,
-  getWorkOrderSourceContextLabel,
-  getWorkOrderStatusLabel,
-  getWorkOrderStatusVariant,
   getWfmWorkTypeLabel,
   getWfmWorkTypeVariant,
   isScheduleEventTerminalStatus,
-  isWorkOrderTerminalStatus,
 } from './scheduling-ui';
 
-interface ScheduleEventDrawerProps {
+export type { ExecutionOrderSyncState } from '@/components/operations/ExecutionOrderSummary';
+
+export interface ScheduleEventDrawerProps {
   open: boolean;
   event: WfmScheduleEvent | null;
   technician: InternalUser | null;
-  workOrder: WfmWorkOrder | null;
+  executionOrder?: ExecutionOrderRecord | ExecutionOrderDetail | null;
+  syncState?: ExecutionOrderSyncState;
   onOpenChange: (open: boolean) => void;
-  onOpenMoveToPending: () => void;
-  onTransitionEventStatus: (status: ScheduleEventStatus) => Promise<void>;
-  onTransitionWorkOrderStatus: (status: WorkOrderStatus) => Promise<void>;
+  onOpenMoveToPending?: () => void;
+  onOpenExecutionOrder?: () => void;
   canReschedule: boolean;
   isLoading: boolean;
   error: string | null;
-  actionError: string | null;
-  isEventTransitioning: boolean;
-  isWorkOrderTransitioning: boolean;
   onRetry: () => Promise<void>;
 }
 
-type QuickEventAction = {
-  status: ScheduleEventStatus;
-  label: string;
-  emphasized?: boolean;
-};
+function formatChangeTimestamp(date: string): string {
+  try {
+    return new Intl.DateTimeFormat('es-CO', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(date));
+  } catch {
+    return 'Fecha no disponible';
+  }
+}
 
-type QuickWorkOrderAction = {
-  status: WorkOrderStatus;
-  label: string;
-  emphasized?: boolean;
-};
-
-const QUICK_EVENT_ACTIONS: Partial<Record<ScheduleEventStatus, QuickEventAction[]>> = {
-  [ScheduleEventStatus.DRAFT]: [
-    { status: ScheduleEventStatus.SCHEDULED, label: 'Confirmar agenda', emphasized: true },
-    { status: ScheduleEventStatus.CANCELLED, label: 'Cancelar' },
-  ],
-  [ScheduleEventStatus.SCHEDULED]: [
-    { status: ScheduleEventStatus.EN_ROUTE, label: 'Marcar en ruta', emphasized: true },
-    { status: ScheduleEventStatus.IN_PROGRESS, label: 'Iniciar atención' },
-    { status: ScheduleEventStatus.NO_SHOW, label: 'Marcar sin atención' },
-  ],
-  [ScheduleEventStatus.RESCHEDULED]: [
-    { status: ScheduleEventStatus.SCHEDULED, label: 'Confirmar nueva franja', emphasized: true },
-    { status: ScheduleEventStatus.EN_ROUTE, label: 'Marcar en ruta' },
-  ],
-  [ScheduleEventStatus.EN_ROUTE]: [
-    { status: ScheduleEventStatus.IN_PROGRESS, label: 'Iniciar atención', emphasized: true },
-    { status: ScheduleEventStatus.NO_SHOW, label: 'Marcar sin atención' },
-  ],
-  [ScheduleEventStatus.IN_PROGRESS]: [
-    { status: ScheduleEventStatus.COMPLETED, label: 'Cerrar atención', emphasized: true },
-    { status: ScheduleEventStatus.NO_SHOW, label: 'Marcar sin atención' },
-  ],
-};
-
-const QUICK_WORK_ORDER_ACTIONS: Partial<Record<WorkOrderStatus, QuickWorkOrderAction[]>> = {
-  [WorkOrderStatus.OPEN]: [
-    { status: WorkOrderStatus.ASSIGNED, label: 'Asignar', emphasized: true },
-    { status: WorkOrderStatus.IN_PROGRESS, label: 'Iniciar OT' },
-  ],
-  [WorkOrderStatus.ASSIGNED]: [
-    { status: WorkOrderStatus.IN_PROGRESS, label: 'Iniciar OT', emphasized: true },
-    { status: WorkOrderStatus.DONE, label: 'Cerrar OT' },
-  ],
-  [WorkOrderStatus.IN_PROGRESS]: [
-    { status: WorkOrderStatus.DONE, label: 'Cerrar OT', emphasized: true },
-    { status: WorkOrderStatus.CANCELLED, label: 'Cancelar OT' },
-  ],
-};
-
+/**
+ * Panel lateral de Agenda — superficie de coordinación exclusivamente.
+ *
+ * La Agenda nunca contiene formularios de ejecución de campo, selectores genéricos
+ * de estado ni controles de mutación de OT. El coordinador supervisa contexto,
+ * resuelve excepciones y abre la OT cuando necesita revisar la ejecución completa.
+ */
 export function ScheduleEventDrawer({
   open,
   event,
   technician,
-  workOrder,
+  executionOrder,
+  syncState = 'synced',
   onOpenChange,
   onOpenMoveToPending,
-  onTransitionEventStatus,
-  onTransitionWorkOrderStatus,
+  onOpenExecutionOrder,
   canReschedule,
   isLoading,
   error,
-  actionError,
-  isEventTransitioning,
-  isWorkOrderTransitioning,
   onRetry,
 }: ScheduleEventDrawerProps) {
-  const [nextEventStatus, setNextEventStatus] = useState('');
-  const [nextWorkOrderStatus, setNextWorkOrderStatus] = useState('');
-  const [isWorkOrderExpanded, setIsWorkOrderExpanded] = useState(true);
-
-  useEffect(() => {
-    if (!open) {
-      setNextEventStatus('');
-      setNextWorkOrderStatus('');
-    }
-  }, [open]);
-
-  useEffect(() => {
-    setIsWorkOrderExpanded(Boolean(event?.workOrderId));
-  }, [event?.id, event?.workOrderId]);
-
-  const eventTransitionOptions = useMemo(
-    () =>
-      event
-        ? SCHEDULE_EVENT_STATUS_OPTIONS.filter((option) => option.value !== event.status)
-        : SCHEDULE_EVENT_STATUS_OPTIONS,
-    [event],
-  );
-
-  const workOrderTransitionOptions = useMemo(
-    () =>
-      workOrder
-        ? WORK_ORDER_STATUS_OPTIONS.filter((option) => option.value !== workOrder.status)
-        : WORK_ORDER_STATUS_OPTIONS,
-    [workOrder],
-  );
-
   const terminalEvent = event ? isScheduleEventTerminalStatus(event.status) : true;
-  const terminalWorkOrder = workOrder ? isWorkOrderTerminalStatus(workOrder.status) : true;
-  const quickEventActions = event ? (QUICK_EVENT_ACTIONS[event.status] ?? []) : [];
-  const quickWorkOrderActions = workOrder ? (QUICK_WORK_ORDER_ACTIONS[workOrder.status] ?? []) : [];
   const coordinatesLabel = event ? formatScheduleEventCoordinates(event) : null;
+  const hasExecutionOrder = Boolean(event?.executionOrderId);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>{event?.title || 'Detalle del evento'}</DialogTitle>
-          <DialogDescription>
-            Revisa el contexto operativo, resuelve la siguiente acción y consulta la OT asociada si
-            aplica.
-          </DialogDescription>
-        </DialogHeader>
-
-        {isLoading ? (
-          <div className="space-y-4" aria-busy="true">
-            <div className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="h-48 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-              <div className="h-48 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-            </div>
+    <OperationalSidePeek
+      open={open}
+      onOpenChange={onOpenChange}
+      title={event?.title || 'Detalle del evento'}
+      description="Supervisa la visita, resuelve excepciones y abre la OT cuando necesites revisar la ejecución."
+      eyebrow="Agenda · coordinación"
+    >
+      {isLoading ? (
+        <div className="space-y-4" aria-busy="true" aria-label="Cargando detalle del evento">
+          <div className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
+          <div className="h-48 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
+        </div>
+      ) : error ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar el detalle"
+          description={error}
+          action={
+            <Button type="button" variant="secondary" onClick={() => void onRetry()}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : !event ? (
+        <PortalEmptyState
+          title="Evento no disponible"
+          description="Selecciona otro evento de la agenda para consultar su trazabilidad."
+        />
+      ) : (
+        <div className="space-y-5">
+          {/* ── Badges de encabezado ── */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={getWfmWorkTypeVariant(event.type)}>
+              {getWfmWorkTypeLabel(event.type)}
+            </Badge>
+            <Badge variant={getScheduleEventStatusVariant(event.status)}>
+              {getScheduleEventStatusLabel(event.status)}
+            </Badge>
+            {hasExecutionOrder ? <Badge variant="primary">OT de ejecución vinculada</Badge> : null}
           </div>
-        ) : error ? (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar el detalle"
-            description={error}
-            action={
-              <Button type="button" variant="secondary" onClick={() => void onRetry()}>
-                Reintentar
-              </Button>
-            }
-          />
-        ) : !event ? (
-          <PortalEmptyState
-            title="Evento no disponible"
-            description="Selecciona otro evento de la agenda para consultar su trazabilidad."
-          />
-        ) : (
-          <div className="space-y-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={getWfmWorkTypeVariant(event.type)}>
-                {getWfmWorkTypeLabel(event.type)}
-              </Badge>
-              <Badge variant={getScheduleEventStatusVariant(event.status)}>
-                {getScheduleEventStatusLabel(event.status)}
-              </Badge>
-              {event.workOrderId && <Badge variant="warning">OT vinculada</Badge>}
-            </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <section className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                  Contexto operativo
+          {/* ── Contexto operativo ── */}
+          <section
+            aria-labelledby="agenda-context"
+            className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3"
+          >
+            <h3
+              id="agenda-context"
+              className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500"
+            >
+              Contexto operativo
+            </h3>
+            <div className="mt-3 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+              <p className="flex items-start gap-2">
+                <CalendarClock className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
+                <span>{formatWfmDateRange(event.scheduledStartAt, event.scheduledEndAt)}</span>
+              </p>
+              <p className="flex items-start gap-2">
+                <Route className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
+                <span>
+                  {technician ? getTechnicianDisplayName(technician) : 'Responsable no disponible'}
+                </span>
+              </p>
+              <p className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
+                <span>
+                  {[event.address, event.sector, event.municipality].filter(Boolean).join(' · ') ||
+                    'Ubicación no disponible'}
+                </span>
+              </p>
+              {coordinatesLabel ? (
+                <p className="flex items-start gap-2">
+                  <Crosshair className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
+                  <span>Coordenadas: {coordinatesLabel}</span>
                 </p>
-                <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                  <p className="flex items-start gap-2">
-                    <CalendarClock
-                      className="mt-0.5 h-4 w-4 text-iwana-primary"
-                      aria-hidden="true"
-                    />
-                    <span>{formatWfmDateRange(event.scheduledStartAt, event.scheduledEndAt)}</span>
-                  </p>
-                  <p className="flex items-start gap-2">
-                    <Route className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
-                    <span>
-                      {technician
-                        ? getTechnicianDisplayName(technician)
-                        : 'Responsable no disponible'}
-                    </span>
-                  </p>
-                  <p className="flex items-start gap-2">
-                    <MapPin className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
-                    <span>
-                      {[event.address, event.sector, event.municipality]
-                        .filter(Boolean)
-                        .join(' · ') || 'Ubicación no disponible'}
-                    </span>
-                  </p>
-                  {coordinatesLabel && (
-                    <p className="flex items-start gap-2">
-                      <Crosshair className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
-                      <span>
-                        <span className="font-medium text-gray-700 dark:text-gray-200">
-                          Coordenadas:{' '}
-                        </span>
-                        {coordinatesLabel}
-                      </span>
-                    </p>
-                  )}
-                  <p className="flex items-start gap-2">
-                    <Ticket className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
-                    <span>{getEventReferenceLabel(event, workOrder)}</span>
-                  </p>
-                </div>
-                <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300">
-                  {event.description || 'Sin descripción interna registrada para esta actividad.'}
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                      Estado del evento
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                      {terminalEvent
-                        ? 'El evento ya quedó en un estado terminal y no admite nuevas transiciones.'
-                        : 'Resuelve el siguiente paso operativo con acciones rápidas y mueve a pendientes si la visita debe salir de agenda.'}
-                    </p>
-                  </div>
-                  {canReschedule && !terminalEvent && (
-                    <Button type="button" variant="secondary" onClick={onOpenMoveToPending}>
-                      Mover a pendientes
-                    </Button>
-                  )}
-                </div>
-
-                {quickEventActions.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {quickEventActions.map((action) => (
-                      <Button
-                        key={action.status}
-                        type="button"
-                        variant={action.emphasized ? undefined : 'secondary'}
-                        disabled={terminalEvent || isEventTransitioning}
-                        loading={isEventTransitioning && nextEventStatus === action.status}
-                        onClick={async () => {
-                          setNextEventStatus(action.status);
-                          await onTransitionEventStatus(action.status);
-                          setNextEventStatus('');
-                        }}
-                      >
-                        {action.label}
-                      </Button>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className="mt-4 grid gap-3 rounded-2xl border border-dashed border-gray-200 bg-white/70 p-3 dark:border-dark-border dark:bg-dark-surface-2/70 md:grid-cols-[minmax(0,1fr)_auto]">
-                  <Select
-                    id="event-transition-status"
-                    label="Otra transición del evento"
-                    value={nextEventStatus}
-                    placeholder="Selecciona un estado"
-                    options={eventTransitionOptions}
-                    onChange={(eventChange) => setNextEventStatus(eventChange.target.value)}
-                    disabled={terminalEvent || eventTransitionOptions.length === 0}
-                  />
-                  <Button
-                    type="button"
-                    className="md:self-end"
-                    disabled={!nextEventStatus || terminalEvent || isEventTransitioning}
-                    loading={isEventTransitioning}
-                    onClick={async () => {
-                      await onTransitionEventStatus(nextEventStatus as ScheduleEventStatus);
-                      setNextEventStatus('');
-                    }}
-                  >
-                    Aplicar estado
-                  </Button>
-                </div>
-              </section>
-            </div>
-
-            <section className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                    Orden de trabajo vinculada
-                  </p>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                    Si la OT existe, puedes revisar prioridad, origen y su estado operativo actual.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Wrench className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
-                  {event.workOrderId || event.executionOrderId ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      aria-expanded={isWorkOrderExpanded}
-                      onClick={() => setIsWorkOrderExpanded((current) => !current)}
-                    >
-                      {isWorkOrderExpanded ? 'Ocultar OT' : 'Ver OT'}
-                      {isWorkOrderExpanded ? (
-                        <ChevronUp className="ml-2 h-4 w-4" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="ml-2 h-4 w-4" aria-hidden="true" />
-                      )}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-
-              {event.executionOrderId ? (
-                <div className="mb-4">
-                  <Button asChild={true} variant="secondary" size="sm">
-                    <Link href={`/dashboard/operations?executionOrderId=${event.executionOrderId}`}>
-                      Abrir OT de ejecución
-                    </Link>
-                  </Button>
-                </div>
               ) : null}
-
-              {!event.workOrderId ? (
-                <PortalEmptyState
-                  title="Sin orden de trabajo vinculada"
-                  description="Este evento aún no tiene una OT ligera asociada desde la agenda del portal."
-                />
-              ) : !isWorkOrderExpanded ? (
-                <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300">
-                  Expande la OT para revisar prioridad, origen, notas y avanzar su estado.
-                </div>
-              ) : !workOrder ? (
-                <PortalAlert
-                  variant="warning"
-                  title="Orden de trabajo no disponible"
-                  description="La OT vinculada no pudo cargarse. Actualiza la vista para reintentar."
-                />
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={getWorkOrderStatusVariant(workOrder.status)}>
-                          {getWorkOrderStatusLabel(workOrder.status)}
-                        </Badge>
-                        <Badge variant={getWorkOrderPriorityVariant(workOrder.priority)}>
-                          {getWorkOrderPriorityLabel(workOrder.priority)}
-                        </Badge>
-                      </div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {workOrder.code}
-                      </p>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {workOrder.summary}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Origen: {getWorkOrderSourceContextLabel(workOrder.sourceContext)}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {workOrder.notes || 'Sin notas internas para la orden de trabajo.'}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Referencia: {workOrder.sourceRef || 'No disponible'}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Creada: {formatWfmDateRange(workOrder.createdAt, workOrder.updatedAt)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {quickWorkOrderActions.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {quickWorkOrderActions.map((action) => (
-                        <Button
-                          key={action.status}
-                          type="button"
-                          variant={action.emphasized ? undefined : 'secondary'}
-                          disabled={terminalWorkOrder || isWorkOrderTransitioning}
-                          loading={
-                            isWorkOrderTransitioning && nextWorkOrderStatus === action.status
-                          }
-                          onClick={async () => {
-                            setNextWorkOrderStatus(action.status);
-                            await onTransitionWorkOrderStatus(action.status);
-                            setNextWorkOrderStatus('');
-                          }}
-                        >
-                          {action.label}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="grid gap-3 rounded-2xl border border-dashed border-gray-200 bg-white/70 p-3 dark:border-dark-border dark:bg-dark-surface-2/70 md:grid-cols-[minmax(0,1fr)_auto]">
-                    <Select
-                      id="work-order-transition-status"
-                      label="Otra transición de la OT"
-                      value={nextWorkOrderStatus}
-                      placeholder="Selecciona un estado"
-                      options={workOrderTransitionOptions}
-                      onChange={(eventChange) => setNextWorkOrderStatus(eventChange.target.value)}
-                      disabled={terminalWorkOrder || workOrderTransitionOptions.length === 0}
-                    />
-                    <Button
-                      type="button"
-                      className="md:self-end"
-                      disabled={
-                        !nextWorkOrderStatus || terminalWorkOrder || isWorkOrderTransitioning
-                      }
-                      loading={isWorkOrderTransitioning}
-                      onClick={async () => {
-                        await onTransitionWorkOrderStatus(nextWorkOrderStatus as WorkOrderStatus);
-                        setNextWorkOrderStatus('');
-                      }}
-                    >
-                      Actualizar OT
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {actionError && (
-              <PortalAlert
-                variant="error"
-                title="Acción operativa rechazada"
-                description={actionError}
-              />
-            )}
-
-            <div className="flex justify-end">
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  Cerrar
-                </Button>
-              </DialogClose>
+              <p className="flex items-start gap-2">
+                <Ticket className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
+                <span>{getEventReferenceLabel(event)}</span>
+              </p>
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+            <p className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300">
+              {event.description || 'Sin descripción interna registrada para esta actividad.'}
+            </p>
+          </section>
+
+          {/* ── Siguiente acción de coordinación ── */}
+          <section
+            aria-labelledby="agenda-next-action"
+            className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3
+                  id="agenda-next-action"
+                  className="text-sm font-semibold text-gray-900 dark:text-white"
+                >
+                  Siguiente acción
+                </h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  {terminalEvent
+                    ? 'El evento está cerrado y solo puede consultarse.'
+                    : 'Elige una acción de coordinación para mantener la visita al día.'}
+                </p>
+              </div>
+              {canReschedule && !terminalEvent && onOpenMoveToPending ? (
+                <Button type="button" variant="secondary" onClick={onOpenMoveToPending}>
+                  Mover a pendientes
+                </Button>
+              ) : null}
+            </div>
+          </section>
+
+          {/* ── Resumen de la OT ── */}
+          <section
+            aria-labelledby="agenda-order"
+            className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3
+                  id="agenda-order"
+                  className="text-sm font-semibold text-gray-900 dark:text-white"
+                >
+                  Resumen de la OT
+                </h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  La ejecución se registra en MOD11; Agenda solo muestra su resumen.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <ExecutionOrderSummary
+                order={executionOrder ?? null}
+                availability={
+                  hasExecutionOrder ? (executionOrder ? 'linked' : 'unavailable') : 'unlinked'
+                }
+                syncState={syncState}
+                readonly
+                canOpen={hasExecutionOrder && Boolean(onOpenExecutionOrder)}
+                {...(hasExecutionOrder && onOpenExecutionOrder
+                  ? { onOpen: onOpenExecutionOrder }
+                  : {})}
+              />
+            </div>
+            {hasExecutionOrder ? (
+              <div className="mt-4">
+                <Button asChild variant="secondary" size="sm">
+                  <Link href={`/dashboard/operations?executionOrderId=${event.executionOrderId}`}>
+                    Abrir OT de ejecución
+                  </Link>
+                </Button>
+              </div>
+            ) : null}
+          </section>
+
+          {/* ── Excepciones ── */}
+          {syncState !== 'synced' ? (
+            <PortalAlert
+              variant="warning"
+              title="Sincronización pendiente"
+              description={
+                syncState === 'stale'
+                  ? 'Los datos de la OT pueden estar desactualizados. Refresca para ver el estado vigente.'
+                  : syncState === 'conflict'
+                    ? 'La orden cambió en el servidor. Revisa la versión vigente antes de decidir.'
+                    : syncState === 'error'
+                      ? 'No pudimos sincronizar la orden. Intenta de nuevo más tarde.'
+                      : 'Actualización pendiente. Última sincronización puede no reflejar el estado actual.'
+              }
+            />
+          ) : null}
+
+          {/* ── Historial de cambios ── */}
+          <section
+            aria-labelledby="agenda-history"
+            className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
+          >
+            <h3 id="agenda-history" className="text-sm font-semibold text-gray-900 dark:text-white">
+              Historial de cambios
+            </h3>
+            <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              <p className="flex items-center justify-between py-1.5">
+                <span>
+                  Creado:{' '}
+                  {formatChangeTimestamp((event as any).createdAt ?? event.scheduledStartAt)}
+                </span>
+              </p>
+              <p className="flex items-center justify-between py-1.5">
+                <span>
+                  Última modificación:{' '}
+                  {formatChangeTimestamp((event as any).updatedAt ?? event.scheduledStartAt)}
+                </span>
+              </p>
+              <p className="flex items-center justify-between py-1.5">
+                <span>Tipo: {getWfmWorkTypeLabel(event.type)}</span>
+              </p>
+              <p className="flex items-center justify-between py-1.5">
+                <span>Estado: {getScheduleEventStatusLabel(event.status)}</span>
+              </p>
+              {event.assignedUserId ? (
+                <p className="flex items-center justify-between py-1.5">
+                  <span>
+                    Responsable:{' '}
+                    {technician
+                      ? getTechnicianDisplayName(technician)
+                      : 'Responsable no disponible'}
+                  </span>
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      )}
+    </OperationalSidePeek>
   );
 }
