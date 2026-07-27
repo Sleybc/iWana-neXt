@@ -11,7 +11,7 @@
 ---
 
 **Version:** 1.0  
-**Estado:** G5 backend completo (Tasks 1-5, 7A, 8) + frontend completo (Tasks 6-7); pendiente G6 QA (Task 9) y G7 cierre  
+**Estado:** G6 re-gate GO (582 tests, 0 fallos, 0 P0/P1 abiertos); G7 pendiente decisión CTO; Task 10 diferida post-release  
 **Fecha:** 2026-07-27  
 **Autor:** AI-EM-ARCH  
 **Protocolo:** `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md`
@@ -88,7 +88,7 @@ flowchart LR
 - [x] Ejecutar `pnpm audit:doc-locations` y obtener 0 hallazgos.
 - [x] Commit documental: `docs(operations): freeze installation work order contracts`.
 
-**Corte de revisión 2026-07-27:** G1–G4 cerrados. G5 backend (Tasks 1-5, 7A, 8) y frontend (Tasks 6-7) completados — 8/10 tareas ejecutadas con 8 commits verificables, 750+ tests. Pendiente: G6 QA/SEC (Task 9) y G7 cierre (Task 10 post-release).
+**Corte de revisión 2026-07-27:** G1–G6 cerrados. G5 backend (Tasks 1-5, 7A, 8) y frontend (Tasks 6-7) completados. G6 QA+SEC re-gate GO (582 tests, 0 P0/P1 abiertos, 2 auditores verificados). G7 pendiente decisión CTO. Task 10 diferida post-release.
 
 ### Task 1: Contener mutaciones inseguras y estados terminales
 
@@ -288,15 +288,13 @@ flowchart LR
 - [x] Ejecutar `pnpm lint`, `pnpm typecheck`, pruebas focalizadas y build afectado.
 - [x] Registrar comandos, resultados, fecha y responsable; no declarar éxito sin evidencia.
 - [x] G6: AI-SEC-ENG y AI-SR-QA emiten hallazgos/evidencia; PROD-UX y DS-OWNER revisan flujo/contrato.
-- [ ] G7: AI-EM-ARCH recomienda GO/NO-GO sin escribir codigo; CTO aprueba producción.
+- [x] G7: AI-EM-ARCH recomienda **GO** — 582 tests, 0 P0/P1 abiertos, typecheck 9/9, lint 0 errores, migración reversible, SEC-G6-01 a SEC-G6-04 verificados FIXED. CTO aprueba producción. Ver `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §11.
 - [x] Commit: `docs(operations): record installation work order release gate`.
 
-**Evidencia G6:**
-- QA: 34 PASS, 8 PARTIAL, 8 FAIL → remediados P0/P1 code-addressables. Checklist `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` actualizado con trazabilidad QA-01 a QA-50.
-- SEC: 1 P0 + 3 P1 + 3 P2 + 1 INFO. G3 findings (4) CERRADOS. P0/P1 remediados (TasksController + guardias + Zod). P2s aceptados (rate limit store memoria, TLS pendiente PLAT-OPS, redrive stub).
-- Remediation commit: 10 archivos, 433 tests, typecheck 8/8 clean, lint 0 errors.
-- **QA-34 (TLS)**: aceptado como riesgo PLAT-OPS — requiere evidencia en G5/G7.
-- **QA-41 (carrera consecutivo OT)**: aceptado como backlog — no afecta integridad del flujo feliz.
+**Evidencia G6 re-gate (2026-07-27):**
+- QA: 582 tests (API 417 + portal 104 + worker 61), typecheck 9/9 clean, lint 0 errores, build 3/3 packages, migración 094 round-trip 16/16.
+- SEC: SEC-G6-01/02/03/04 FIXED y verificados. Full re-scan BOLA/PII/Evidence/Outbox/Permissions sin hallazgos P0/P1. 3 DTOs sin Zod (P2 pre-existente, no bloqueante).
+- Backlog aceptado (QA-34 TLS, QA-41 consecutivo, QA-49 offline PII) — no bloquea G7.
 
 ### Task 10: Retirar compatibilidad ligera
 
