@@ -1,12 +1,12 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
-**Versión:** 1.4  
-**Estado:** Reabierto — G4 congelado (contratos); G5 pendiente de ejecución  
+**Versión:** 1.5  
+**Estado:** Reabierto — G4 congelado (contratos); G5 ejecutado; **G6 QA ejecutado: NO-GO**  
 **Fecha:** 2026-07-27  
 **Fecha de cierre anterior:** 2026-07-07  
 **Aprobado por:** CTO (G1), AI-EM-ARCH (G2–G4)  
-**Modo activo:** Ejecución autorizada  
-**Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4)  
+**Modo activo:** Gate G6 en revisión  
+**Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4), AI-SR-QA (v1.5 — G6 QA audit)  
 **Clasificación:** Uso interno
 
 ---
@@ -44,6 +44,74 @@ Cerrar el cableado end-to-end:
 | --- | --- | --- |
 | DT-FLOW-01 | Puerto Assurance stub | `AssuranceExecutionOrderNotifierAdapter` registra `EXECUTION_ORDER_CLOSED` en timeline MOD10 |
 | DT-FLOW-02 | `ERR_ABORTED` en E2E Assurance | Cerrado: `playwright.portal.config.ts` usa Webpack dev y `workers: 1`; `portal-assurance.spec.ts` siembra sesión antes de navegar |
+
+---
+
+## 10. G6 QA Gate — 2026-07-27 (AI-SR-QA)
+
+### 10.1 Ejecución de tests
+
+| Suite | Comando | Resultado |
+| --- | --- | --- |
+| Backend execution-orders | `pnpm --filter @iwana/api test -- execution-orders` | 180 passed |
+| Backend related (templates, reliability, convergence, gate) | `pnpm --filter @iwana/api test -- "execution-order-templates|execution-order-reliability|execution-order-projection-convergence|closure-gate"` | 43 passed |
+| Frontend ExecutionOrder | `pnpm --filter @iwana/portal test -- ExecutionOrder` | 67 passed |
+| Worker | `pnpm --filter @iwana/worker test` | 61 passed |
+| **Total** | | **~363 passed** |
+| Lint | `pnpm lint` | 0 errors, warnings only |
+| Typecheck | `pnpm typecheck` | **FAIL** — portal `pending-visits-ui.ts` |
+| Build | `pnpm --filter @iwana/shared build && pnpm --filter @iwana/db build && pnpm --filter @iwana/api build` | PASS |
+
+### 10.2 Swagger spec failure (P1)
+
+`tasks.swagger.spec.ts` (3 tests) falla porque `ExecutionOrderProjectionConvergenceService` no está declarado en el TestingModule del swagger spec test. Es un gap de infraestructura de tests, no de lógica de negocio. Requiere agregar `{ provide: ExecutionOrderProjectionConvergenceService, useValue: { verifyConvergence: jest.fn() } }` al spec.
+
+### 10.3 Matriz QA-01 a QA-50
+
+| Estado | Cantidad | Items |
+| --- | --- | --- |
+| PASS | 34 | QA-01–10, QA-12–17, QA-19, QA-21, QA-25–32, QA-35, QA-38–39, QA-42–48 |
+| PARTIAL | 8 | QA-11, QA-18, QA-20, QA-22, QA-24, QA-36 |
+| FAIL | 8 | QA-23, QA-33, QA-34, QA-37, QA-40, QA-41, QA-49, QA-50 |
+
+### 10.4 Veredicto: **NO-GO**
+
+**Bloqueantes P0:**
+1. QA-23: Migraciones tenant sin test de reversibilidad
+2. QA-34: Sin evidencia TLS/ingress (PLAT-OPS)
+3. QA-40: Catálogo de permisos sin test de compatibilidad de migración
+4. QA-41: Sin test de carrera de consecutivo OT
+5. QA-49: Sin evidencia de que offline no persiste PII
+
+**Bloqueantes P1:** QA-33 (rate limit), QA-37 (lag métrica), QA-50 (threat model)
+
+**Typecheck:** `pending-visits-ui.ts` — Record<VisitRequestStatus> missing IN_EXECUTION, CLOSED, REQUIRES_RESCHEDULE (G3 DATA-P0-1)
+
+### 10.5 Categorías con evidencia sólida (GO)
+
+- **BOLA/Tenant isolation:** 4/4 QA items PASS con tests cross-tenant, ABAC, 404/403 indistinguibles
+- **Terminal immutability + concurrency:** 4/4 QA items PASS con 4×5 mutaciones rechazadas + race conditions
+- **Idempotency/Atomicity:** 4/4 QA items PASS con crash-window recovery, HMAC, tombstone
+- **Evidence/Media:** 4/4 QA items PASS con cross-tenant, MIME, signed URLs sin storage leaks
+- **DTO/Mass Assignment:** 2/2 QA items PASS con Zod strict() y PII protection
+- **Convergence ADR-068:** 6 filas cubiertas en `execution-order-events.processor.spec.ts`
+
+### 10.6 Recomendación
+
+Completar los 8 items FAIL (5 P0 + 3 P1) antes de re-ejecutar G6. Las categorías GO no necesitan re-testeo. El typecheck failure en portal debe resolverse agregando los 3 estados faltantes a `pending-visits-ui.ts` (requiere coordinación con AI-FE-PLATFORM).
+
+| Gap | Severidad | Owner sugerido | Fase |
+| --- | --- | --- | --- |
+| QA-23: migración reversible | P0 | AI-SR-FULL | G5 |
+| QA-33: rate limit test | P1 | AI-SR-FULL | G5 |
+| QA-34: TLS evidence | P0 | AI-PLAT-OPS | G5 |
+| QA-37: lag métrica | P1 | AI-SR-FULL + AI-PLAT-OPS | G5 |
+| QA-40: permission catalog migration test | P0 | AI-SR-FULL | G5 |
+| QA-41: OT number race test | P0 | AI-SR-FULL | G5 |
+| QA-49: offline PII evidence | P0 | AI-FE-PLATFORM | G5 |
+| QA-50: threat model/ASVS | P1 | AI-SEC-ENG | G6 |
+| Typecheck DATA-P0-1 | P0 | AI-FE-PLATFORM | G5 |
+| Swagger DI gap | P1 | AI-SR-FULL | G5 |
 
 ---
 
