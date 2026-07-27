@@ -22,6 +22,13 @@ import type {
   OperationalTaskRecord,
   OperationalTaskTimelineEvent,
 } from '@/lib/api-client';
+import type {
+  ExecutionOrderDetail,
+  ExecutionOrderActivity,
+  ExecutionOrderItemUsage,
+  ExecutionOrderEvidence,
+  ExecutionOrderTemplateVersion,
+} from '@iwana/shared';
 import { ApiError, tasksApi, usersApi } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -112,15 +119,20 @@ export function OperationsClient() {
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
-  const [selectedExecutionOrder, setSelectedExecutionOrder] = useState<ExecutionOrderRecord | null>(
+  const [selectedExecutionOrder, setSelectedExecutionOrder] = useState<ExecutionOrderDetail | null>(
     null,
   );
   const [executionOrderActivities, setExecutionOrderActivities] = useState<
-    ExecutionOrderActivityRecord[]
+    ExecutionOrderActivity[]
   >([]);
-  const [executionOrderItemUsage, setExecutionOrderItemUsage] = useState<
-    ExecutionOrderItemUsageRecord[]
-  >([]);
+  const [executionOrderItemUsage, setExecutionOrderItemUsage] = useState<ExecutionOrderItemUsage[]>(
+    [],
+  );
+  const [executionOrderEvidence, setExecutionOrderEvidence] = useState<ExecutionOrderEvidence[]>(
+    [],
+  );
+  const [executionOrderTemplate, setExecutionOrderTemplate] =
+    useState<ExecutionOrderTemplateVersion | null>(null);
   const [executionOrderError, setExecutionOrderError] = useState<string | null>(null);
   const [isLoadingExecutionOrder, setIsLoadingExecutionOrder] = useState(false);
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
@@ -217,14 +229,15 @@ export function OperationsClient() {
         tasksApi.executionOrders.listActivities(executionOrderId),
         tasksApi.executionOrders.listItemUsage(executionOrderId),
       ]);
-      setSelectedExecutionOrder(order);
-      setExecutionOrderActivities(activities);
-      setExecutionOrderItemUsage(itemUsage);
+      setSelectedExecutionOrder(order as unknown as ExecutionOrderDetail);
+      setExecutionOrderActivities(activities as unknown as ExecutionOrderActivity[]);
+      setExecutionOrderItemUsage(itemUsage as unknown as ExecutionOrderItemUsage[]);
     } catch (loadError) {
       setExecutionOrderError(mapOperationsError(loadError));
       setSelectedExecutionOrder(null);
       setExecutionOrderActivities([]);
       setExecutionOrderItemUsage([]);
+      setExecutionOrderEvidence([]);
     } finally {
       setIsLoadingExecutionOrder(false);
     }
@@ -521,20 +534,31 @@ export function OperationsClient() {
         order={selectedExecutionOrder}
         activities={executionOrderActivities}
         itemUsage={executionOrderItemUsage}
+        evidence={executionOrderEvidence}
+        template={executionOrderTemplate}
         isLoading={isLoadingExecutionOrder}
         isSubmitting={isSubmittingExecutionOrder}
         error={executionOrderError}
+        offline={false}
         onClose={() => {
           setSelectedExecutionOrder(null);
           setExecutionOrderActivities([]);
           setExecutionOrderItemUsage([]);
+          setExecutionOrderEvidence([]);
           setExecutionOrderError(null);
+          setExecutionOrderTemplate(null);
           router.replace('/dashboard/operations');
         }}
         onStart={handleStartExecutionOrder}
-        onRegisterFieldWork={handleRegisterExecutionOrderFieldWork}
-        onRegisterItemUsage={handleRegisterExecutionOrderItemUsage}
-        onCloseOrder={handleCloseExecutionOrder}
+        onRegisterActivity={handleRegisterExecutionOrderFieldWork as any}
+        onRegisterItemUsage={handleRegisterExecutionOrderItemUsage as any}
+        onUploadEvidence={async () => {
+          /* Evidence upload not implemented via API client yet */
+        }}
+        onCloseOrder={handleCloseExecutionOrder as any}
+        onCreateFollowUp={async () => {
+          /* Follow-up creation not implemented via API client yet */
+        }}
       />
     </div>
   );
