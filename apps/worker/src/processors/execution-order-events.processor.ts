@@ -182,19 +182,18 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
         ExecutionOrderBlockedV1: (e) => this.applyExecutionOrderBlocked(client, tenantId, e),
         InventoryConsumptionRequestedV1: (event) => {
           this.assertPayload(event, true);
+          // MOD12 consumirá este evento desde el outbox y procesará el
+          // movimiento de inventario. MOD11 no actúa sobre este evento
+          // porque es el emisor, no el consumidor.
           return Promise.resolve();
         },
         ExecutionOrderClosedV1: (e) => this.applyExecutionOrderClosed(client, tenantId, e),
         ExecutionOrderFollowUpRequiredV1: (e) =>
           this.applyExecutionOrderFollowUp(client, tenantId, e),
-        InventoryMovementConfirmedV1: (event) => {
-          this.assertPayload(event, true);
-          return Promise.resolve();
-        },
-        InventoryMovementRejectedV1: (event) => {
-          this.assertPayload(event, true);
-          return Promise.resolve();
-        },
+        InventoryMovementConfirmedV1: (e) =>
+          this.applyInventoryMovementConfirmed(client, tenantId, e),
+        InventoryMovementRejectedV1: (e) =>
+          this.applyInventoryMovementRejected(client, tenantId, e),
       };
 
       const handler = handlers[envelope.eventType];
@@ -398,6 +397,114 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
 
     // Task → PENDING_INTERNAL
     await this.transitionLinkedTask(client, tenantId, payload.executionOrderId, 'PENDING_INTERNAL');
+  }
+
+  // ── Proyección: InventoryMovementConfirmedV1 ──────────────────────────
+  // ADR-068: MOD12 confirma el movimiento → MOD11 actualiza el registro
+  // de consumo a CONFIRMED y guarda el stockMovementId.
+  private async applyInventoryMovementConfirmed(
+    client: PoolClient,
+    tenantId: string,
+    event: OperationalEventEnvelopeV1,
+  ): Promise<void> {
+    const payload = event.payload as {
+      executionOrderId: string;
+      inventoryRequestId: string;
+      stockMovementId: string;
+    };
+
+    // Idempotencia: si ya está CONFIRMED con el mismo stockMovementId, skip.
+    const current = await client.query<{
+      movement_status: string;
+      stock_movement_id: string | null;
+    }>(
+      `SELECT movement_status, stock_movement_id
+       FROM execution_order_item_usage
+       WHERE tenant_id = $1
+         AND inventory_request_id = $2`,
+      [tenantId, payload.inventoryRequestId],
+    );
+
+    if (current.rows.length === 0) {
+      // Race condition: la confirmación llegó antes que el registro de
+      // consumo. Lanzamos error para que el inbox reintente.
+      throw new Error(
+        `ItemUsage no encontrado para inventoryRequestId=${payload.inventoryRequestId}. Reintentando.`,
+      );
+    }
+
+    const row = current.rows[0]!;
+    if (row.movement_status === 'CONFIRMED' && row.stock_movement_id === payload.stockMovementId) {
+      this.logger.debug(
+        `[execution-events] Duplicado idempotente InventoryMovementConfirmedV1 ` +
+          `inventoryRequestId=${payload.inventoryRequestId}`,
+      );
+      return;
+    }
+
+    await client.query(
+      `UPDATE execution_order_item_usage
+       SET movement_status = 'CONFIRMED',
+           stock_movement_id = $3
+       WHERE tenant_id = $1
+         AND inventory_request_id = $2`,
+      [tenantId, payload.inventoryRequestId, payload.stockMovementId],
+    );
+
+    this.logger.log(
+      `[execution-events] Consumo confirmado: inventoryRequestId=${payload.inventoryRequestId} ` +
+        `stockMovementId=${payload.stockMovementId}`,
+    );
+  }
+
+  // ── Proyección: InventoryMovementRejectedV1 ───────────────────────────
+  // ADR-068: MOD12 rechaza el movimiento → MOD11 actualiza el registro
+  // de consumo a REJECTED.
+  private async applyInventoryMovementRejected(
+    client: PoolClient,
+    tenantId: string,
+    event: OperationalEventEnvelopeV1,
+  ): Promise<void> {
+    const payload = event.payload as {
+      executionOrderId: string;
+      inventoryRequestId: string;
+      reasonCode: string;
+    };
+
+    // Idempotencia: si ya está REJECTED, skip.
+    const current = await client.query<{ movement_status: string }>(
+      `SELECT movement_status
+       FROM execution_order_item_usage
+       WHERE tenant_id = $1
+         AND inventory_request_id = $2`,
+      [tenantId, payload.inventoryRequestId],
+    );
+
+    if (current.rows.length === 0) {
+      throw new Error(
+        `ItemUsage no encontrado para inventoryRequestId=${payload.inventoryRequestId}. Reintentando.`,
+      );
+    }
+
+    if (current.rows[0]!.movement_status === 'REJECTED') {
+      this.logger.debug(
+        `[execution-events] Rechazo duplicado ignorado para inventoryRequestId=${payload.inventoryRequestId}`,
+      );
+      return;
+    }
+
+    await client.query(
+      `UPDATE execution_order_item_usage
+       SET movement_status = 'REJECTED'
+       WHERE tenant_id = $1
+         AND inventory_request_id = $2`,
+      [tenantId, payload.inventoryRequestId],
+    );
+
+    this.logger.log(
+      `[execution-events] Consumo rechazado: inventoryRequestId=${payload.inventoryRequestId} ` +
+        `reasonCode=${payload.reasonCode}`,
+    );
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────

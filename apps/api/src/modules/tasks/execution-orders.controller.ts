@@ -6,12 +6,18 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
+  Optional,
   Param,
   ParseUUIDPipe,
   Post,
+  Redirect,
+  Req,
+  UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccessPermissionKey, UserRole, ExecutionOrderStatus } from '@iwana/shared';
@@ -32,7 +38,6 @@ import {
   BlockExecutionOrderDto,
   UnblockExecutionOrderDto,
   RegisterEvidenceDto,
-  EvidenceAssetUploadIntentDto,
   FollowUpDto,
   StartExecutionOrderSchema,
   RegisterFieldWorkSchema,
@@ -41,6 +46,7 @@ import {
 } from './dto/execution-orders.dto';
 import type { ExecutionOrderCommandContext } from './services/execution-order-reliability.service';
 import { ExecutionOrdersService } from './services/execution-orders.service';
+import { ExecutionOrderInventoryReconciliationService } from './services/execution-order-inventory-reconciliation.service';
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
@@ -61,6 +67,8 @@ export class ExecutionOrdersController {
   constructor(
     private readonly executionOrdersService: ExecutionOrdersService,
     private readonly projectionConvergenceService: ExecutionOrderProjectionConvergenceService,
+    @Optional()
+    private readonly inventoryReconciliationService?: ExecutionOrderInventoryReconciliationService,
   ) {}
 
   @Get(':id')
@@ -105,7 +113,9 @@ export class ExecutionOrdersController {
         closedAt: this.dateOrString(order.closedAt),
       },
       syncState: await this.executionOrdersService.getSyncState(order.id),
-      inventoryReconciliation: 'PENDING' as const,
+      inventoryReconciliation:
+        (await this.inventoryReconciliationService?.getInventoryReconciliation(order.id)) ??
+        'NOT_REQUIRED',
       allowedActions: this.executionOrdersService.computeAllowedActions(order, actor),
       createdAt: this.dateOrString(order.createdAt) ?? '',
       updatedAt: this.dateOrString(order.updatedAt) ?? '',
@@ -247,17 +257,32 @@ export class ExecutionOrdersController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.ACCEPTED)
-  createEvidenceAsset(
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB max
+    }),
+  )
+  @ApiOperation({ summary: 'Subir asset de evidencia con cuarentena' })
+  async createEvidenceAsset(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: EvidenceAssetUploadIntentDto,
+    @UploadedFile() file: Express.Multer.File,
     @CurrentUser() actor: JwtPayload,
   ) {
-    return this.executionOrdersService.createEvidenceAssetReceipt(id, dto, actor);
+    if (!file) {
+      throw new BadRequestException({
+        code: 'EVIDENCE_FILE_REQUIRED',
+        message: 'Se requiere un archivo en el campo multipart "file".',
+      });
+    }
+    // El multipart parser de NestJS ya valida MIME declarado por el cliente,
+    // pero la validación real por magic bytes ocurre en el puerto de Media.
+    return this.executionOrdersService.createEvidenceAssetReceipt(id, file, actor);
   }
 
   @Get(':id/evidence-assets/:mediaAssetId')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
+  @ApiOperation({ summary: 'Consultar estado del recibo de asset de evidencia' })
   getEvidenceAsset(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('mediaAssetId') mediaAssetId: string,
@@ -268,16 +293,23 @@ export class ExecutionOrdersController {
   @Get(':id/evidence-assets/:mediaAssetId/content')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
-  getEvidenceContent(
+  @Redirect()
+  @ApiOperation({ summary: 'Descargar contenido de asset de evidencia (302 signed URL)' })
+  async getEvidenceContent(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('mediaAssetId') mediaAssetId: string,
   ) {
-    return this.executionOrdersService.getEvidenceAssetReceipt(id, mediaAssetId);
+    const signedUrl = await this.executionOrdersService.getEvidenceContentRedirect(
+      id,
+      mediaAssetId,
+    );
+    return { url: signedUrl, statusCode: 302 };
   }
 
   @Post(':id/evidence')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
+  @ApiOperation({ summary: 'Registrar evidencia vinculando un asset AVAILABLE' })
   registerEvidence(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RegisterEvidenceDto,

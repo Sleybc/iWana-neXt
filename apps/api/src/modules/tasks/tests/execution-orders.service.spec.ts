@@ -108,15 +108,35 @@ describe('ExecutionOrdersService', () => {
   });
 
   it('registers item usage from technician custody and records stock movement id', async () => {
+    const techSub = actor.sub; // 'support-001'
     const manager = {
       findOne: jest.fn().mockResolvedValue({
         id: 'eo-001',
         tenantId: 'tenant-001',
         status: ExecutionOrderStatus.ASSIGNED,
+        version: 1,
+        assignedTechnicianId: techSub, // custody must match assignment
+        assignedCrewId: null,
         startedAt: null,
+        closedAt: null,
+        result: null,
+        closeNotes: null,
+        updatedByUserId: null,
+        taskId: null,
+        ticketId: null,
+        templateRequirementsSnapshot: null,
       }),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
       create: jest.fn((_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      }),
     };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
@@ -125,7 +145,7 @@ describe('ExecutionOrdersService', () => {
       'eo-001',
       {
         itemId: 'item-001',
-        technicianCustodyId: 'cust-001',
+        technicianCustodyId: techSub, // matches assignedTechnicianId and actor.sub
         quantity: 1,
         serialNumber: 'SER-001',
         action: ExecutionOrderItemAction.INSTALL,

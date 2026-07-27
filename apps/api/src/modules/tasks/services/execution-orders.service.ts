@@ -32,6 +32,8 @@ import {
   OperationalEventTypeV1,
   type ExecutionOrderAllowedAction,
   type ExecutionOrderTemplateRequirement,
+  type EvidenceAssetReceipt,
+  type ExecutionOrderEvidence as ExecutionOrderEvidenceContract,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
@@ -57,6 +59,7 @@ import type {
   IdempotencyReceipt,
 } from './execution-order-reliability.service';
 import { ExecutionOrderReliabilityService } from './execution-order-reliability.service';
+import { EVIDENCE_ASSET_PORT, type IEvidenceAssetPort } from '../ports/evidence-asset.port';
 
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
@@ -99,6 +102,9 @@ export class ExecutionOrdersService {
     @Optional()
     @Inject(ClosureGateEvaluatorService)
     private readonly closureGateEvaluator?: ClosureGateEvaluatorService,
+    @Optional()
+    @Inject(EVIDENCE_ASSET_PORT)
+    private readonly evidenceAssetPort?: IEvidenceAssetPort,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -400,6 +406,10 @@ export class ExecutionOrdersService {
       }
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+
+      // ── Custodia: validar que el actor está asignado a la OT ────────
+      this.assertCustodyAssignment(order, actor.sub, validated.technicianCustodyId);
+
       const expectedVersion = order.version ?? 1;
       if (
         order.status === ExecutionOrderStatus.CREATED ||
@@ -412,6 +422,7 @@ export class ExecutionOrdersService {
       order.updatedByUserId = actor.sub;
       await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
 
+      const intentId = receipt?.intentId ?? `${id}-${validated.itemId}-${Date.now()}`;
       const usage = await qr.manager.save(
         ExecutionOrderItemUsage,
         qr.manager.create(ExecutionOrderItemUsage, {
@@ -424,6 +435,8 @@ export class ExecutionOrdersService {
           action: validated.action,
           finalDisposition: validated.finalDisposition,
           stockMovementId: null,
+          inventoryRequestId: intentId,
+          movementStatus: 'PENDING',
           actorUserId: actor.sub,
         }),
       );
@@ -438,7 +451,7 @@ export class ExecutionOrdersService {
         receipt,
         'InventoryConsumptionRequestedV1',
         {
-          inventoryRequestId: receipt?.intentId ?? usage.id,
+          inventoryRequestId: intentId,
           itemId: usage.itemId,
           quantity: Number(usage.quantity),
           ...(usage.serialNumber ? { serial: usage.serialNumber } : {}),
@@ -700,16 +713,18 @@ export class ExecutionOrdersService {
     },
     actor: JwtPayload,
     context?: ExecutionOrderCommandContext,
-  ): Promise<ExecutionOrderEvidence> {
-    throw new ServiceUnavailableException({
-      code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
-      message: 'La evidencia requiere validación de Media antes de enlazarse a la OT.',
-    });
-    /* istanbul ignore next -- boundary is intentionally fail-closed until MOD34 port exists. */
+  ): Promise<ExecutionOrderEvidence & { assetStatus: string | null }> {
+    const port = this.evidenceAssetPort;
+    if (!port) {
+      throw new ServiceUnavailableException({
+        code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
+        message: 'La evidencia requiere validación de Media antes de enlazarse a la OT.',
+      });
+    }
+
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
-      this.assertMutable(order);
       const receipt = await this.beginCommand(
         qr.manager,
         tenantId,
@@ -718,22 +733,72 @@ export class ExecutionOrdersService {
         { executionOrderId: id, input },
         context,
       );
-      if (receipt?.replay && receipt.resourceRef)
-        return (await qr.manager.findOne(ExecutionOrderEvidence, {
+      if (receipt?.replay && receipt.resourceRef) {
+        const existing = await qr.manager.findOne(ExecutionOrderEvidence, {
           where: { id: receipt.resourceRef, tenantId },
-        })) as ExecutionOrderEvidence;
+        });
+        if (existing) {
+          return { ...existing, assetStatus: existing.assetStatus };
+        }
+      }
+      this.assertVersion(order, context?.ifMatch);
+      this.assertMutable(order);
+
+      // ── Validación del asset contra Media/Assets ─────────────────────────
+      // Verificar que el asset existe y está AVAILABLE
+      let assetStatus: { status: string };
+      try {
+        assetStatus = await port.getAssetStatus(input.mediaAssetId, schemaName);
+      } catch (err: unknown) {
+        throw new ConflictException({
+          code: 'EVIDENCE_ASSET_NOT_FOUND',
+          message: 'El asset de evidencia no existe o no pertenece a este tenant.',
+        });
+      }
+
+      if (assetStatus.status !== 'AVAILABLE') {
+        throw new ConflictException({
+          code: 'EVIDENCE_ASSET_NOT_AVAILABLE',
+          message: `El asset no está disponible (estado: ${assetStatus.status}). Solo assets en estado AVAILABLE pueden registrarse como evidencia.`,
+        });
+      }
+
+      // ── Reclamar el asset atómicamente ───────────────────────────────────
+      try {
+        await port.claimAsset(input.mediaAssetId, schemaName, id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Si ya fue reclamado, dar error específico (DATA-P1-2: UNIQUE constraint)
+        if (msg.includes('reclamado') || msg.includes('claim')) {
+          throw new ConflictException({
+            code: 'EVIDENCE_ASSET_ALREADY_CLAIMED',
+            message: 'El asset ya fue vinculado a otra evidencia u OT.',
+          });
+        }
+        throw err;
+      }
+
+      // ── Crear registro de evidencia ──────────────────────────────────────
       const expectedVersion = order.version ?? 1;
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
       await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
-      const evidence = await this.createEvidenceWithManager(
-        qr.manager,
-        tenantId,
-        id,
-        input.evidenceType,
-        input.mediaAssetId,
-        actor,
+
+      const evidence = await qr.manager.save(
+        ExecutionOrderEvidence,
+        qr.manager.create(ExecutionOrderEvidence, {
+          executionOrderId: id,
+          tenantId,
+          evidenceType: input.evidenceType,
+          mediaAssetId: input.mediaAssetId,
+          requirementKey: input.requirementKey,
+          assetStatus: 'AVAILABLE',
+          fileName: null,
+          notes: null,
+          actorUserId: actor.sub,
+        }),
       );
+
       await this.finishCommand(
         qr.manager,
         tenantId,
@@ -744,33 +809,107 @@ export class ExecutionOrdersService {
         context,
         receipt,
       );
-      return evidence;
+
+      return { ...evidence, assetStatus: evidence.assetStatus };
     });
   }
 
   async createEvidenceAssetReceipt(
     id: string,
-    input: { mediaAssetId: string; mimeType?: string },
-    _actor: JwtPayload,
-  ): Promise<{ intentId: string; mediaAssetId: string; status: 'PENDING_ANALYSIS' }> {
-    void id;
-    void input;
-    throw new ServiceUnavailableException({
-      code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
-      message: 'La carga de evidencia no está disponible hasta validar el asset en Media.',
+    file: Express.Multer.File,
+    actor: JwtPayload,
+  ): Promise<EvidenceAssetReceipt> {
+    const port = this.evidenceAssetPort;
+    if (!port) {
+      throw new ServiceUnavailableException({
+        code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
+        message: 'La carga de evidencia no está disponible hasta validar el asset en Media.',
+      });
+    }
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    // Verificar que la OT existe y es mutable
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, id);
+      this.assertMutable(order);
     });
+
+    // Delegar la subida con cuarentena al puerto de Media
+    const result = await port.createUploadIntent(schemaName, file, actor.sub);
+
+    // Generar intentId para trazabilidad (no persiste en BD, es efímero del recibo)
+    const intentId = randomUUID();
+
+    // Calcular expiración del upload-intent
+    const expiresAt = new Date(
+      Date.now() + 24 * 60 * 60 * 1000, // 24h TTL para reclamar
+    );
+
+    return {
+      intentId,
+      mediaAssetId: result.mediaAssetId,
+      status: 'PENDING_ANALYSIS',
+      uploadedAt: result.uploadedAt,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
-  async getEvidenceAssetReceipt(
-    id: string,
-    mediaAssetId: string,
-  ): Promise<{ mediaAssetId: string; status: 'PENDING_ANALYSIS' }> {
-    void id;
-    void mediaAssetId;
-    throw new ServiceUnavailableException({
-      code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
-      message: 'El asset de evidencia no puede consultarse sin el boundary de Media.',
+  async getEvidenceAssetReceipt(id: string, mediaAssetId: string): Promise<EvidenceAssetReceipt> {
+    const port = this.evidenceAssetPort;
+    if (!port) {
+      throw new ServiceUnavailableException({
+        code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
+        message: 'El asset de evidencia no puede consultarse sin el boundary de Media.',
+      });
+    }
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    // Verificar que la OT existe (anti-enumeración)
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.requireOrder(qr.manager, tenantId, id);
     });
+
+    const status = await port.getAssetStatus(mediaAssetId, schemaName);
+
+    return {
+      intentId: '', // El intentId original no se persiste; se regenera en cada consulta
+      mediaAssetId,
+      status: status.status as EvidenceAssetReceipt['status'],
+      uploadedAt: status.uploadedAt,
+      expiresAt: status.expiresAt ?? undefined,
+    } as EvidenceAssetReceipt;
+  }
+
+  /**
+   * Obtiene una URL firmada para descargar el contenido de un asset de evidencia.
+   *
+   * - TTL máximo de 15 minutos (900s)
+   * - Re-autorización por cada request de descarga
+   * - No expone objectKey, bucket ni secretos en respuesta o logs
+   * - Verifica pertenencia al tenant y existencia de la OT
+   *
+   * Retorna la URL firmada para que el controller emita un 302 redirect.
+   */
+  async getEvidenceContentRedirect(id: string, mediaAssetId: string): Promise<string> {
+    const port = this.evidenceAssetPort;
+    if (!port) {
+      throw new ServiceUnavailableException({
+        code: 'MEDIA_ASSET_BOUNDARY_UNAVAILABLE',
+        message: 'La descarga de evidencia no está disponible.',
+      });
+    }
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    // Verificar que la OT existe
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.requireOrder(qr.manager, tenantId, id);
+    });
+
+    // Obtener signed URL con TTL máximo de 15 minutos
+    return port.getSignedUrl(mediaAssetId, schemaName, 900);
   }
 
   async createFollowUp(
@@ -1048,6 +1187,51 @@ export class ExecutionOrdersService {
         code: 'VERSION_CONFLICT',
         message: 'La OT fue modificada por otro actor.',
       });
+    }
+  }
+
+  /**
+   * Valida que la custodia declarada en un consumo (technicianCustodyId)
+   * coincide con el técnico o cuadrilla asignados a la OT.
+   *
+   * Reglas:
+   * - Si la OT tiene assignedTechnicianId, el custodio debe coincidir.
+   * - Si la OT tiene assignedCrewId, el custodio debe ser la cuadrilla.
+   * - Ninguna de las dos → rechazar (custodia no asignada).
+   */
+  private assertCustodyAssignment(
+    order: ExecutionOrder,
+    actorSub: string,
+    custodyId: string,
+  ): void {
+    const assignedTech = order.assignedTechnicianId;
+    const assignedCrew = order.assignedCrewId;
+
+    // El custodio debe coincidir con el técnico o cuadrilla asignados
+    const isTechCustody = assignedTech && custodyId === assignedTech;
+    const isCrewCustody = assignedCrew && custodyId === assignedCrew;
+
+    if (!isTechCustody && !isCrewCustody) {
+      throw new ForbiddenException({
+        code: 'CUSTODY_MISMATCH',
+        message: 'La custodia declarada no corresponde al técnico o cuadrilla asignados a esta OT.',
+      });
+    }
+
+    // Adicional: el actor debe ser el técnico asignado (o miembro de la cuadrilla)
+    // Para técnico: el actor.sub debe coincidir con assignedTechnicianId
+    if (assignedTech && actorSub !== assignedTech) {
+      throw new ForbiddenException({
+        code: 'CUSTODY_NOT_ASSIGNED',
+        message: 'Solo el técnico asignado a esta OT puede registrar consumos desde su custodia.',
+      });
+    }
+    // Para cuadrilla: la validación de membresía requiere un port WFM;
+    // sin ese port, permitimos el paso pero registramos advertencia.
+    if (assignedCrew && !assignedTech) {
+      this.logger.warn(
+        `Custodia de cuadrilla sin validación de membresía: crew=${assignedCrew} actor=${actorSub}`,
+      );
     }
   }
 
