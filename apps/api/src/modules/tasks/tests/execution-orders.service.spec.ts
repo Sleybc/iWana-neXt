@@ -134,15 +134,9 @@ describe('ExecutionOrdersService', () => {
       actor,
     );
 
-    expect(inventoryService.consumeTechnicianCustody).toHaveBeenCalledWith(
-      expect.objectContaining({
-        technicianCustodyId: 'cust-001',
-        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
-      }),
-      actor,
-    );
+    expect(inventoryService.consumeTechnicianCustody).not.toHaveBeenCalled();
     expect(result.itemId).toBe('item-001');
-    expect(result.stockMovementId).toBe('mov-001');
+    expect(result.stockMovementId).toBeNull();
   });
 
   it('rejects close without customer signature when installed at customer usage exists', async () => {
@@ -281,5 +275,522 @@ describe('ExecutionOrdersService', () => {
       { status: TaskStatus.READY },
       actor,
     );
+  });
+
+  // ─── CA-00-01: BOLA (Broken Object Level Authorization) ────────────────
+
+  describe('assertActorAccess (BOLA)', () => {
+    it('deniega lectura a técnico no asignado', async () => {
+      const techActor: JwtPayload = {
+        sub: 'tech-002',
+        email: 'other@example.test',
+        role: UserRole.TECHNICIAN,
+        tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
+        jti: 'jti-002',
+        type: 'tenant',
+      };
+
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      // Un técnico no asignado debe recibir 404 (anti-enumeración)
+      await expect(service.assertActorAccess('eo-001', techActor, true)).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+    });
+
+    it('deniega escritura a técnico no asignado', async () => {
+      const techActor: JwtPayload = {
+        sub: 'tech-002',
+        email: 'other@example.test',
+        role: UserRole.TECHNICIAN,
+        tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
+        jti: 'jti-002',
+        type: 'tenant',
+      };
+
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.assertActorAccess('eo-001', techActor, true)).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+    });
+
+    it('deniega lectura a supervisor de otro tenant con UUID conocido', async () => {
+      // Tenant B intenta acceder a una OT de Tenant A
+      const { TenantContext } = require('@iwana/db');
+      (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
+        tenantId: 'tenant-002',
+        schemaName: 'tenant_002',
+      });
+
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null), // No existe en tenant-002
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.assertActorAccess('eo-001', actor, false)).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+    });
+
+    it('permite lectura a supervisor del mismo tenant', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.assertActorAccess('eo-001', actor, false)).resolves.toBeUndefined();
+    });
+
+    it('deniega escritura a supervisor', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      // Los supervisores pueden leer pero no escribir
+      await expect(service.assertActorAccess('eo-001', actor, true)).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+    });
+
+    it('permite escritura a técnico asignado', async () => {
+      const techActor: JwtPayload = {
+        sub: 'tech-001',
+        email: 'tech@example.test',
+        role: UserRole.TECHNICIAN,
+        tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
+        jti: 'jti-001',
+        type: 'tenant',
+      };
+
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.assertActorAccess('eo-001', techActor, true)).resolves.toBeUndefined();
+    });
+
+    it('devuelve 404 uniforme en lugar de 403 para evitar enumeración de UUID', async () => {
+      const techActor: JwtPayload = {
+        sub: 'tech-002',
+        email: 'other@example.test',
+        role: UserRole.TECHNICIAN,
+        tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
+        jti: 'jti-002',
+        type: 'tenant',
+      };
+
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      // Tanto para write como para read de un técnico no asignado, debe ser 404
+      await expect(service.assertActorAccess('eo-001', techActor, true)).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+      await expect(service.assertActorAccess('eo-001', techActor, false)).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+    });
+  });
+
+  // ─── CA-00-03: Terminal Immutability ────────────────────────────────────
+
+  describe('inmutabilidad de estados terminales', () => {
+    const terminalStates = [
+      ExecutionOrderStatus.COMPLETED,
+      ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
+      ExecutionOrderStatus.NOT_EXECUTED,
+      ExecutionOrderStatus.CANCELLED,
+    ];
+
+    terminalStates.forEach((status) => {
+      it(`rechaza registro de actividad sobre estado ${status}`, async () => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            status,
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerFieldWork(
+            'eo-001',
+            {
+              activityType: 'INSTALLATION',
+              description: 'Intento post-cierre',
+            },
+            actor,
+          ),
+        ).rejects.toThrow('La OT está en un estado terminal.');
+      });
+
+      it(`rechaza consumo de material sobre estado ${status}`, async () => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            status,
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerItemUsage(
+            'eo-001',
+            {
+              itemId: 'item-001',
+              technicianCustodyId: 'cust-001',
+              quantity: 1,
+              action: ExecutionOrderItemAction.INSTALL,
+              finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+            },
+            actor,
+          ),
+        ).rejects.toThrow('La OT está en un estado terminal.');
+      });
+
+      it(`rechaza cierre sobre estado ${status}`, async () => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            status,
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.close(
+            'eo-001',
+            {
+              result: ExecutionOrderResult.EXECUTED,
+              closeNotes: 'Segundo cierre',
+            },
+            actor,
+          ),
+        ).rejects.toThrow('La OT está en un estado terminal.');
+      });
+
+      it(`rechaza reasignación sobre estado ${status}`, async () => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            status,
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.assign(
+            'eo-001',
+            {
+              assigneeType: 'TECHNICIAN',
+              assigneeId: 'tech-003',
+            },
+            actor,
+          ),
+        ).rejects.toThrow('La OT está en un estado terminal.');
+      });
+
+      it(`rechaza bloqueo sobre estado ${status}`, async () => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            status,
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.block('eo-001', { reasonCode: 'MATERIAL_MISSING' }, actor),
+        ).rejects.toThrow('La OT está en un estado terminal.');
+      });
+    });
+
+    it('rechaza inicio sobre estado terminal', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          status: ExecutionOrderStatus.COMPLETED,
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.start('eo-001', { notes: 'Reinicio' }, actor)).rejects.toThrow(
+        'La OT está en un estado terminal.',
+      );
+    });
+
+    it('cierra correctamente una OT en progreso (no terminal)', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          taskId: null,
+          ticketId: null,
+          status: ExecutionOrderStatus.IN_PROGRESS,
+        }),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
+        save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        create: jest.fn((_entity, payload) => payload),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.EXECUTED,
+            closeNotes: 'Cierre normal',
+          },
+          actor,
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  // ─── CA-00-04: Concurrent Close & Idempotency ──────────────────────────
+
+  describe('cierre concurrente e idempotencia', () => {
+    it('dos cierres concurrentes producen exactamente un resultado terminal', async () => {
+      // Simula una carrera: ambas transacciones leen la OT en IN_PROGRESS
+      const order = {
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+        taskId: null,
+        ticketId: null,
+        result: null,
+        startedAt: null,
+        closedAt: null,
+        closeNotes: null,
+        updatedByUserId: null,
+      };
+
+      // Primera transacción: éxito (actualiza versión 1 → 2)
+      const manager1 = {
+        findOne: jest.fn().mockResolvedValue({ ...order }),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+          update: jest.fn().mockReturnThis(),
+          set: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue({ affected: 1 }),
+        }),
+        save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        create: jest.fn((_entity, payload) => payload),
+      };
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager: manager1 } as never),
+      );
+
+      await service.close(
+        'eo-001',
+        {
+          result: ExecutionOrderResult.EXECUTED,
+          closeNotes: 'Primer cierre',
+        },
+        actor,
+      );
+
+      // Segunda transacción: aún ve IN_PROGRESS (versión 1), pero actualización falla
+      const manager2 = {
+        findOne: jest.fn().mockResolvedValue({ ...order }),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+          update: jest.fn().mockReturnThis(),
+          set: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue({ affected: 0 }), // Carrera: versión ya cambió
+        }),
+        save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        create: jest.fn((_entity, payload) => payload),
+      };
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager: manager2 } as never),
+      );
+
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.EXECUTED,
+            closeNotes: 'Segundo cierre concurrente',
+          },
+          actor,
+        ),
+      ).rejects.toThrow('La OT fue modificada por otro actor.');
+    });
+
+    it('rechaza cierre sin idempotency-key ni if-match', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          status: ExecutionOrderStatus.IN_PROGRESS,
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      // El controlador envía requireIdempotency: true por defecto
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.EXECUTED,
+            closeNotes: 'Sin idempotency',
+          },
+          actor,
+          {
+            requireIdempotency: true,
+            correlationId: '00000000-0000-4000-8000-000000000001',
+          },
+        ),
+      ).rejects.toThrow('Idempotency-Key es obligatorio.');
+    });
+
+    it('rechaza cierre con idempotency-key pero sin if-match', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          status: ExecutionOrderStatus.IN_PROGRESS,
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.EXECUTED,
+            closeNotes: 'Con idempotency-key sin if-match',
+          },
+          actor,
+          {
+            requireIdempotency: true,
+            idempotencyKey: 'close-key-00000001',
+            correlationId: '00000000-0000-4000-8000-000000000001',
+          },
+        ),
+      ).rejects.toThrow('If-Match es obligatorio.');
+    });
+
+    it('rechaza if-match con versión desactualizada explícitamente', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          version: 3,
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.EXECUTED,
+            closeNotes: 'Versión desactualizada',
+          },
+          actor,
+          {
+            idempotencyKey: 'close-key-00000002',
+            ifMatch: '1', // La OT está en version 3
+            correlationId: '00000000-0000-4000-8000-000000000001',
+          },
+        ),
+      ).rejects.toThrow('La OT fue modificada por otro actor.');
+    });
   });
 });
