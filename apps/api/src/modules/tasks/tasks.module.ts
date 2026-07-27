@@ -5,6 +5,9 @@ import {
   ExecutionOrderActivity,
   ExecutionOrderEvidence,
   ExecutionOrderItemUsage,
+  ExecutionOrderTemplate,
+  ExecutionOrderTemplateVersion,
+  ExecutionOrderTemplateRequirement,
   OperationalTask,
   TaskAssignmentHistory,
   TaskTimelineEvent,
@@ -18,9 +21,12 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { AssuranceModule } from '../assurance/assurance.module';
 import { UsersModule } from '../users/users.module';
 import { ExecutionOrdersController } from './execution-orders.controller';
+import { ExecutionOrderTemplatesController } from './execution-order-templates.controller';
 import { TasksController } from './tasks.controller';
 import { ExecutionOrderInventoryService } from './services/execution-order-inventory.service';
 import { ExecutionOrdersService } from './services/execution-orders.service';
+import { ExecutionOrderTemplatesService } from './services/execution-order-templates.service';
+import { ClosureGateEvaluatorService } from './services/closure-gate-evaluator.service';
 import { ExecutionOrderReliabilityService } from './services/execution-order-reliability.service';
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
@@ -45,19 +51,24 @@ import { TasksService } from './services/tasks.service';
       ExecutionOrderActivity,
       ExecutionOrderItemUsage,
       ExecutionOrderEvidence,
+      ExecutionOrderTemplate,
+      ExecutionOrderTemplateVersion,
+      ExecutionOrderTemplateRequirement,
       ExecutionOrderOutboxEvent,
       ExecutionOrderInboxEvent,
       ExecutionOrderIdempotencyRecord,
       ExecutionOrderAuditIntent,
     ]),
   ],
-  controllers: [TasksController, ExecutionOrdersController],
+  controllers: [TasksController, ExecutionOrdersController, ExecutionOrderTemplatesController],
   providers: [
     TasksService,
     TaskTimelineService,
     TaskAssignmentService,
     ExecutionOrderInventoryService,
     ExecutionOrdersService,
+    ExecutionOrderTemplatesService,
+    ClosureGateEvaluatorService,
     ExecutionOrderReliabilityService,
     ExecutionOrderProjectionConvergenceService,
     ExecutionOrderAccessGuard,

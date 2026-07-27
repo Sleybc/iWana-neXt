@@ -8,6 +8,7 @@ import {
   NotFoundException,
   Optional,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -30,6 +31,7 @@ import {
   UserRole,
   OperationalEventTypeV1,
   type ExecutionOrderAllowedAction,
+  type ExecutionOrderTemplateRequirement,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
@@ -43,6 +45,8 @@ import {
   StartExecutionOrderSchema,
 } from '../dto/execution-orders.dto';
 import { ExecutionOrderInventoryService } from './execution-order-inventory.service';
+import { ExecutionOrderTemplatesService } from './execution-order-templates.service';
+import { ClosureGateEvaluatorService } from './closure-gate-evaluator.service';
 import {
   ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT,
   AssuranceExecutionOrderNotifierPort,
@@ -89,6 +93,12 @@ export class ExecutionOrdersService {
     @Optional()
     @Inject(ExecutionOrderReliabilityService)
     private readonly reliabilityService?: ExecutionOrderReliabilityService,
+    @Optional()
+    @Inject(ExecutionOrderTemplatesService)
+    private readonly templatesService?: ExecutionOrderTemplatesService,
+    @Optional()
+    @Inject(ClosureGateEvaluatorService)
+    private readonly closureGateEvaluator?: ClosureGateEvaluatorService,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -180,6 +190,23 @@ export class ExecutionOrdersService {
       return existing;
     }
 
+    // Look up active template version for the work type
+    let templateVersion: {
+      id: string;
+      templateId: string;
+      templateKey: string;
+      version: number;
+      label: string;
+      requirements: any[];
+    } | null = null;
+    if (this.templatesService) {
+      try {
+        templateVersion = await this.templatesService.getActiveVersionForWorkType(input.workType);
+      } catch {
+        // Template lookup is best-effort; OT creation doesn't fail if no template exists
+      }
+    }
+
     const executionOrderNumber = await this.generateExecutionOrderNumber(manager, tenantId);
     const entity = manager.create(ExecutionOrder, {
       tenantId,
@@ -210,6 +237,13 @@ export class ExecutionOrdersService {
       startedAt: null,
       closedAt: null,
       closeNotes: null,
+      // Template snapshot (frozen at OT creation time)
+      templateId: templateVersion?.templateId ?? null,
+      templateVersionId: templateVersion?.id ?? null,
+      templateKey: templateVersion?.templateKey ?? null,
+      templateVersionNumber: templateVersion?.version ?? null,
+      templateLabel: templateVersion?.label ?? null,
+      templateRequirementsSnapshot: templateVersion?.requirements ?? null,
       createdByUserId: actor.sub,
       updatedByUserId: actor.sub,
     });
@@ -438,6 +472,53 @@ export class ExecutionOrdersService {
       if (receipt?.replay) return order;
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+
+      // ── Closure gate evaluation ────────────────────────────────────
+      if (order.templateRequirementsSnapshot && this.closureGateEvaluator) {
+        const snapshot = order.templateRequirementsSnapshot as ExecutionOrderTemplateRequirement[];
+        const activities = await qr.manager
+          .createQueryBuilder(ExecutionOrderActivity, 'a')
+          .where('a.execution_order_id = :executionOrderId', { executionOrderId: id })
+          .andWhere('a.tenant_id = :tenantId', { tenantId })
+          .getMany();
+
+        const evidences = await qr.manager
+          .createQueryBuilder(ExecutionOrderEvidence, 'e')
+          .where('e.execution_order_id = :executionOrderId', { executionOrderId: id })
+          .andWhere('e.tenant_id = :tenantId', { tenantId })
+          .getMany();
+
+        const itemUsages = await qr.manager
+          .createQueryBuilder(ExecutionOrderItemUsage, 'u')
+          .where('u.execution_order_id = :executionOrderId', { executionOrderId: id })
+          .andWhere('u.tenant_id = :tenantId', { tenantId })
+          .getMany();
+
+        const evaluation = this.closureGateEvaluator.evaluate(snapshot, {
+          activities: activities.map((a) => ({ activityType: a.activityType })),
+          evidences: evidences.map((e) => ({
+            evidenceType: e.evidenceType,
+            requirementKey: e.requirementKey ?? '',
+          })),
+          itemUsages: itemUsages.map((u) => ({ itemId: u.itemId })),
+          hasCustomerAcceptance: !!validated.customerAcceptance,
+          closeCommand: validated as Record<string, unknown>,
+        });
+
+        if (!evaluation.passed) {
+          throw new UnprocessableEntityException({
+            code: 'CLOSURE_GATE_INCOMPLETE',
+            message: 'No se puede cerrar la OT: requisitos pendientes.',
+            missingRequirements: evaluation.missingRequirements.map((m) => ({
+              requirementId: m.requirementId,
+              label: m.label,
+              kind: m.kind,
+              reason: m.reason,
+            })),
+          });
+        }
+      }
+
       const itemUsage = await qr.manager
         .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
         .where('usage.execution_order_id = :executionOrderId', { executionOrderId: id })

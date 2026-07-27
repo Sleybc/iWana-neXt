@@ -12,6 +12,7 @@ import { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/
 @Index('idx_execution_orders_tenant_status', ['tenantId', 'status'])
 @Index('idx_execution_orders_tenant_schedule_event', ['tenantId', 'scheduleEventId'])
 @Index('idx_execution_orders_tenant_assigned_technician', ['tenantId', 'assignedTechnicianId'])
+@Index('idx_execution_orders_template_version', ['templateVersionId'])
 @Entity({ name: 'execution_orders' })
 export class ExecutionOrder {
   @PrimaryGeneratedColumn('uuid')
@@ -105,6 +106,36 @@ export class ExecutionOrder {
 
   @Column({ name: 'close_notes', type: 'text', nullable: true })
   closeNotes: string | null;
+
+  // ── Template reference (frozen snapshot on OT creation) ─────────────
+
+  /** ID de la plantilla aplicada (referencia al catálogo). */
+  @Column({ name: 'template_id', type: 'uuid', nullable: true })
+  templateId: string | null;
+
+  /** ID de la versión de plantilla aplicada. */
+  @Column({ name: 'template_version_id', type: 'uuid', nullable: true })
+  templateVersionId: string | null;
+
+  /** Clave de la plantilla (e.g., "instalacion-fibra-estandar"). */
+  @Column({ name: 'template_key', type: 'varchar', length: 64, nullable: true })
+  templateKey: string | null;
+
+  /** Número de versión aplicada. */
+  @Column({ name: 'template_version_number', type: 'integer', nullable: true })
+  templateVersionNumber: number | null;
+
+  /** Etiqueta visible de la versión (e.g., "Instalación fibra — v3"). */
+  @Column({ name: 'template_label', type: 'varchar', length: 200, nullable: true })
+  templateLabel: string | null;
+
+  /**
+   * Snapshot inmutable de los requisitos de plantilla al crearse la OT.
+   * Se evalúa contra este snapshot en el gate de cierre, no contra la
+   * plantilla viva (que puede haber cambiado desde entonces).
+   */
+  @Column({ name: 'template_requirements_snapshot', type: 'jsonb', nullable: true })
+  templateRequirementsSnapshot: object | null;
 
   @Column({ name: 'created_by_user_id', type: 'uuid', nullable: true })
   createdByUserId: string | null;

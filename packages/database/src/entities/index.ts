@@ -62,6 +62,9 @@ export { ExecutionOrderOutboxEvent } from './execution-order-outbox-event.entity
 export { ExecutionOrderInboxEvent } from './execution-order-inbox-event.entity';
 export { ExecutionOrderIdempotencyRecord } from './execution-order-idempotency.entity';
 export { ExecutionOrderAuditIntent } from './execution-order-audit-intent.entity';
+export { ExecutionOrderTemplate } from './execution-order-template.entity';
+export { ExecutionOrderTemplateVersion } from './execution-order-template-version.entity';
+export { ExecutionOrderTemplateRequirement } from './execution-order-template-requirement.entity';
 
 // MOD12 — Inventario / SCM
 export { InventoryCategory } from './inventory-category.entity';

@@ -76,7 +76,14 @@ export class ExecutionOrdersController {
       status: order.status,
       result: order.result ?? undefined,
       workType: order.workType,
-      template: null,
+      template: order.templateKey
+        ? {
+            id: order.templateId,
+            key: order.templateKey,
+            version: order.templateVersionNumber,
+            label: order.templateLabel,
+          }
+        : null,
       schedule: {
         eventId: order.scheduleEventId,
         window: {

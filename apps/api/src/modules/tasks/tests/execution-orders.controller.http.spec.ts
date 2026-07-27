@@ -23,6 +23,7 @@ import { ExecutionOrderAccessGuard } from '../guards/execution-order-access.guar
 import { TenantAwareThrottlerGuard } from '../guards/tenant-aware-throttler.guard';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { ExecutionOrderResponseHeadersInterceptor } from '../interceptors/execution-order-response-headers.interceptor';
+import { ExecutionOrderProjectionConvergenceService } from '../services/execution-order-projection-convergence.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -280,6 +281,10 @@ describe('ExecutionOrdersController HTTP', () => {
         JwtAuthGuard,
         RolesGuard,
         ExecutionOrderResponseHeadersInterceptor,
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+        },
       ],
     }).compile();
 
@@ -606,6 +611,10 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         JwtAuthGuard,
         RolesGuard,
         ExecutionOrderResponseHeadersInterceptor,
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+        },
       ],
     }).compile();
 
@@ -790,6 +799,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/tasks/execution-orders/events/${EVENT_UUID}/redrive`)
         .set('Authorization', 'Bearer coordinator-token')
+        .set('Idempotency-Key', 'redrive-req-001')
         .expect(202);
     });
   });
@@ -829,6 +839,10 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           JwtAuthGuard,
           RolesGuard,
           ExecutionOrderResponseHeadersInterceptor,
+          {
+            provide: ExecutionOrderProjectionConvergenceService,
+            useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+          },
         ],
       }).compile();
 
@@ -893,6 +907,10 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           JwtAuthGuard,
           RolesGuard,
           ExecutionOrderResponseHeadersInterceptor,
+          {
+            provide: ExecutionOrderProjectionConvergenceService,
+            useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+          },
         ],
       }).compile();
 
