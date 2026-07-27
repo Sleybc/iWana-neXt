@@ -293,8 +293,9 @@ flowchart LR
 
 **Evidencia G6 re-gate (2026-07-27):**
 - QA: 582 tests (API 417 + portal 104 + worker 61), typecheck 9/9 clean, lint 0 errores, build 3/3 packages, migración 094 round-trip 16/16.
-- SEC: SEC-G6-01/02/03/04 FIXED y verificados. Full re-scan BOLA/PII/Evidence/Outbox/Permissions sin hallazgos P0/P1. 3 DTOs sin Zod (P2 pre-existente, no bloqueante).
-- Backlog aceptado (QA-34 TLS, QA-41 consecutivo, QA-49 offline PII) — no bloquea G7.
+- SEC: SEC-G6-01/02/03/04 FIXED y verificados. Full re-scan BOLA/PII/Evidence/Outbox/Permissions sin hallazgos P0/P1.
+- P2s remediados: 3 DTOs con Zod (`AssignExecutionOrderSchema`, `RegisterEvidenceSchema`, `FollowUpSchema`), rate limit integration test, OT consecutive number test. Commit: `0fd8de7d`.
+- Backlog aceptado (QA-34 TLS, QA-49 offline PII) — no bloquea G7.
 
 ### Task 10: Retirar compatibilidad ligera
 
