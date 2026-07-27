@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole, ExecutionOrderStatus } from '@iwana/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -62,7 +62,7 @@ export class ExecutionOrdersController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   @ApiOperation({ summary: 'Obtener OT de ejecución por id' })
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
+  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     const order = await this.executionOrdersService.getById(id);
     return {
       id: order.id,
@@ -74,18 +74,29 @@ export class ExecutionOrdersController {
       template: null,
       schedule: {
         eventId: order.scheduleEventId,
-        window: { startAt: order.plannedWindowStartAt, endAt: order.plannedWindowEndAt },
+        window: {
+          startAt: this.dateOrString(order.plannedWindowStartAt),
+          endAt: this.dateOrString(order.plannedWindowEndAt),
+        },
       },
       assignee: order.assignedTechnicianId
-        ? { type: 'TECHNICIAN', id: order.assignedTechnicianId }
+        ? { type: 'TECHNICIAN' as const, id: order.assignedTechnicianId }
         : undefined,
-      site: { municipality: order.municipality, sector: order.sector },
-      completion: { startedAt: order.startedAt, closedAt: order.closedAt },
-      syncState: 'SERVER',
-      inventoryReconciliation: 'PENDING',
-      allowedActions: null,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
+      site: { id: order.id, label: order.municipality ?? order.customerDisplayLabel },
+      completion: {
+        progress:
+          order.status === ExecutionOrderStatus.COMPLETED ||
+          order.status === ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS
+            ? 1
+            : 0,
+        startedAt: this.dateOrString(order.startedAt),
+        closedAt: this.dateOrString(order.closedAt),
+      },
+      syncState: await this.executionOrdersService.getSyncState(order.id),
+      inventoryReconciliation: 'PENDING' as const,
+      allowedActions: this.executionOrdersService.computeAllowedActions(order, actor),
+      createdAt: this.dateOrString(order.createdAt) ?? '',
+      updatedAt: this.dateOrString(order.updatedAt) ?? '',
     };
   }
 
@@ -373,5 +384,11 @@ export class ExecutionOrdersController {
         sort: null,
       },
     };
+  }
+
+  private dateOrString(value: Date | string | null | undefined): string | undefined {
+    if (value == null) return undefined;
+    if (value instanceof Date) return value.toISOString();
+    return String(value);
   }
 }

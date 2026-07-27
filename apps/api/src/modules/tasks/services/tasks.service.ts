@@ -37,11 +37,21 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { UsersService } from '../../users/users.service';
 import { TaskTimelineService } from './task-timeline.service';
+import { clampPage } from '../../../common/pagination/clamp-page';
+import { applySort } from '../../../common/pagination/apply-sort';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 25;
 const MAX_TASK_NUMBER_RETRIES = 3;
+
+/**
+ * Campos ordenables del recurso OperationalTask.
+ * Vacío hasta Ola 2 (creación de índices compuestos).
+ * ADR-065 Ola 1.
+ */
+const SORTABLE_FIELDS: string[] = [];
 
 const ALLOWED_RESPONSIBLE_ROLES = new Set<UserRole>([
   UserRole.ADMIN,
@@ -212,11 +222,13 @@ export class TasksService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListTaskQuerySchema.parse(query);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(OperationalTask, 'task')
         .where('task.tenant_id = :tenantId', { tenantId })
-        .orderBy('task.created_at', 'DESC');
+        // DEF-1: desempate por id para paginación offset estable.
+        .orderBy('task.created_at', 'DESC')
+        .addOrderBy('task.id', 'DESC');
 
       if (RESTRICTED_ROLES.includes(actor.role as UserRole)) {
         qb.andWhere('task.responsible_type = :responsibleType', {
@@ -252,13 +264,34 @@ export class TasksService {
         qb.andWhere('task.ticket_id = :ticketId', { ticketId: validated.ticketId });
       }
 
-      const page = validated.page ?? DEFAULT_PAGE;
-      const limit = validated.limit ?? DEFAULT_LIMIT;
+      const { page, limit } = clampPage(
+        validated.page ?? DEFAULT_PAGE,
+        validated.limit ?? DEFAULT_LIMIT,
+      );
       qb.skip((page - 1) * limit).take(limit);
 
+      // Orden dinámico tras el default (patrón O-7(b); applySort puede reemplazar).
+      const sortResult = applySort(qb, SORTABLE_FIELDS, validated.sortBy, validated.sortDir);
+
       const [data, total] = await qb.getManyAndCount();
-      return { data, total, page, limit };
+      return { data, total, page, limit, sortResult };
     });
+
+    return {
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      meta: buildPageMeta({
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        randomAccess: true,
+        sortableFields: SORTABLE_FIELDS,
+        sortBy: result.sortResult.appliedSortBy ?? undefined,
+        sortDir: result.sortResult.appliedSortDir ?? undefined,
+      }),
+    };
   }
 
   async getById(id: string, actor: JwtPayload): Promise<OperationalTask> {

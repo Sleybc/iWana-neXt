@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Allow } from 'class-validator';
 import { z } from 'zod';
+import type { ListMeta } from '@iwana/shared';
 import {
   TaskExecutionMode,
   TaskOriginContext,
@@ -215,6 +216,8 @@ export const ListTaskQuerySchema = z.object({
   ticketId: z.string().trim().max(160).optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+  sortBy: z.string().optional(),
+  sortDir: z.enum(['asc', 'desc']).optional(),
 });
 
 export type ListTaskQueryInput = z.input<typeof ListTaskQuerySchema>;
@@ -243,13 +246,25 @@ export class ListTaskQueryDto {
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 25 })
   @Allow()
   limit?: number;
+
+  @ApiPropertyOptional({ description: 'Campo por el cual ordenar (ADR-065 Ola 1)' })
+  @Allow()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], description: 'Dirección de ordenamiento' })
+  @Allow()
+  sortDir?: 'asc' | 'desc';
 }
 
 export interface ListTasksResponseDto {
   data: unknown[];
+  /** @deprecated Usar meta.total */
   total: number;
+  /** @deprecated Usar meta.page */
   page: number;
+  /** @deprecated Usar meta.limit */
   limit: number;
+  meta: ListMeta;
 }
 
 export const AssignTaskSchema = z.object({

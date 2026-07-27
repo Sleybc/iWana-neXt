@@ -251,6 +251,8 @@ describe('ExecutionOrdersController HTTP', () => {
       eventId: 'event-001',
       status: 'QUEUED',
     }),
+    getSyncState: jest.fn().mockResolvedValue('IN_SYNC' as const),
+    computeAllowedActions: jest.fn().mockReturnValue(['START', 'REGISTER_ACTIVITY'] as const),
   });
 
   beforeAll(async () => {
@@ -580,6 +582,8 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       eventId: 'event-001',
       status: 'QUEUED',
     }),
+    getSyncState: jest.fn().mockResolvedValue('IN_SYNC' as const),
+    computeAllowedActions: jest.fn().mockReturnValue(['START', 'REGISTER_ACTIVITY'] as const),
   });
 
   beforeAll(async () => {

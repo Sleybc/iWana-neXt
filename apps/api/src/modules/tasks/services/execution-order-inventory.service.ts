@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ExecutionOrderItemAction, InventoryDisposition } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
@@ -59,13 +59,11 @@ export class ExecutionOrderInventoryService {
       };
     }
 
-    const stockMovementId =
-      input.stockMovementId?.trim() ||
-      `eo-${input.executionOrderId.slice(0, 8)}-${actor.sub.slice(0, 8)}-${Date.now()}`;
-
-    return {
-      stockMovementId,
-      finalDisposition: input.finalDisposition,
-    };
+    // Nunca fabricar un identificador: sin MOD12 no existe movimiento
+    // confirmado y la solicitud debe quedar reintentable/reconciliable.
+    throw new ServiceUnavailableException({
+      code: 'INVENTORY_MOVEMENT_UNAVAILABLE',
+      message: 'El movimiento de inventario no está disponible temporalmente.',
+    });
   }
 }

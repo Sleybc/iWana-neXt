@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuditEntity } from '../audit/decorators/audit-entity.decorator';
@@ -62,6 +62,8 @@ export class TasksController {
     UserRole.SALES,
   )
   @ApiOperation({ summary: 'Listar tareas operativas del tenant' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 25 })
   list(
     @Query(new ZodValidationPipe(ListTaskQuerySchema)) query: ListTaskQueryDto,
     @CurrentUser() actor: JwtPayload,
