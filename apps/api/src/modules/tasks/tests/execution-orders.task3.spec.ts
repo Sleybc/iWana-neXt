@@ -813,7 +813,7 @@ describe('ExecutionOrdersService — ETag/If-Match concurrency (Task 3.2)', () =
       fn({ manager: manager1 } as never),
     );
 
-    await service.start('eo-001', { notes: 'Inicio concurrente' }, actor, {
+    await service.start('eo-001', { note: 'Inicio concurrente' }, actor, {
       ifMatch: '1',
       idempotencyKey: 'start-race-key-001',
       correlationId: '00000000-0000-4000-8000-000000000020',

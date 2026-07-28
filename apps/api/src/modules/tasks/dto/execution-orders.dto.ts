@@ -52,7 +52,7 @@ export const safeTextField = (max: number) =>
 
 export const StartExecutionOrderSchema = z
   .object({
-    notes: safeTextField(2000).optional().nullable(),
+    note: safeTextField(2000).optional().nullable(),
   })
   .strict();
 
@@ -61,7 +61,7 @@ export type StartExecutionOrderInput = z.infer<typeof StartExecutionOrderSchema>
 export class StartExecutionOrderDto {
   @ApiPropertyOptional()
   @Allow()
-  notes?: string | null;
+  note?: string | null;
 }
 
 export const RegisterFieldWorkSchema = z
@@ -128,7 +128,8 @@ export class RegisterExecutionOrderItemUsageDto {
 export const CloseExecutionOrderSchema = z
   .object({
     result: z.nativeEnum(ExecutionOrderResult),
-    summary: safeTextField(4000).optional(),
+    reasonCode: z.string().trim().min(1).max(64).optional(),
+    summary: safeTextField(4000),
     closeNotes: safeTextField(4000).optional().nullable(),
     customerSignatureRef: z.string().trim().max(160).optional().nullable(),
     customerAcceptance: z
@@ -155,7 +156,11 @@ export class CloseExecutionOrderDto {
 
   @ApiPropertyOptional()
   @Allow()
-  summary?: string;
+  reasonCode?: string;
+
+  @ApiProperty()
+  @Allow()
+  summary!: string;
 
   @ApiPropertyOptional()
   @Allow()

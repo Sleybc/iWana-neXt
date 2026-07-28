@@ -477,7 +477,9 @@
               "reasonCode": { "type": "string", "minLength": 1, "maxLength": 64 },
               "dueAt": { "type": "string", "format": "date-time" }
             }
-          }
+          },
+          "closeNotes": { "type": "string", "maxLength": 4000 },
+          "customerSignatureRef": { "type": "string", "maxLength": 160 }
         }
       },
       "CreateFollowUpCommand": {
@@ -1151,14 +1153,14 @@
         }
       }
     },
-    "/tasks/execution-orders/{id}/evidences/{evidenceId}/content": {
+    "/tasks/execution-orders/{id}/evidence-assets/{mediaAssetId}/content": {
       "get": {
         "tags": ["tasks-execution-orders"],
         "operationId": "getExecutionOrderEvidenceContent",
         "summary": "Obtener contenido de evidencia (URL firmada o stream)",
         "parameters": [
           { "$ref": "#/components/parameters/ExecutionOrderId" },
-          { "$ref": "#/components/parameters/EvidenceId" }
+          { "$ref": "#/components/parameters/MediaAssetId" }
         ],
         "responses": {
           "302": { "description": "Redirección a URL firmada corta." },
@@ -1376,6 +1378,44 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ExecutionOrderDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/tasks/execution-orders/{id}/evidence": {
+      "post": {
+        "tags": ["tasks-execution-orders"],
+        "operationId": "registerExecutionOrderEvidence",
+        "summary": "Registrar evidencia vinculando un asset AVAILABLE",
+        "parameters": [
+          { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterEvidenceCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Evidencia registrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutionOrderEvidence" }
               }
             }
           },

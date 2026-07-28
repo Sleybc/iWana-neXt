@@ -50,6 +50,7 @@ import { ExecutionOrderContractReliability0900000000000 } from './090_execution_
 import { ExecutionOrderScheduleUnique0910000000000 } from './091_execution_order_schedule_unique';
 import { SeedExecutionOrderPermissions0920000000000 } from './092_seed_execution_order_permissions';
 import { ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 } from './093_extend_visit_request_status_and_outbox_occurred_at';
+import { TemplateVersioningAndClosureGate0940000000000 } from './094_template_versioning_and_closure_gate';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -179,6 +180,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ExecutionOrderScheduleUnique0910000000000,
   SeedExecutionOrderPermissions0920000000000,
   ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000,
+  TemplateVersioningAndClosureGate0940000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

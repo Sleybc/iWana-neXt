@@ -287,14 +287,14 @@ export class ExecutionOrdersService {
       order.updatedByUserId = actor.sub;
       const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
 
-      if (validated.notes) {
+      if (validated.note) {
         await qr.manager.save(
           ExecutionOrderActivity,
           qr.manager.create(ExecutionOrderActivity, {
             executionOrderId: order.id,
             tenantId,
             activityType: 'START',
-            description: validated.notes,
+            description: validated.note,
             actorUserId: actor.sub,
           }),
         );
@@ -763,22 +763,9 @@ export class ExecutionOrdersService {
         });
       }
 
-      // ── Reclamar el asset atómicamente ───────────────────────────────────
-      try {
-        await port.claimAsset(input.mediaAssetId, schemaName, id);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Si ya fue reclamado, dar error específico (DATA-P1-2: UNIQUE constraint)
-        if (msg.includes('reclamado') || msg.includes('claim')) {
-          throw new ConflictException({
-            code: 'EVIDENCE_ASSET_ALREADY_CLAIMED',
-            message: 'El asset ya fue vinculado a otra evidencia u OT.',
-          });
-        }
-        throw err;
-      }
-
-      // ── Crear registro de evidencia ──────────────────────────────────────
+      // ── Crear registro de evidencia PRIMERO (P0-2: compensación) ────────
+      // Si el claim falla después, la evidencia queda con assetStatus 'CLAIM_FAILED'
+      // y puede ser retomada por un proceso de reconciliación.
       const expectedVersion = order.version ?? 1;
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
@@ -792,12 +779,36 @@ export class ExecutionOrdersService {
           evidenceType: input.evidenceType,
           mediaAssetId: input.mediaAssetId,
           requirementKey: input.requirementKey,
-          assetStatus: 'AVAILABLE',
+          assetStatus: 'PENDING', // Evidencia creada pero asset aún no reclamado (P0-2)
           fileName: null,
           notes: null,
           actorUserId: actor.sub,
         }),
       );
+
+      // ── Reclamar el asset atómicamente (P0-2: después de crear evidence) ─
+      try {
+        await port.claimAsset(input.mediaAssetId, schemaName, id);
+      } catch (err: unknown) {
+        // El claim falló — marcar evidencia como FAILED (no huérfana)
+        await qr.manager.update(ExecutionOrderEvidence, evidence.id, {
+          assetStatus: 'CLAIM_FAILED',
+        } as Partial<ExecutionOrderEvidence>);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('reclamado') || msg.includes('claim')) {
+          throw new ConflictException({
+            code: 'EVIDENCE_ASSET_ALREADY_CLAIMED',
+            message: 'El asset ya fue vinculado a otra evidencia u OT.',
+          });
+        }
+        throw err;
+      }
+
+      // Claim exitoso — actualizar estado del asset
+      evidence.assetStatus = 'AVAILABLE';
+      await qr.manager.update(ExecutionOrderEvidence, evidence.id, {
+        assetStatus: 'AVAILABLE',
+      } as Partial<ExecutionOrderEvidence>);
 
       await this.finishCommand(
         qr.manager,
@@ -810,7 +821,7 @@ export class ExecutionOrdersService {
         receipt,
       );
 
-      return { ...evidence, assetStatus: evidence.assetStatus };
+      return { ...evidence, assetStatus: 'AVAILABLE' };
     });
   }
 
@@ -866,20 +877,32 @@ export class ExecutionOrdersService {
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    // Verificar que la OT existe (anti-enumeración)
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    // Verificar que la OT existe y que el asset está vinculado a ella (P0-1: IDOR)
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await this.requireOrder(qr.manager, tenantId, id);
+
+      // Verificar que mediaAssetId está vinculado a esta OT vía evidence record
+      // Esto previene enumeración intra-tenant de mediaAssetIds (P0-1)
+      const evidence = await qr.manager.findOne(ExecutionOrderEvidence, {
+        where: { mediaAssetId, executionOrderId: id, tenantId },
+      });
+
+      const status = await port.getAssetStatus(mediaAssetId, schemaName);
+
+      // Si hay evidence record, usar su id como intentId para trazabilidad
+      // Si no, devolver string vacío (polling antes de vinculación formal)
+      const intentId = evidence?.id ?? '';
+
+      return {
+        intentId,
+        mediaAssetId,
+        status: status.status as EvidenceAssetReceipt['status'],
+        uploadedAt: status.uploadedAt,
+        expiresAt: status.expiresAt ?? undefined,
+      } as EvidenceAssetReceipt;
     });
 
-    const status = await port.getAssetStatus(mediaAssetId, schemaName);
-
-    return {
-      intentId: '', // El intentId original no se persiste; se regenera en cada consulta
-      mediaAssetId,
-      status: status.status as EvidenceAssetReceipt['status'],
-      uploadedAt: status.uploadedAt,
-      expiresAt: status.expiresAt ?? undefined,
-    } as EvidenceAssetReceipt;
+    return result;
   }
 
   /**
@@ -903,9 +926,17 @@ export class ExecutionOrdersService {
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    // Verificar que la OT existe
+    // Verificar que la OT existe y que el asset está vinculado a ella (P0-1: IDOR)
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await this.requireOrder(qr.manager, tenantId, id);
+
+      const evidence = await qr.manager.findOne(ExecutionOrderEvidence, {
+        where: { mediaAssetId, executionOrderId: id, tenantId },
+      });
+
+      if (!evidence) {
+        throw new NotFoundException('OT de ejecución no encontrada');
+      }
     });
 
     // Obtener signed URL con TTL máximo de 15 minutos

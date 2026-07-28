@@ -463,7 +463,7 @@ describe('ExecutionOrdersController HTTP', () => {
       .set('Authorization', 'Bearer tech-token')
       .set('If-Match', '1')
       .set('Idempotency-Key', 'start-key-00000001')
-      .send({ notes: 'Salida hacia sitio' })
+      .send({ note: 'Salida hacia sitio' })
       .expect(200);
 
     await request(app.getHttpServer())
@@ -783,7 +783,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
     });
 
     const executeEndpoints = [
-      { path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/start`, body: { notes: 'intento' } },
+      { path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/start`, body: { note: 'intento' } },
       {
         path: `/api/v1/tasks/execution-orders/${ORDER_UUID}/field-work`,
         body: { activityType: 'TEST', description: 'intento' },
@@ -883,7 +883,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         .set('Authorization', 'Bearer tech-token')
         .set('If-Match', '1')
         .set('Idempotency-Key', 'tech-exec-start-00001')
-        .send({ notes: 'Técnico con execute' })
+        .send({ note: 'Técnico con execute' })
         .expect(200);
     });
   });

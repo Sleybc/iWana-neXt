@@ -192,6 +192,7 @@ describe('ExecutionOrdersService', () => {
         'eo-001',
         {
           result: ExecutionOrderResult.EXECUTED,
+          summary: 'Cierre sin firma',
           closeNotes: 'Cierre sin firma',
         },
         actor,
@@ -235,6 +236,7 @@ describe('ExecutionOrdersService', () => {
       'eo-001',
       {
         result: ExecutionOrderResult.EXECUTED,
+        summary: 'Cierre con ticket vinculado',
         closeNotes: 'Cierre con ticket vinculado',
       },
       actor,
@@ -283,6 +285,7 @@ describe('ExecutionOrdersService', () => {
       'eo-001',
       {
         result: ExecutionOrderResult.NOT_EXECUTED,
+        summary: 'No se pudo ejecutar. Reprogramar.',
         closeNotes: 'No se pudo ejecutar. Reprogramar.',
       },
       actor,
@@ -544,6 +547,7 @@ describe('ExecutionOrdersService', () => {
             'eo-001',
             {
               result: ExecutionOrderResult.EXECUTED,
+              summary: 'Segundo cierre',
               closeNotes: 'Segundo cierre',
             },
             actor,
@@ -605,7 +609,7 @@ describe('ExecutionOrdersService', () => {
         fn({ manager } as never),
       );
 
-      await expect(service.start('eo-001', { notes: 'Reinicio' }, actor)).rejects.toThrow(
+      await expect(service.start('eo-001', { note: 'Reinicio' }, actor)).rejects.toThrow(
         'La OT está en un estado terminal.',
       );
     });
@@ -637,6 +641,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.EXECUTED,
+            summary: 'Cierre normal',
             closeNotes: 'Cierre normal',
           },
           actor,
@@ -688,6 +693,7 @@ describe('ExecutionOrdersService', () => {
         'eo-001',
         {
           result: ExecutionOrderResult.EXECUTED,
+          summary: 'Primer cierre',
           closeNotes: 'Primer cierre',
         },
         actor,
@@ -718,6 +724,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.EXECUTED,
+            summary: 'Segundo cierre concurrente',
             closeNotes: 'Segundo cierre concurrente',
           },
           actor,
@@ -743,6 +750,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.EXECUTED,
+            summary: 'Sin idempotency',
             closeNotes: 'Sin idempotency',
           },
           actor,
@@ -771,6 +779,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.EXECUTED,
+            summary: 'Con idempotency-key sin if-match',
             closeNotes: 'Con idempotency-key sin if-match',
           },
           actor,
@@ -801,6 +810,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.EXECUTED,
+            summary: 'Versión desactualizada',
             closeNotes: 'Versión desactualizada',
           },
           actor,
