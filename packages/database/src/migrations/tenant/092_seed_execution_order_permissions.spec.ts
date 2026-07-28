@@ -35,19 +35,24 @@ describe('SeedExecutionOrderPermissions092', () => {
     await migration.up({ query } as never);
     await migration.down({ query } as never);
 
-    const [upSql, downSql, downParams] = [
-      query.mock.calls[0][0],
-      query.mock.calls[1][0],
-      query.mock.calls[1][1],
-    ];
+    const upSql = query.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('DO $migration$'),
+    )?.[0] as string;
+    const downSql = query.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('DO $rollback$'),
+    )?.[0] as string;
+    const downParams = query.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('DO $rollback$'),
+    )?.[1];
 
     // up: INSERT con ON CONFLICT DO NOTHING
     expect(upSql).toContain('INSERT INTO access_permission_catalog');
     expect(upSql).toContain('ON CONFLICT (tenant_id, permission_key) DO NOTHING');
 
     // down no borra filas compartidas con el seeder runtime de MOD00.
-    expect(downSql).toContain('SELECT 1');
-    expect(downSql).not.toContain('DELETE FROM access_permission_catalog');
+    expect(downSql).toContain('DELETE FROM access_permission_catalog');
+    expect(downSql).toContain('execution_order_permission_seed_092');
+    expect(downSql).toContain('Rollback blocked');
     expect(downParams).toBeUndefined();
 
     // Sin hardcode de schema de tenant
@@ -60,7 +65,9 @@ describe('SeedExecutionOrderPermissions092', () => {
     const migration = new SeedExecutionOrderPermissions0920000000000();
     await migration.up({ query } as never);
 
-    const upSql = query.mock.calls[0][0] as string;
+    const upSql = query.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('DO $migration$'),
+    )?.[0] as string;
     PERMISSION_KEYS.forEach((key) => {
       expect(upSql).toContain(key);
     });
@@ -76,7 +83,9 @@ describe('SeedExecutionOrderPermissions092', () => {
   it('demuestra equivalencia integral con MOD00 sin importar entre paquetes', async () => {
     const query = jest.fn().mockResolvedValue(undefined);
     await new SeedExecutionOrderPermissions0920000000000().up({ query } as never);
-    const upSql = query.mock.calls[0][0] as string;
+    const upSql = query.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('DO $migration$'),
+    )?.[0] as string;
     const rows = [
       ...upSql.matchAll(
         /\('([^']+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*(true|false),\s*(true|false)\)/g,

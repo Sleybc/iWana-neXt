@@ -1,3 +1,5 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+
 import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
@@ -9,7 +11,8 @@ import { ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 } from './093_
 import { TemplateVersioningAndClosureGate0940000000000 } from './094_template_versioning_and_closure_gate';
 import { CreateExecutionOrderEvidenceUploadIntents0950000000000 } from './095_create_execution_order_evidence_upload_intents';
 
-const SCHEMAS = ['it_092_a', 'it_092_b'] as const;
+let schemas: [string, string];
+let tenantIds: [string, string];
 const PERMISSION_KEYS = [
   'operations.execution_orders.read',
   'operations.execution_orders.execute',
@@ -82,23 +85,20 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
     const bootstrap = dataSource.createQueryRunner();
     await bootstrap.connect();
     try {
-      await bootstrap.query(
-        `CREATE TABLE IF NOT EXISTS public.tenants (
-          id UUID PRIMARY KEY, schema_name VARCHAR(63) NOT NULL UNIQUE
-        )`,
-      );
-      for (const [index, schema] of SCHEMAS.entries()) {
-        await bootstrap.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      const suffix = randomBytes(8).toString('hex');
+      schemas = [`it_092_${suffix}_a`, `it_092_${suffix}_b`];
+      tenantIds = [randomUUID(), randomUUID()];
+      for (const [index, schema] of schemas.entries()) {
         await bootstrap.query(`CREATE SCHEMA "${schema}"`);
         await bootstrap.query(
           `INSERT INTO public.tenants (id, name, slug, schema_name, contact_email)
            VALUES ($1, $2, $3, $4, $5)`,
           [
-            `00000000-0000-0000-0000-00000000009${index + 2}`,
+            tenantIds[index],
             `Integration tenant ${index + 1}`,
-            `it-092-${index + 1}`,
+            `${schema}-slug`,
             schema,
-            `it-092-${index + 1}@invalid.example`,
+            `${schema}@invalid.example`,
           ],
         );
       }
@@ -106,7 +106,7 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
       await bootstrap.release();
     }
 
-    for (const schema of SCHEMAS) {
+    for (const schema of schemas) {
       const runner = dataSource.createQueryRunner();
       await runner.connect();
       await runner.query(`SET search_path TO "${schema}"`);
@@ -175,12 +175,18 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
   afterAll(async () => {
     for (const runner of runners) await runner.release();
     if (!dataSource?.isInitialized) return;
+    if (!schemas || !tenantIds) {
+      await dataSource.destroy();
+      return;
+    }
     const cleanup = dataSource.createQueryRunner();
     await cleanup.connect();
     try {
-      for (const schema of SCHEMAS) {
+      for (const schema of schemas) {
         await cleanup.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-        await cleanup.query(`DELETE FROM public.tenants WHERE schema_name = $1`, [schema]);
+        await cleanup.query(`DELETE FROM public.tenants WHERE id = $1`, [
+          tenantIds[schemas.indexOf(schema)],
+        ]);
       }
     } finally {
       await cleanup.release();
@@ -212,7 +218,7 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
        FROM public.tenants WHERE schema_name = $1
        ON CONFLICT (tenant_id, permission_key) DO NOTHING
        RETURNING permission_key`,
-      [SCHEMAS[0]],
+      [schemas[0]],
     );
     expect(zeroRows).toHaveLength(0);
     await migration.up(first);
@@ -221,17 +227,18 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
        (tenant_id, permission_key, module_key, action, description, catalog_version, availability)
        SELECT id, 'runtime.custom.permission', 'runtime', 'read', 'Runtime permission', 'RUNTIME', 'ASSIGNABLE'
        FROM public.tenants WHERE schema_name = $1`,
-      [SCHEMAS[0]],
+      [schemas[0]],
     );
     await migration.up(first);
     await migration.down(first);
     const remaining = (await first.query(
       `SELECT permission_key FROM access_permission_catalog`,
     )) as Array<{ permission_key: string }>;
-    expect(remaining.map((row) => row.permission_key)).toEqual(
-      expect.arrayContaining([...PERMISSION_KEYS, 'runtime.custom.permission']),
-    );
-    expect(remaining).toHaveLength(8);
+    expect(remaining.map((row) => row.permission_key)).toEqual(['runtime.custom.permission']);
+    const provenance = (await first.query(
+      `SELECT to_regclass(current_schema() || '.execution_order_permission_seed_092') AS table_name`,
+    )) as Array<{ table_name: string | null }>;
+    expect(provenance[0]?.table_name).toBeNull();
 
     await migration.up(second);
     await migration.down(second);
