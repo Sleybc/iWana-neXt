@@ -41,8 +41,9 @@ La salida esperada es vacía y el código de salida debe ser `0`. No se ejecuta
 `migrator-prod` usa exclusivamente `DB_MIGRATOR_USER` y
 `DB_MIGRATOR_PASSWORD`. API, worker y pgBouncer usan la identidad de aplicación
 (`DB_APP_USER`/`DB_APP_PASSWORD`), mientras PostgreSQL conserva la identidad de
-bootstrap (`DB_BOOTSTRAP_USER`/`DB_PASSWORD`). Las cinco variables de identidad y
-credenciales requeridas fallan individualmente si faltan; no tienen defaults.
+bootstrap (`DB_BOOTSTRAP_USER`/`DB_PASSWORD`). Las seis variables de credenciales
+requeridas —tres identidades, cada una con usuario y contraseña: bootstrap, app y
+migrator— fallan individualmente si faltan; no tienen defaults.
 
 Las referencias pendientes del ejemplo ahora llevan un tag no operativo
 `approval-required`, por lo que no pueden resolverse como `latest`. El bloqueo de
