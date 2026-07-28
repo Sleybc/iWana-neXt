@@ -1,6 +1,12 @@
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
+import {
+  ExecutionOrderItemAction,
+  ExecutionOrderResult,
+  ExecutionOrderStatus,
+  InventoryDisposition,
+  WfmWorkType,
+} from '@iwana/shared';
 import type {
   ExecutionOrderDetail,
   ExecutionOrderAllowedAction,
@@ -135,8 +141,8 @@ function itemUsageFactory(): ExecutionOrderItemUsage[] {
       itemId: 'item-001',
       quantity: 1,
       serial: 'ONT-2026-001',
-      action: 'INSTALL' as any,
-      finalDisposition: 'INSTALLED_AT_CUSTOMER' as any,
+      action: ExecutionOrderItemAction.INSTALL,
+      finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
       inventoryRequestId: 'ir-001',
       movementStatus: 'CONFIRMED',
       createdAt: '2026-07-27T14:30:00.000Z',
@@ -415,6 +421,76 @@ describe('ExecutionOrderDrawer', () => {
         activities: activitiesFactory(),
       });
       expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
+    });
+  });
+
+  describe('payloads del contrato congelado', () => {
+    it('envía note exacto al iniciar la OT', async () => {
+      const onStart = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({ onStart });
+
+      await user.click(screen.getByRole('button', { name: 'Iniciar ejecucion' }));
+
+      expect(onStart).toHaveBeenCalledWith('Inicio de ejecucion en campo');
+    });
+
+    it('envía serialNumber y technicianCustodyId al registrar inventario', async () => {
+      const onRegisterItemUsage = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        onRegisterItemUsage,
+      });
+
+      await user.type(screen.getByLabelText('Item (SKU o descripcion)'), 'item-001');
+      await user.type(screen.getByLabelText('Serial o lote'), 'ONT-2026-001');
+      await user.click(screen.getByRole('button', { name: 'Registrar material' }));
+
+      expect(onRegisterItemUsage).toHaveBeenCalledWith({
+        itemId: 'item-001',
+        technicianCustodyId: 'tech-001',
+        quantity: 1,
+        serialNumber: 'ONT-2026-001',
+        action: 'INSTALL',
+        finalDisposition: 'INSTALLED_AT_CUSTOMER',
+      });
+    });
+
+    it('conserva el requirementKey real al subir evidencia', async () => {
+      const onUploadEvidence = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        onUploadEvidence,
+      });
+
+      const file = new File(['evidencia'], 'instalacion.jpg', { type: 'image/jpeg' });
+      await user.upload(screen.getByLabelText('Adjuntar evidencia'), file);
+
+      expect(onUploadEvidence).toHaveBeenCalledWith([file], 'req-photo-install');
+    });
+
+    it('envía summary obligatorio al cerrar la OT', async () => {
+      const onCloseOrder = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        onCloseOrder,
+      });
+
+      const summary = screen.getByLabelText('Resumen de cierre');
+      await user.clear(summary);
+      await user.type(summary, 'Trabajo completado');
+      const closeButton = await screen.findByRole('button', { name: 'Cerrar OT' });
+      await waitFor(() => expect(closeButton).not.toBeDisabled());
+      await user.click(closeButton);
+      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+
+      expect(onCloseOrder).toHaveBeenCalledWith({
+        result: ExecutionOrderResult.EXECUTED,
+        summary: 'Trabajo completado',
+      });
     });
   });
 

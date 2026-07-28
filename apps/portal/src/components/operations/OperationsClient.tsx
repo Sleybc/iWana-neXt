@@ -5,9 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@iwana/ui';
 import {
-  ExecutionOrderItemAction,
   ExecutionOrderResult,
-  InventoryDisposition,
+  type RegisterActivityCommand,
   TaskExecutionMode,
   TaskOriginContext,
   TaskStatus,
@@ -21,6 +20,8 @@ import type {
   OperationalTaskAssignmentHistoryRecord,
   OperationalTaskRecord,
   OperationalTaskTimelineEvent,
+  RegisterExecutionOrderItemUsageDto,
+  CloseExecutionOrderDto,
 } from '@/lib/api-client';
 import type {
   ExecutionOrderDetail,
@@ -335,12 +336,12 @@ export function OperationsClient() {
     await openExecutionOrder(executionOrderId);
   }
 
-  async function handleStartExecutionOrder(notes?: string | null) {
+  async function handleStartExecutionOrder(note?: string | null) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
     try {
-      await tasksApi.executionOrders.start(selectedExecutionOrder.id, { notes: notes ?? null });
+      await tasksApi.executionOrders.start(selectedExecutionOrder.id, { note: note ?? null });
       await refreshExecutionOrder(selectedExecutionOrder.id);
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
@@ -349,10 +350,7 @@ export function OperationsClient() {
     }
   }
 
-  async function handleRegisterExecutionOrderFieldWork(payload: {
-    activityType: string;
-    description: string;
-  }) {
+  async function handleRegisterExecutionOrderFieldWork(payload: RegisterActivityCommand) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
@@ -366,14 +364,9 @@ export function OperationsClient() {
     }
   }
 
-  async function handleRegisterExecutionOrderItemUsage(payload: {
-    itemId: string;
-    technicianCustodyId: string;
-    quantity: number;
-    serialNumber?: string | null;
-    action: ExecutionOrderItemAction;
-    finalDisposition: InventoryDisposition;
-  }) {
+  async function handleRegisterExecutionOrderItemUsage(
+    payload: RegisterExecutionOrderItemUsageDto,
+  ) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
@@ -387,49 +380,21 @@ export function OperationsClient() {
     }
   }
 
-  async function handleUploadEvidence(files: File[], _requirementKey: string) {
+  async function handleUploadEvidence(files: File[], requirementKey: string) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
     try {
-      const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
       for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        const uploadRes = await fetch(
-          `${apiBase}/api/v1/tasks/execution-orders/${selectedExecutionOrder.id}/evidence-assets`,
-          { method: 'POST', body: formData, credentials: 'include' },
+        const uploadReceipt = await tasksApi.executionOrders.uploadEvidenceAsset(
+          selectedExecutionOrder.id,
+          file,
         );
-        if (!uploadRes.ok) {
-          const errBody = await uploadRes.json().catch(() => ({}));
-          throw new Error(
-            ((errBody as Record<string, unknown>).message as string) ?? 'Error al subir evidencia',
-          );
-        }
-        const uploadReceipt = (await uploadRes.json()) as {
-          intentId: string;
-          mediaAssetId: string;
-        };
-        const regRes = await fetch(
-          `${apiBase}/api/v1/tasks/execution-orders/${selectedExecutionOrder.id}/evidence`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              mediaAssetId: uploadReceipt.mediaAssetId,
-              evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
-              requirementKey: '',
-            }),
-            credentials: 'include',
-          },
-        );
-        if (!regRes.ok) {
-          const errBody = await regRes.json().catch(() => ({}));
-          throw new Error(
-            ((errBody as Record<string, unknown>).message as string) ??
-              'Error al registrar evidencia',
-          );
-        }
+        await tasksApi.executionOrders.registerEvidence(selectedExecutionOrder.id, {
+          mediaAssetId: uploadReceipt.mediaAssetId,
+          evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
+          requirementKey,
+        });
       }
       await refreshExecutionOrder(selectedExecutionOrder.id);
     } catch (error) {
@@ -439,11 +404,7 @@ export function OperationsClient() {
     }
   }
 
-  async function handleCloseExecutionOrder(payload: {
-    result: ExecutionOrderResult;
-    closeNotes?: string | null;
-    customerSignatureRef?: string | null;
-  }) {
+  async function handleCloseExecutionOrder(payload: CloseExecutionOrderDto) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
@@ -602,10 +563,10 @@ export function OperationsClient() {
           router.replace('/dashboard/operations');
         }}
         onStart={handleStartExecutionOrder}
-        onRegisterActivity={handleRegisterExecutionOrderFieldWork as any}
-        onRegisterItemUsage={handleRegisterExecutionOrderItemUsage as any}
+        onRegisterActivity={handleRegisterExecutionOrderFieldWork}
+        onRegisterItemUsage={handleRegisterExecutionOrderItemUsage}
         onUploadEvidence={handleUploadEvidence}
-        onCloseOrder={handleCloseExecutionOrder as any}
+        onCloseOrder={handleCloseExecutionOrder}
         onCreateFollowUp={async () => {
           /* Follow-up creation not implemented via API client yet */
         }}

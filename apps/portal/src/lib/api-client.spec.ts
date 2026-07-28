@@ -1,4 +1,9 @@
-import { AccessPermissionCatalogVersion } from '@iwana/shared';
+import {
+  AccessPermissionCatalogVersion,
+  ExecutionOrderItemAction,
+  ExecutionOrderResult,
+  InventoryDisposition,
+} from '@iwana/shared';
 
 type MockResponse = {
   ok: boolean;
@@ -214,5 +219,88 @@ describe('usersApi.bulkCreate', () => {
     const claimed = await usersApi.claimBulkJobResult('job-abc', 'isp-demo');
     expect(claimed.succeeded[0]?.temporaryPassword).toBe('Temp-1234!');
     expect(claimed.credentialsClaimed).toBe(true);
+  });
+});
+
+describe('tasksApi execution order payloads', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('envía las formas exactas del contrato y autoriza multipart', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.endsWith('/evidence-assets')) {
+        return createJsonResponse(202, {
+          intentId: 'intent-001',
+          mediaAssetId: 'asset-001',
+          status: 'PENDING_ANALYSIS',
+        });
+      }
+      return createJsonResponse(200, { id: 'receipt-001' });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { persistAccessToken, tasksApi } = await import('./api-client');
+    persistAccessToken('portal-token');
+
+    await tasksApi.executionOrders.start('eo-001', { note: 'Inicio en campo' }, 'isp-demo');
+    await tasksApi.executionOrders.registerItemUsage(
+      'eo-001',
+      {
+        itemId: 'item-001',
+        technicianCustodyId: 'tech-001',
+        quantity: 1,
+        serialNumber: 'ONT-001',
+        action: ExecutionOrderItemAction.INSTALL,
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+      },
+      'isp-demo',
+    );
+    const file = new File(['foto'], 'instalacion.jpg', { type: 'image/jpeg' });
+    await tasksApi.executionOrders.uploadEvidenceAsset('eo-001', file, 'isp-demo');
+    await tasksApi.executionOrders.registerEvidence(
+      'eo-001',
+      {
+        mediaAssetId: 'asset-001',
+        evidenceType: 'PHOTO',
+        requirementKey: 'req-photo-install',
+      },
+      'isp-demo',
+    );
+    await tasksApi.executionOrders.close(
+      'eo-001',
+      { result: ExecutionOrderResult.EXECUTED, summary: 'Trabajo completado' },
+      'isp-demo',
+    );
+
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ note: 'Inicio en campo' });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      itemId: 'item-001',
+      technicianCustodyId: 'tech-001',
+      quantity: 1,
+      serialNumber: 'ONT-001',
+      action: 'INSTALL',
+      finalDisposition: 'INSTALLED_AT_CUSTOMER',
+    });
+    expect(calls[2]?.init?.body).toBeInstanceOf(FormData);
+    expect(new Headers(calls[2]?.init?.headers).get('Authorization')).toBe('Bearer portal-token');
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({
+      mediaAssetId: 'asset-001',
+      evidenceType: 'PHOTO',
+      requirementKey: 'req-photo-install',
+    });
+    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
+      result: 'EXECUTED',
+      summary: 'Trabajo completado',
+    });
   });
 });

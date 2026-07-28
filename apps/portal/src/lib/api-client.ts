@@ -100,6 +100,11 @@ import {
   type UsersBulkCreateAcceptedResponse,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
+  type StartExecutionOrderCommand,
+  type RegisterItemUsageCommand,
+  type CloseExecutionOrderCommand,
+  type RegisterEvidenceCommand,
+  type EvidenceAssetReceipt,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 import { PICKER_SOFT_CAP } from './picker-soft-cap';
@@ -6185,30 +6190,49 @@ export interface ExecutionOrderItemUsageRecord {
   createdAt: string;
 }
 
-export interface StartExecutionOrderDto {
-  notes?: string | null;
+export interface ExecutionOrderEvidenceRecord {
+  id: string;
+  executionOrderId: string;
+  mediaAssetId: string;
+  evidenceType: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
+  requirementKey: string;
+  capturedAt: string | null;
+  receivedAt: string;
+  status: 'PENDING_ANALYSIS' | 'AVAILABLE' | 'REJECTED' | 'EXPIRED';
+  createdAt: string;
 }
+
+/** DTO legacy derivado del comando congelado de @iwana/shared. */
+export type StartExecutionOrderDto = Omit<StartExecutionOrderCommand, 'note'> & {
+  note?: string | null;
+};
 
 export interface RegisterExecutionOrderFieldWorkDto {
   activityType: string;
   description: string;
 }
 
-export interface RegisterExecutionOrderItemUsageDto {
-  itemId: string;
+/**
+ * El endpoint legacy recibe la forma que valida el schema vigente. La base del
+ * DTO sigue siendo el comando compartido; solo se adaptan los nombres que el
+ * transporte legacy expone.
+ */
+export type RegisterExecutionOrderItemUsageDto = Omit<
+  RegisterItemUsageCommand,
+  'serial' | 'custodySelection'
+> & {
   technicianCustodyId: string;
-  quantity?: number;
   serialNumber?: string | null;
-  action: ExecutionOrderItemAction;
-  finalDisposition: InventoryDisposition;
   stockMovementId?: string | null;
-}
+};
 
-export interface CloseExecutionOrderDto {
-  result: ExecutionOrderResult;
+/** DTO legacy derivado del comando congelado de @iwana/shared. */
+export type CloseExecutionOrderDto = CloseExecutionOrderCommand & {
   closeNotes?: string | null;
   customerSignatureRef?: string | null;
-}
+};
+
+export type RegisterExecutionOrderEvidenceDto = RegisterEvidenceCommand;
 
 export const tasksApi = {
   list: (params?: ListOperationalTasksParams, tenantSlug?: string) => {
@@ -6325,6 +6349,23 @@ export const tasksApi = {
     registerItemUsage: (id: string, dto: RegisterExecutionOrderItemUsageDto, tenantSlug?: string) =>
       request<ExecutionOrderItemUsageRecord>(
         `/tasks/execution-orders/${id}/item-usage`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    uploadEvidenceAsset: (id: string, file: File, tenantSlug?: string) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return request<EvidenceAssetReceipt>(
+        `/tasks/execution-orders/${id}/evidence-assets`,
+        { method: 'POST', body: formData, returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    registerEvidence: (id: string, dto: RegisterExecutionOrderEvidenceDto, tenantSlug?: string) =>
+      request<ExecutionOrderEvidenceRecord>(
+        `/tasks/execution-orders/${id}/evidence`,
         { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
         tenantSlug,
       ),

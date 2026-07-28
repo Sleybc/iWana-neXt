@@ -5,6 +5,7 @@ import { Badge, Button, Input, ProgressMeter, Select, OperationalSidePeek } from
 import {
   ExecutionOrderResult,
   ExecutionOrderStatus,
+  ExecutionOrderItemAction,
   InventoryDisposition,
   WfmWorkType,
 } from '@iwana/shared';
@@ -16,7 +17,9 @@ import type {
   ExecutionOrderItemUsage,
   ExecutionOrderEvidence,
   ExecutionOrderTemplateRequirement,
+  RegisterActivityCommand,
 } from '@iwana/shared';
+import type { CloseExecutionOrderDto, RegisterExecutionOrderItemUsageDto } from '@/lib/api-client';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
 import { Camera, FileText, MapPin, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
@@ -36,29 +39,12 @@ interface ExecutionOrderDrawerProps {
   offline: boolean;
   onClose: () => void;
   onStart: (notes?: string | null) => Promise<void>;
-  onRegisterActivity: (payload: {
-    activityType: string;
-    description: string;
-    occurredAt?: string;
-    measurements?: Array<{ key: string; value: number | string | boolean; unit?: string }>;
-  }) => Promise<void>;
-  onRegisterItemUsage: (payload: {
-    itemId: string;
-    serial?: string;
-    quantity: number;
-    action: string;
-    finalDisposition: string;
-    custodySelection?: { type: 'TECHNICIAN' | 'CREW'; id: string };
-  }) => Promise<void>;
+  onRegisterActivity: (payload: RegisterActivityCommand) => Promise<void>;
+  onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void>;
   onUploadEvidence: (files: File[], requirementKey: string) => Promise<void>;
   onBlock?: (payload: { reasonCode: string; note?: string }) => Promise<void>;
   onUnblock?: (payload: { resolutionCode: string; note?: string }) => Promise<void>;
-  onCloseOrder: (payload: {
-    result: ExecutionOrderResult;
-    reasonCode?: string;
-    summary: string;
-    followUp?: { reasonCode: string; dueAt?: string };
-  }) => Promise<void>;
+  onCloseOrder: (payload: CloseExecutionOrderDto) => Promise<void>;
   onCreateFollowUp: (reasonCode: string) => Promise<void>;
 }
 
@@ -235,8 +221,12 @@ export function ExecutionOrderDrawer({
   const [itemId, setItemId] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemSerial, setItemSerial] = useState('');
-  const [itemAction, setItemAction] = useState('INSTALL');
-  const [itemDisposition, setItemDisposition] = useState('INSTALLED_AT_CUSTOMER');
+  const [itemAction, setItemAction] = useState<ExecutionOrderItemAction>(
+    ExecutionOrderItemAction.INSTALL,
+  );
+  const [itemDisposition, setItemDisposition] = useState<InventoryDisposition>(
+    InventoryDisposition.INSTALLED_AT_CUSTOMER,
+  );
 
   // Block 6 — Cierre
   const [closeResult, setCloseResult] = useState<ExecutionOrderResult>(
@@ -320,18 +310,27 @@ export function ExecutionOrderDrawer({
       if (!itemId.trim()) return;
       const payload: Parameters<typeof onRegisterItemUsage>[0] = {
         itemId: itemId.trim(),
+        technicianCustodyId: order?.assignee?.id ?? '',
         quantity: Number(itemQty) || 1,
         action: itemAction,
         finalDisposition: itemDisposition,
       };
       const s = itemSerial.trim();
-      if (s) payload.serial = s;
+      if (s) payload.serialNumber = s;
       await onRegisterItemUsage(payload);
       setItemId('');
       setItemQty('1');
       setItemSerial('');
     },
-    [itemId, itemQty, itemSerial, itemAction, itemDisposition, onRegisterItemUsage],
+    [
+      order?.assignee?.id,
+      itemId,
+      itemQty,
+      itemSerial,
+      itemAction,
+      itemDisposition,
+      onRegisterItemUsage,
+    ],
   );
 
   const handleCloseConfirm = useCallback(async () => {
@@ -787,7 +786,7 @@ export function ExecutionOrderDrawer({
                     value={itemDisposition}
                     options={dispositionOptions}
                     disabled={isSubmitting}
-                    onChange={(e) => setItemDisposition(e.target.value)}
+                    onChange={(e) => setItemDisposition(e.target.value as InventoryDisposition)}
                   />
                 </div>
                 <Button
@@ -881,6 +880,7 @@ export function ExecutionOrderDrawer({
                 <input
                   ref={evidenceFileRef}
                   type="file"
+                  aria-label="Adjuntar evidencia"
                   accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
                   multiple
                   className="hidden"
