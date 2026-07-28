@@ -1,4 +1,15 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { SeedExecutionOrderPermissions0920000000000 } from './092_seed_execution_order_permissions';
+
+const MOD00_CATALOG_SOURCE = readFileSync(
+  resolve(
+    __dirname,
+    '../../../../../apps/api/src/modules/access-control/access-control.constants.ts',
+  ),
+  'utf8',
+);
 
 describe('SeedExecutionOrderPermissions092', () => {
   const PERMISSION_KEYS = [
@@ -51,5 +62,17 @@ describe('SeedExecutionOrderPermissions092', () => {
     expect(upSql).toContain('wfm.work_orders.execute');
     expect(upSql).toContain('RAISE EXCEPTION');
     expect(upSql).toContain('public.tenants');
+    expect(upSql).toContain('MOD00_ACCESS_V1_CATALOG');
+    expect(upSql).toContain('apps/api');
+  });
+
+  it('mantiene las 7 claves alineadas con la fuente MOD00 sin importarla entre paquetes', () => {
+    PERMISSION_KEYS.forEach((key) => {
+      const enumMember =
+        key === 'wfm.work_orders.execute'
+          ? 'WFM_WORK_ORDERS_EXECUTE'
+          : key.replaceAll('.', '_').toUpperCase();
+      expect(MOD00_CATALOG_SOURCE).toContain(`AccessPermissionKey.${enumMember}`);
+    });
   });
 });

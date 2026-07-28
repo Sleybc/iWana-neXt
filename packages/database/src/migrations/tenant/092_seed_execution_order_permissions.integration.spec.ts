@@ -176,6 +176,17 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
     const first = runners[0];
     const second = runners[1];
     if (!first || !second) throw new Error('Expected two PostgreSQL query runners');
+    const zeroRows = await first.query(
+      `INSERT INTO access_permission_catalog
+       (tenant_id, permission_key, module_key, action, description, catalog_version, availability)
+       SELECT id, 'operations.execution_orders.read', 'operations', 'read',
+         'Consultar órdenes de ejecución asignadas y supervisadas', 'MOD00_ACCESS_V1', 'ASSIGNABLE'
+       FROM public.tenants WHERE schema_name = $1
+       ON CONFLICT (tenant_id, permission_key) DO NOTHING
+       RETURNING permission_key`,
+      [SCHEMAS[0]],
+    );
+    expect(zeroRows).toHaveLength(0);
     await migration.up(first);
     await first.query(
       `INSERT INTO access_permission_catalog
@@ -196,6 +207,15 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
 
     await migration.up(second);
     await migration.down(second);
+  });
+
+  it('conserva evidencia reproducible del rojo histórico 42P01 sin romper el seed', async () => {
+    // Evidencia del defecto original: 092 consultaba tenant_settings, relación
+    // inexistente. La consulta se ejecuta aislada; la migración corregida no la
+    // ejecuta ni depende de que el estado productivo permanezca roto.
+    await expect(runners[0]?.query('SELECT 1 FROM tenant_settings')).rejects.toMatchObject({
+      code: '42P01',
+    });
   });
 
   it('ejecuta 089→095 contra los dos schemas de prueba', async () => {

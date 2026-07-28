@@ -18,13 +18,23 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
   name = 'SeedExecutionOrderPermissions0920000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    // Valores consolidados con MOD00_ACCESS_V1_CATALOG. El tenant canónico es
-    // public.tenants.id, localizado por el schema que el runner ya activó.
+    // MOD00_ACCESS_V1_CATALOG vive en apps/api, que no es una dependencia válida
+    // de @iwana/db. Por boundary, esta migración es la única fuente ejecutable
+    // del seed SQL y sus valores se mantienen comparables 1:1 con ese catálogo;
+    // no se importa código de apps/api desde una migración.
     await queryRunner.query(`
+      /* Source contract: MOD00_ACCESS_V1_CATALOG (apps/api boundary). */
       DO $migration$
       DECLARE
+        canonical_tenant_id UUID;
         tenant_count INTEGER;
+        inserted_count INTEGER;
+        catalog_count INTEGER;
       BEGIN
+        SELECT id INTO canonical_tenant_id
+        FROM public.tenants
+        WHERE schema_name = current_schema();
+
         INSERT INTO access_permission_catalog
           (tenant_id, permission_key, module_key, action, description, catalog_version, availability, is_system, is_active)
         SELECT
@@ -50,11 +60,31 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
         WHERE tenants.schema_name = current_schema()
         ON CONFLICT (tenant_id, permission_key) DO NOTHING;
 
+        GET DIAGNOSTICS inserted_count = ROW_COUNT;
+
         SELECT COUNT(*) INTO tenant_count
         FROM public.tenants
         WHERE schema_name = current_schema();
         IF tenant_count = 0 THEN
           RAISE EXCEPTION 'No canonical tenant found for schema %', current_schema();
+        END IF;
+
+        SELECT COUNT(*) INTO catalog_count
+        FROM access_permission_catalog
+        WHERE tenant_id = canonical_tenant_id
+          AND permission_key IN (
+            'operations.execution_orders.read',
+            'operations.execution_orders.execute',
+            'operations.execution_orders.supervise',
+            'operations.execution_order_templates.read',
+            'operations.execution_order_templates.manage',
+            'operations.execution_events.redrive',
+            'wfm.work_orders.execute'
+          );
+        IF inserted_count = 0 AND catalog_count <> 7 THEN
+          RAISE EXCEPTION
+            'Execution-order permission seed inserted 0 rows and catalog is incomplete (% of 7)',
+            catalog_count;
         END IF;
       END
       $migration$
