@@ -1,7 +1,7 @@
 # apps/portal/Dockerfile — Build multi-stage para Next.js App Router (@iwana/portal)
 # output: 'standalone' configurado en apps/portal/next.config.ts
 
-FROM node:24-bookworm AS base
+FROM node:25.8.2-bookworm AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
 
@@ -40,7 +40,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @iwana/portal build
 
 # ── runner ────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS runner
+FROM node:25.8.2-alpine AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production

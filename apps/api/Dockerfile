@@ -1,7 +1,7 @@
 # apps/api/Dockerfile — Build multi-stage para NestJS API iWana neXt
 # Basado en el patrón de apps/worker/Dockerfile
 
-FROM node:24-bookworm AS base
+FROM node:25.8.2-bookworm AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
 

@@ -12,7 +12,7 @@ services:
   # iwana_app / iwana_migrator se crean en el primer init (docker/postgres/init).
   # Ver docs/runbooks/RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md.
   postgres:
-    image: postgres:18-alpine
+    image: ${POSTGRES_IMAGE:-postgres:18.3-alpine}
     container_name: iwana_postgres_dev
     environment:
       POSTGRES_USER: ${DB_BOOTSTRAP_USER:-iwana}
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:8-alpine
+    image: ${REDIS_IMAGE:-redis:8.6-alpine}
     container_name: iwana_redis_dev
     command: redis-server --save 60 1 --loglevel warning
     ports:
@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    image: ${PGBOUNCER_IMAGE:?PGBOUNCER_IMAGE is required}
     container_name: iwana_pgbouncer_dev
     environment:
       DB_HOST: postgres
@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:?MINIO_IMAGE is required}
     container_name: iwana_minio_dev
     command: server /data --console-address ':9001'
     environment:
@@ -94,7 +94,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:latest
+    image: ${MINIO_MC_IMAGE:?MINIO_MC_IMAGE is required}
     container_name: iwana_minio_init_dev
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
@@ -113,7 +113,7 @@ services:
     restart: 'no'
 
   typesense:
-    image: typesense/typesense:28.0
+    image: ${TYPESENSE_IMAGE:-typesense/typesense:28.0}
     container_name: iwana_typesense_dev
     command: >
       --data-dir /data
@@ -132,8 +132,10 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:alpine
+    image: ${NGINX_IMAGE:?NGINX_IMAGE is required}
     container_name: iwana_nginx_dev
+    profiles:
+      - development
     ports:
       - '${DEV_PROXY_PORT:-8080}:80'
     volumes:
@@ -149,7 +151,7 @@ services:
     restart: unless-stopped
 
   nginx-prod:
-    image: nginx:alpine
+    image: ${NGINX_IMAGE:?NGINX_IMAGE is required}
     container_name: iwana_nginx_prod
     profiles:
       - production
@@ -284,7 +286,7 @@ services:
     restart: unless-stopped
 
   migrator-prod:
-    image: ${MIGRATOR_IMAGE:-iwana-api:latest}
+    image: ${MIGRATOR_IMAGE:?MIGRATOR_IMAGE is required}
     container_name: iwana_migrator_prod
     profiles:
       - production
@@ -307,8 +309,10 @@ services:
     restart: 'no'
 
   adminer:
-    image: adminer:latest
+    image: ${ADMINER_IMAGE:?ADMINER_IMAGE is required}
     container_name: iwana_adminer_dev
+    profiles:
+      - development
     ports:
       - '${ADMINER_PORT:-8081}:8080'
     environment:
