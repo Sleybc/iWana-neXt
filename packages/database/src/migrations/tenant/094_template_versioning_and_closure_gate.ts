@@ -183,10 +183,10 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
   }
 
   private async assertTableEmpty(queryRunner: QueryRunner, tableName: string): Promise<void> {
-    const result = (await queryRunner.query(
-      `SELECT COUNT(*) AS cnt FROM "${tableName}"`,
-    )) as Array<{ cnt: string }>;
-    const count = Number.parseInt(result[0]?.cnt ?? '0', 10);
+    const result = (await queryRunner.query(`SELECT COUNT(*) AS cnt FROM "${tableName}"`)) as
+      | Array<{ cnt: string }>
+      | undefined;
+    const count = Number.parseInt(result?.[0]?.cnt ?? '0', 10);
     if (count > 0) {
       throw new Error(
         `Reversión bloqueada: la tabla "${tableName}" contiene ${count} fila(s). ` +
@@ -202,8 +202,8 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
   ): Promise<void> {
     const result = (await queryRunner.query(
       `SELECT COUNT(*) AS cnt FROM "${tableName}" WHERE "${columnName}" IS NOT NULL`,
-    )) as Array<{ cnt: string }>;
-    const count = Number.parseInt(result[0]?.cnt ?? '0', 10);
+    )) as Array<{ cnt: string }> | undefined;
+    const count = Number.parseInt(result?.[0]?.cnt ?? '0', 10);
     if (count > 0) {
       throw new Error(
         `Reversión bloqueada: la columna "${columnName}" de "${tableName}" contiene ${count} valor(es) no nulo(s). ` +
