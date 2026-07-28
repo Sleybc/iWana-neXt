@@ -61,9 +61,6 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
       database: process.env.DB_NAME ?? 'dbiw',
       max: 2,
     });
-    // El schema es exclusivo de esta prueba; se limpia para que un intento
-    // fallido anterior no deje tablas con ownership distinto.
-    await database.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
     await database.query(`CREATE SCHEMA "${schemaName}"`);
     const tenantRows = (
       await database.query<{ id: string }>(
@@ -80,7 +77,6 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
     // Prerequisitos mínimos del esquema anterior, y luego las migraciones
     // oficiales que crean/evolucionan el outbox (090 y 093).
     await database.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
-    await database.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
     await database.query(`
       CREATE TABLE "${schemaName}".execution_orders (
         id UUID NOT NULL, tenant_id UUID NOT NULL, schedule_event_id UUID NOT NULL
@@ -139,7 +135,37 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
     if (migrationDataSource?.isInitialized)
       await migrationDataSource.destroy().catch(() => undefined);
     if (database) {
-      await database.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`).catch(() => undefined);
+      // Limpieza explícita de los objetos creados por 090/093; no usa DROP
+      // CASCADE para no poder borrar recursos ajenos aunque el setup falle.
+      for (const table of [
+        'execution_order_outbox_events',
+        'execution_order_inbox_events',
+        'execution_order_idempotency_records',
+        'execution_order_audit_intents',
+      ]) {
+        await database
+          .query(`DROP TABLE IF EXISTS "${schemaName}"."${table}"`)
+          .catch(() => undefined);
+      }
+      for (const index of [
+        'uq_execution_orders_tenant_schedule_event',
+        'idx_execution_order_outbox_pending',
+        'uq_execution_order_outbox_event',
+      ]) {
+        await database
+          .query(`DROP INDEX IF EXISTS "${schemaName}"."${index}"`)
+          .catch(() => undefined);
+      }
+      await database
+        .query(`ALTER TABLE "${schemaName}".execution_orders DROP COLUMN IF EXISTS version`)
+        .catch(() => undefined);
+      await database
+        .query(`DROP TABLE IF EXISTS "${schemaName}".execution_orders`)
+        .catch(() => undefined);
+      await database
+        .query(`DROP TYPE IF EXISTS "${schemaName}".visit_request_status`)
+        .catch(() => undefined);
+      await database.query(`DROP SCHEMA IF EXISTS "${schemaName}"`).catch(() => undefined);
       await database
         .query(`DELETE FROM public.tenants WHERE schema_name = $1`, [schemaName])
         .catch(() => undefined);
