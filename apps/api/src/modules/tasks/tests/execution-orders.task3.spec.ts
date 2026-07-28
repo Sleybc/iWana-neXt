@@ -496,7 +496,7 @@ describe('ExecutionOrdersService — idempotency verification (Task 3.1)', () =>
   let reliabilityService: ExecutionOrderReliabilityService;
 
   const mockConfigService = {
-    get: jest.fn().mockReturnValue('test-secret'),
+    getOrThrow: jest.fn().mockReturnValue('test-secret'),
   } as never;
 
   beforeEach(() => {

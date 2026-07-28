@@ -51,7 +51,7 @@ function techActor(sub = 'tech-001'): JwtPayload {
 }
 
 const mockConfigService = {
-  get: jest.fn().mockReturnValue('test-secret'),
+  getOrThrow: jest.fn().mockReturnValue('test-secret'),
 } as never;
 
 // ── 6.1: Consumption request emits InventoryConsumptionRequestedV1 ────────
