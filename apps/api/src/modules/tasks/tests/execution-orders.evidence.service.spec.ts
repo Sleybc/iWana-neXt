@@ -6,6 +6,8 @@ import { ExecutionOrderStatus, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
 import type { IEvidenceAssetPort, EvidenceUploadResult } from '../ports/evidence-asset.port';
+import { EvidenceAssetProvider } from '../../media/evidence-asset.provider';
+import { MediaAsset } from '@iwana/db';
 
 jest.mock('../services/tasks.service', () => ({
   TasksService: class TasksService {},
@@ -392,6 +394,79 @@ describe('ExecutionOrdersService — Evidence', () => {
         'tenant_001',
         ORDER_UUID,
       );
+    });
+
+    it('recorre upload, análisis y registro usando el estado real de Media', async () => {
+      const asset = new MediaAsset();
+      asset.tenantSchema = 'tenant_001';
+      asset.assetStatus = 'QUARANTINED';
+      asset.mimeType = 'image/jpeg';
+      asset.sizeBytes = 1024;
+      asset.checksumSha256 = 'a'.repeat(64);
+      asset.deletedAt = null;
+      asset.createdAt = new Date();
+      const repo = {
+        create: jest.fn((value: Partial<MediaAsset>) => Object.assign(asset, value)),
+        save: jest.fn().mockResolvedValue(asset),
+        findOne: jest.fn().mockResolvedValue(asset),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          update: jest.fn().mockReturnThis(),
+          set: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue({ affected: 1 }),
+        }),
+      };
+      const analysisQueue = { add: jest.fn().mockResolvedValue(undefined) };
+      const provider = new EvidenceAssetProvider(
+        { getRepository: jest.fn().mockReturnValue(repo) } as unknown as DataSource,
+        { putObject: jest.fn().mockResolvedValue(undefined) } as never,
+        { get: jest.fn() } as never,
+        analysisQueue as never,
+      );
+      const uploaded = await provider.createUploadIntent(
+        'tenant_001',
+        mockFile({ buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...new Array(12).fill(0)]) }),
+        actor.sub,
+      );
+      expect(analysisQueue.add).toHaveBeenCalledWith(
+        'analyze-evidence-asset',
+        expect.objectContaining({
+          mediaAssetId: uploaded.mediaAssetId,
+          tenantSchema: 'tenant_001',
+        }),
+        expect.objectContaining({ attempts: 3 }),
+      );
+
+      asset.assetStatus = 'AVAILABLE';
+      (service as unknown as { evidenceAssetPort: IEvidenceAssetPort }).evidenceAssetPort =
+        provider;
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+          update: jest.fn().mockReturnThis(),
+          set: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue({ affected: 1 }),
+        }),
+        save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        create: jest.fn((_entity, payload) => payload),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      const result = await service.registerEvidence(
+        ORDER_UUID,
+        { ...evidenceInput, mediaAssetId: uploaded.mediaAssetId },
+        actor,
+      );
+      expect(result.assetStatus).toBe('AVAILABLE');
+      expect(repo.createQueryBuilder).toHaveBeenCalled();
     });
 
     it('rechaza evidencia con asset PENDING_ANALYSIS', async () => {

@@ -14,6 +14,7 @@ describe('EvidenceOrphanDetectionProcessor', () => {
           rows: [{ id: 'asset-001', claim_ref: 'tenant_test:order-001:extra' }],
         }) // SELECT de claims
         .mockResolvedValueOnce({ rows: [] }) // UPDATE de claim inválido
+        .mockResolvedValueOnce({ rows: [] }) // SELECT de tenants para CLAIM_FAILED
         .mockResolvedValueOnce(undefined) // BEGIN de eliminación física
         .mockResolvedValueOnce({ rows: [] }) // UPDATE de eliminación física
         .mockResolvedValueOnce(undefined), // COMMIT de eliminación física
@@ -38,5 +39,6 @@ describe('EvidenceOrphanDetectionProcessor', () => {
     expect(client.query).toHaveBeenCalledWith(expect.stringContaining('SET claim_ref = NULL'), [
       'asset-001',
     ]);
+    expect(queries.some((query) => query.includes("asset_status = 'AVAILABLE'"))).toBe(false);
   });
 });

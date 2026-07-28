@@ -6,6 +6,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { createHash, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -18,6 +20,14 @@ import {
   type EvidenceUploadResult,
   type IEvidenceAssetPort,
 } from '../tasks/ports/evidence-asset.port';
+
+export const EVIDENCE_ANALYSIS_QUEUE = 'evidence-analysis';
+
+export interface EvidenceAnalysisJobData {
+  tenantSchema: string;
+  mediaAssetId: string;
+  correlationId: string;
+}
 
 /**
  * Magic bytes para validación de MIME types sin depender de la extensión.
@@ -103,6 +113,8 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     @Inject(STORAGE_PORT)
     private readonly storage: StoragePort,
     private readonly config: ConfigService,
+    @InjectQueue(EVIDENCE_ANALYSIS_QUEUE)
+    private readonly analysisQueue: Queue,
   ) {
     this.mediaRepo = this.dataSource.getRepository(MediaAsset);
   }
@@ -226,6 +238,22 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     this.logger.log(
       `Asset de evidencia creado [id=${saved.id} tenant=${tenantSchema} ` +
         `mime=${declaredMime} bytes=${file.size}]`,
+    );
+
+    await this.analysisQueue.add(
+      'analyze-evidence-asset',
+      {
+        tenantSchema,
+        mediaAssetId: saved.id,
+        correlationId: saved.id,
+      } satisfies EvidenceAnalysisJobData,
+      {
+        jobId: `evidence-analysis-${saved.id}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
     );
 
     const now = new Date();

@@ -35,6 +35,10 @@ import {
   EVIDENCE_ORPHAN_DETECTION_QUEUE,
 } from './processors/evidence-orphan-detection.processor';
 import { TenantSeedService } from './services/tenant-seed.service';
+import {
+  EvidenceAnalysisProcessor,
+  EVIDENCE_ANALYSIS_QUEUE,
+} from './processors/evidence-analysis.processor';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const workerDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -173,6 +177,7 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_TOMBSTONE_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
     BullModule.registerQueue({ name: EVIDENCE_ORPHAN_DETECTION_QUEUE }),
+    BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
   ],
   providers: [
     TenantProvisioningProcessor,
@@ -191,6 +196,7 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     ExecutionOrderTombstoneProcessor,
     ExecutionOrderDlqProcessor,
     EvidenceOrphanDetectionProcessor,
+    EvidenceAnalysisProcessor,
   ],
 })
 export class WorkerModule {}

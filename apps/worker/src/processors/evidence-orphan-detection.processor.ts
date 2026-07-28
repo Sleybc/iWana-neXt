@@ -89,6 +89,9 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       // ── Fase 2: Claims huérfanos (claim set pero evidence no existe) ───
       await this.releaseOrphanClaims(client, correlationId);
 
+      // ── Fase 2b: recuperar escrituras cuyo claim falló después del insert ─
+      await this.reconcileClaimFailed(client, correlationId);
+
       // ── Fase 3: Eliminación física de assets retenidos ────────────────
       await this.physicalDeleteRetained(client, correlationId);
     } catch (error: unknown) {
@@ -98,6 +101,66 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Completa el caso de ventana entre el insert de evidence y claimAsset.
+   * Si el asset sigue disponible, el worker repite el claim de forma atómica;
+   * si otro claim ya ganó, la evidencia queda reflejando el estado real.
+   */
+  private async reconcileClaimFailed(client: PoolClient, _correlationId: string): Promise<void> {
+    const tenants = await client.query<{ schema_name: string }>(
+      `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE'`,
+    );
+
+    for (const tenant of tenants.rows) {
+      if (!/^[a-z][a-z0-9_]{0,62}$/i.test(tenant.schema_name)) continue;
+      const failed = await client.query<{
+        id: string;
+        media_asset_id: string;
+        execution_order_id: string;
+      }>(
+        `SELECT id, media_asset_id, execution_order_id
+         FROM "${tenant.schema_name}".execution_order_evidence
+         WHERE asset_status = 'CLAIM_FAILED' AND media_asset_id IS NOT NULL
+         LIMIT 500`,
+      );
+
+      for (const evidence of failed.rows) {
+        const claimRef = `${tenant.schema_name}:${evidence.execution_order_id}`;
+        const claimed = await client.query(
+          `UPDATE public.media_assets
+           SET claim_ref = $1
+           WHERE id = $2 AND tenant_schema = $3
+             AND asset_status = 'AVAILABLE' AND claim_ref IS NULL
+             AND deleted_at IS NULL`,
+          [claimRef, evidence.media_asset_id, tenant.schema_name],
+        );
+        if ((claimed.rowCount ?? 0) > 0) {
+          await client.query(
+            `UPDATE "${tenant.schema_name}".execution_order_evidence
+             SET asset_status = 'AVAILABLE'
+             WHERE id = $1 AND asset_status = 'CLAIM_FAILED'`,
+            [evidence.id],
+          );
+          continue;
+        }
+
+        const asset = await client.query<{ asset_status: string }>(
+          `SELECT asset_status FROM public.media_assets WHERE id = $1 AND tenant_schema = $2`,
+          [evidence.media_asset_id, tenant.schema_name],
+        );
+        const status = asset.rows[0]?.asset_status;
+        if (status === 'REJECTED' || status === 'EXPIRED' || status === 'DELETED') {
+          await client.query(
+            `UPDATE "${tenant.schema_name}".execution_order_evidence
+             SET asset_status = $1
+             WHERE id = $2 AND asset_status = 'CLAIM_FAILED'`,
+            [status, evidence.id],
+          );
+        }
+      }
     }
   }
 
@@ -177,7 +240,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
         if (parts.length !== 2) {
           await client.query(
             `UPDATE public.media_assets
-             SET claim_ref = NULL, asset_status = 'AVAILABLE'
+             SET claim_ref = NULL
              WHERE id = $1`,
             [row.id],
           );
@@ -190,7 +253,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
         if (schemaName === undefined || executionOrderId === undefined) {
           await client.query(
             `UPDATE public.media_assets
-             SET claim_ref = NULL, asset_status = 'AVAILABLE'
+             SET claim_ref = NULL
              WHERE id = $1`,
             [row.id],
           );
@@ -203,7 +266,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
         if (!/^[a-z][a-z0-9_]*$/i.test(schemaName) || schemaName.length > 63) {
           await client.query(
             `UPDATE public.media_assets
-             SET claim_ref = NULL, asset_status = 'AVAILABLE'
+             SET claim_ref = NULL
              WHERE id = $1`,
             [row.id],
           );
@@ -222,7 +285,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
           if (evidence.rows.length === 0) {
             await client.query(
               `UPDATE public.media_assets
-               SET claim_ref = NULL, asset_status = 'AVAILABLE'
+                SET claim_ref = NULL
                WHERE id = $1`,
               [row.id],
             );
@@ -233,7 +296,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
           if (msg.includes('does not exist') || msg.includes('no existe')) {
             await client.query(
               `UPDATE public.media_assets
-               SET claim_ref = NULL, asset_status = 'AVAILABLE'
+                SET claim_ref = NULL
                WHERE id = $1`,
               [row.id],
             );

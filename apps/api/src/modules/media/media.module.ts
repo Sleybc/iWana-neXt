@@ -2,11 +2,13 @@ import { join } from 'node:path';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
 import { MediaAsset } from '@iwana/db';
 import { createStorageAdapter, STORAGE_PORT } from '@iwana/storage';
 import { MediaService } from './media.service';
 import { MediaController } from './media.controller';
 import { EvidenceAssetProvider } from './evidence-asset.provider';
+import { EVIDENCE_ANALYSIS_QUEUE } from './evidence-asset.provider';
 import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
 
 /**
@@ -25,7 +27,11 @@ import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
  * ADR-033 + ADR-034
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([MediaAsset]), ConfigModule],
+  imports: [
+    TypeOrmModule.forFeature([MediaAsset]),
+    ConfigModule,
+    BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
+  ],
   providers: [
     // Provider del StoragePort — selecciona adaptador según STORAGE_DRIVER
     {
