@@ -33,6 +33,9 @@ interface TenantScanResult {
   error?: string;
 }
 
+const RELAY_POOL_MAX = 10;
+const RELAY_SCAN_CONCURRENCY = RELAY_POOL_MAX - 1;
+
 /**
  * Scanner/relay durable para eventos del outbox de MOD11.
  *
@@ -60,7 +63,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
       user: config.get<string>('DB_USER', 'iwana'),
       password: config.get<string>('DB_PASSWORD', ''),
       database: config.get<string>('DB_NAME', 'iwana'),
-      max: 10, // PLAT-P0-03
+      max: RELAY_POOL_MAX, // PLAT-P0-03
       idleTimeoutMillis: 30_000,
     });
   }
@@ -92,7 +95,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
   /**
    * Escanea el outbox de todos los tenants activos en paralelo.
    *
-   * PLAT-P0-03: Promise.allSettled para que un tenant lento no bloquee a los demás.
+   * PLAT-P0-03: limita los tenants concurrentes al presupuesto del pool.
    */
   async scanAndRelay(batchSize = 100): Promise<number> {
     const client = await this.pool.connect();
@@ -105,9 +108,15 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
       );
 
       const validTenants = tenants.rows.filter((t) => isValidSchemaName(t.schema_name));
-      const results: PromiseSettledResult<TenantScanResult>[] = await Promise.allSettled(
-        validTenants.map((tenant) => this.scanTenantOutbox(tenant, batchSize)),
-      );
+      const results: PromiseSettledResult<TenantScanResult>[] = [];
+      for (let offset = 0; offset < validTenants.length; offset += RELAY_SCAN_CONCURRENCY) {
+        const wave = validTenants.slice(offset, offset + RELAY_SCAN_CONCURRENCY);
+        results.push(
+          ...(await Promise.allSettled(
+            wave.map((tenant) => this.scanTenantOutbox(tenant, batchSize)),
+          )),
+        );
+      }
 
       for (const result of results) {
         if (result.status === 'fulfilled') {
@@ -198,23 +207,35 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
               removeOnComplete: true,
             },
           );
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `Relay: fallo de enqueue event_id=${row.event_id} tenant=${tenant.id}: ${reason}. ` +
+              `El lease expirará y será reintentado.`,
+          );
+          continue;
+        }
 
-          // Marcar como publicado SOLO después de enqueue exitoso
+        // El marcado tiene su propia transacción: SET LOCAL solo tiene efecto
+        // hasta COMMIT y no puede ejecutarse después de cerrar la transacción.
+        try {
+          await client.query('BEGIN');
           await client.query(`SET LOCAL search_path TO "${tenant.schema_name}"`);
           await client.query(
             `UPDATE execution_order_outbox_events
-             SET published_at = NOW(), lease_until = NULL
-             WHERE event_id = $1 AND published_at IS NULL`,
+              SET published_at = NOW(), lease_until = NULL
+              WHERE event_id = $1 AND published_at IS NULL`,
             [row.event_id],
           );
+          await client.query('COMMIT');
           result.relayed += 1;
         } catch (error) {
-          this.logger.warn(
-            `Relay: no se pudo encolar event_id=${row.event_id} tenant=${tenant.id}. ` +
-              `El lease expirará y será reintentado.`,
+          const reason = error instanceof Error ? error.message : String(error);
+          await client.query('ROLLBACK').catch(() => undefined);
+          this.logger.error(
+            `Relay: fallo de marcado event_id=${row.event_id} tenant=${tenant.id}: ${reason}. ` +
+              `El evento quedará elegible para reintento.`,
           );
-          // No marcamos como error en el outbox aquí; el job retry lo manejará
-          // el events processor o el DLQ tras agotar intentos.
         }
       }
 
@@ -261,6 +282,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
       for (const tenant of tenants.rows) {
         if (!isValidSchemaName(tenant.schema_name)) continue;
         try {
+          await client.query('BEGIN');
           await client.query(`SET LOCAL search_path TO "${tenant.schema_name}"`);
           const pending = await client.query<{
             pending_count: string;
@@ -284,8 +306,10 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
               ? parseInt(pending.rows[0].oldest_age_seconds, 10)
               : null,
           });
-        } catch {
-          // Si un tenant da error, lo omitimos del reporte
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          this.logger.warn(`Relay: fallo de métricas tenant=${tenant.id}; se omite del reporte.`);
         }
       }
 

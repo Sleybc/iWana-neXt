@@ -1,24 +1,39 @@
 import { ConfigService } from '@nestjs/config';
 import { ExecutionOrderRelayService } from './execution-order-relay.service';
 import type { Queue } from 'bullmq';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+
+type TestMock = jest.MockedFunction<(...args: never[]) => Promise<unknown>>;
 
 function mockConfig(config: Record<string, string> = {}): ConfigService {
   return {
-    get: jest.fn((key: string, defaultVal: string) => config[key] ?? defaultVal),
-    getOrThrow: jest.fn(),
+    get: jest.fn(
+      (key: string, defaultVal: string) => config[key] ?? defaultVal,
+    ) as unknown as TestMock,
+    getOrThrow: jest.fn() as unknown as TestMock,
   } as unknown as ConfigService;
 }
 
 describe('ExecutionOrderRelayService', () => {
   let relayService: ExecutionOrderRelayService;
-  let eventsQueue: { add: jest.Mock };
-  let relayQueue: { add: jest.Mock };
-  let poolClient: { query: jest.Mock; release: jest.Mock };
+  let eventsQueue: { add: TestMock };
+  let relayQueue: { add: TestMock };
+  let poolClient: {
+    query: TestMock;
+    release: TestMock;
+  };
 
   beforeEach(() => {
-    eventsQueue = { add: jest.fn().mockResolvedValue(undefined) };
-    relayQueue = { add: jest.fn().mockResolvedValue(undefined) };
-    poolClient = { query: jest.fn(), release: jest.fn() };
+    eventsQueue = {
+      add: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(undefined),
+    };
+    relayQueue = {
+      add: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(undefined),
+    };
+    poolClient = {
+      query: jest.fn<(...args: never[]) => Promise<unknown>>(),
+      release: jest.fn<(...args: never[]) => Promise<unknown>>(),
+    };
 
     relayService = new ExecutionOrderRelayService(
       mockConfig(),
@@ -26,8 +41,8 @@ describe('ExecutionOrderRelayService', () => {
       eventsQueue as unknown as Queue,
     );
 
-    (relayService as unknown as { pool: { connect: jest.Mock } }).pool = {
-      connect: jest.fn().mockResolvedValue(poolClient),
+    (relayService as unknown as { pool: { connect: TestMock } }).pool = {
+      connect: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(poolClient),
     } as never;
   });
 
@@ -58,11 +73,15 @@ describe('ExecutionOrderRelayService', () => {
           },
         ],
       } as never)
-      // COMMIT
+      // COMMIT lease
+      .mockResolvedValueOnce(undefined)
+      // BEGIN mark
       .mockResolvedValueOnce(undefined)
       // SET LOCAL para mark
       .mockResolvedValueOnce(undefined)
       // UPDATE mark published
+      .mockResolvedValueOnce(undefined)
+      // COMMIT mark
       .mockResolvedValueOnce(undefined);
 
     const relayed = await relayService.scanAndRelay(100);
@@ -111,15 +130,60 @@ describe('ExecutionOrderRelayService', () => {
       .mockResolvedValueOnce({
         rows: [{ id: 't1', schema_name: 'tenant_test001' }],
       } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN
       .mockResolvedValueOnce(undefined) // SET LOCAL
       .mockResolvedValueOnce({
         rows: [{ pending_count: '5', oldest_age_seconds: '120' }],
-      } as never);
+      } as never)
+      .mockResolvedValueOnce(undefined); // COMMIT
 
     const metrics = await relayService.getPendingEventsPerTenant();
     expect(metrics).toHaveLength(1);
     expect(metrics[0]!.pendingCount).toBe(5);
     expect(metrics[0]!.oldestAgeSeconds).toBe(120);
+  });
+
+  it('distingue un fallo de enqueue de un fallo de marcado', async () => {
+    const row = {
+      event_id: 'e0000000-0000-4000-8000-000000000002',
+      tenant_id: 't1',
+      aggregate_id: 'a0000000-0000-4000-8000-000000000001',
+      aggregate_version: 1,
+      event_type: 'ExecutionOrderStartedV1',
+      payload: { executionOrderId: 'a0000000-0000-4000-8000-000000000001' },
+      correlation_id: 'c0000000-0000-4000-8000-000000000001',
+      occurred_at: new Date().toISOString(),
+    };
+    poolClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 't1', schema_name: 'tenant_test001' }] } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN lease
+      .mockResolvedValueOnce(undefined) // SET LOCAL lease
+      .mockResolvedValueOnce({ rows: [row] } as never)
+      .mockResolvedValueOnce(undefined) // COMMIT lease
+      .mockResolvedValueOnce(undefined) // BEGIN mark
+      .mockResolvedValueOnce(undefined) // SET LOCAL mark
+      .mockRejectedValueOnce(new Error('mark failed'))
+      .mockResolvedValueOnce(undefined); // ROLLBACK mark
+    eventsQueue.add.mockRejectedValueOnce(new Error('enqueue failed'));
+
+    await relayService.scanAndRelay(100);
+    const queryCalls = poolClient.query.mock.calls as unknown[][];
+    expect(
+      queryCalls.some(([sql]) => typeof sql === 'string' && sql.includes('SET published_at')),
+    ).toBe(false);
+
+    eventsQueue.add.mockResolvedValueOnce(undefined);
+    poolClient.query.mockReset();
+    poolClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 't1', schema_name: 'tenant_test001' }] } as never)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [row] } as never)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    expect(await relayService.scanAndRelay(100)).toBe(1);
   });
 
   it('relayStatus devuelve el estado actual', () => {
