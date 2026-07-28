@@ -92,6 +92,10 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
   }
 }
 
+export const executionOrderIdempotencyConfigurationSchema = Joi.object({
+  EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
+});
+
 /**
  * Modulo raiz de la aplicacion iWana neXt API — Sprint 1 Semana 2.
  *
@@ -151,8 +155,6 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
           JWT_PRIVATE_KEY: Joi.string().required(),
           JWT_PUBLIC_KEY: Joi.string().required(),
-          // Secreto HMAC para idempotencia durable de comandos de órdenes de ejecución.
-          EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
           // Clave AES-256-GCM: 64 hex + rechazo de entropía nula (SEC-02 / ADR-058).
           // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
           MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,
@@ -190,7 +192,7 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           TYPESENSE_PROTOCOL: Joi.string().valid('http', 'https').default('http'),
           TYPESENSE_API_KEY: Joi.string().default('CHANGE_ME_TYPESENSE_DEV_KEY'),
           TYPESENSE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
-        }),
+        }).concat(executionOrderIdempotencyConfigurationSchema),
         validationOptions: { abortEarly: false },
       }),
     }),
