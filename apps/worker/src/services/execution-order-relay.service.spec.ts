@@ -159,31 +159,30 @@ describe('ExecutionOrderRelayService', () => {
       .mockResolvedValueOnce(undefined) // BEGIN lease
       .mockResolvedValueOnce(undefined) // SET LOCAL lease
       .mockResolvedValueOnce({ rows: [row] } as never)
+      .mockResolvedValueOnce(undefined); // COMMIT lease
+    eventsQueue.add.mockRejectedValueOnce(new Error('enqueue failed'));
+
+    expect(await relayService.scanAndRelay(100)).toBe(0);
+    const queryCalls = poolClient.query.mock.calls as unknown[][];
+    expect(queryCalls.some(([sql]) => typeof sql === 'string' && sql === 'BEGIN')).toBe(true);
+    expect(queryCalls).toHaveLength(5);
+
+    poolClient.query.mockReset();
+    poolClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 't1', schema_name: 'tenant_test001' }] } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN lease
+      .mockResolvedValueOnce(undefined) // SET LOCAL lease
+      .mockResolvedValueOnce({ rows: [row] } as never)
       .mockResolvedValueOnce(undefined) // COMMIT lease
       .mockResolvedValueOnce(undefined) // BEGIN mark
       .mockResolvedValueOnce(undefined) // SET LOCAL mark
       .mockRejectedValueOnce(new Error('mark failed'))
       .mockResolvedValueOnce(undefined); // ROLLBACK mark
-    eventsQueue.add.mockRejectedValueOnce(new Error('enqueue failed'));
-
-    await relayService.scanAndRelay(100);
-    const queryCalls = poolClient.query.mock.calls as unknown[][];
+    expect(await relayService.scanAndRelay(100)).toBe(0);
+    const markFailureCalls = poolClient.query.mock.calls as unknown[][];
     expect(
-      queryCalls.some(([sql]) => typeof sql === 'string' && sql.includes('SET published_at')),
-    ).toBe(false);
-
-    eventsQueue.add.mockResolvedValueOnce(undefined);
-    poolClient.query.mockReset();
-    poolClient.query
-      .mockResolvedValueOnce({ rows: [{ id: 't1', schema_name: 'tenant_test001' }] } as never)
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce({ rows: [row] } as never)
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined);
-    expect(await relayService.scanAndRelay(100)).toBe(1);
+      markFailureCalls.some(([sql]) => typeof sql === 'string' && sql.includes('published_at')),
+    ).toBe(true);
   });
 
   it('relayStatus devuelve el estado actual', () => {

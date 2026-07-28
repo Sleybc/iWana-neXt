@@ -298,6 +298,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
              WHERE published_at IS NULL`,
           );
 
+          await client.query('COMMIT');
           metrics.push({
             tenantId: tenant.id,
             schemaName: tenant.schema_name,
@@ -306,7 +307,6 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
               ? parseInt(pending.rows[0].oldest_age_seconds, 10)
               : null,
           });
-          await client.query('COMMIT');
         } catch (error) {
           await client.query('ROLLBACK').catch(() => undefined);
           this.logger.warn(`Relay: fallo de métricas tenant=${tenant.id}; se omite del reporte.`);
