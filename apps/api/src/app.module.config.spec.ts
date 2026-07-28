@@ -1,24 +1,17 @@
-import * as Joi from 'joi';
-
-const executionOrderIdempotencyConfigurationSchema = Joi.object({
-  EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
-});
+import { createAppConfigurationSchema } from './app.config';
 
 describe('AppModule configuration', () => {
-  it('falla al arrancar la configuración si falta el secreto de idempotencia', () => {
-    const previousSecret = process.env['EXECUTION_ORDER_IDEMPOTENCY_SECRET'];
-    delete process.env['EXECUTION_ORDER_IDEMPOTENCY_SECRET'];
+  it.each([
+    ['EXECUTION_ORDER_IDEMPOTENCY_SECRET', {}],
+    ['EXECUTION_ORDER_IDEMPOTENCY_SECRET', { EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'short' }],
+    ['JWT_PRIVATE_KEY', { EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32) }],
+    [
+      'JWT_PUBLIC_KEY',
+      { EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32), JWT_PRIVATE_KEY: 'not-a-real-key' },
+    ],
+  ])('rechaza configuración inválida al arrancar: %s', (variable, environment) => {
+    const validation = createAppConfigurationSchema().validate(environment, { abortEarly: false });
 
-    try {
-      const validation = executionOrderIdempotencyConfigurationSchema.validate({});
-
-      expect(validation.error?.message).toMatch(/EXECUTION_ORDER_IDEMPOTENCY_SECRET/u);
-    } finally {
-      if (previousSecret === undefined) {
-        delete process.env['EXECUTION_ORDER_IDEMPOTENCY_SECRET'];
-      } else {
-        process.env['EXECUTION_ORDER_IDEMPOTENCY_SECRET'] = previousSecret;
-      }
-    }
+    expect(validation.error?.details.map(({ path }) => path.join('.'))).toContain(variable);
   });
 });
