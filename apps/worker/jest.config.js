@@ -9,14 +9,8 @@ module.exports = {
     '^.+\.(t|j)s$': [
       'ts-jest',
       {
-        tsconfig: {
-          strictPropertyInitialization: false,
-          types: ['jest', 'node'],
-          paths: {
-            '@iwana/db': ['<rootDir>/../../../packages/database/src/index.ts'],
-            '@iwana/shared': ['<rootDir>/../../../packages/shared/src/index.ts'],
-          },
-        },
+        // Mantener el mismo baseline estricto que el typecheck de worker.
+        tsconfig: '<rootDir>/../tsconfig.typecheck.json',
       },
     ],
   },

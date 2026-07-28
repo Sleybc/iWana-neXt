@@ -173,8 +173,8 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       let releasedCount = 0;
 
       for (const row of claimed.rows) {
-        const parts = row.claim_ref.split(':');
-        if (parts.length !== 2) {
+        const [schemaName, executionOrderId] = row.claim_ref.split(':');
+        if (schemaName === undefined || executionOrderId === undefined) {
           await client.query(
             `UPDATE public.media_assets
              SET claim_ref = NULL, asset_status = 'AVAILABLE'
@@ -184,9 +184,6 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
           releasedCount++;
           continue;
         }
-
-        const schemaName = parts[0];
-        const executionOrderId = parts[1];
 
         // SEC-01: validar schema name contra regex para prevenir SQL injection
         // via interpolación dinámica en queries cross-schema

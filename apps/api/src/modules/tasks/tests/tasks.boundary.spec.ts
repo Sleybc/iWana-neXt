@@ -7,11 +7,29 @@
  * ADR-068 — Sincronización de OT de ejecución y proyecciones operativas
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+function readTasksSources(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return readTasksSources(path);
+    return entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')
+      ? [readFileSync(path, 'utf8')]
+      : [];
+  });
+}
+
 describe('TasksModule — Boundaries (P0-3)', () => {
-  it('verifica que MediaAsset no está en imports del módulo (lectura estática)', () => {
-    // Nota: La importación dinámica del módulo falla por dependencias
-    // externas (otplib). Verificamos estáticamente el archivo fuente.
-    expect(true).toBe(true);
+  it('rechaza imports, repositorios y entidades de Inventory dentro de Tasks', () => {
+    const sources = readTasksSources(join(__dirname, '..'));
+    const source = sources.join('\n');
+
+    expect(source).not.toMatch(
+      /from\s+['"][^'"]+\/inventory\/(?!ports\/|inventory\.module)[^'"]+['"]|import\s*\{[^}]*\bInventory(?:Item|Category|Movement|Repository)\b[^}]*\}\s*from\s*['"]@iwana\/db['"]/s,
+    );
+    expect(source).not.toMatch(/@InjectRepository\s*\(\s*Inventory/);
+    expect(source).not.toMatch(/Repository\s*<\s*Inventory/);
   });
 
   it('EvidenceAssetProvider usa DataSource en vez de InjectRepository', () => {
@@ -19,7 +37,7 @@ describe('TasksModule — Boundaries (P0-3)', () => {
     // el repositorio de MediaAsset, no @InjectRepository(), para no
     // requerir que MediaAsset esté registrado en TypeOrmModule.forFeature
     const source = require('fs').readFileSync(
-      require('path').join(__dirname, '../ports/evidence-asset.provider.ts'),
+      require('path').join(__dirname, '../../media/evidence-asset.provider.ts'),
       'utf8',
     );
 
