@@ -5,11 +5,24 @@ import { ConflictException } from '@nestjs/common';
 describe('ExecutionOrderReliabilityService', () => {
   const config = {
     get: jest.fn().mockReturnValue('test-secret-not-production'),
+    getOrThrow: jest.fn().mockReturnValue('test-secret-not-production'),
   } as unknown as ConfigService;
   let service: ExecutionOrderReliabilityService;
 
   beforeEach(() => {
     service = new ExecutionOrderReliabilityService(config);
+  });
+
+  it('falla al arrancar si falta el secreto de idempotencia', () => {
+    const missingSecretConfig = {
+      getOrThrow: jest.fn(() => {
+        throw new Error('Configuration key "EXECUTION_ORDER_IDEMPOTENCY_SECRET" is missing');
+      }),
+    } as unknown as ConfigService;
+
+    expect(() => new ExecutionOrderReliabilityService(missingSecretConfig)).toThrow(
+      'EXECUTION_ORDER_IDEMPOTENCY_SECRET',
+    );
   });
 
   it('crea intentId y devuelve replay para la misma clave/payload', async () => {

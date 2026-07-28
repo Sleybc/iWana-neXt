@@ -38,8 +38,11 @@ export interface OutboxEventInput {
 @Injectable()
 export class ExecutionOrderReliabilityService {
   private readonly keyId = 'v1';
+  private readonly idempotencySecret: string;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(config: ConfigService) {
+    this.idempotencySecret = config.getOrThrow<string>('EXECUTION_ORDER_IDEMPOTENCY_SECRET');
+  }
 
   beginIdempotent(
     manager: EntityManager,
@@ -195,9 +198,7 @@ export class ExecutionOrderReliabilityService {
   }
 
   private hmac(value: string): string {
-    const secret = this.config.get<string>('EXECUTION_ORDER_IDEMPOTENCY_SECRET');
-    if (!secret) throw new Error('EXECUTION_ORDER_IDEMPOTENCY_SECRET is not configured');
-    return createHmac('sha256', secret).update(value, 'utf8').digest('hex');
+    return createHmac('sha256', this.idempotencySecret).update(value, 'utf8').digest('hex');
   }
 
   private canonicalize(value: object): string {
