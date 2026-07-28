@@ -44,20 +44,33 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     SMTP_SECURE: Joi.boolean().optional(),
     FRONTEND_URL: Joi.string().uri().optional(),
     API_PUBLIC_BASE_URL: Joi.string().uri().optional(),
-    STORAGE_DRIVER: Joi.string().valid('minio', 'local').default('local'),
+    STORAGE_DRIVER: Joi.string()
+      .valid('minio', 'local')
+      .default('local')
+      .when('NODE_ENV', { is: 'production', then: Joi.required() }),
     S3_ENDPOINT: Joi.string().uri().optional(),
     S3_REGION: Joi.string().default('us-east-1'),
-    S3_ACCESS_KEY_ID: Joi.string().allow('').optional(),
-    S3_SECRET_ACCESS_KEY: Joi.string().allow('').optional(),
+    S3_ACCESS_KEY_ID: Joi.string()
+      .allow('')
+      .optional()
+      .when('NODE_ENV', { is: 'production', then: Joi.string().min(1).required() }),
+    S3_SECRET_ACCESS_KEY: Joi.string()
+      .allow('')
+      .optional()
+      .when('NODE_ENV', { is: 'production', then: Joi.string().min(1).required() }),
     S3_BUCKET: Joi.string().default('iwana-media'),
     S3_FORCE_PATH_STYLE: Joi.boolean().default(true),
     S3_USE_SSL: Joi.boolean().default(false),
     S3_PUBLIC_BASE_URL: Joi.string().uri().optional(),
     S3_BUCKET_PUBLIC: Joi.boolean().default(false),
-    TYPESENSE_HOST: Joi.string().default('localhost'),
+    TYPESENSE_HOST: Joi.string()
+      .default('localhost')
+      .when('NODE_ENV', { is: 'production', then: Joi.required() }),
     TYPESENSE_PORT: Joi.number().default(8108),
     TYPESENSE_PROTOCOL: Joi.string().valid('http', 'https').default('http'),
-    TYPESENSE_API_KEY: Joi.string().default('CHANGE_ME_TYPESENSE_DEV_KEY'),
+    TYPESENSE_API_KEY: Joi.string()
+      .default('CHANGE_ME_TYPESENSE_DEV_KEY')
+      .when('NODE_ENV', { is: 'production', then: Joi.required() }),
     TYPESENSE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
   });
 }
