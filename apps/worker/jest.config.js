@@ -10,7 +10,7 @@ module.exports = {
       'ts-jest',
       {
         // Mantener el mismo baseline estricto que el typecheck de worker.
-        tsconfig: '<rootDir>/../tsconfig.typecheck.json',
+        tsconfig: '<rootDir>/../tsconfig.test.json',
       },
     ],
   },
