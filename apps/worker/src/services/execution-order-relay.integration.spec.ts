@@ -7,8 +7,11 @@
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Pool } from 'pg';
+import { DataSource } from 'typeorm';
 import type { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
+import { ExecutionOrderContractReliability0900000000000 } from '../../../../packages/database/src/migrations/tenant/090_execution_order_contract_reliability';
+import { ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 } from '../../../../packages/database/src/migrations/tenant/093_extend_visit_request_status_and_outbox_occurred_at';
 import { ExecutionOrderRelayService } from './execution-order-relay.service';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 
@@ -35,9 +38,10 @@ loadWorkspaceEnv();
 
 describe('R0.3 relay outbox (PostgreSQL real)', () => {
   let database: Pool | undefined;
+  let migrationDataSource: DataSource | undefined;
   let relay: ExecutionOrderRelayService | undefined;
   let tenantId: string | undefined;
-  const schemaName = 'tenant_r03_relay';
+  const schemaName = `tenant_r03_relay_${process.pid}_${Date.now()}`;
   const eventId = '00000000-0000-4000-8000-0000000000f3';
   const aggregateId = '00000000-0000-4000-8000-0000000000f4';
   const correlationId = '00000000-0000-4000-8000-0000000000f5';
@@ -73,33 +77,35 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
     tenantId = tenantRows[0]?.id;
     if (!tenantId) throw new Error('[BLOCKED] No fue posible crear el tenant de integración.');
 
-    // DDL exacto de 090_execution_order_contract_reliability y
-    // 093_extend_visit_request_status_and_outbox_occurred_at, aplicado contra
-    // PostgreSQL real para no depender de un tenant preexistente incompleto.
+    // Prerequisitos mínimos del esquema anterior, y luego las migraciones
+    // oficiales que crean/evolucionan el outbox (090 y 093).
     await database.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
+    await database.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
     await database.query(`
-      CREATE TABLE "${schemaName}".execution_order_outbox_events (
-        id UUID NOT NULL DEFAULT gen_random_uuid(), event_id UUID NOT NULL,
-        tenant_id UUID NOT NULL, aggregate_id UUID NOT NULL,
-        aggregate_version INTEGER NOT NULL, event_type VARCHAR(120) NOT NULL,
-        payload JSONB NOT NULL, correlation_id UUID NOT NULL,
-        attempt_count INTEGER NOT NULL DEFAULT 0,
-        occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), lease_until TIMESTAMPTZ,
-        published_at TIMESTAMPTZ, last_error TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT pk_execution_order_outbox_events PRIMARY KEY (id)
+      CREATE TABLE "${schemaName}".execution_orders (
+        id UUID NOT NULL, tenant_id UUID NOT NULL, schedule_event_id UUID NOT NULL
       )
     `);
-    await database.query(
-      `CREATE UNIQUE INDEX uq_execution_order_outbox_event
-       ON "${schemaName}".execution_order_outbox_events (tenant_id, event_id)`,
-    );
-    await database.query(
-      `CREATE INDEX idx_execution_order_outbox_pending
-       ON "${schemaName}".execution_order_outbox_events (published_at, available_at, lease_until)
-       WHERE published_at IS NULL`,
-    );
+    await database.query(`CREATE TYPE "${schemaName}".visit_request_status AS ENUM ('CREATED')`);
+    migrationDataSource = new DataSource({
+      type: 'postgres',
+      host: process.env.DB_HOST ?? 'localhost',
+      port: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
+      username: process.env.DB_USER ?? 'iwana',
+      password: process.env.DB_PASSWORD ?? '',
+      database: process.env.DB_NAME ?? 'dbiw',
+      synchronize: false,
+      extra: { max: 1, options: `-c search_path="${schemaName}"` },
+    });
+    await migrationDataSource.initialize();
+    const migrationRunner = migrationDataSource.createQueryRunner();
+    await migrationRunner.connect();
+    await migrationRunner.query(`SET search_path TO "${schemaName}"`);
+    await new ExecutionOrderContractReliability0900000000000().up(migrationRunner);
+    await new ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000().up(migrationRunner);
+    await migrationRunner.release();
+    await migrationDataSource.destroy();
+    migrationDataSource = undefined;
     await database.query(
       `INSERT INTO "${schemaName}".execution_order_outbox_events
        (event_id, tenant_id, aggregate_id, aggregate_version, event_type, payload, correlation_id)
@@ -130,6 +136,8 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
   });
 
   afterAll(async () => {
+    if (migrationDataSource?.isInitialized)
+      await migrationDataSource.destroy().catch(() => undefined);
     if (database) {
       await database.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`).catch(() => undefined);
       await database
@@ -148,5 +156,31 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
       [eventId],
     );
     expect(result.rows[0]?.published_at).not.toBeNull();
+  });
+
+  it('revierte el marcado de published_at si la transacción no confirma', async () => {
+    if (!database) throw new Error('[BLOCKED] El setup PostgreSQL no terminó.');
+    await database.query(
+      `UPDATE "${schemaName}".execution_order_outbox_events
+       SET published_at = NULL, lease_until = NULL WHERE event_id = $1`,
+      [eventId],
+    );
+    const client = await database.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SET LOCAL search_path TO "${schemaName}"`);
+      await client.query(
+        `UPDATE execution_order_outbox_events SET published_at = NOW() WHERE event_id = $1`,
+        [eventId],
+      );
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+    const result = await database.query<{ published_at: Date | null }>(
+      `SELECT published_at FROM "${schemaName}".execution_order_outbox_events WHERE event_id = $1`,
+      [eventId],
+    );
+    expect(result.rows[0]?.published_at).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   rootDir: 'src',
   testRegex: '.*\.spec\.ts$',
+  testPathIgnorePatterns: ['\.integration\.spec\.ts$'],
   transform: {
     '^.+\.(t|j)s$': [
       'ts-jest',
