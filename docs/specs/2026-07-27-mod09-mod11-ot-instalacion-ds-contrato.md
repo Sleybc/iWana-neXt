@@ -1,7 +1,7 @@
 # Contrato de Design System para OT de instalacion
 
-**Version:** 1.1  
-**Estado:** G2 aprobado — listo para congelacion G4  
+**Version:** 1.2  
+**Estado:** G2 aprobado con desempate R1.4 materializado — excepción explícita a G4  
 **Fecha:** 2026-07-27  
 **Owner:** AI-DS-OWNER  
 **Consumidor:** AI-FE-PLATFORM  
@@ -19,6 +19,7 @@
 | --- | --- | --- |
 | 1.0 | Version inicial | Entrega para revision G2 |
 | 1.1 | Anatomia completa de `OperationalSidePeek`; API de `ExecutionOrderSummary` reescrita en terminos de props semánticas; tokens contrastados y verificados; badge `info` corregido a `primary`; vocabulario sentence case ampliado; ProgressMeter declarado usable sin extension; estado promovido a G2 aprobado | Cierre de observaciones DS-OWNER para congelacion G4 |
+| 1.2 | Desempate R1.4: `technicianCustodyId` es el campo canonico de envio; contrato de controles para accion/material, custodia y catalogos de razones; aprobacion parcial y escalacion de la divergencia API | El schema Zod estricto exige `technicianCustodyId`; la reconciliacion elimina `custodySelection` del contrato tipado, DTO, controlador y OpenAPI |
 
 ---
 
@@ -32,6 +33,22 @@ Se reutilizan tokens y primitivas reales de `@iwana/ui`. No se crean colores, so
 | `ExecutionOrderSummary` | Componente de dominio presentacional | MOD11; DS gobierna anatomia, tokens y variantes | dominio Operaciones compartido en `apps/portal` |
 
 `OperationalSidePeek` no conoce Agenda, OT, estados ni comandos de negocio. `ExecutionOrderSummary` no ejecuta llamadas de red y, cuando se consume desde Agenda, solo emite la intencion de navegacion `onOpen`.
+
+### 1.1 Desempate R1.4 — decisión AI-DS-OWNER
+
+**Decisión:** para el payload de registro de material, manda `technicianCustodyId` del schema backend sobre `custodySelection` del contrato DS. La razón es verificable: `RegisterExecutionOrderItemUsageSchema` lo declara obligatorio, con `min(1)`, y además es `.strict()` (`apps/api/src/modules/tasks/dto/execution-orders.dto.ts:86-96`). El servicio y la entidad de inventario también operan con esa semántica (`technicianCustodyId`). No se encontró evidencia normativa que autorice un custodio arbitrario o un segundo campo de transporte; por el contrario, el contrato API exige custodia validada por MOD12 y responsable coincidente.
+
+**Alcance de la decisión:** el control visual puede representar tipo y etiqueta de la custodia, pero la intención que FE-PLATFORM entrega al boundary de transporte es exclusivamente:
+
+```text
+{ ...payloadDeMaterial, technicianCustodyId }
+```
+
+Los nombres visibles siguen siendo semánticos y localizados; `technicianCustodyId` no se muestra al usuario. El selector nunca permite introducir un ID libre ni convertir la selección en autorización: la elegibilidad, asignación, membresía y vigencia las revalida backend/MOD12 en cada comando.
+
+**Reconciliación R1.4 materializada:** la ruta tiene una única forma de transporte: `technicianCustodyId`, exigido por el schema estricto, los tipos compartidos, el DTO, el controlador y OpenAPI. `custodySelection` no se acepta como alias y falla por validación estricta. No cambia la ruta, la persistencia ni el boundary; la excepción explícita R1.4 al contrato G4 queda registrada aquí para que FE-PLATFORM consuma únicamente la forma canónica.
+
+**Aprobación:** AI-DS-OWNER aprueba el criterio de control y la precedencia backend. AI-SR-FULL materializa la reconciliación como corrección de contrato sin cambio de ruta, persistencia o boundary; la validación de contrato y comportamiento cubre la forma canónica y el rechazo del alias obsoleto. La decisión debe notificarse a AI-FE-PLATFORM y AI-SR-QA antes de los selectores visuales posteriores.
 
 ---
 
@@ -204,6 +221,40 @@ La superficie esta compuesta por cinco regiones fijas. Ninguna puede omitirse en
 | Sincronizacion | Icono + `text-xs` + badge si `stale` | Texto localizado; timestamp en mono solo si es corto |
 | Apertura | `Button` `secondary` o `ghost` | "Abrir orden" cuando `canOpen`; deshabilitado cuando no aplica |
 
+### 3.7 Contrato R1.4 para equipos y materiales
+
+El bloque es un formulario de intención de movimiento, no un editor de inventario. Sus controles son `itemId`, `quantity`, `serialNumber`, `action`, `finalDisposition` y `technicianCustodyId`. El destino se presenta como consecuencia de la acción y nunca habilita por sí solo una transición no permitida por `allowedActions`.
+
+#### Selector de acción/material
+
+Las opciones de acción se derivan del contrato vigente (`INSTALL`, `CONSUME`, `RETURN`, `REMOVE`) y se muestran con labels localizados. El selector es obligatorio para registrar material; no se fija silenciosamente en una acción por defecto cuando el usuario debe decidir.
+
+| Estado | Requisito de contrato |
+|---|---|
+| `loading` / `skeleton` | Silueta del selector y de los campos; no spinner solitario ni envío posible |
+| `empty` | Sin acción compatible: mensaje explicativo y formulario no enviable |
+| `ready` | Opciones de acción disponibles; una opción seleccionada explícitamente |
+| `hover` / `focus` / `active` | Realce y foco visible con las variantes reales de `Select`; `active` no comunica éxito |
+| `disabled` / `readonly` | Sin edición ni envío cuando la OT es terminal, está offline, no hay permiso o la operación está ocupada |
+| `error` | Error junto al control y resumen recuperable; conserva los valores no sensibles |
+| `success` | Confirmación no intrusiva tras aceptar el movimiento; el estado definitivo proviene de `movementStatus` |
+
+`itemId`, cantidad y destino tienen los mismos estados de validación. Cantidad debe ser positiva; serial/lote es opcional según el item, y cualquier regla adicional procede del backend/MOD12. El estado `PENDING` se presenta como conciliación pendiente, nunca como confirmación.
+
+#### Control de custodia
+
+El control visible se denomina **Custodia de origen** y selecciona una opción elegible con `{ type: 'TECHNICIAN' | 'CREW'; id; label }`. `label` es para presentación y `id` es opaco. La selección se serializa al único campo canónico `technicianCustodyId`; el `type` no se envía como campo paralelo. El consumidor solo puede ofrecer custodias entregadas por la fuente autorizada (asignación/recurso elegible); no puede fabricar opciones ni permitir texto libre.
+
+Estados requeridos: `loading`/`skeleton` mientras se resuelven custodias; `empty` cuando no hay custodia elegible (acción bloqueada con explicación); `ready` con selección explícita; `hover`, `focus` y `active` accesibles; `disabled` durante envío, offline, readonly, OT terminal o ausencia de `REGISTER_ITEM_USAGE`; `error` si la carga o validación falla; `success` solo como confirmación del registro, no como afirmación de disponibilidad; `readonly` mostrando la custodia registrada sin permitir cambiarla. Si backend rechaza vigencia, asignación o pertenencia, se conserva el formulario y se muestra error recuperable.
+
+#### `reasonCatalogs`
+
+`template.reasonCatalogs` es la única fuente de opciones para motivos de bloqueo, desbloqueo, cierre y seguimiento. El contrato actual publica `string[]`; por tanto la UI no inventa códigos, no mantiene `BLOQUEO_CAMPO`/`RESUELTO_EN_CAMPO` como fallback y no muestra el código crudo como copy principal. La aplicabilidad por acción debe venir resuelta por el contrato de datos; si el array no permite distinguirla, el caso queda `unavailable` y se escala a AI-SR-FULL, no se adivina.
+
+Estados requeridos del control de motivo: `loading`/`skeleton` al cargar catálogo; `empty` con explicación y acción bloqueada si el motivo es obligatorio; `ready` con opciones localizadas; `hover`/`focus`/`active`; `disabled`/`readonly` en operación ocupada, offline, terminal o sin permiso; `error` junto al campo y reintento; `success` únicamente después de aceptar la mutación. Un catálogo no disponible no se sustituye por valores hardcodeados.
+
+La semántica de `reasonCatalogs` requiere consulta a AI-SR-FULL si el backend pretende separar catálogos por comando o devolver labels localizados. Esa consulta es bloqueante para implementar el selector sin incumplir el contrato congelado.
+
 ---
 
 ## 4. Inventario real de primitives
@@ -326,16 +377,16 @@ Todo texto visible en español, sentence case, sin enums crudos. Los labels se e
 ## 9. Aprobacion y congelacion segun protocolo
 
 - **G1:** Aprobado. ADR-068 aprobado por CTO el 2026-07-27.
-- **G2:** AI-DS-OWNER confirma este contrato como suficiente para factibilidad frontend. Aprueba alcance de anatomia, props, variantes, estados, tokens y vocabulario.
+- **G2:** AI-DS-OWNER confirma el contrato visual y de estados, incluido el desempate R1.4. Aprueba anatomia, props, variantes, estados, tokens y vocabulario; la aprobación no autoriza a FE-PLATFORM a escoger entre dos formas de API incompatibles.
 - **G3:** AI-FE-PLATFORM emitira factibilidad RSC/client, reutilizacion y responsive; AI-EM-ARCH resolvera ajustes.
-- **G4:** El prompt de ejecucion declarara literalmente "contrato de componente congelado", citando esta ruta y version.
+- **G4:** la excepción explícita R1.4 queda materializada en el contrato API; el prompt de ejecución puede declarar "contrato de componente congelado" citando esta ruta y versión, sin introducir `custodySelection`.
 - **G5–G7:** AI-FE-PLATFORM implementa contra este contrato; AI-SR-QA verifica estados y regresion visual; AI-PROD-UX y AI-DS-OWNER pueden bloquear en G6 por ruptura de flujo o contrato.
 - Cualquier cambio posterior se versiona y AI-EM-ARCH notifica a AI-FE-PLATFORM y AI-SR-QA.
 
-**Veredicto DS-OWNER:** Este contrato puede ser consumido por AI-FE-PLATFORM para implementar `OperationalSidePeek` y `ExecutionOrderSummary` sin pedir aclaraciones estructurales. **Estado: G2 aprobado — listo para congelacion G4.**
+**Veredicto DS-OWNER:** `OperationalSidePeek` y `ExecutionOrderSummary` quedan aprobados para consumo. El contrato R1.4 queda aprobado como decisión de diseño y control; FE-PLATFORM debe serializar únicamente `technicianCustodyId` en el envío de inventario.
 
 ---
 
 ## 10. Bloqueos
 
-Ningun bloqueo identificado.
+La divergencia R1.4 queda resuelta. La semántica de `reasonCatalogs` continúa requiriendo confirmar cómo se determina la aplicabilidad por comando si el backend mantiene `string[]`.

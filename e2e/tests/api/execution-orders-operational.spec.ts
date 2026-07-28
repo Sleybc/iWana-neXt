@@ -462,7 +462,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         {
           itemId,
           quantity: 1,
-          custodySelection: { type: 'TECHNICIAN', id: custodyId },
+          technicianCustodyId: custodyId,
           action: 'INSTALL',
           finalDisposition: 'INSTALLED_AT_CUSTOMER',
         },
@@ -650,7 +650,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         {
           itemId: 'item-e2e-test',
           quantity: 1,
-          custodySelection: { type: 'TECHNICIAN', id: 'MOV-E2E' },
+          technicianCustodyId: 'MOV-E2E',
           action: 'CONSUME',
           finalDisposition: 'CONSUMED',
         },

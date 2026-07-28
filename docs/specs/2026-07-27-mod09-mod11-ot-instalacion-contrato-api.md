@@ -71,7 +71,7 @@ Administracion de plantillas:
 | `AssignExecutionOrderCommand` | `assigneeType`, `assigneeId`, `reason?` |
 | `StartExecutionOrderCommand` | `startedAt?`, `note?` |
 | `RegisterActivityCommand` | `activityType`, `description`, `occurredAt?`, `measurements?` acotadas por plantilla |
-| `RegisterItemUsageCommand` | `itemId`, `quantity`, `serial?`, `action`, `finalDisposition`, `custodySelection?` solo si la politica lo permite |
+| `RegisterItemUsageCommand` | `itemId`, `quantity`, `technicianCustodyId`, `serialNumber?`, `action`, `finalDisposition` |
 | `RegisterEvidenceCommand` | `mediaAssetId`, `evidenceType`, `requirementKey`, `capturedAt?` como dato declarado por cliente |
 | `BlockExecutionOrderCommand` | `reasonCode`, `note?` |
 | `UnblockExecutionOrderCommand` | `resolutionCode`, `note?` |

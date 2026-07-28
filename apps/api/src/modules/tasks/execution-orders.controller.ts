@@ -209,8 +209,8 @@ export class ExecutionOrdersController {
       {
         ...dto,
         quantity: dto.quantity ?? 1,
-        technicianCustodyId: dto.custodySelection?.id ?? '',
-        serialNumber: dto.serial ?? null,
+        technicianCustodyId: dto.technicianCustodyId,
+        serialNumber: dto.serialNumber ?? null,
       },
       actor,
       this.commandContext(ifMatch, idempotencyKey, correlationId),

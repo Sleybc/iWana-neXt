@@ -6213,16 +6213,9 @@ export interface RegisterExecutionOrderFieldWorkDto {
 }
 
 /**
- * El endpoint legacy recibe la forma que valida el schema vigente. La base del
- * DTO sigue siendo el comando compartido; solo se adaptan los nombres que el
- * transporte legacy expone.
+ * DTO de transporte derivado del comando canonico de @iwana/shared.
  */
-export type RegisterExecutionOrderItemUsageDto = Omit<
-  RegisterItemUsageCommand,
-  'serial' | 'custodySelection'
-> & {
-  technicianCustodyId: string;
-  serialNumber?: string | null;
+export type RegisterExecutionOrderItemUsageDto = RegisterItemUsageCommand & {
   stockMovementId?: string | null;
 };
 

@@ -387,11 +387,12 @@
       "RegisterItemUsageCommand": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["itemId", "quantity", "action", "finalDisposition"],
+        "required": ["itemId", "quantity", "technicianCustodyId", "action", "finalDisposition"],
         "properties": {
           "itemId": { "type": "string" },
           "quantity": { "type": "number", "exclusiveMinimum": 0 },
-          "serial": { "type": "string" },
+          "serialNumber": { "type": "string", "nullable": true, "maxLength": 160 },
+          "technicianCustodyId": { "type": "string", "minLength": 1, "maxLength": 160 },
           "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },
           "finalDisposition": {
             "type": "string",
@@ -402,15 +403,6 @@
               "RETURNED_TO_WAREHOUSE",
               "DAMAGED_OR_LOST"
             ]
-          },
-          "custodySelection": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["type", "id"],
-            "properties": {
-              "type": { "type": "string", "enum": ["TECHNICIAN", "CREW"] },
-              "id": { "type": "string" }
-            }
           }
         }
       },

@@ -15,6 +15,7 @@ import {
   CloseExecutionOrderSchema,
   BlockExecutionOrderSchema,
   UnblockExecutionOrderSchema,
+  RegisterExecutionOrderItemUsageSchema,
 } from '../dto/execution-orders.dto';
 import {
   ExecutionOrderResult,
@@ -23,6 +24,36 @@ import {
 } from '@iwana/shared';
 
 describe('ExecutionOrders Schema Validation (P1-1)', () => {
+  describe('RegisterExecutionOrderItemUsageSchema (R1.4)', () => {
+    const validPayload = {
+      itemId: 'item-001',
+      quantity: 1,
+      technicianCustodyId: 'custody-001',
+      serialNumber: 'serial-001',
+      action: ExecutionOrderItemAction.INSTALL,
+      finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+    };
+
+    it('acepta la forma canónica con technicianCustodyId', () => {
+      expect(RegisterExecutionOrderItemUsageSchema.parse(validPayload)).toEqual(validPayload);
+    });
+
+    it('rechaza custodySelection como alias obsoleto', () => {
+      expect(() =>
+        RegisterExecutionOrderItemUsageSchema.parse({
+          ...validPayload,
+          technicianCustodyId: undefined,
+          custodySelection: { type: 'TECHNICIAN', id: 'custody-001' },
+        }),
+      ).toThrow();
+    });
+
+    it('rechaza la ausencia de technicianCustodyId', () => {
+      const { technicianCustodyId: _technicianCustodyId, ...withoutCustody } = validPayload;
+      expect(() => RegisterExecutionOrderItemUsageSchema.parse(withoutCustody)).toThrow();
+    });
+  });
+
   // ── AssignExecutionOrder ───────────────────────────────────────────────
   describe('AssignExecutionOrderSchema', () => {
     it('acepta payload válido con todos los campos', () => {

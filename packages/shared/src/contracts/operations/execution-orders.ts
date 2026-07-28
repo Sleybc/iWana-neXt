@@ -156,10 +156,10 @@ export interface RegisterActivityCommand {
 export interface RegisterItemUsageCommand {
   itemId: string;
   quantity: number;
-  serial?: string;
+  serialNumber?: string | null;
   action: ExecutionOrderItemAction;
   finalDisposition: InventoryDisposition;
-  custodySelection?: { type: 'TECHNICIAN' | 'CREW'; id: string };
+  technicianCustodyId: string;
 }
 
 export interface RegisterEvidenceCommand {

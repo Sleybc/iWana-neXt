@@ -333,6 +333,41 @@ describe('ExecutionOrdersController HTTP', () => {
     });
   });
 
+  describe('contrato de custodia R1.4', () => {
+    it('acepta technicianCustodyId como único campo canónico', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/item-usage`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'item-usage-r14-canonical')
+        .send({
+          itemId: 'item-001',
+          quantity: 1,
+          technicianCustodyId: 'custody-001',
+          serialNumber: 'serial-001',
+          action: 'INSTALL',
+          finalDisposition: 'INSTALLED_AT_CUSTOMER',
+        })
+        .expect(202);
+    });
+
+    it('rechaza custodySelection y no lo traduce como alias', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/item-usage`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'item-usage-r14-legacy')
+        .send({
+          itemId: 'item-001',
+          quantity: 1,
+          custodySelection: { type: 'TECHNICIAN', id: 'custody-001' },
+          action: 'INSTALL',
+          finalDisposition: 'INSTALLED_AT_CUSTOMER',
+        })
+        .expect(400);
+    });
+  });
+
   // ─── Mass Assignment Protection ──────────────────────────────────────────
 
   describe('protección contra mass assignment', () => {

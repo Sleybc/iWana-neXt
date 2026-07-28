@@ -110,7 +110,11 @@ export class RegisterExecutionOrderItemUsageDto {
 
   @ApiPropertyOptional()
   @Allow()
-  serial?: string | null;
+  serialNumber?: string | null;
+
+  @ApiProperty()
+  @Allow()
+  technicianCustodyId!: string;
 
   @ApiProperty({ enum: ExecutionOrderItemAction })
   @Allow()
@@ -119,10 +123,6 @@ export class RegisterExecutionOrderItemUsageDto {
   @ApiProperty({ enum: InventoryDisposition })
   @Allow()
   finalDisposition!: InventoryDisposition;
-
-  @ApiPropertyOptional({ enum: ['TECHNICIAN', 'CREW'] })
-  @Allow()
-  custodySelection?: { type: 'TECHNICIAN' | 'CREW'; id: string };
 }
 
 export const CloseExecutionOrderSchema = z
