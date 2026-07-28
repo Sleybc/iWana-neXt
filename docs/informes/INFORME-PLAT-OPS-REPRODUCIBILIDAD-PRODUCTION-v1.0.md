@@ -35,3 +35,15 @@ docker compose --env-file .env.production.example --profile production -f docker
 
 La salida esperada es vacía y el código de salida debe ser `0`. No se ejecuta
 `config` sin `--quiet` porque puede revelar valores de entorno.
+
+## SEC finales R0/R3.1
+
+`migrator-prod` usa exclusivamente `DB_MIGRATOR_USER` y
+`DB_MIGRATOR_PASSWORD`. API, worker y pgBouncer usan la identidad de aplicación
+(`DB_APP_USER`/`DB_APP_PASSWORD`), mientras PostgreSQL conserva la identidad de
+bootstrap (`DB_BOOTSTRAP_USER`/`DB_PASSWORD`). Las cinco variables de identidad y
+credenciales requeridas fallan individualmente si faltan; no tienen defaults.
+
+Las referencias pendientes del ejemplo ahora llevan un tag no operativo
+`approval-required`, por lo que no pueden resolverse como `latest`. El bloqueo de
+las aprobaciones de pgBouncer, MinIO, Nginx, Adminer y migrator permanece explícito.

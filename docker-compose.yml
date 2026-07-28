@@ -15,14 +15,14 @@ services:
     image: ${POSTGRES_IMAGE:-postgres:18.3-alpine}
     container_name: iwana_postgres_dev
     environment:
-      POSTGRES_USER: ${DB_BOOTSTRAP_USER:-iwana}
+      POSTGRES_USER: ${DB_BOOTSTRAP_USER:?DB_BOOTSTRAP_USER is required}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: ${DB_NAME:-dbiw}
       # Roles least-privilege (solo primer init del volumen; passwords lab = DB_PASSWORD)
-      DB_APP_USER: ${DB_APP_USER:-iwana_app}
-      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-${DB_PASSWORD}}
-      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:-iwana_migrator}
-      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:-${DB_PASSWORD}}
+      DB_APP_USER: ${DB_APP_USER:?DB_APP_USER is required}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?DB_MIGRATOR_USER is required}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is required}
     ports:
       - '${DB_PORT:-5433}:5432'
     volumes:
@@ -30,7 +30,11 @@ services:
       # Init scripts: solo en datadir vacío. Volúmenes existentes → scripts/db/apply-least-privilege.sql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_BOOTSTRAP_USER:-iwana} -d ${DB_NAME:-dbiw}']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${DB_BOOTSTRAP_USER:?DB_BOOTSTRAP_USER is required} -d ${DB_NAME:-dbiw}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -59,8 +63,8 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-iwana}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_USER: ${DB_APP_USER:?DB_APP_USER is required}
+      DB_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
       DB_NAME: ${DB_NAME:-dbiw}
       LISTEN_PORT: 6432
       POOL_MODE: transaction
@@ -189,8 +193,8 @@ services:
       NODE_ENV: production
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-iwana_app}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_USER: ${DB_APP_USER:?DB_APP_USER is required}
+      DB_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
       DB_NAME: ${DB_NAME:-dbiw}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
@@ -266,8 +270,8 @@ services:
       NODE_ENV: production
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-iwana_app}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_USER: ${DB_APP_USER:?DB_APP_USER is required}
+      DB_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
       DB_NAME: ${DB_NAME:-dbiw}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
@@ -294,8 +298,8 @@ services:
       NODE_ENV: production
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-iwana_migrator}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_USER: ${DB_MIGRATOR_USER:?DB_MIGRATOR_USER is required}
+      DB_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is required}
       DB_NAME: ${DB_NAME:-dbiw}
     command:
       [
