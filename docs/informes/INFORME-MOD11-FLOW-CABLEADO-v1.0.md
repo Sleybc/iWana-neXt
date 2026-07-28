@@ -1,12 +1,12 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
-**Versión:** 1.5  
-**Estado:** Reabierto — G4 congelado (contratos); G5 ejecutado; **G6 QA ejecutado: NO-GO**  
+**Versión:** 1.8  
+**Estado:** Reabierto — G4 congelado (contratos); G5 ejecutado; G6 QA ejecutado: **NO-GO**; G7 recomienda **NO-GO**  
 **Fecha:** 2026-07-27  
 **Fecha de cierre anterior:** 2026-07-07  
 **Aprobado por:** CTO (G1), AI-EM-ARCH (G2–G4)  
-**Modo activo:** Gate G6 en revisión  
-**Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4), AI-SR-QA (v1.5 — G6 QA audit)  
+**Modo activo:** Gate G7 — decisión de stop/go  
+**Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate), AI-SR-QA (v1.5 — G6 QA audit)  
 **Clasificación:** Uso interno
 
 ---
@@ -112,6 +112,35 @@ Completar los 8 items FAIL (5 P0 + 3 P1) antes de re-ejecutar G6. Las categoría
 | QA-50: threat model/ASVS | P1 | AI-SEC-ENG | G6 |
 | Typecheck DATA-P0-1 | P0 | AI-FE-PLATFORM | G5 |
 | Swagger DI gap | P1 | AI-SR-FULL | G5 |
+
+---
+
+## 11. Decisión G7 y Task 10 — 2026-07-27
+
+**Modo:** EM + Architect + Orchestrator  
+**Decisión:** **NO-GO** para producción y para retirar la compatibilidad ligera de `WorkOrder` o el alias `wfm.work_orders.execute`.  
+**CTO:** no se solicita aprobación de producción: el gate no satisface las condiciones para escalar un GO.
+
+### Evidencia consolidada
+
+- G6 vigente permanece en **NO-GO**: QA-23, QA-34, QA-40, QA-41 y QA-49 son P0 abiertos; QA-33, QA-37 y QA-50 son P1 abiertos. El typecheck y la spec Swagger también carecen de evidencia verde posterior. Ver checklist §7.3–§7.4 y este informe §10.
+- La precondición de Task 10 no tiene evidencia de ciclo de release, telemetría verde, reconciliación sin discrepancias, rollback ensayado ni inventario que demuestre cero consumidores conocidos.
+- El inventario de consultas de AI-SR-FULL, AI-FE-PLATFORM y AI-PLAT-OPS identifica consumidores activos de la OT ligera: API y servicio WFM, creación desde agenda y solicitudes de visita, portal de Programación, referencias persistidas en Agenda/Visita/Tareas/Assurance, catálogo de acceso y el alias deprecado. Por tanto, no se cumple la condición de ADR-068 §Decision 12.
+- Los cambios locales no versionados ni las correcciones declaradas por ejecutores son evidencia insuficiente para levantar un gate: requieren verificación reproducible de G5/G6 y un release posterior.
+
+### Consultas protocolarias
+
+| Consultado | Dictamen |
+| --- | --- |
+| AI-SR-QA | G6 y Task 10 bloqueados: no hay cierre verificable, release, telemetría, consumidores en cero ni rollback ensayado. |
+| AI-SEC-ENG | NO-GO: P0/P1 abiertos en migraciones, TLS, permisos, consecutivo, offline PII, rate limit, lag y threat model. |
+| AI-PLAT-OPS | NO-GO: no hay release G7, TLS efectivo, telemetría/umbral de lag ni rollback probado; hay consumidores activos. |
+| AI-SR-FULL | No hay cero consumidores: persisten endpoints, writes WFM y referencias de persistencia de `WorkOrder`. |
+| AI-FE-PLATFORM | No hay cero consumidores: Agenda y cliente portal mantienen lecturas y cliente de mutación WFM; falta evidencia posterior para typecheck y offline PII. |
+
+### Stop/go y próximo gate
+
+No se autoriza retirar UI, mutaciones, persistencia ni alias. Antes de reabrir Task 10 deben cerrarse y verificarse los P0/P1 de G6, repetirse G6 con evidencia reproducible, obtener la aprobación de producción del CTO, y documentarse un ciclo post-release con TLS efectivo, telemetría y reconciliación verdes, cero consumidores conocidos y rollback ensayado. La remediación corresponde a AI-SR-FULL, AI-FE-PLATFORM, AI-PLAT-OPS y AI-SEC-ENG según la matriz de Task 9; esta decisión no autoriza implementación.
 
 ---
 
@@ -282,3 +311,50 @@ Los dictamenes de factibilidad G3 (SEC-ENG, DATA-ENG, PLAT-OPS) emitieron veredi
 | Offline read-only sin persistencia local | AI-EM-ARCH (contrato UX §12) |
 | Rotacion de clave HMAC sin invalidar registros activos | AI-EM-ARCH (contrato §2.3, `keyId`) |
 | Crecimiento lineal de `idempotency_records` | AI-DATA-ENG (tombstone diario, HMAC no-PII) |
+
+---
+
+## 12. Auditoría independiente G6/G7 — 2026-07-28
+
+**Modo:** Architect + EM + Orchestrator  
+**Veredicto:** **NO-GO** para merge, producción y Task 10. No se solicita aprobación al CTO.
+
+### Bloqueantes P0
+
+1. **Autorización OT–evidencia incompleta:** consulta y descarga validan la OT y el tenant, pero no que el asset pertenezca a esa OT. `ExecutionOrdersService` permite consultar o firmar por `mediaAssetId` sin verificar el vínculo probatorio. Ver `apps/api/src/modules/tasks/services/execution-orders.service.ts:858-912`.
+2. **Upload-intent y compensación ausentes:** el `intentId` se genera de forma efímera, no se persiste, y el claim de Media ocurre antes del vínculo tenant; un fallo posterior deja el asset reclamado sin reconciliación. Ver `apps/api/src/modules/tasks/services/execution-orders.service.ts:766-813,817-883`.
+3. **Boundary Media vulnerado:** `TasksModule` registra `MediaAsset` y su provider accede a la entidad de Media, contrario al ownership de ADR-068. Ver `apps/api/src/modules/tasks/tasks.module.ts:18,52-68,86`.
+4. **Migraciones no desplegables ni reversibles:** la tenant 094 no está en `TENANT_MIGRATIONS`; la pública 020 no está versionada y su `down()` restablece el CHECK que excluye `execution_evidence` antes de resolver esos datos. Ver `packages/database/src/migrations/tenant/runner.ts:49-52,177-182` y `packages/database/src/migrations/public/020_add_media_asset_status_and_claim.ts:89-110`.
+5. **TLS efectivo no demostrado:** la configuración productiva escucha solo HTTP en el puerto 80. Ver `nginx/nginx.prod.conf:19-21`.
+6. **Evidencia de gate contradictoria:** el plan declaraba GO sin artefactos reproducibles, mientras este informe y el checklist mantienen bloqueantes. Se normaliza el plan a NO-GO en esta decisión.
+
+### Condiciones de reingreso
+
+- Restablecer un boundary real: Media implementa el puerto y MOD11 solo conserva intent y vínculo probatorio.
+- Persistir upload-intent, forzar autorización por tenant + OT + evidencia, e implementar compensación y reconciliación para cada ventana de fallo.
+- Registrar/versionar migraciones, corregir reversión con datos y ejecutar apply/revert real en `public` y dos schemas tenant.
+- Entregar TLS efectivo, worker desplegable, telemetría/umbral de relay y reconciliación, release y rollback ensayados.
+- Repetir G6 con salidas archivadas de test, cobertura, E2E vertical API/PostgreSQL, a11y, regresión visual y pruebas de ráfaga 429 por actor/tenant.
+
+Esta auditoría no autoriza implementación. Los hallazgos se asignan a AI-SR-FULL, AI-FE-PLATFORM, AI-DATA-ENG, AI-PLAT-OPS y AI-SEC-ENG según la RACI.
+
+---
+
+## 13. Re-gate de remediaciones — 2026-07-28
+
+**Modo:** Architect + EM + Orchestrator  
+**Veredicto:** **NO-GO** para merge, producción y Task 10. Los commits `d847cbd6`, `e9b9dee9` y `be596061` no cierran los bloqueantes de raíz.
+
+### P0 abiertos
+
+1. **Receipt de evidencia aún permite enumeración intra-tenant:** busca el vínculo OT–asset pero continúa consultando Media cuando no existe. `apps/api/src/modules/tasks/services/execution-orders.service.ts:880-902`.
+2. **Upload-intent no es durable:** se genera después de la carga y no persiste; no autoriza polling ni reconciliación. `apps/api/src/modules/tasks/services/execution-orders.service.ts:849-866`.
+3. **Claim sin compensación recuperable:** el claim de Media ocurre fuera de la transacción tenant; el worker solo detecta assets sin `claim_ref`. `apps/api/src/modules/tasks/services/execution-orders.service.ts:766-824` y `apps/worker/src/processors/evidence-orphan-detection.processor.ts:117-130`.
+4. **Boundary Media permanece roto:** el provider reside en MOD11 y manipula entidad, repositorio y storage de Media. `apps/api/src/modules/tasks/tasks.module.ts:38-39,84`.
+5. **Migraciones no reversibles con datos:** 094 borra tablas/columnas pobladas y 020 reintroduce un CHECK incompatible con `execution_evidence`. `packages/database/src/migrations/tenant/094_template_versioning_and_closure_gate.ts:200-258` y `packages/database/src/migrations/public/020_add_media_asset_status_and_claim.ts:100-110`.
+6. **Frontend de ejecución incompleto:** carga de evidencia es un no-op, los payloads de inicio/cierre e inventario no cumplen el contrato y no hay selector de acción/custodia. `apps/portal/src/components/operations/ExecutionOrderDrawer.tsx:871-889`.
+7. **Plataforma no desplegable para el flujo:** el perfil de producción solo incluye Nginx, no API, web, worker ni migrator; por ello TLS no acredita un ingress operativo. `docker-compose.yml:151-168`.
+
+### Condición de siguiente revisión
+
+Requiere una remediación contract-first que mueva el adaptador a Media, persista y reconcilie intents/claims, haga reversibles las migraciones con datos, complete la experiencia de ejecución y entregue un artefacto de despliegue operable. G6 se repite solo con salidas archivadas de las verificaciones requeridas por §12.

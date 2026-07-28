@@ -30,6 +30,10 @@ import { ExecutionOrderEventsProcessor } from './processors/execution-order-even
 import { ExecutionOrderRelayProcessor } from './processors/execution-order-relay.processor';
 import { ExecutionOrderTombstoneProcessor } from './processors/execution-order-tombstone.processor';
 import { ExecutionOrderDlqProcessor } from './processors/execution-order-dlq.processor';
+import {
+  EvidenceOrphanDetectionProcessor,
+  EVIDENCE_ORPHAN_DETECTION_QUEUE,
+} from './processors/evidence-orphan-detection.processor';
 import { TenantSeedService } from './services/tenant-seed.service';
 
 const runtimeEnv = process.env['NODE_ENV'];
@@ -168,6 +172,7 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_RELAY_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_TOMBSTONE_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
+    BullModule.registerQueue({ name: EVIDENCE_ORPHAN_DETECTION_QUEUE }),
   ],
   providers: [
     TenantProvisioningProcessor,
@@ -185,6 +190,7 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     ExecutionOrderRelayProcessor,
     ExecutionOrderTombstoneProcessor,
     ExecutionOrderDlqProcessor,
+    EvidenceOrphanDetectionProcessor,
   ],
 })
 export class WorkerModule {}

@@ -19,6 +19,9 @@ import { TasksController } from '../tasks.controller';
 import { TaskAssignmentService } from '../services/task-assignment.service';
 import { TaskTimelineService } from '../services/task-timeline.service';
 import { TasksService } from '../services/tasks.service';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { TenantAwareThrottlerGuard } from '../guards/tenant-aware-throttler.guard';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -142,6 +145,16 @@ describe('TasksController HTTP', () => {
         { provide: TasksService, useValue: tasksServiceMock },
         { provide: TaskAssignmentService, useValue: taskAssignmentServiceMock },
         { provide: TaskTimelineService, useValue: timelineServiceMock },
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+        { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue(['operations.tasks.read', 'operations.tasks.manage']),
+          },
+        },
         JwtAuthGuard,
         RolesGuard,
       ],

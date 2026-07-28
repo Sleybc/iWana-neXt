@@ -4,7 +4,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { TasksController } from './tasks.controller';
 import { ExecutionOrdersController } from './execution-orders.controller';
 import { ExecutionOrdersService } from './services/execution-orders.service';
+import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { TaskAssignmentService } from './services/task-assignment.service';
@@ -37,6 +39,15 @@ describe('TasksController Swagger', () => {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn() },
         },
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: {
+            verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }),
+            reconcileOrder: jest.fn(),
+            getRelayHealth: jest.fn(),
+          },
+        },
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
         { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
         { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
       ],

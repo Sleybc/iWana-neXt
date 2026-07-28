@@ -101,10 +101,23 @@ describe('ExecutionOrdersService — Evidence', () => {
 
   describe('createEvidenceAssetReceipt (upload-intent)', () => {
     it('retorna 202 con EvidenceAssetReceipt cuando la subida es exitosa', async () => {
+      const intentId = '11111111-1111-4111-8111-111111111111';
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
-        save: jest.fn(),
-        create: jest.fn(),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder()) // requireOrder
+          .mockResolvedValueOnce(null), // findOne(ExecutionOrderEvidenceUploadIntent) — aún no creado
+        save: jest.fn().mockResolvedValue({
+          id: intentId,
+          executionOrderId: ORDER_UUID,
+          tenantId: 'tenant-001',
+          mediaAssetId: null,
+          status: 'PENDING',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          createdAt: new Date(),
+        }),
+        create: jest.fn().mockReturnValue({}),
+        update: jest.fn().mockResolvedValue(undefined),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -166,7 +179,11 @@ describe('ExecutionOrdersService — Evidence', () => {
   describe('getEvidenceAssetReceipt (polling)', () => {
     it('retorna el recibo con estado actualizado', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder()) // requireOrder
+          .mockResolvedValueOnce({ id: 'ev-001' }) // evidence found
+          .mockResolvedValueOnce(null), // intent not found
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -189,7 +206,11 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('retorna PENDING_ANALYSIS cuando el asset está en cuarentena', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce({ id: 'ev-002' })
+          .mockResolvedValueOnce(null),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -209,7 +230,11 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('retorna REJECTED cuando el asset fue rechazado', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce({ id: 'ev-003' })
+          .mockResolvedValueOnce(null),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -229,22 +254,20 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('lanza 404 si el asset no pertenece al tenant', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(null) // no evidence link
+          .mockResolvedValueOnce(null), // no intent link  ← P0-1: no consulta Media
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
       );
 
-      evidenceAssetPort.getAssetStatus.mockRejectedValue(
-        new NotFoundException({
-          code: 'EVIDENCE_ASSET_NOT_FOUND',
-          message: 'Asset de evidencia no encontrado.',
-        }),
-      );
-
       await expect(service.getEvidenceAssetReceipt(ORDER_UUID, 'bad-asset-id')).rejects.toThrow(
-        'Asset de evidencia no encontrado',
+        'OT de ejecución no encontrada',
       );
+      expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
     });
 
     it('lanza 404 si la OT no existe (anti-enumeración)', async () => {
@@ -521,6 +544,16 @@ describe('ExecutionOrdersService — Evidence', () => {
     it('no persiste metadata si el storage falla (compensación en puerto)', async () => {
       const manager = {
         findOne: jest.fn().mockResolvedValue(mockOrder()),
+        save: jest.fn().mockResolvedValue({
+          id: 'intent-001',
+          executionOrderId: ORDER_UUID,
+          tenantId: 'tenant-001',
+          mediaAssetId: null,
+          status: 'PENDING',
+          expiresAt: new Date(),
+        }),
+        create: jest.fn().mockReturnValue({}),
+        update: jest.fn().mockResolvedValue(undefined),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -643,9 +676,8 @@ describe('ExecutionOrdersService — Evidence', () => {
       const manager = {
         findOne: jest.fn().mockImplementation(async (_entity, where: unknown) => {
           const conditions = where as { where: Record<string, unknown> };
-          // Si busca ExecutionOrder, devolver la OT
-          if (conditions.where?.id === ORDER_UUID) return mockOrder();
-          // Si busca ExecutionOrderEvidence, devolver null (no vinculado)
+          if (conditions.where?.['id' as keyof object] === ORDER_UUID) return mockOrder();
+          // Sin evidence ni intent vinculado → P0-1: rechazar sin consultar Media
           return null;
         }),
       };
@@ -653,19 +685,36 @@ describe('ExecutionOrdersService — Evidence', () => {
         fn({ manager } as never),
       );
 
+      // P0-1: sin vínculo → NotFound, sin consultar Media
+      await expect(
+        service.getEvidenceAssetReceipt(ORDER_UUID, 'unlinked-asset-id'),
+      ).rejects.toThrow('OT de ejecución no encontrada');
+      expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
+    });
+
+    it('getEvidenceAssetReceipt permite consulta cuando existe intent vinculado', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder()) // requireOrder
+          .mockResolvedValueOnce(null) // no evidence yet
+          .mockResolvedValueOnce({ id: 'intent-001', status: 'PENDING_ANALYSIS' }), // intent exists
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
       evidenceAssetPort.getAssetStatus.mockResolvedValue({
-        status: 'AVAILABLE',
+        status: 'PENDING_ANALYSIS',
         mimeType: 'image/jpeg',
         sizeBytes: 1024,
         checksumSha256: 'a'.repeat(64),
         uploadedAt: new Date().toISOString(),
       });
 
-      // Debe devolver el receipt sin intentId (polling antes de vinculación)
-      // No debe lanzar error — el polling es válido antes de registrar evidencia
-      const result = await service.getEvidenceAssetReceipt(ORDER_UUID, 'unlinked-asset-id');
-      expect(result.mediaAssetId).toBe('unlinked-asset-id');
-      expect(result.intentId).toBe('');
+      const result = await service.getEvidenceAssetReceipt(ORDER_UUID, ASSET_UUID);
+      expect(result.status).toBe('PENDING_ANALYSIS');
+      expect(evidenceAssetPort.getAssetStatus).toHaveBeenCalled();
     });
 
     it('getEvidenceContentRedirect rechaza mediaAssetId no vinculado (404)', async () => {

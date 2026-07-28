@@ -12,10 +12,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuditEntity } from '../audit/decorators/audit-entity.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Permissions } from '../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -39,11 +41,12 @@ import {
 import { TaskAssignmentService } from './services/task-assignment.service';
 import { TaskTimelineService } from './services/task-timeline.service';
 import { TasksService } from './services/tasks.service';
+import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 
 @ApiTags('tasks')
 @ApiBearerAuth('access-token')
 @AuditEntity('OperationalTask')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, TenantAwareThrottlerGuard)
 @Controller('tasks')
 export class TasksController {
   constructor(
@@ -61,6 +64,7 @@ export class TasksController {
     UserRole.CONTRACTOR,
     UserRole.SALES,
   )
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_READ)
   @ApiOperation({ summary: 'Listar tareas operativas del tenant' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 25 })
@@ -74,6 +78,7 @@ export class TasksController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_MANAGE)
   @ApiOperation({ summary: 'Crear tarea operativa' })
   @ApiResponse({ status: 201, description: 'Tarea creada' })
   create(
@@ -92,6 +97,7 @@ export class TasksController {
     UserRole.CONTRACTOR,
     UserRole.SALES,
   )
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_READ)
   @ApiOperation({ summary: 'Obtener tarea por ID' })
   getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     return this.tasksService.getById(id, actor);
@@ -99,6 +105,7 @@ export class TasksController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_MANAGE)
   @ApiOperation({ summary: 'Actualizar tarea operativa' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -110,6 +117,7 @@ export class TasksController {
 
   @Post(':id/assign')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_MANAGE)
   @ApiOperation({ summary: 'Reasignar responsable de la tarea' })
   assign(
     @Param('id', ParseUUIDPipe) id: string,
@@ -121,6 +129,7 @@ export class TasksController {
 
   @Post(':id/transition')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_MANAGE)
   @ApiOperation({ summary: 'Transicionar estado de la tarea' })
   transition(
     @Param('id', ParseUUIDPipe) id: string,
@@ -132,6 +141,7 @@ export class TasksController {
 
   @Post(':id/link-schedule-event')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_MANAGE)
   @ApiOperation({ summary: 'Vincular evento de agenda como referencia logica' })
   linkScheduleEvent(
     @Param('id', ParseUUIDPipe) id: string,
@@ -143,6 +153,7 @@ export class TasksController {
 
   @Post(':id/link-work-order')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_MANAGE)
   @ApiOperation({ summary: 'Vincular orden de trabajo como referencia logica' })
   linkWorkOrder(
     @Param('id', ParseUUIDPipe) id: string,
@@ -161,6 +172,7 @@ export class TasksController {
     UserRole.CONTRACTOR,
     UserRole.SALES,
   )
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_READ)
   @ApiOperation({ summary: 'Listar timeline de la tarea' })
   async listTimeline(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     await this.tasksService.getById(id, actor);
@@ -176,6 +188,7 @@ export class TasksController {
     UserRole.CONTRACTOR,
     UserRole.SALES,
   )
+  @Permissions(AccessPermissionKey.OPERATIONS_TASKS_READ)
   @ApiOperation({ summary: 'Listar historial de reasignaciones' })
   async listAssignmentHistory(
     @Param('id', ParseUUIDPipe) id: string,

@@ -6,6 +6,8 @@ import { MediaAsset } from '@iwana/db';
 import { createStorageAdapter, STORAGE_PORT } from '@iwana/storage';
 import { MediaService } from './media.service';
 import { MediaController } from './media.controller';
+import { EvidenceAssetProvider } from './evidence-asset.provider';
+import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
 
 /**
  * Módulo Media — MOD03 Media/Assets.
@@ -59,8 +61,13 @@ import { MediaController } from './media.controller';
       inject: [ConfigService],
     },
     MediaService,
+    EvidenceAssetProvider,
+    {
+      provide: EVIDENCE_ASSET_PORT,
+      useExisting: EvidenceAssetProvider,
+    },
   ],
   controllers: [MediaController],
-  exports: [MediaService, STORAGE_PORT],
+  exports: [MediaService, STORAGE_PORT, EVIDENCE_ASSET_PORT],
 })
 export class MediaModule {}

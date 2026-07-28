@@ -97,7 +97,16 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
       `ALTER TABLE "public"."media_assets"
        DROP CONSTRAINT IF EXISTS "chk_media_assets_asset_status"`,
     );
-    // Revert usage check to original (without execution_evidence)
+    // Revert usage check to original (without execution_evidence).
+    // P0-5: los assets creados con usage='execution_evidence' deben migrarse a
+    // un valor permitido por el CHECK anterior, o el ALTER fallará si hay filas.
+    // Se elige 'general' porque representa un asset genérico no especializado;
+    // los assets reclamados ya perdieron su claim_ref en el paso anterior.
+    await queryRunner.query(
+      `UPDATE "public"."media_assets"
+       SET "usage" = 'general'
+       WHERE "usage" = 'execution_evidence'`,
+    );
     await queryRunner.query(
       `ALTER TABLE "public"."media_assets"
        DROP CONSTRAINT IF EXISTS "chk_media_assets_usage"`,

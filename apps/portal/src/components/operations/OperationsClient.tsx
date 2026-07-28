@@ -387,6 +387,58 @@ export function OperationsClient() {
     }
   }
 
+  async function handleUploadEvidence(files: File[], _requirementKey: string) {
+    if (!selectedExecutionOrder) return;
+    setIsSubmittingExecutionOrder(true);
+    setExecutionOrderError(null);
+    try {
+      const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadRes = await fetch(
+          `${apiBase}/api/v1/tasks/execution-orders/${selectedExecutionOrder.id}/evidence-assets`,
+          { method: 'POST', body: formData, credentials: 'include' },
+        );
+        if (!uploadRes.ok) {
+          const errBody = await uploadRes.json().catch(() => ({}));
+          throw new Error(
+            ((errBody as Record<string, unknown>).message as string) ?? 'Error al subir evidencia',
+          );
+        }
+        const uploadReceipt = (await uploadRes.json()) as {
+          intentId: string;
+          mediaAssetId: string;
+        };
+        const regRes = await fetch(
+          `${apiBase}/api/v1/tasks/execution-orders/${selectedExecutionOrder.id}/evidence`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mediaAssetId: uploadReceipt.mediaAssetId,
+              evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
+              requirementKey: '',
+            }),
+            credentials: 'include',
+          },
+        );
+        if (!regRes.ok) {
+          const errBody = await regRes.json().catch(() => ({}));
+          throw new Error(
+            ((errBody as Record<string, unknown>).message as string) ??
+              'Error al registrar evidencia',
+          );
+        }
+      }
+      await refreshExecutionOrder(selectedExecutionOrder.id);
+    } catch (error) {
+      setExecutionOrderError(mapOperationsError(error));
+    } finally {
+      setIsSubmittingExecutionOrder(false);
+    }
+  }
+
   async function handleCloseExecutionOrder(payload: {
     result: ExecutionOrderResult;
     closeNotes?: string | null;
@@ -552,9 +604,7 @@ export function OperationsClient() {
         onStart={handleStartExecutionOrder}
         onRegisterActivity={handleRegisterExecutionOrderFieldWork as any}
         onRegisterItemUsage={handleRegisterExecutionOrderItemUsage as any}
-        onUploadEvidence={async () => {
-          /* Evidence upload not implemented via API client yet */
-        }}
+        onUploadEvidence={handleUploadEvidence}
         onCloseOrder={handleCloseExecutionOrder as any}
         onCreateFollowUp={async () => {
           /* Follow-up creation not implemented via API client yet */

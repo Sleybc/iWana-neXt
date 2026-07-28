@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Badge, Button, Input, ProgressMeter, Select, OperationalSidePeek } from '@iwana/ui';
 import {
   ExecutionOrderResult,
@@ -246,6 +246,9 @@ export function ExecutionOrderDrawer({
   const [closeSummary, setCloseSummary] = useState('');
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [followUpReason, setFollowUpReason] = useState('');
+
+  // Evidencia — file input ref
+  const evidenceFileRef = useRef<HTMLInputElement>(null);
 
   const activityTypeOptions = useMemo(
     () => [
@@ -875,13 +878,32 @@ export function ExecutionOrderDrawer({
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Arrastra fotos o documentos relacionados con la instalacion.
                 </p>
+                <input
+                  ref={evidenceFileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length === 0) return;
+                    const requirementKey =
+                      template?.requirements?.filter((r) => r.kind === 'EVIDENCE')?.find(() => true)
+                        ?.key ?? '';
+                    void onUploadEvidence(files, requirementKey);
+                    // Reset para permitir re-subir el mismo archivo
+                    if (evidenceFileRef.current) {
+                      evidenceFileRef.current.value = '';
+                    }
+                  }}
+                />
                 <Button
                   type="button"
                   variant="ghost"
                   className="mt-2"
                   disabled={isSubmitting}
                   onClick={() => {
-                    /* File input trigger handled by parent: onUploadEvidence */
+                    evidenceFileRef.current?.click();
                   }}
                 >
                   Seleccionar archivos

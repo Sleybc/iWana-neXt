@@ -7,13 +7,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
-import { ConfigService } from '@nestjs/config';
-import type { IEvidenceAssetPort, EvidenceUploadResult } from './evidence-asset.port';
-import { EVIDENCE_ASSET_CONSTRAINTS } from './evidence-asset.port';
+import {
+  EVIDENCE_ASSET_CONSTRAINTS,
+  EVIDENCE_ASSET_PORT,
+  type EvidenceUploadResult,
+  type IEvidenceAssetPort,
+} from '../tasks/ports/evidence-asset.port';
 
 /**
  * Magic bytes para validación de MIME types sin depender de la extensión.
@@ -75,14 +79,19 @@ function mimeToExt(mimeType: string): string {
 /**
  * Implementación del puerto IEvidenceAssetPort.
  *
- * Wraps MediaService + StoragePort para proveer las operaciones de ciclo de
+ * Reside en MOD03 Media/Assets porque es la única capa que debe conocer
+ * MediaAsset, StoragePort y el bucket físico. MOD11 solo consume el puerto
+ * via EVIDENCE_ASSET_PORT.
+ *
+ * Wrapping MediaService + StoragePort para proveer las operaciones de ciclo de
  * vida de evidencia que MOD11 necesita, respetando el boundary:
  * - Sin FK cross-schema
  * - Sin importar repositorios de MOD11
  * - Object key determinista derivado de mediaAssetId
  * - Sin PII en keys, metadata ni logs
  *
- * Proveído en TasksModule con token EVIDENCE_ASSET_PORT.
+ * ADR-034 — Bounded Context Media/Assets
+ * ADR-068 — Sincronización de OT de ejecución y proyecciones operativas
  */
 @Injectable()
 export class EvidenceAssetProvider implements IEvidenceAssetPort {
@@ -100,11 +109,18 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
 
   private readonly mediaRepo: Repository<MediaAsset>;
 
+  private getMediaRepo(manager?: EntityManager): Repository<MediaAsset> {
+    return manager?.getRepository(MediaAsset) ?? this.mediaRepo;
+  }
+
   async createUploadIntent(
     tenantSchema: string,
     file: Express.Multer.File,
     actorId: string,
+    manager?: EntityManager,
   ): Promise<EvidenceUploadResult> {
+    const mediaRepo = this.getMediaRepo(manager);
+
     // ── Validación de tamaño ────────────────────────────────────────────────
     if (file.size > EVIDENCE_ASSET_CONSTRAINTS.MAX_BYTES) {
       const maxMb = Math.round(EVIDENCE_ASSET_CONSTRAINTS.MAX_BYTES / (1024 * 1024));
@@ -155,7 +171,7 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     const assetId = randomUUID();
     const objectKey = `${tenantSchema}/${MediaUsage.EXECUTION_EVIDENCE}/${assetId}.${ext}`;
 
-    const asset = this.mediaRepo.create({
+    const asset = mediaRepo.create({
       tenantSchema,
       usage: MediaUsage.EXECUTION_EVIDENCE,
       themeVariant: null,
@@ -176,7 +192,7 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     let saved: MediaAsset;
 
     try {
-      saved = await this.mediaRepo.save(asset);
+      saved = await mediaRepo.save(asset);
     } catch (err: unknown) {
       this.logger.error(`Error al persistir metadata de evidencia: ${String(err)}`);
       throw new BadRequestException({
@@ -199,7 +215,7 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
       });
     } catch (err: unknown) {
       // Compensación: revertir el registro en BD
-      await this.mediaRepo.delete(saved.id);
+      await mediaRepo.delete(saved.id);
       this.logger.error(`Fallo al subir objeto a storage [assetId=${saved.id}]: ${String(err)}`);
       throw new BadRequestException({
         code: 'EVIDENCE_STORAGE_WRITE_FAILED',
@@ -384,3 +400,6 @@ function mapInternalStatus(internal: string): string {
       return 'PENDING_ANALYSIS';
   }
 }
+
+// Export explícito para facilitar tests de inyección del token.
+export { EVIDENCE_ASSET_PORT };

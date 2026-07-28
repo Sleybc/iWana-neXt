@@ -22,6 +22,8 @@ export enum MediaUsage {
   LOGIN_BACKGROUND = 'login_background',
   /** Asset genérico sin slot específico */
   GENERAL = 'general',
+  /** Evidencia de ejecución operativa (fotos, documentos, firmas) */
+  EXECUTION_EVIDENCE = 'execution_evidence',
 }
 
 /**
@@ -122,6 +124,35 @@ export class MediaAsset {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  /**
+   * Estado del asset en el ciclo de vida de evidencia.
+   * QUARANTINED: recién subido, pendiente de análisis (expuesto como PENDING_ANALYSIS).
+   * AVAILABLE: análisis completado, puede vincularse a evidencia.
+   * REJECTED: análisis rechazó el asset (MIME inválido, malware, etc.).
+   * EXPIRED: no fue reclamado dentro del TTL.
+   * DELETED: soft-delete con auditoría, pendiente de eliminación física.
+   *
+   * Para assets de branding, el valor por defecto es 'AVAILABLE' (sin cuarentena).
+   */
+  @Column({ name: 'asset_status', length: 32, default: 'AVAILABLE' })
+  assetStatus: string;
+
+  /**
+   * Referencia opaca de quién reclamó el asset como evidencia.
+   * Formato: [tenantSchema]:[executionOrderId]
+   * NULL = no reclamado aún. Sin FK cross-schema por diseño (ADR-068).
+   */
+  @Column({ name: 'claim_ref', length: 500, nullable: true, type: 'varchar' })
+  claimRef: string | null;
+
+  /**
+   * Hash SHA-256 del contenido binario del asset.
+   * Permite verificar integridad y detectar duplicados.
+   * NULL para assets de tipo external_url.
+   */
+  @Column({ name: 'checksum_sha256', length: 64, nullable: true, type: 'char' })
+  checksumSha256: string | null;
 
   /** Soft delete — el worker limpia el objeto físico de MinIO al detectar este campo */
   @Column({ name: 'deleted_at', nullable: true, type: 'timestamptz' })

@@ -17,6 +17,7 @@ import {
   ExecutionOrder,
   ExecutionOrderActivity,
   ExecutionOrderEvidence,
+  ExecutionOrderEvidenceUploadIntent,
   ExecutionOrderItemUsage,
   ExecutionOrderOutboxEvent,
   TenantContext,
@@ -59,7 +60,11 @@ import type {
   IdempotencyReceipt,
 } from './execution-order-reliability.service';
 import { ExecutionOrderReliabilityService } from './execution-order-reliability.service';
-import { EVIDENCE_ASSET_PORT, type IEvidenceAssetPort } from '../ports/evidence-asset.port';
+import {
+  EVIDENCE_ASSET_PORT,
+  type EvidenceUploadResult,
+  type IEvidenceAssetPort,
+} from '../ports/evidence-asset.port';
 
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
@@ -840,30 +845,62 @@ export class ExecutionOrdersService {
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    // Verificar que la OT existe y es mutable
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    // ── Paso 1: Crear intento durable en schema tenant ──────────────────
+    // El intent sobrevive al upload de Media para autorizar polling y
+    // reconciliación. Si el upload falla, el intent queda FAILED y es visible
+    // en el recibo.
+    const intent = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
       this.assertMutable(order);
+
+      const expiresAt = new Date(
+        Date.now() + 24 * 60 * 60 * 1000, // 24h TTL
+      );
+
+      return qr.manager.save(
+        qr.manager.create(ExecutionOrderEvidenceUploadIntent, {
+          executionOrderId: id,
+          tenantId,
+          mediaAssetId: null,
+          status: 'PENDING',
+          expiresAt,
+          actorUserId: actor.sub,
+        }),
+      );
     });
 
-    // Delegar la subida con cuarentena al puerto de Media
-    const result = await port.createUploadIntent(schemaName, file, actor.sub);
+    // ── Paso 2: Subir asset a Media (bounded context independiente) ─────
+    let uploadResult: EvidenceUploadResult;
+    try {
+      uploadResult = await port.createUploadIntent(schemaName, file, actor.sub);
+    } catch (err: unknown) {
+      await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.id, {
+          status: 'FAILED',
+          mediaAssetId: null,
+        });
+      });
+      throw err;
+    }
 
-    // Generar intentId para trazabilidad (no persiste en BD, es efímero del recibo)
-    const intentId = randomUUID();
+    // ── Paso 3: Vincular intent con el asset creado ─────────────────────
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.id, {
+        mediaAssetId: uploadResult.mediaAssetId,
+        status: 'PENDING_ANALYSIS',
+      });
+    });
 
-    // Calcular expiración del upload-intent
-    const expiresAt = new Date(
-      Date.now() + 24 * 60 * 60 * 1000, // 24h TTL para reclamar
-    );
-
-    return {
-      intentId,
-      mediaAssetId: result.mediaAssetId,
+    const receipt: EvidenceAssetReceipt = {
+      intentId: intent.id,
+      mediaAssetId: uploadResult.mediaAssetId,
       status: 'PENDING_ANALYSIS',
-      uploadedAt: result.uploadedAt,
-      expiresAt: expiresAt.toISOString(),
+      uploadedAt: uploadResult.uploadedAt,
     };
+    if (intent.expiresAt) {
+      receipt.expiresAt = intent.expiresAt.toISOString();
+    }
+    return receipt;
   }
 
   async getEvidenceAssetReceipt(id: string, mediaAssetId: string): Promise<EvidenceAssetReceipt> {
@@ -881,25 +918,35 @@ export class ExecutionOrdersService {
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await this.requireOrder(qr.manager, tenantId, id);
 
-      // Verificar que mediaAssetId está vinculado a esta OT vía evidence record
-      // Esto previene enumeración intra-tenant de mediaAssetIds (P0-1)
+      // Verificar vinculación OT–asset vía evidence e intent.
+      // Sin ningún vínculo, NO consultar Media (P0-1: previene enumeración intra-tenant).
       const evidence = await qr.manager.findOne(ExecutionOrderEvidence, {
         where: { mediaAssetId, executionOrderId: id, tenantId },
       });
 
+      const intent = evidence
+        ? null // Si ya hay evidence, no necesitamos el intent
+        : await qr.manager.findOne(ExecutionOrderEvidenceUploadIntent, {
+            where: { mediaAssetId, executionOrderId: id, tenantId },
+          });
+
+      if (!intent && !evidence) {
+        throw new NotFoundException('OT de ejecución no encontrada');
+      }
+
+      // Vinculo existe — consultar estado real en Media
       const status = await port.getAssetStatus(mediaAssetId, schemaName);
 
-      // Si hay evidence record, usar su id como intentId para trazabilidad
-      // Si no, devolver string vacío (polling antes de vinculación formal)
-      const intentId = evidence?.id ?? '';
-
-      return {
-        intentId,
+      const receipt: EvidenceAssetReceipt = {
+        intentId: intent?.id ?? evidence?.id ?? '',
         mediaAssetId,
         status: status.status as EvidenceAssetReceipt['status'],
         uploadedAt: status.uploadedAt,
-        expiresAt: status.expiresAt ?? undefined,
-      } as EvidenceAssetReceipt;
+      };
+      if (status.expiresAt) {
+        receipt.expiresAt = status.expiresAt;
+      }
+      return receipt;
     });
 
     return result;

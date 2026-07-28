@@ -11,13 +11,14 @@ import {
   TaskStatus,
   TaskType,
 } from '@iwana/shared';
+import { safeTextField } from './execution-orders.dto';
 
 export const CreateTaskSchema = z
   .object({
     type: z.nativeEnum(TaskType),
     priority: z.nativeEnum(TaskPriority).default(TaskPriority.NORMAL),
     title: z.string().trim().min(3).max(200),
-    description: z.string().trim().max(4000).optional().nullable(),
+    description: safeTextField(4000).optional().nullable(),
     originContext: z.nativeEnum(TaskOriginContext),
     originRefId: z.string().trim().max(160).optional().nullable(),
     ticketId: z.string().trim().max(160).optional().nullable(),
@@ -159,7 +160,7 @@ export class CreateTaskDto {
 
 export const UpdateTaskSchema = z.object({
   title: z.string().trim().min(3).max(200).optional(),
-  description: z.string().trim().max(4000).optional().nullable(),
+  description: safeTextField(4000).optional().nullable(),
   priority: z.nativeEnum(TaskPriority).optional(),
   recipientType: z.nativeEnum(TaskRecipientType).optional(),
   recipientRefId: z.string().trim().max(160).optional().nullable(),
@@ -270,7 +271,7 @@ export interface ListTasksResponseDto {
 export const AssignTaskSchema = z.object({
   responsibleType: z.nativeEnum(TaskResponsibleType),
   responsibleRefId: z.string().trim().min(1).max(160),
-  reason: z.string().trim().max(500).optional().nullable(),
+  reason: safeTextField(500).optional().nullable(),
 });
 
 export type AssignTaskInput = z.infer<typeof AssignTaskSchema>;
@@ -291,7 +292,7 @@ export class AssignTaskDto {
 
 export const TransitionTaskSchema = z.object({
   status: z.nativeEnum(TaskStatus),
-  notes: z.string().trim().max(2000).optional().nullable(),
+  notes: safeTextField(2000).optional().nullable(),
 });
 
 export type TransitionTaskInput = z.infer<typeof TransitionTaskSchema>;

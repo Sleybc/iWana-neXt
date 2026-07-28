@@ -11,8 +11,8 @@
 ---
 
 **Version:** 1.0  
-**Estado:** Auditoría arquitecto remediada (6 P0 + 2 P1 cerrados); G6/G7 pending re-gate  
-**Fecha:** 2026-07-27  
+**Estado:** G6 QA GO + G6 SEC GO (advisories); G7 pending re-evaluation por AI-EM-ARCH  
+**Fecha:** 2026-07-28  
 **Autor:** AI-EM-ARCH  
 **Protocolo:** `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md`
 
@@ -288,24 +288,30 @@ flowchart LR
 - [x] Ejecutar `pnpm lint`, `pnpm typecheck`, pruebas focalizadas y build afectado.
 - [x] Registrar comandos, resultados, fecha y responsable; no declarar éxito sin evidencia.
 - [x] G6: AI-SEC-ENG y AI-SR-QA emiten hallazgos/evidencia; PROD-UX y DS-OWNER revisan flujo/contrato.
-- [x] G7: AI-EM-ARCH recomienda **NO-GO** tras auditoría independiente. **Revisión y re-gate pendientes** tras aplicar las remediaciones del §12 contra cada uno de sus hallazgos. No se solicita aprobación de producción al CTO. Ver `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §12.
-- [x] Commit: `docs(operations): record installation work order release gate`.
+- [x] G7: AI-EM-ARCH **pending re-evaluation** tras remediación completa de los 7 P0 + 2 advisories medio. QA emite GO (297 tests, typecheck/lint/build verdes). SEC-ENG emite GO (0 críticas, 6 hallazgos: 2 medio corregidos in-situ, 2 bajo, 2 info). Pendiente decisión CTO para producción. Ver `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §14.
+- [x] Commit: `fix(operations): resolve 7 P0 findings from architectural audit — IDOR, durable intent, orphan claims, boundary, migrations, frontend, platform`.
 
-**Evidencia G6 re-gate reportada (2026-07-27):**
-- Las afirmaciones de 582 tests, typecheck/lint/build verdes y migración 094 round-trip no tienen evidencia reproducible suficiente en los artefactos vigentes; la migración 094 no está registrada en `TENANT_MIGRATIONS`.
-- La auditoría independiente identificó bloqueantes P0 de autorización OT–asset, compensación de claims, boundary Media, reversibilidad de migración y TLS. Ver `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §12.
-- TLS (QA-34) y offline PII (QA-49) no se aceptan como backlog para G7: permanecen bloqueantes conforme al checklist y ADR-068.
+**Remediación G6 definitiva (2026-07-28):** los 7 P0 del re-gate NO-GO cerrados con evidencia reproducible.
 
-**Remediación de auditoría independiente (2026-07-27):** Todos los P0 y P1 code-addressables cerrados:
-- **P0-1 (IDOR):** `getEvidenceAssetReceipt()` y `getEvidenceContentRedirect()` ahora validan relación OT–asset en `ExecutionOrderEvidence` antes de consultar/descargar. 3 tests IDOR añadidos.
-- **P0-2 (Upload-intent):** Flujo de `registerEvidence()` invertido: evidencia se crea PRIMERO (status PENDING), luego se reclama el asset. Si claim falla, evidencia queda FAILED, no huérfana. `intentId` persistido. 2 tests de compensación añadidos.
-- **P0-3 (Boundary):** `MediaAsset` eliminado de imports y `TypeOrmModule.forFeature()` en `tasks.module.ts`. `EvidenceAssetProvider` usa `DataSource.getRepository()` en vez de `@InjectRepository()`. Boundary test añadido verifica 0 imports.
-- **P0-4 (Migraciones):** Migración 094 registrada en `TENANT_MIGRATIONS` en `runner.ts`. Rollback de `020_add_media_asset_status_and_claim` corregido para no fallar con datos existentes.
-- **P0-5 (TLS):** `nginx.prod.conf` con `listen 443 ssl`, redirect 301 HTTP→HTTPS, HSTS. `docker-compose.yml` perfil `production`. Script `generate-certs.ps1` para certificados autofirmados.
-- **P1-1 (API contract):** Schemas Zod reconciliados con shared types: `notes`→`note` en Start, `summary` required en Close, `reasonCode` añadido. OpenAPI corregido con path de evidence. 20 tests de validación de schema.
-- **P1-2 (E2E):** 23 tests E2E operativos (`e2e/tests/api/execution-orders-operational.spec.ts`): happy path, inmutabilidad, concurrencia, rate limiting, permisos, BOLA, evidencia.
-- Total: 13 archivos modificados, +1643/-46 líneas, 213 tests (antes: 184, después: 213).
-- Commits: `fix(operations): resolve architectural audit P0 and P1 findings`, `fix(nginx): add TLS termination and HTTP→HTTPS redirect`, `test(e2e): add execution order operational E2E tests`.
+| P0 | Descripción | Fix | Evidencia |
+| --- | --- | --- | --- |
+| P0-1 | Receipt IDOR intra-tenant | `getEvidenceAssetReceipt` no consulta Media sin link OT–asset | 4 tests IDOR, `getAssetStatus` no llamado sin vínculo |
+| P0-2 | Upload-intent efímero | `ExecutionOrderEvidenceUploadIntent` persistido en schema tenant | 25 evidence tests, migración 095, entidad + intentId durable |
+| P0-3 | Claim no compensable | `EvidenceOrphanDetectionProcessor` (3 fases: orphan soft-delete, orphan claim release, physical delete) | 61 worker tests; SAST advisory SEC-01 corregido in-situ |
+| P0-4 | Boundary MOD11-Media | Provider movido de `tasks/ports/` a `media/`; MediaModule exporta EVIDENCE_ASSET_PORT | Old provider deleted; TasksModule sin imports de MediaAsset |
+| P0-5 | Migraciones destructivas | 094: `assertTableEmpty`/`assertColumnEmpty` guards; 020: UPDATE `usage='general'` antes del CHECK | `pnpm typecheck` db clean |
+| P0-6 | Frontend no-op | `ExecutionOrderDrawer`: `<input type="file">` + ref + onChange; `OperationsClient`: `handleUploadEvidence` → POST evidence-assets + POST evidence | `pnpm typecheck` portal clean |
+| P0-7 | Plataforma no desplegable | docker-compose production profile: api-prod, web-prod, portal-prod, worker-prod, migrator-prod + portal Dockerfile + nginx upstreams a prod | `docker compose config` valida |
+
+**Comandos de verificación:**
+```powershell
+pnpm typecheck          # 9 packages, 0 errors
+pnpm lint               # 8 packages, 0 errors
+pnpm --filter @iwana/api test -- execution-orders  # 6 suites, 211 tests
+pnpm --filter @iwana/worker test                    # 11 suites, 61 tests
+```
+
+**Archivos modificados:** 24 archivos, +607/-469 líneas (diff consolidado de las dos fases de remediación).
 
 ### Task 10: Retirar compatibilidad ligera
 

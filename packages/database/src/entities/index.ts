@@ -58,6 +58,7 @@ export { ExecutionOrder } from './execution-order.entity';
 export { ExecutionOrderActivity } from './execution-order-activity.entity';
 export { ExecutionOrderItemUsage } from './execution-order-item-usage.entity';
 export { ExecutionOrderEvidence } from './execution-order-evidence.entity';
+export { ExecutionOrderEvidenceUploadIntent } from './execution-order-evidence-upload-intent.entity';
 export { ExecutionOrderOutboxEvent } from './execution-order-outbox-event.entity';
 export { ExecutionOrderInboxEvent } from './execution-order-inbox-event.entity';
 export { ExecutionOrderIdempotencyRecord } from './execution-order-idempotency.entity';

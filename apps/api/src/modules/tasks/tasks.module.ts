@@ -36,7 +36,6 @@ import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
 import { EXECUTION_ORDER_SCHEDULING_PORT } from './ports/execution-order-scheduling.port';
 import { EVIDENCE_ASSET_PORT } from './ports/evidence-asset.port';
-import { EvidenceAssetProvider } from './ports/evidence-asset.provider';
 import { TaskAssignmentService } from './services/task-assignment.service';
 import { TaskTimelineService } from './services/task-timeline.service';
 import { TasksService } from './services/tasks.service';
@@ -81,7 +80,6 @@ import { TasksService } from './services/tasks.service';
     TenantAwareThrottlerGuard,
     ExecutionOrderResponseHeadersInterceptor,
     { provide: EXECUTION_ORDER_SCHEDULING_PORT, useExisting: ExecutionOrdersService },
-    { provide: EVIDENCE_ASSET_PORT, useClass: EvidenceAssetProvider },
   ],
   exports: [TasksService, ExecutionOrdersService, EXECUTION_ORDER_SCHEDULING_PORT],
 })

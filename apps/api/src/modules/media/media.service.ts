@@ -40,6 +40,18 @@ const MEDIA_CONSTRAINTS: Record<MediaUsage, { maxBytes: number; allowedMimes: st
       'image/vnd.microsoft.icon',
     ],
   },
+  [MediaUsage.EXECUTION_EVIDENCE]: {
+    maxBytes: 25 * 1024 * 1024, // 25 MB
+    allowedMimes: [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'application/pdf',
+      'image/heic',
+      'image/heif',
+    ],
+  },
 };
 
 type DimensionConstraint = {

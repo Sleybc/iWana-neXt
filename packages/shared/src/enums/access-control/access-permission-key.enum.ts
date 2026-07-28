@@ -24,6 +24,8 @@ export enum AccessPermissionKey {
   OPERATIONS_EXECUTION_ORDER_TEMPLATES_READ = 'operations.execution_order_templates.read',
   OPERATIONS_EXECUTION_ORDER_TEMPLATES_MANAGE = 'operations.execution_order_templates.manage',
   OPERATIONS_EXECUTION_EVENTS_REDRIVE = 'operations.execution_events.redrive',
+  OPERATIONS_TASKS_READ = 'operations.tasks.read',
+  OPERATIONS_TASKS_MANAGE = 'operations.tasks.manage',
   CRM_CUSTOMERS_READ = 'crm.customers.read',
   CRM_CUSTOMERS_MANAGE = 'crm.customers.manage',
   COMMERCIAL_CATALOG_READ = 'commercial.catalog.read',

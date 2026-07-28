@@ -45,6 +45,21 @@ const visitRequestStatusMeta: Record<
     variant: 'primary',
     description: 'La solicitud ya generó evento y orden de trabajo.',
   },
+  [VisitRequestStatus.IN_EXECUTION]: {
+    label: 'En ejecución',
+    variant: 'info',
+    description: 'La visita está siendo ejecutada por el técnico asignado.',
+  },
+  [VisitRequestStatus.CLOSED]: {
+    label: 'Cerrada',
+    variant: 'success',
+    description: 'La visita fue completada y cerrada operativamente.',
+  },
+  [VisitRequestStatus.REQUIRES_RESCHEDULE]: {
+    label: 'Requiere reagendar',
+    variant: 'warning',
+    description: 'La visita necesita ser reprogramada por novedad operativa.',
+  },
   [VisitRequestStatus.CANCELLED]: {
     label: 'Cancelada',
     variant: 'neutral',
