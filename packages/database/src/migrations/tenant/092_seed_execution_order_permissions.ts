@@ -5,9 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * alias deprecado wfm.work_orders.execute en el catálogo de acceso por tenant.
  *
  * Schema: tenant (search_path)
- * Reversible: sí — el down es deliberadamente no destructivo: el catálogo es
- * también mantenido por el seeder runtime de MOD00 y no tiene una marca de
- * procedencia que permita distinguir sus filas de las creadas aquí.
+ * Reversible: sí — el down conserva cualquier fila cuyo fingerprint o versión
+ * de tupla PostgreSQL haya cambiado después del seed.
  *
  * Condición de retiro del alias:
  *   "retirable cuando cero consumidores y Task 10 complete"
@@ -27,9 +26,16 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
         permission_key      VARCHAR(120) NOT NULL,
         tenant_id           UUID        NOT NULL,
         catalog_entry_id    UUID        NOT NULL,
+        seed_fingerprint    CHAR(32)    NOT NULL,
+        catalog_entry_xmin  XID         NOT NULL,
         seeded_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT pk_execution_order_permission_seed_092 PRIMARY KEY (permission_key)
       )
+    `);
+    await queryRunner.query(`
+      ALTER TABLE execution_order_permission_seed_092
+        ADD COLUMN IF NOT EXISTS seed_fingerprint CHAR(32),
+        ADD COLUMN IF NOT EXISTS catalog_entry_xmin XID
     `);
     await queryRunner.query(`
       /* Source contract: MOD00_ACCESS_V1_CATALOG (apps/api boundary). */
@@ -70,12 +76,17 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
           ) AS seeds(permission_key, module_key, action, description, catalog_version, availability, is_system, is_active)
           WHERE tenants.schema_name = current_schema()
           ON CONFLICT (tenant_id, permission_key) DO NOTHING
-          RETURNING id, permission_key, tenant_id
+          RETURNING id, permission_key, tenant_id, xmin,
+            md5(concat_ws(chr(31), permission_key, module_key, action, description,
+              catalog_version, availability, is_system::text, is_active::text)) AS seed_fingerprint
         LOOP
           inserted_count := inserted_count + 1;
           INSERT INTO execution_order_permission_seed_092
-            (permission_key, tenant_id, catalog_entry_id)
-          VALUES (inserted_row.permission_key, inserted_row.tenant_id, inserted_row.id)
+            (permission_key, tenant_id, catalog_entry_id, seed_fingerprint, catalog_entry_xmin)
+          VALUES (
+            inserted_row.permission_key, inserted_row.tenant_id, inserted_row.id,
+            inserted_row.seed_fingerprint, inserted_row.xmin
+          )
           ON CONFLICT (permission_key) DO NOTHING;
         END LOOP;
 
@@ -120,7 +131,7 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
         deleted_id UUID;
       BEGIN
         FOR seeded_row IN
-          SELECT permission_key, tenant_id, catalog_entry_id
+          SELECT permission_key, tenant_id, catalog_entry_id, seed_fingerprint, catalog_entry_xmin
           FROM execution_order_permission_seed_092
         LOOP
           deleted_id := NULL;
@@ -129,6 +140,10 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
             AND catalog.tenant_id = seeded_row.tenant_id
             AND catalog.is_system = true
             AND catalog.is_active = true
+            AND catalog.xmin = seeded_row.catalog_entry_xmin
+            AND md5(concat_ws(chr(31), catalog.permission_key, catalog.module_key,
+              catalog.action, catalog.description, catalog.catalog_version,
+              catalog.availability, catalog.is_system::text, catalog.is_active::text)) = seeded_row.seed_fingerprint
             AND catalog.catalog_version = 'MOD00_ACCESS_V1'
             AND catalog.availability = 'ASSIGNABLE'
             AND (
@@ -141,15 +156,28 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
               (catalog.permission_key = 'wfm.work_orders.execute' AND catalog.module_key = 'wfm' AND catalog.action = 'execute' AND catalog.description = 'Ejecutar órdenes de trabajo asignadas')
             )
           RETURNING catalog.id INTO deleted_id;
-          IF deleted_id IS NULL THEN
-            RAISE EXCEPTION 'Rollback blocked: seeded permission % was changed or removed', seeded_row.permission_key;
+          IF deleted_id IS NOT NULL THEN
+            DELETE FROM execution_order_permission_seed_092
+            WHERE permission_key = seeded_row.permission_key;
+          ELSIF NOT EXISTS (
+            SELECT 1 FROM access_permission_catalog
+            WHERE id = seeded_row.catalog_entry_id
+          ) THEN
+            DELETE FROM execution_order_permission_seed_092
+            WHERE permission_key = seeded_row.permission_key;
           END IF;
-          DELETE FROM execution_order_permission_seed_092
-          WHERE permission_key = seeded_row.permission_key;
         END LOOP;
       END
       $rollback$
     `);
-    await queryRunner.query(`DROP TABLE execution_order_permission_seed_092`);
+    await queryRunner.query(`
+      DO $drop_provenance$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM execution_order_permission_seed_092) THEN
+          DROP TABLE execution_order_permission_seed_092;
+        END IF;
+      END
+      $drop_provenance$
+    `);
   }
 }

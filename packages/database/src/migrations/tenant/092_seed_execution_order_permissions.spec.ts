@@ -52,7 +52,8 @@ describe('SeedExecutionOrderPermissions092', () => {
     // down no borra filas compartidas con el seeder runtime de MOD00.
     expect(downSql).toContain('DELETE FROM access_permission_catalog');
     expect(downSql).toContain('execution_order_permission_seed_092');
-    expect(downSql).toContain('Rollback blocked');
+    expect(downSql).toContain('seed_fingerprint');
+    expect(downSql).toContain('catalog_entry_xmin');
     expect(downParams).toBeUndefined();
 
     // Sin hardcode de schema de tenant

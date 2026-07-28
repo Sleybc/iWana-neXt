@@ -229,16 +229,30 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
        FROM public.tenants WHERE schema_name = $1`,
       [schemas[0]],
     );
+    // Reproduce la rama de ensurePermissionCatalogSeeded(): reusa la fila,
+    // reasigna toda su definición canónica y la vuelve a guardar. Aunque los
+    // valores queden iguales, PostgreSQL emite una nueva versión de tupla.
+    await first.query(
+      `UPDATE access_permission_catalog
+       SET module_key = 'operations', action = 'read',
+           description = 'Consultar órdenes de ejecución asignadas y supervisadas',
+           catalog_version = 'MOD00_ACCESS_V1', availability = 'ASSIGNABLE',
+           is_system = true, is_active = true
+       WHERE permission_key = 'operations.execution_orders.read'`,
+    );
     await migration.up(first);
     await migration.down(first);
     const remaining = (await first.query(
       `SELECT permission_key FROM access_permission_catalog`,
     )) as Array<{ permission_key: string }>;
-    expect(remaining.map((row) => row.permission_key)).toEqual(['runtime.custom.permission']);
+    expect(remaining.map((row) => row.permission_key).sort()).toEqual([
+      'operations.execution_orders.read',
+      'runtime.custom.permission',
+    ]);
     const provenance = (await first.query(
       `SELECT to_regclass(current_schema() || '.execution_order_permission_seed_092') AS table_name`,
     )) as Array<{ table_name: string | null }>;
-    expect(provenance[0]?.table_name).toBeNull();
+    expect(provenance[0]?.table_name).toBe('execution_order_permission_seed_092');
 
     await migration.up(second);
     await migration.down(second);
