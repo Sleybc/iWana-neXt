@@ -72,19 +72,23 @@ export class SeedExecutionOrderPermissions0920000000000 implements MigrationInte
         SELECT COUNT(*) INTO catalog_count
         FROM access_permission_catalog
         WHERE tenant_id = canonical_tenant_id
-          AND permission_key IN (
-            'operations.execution_orders.read',
-            'operations.execution_orders.execute',
-            'operations.execution_orders.supervise',
-            'operations.execution_order_templates.read',
-            'operations.execution_order_templates.manage',
-            'operations.execution_events.redrive',
-            'wfm.work_orders.execute'
+          AND is_system = true
+          AND is_active = true
+          AND catalog_version = 'MOD00_ACCESS_V1'
+          AND availability = 'ASSIGNABLE'
+          AND (
+            (permission_key = 'operations.execution_orders.read' AND module_key = 'operations' AND action = 'read' AND description = 'Consultar órdenes de ejecución asignadas y supervisadas') OR
+            (permission_key = 'operations.execution_orders.execute' AND module_key = 'operations' AND action = 'execute' AND description = 'Ejecutar actividades, evidencias y cierre de órdenes asignadas') OR
+            (permission_key = 'operations.execution_orders.supervise' AND module_key = 'operations' AND action = 'supervise' AND description = 'Asignar y supervisar órdenes de ejecución') OR
+            (permission_key = 'operations.execution_order_templates.read' AND module_key = 'operations' AND action = 'read' AND description = 'Consultar plantillas de ejecución') OR
+            (permission_key = 'operations.execution_order_templates.manage' AND module_key = 'operations' AND action = 'manage' AND description = 'Administrar versiones de plantillas de ejecución') OR
+            (permission_key = 'operations.execution_events.redrive' AND module_key = 'operations' AND action = 'redrive' AND description = 'Reintentar eventos fallidos de ejecución con ticket operativo') OR
+            (permission_key = 'wfm.work_orders.execute' AND module_key = 'wfm' AND action = 'execute' AND description = 'Ejecutar órdenes de trabajo asignadas')
           );
-        IF inserted_count = 0 AND catalog_count <> 7 THEN
+        IF catalog_count <> 7 THEN
           RAISE EXCEPTION
-            'Execution-order permission seed inserted 0 rows and catalog is incomplete (% of 7)',
-            catalog_count;
+            'Execution-order permission catalog is incomplete or divergent (% of 7; inserted % rows)',
+            catalog_count, inserted_count;
         END IF;
       END
       $migration$

@@ -10,6 +10,13 @@ const MOD00_CATALOG_SOURCE = readFileSync(
   ),
   'utf8',
 );
+const ACCESS_CONTROL_SERVICE_SOURCE = readFileSync(
+  resolve(
+    __dirname,
+    '../../../../../apps/api/src/modules/access-control/access-control.service.ts',
+  ),
+  'utf8',
+);
 
 describe('SeedExecutionOrderPermissions092', () => {
   const PERMISSION_KEYS = [
@@ -66,13 +73,54 @@ describe('SeedExecutionOrderPermissions092', () => {
     expect(upSql).toContain('apps/api');
   });
 
-  it('mantiene las 7 claves alineadas con la fuente MOD00 sin importarla entre paquetes', () => {
-    PERMISSION_KEYS.forEach((key) => {
-      const enumMember =
-        key === 'wfm.work_orders.execute'
-          ? 'WFM_WORK_ORDERS_EXECUTE'
-          : key.replaceAll('.', '_').toUpperCase();
-      expect(MOD00_CATALOG_SOURCE).toContain(`AccessPermissionKey.${enumMember}`);
-    });
+  it('demuestra equivalencia integral con MOD00 sin importar entre paquetes', async () => {
+    const query = jest.fn().mockResolvedValue(undefined);
+    await new SeedExecutionOrderPermissions0920000000000().up({ query } as never);
+    const upSql = query.mock.calls[0][0] as string;
+    const rows = [
+      ...upSql.matchAll(
+        /\('([^']+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*(true|false),\s*(true|false)\)/g,
+      ),
+    ];
+    expect(rows).toHaveLength(7);
+
+    rows.forEach(
+      ([
+        ,
+        key,
+        moduleKey,
+        action,
+        description,
+        catalogVersion,
+        availability,
+        isSystem,
+        isActive,
+      ]) => {
+        if (!key || !moduleKey || !action || !description || !catalogVersion || !availability) {
+          throw new Error('Unexpected permission seed row shape');
+        }
+        const enumMember =
+          key === 'wfm.work_orders.execute'
+            ? 'WFM_WORK_ORDERS_EXECUTE'
+            : key.replaceAll('.', '_').toUpperCase();
+        const definition = MOD00_CATALOG_SOURCE.match(
+          new RegExp(`permissionKey: AccessPermissionKey\\.${enumMember},([\\s\\S]*?)\\n\\s*\\},`),
+        )?.[1];
+        expect(definition).toBeDefined();
+        expect(definition).toContain(`moduleKey: '${moduleKey}'`);
+        expect(definition).toContain(`action: '${action}'`);
+        expect(definition).toContain(`description: '${description}'`);
+        expect(definition).toContain('catalogVersion: version');
+        expect(definition).toContain(`AccessPermissionAvailability.${availability}`);
+        expect(catalogVersion).toBe('MOD00_ACCESS_V1');
+        expect(isSystem).toBe('true');
+        expect(isActive).toBe('true');
+      },
+    );
+    expect(MOD00_CATALOG_SOURCE).toContain(
+      'const version = AccessPermissionCatalogVersion.MOD00_ACCESS_V1',
+    );
+    expect(ACCESS_CONTROL_SERVICE_SOURCE).toContain('current.isSystem = true');
+    expect(ACCESS_CONTROL_SERVICE_SOURCE).toContain('current.isActive = true');
   });
 });

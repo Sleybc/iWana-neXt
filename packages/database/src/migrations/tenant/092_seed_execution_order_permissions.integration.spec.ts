@@ -20,6 +20,34 @@ const PERMISSION_KEYS = [
   'wfm.work_orders.execute',
 ] as const;
 
+/** SQL exacto de 092 antes de la corrección: la evidencia debe ser 42P01 real. */
+const HISTORICAL_092_SQL = `
+  INSERT INTO access_permission_catalog
+    (tenant_id, permission_key, module_key, action, description, catalog_version, availability, is_system, is_active)
+  SELECT
+    tenants.tenant_id,
+    seeds.permission_key,
+    seeds.module_key,
+    seeds.action,
+    seeds.description,
+    seeds.catalog_version,
+    seeds.availability,
+    seeds.is_system,
+    seeds.is_active
+  FROM
+    (VALUES
+      ('operations.execution_orders.read', 'operations', 'read', 'Consultar órdenes de ejecución asignadas y supervisadas', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true),
+      ('operations.execution_orders.execute', 'operations', 'execute', 'Ejecutar actividades, evidencias y cierre de órdenes asignadas', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true),
+      ('operations.execution_orders.supervise', 'operations', 'supervise', 'Asignar y supervisar órdenes de ejecución', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true),
+      ('operations.execution_order_templates.read', 'operations', 'read', 'Consultar plantillas de ejecución', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true),
+      ('operations.execution_order_templates.manage', 'operations', 'manage', 'Administrar versiones de plantillas de ejecución', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true),
+      ('operations.execution_events.redrive', 'operations', 'redrive', 'Reintentar eventos fallidos de ejecución con ticket operativo', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true),
+      ('wfm.work_orders.execute', 'wfm', 'execute', 'Ejecutar órdenes de trabajo asignadas [DEPRECADO: usar operations.execution_orders.execute]', 'MOD00_ACCESS_V1', 'ASSIGNABLE', true, true)
+    ) AS seeds(permission_key, module_key, action, description, catalog_version, availability, is_system, is_active)
+  CROSS JOIN LATERAL (SELECT id AS tenant_id FROM tenant_settings LIMIT 1) AS tenants
+  ON CONFLICT (tenant_id, permission_key) DO NOTHING
+`;
+
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 
@@ -210,12 +238,11 @@ describeWithDb('092 execution-order permission seed — PostgreSQL real', () => 
   });
 
   it('conserva evidencia reproducible del rojo histórico 42P01 sin romper el seed', async () => {
-    // Evidencia del defecto original: 092 consultaba tenant_settings, relación
-    // inexistente. La consulta se ejecuta aislada; la migración corregida no la
-    // ejecuta ni depende de que el estado productivo permanezca roto.
-    await expect(runners[0]?.query('SELECT 1 FROM tenant_settings')).rejects.toMatchObject({
-      code: '42P01',
-    });
+    // Ejecuta el SQL histórico exacto en el schema aislado. La migración
+    // corregida no lo ejecuta ni depende de que el estado productivo permanezca roto.
+    const runner = runners[0];
+    if (!runner) throw new Error('Expected first PostgreSQL query runner');
+    await expect(runner.query(HISTORICAL_092_SQL)).rejects.toMatchObject({ code: '42P01' });
   });
 
   it('ejecuta 089→095 contra los dos schemas de prueba', async () => {
