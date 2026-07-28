@@ -148,6 +148,25 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  nginx-prod:
+    image: nginx:alpine
+    container_name: iwana_nginx_prod
+    profiles:
+      - production
+    ports:
+      - '${PROXY_HTTP_PORT:-80}:80'
+      - '${PROXY_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./secrets:/etc/nginx/secrets:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- https://127.0.0.1/ --no-check-certificate || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   adminer:
     image: adminer:latest
     container_name: iwana_adminer_dev

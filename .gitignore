@@ -24,6 +24,7 @@ apps/api/storage/
 secrets/*.pem
 secrets/*.key
 secrets/*.p12
+secrets/*.crt
 
 # Logs
 *.log
