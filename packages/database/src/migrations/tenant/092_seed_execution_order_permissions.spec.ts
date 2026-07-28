@@ -27,12 +27,10 @@ describe('SeedExecutionOrderPermissions092', () => {
     expect(upSql).toContain('INSERT INTO access_permission_catalog');
     expect(upSql).toContain('ON CONFLICT (tenant_id, permission_key) DO NOTHING');
 
-    // down: DELETE con array de claves
-    expect(downSql).toContain('DELETE FROM access_permission_catalog');
-    expect(downSql).toContain('permission_key = ANY($1)');
-
-    // down recibe el array exacto de claves sembradas
-    expect(downParams).toEqual([PERMISSION_KEYS]);
+    // down no borra filas compartidas con el seeder runtime de MOD00.
+    expect(downSql).toContain('SELECT 1');
+    expect(downSql).not.toContain('DELETE FROM access_permission_catalog');
+    expect(downParams).toBeUndefined();
 
     // Sin hardcode de schema de tenant
     const allSql = query.mock.calls.map((c: unknown[]) => (c as string[])[0]).join(' ');
@@ -51,6 +49,7 @@ describe('SeedExecutionOrderPermissions092', () => {
 
     // Verifica que el alias deprecado está presente
     expect(upSql).toContain('wfm.work_orders.execute');
-    expect(upSql).toContain('[DEPRECADO');
+    expect(upSql).toContain('RAISE EXCEPTION');
+    expect(upSql).toContain('public.tenants');
   });
 });
