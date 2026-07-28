@@ -173,7 +173,20 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       let releasedCount = 0;
 
       for (const row of claimed.rows) {
-        const [schemaName, executionOrderId] = row.claim_ref.split(':');
+        const parts = row.claim_ref.split(':');
+        if (parts.length !== 2) {
+          await client.query(
+            `UPDATE public.media_assets
+             SET claim_ref = NULL, asset_status = 'AVAILABLE'
+             WHERE id = $1`,
+            [row.id],
+          );
+          releasedCount++;
+          continue;
+        }
+
+        const schemaName = parts[0];
+        const executionOrderId = parts[1];
         if (schemaName === undefined || executionOrderId === undefined) {
           await client.query(
             `UPDATE public.media_assets
