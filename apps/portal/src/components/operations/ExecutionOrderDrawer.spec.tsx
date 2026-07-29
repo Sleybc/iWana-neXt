@@ -463,6 +463,10 @@ describe('ExecutionOrderDrawer', () => {
 
       await user.type(screen.getByLabelText('Item (SKU o descripcion)'), 'item-001');
       await user.type(screen.getByLabelText('Serial o lote'), 'ONT-2026-001');
+      await user.click(screen.getByRole('combobox', { name: 'Acción' }));
+      await user.click(screen.getByRole('option', { name: 'Instalar' }));
+      await user.click(screen.getByRole('combobox', { name: 'Custodia de origen' }));
+      await user.click(screen.getByRole('option', { name: 'Carlos Lopez' }));
       await user.click(screen.getByRole('button', { name: 'Registrar material' }));
 
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
@@ -473,6 +477,28 @@ describe('ExecutionOrderDrawer', () => {
         action: 'INSTALL',
         finalDisposition: 'INSTALLED_AT_CUSTOMER',
       });
+    });
+
+    it('bloquea el registro hasta seleccionar acción y custodia', () => {
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+      expect(screen.getByLabelText('Acción')).toBeInTheDocument();
+      expect(screen.getByLabelText('Custodia de origen')).toBeInTheDocument();
+    });
+
+    it('muestra estado vacío cuando la OT no tiene custodia elegible', () => {
+      const { assignee: _assignee, ...orderWithoutAssignee } = detailFactory({
+        status: ExecutionOrderStatus.IN_PROGRESS,
+      });
+      renderDrawer({
+        order: orderWithoutAssignee,
+      });
+
+      expect(
+        screen.getByText('La orden no tiene una custodia técnica o de cuadrilla elegible.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
     });
 
     it('conserva el requirementKey real al subir evidencia', async () => {

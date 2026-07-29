@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Badge, Button, Input, ProgressMeter, Select, OperationalSidePeek } from '@iwana/ui';
 import {
   ExecutionOrderResult,
@@ -53,6 +53,14 @@ interface ExecutionOrderDrawerProps {
   onUnblock?: (payload: { resolutionCode: string; note?: string }) => Promise<void>;
   onCloseOrder: (payload: CloseExecutionOrderDto) => Promise<void>;
   onCreateFollowUp: (reasonCode: string) => Promise<void>;
+  /** Opciones entregadas por el boundary de asignacion; no admite texto libre. */
+  custodyOptions?: ExecutionOrderCustodyOption[];
+}
+
+export interface ExecutionOrderCustodyOption {
+  type: 'TECHNICIAN' | 'CREW';
+  id: string;
+  label: string;
 }
 
 // ─── Labels ─────────────────────────────────────────────────────────────────
@@ -163,6 +171,7 @@ export function ExecutionOrderDrawer({
   onUnblock,
   onCloseOrder,
   onCreateFollowUp,
+  custodyOptions,
 }: ExecutionOrderDrawerProps) {
   const terminal = order ? TERMINAL_STATUSES.has(order.status) : false;
   const forbidden = order ? order.allowedActions === null : false;
@@ -189,9 +198,8 @@ export function ExecutionOrderDrawer({
   const [itemId, setItemId] = useState('');
   const [itemQty, setItemQty] = useState('1');
   const [itemSerial, setItemSerial] = useState('');
-  const [itemAction, setItemAction] = useState<ExecutionOrderItemAction>(
-    ExecutionOrderItemAction.INSTALL,
-  );
+  const [itemAction, setItemAction] = useState<ExecutionOrderItemAction | ''>('');
+  const [selectedCustodyId, setSelectedCustodyId] = useState('');
   const [itemDisposition, setItemDisposition] = useState<InventoryDisposition>(
     InventoryDisposition.INSTALLED_AT_CUSTOMER,
   );
@@ -204,6 +212,15 @@ export function ExecutionOrderDrawer({
   const [closeSummary, setCloseSummary] = useState('');
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [followUpReason, setFollowUpReason] = useState('');
+  const [blockReason, setBlockReason] = useState('');
+  const [unblockReason, setUnblockReason] = useState('');
+
+  useEffect(() => {
+    setItemAction('');
+    setSelectedCustodyId('');
+    setBlockReason('');
+    setUnblockReason('');
+  }, [order?.id]);
 
   // Evidencia — file input ref
   const evidenceFileRef = useRef<HTMLInputElement>(null);
@@ -233,12 +250,42 @@ export function ExecutionOrderDrawer({
 
   const actionOptions = useMemo(
     () => [
-      { value: 'INSTALL', label: 'Instalar' },
-      { value: 'CONSUME', label: 'Consumir' },
-      { value: 'RETURN', label: 'Devolver' },
-      { value: 'REMOVE', label: 'Retirar' },
+      { value: ExecutionOrderItemAction.INSTALL, label: 'Instalar' },
+      { value: ExecutionOrderItemAction.CONSUME, label: 'Consumir' },
+      { value: ExecutionOrderItemAction.RETURN, label: 'Devolver' },
+      { value: ExecutionOrderItemAction.REMOVE, label: 'Retirar' },
     ],
     [],
+  );
+
+  const resolvedCustodyOptions = useMemo<ExecutionOrderCustodyOption[]>(
+    () =>
+      custodyOptions ??
+      (order?.assignee?.id && order.assignee.type
+        ? [
+            {
+              type: order.assignee.type,
+              id: order.assignee.id,
+              label: order.assignee.displayLabel ?? 'Custodia asignada',
+            },
+          ]
+        : []),
+    [custodyOptions, order?.assignee],
+  );
+
+  const custodySelectOptions = useMemo(
+    () => resolvedCustodyOptions.map(({ id, label }) => ({ value: id, label })),
+    [resolvedCustodyOptions],
+  );
+
+  const reasonOptions = useMemo(
+    () =>
+      (template?.reasonCatalogs ?? []).map((value, index) => ({
+        value,
+        // El contrato actual no entrega labels ni aplicabilidad por comando.
+        label: `Motivo disponible ${index + 1}`,
+      })),
+    [template?.reasonCatalogs],
   );
 
   const dispositionOptions = useMemo(
@@ -275,10 +322,10 @@ export function ExecutionOrderDrawer({
   const handleRegisterItem = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!itemId.trim()) return;
+      if (!itemId.trim() || !itemAction || !selectedCustodyId) return;
       const payload: Parameters<typeof onRegisterItemUsage>[0] = {
         itemId: itemId.trim(),
-        technicianCustodyId: order?.assignee?.id ?? '',
+        technicianCustodyId: selectedCustodyId,
         quantity: Number(itemQty) || 1,
         action: itemAction,
         finalDisposition: itemDisposition,
@@ -289,13 +336,15 @@ export function ExecutionOrderDrawer({
       setItemId('');
       setItemQty('1');
       setItemSerial('');
+      setItemAction('');
+      setSelectedCustodyId('');
     },
     [
-      order?.assignee?.id,
       itemId,
       itemQty,
       itemSerial,
       itemAction,
+      selectedCustodyId,
       itemDisposition,
       onRegisterItemUsage,
     ],
@@ -485,26 +534,52 @@ export function ExecutionOrderDrawer({
             )}
             {/* Block/Unblock */}
             {canInteract && canUnblock && (
-              <Button
-                type="button"
-                className="mt-4"
-                variant="secondary"
-                disabled={isSubmitting}
-                onClick={() => onUnblock?.({ resolutionCode: 'RESUELTO_EN_CAMPO' })}
-              >
-                Desbloquear OT
-              </Button>
+              <div className="mt-4 space-y-3">
+                <Select
+                  id="eo-unblock-reason"
+                  label="Motivo de desbloqueo"
+                  value={unblockReason}
+                  placeholder="Selecciona un motivo"
+                  options={reasonOptions}
+                  disabled={isSubmitting || reasonOptions.length === 0}
+                  {...(reasonOptions.length === 0
+                    ? { helperText: 'El catálogo de motivos no está disponible.' }
+                    : {})}
+                  onChange={(e) => setUnblockReason(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={isSubmitting || !unblockReason}
+                  onClick={() => onUnblock?.({ resolutionCode: unblockReason })}
+                >
+                  Desbloquear OT
+                </Button>
+              </div>
             )}
             {canInteract && canBlock && (
-              <Button
-                type="button"
-                className="mt-4"
-                variant="softDestructive"
-                disabled={isSubmitting}
-                onClick={() => onBlock?.({ reasonCode: 'BLOQUEO_CAMPO' })}
-              >
-                Bloquear OT
-              </Button>
+              <div className="mt-4 space-y-3">
+                <Select
+                  id="eo-block-reason"
+                  label="Motivo de bloqueo"
+                  value={blockReason}
+                  placeholder="Selecciona un motivo"
+                  options={reasonOptions}
+                  disabled={isSubmitting || reasonOptions.length === 0}
+                  {...(reasonOptions.length === 0
+                    ? { helperText: 'El catálogo de motivos no está disponible.' }
+                    : {})}
+                  onChange={(e) => setBlockReason(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="softDestructive"
+                  disabled={isSubmitting || !blockReason}
+                  onClick={() => onBlock?.({ reasonCode: blockReason })}
+                >
+                  Bloquear OT
+                </Button>
+              </div>
             )}
           </section>
 
@@ -772,6 +847,34 @@ export function ExecutionOrderDrawer({
                     placeholder="Opcional"
                   />
                   <Select
+                    id="eo-item-action"
+                    label="Acción"
+                    value={itemAction}
+                    placeholder="Selecciona una acción"
+                    options={actionOptions}
+                    disabled={isSubmitting}
+                    onChange={(e) => setItemAction(e.target.value as ExecutionOrderItemAction)}
+                  />
+                  <Select
+                    id="eo-item-custody"
+                    label="Custodia de origen"
+                    value={selectedCustodyId}
+                    placeholder={
+                      resolvedCustodyOptions.length > 0
+                        ? 'Selecciona una custodia'
+                        : 'No hay custodia elegible'
+                    }
+                    options={custodySelectOptions}
+                    disabled={isSubmitting || resolvedCustodyOptions.length === 0}
+                    {...(resolvedCustodyOptions.length === 0
+                      ? {
+                          helperText:
+                            'La orden no tiene una custodia técnica o de cuadrilla elegible.',
+                        }
+                      : {})}
+                    onChange={(e) => setSelectedCustodyId(e.target.value)}
+                  />
+                  <Select
                     id="eo-item-disposition"
                     label="Destino"
                     value={itemDisposition}
@@ -783,7 +886,9 @@ export function ExecutionOrderDrawer({
                 <Button
                   type="submit"
                   variant="secondary"
-                  disabled={isSubmitting || itemId.trim().length === 0}
+                  disabled={
+                    isSubmitting || itemId.trim().length === 0 || !itemAction || !selectedCustodyId
+                  }
                 >
                   Registrar material
                 </Button>
