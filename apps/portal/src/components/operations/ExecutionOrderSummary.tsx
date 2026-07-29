@@ -1,4 +1,4 @@
-import { Badge, Button, ProgressMeter } from '@iwana/ui';
+import { Badge, Button, ProgressMeter, SkeletonBlock } from '@iwana/ui';
 import type { ExecutionOrderDetail } from '@iwana/shared';
 import { ExecutionOrderStatus } from '@iwana/shared';
 import type { ExecutionOrderRecord } from '@/lib/api-client';
@@ -8,6 +8,7 @@ import {
   EXECUTION_ORDER_STATUS_VARIANTS,
   EXECUTION_ORDER_WORK_TYPE_LABELS,
 } from './operations-labels';
+import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 
 type SummaryOrder = ExecutionOrderDetail | ExecutionOrderRecord;
 export type ExecutionOrderAvailability = 'linked' | 'unlinked' | 'unavailable';
@@ -15,11 +16,15 @@ export type ExecutionOrderSyncState = 'synced' | 'pending' | 'error' | 'stale' |
 
 export interface ExecutionOrderSummaryProps {
   order: SummaryOrder | null;
+  loading?: boolean;
+  error?: string | null;
+  successMessage?: string | null;
   availability?: ExecutionOrderAvailability;
   syncState?: ExecutionOrderSyncState;
   readonly?: boolean;
   canOpen?: boolean;
   onOpen?: () => void;
+  onRetry?: () => void;
 }
 
 function isDetail(order: SummaryOrder): order is ExecutionOrderDetail {
@@ -48,19 +53,75 @@ export function ExecutionOrderSummary({
   readonly = true,
   canOpen = true,
   onOpen,
+  loading = false,
+  error = null,
+  successMessage = null,
+  onRetry,
 }: ExecutionOrderSummaryProps) {
-  if (availability === 'unlinked') {
+  if (loading) {
     return (
-      <p className="text-sm text-gray-600 dark:text-gray-300">
-        No hay una OT de ejecución vinculada.
-      </p>
+      <section aria-label="Cargando resumen de la OT" aria-busy="true" className="space-y-3">
+        <SkeletonBlock className="h-7 w-2/3" />
+        <SkeletonBlock className="h-28 w-full" />
+        <SkeletonBlock className="h-5 w-full" />
+      </section>
     );
   }
-  if (availability === 'unavailable' || !order) {
+
+  if (error) {
     return (
-      <p className="text-sm text-gray-600 dark:text-gray-300">
-        La OT de ejecución no está disponible.
-      </p>
+      <PortalAlert
+        variant="error"
+        title="No fue posible cargar el resumen"
+        description={error}
+        live="assertive"
+        action={onRetry ? <Button onClick={onRetry}>Reintentar</Button> : undefined}
+      />
+    );
+  }
+
+  if (successMessage) {
+    return (
+      <div className="space-y-4">
+        <PortalAlert variant="success" title="Operación completada" description={successMessage} />
+        {order ? (
+          <ExecutionOrderSummary
+            order={order}
+            availability={availability}
+            syncState={syncState}
+            readonly={readonly}
+            canOpen={canOpen}
+            {...(onOpen ? { onOpen } : {})}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  if (availability === 'unlinked') {
+    return (
+      <PortalEmptyState
+        title="Aún no hay una orden de trabajo vinculada"
+        description="La visita todavía no tiene una orden de trabajo de ejecución asociada."
+      />
+    );
+  }
+  if (availability === 'unavailable') {
+    return (
+      <PortalAlert
+        variant="error"
+        title="Orden no disponible"
+        description="No fue posible consultar la orden de trabajo. Intenta de nuevo más tarde."
+        action={onRetry ? <Button onClick={onRetry}>Reintentar</Button> : undefined}
+      />
+    );
+  }
+  if (!order) {
+    return (
+      <PortalEmptyState
+        title="Aún no hay una orden de trabajo"
+        description="La visita todavía no tiene una orden de trabajo de ejecución asociada."
+      />
     );
   }
 
