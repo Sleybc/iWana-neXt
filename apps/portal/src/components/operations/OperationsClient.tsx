@@ -187,7 +187,20 @@ export function OperationsClient() {
   const [executionOrderError, setExecutionOrderError] = useState<string | null>(null);
   const [isLoadingExecutionOrder, setIsLoadingExecutionOrder] = useState(false);
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
+  const [offline, setOffline] = useState(false);
   const detailRequestRef = useRef(0);
+
+  useEffect(() => {
+    const updateConnectionState = () => setOffline(!navigator.onLine);
+    updateConnectionState();
+    window.addEventListener('online', updateConnectionState);
+    window.addEventListener('offline', updateConnectionState);
+
+    return () => {
+      window.removeEventListener('online', updateConnectionState);
+      window.removeEventListener('offline', updateConnectionState);
+    };
+  }, []);
 
   const responsibleOptions = useMemo(
     () =>
@@ -621,7 +634,7 @@ export function OperationsClient() {
         isLoading={isLoadingExecutionOrder}
         isSubmitting={isSubmittingExecutionOrder}
         error={executionOrderError}
-        offline={false}
+        offline={offline}
         onClose={() => {
           setSelectedExecutionOrder(null);
           setExecutionOrderActivities([]);
@@ -637,9 +650,6 @@ export function OperationsClient() {
         onRegisterItemUsage={handleRegisterExecutionOrderItemUsage}
         onUploadEvidence={handleUploadEvidence}
         onCloseOrder={handleCloseExecutionOrder}
-        onCreateFollowUp={async () => {
-          /* Follow-up creation not implemented via API client yet */
-        }}
       />
     </div>
   );

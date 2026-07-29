@@ -210,7 +210,6 @@ describe('ExecutionOrderDrawer', () => {
         onBlock={jest.fn().mockResolvedValue(undefined)}
         onUnblock={jest.fn().mockResolvedValue(undefined)}
         onCloseOrder={jest.fn().mockResolvedValue(undefined)}
-        onCreateFollowUp={jest.fn().mockResolvedValue(undefined)}
         {...props}
       />,
     );
@@ -299,17 +298,8 @@ describe('ExecutionOrderDrawer', () => {
         expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
         expect(screen.getByText(/La OT esta cerrada/)).toBeInTheDocument();
-      });
-
-      it('shows follow-up creation button', () => {
-        const overrides: Partial<ExecutionOrderDetail> = { status };
-        overrides.result = ExecutionOrderResult.EXECUTED;
-        overrides.allowedActions = ['CREATE_FOLLOW_UP'];
-        renderDrawer({
-          order: detailFactory(overrides),
-        });
-        expect(screen.getByRole('button', { name: 'Crear seguimiento' })).toBeInTheDocument();
       });
     } else {
       it('shows editable controls matching allowedActions', () => {
@@ -535,6 +525,54 @@ describe('ExecutionOrderDrawer', () => {
         result: ExecutionOrderResult.EXECUTED,
         summary: 'Trabajo completado',
       });
+    });
+
+    it('envía customerAcceptance con artifactId y method al cerrar la OT', async () => {
+      const onCloseOrder = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        onCloseOrder,
+      });
+
+      await user.type(screen.getByLabelText('Resumen de cierre'), 'Trabajo completado');
+      await user.type(screen.getByLabelText('Referencia de evidencia'), 'firma-001');
+      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      await user.click(screen.getByRole('option', { name: 'Firma' }));
+      await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
+      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+
+      expect(onCloseOrder).toHaveBeenCalledWith({
+        result: ExecutionOrderResult.EXECUTED,
+        summary: 'Trabajo completado',
+        customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
+      });
+    });
+
+    it('bloquea el cierre si la aceptación del cliente queda incompleta', async () => {
+      const user = userEvent.setup();
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      await user.type(screen.getByLabelText('Resumen de cierre'), 'Trabajo completado');
+      await user.type(screen.getByLabelText('Referencia de evidencia'), 'firma-001');
+
+      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
+      expect(
+        screen.getByText(/Completa la referencia y la forma de aceptación/),
+      ).toBeInTheDocument();
+    });
+
+    it('mantiene la captura en memoria y no usa almacenamiento del navegador', async () => {
+      const setItem = jest.spyOn(Storage.prototype, 'setItem');
+      const user = userEvent.setup();
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      await user.type(screen.getByLabelText('Referencia de evidencia'), 'firma-001');
+      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      await user.click(screen.getByRole('option', { name: 'Firma' }));
+
+      expect(setItem).not.toHaveBeenCalled();
+      setItem.mockRestore();
     });
   });
 
@@ -763,6 +801,7 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
     });
   });
 

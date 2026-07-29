@@ -278,7 +278,11 @@ describe('tasksApi execution order payloads', () => {
     );
     await tasksApi.executionOrders.close(
       'eo-001',
-      { result: ExecutionOrderResult.EXECUTED, summary: 'Trabajo completado' },
+      {
+        result: ExecutionOrderResult.EXECUTED,
+        summary: 'Trabajo completado',
+        customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
+      },
       'isp-demo',
     );
 
@@ -301,6 +305,7 @@ describe('tasksApi execution order payloads', () => {
     expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
       result: 'EXECUTED',
       summary: 'Trabajo completado',
+      customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
     });
   });
 });

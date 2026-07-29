@@ -52,10 +52,11 @@ interface ExecutionOrderDrawerProps {
   onBlock?: (payload: { reasonCode: string; note?: string }) => Promise<void>;
   onUnblock?: (payload: { resolutionCode: string; note?: string }) => Promise<void>;
   onCloseOrder: (payload: CloseExecutionOrderDto) => Promise<void>;
-  onCreateFollowUp: (reasonCode: string) => Promise<void>;
   /** Opciones entregadas por el boundary de asignacion; no admite texto libre. */
   custodyOptions?: ExecutionOrderCustodyOption[];
 }
+
+type CustomerAcceptanceMethod = NonNullable<CloseExecutionOrderDto['customerAcceptance']>['method'];
 
 export interface ExecutionOrderCustodyOption {
   type: 'TECHNICIAN' | 'CREW';
@@ -170,13 +171,11 @@ export function ExecutionOrderDrawer({
   onBlock,
   onUnblock,
   onCloseOrder,
-  onCreateFollowUp,
   custodyOptions,
 }: ExecutionOrderDrawerProps) {
   const terminal = order ? TERMINAL_STATUSES.has(order.status) : false;
   const forbidden = order ? order.allowedActions === null : false;
   const canInteract = !terminal && !offline && !forbidden && order !== null;
-  const canReadOnlyInteract = !offline && !forbidden && order !== null;
 
   const canStart = order ? actionAllowed(order, 'START') : false;
   const canRegisterActivity = order ? actionAllowed(order, 'REGISTER_ACTIVITY') : false;
@@ -185,7 +184,6 @@ export function ExecutionOrderDrawer({
   const canClose = order ? actionAllowed(order, 'CLOSE') : false;
   const canBlock = order ? actionAllowed(order, 'BLOCK') : false;
   const canUnblock = order ? actionAllowed(order, 'UNBLOCK') : false;
-  const canFollowUp = order ? actionAllowed(order, 'CREATE_FOLLOW_UP') : false;
 
   // ─── State local ────────────────────────────────────────────────────
 
@@ -210,8 +208,11 @@ export function ExecutionOrderDrawer({
   );
   const [closeReason, setCloseReason] = useState('');
   const [closeSummary, setCloseSummary] = useState('');
+  const [customerAcceptanceArtifactId, setCustomerAcceptanceArtifactId] = useState('');
+  const [customerAcceptanceMethod, setCustomerAcceptanceMethod] = useState<
+    CustomerAcceptanceMethod | ''
+  >('');
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const [followUpReason, setFollowUpReason] = useState('');
   const [blockReason, setBlockReason] = useState('');
   const [unblockReason, setUnblockReason] = useState('');
 
@@ -359,14 +360,34 @@ export function ExecutionOrderDrawer({
     };
     const rc = closeReason.trim();
     if (rc) payload.reasonCode = rc;
+    const artifactId = customerAcceptanceArtifactId.trim();
+    if (artifactId && customerAcceptanceMethod) {
+      payload.customerAcceptance = {
+        artifactId,
+        method: customerAcceptanceMethod,
+      };
+    }
     await onCloseOrder(payload);
-  }, [closeResult, closeReason, closeSummary, onCloseOrder]);
+  }, [
+    closeResult,
+    closeReason,
+    closeSummary,
+    customerAcceptanceArtifactId,
+    customerAcceptanceMethod,
+    onCloseOrder,
+  ]);
 
-  const handleCreateFollowUp = useCallback(async () => {
-    if (!followUpReason.trim()) return;
-    await onCreateFollowUp(followUpReason.trim());
-    setFollowUpReason('');
-  }, [followUpReason, onCreateFollowUp]);
+  const customerAcceptanceIncomplete =
+    customerAcceptanceArtifactId.trim().length > 0 !== Boolean(customerAcceptanceMethod);
+
+  const customerAcceptanceMethodOptions = useMemo(
+    () => [
+      { value: 'SIGNATURE', label: 'Firma' },
+      { value: 'OTP', label: 'Código de verificación' },
+      { value: 'OTHER', label: 'Otra forma' },
+    ],
+    [],
+  );
 
   // ─── Render ─────────────────────────────────────────────────────────
 
@@ -735,6 +756,7 @@ export function ExecutionOrderDrawer({
                     placeholder="Describe el trabajo realizado..."
                   />
                 </label>
+
                 <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                   <input
                     type="checkbox"
@@ -1048,25 +1070,6 @@ export function ExecutionOrderDrawer({
                     Cerrada el {dateFormatter(order.completion.closedAt)}
                   </p>
                 )}
-                {canReadOnlyInteract && canFollowUp && (
-                  <div className="mt-3 space-y-2">
-                    <Input
-                      id="eo-follow-up-reason"
-                      label="Motivo de seguimiento"
-                      value={followUpReason}
-                      disabled={isSubmitting}
-                      onChange={(e) => setFollowUpReason(e.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={isSubmitting || followUpReason.trim().length === 0}
-                      onClick={handleCreateFollowUp}
-                    >
-                      Crear seguimiento
-                    </Button>
-                  </div>
-                )}
               </div>
             ) : canInteract && canClose ? (
               /* Close form */
@@ -1098,6 +1101,39 @@ export function ExecutionOrderDrawer({
                   />
                 </label>
 
+                <fieldset className="space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border">
+                  <legend className="px-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                    Aceptación del cliente (opcional)
+                  </legend>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Registra la referencia de la evidencia y cómo fue aceptado el trabajo.
+                  </p>
+                  <Input
+                    id="eo-customer-acceptance-artifact"
+                    label="Referencia de evidencia"
+                    value={customerAcceptanceArtifactId}
+                    disabled={isSubmitting}
+                    onChange={(e) => setCustomerAcceptanceArtifactId(e.target.value)}
+                    placeholder="Ej. firma-001"
+                  />
+                  <Select
+                    id="eo-customer-acceptance-method"
+                    label="Forma de aceptación"
+                    value={customerAcceptanceMethod}
+                    placeholder="Selecciona una forma"
+                    options={customerAcceptanceMethodOptions}
+                    disabled={isSubmitting}
+                    onChange={(e) =>
+                      setCustomerAcceptanceMethod(e.target.value as CustomerAcceptanceMethod)
+                    }
+                  />
+                  {customerAcceptanceIncomplete && (
+                    <p className="text-xs text-amber-800 dark:text-amber-200" role="alert">
+                      Completa la referencia y la forma de aceptación para enviarlas.
+                    </p>
+                  )}
+                </fieldset>
+
                 {/* Incomplete requirements */}
                 {template && order.completion.progress < 100 && (
                   <PortalAlert
@@ -1110,7 +1146,11 @@ export function ExecutionOrderDrawer({
                 {!closeConfirmOpen ? (
                   <Button
                     type="button"
-                    disabled={isSubmitting || closeSummary.trim().length === 0}
+                    disabled={
+                      isSubmitting ||
+                      closeSummary.trim().length === 0 ||
+                      customerAcceptanceIncomplete
+                    }
                     onClick={() => setCloseConfirmOpen(true)}
                   >
                     Cerrar OT
