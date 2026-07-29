@@ -378,6 +378,24 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByText('Foto de instalacion')).toBeInTheDocument();
       expect(screen.getByText('Serial ONT')).toBeInTheDocument();
     });
+
+    it('shows actionable closure gaps without exposing internal identifiers', () => {
+      renderDrawer({
+        missingRequirements: [
+          {
+            requirementId: 'req-photo-install',
+            label: 'Foto de instalación',
+            kind: 'EVIDENCE',
+            reason: 'Adjunta una foto de la instalación.',
+          },
+        ],
+      });
+
+      expect(screen.getByRole('alert', { name: 'Requisitos pendientes' })).toHaveTextContent(
+        'Adjunta una foto de la instalación.',
+      );
+      expect(screen.queryByText('req-photo-install')).not.toBeInTheDocument();
+    });
   });
 
   // ----------------------------------------------------
@@ -507,6 +525,17 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByText('Confirmado')).toBeInTheDocument();
     });
 
+    it('does not expose item UUID when no serial is available', () => {
+      const { serial: _serial, ...usageWithoutSerial } = itemUsageFactory()[0]!;
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        itemUsage: [usageWithoutSerial],
+      });
+
+      expect(screen.getByText('Material registrado')).toBeInTheDocument();
+      expect(screen.queryByText('item-001')).not.toBeInTheDocument();
+    });
+
     it('shows empty message when no items', () => {
       renderDrawer({ itemUsage: [] });
       expect(screen.getByText(/Aun no hay consumos registrados/)).toBeInTheDocument();
@@ -553,7 +582,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         evidence: evidenceFactory(),
       });
-      expect(screen.getByText(/req-photo-install/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Foto de instalacion/).length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Disponible')).toBeInTheDocument();
     });
 

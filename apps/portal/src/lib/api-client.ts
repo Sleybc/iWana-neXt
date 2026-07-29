@@ -105,6 +105,7 @@ import {
   type CloseExecutionOrderCommand,
   type RegisterEvidenceCommand,
   type EvidenceAssetReceipt,
+  type ExecutionOrderTemplateVersion,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 import { PICKER_SOFT_CAP } from './picker-soft-cap';
@@ -179,6 +180,7 @@ export class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly details?: unknown,
+    public readonly missingRequirements?: unknown[],
   ) {
     super(message);
     this.name = 'ApiError';
@@ -463,7 +465,8 @@ async function request<T>(
       res.status,
       typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
       typeof body['message'] === 'string' ? body['message'] : 'Error del servidor',
-      body['details'],
+      body['details'] ?? body,
+      Array.isArray(body['missingRequirements']) ? body['missingRequirements'] : undefined,
     );
   }
 
@@ -6202,6 +6205,11 @@ export interface ExecutionOrderEvidenceRecord {
   createdAt: string;
 }
 
+export interface ExecutionOrderEvidencePage {
+  data: ExecutionOrderEvidenceRecord[];
+  meta?: { nextCursor?: string | null };
+}
+
 /** DTO legacy derivado del comando congelado de @iwana/shared. */
 export type StartExecutionOrderDto = Omit<StartExecutionOrderCommand, 'note'> & {
   note?: string | null;
@@ -6321,6 +6329,20 @@ export const tasksApi = {
     listItemUsage: (id: string, tenantSlug?: string) =>
       request<ExecutionOrderItemUsageRecord[]>(
         `/tasks/execution-orders/${id}/item-usage`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listEvidence: (id: string, tenantSlug?: string) =>
+      request<ExecutionOrderEvidencePage | ExecutionOrderEvidenceRecord[]>(
+        `/tasks/execution-orders/${id}/evidences?limit=100`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listTemplateVersions: (templateId: string, tenantSlug?: string) =>
+      request<ExecutionOrderTemplateVersion[] | { data: ExecutionOrderTemplateVersion[] }>(
+        `/tasks/execution-order-templates/${templateId}/versions`,
         { returnFullResponse: true },
         tenantSlug,
       ),

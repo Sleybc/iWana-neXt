@@ -7,7 +7,6 @@ import {
   ExecutionOrderStatus,
   ExecutionOrderItemAction,
   InventoryDisposition,
-  WfmWorkType,
 } from '@iwana/shared';
 import type {
   ExecutionOrderAllowedAction,
@@ -20,8 +19,15 @@ import type {
   RegisterActivityCommand,
 } from '@iwana/shared';
 import type { CloseExecutionOrderDto, RegisterExecutionOrderItemUsageDto } from '@/lib/api-client';
+import type { ExecutionOrderMissingRequirement } from './OperationsClient';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
+import {
+  EXECUTION_ORDER_RESULT_LABELS,
+  EXECUTION_ORDER_STATUS_LABELS,
+  EXECUTION_ORDER_STATUS_VARIANTS,
+  EXECUTION_ORDER_WORK_TYPE_LABELS,
+} from './operations-labels';
 import { Camera, FileText, MapPin, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
@@ -33,6 +39,7 @@ interface ExecutionOrderDrawerProps {
   itemUsage: ExecutionOrderItemUsage[];
   evidence: ExecutionOrderEvidence[];
   template: ExecutionOrderTemplateVersion | null;
+  missingRequirements?: ExecutionOrderMissingRequirement[];
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
@@ -49,34 +56,6 @@ interface ExecutionOrderDrawerProps {
 }
 
 // ─── Labels ─────────────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<ExecutionOrderStatus, string> = {
-  [ExecutionOrderStatus.CREATED]: 'Creada',
-  [ExecutionOrderStatus.ASSIGNED]: 'Asignada',
-  [ExecutionOrderStatus.EN_ROUTE]: 'En ruta',
-  [ExecutionOrderStatus.IN_PROGRESS]: 'En progreso',
-  [ExecutionOrderStatus.BLOCKED]: 'Bloqueada',
-  [ExecutionOrderStatus.COMPLETED]: 'Ejecutada',
-  [ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS]: 'Completada con observaciones',
-  [ExecutionOrderStatus.NOT_EXECUTED]: 'No ejecutada',
-  [ExecutionOrderStatus.CANCELLED]: 'Cancelada',
-};
-
-const RESULT_LABELS: Record<ExecutionOrderResult, string> = {
-  [ExecutionOrderResult.EXECUTED]: 'Ejecutada',
-  [ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS]: 'Ejecutada con observaciones',
-  [ExecutionOrderResult.NOT_EXECUTED]: 'No ejecutada',
-  [ExecutionOrderResult.REQUIRES_FOLLOW_UP]: 'Requiere seguimiento',
-  [ExecutionOrderResult.CANCELLED]: 'Cancelada',
-};
-
-const WORK_TYPE_LABELS: Record<WfmWorkType, string> = {
-  INSTALLATION: 'Instalacion',
-  SUPPORT: 'Soporte',
-  TECHNICAL_VISIT: 'Visita tecnica',
-  MAINTENANCE: 'Mantenimiento',
-  RETIREMENT: 'Retiro',
-};
 
 const EVIDENCE_STATUS_LABELS: Record<string, string> = {
   PENDING_ANALYSIS: 'Pendiente de analisis',
@@ -122,18 +101,6 @@ const TERMINAL_STATUSES = new Set<ExecutionOrderStatus>([
 
 function actionAllowed(order: ExecutionOrderDetail, action: ExecutionOrderAllowedAction): boolean {
   return order.allowedActions?.includes(action) === true;
-}
-
-function statusBadgeVariant(
-  status: ExecutionOrderStatus,
-): 'neutral' | 'primary' | 'warning' | 'success' | 'error' | 'lime' {
-  if (status === ExecutionOrderStatus.COMPLETED) return 'lime';
-  if (status === ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS) return 'warning';
-  if (status === ExecutionOrderStatus.BLOCKED) return 'warning';
-  if (status === ExecutionOrderStatus.NOT_EXECUTED) return 'error';
-  if (status === ExecutionOrderStatus.CANCELLED) return 'error';
-  if (status === ExecutionOrderStatus.CREATED) return 'neutral';
-  return 'primary';
 }
 
 function syncStateCopy(state: ExecutionOrderDetail['syncState']): string {
@@ -182,6 +149,7 @@ export function ExecutionOrderDrawer({
   itemUsage,
   evidence = [],
   template = null,
+  missingRequirements = [],
   isLoading,
   isSubmitting,
   error,
@@ -463,15 +431,15 @@ export function ExecutionOrderDrawer({
                   Tipo de trabajo
                 </p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {WORK_TYPE_LABELS[order.workType]}
+                  {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}
                 </p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
                   Estado
                 </p>
-                <Badge className="mt-1" variant={statusBadgeVariant(order.status)}>
-                  {STATUS_LABELS[order.status]}
+                <Badge className="mt-1" variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
+                  {EXECUTION_ORDER_STATUS_LABELS[order.status]}
                 </Badge>
               </div>
               {order.result && (
@@ -480,7 +448,7 @@ export function ExecutionOrderDrawer({
                     Resultado
                   </p>
                   <Badge className="mt-1" variant="neutral">
-                    {RESULT_LABELS[order.result]}
+                    {EXECUTION_ORDER_RESULT_LABELS[order.result]}
                   </Badge>
                 </div>
               )}
@@ -576,6 +544,28 @@ export function ExecutionOrderDrawer({
                 ))}
               </ul>
             )}
+            {missingRequirements.length > 0 && (
+              <div className="mt-4 space-y-2" role="alert" aria-label="Requisitos pendientes">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Para cerrar la OT, completa lo siguiente:
+                </p>
+                <ul className="space-y-2" role="list">
+                  {missingRequirements.map((requirement) => (
+                    <li
+                      key={requirement.requirementId}
+                      className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/30"
+                    >
+                      <p className="font-medium text-amber-950 dark:text-amber-100">
+                        {requirement.label}
+                      </p>
+                      <p className="mt-0.5 text-amber-900 dark:text-amber-200">
+                        {requirement.reason}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {!template && (
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 Revisa los requisitos de la plantilla aplicada antes de cerrar.
@@ -618,7 +608,7 @@ export function ExecutionOrderDrawer({
                                 ? 'Prueba'
                                 : act.activityType === 'NOVELTY'
                                   ? 'Novedad'
-                                  : act.activityType}
+                                  : 'Actividad de campo'}
                       </p>
                       <span className="shrink-0 text-xs text-gray-500 font-mono">
                         {dateFormatter(act.occurredAt ?? act.createdAt)}
@@ -717,7 +707,7 @@ export function ExecutionOrderDrawer({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {usage.serial ?? usage.itemId}
+                          {usage.serial ?? 'Material registrado'}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {ITEM_ACTION_LABELS[usage.action] ?? usage.action} · Cantidad:{' '}
@@ -733,7 +723,8 @@ export function ExecutionOrderDrawer({
                               : 'warning'
                         }
                       >
-                        {MOVEMENT_STATUS_LABELS[usage.movementStatus] ?? usage.movementStatus}
+                        {MOVEMENT_STATUS_LABELS[usage.movementStatus] ??
+                          'Pendiente de conciliación'}
                       </Badge>
                     </div>
                   </article>
@@ -838,7 +829,9 @@ export function ExecutionOrderDrawer({
                           : ev.evidenceType === 'SIGNATURE'
                             ? 'Firma '
                             : 'Documento '}
-                        · {ev.requirementKey}
+                        ·{' '}
+                        {template?.requirements.find((req) => req.key === ev.requirementKey)
+                          ?.label ?? 'Evidencia asociada'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {dateFormatter(ev.capturedAt ?? ev.receivedAt)}
@@ -855,7 +848,7 @@ export function ExecutionOrderDrawer({
                               : 'warning'
                       }
                     >
-                      {EVIDENCE_STATUS_LABELS[ev.status] ?? ev.status}
+                      {EVIDENCE_STATUS_LABELS[ev.status] ?? 'Estado no disponible'}
                     </Badge>
                   </article>
                 ))
@@ -941,7 +934,7 @@ export function ExecutionOrderDrawer({
                             : 'error'
                       }
                     >
-                      {RESULT_LABELS[order.result]}
+                      {EXECUTION_ORDER_RESULT_LABELS[order.result]}
                     </Badge>
                   </div>
                 )}

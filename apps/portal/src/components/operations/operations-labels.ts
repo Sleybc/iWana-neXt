@@ -8,9 +8,53 @@ import {
   TaskStatus,
   TaskTimelineEventType,
   TaskType,
+  ExecutionOrderStatus,
+  ExecutionOrderResult,
+  WfmWorkType,
 } from '@iwana/shared';
 
 export type OperationsBadgeVariant = NonNullable<BadgeProps['variant']>;
+
+export const EXECUTION_ORDER_STATUS_LABELS: Record<ExecutionOrderStatus, string> = {
+  [ExecutionOrderStatus.CREATED]: 'Creada',
+  [ExecutionOrderStatus.ASSIGNED]: 'Asignada',
+  [ExecutionOrderStatus.EN_ROUTE]: 'En ruta',
+  [ExecutionOrderStatus.IN_PROGRESS]: 'En progreso',
+  [ExecutionOrderStatus.BLOCKED]: 'Bloqueada',
+  [ExecutionOrderStatus.COMPLETED]: 'Ejecutada',
+  [ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS]: 'Completada con observaciones',
+  [ExecutionOrderStatus.NOT_EXECUTED]: 'No ejecutada',
+  [ExecutionOrderStatus.CANCELLED]: 'Cancelada',
+};
+
+export const EXECUTION_ORDER_RESULT_LABELS: Record<ExecutionOrderResult, string> = {
+  [ExecutionOrderResult.EXECUTED]: 'Ejecutada',
+  [ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS]: 'Ejecutada con observaciones',
+  [ExecutionOrderResult.NOT_EXECUTED]: 'No ejecutada',
+  [ExecutionOrderResult.REQUIRES_FOLLOW_UP]: 'Requiere seguimiento',
+  [ExecutionOrderResult.CANCELLED]: 'Cancelada',
+};
+
+export const EXECUTION_ORDER_STATUS_VARIANTS: Record<ExecutionOrderStatus, OperationsBadgeVariant> =
+  {
+    [ExecutionOrderStatus.CREATED]: 'neutral',
+    [ExecutionOrderStatus.ASSIGNED]: 'primary',
+    [ExecutionOrderStatus.EN_ROUTE]: 'primary',
+    [ExecutionOrderStatus.IN_PROGRESS]: 'primary',
+    [ExecutionOrderStatus.BLOCKED]: 'warning',
+    [ExecutionOrderStatus.COMPLETED]: 'lime',
+    [ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS]: 'warning',
+    [ExecutionOrderStatus.NOT_EXECUTED]: 'error',
+    [ExecutionOrderStatus.CANCELLED]: 'error',
+  };
+
+export const EXECUTION_ORDER_WORK_TYPE_LABELS: Record<WfmWorkType, string> = {
+  INSTALLATION: 'Instalación',
+  SUPPORT: 'Soporte',
+  TECHNICAL_VISIT: 'Visita técnica',
+  MAINTENANCE: 'Mantenimiento',
+  RETIREMENT: 'Retiro',
+};
 
 const dateTimeFormatter = new Intl.DateTimeFormat('es-CO', {
   dateStyle: 'medium',

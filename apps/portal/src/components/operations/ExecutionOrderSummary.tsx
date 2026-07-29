@@ -1,7 +1,13 @@
 import { Badge, Button, ProgressMeter } from '@iwana/ui';
 import type { ExecutionOrderDetail } from '@iwana/shared';
-import { ExecutionOrderStatus, ExecutionOrderResult, WfmWorkType } from '@iwana/shared';
+import { ExecutionOrderStatus } from '@iwana/shared';
 import type { ExecutionOrderRecord } from '@/lib/api-client';
+import {
+  EXECUTION_ORDER_RESULT_LABELS,
+  EXECUTION_ORDER_STATUS_LABELS,
+  EXECUTION_ORDER_STATUS_VARIANTS,
+  EXECUTION_ORDER_WORK_TYPE_LABELS,
+} from './operations-labels';
 
 type SummaryOrder = ExecutionOrderDetail | ExecutionOrderRecord;
 export type ExecutionOrderAvailability = 'linked' | 'unlinked' | 'unavailable';
@@ -15,34 +21,6 @@ export interface ExecutionOrderSummaryProps {
   canOpen?: boolean;
   onOpen?: () => void;
 }
-
-const STATUS_LABELS: Record<ExecutionOrderStatus, string> = {
-  [ExecutionOrderStatus.CREATED]: 'Creada',
-  [ExecutionOrderStatus.ASSIGNED]: 'Asignada',
-  [ExecutionOrderStatus.EN_ROUTE]: 'En ruta',
-  [ExecutionOrderStatus.IN_PROGRESS]: 'En progreso',
-  [ExecutionOrderStatus.BLOCKED]: 'Bloqueada',
-  [ExecutionOrderStatus.COMPLETED]: 'Completada',
-  [ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS]: 'Completada con observaciones',
-  [ExecutionOrderStatus.NOT_EXECUTED]: 'No ejecutada',
-  [ExecutionOrderStatus.CANCELLED]: 'Cancelada',
-};
-
-const RESULT_LABELS: Record<ExecutionOrderResult, string> = {
-  [ExecutionOrderResult.EXECUTED]: 'Ejecutada',
-  [ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS]: 'Ejecutada con observaciones',
-  [ExecutionOrderResult.NOT_EXECUTED]: 'No ejecutada',
-  [ExecutionOrderResult.REQUIRES_FOLLOW_UP]: 'Requiere seguimiento',
-  [ExecutionOrderResult.CANCELLED]: 'Cancelada',
-};
-
-const WORK_TYPE_LABELS: Record<WfmWorkType, string> = {
-  INSTALLATION: 'Instalación',
-  SUPPORT: 'Soporte',
-  TECHNICAL_VISIT: 'Visita técnica',
-  MAINTENANCE: 'Mantenimiento',
-  RETIREMENT: 'Retiro',
-};
 
 function isDetail(order: SummaryOrder): order is ExecutionOrderDetail {
   return 'number' in order;
@@ -89,7 +67,7 @@ export function ExecutionOrderSummary({
   const number = isDetail(order) ? order.number : order.executionOrderNumber;
   const status = order.status;
   const result = order.result;
-  const workType = WORK_TYPE_LABELS[order.workType] ?? 'Trabajo operativo';
+  const workType = EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType] ?? 'Trabajo operativo';
   const window = isDetail(order)
     ? order.schedule.window
     : { startAt: order.plannedWindowStartAt, endAt: order.plannedWindowEndAt };
@@ -122,18 +100,10 @@ export function ExecutionOrderSummary({
           <span className="font-mono">{number}</span>
         </Badge>
         <Badge variant="info">{workType}</Badge>
-        <Badge
-          variant={
-            status === ExecutionOrderStatus.BLOCKED
-              ? 'warning'
-              : status === ExecutionOrderStatus.CANCELLED
-                ? 'error'
-                : 'success'
-          }
-        >
-          {STATUS_LABELS[status]}
+        <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[status]}>
+          {EXECUTION_ORDER_STATUS_LABELS[status]}
         </Badge>
-        {result ? <Badge variant="neutral">{RESULT_LABELS[result]}</Badge> : null}
+        {result ? <Badge variant="neutral">{EXECUTION_ORDER_RESULT_LABELS[result]}</Badge> : null}
       </div>
       <div className="grid gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
         <div>

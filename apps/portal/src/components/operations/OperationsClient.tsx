@@ -66,6 +66,53 @@ function mapOperationsError(error: unknown): string {
   return 'No fue posible completar la operacion. Intenta de nuevo.';
 }
 
+export interface ExecutionOrderMissingRequirement {
+  requirementId: string;
+  label: string;
+  kind: string;
+  reason: string;
+}
+
+export function getMissingRequirements(error: unknown): ExecutionOrderMissingRequirement[] {
+  if (!(error instanceof ApiError)) return [];
+  const details = error.details;
+  const values =
+    error.missingRequirements ??
+    (details && typeof details === 'object'
+      ? (details as { missingRequirements?: unknown }).missingRequirements
+      : undefined);
+  if (!Array.isArray(values)) return [];
+
+  return values.flatMap((value): ExecutionOrderMissingRequirement[] => {
+    if (typeof value === 'string') {
+      return [
+        { requirementId: value, label: value, kind: 'OTHER', reason: 'Requisito pendiente.' },
+      ];
+    }
+    if (!value || typeof value !== 'object') return [];
+    const requirement = value as Record<string, unknown>;
+    if (
+      typeof requirement.requirementId !== 'string' ||
+      typeof requirement.label !== 'string' ||
+      typeof requirement.reason !== 'string'
+    ) {
+      return [];
+    }
+    return [
+      {
+        requirementId: requirement.requirementId,
+        label: requirement.label,
+        kind: typeof requirement.kind === 'string' ? requirement.kind : 'OTHER',
+        reason: requirement.reason,
+      },
+    ];
+  });
+}
+
+function collectionData<T>(value: T[] | { data: T[] }): T[] {
+  return Array.isArray(value) ? value : value.data;
+}
+
 async function loadOperationalUsers(): Promise<InternalUser[]> {
   const collected = new Map<string, InternalUser>();
   let cursor: string | undefined;
@@ -134,6 +181,9 @@ export function OperationsClient() {
   );
   const [executionOrderTemplate, setExecutionOrderTemplate] =
     useState<ExecutionOrderTemplateVersion | null>(null);
+  const [executionOrderMissingRequirements, setExecutionOrderMissingRequirements] = useState<
+    ExecutionOrderMissingRequirement[]
+  >([]);
   const [executionOrderError, setExecutionOrderError] = useState<string | null>(null);
   const [isLoadingExecutionOrder, setIsLoadingExecutionOrder] = useState(false);
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
@@ -225,20 +275,37 @@ export function OperationsClient() {
     setIsLoadingExecutionOrder(true);
     setExecutionOrderError(null);
     try {
-      const [order, activities, itemUsage] = await Promise.all([
+      const [order, activities, itemUsage, evidence] = await Promise.all([
         tasksApi.executionOrders.get(executionOrderId),
         tasksApi.executionOrders.listActivities(executionOrderId),
         tasksApi.executionOrders.listItemUsage(executionOrderId),
+        tasksApi.executionOrders.listEvidence(executionOrderId),
       ]);
       setSelectedExecutionOrder(order as unknown as ExecutionOrderDetail);
       setExecutionOrderActivities(activities as unknown as ExecutionOrderActivity[]);
       setExecutionOrderItemUsage(itemUsage as unknown as ExecutionOrderItemUsage[]);
+      setExecutionOrderEvidence(collectionData(evidence) as unknown as ExecutionOrderEvidence[]);
+      const templateReference = (order as unknown as ExecutionOrderDetail).template;
+      if (templateReference?.id) {
+        const versions = await tasksApi.executionOrders.listTemplateVersions(templateReference.id);
+        const templateVersions = collectionData(versions);
+        setExecutionOrderTemplate(
+          templateVersions.find((version) => version.version === templateReference.version) ??
+            templateVersions[0] ??
+            null,
+        );
+      } else {
+        setExecutionOrderTemplate(null);
+      }
+      setExecutionOrderMissingRequirements([]);
     } catch (loadError) {
       setExecutionOrderError(mapOperationsError(loadError));
       setSelectedExecutionOrder(null);
       setExecutionOrderActivities([]);
       setExecutionOrderItemUsage([]);
       setExecutionOrderEvidence([]);
+      setExecutionOrderTemplate(null);
+      setExecutionOrderMissingRequirements([]);
     } finally {
       setIsLoadingExecutionOrder(false);
     }
@@ -413,6 +480,7 @@ export function OperationsClient() {
       await refreshExecutionOrder(selectedExecutionOrder.id);
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
+      setExecutionOrderMissingRequirements(getMissingRequirements(error));
     } finally {
       setIsSubmittingExecutionOrder(false);
     }
@@ -549,6 +617,7 @@ export function OperationsClient() {
         itemUsage={executionOrderItemUsage}
         evidence={executionOrderEvidence}
         template={executionOrderTemplate}
+        missingRequirements={executionOrderMissingRequirements}
         isLoading={isLoadingExecutionOrder}
         isSubmitting={isSubmittingExecutionOrder}
         error={executionOrderError}
@@ -560,6 +629,7 @@ export function OperationsClient() {
           setExecutionOrderEvidence([]);
           setExecutionOrderError(null);
           setExecutionOrderTemplate(null);
+          setExecutionOrderMissingRequirements([]);
           router.replace('/dashboard/operations');
         }}
         onStart={handleStartExecutionOrder}
