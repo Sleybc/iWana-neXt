@@ -28,6 +28,15 @@ describe('ExecutionOrderSummary', () => {
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
   });
 
+  it('muestra copy informativo sin CTA cuando la OT no está disponible', () => {
+    render(<ExecutionOrderSummary order={null} availability="unavailable" />);
+
+    expect(
+      screen.getByText(/La información estará disponible cuando se sincronice nuevamente/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+  });
+
   it('muestra success sin ocultar el resumen', () => {
     render(<ExecutionOrderSummary order={null} successMessage="La orden quedó sincronizada." />);
     expect(screen.getByText('Operación completada')).toBeInTheDocument();

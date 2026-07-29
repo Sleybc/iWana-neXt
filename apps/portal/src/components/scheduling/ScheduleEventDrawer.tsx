@@ -35,7 +35,7 @@ export interface ScheduleEventDrawerProps {
   canReschedule: boolean;
   isLoading: boolean;
   error: string | null;
-  onRetry: () => Promise<void>;
+  onRetry?: () => Promise<void>;
 }
 
 function formatChangeTimestamp(date: string): string {
@@ -93,9 +93,11 @@ export function ScheduleEventDrawer({
           title="No fue posible cargar el detalle"
           description={error}
           action={
-            <Button type="button" variant="secondary" onClick={() => void onRetry()}>
-              Reintentar
-            </Button>
+            onRetry ? (
+              <Button type="button" variant="secondary" onClick={() => void onRetry()}>
+                Reintentar
+              </Button>
+            ) : undefined
           }
         />
       ) : !event ? (

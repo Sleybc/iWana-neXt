@@ -12,7 +12,7 @@ export function buildInternalUserLabel(user: InternalUser): string {
     return user.email;
   }
 
-  return `Usuario ${user.id.slice(0, 8)}`;
+  return 'Usuario del equipo';
 }
 
 export async function loadTenantUsers(): Promise<InternalUser[]> {

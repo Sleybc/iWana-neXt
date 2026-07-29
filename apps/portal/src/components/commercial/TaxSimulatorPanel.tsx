@@ -186,7 +186,7 @@ export function TaxSimulatorPanel() {
                       {resolveDefinitionLabel(snap.taxDefinitionId)}
                     </p>
                     {index === 0 ? (
-                      <Badge variant="lime" className="text-xs">
+                      <Badge variant="success" className="text-xs">
                         Regla ganadora
                       </Badge>
                     ) : null}

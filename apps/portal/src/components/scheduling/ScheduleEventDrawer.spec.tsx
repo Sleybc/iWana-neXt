@@ -53,9 +53,18 @@ describe('ScheduleEventDrawer — coordinación', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('no muestra reintento si no recibe un handler efectivo', () => {
+    const { onRetry: _onRetry, ...propsWithoutRetry } = baseProps;
+    render(<ScheduleEventDrawer {...propsWithoutRetry} error="Servicio no disponible" />);
+
+    expect(screen.getByText('No fue posible cargar el detalle')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+  });
+
   it('muestra estado vacío cuando no hay evento', () => {
     render(<ScheduleEventDrawer {...baseProps} event={null} />);
     expect(screen.getByText('Evento no disponible')).toBeInTheDocument();
+    expect(screen.getByText(/Selecciona otro evento/)).toBeInTheDocument();
   });
 
   // ─── Positive: contexto operativo ───
@@ -88,6 +97,7 @@ describe('ScheduleEventDrawer — coordinación', () => {
   it('muestra la sección de resumen de OT', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
     expect(screen.getByText('Resumen de la OT')).toBeInTheDocument();
+    expect(screen.getByText(/Aún no hay una orden de trabajo vinculada/)).toBeInTheDocument();
   });
 
   it('muestra el enlace "Abrir OT de ejecución" cuando hay executionOrderId', () => {
@@ -99,6 +109,14 @@ describe('ScheduleEventDrawer — coordinación', () => {
   it('no muestra enlace a OT cuando no hay executionOrderId', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
     expect(screen.queryByRole('link', { name: 'Abrir OT de ejecución' })).not.toBeInTheDocument();
+  });
+
+  it('explica cuando la OT vinculada aún no está disponible sin ofrecer una acción inefectiva', () => {
+    const event = { ...baseEvent, executionOrderId: 'eo-001' };
+    render(<ScheduleEventDrawer {...baseProps} event={event} />);
+
+    expect(screen.getByText('Orden no disponible')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reintentar/ })).not.toBeInTheDocument();
   });
 
   // ─── Positive: acción de coordinación ───

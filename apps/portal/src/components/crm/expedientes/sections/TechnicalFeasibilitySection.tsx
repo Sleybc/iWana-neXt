@@ -317,7 +317,7 @@ export function TechnicalFeasibilitySection({
             </p>
           </div>
           {selectedTechnologies.length > 0 && (
-            <Badge variant="lime" className="h-6 px-2.5 text-[11px]">
+            <Badge variant="success" className="h-6 px-2.5 text-[11px]">
               {selectedTechnologies.length}{' '}
               {selectedTechnologies.length === 1 ? 'opción' : 'opciones'}
             </Badge>

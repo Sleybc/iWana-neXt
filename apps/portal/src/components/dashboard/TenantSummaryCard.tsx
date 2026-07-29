@@ -10,7 +10,7 @@ interface TenantSummaryCardProps {
 }
 
 /** Mapea el estado del tenant a variante visual de Badge */
-function statusVariant(status: TenantSelf['status']): 'lime' | 'warning' | 'error' | 'neutral' {
+function statusVariant(status: TenantSelf['status']): 'success' | 'warning' | 'error' | 'neutral' {
   if (status === 'ACTIVE') return portalActiveBadgeVariant;
   if (status === 'SUSPENDED') return 'error';
   if (status === 'PROVISIONING') return 'warning';

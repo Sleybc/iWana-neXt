@@ -57,7 +57,7 @@ export const ASSURANCE_TICKET_STATUS_VARIANTS: Record<TicketStatus, AssuranceBad
   [TicketStatus.ASSIGNED]: 'primary',
   [TicketStatus.IN_PROGRESS]: 'warning',
   [TicketStatus.PENDING_CUSTOMER]: 'info',
-  [TicketStatus.PENDING_INTERNAL]: 'lime',
+  [TicketStatus.PENDING_INTERNAL]: 'neutral',
   [TicketStatus.FIELD_SERVICE_REQUESTED]: 'warning',
   [TicketStatus.RESOLVED]: 'success',
   [TicketStatus.CLOSED]: 'success',

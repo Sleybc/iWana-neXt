@@ -111,7 +111,11 @@ export function ExecutionOrderSummary({
       <PortalAlert
         variant="error"
         title="Orden no disponible"
-        description="No fue posible consultar la orden de trabajo. Intenta de nuevo más tarde."
+        description={
+          onRetry
+            ? 'No fue posible consultar la orden de trabajo. Intenta de nuevo más tarde.'
+            : 'No fue posible consultar la orden de trabajo. La información estará disponible cuando se sincronice nuevamente.'
+        }
         action={onRetry ? <Button onClick={onRetry}>Reintentar</Button> : undefined}
       />
     );

@@ -475,7 +475,7 @@ function MonthAgenda({ days, onOpenDay }: Pick<ScheduleCalendarProps, 'days' | '
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="primary">{scheduledDays} días con agenda</Badge>
-        <Badge variant="lime">{freeDays} días despejados</Badge>
+        <Badge variant="success">{freeDays} días despejados</Badge>
         <Badge variant={demandingDays > 0 ? 'warning' : 'neutral'}>
           {demandingDays} jornadas exigentes
         </Badge>

@@ -165,6 +165,21 @@ function evidenceFactory(): ExecutionOrderEvidence[] {
   ];
 }
 
+function customerSignatureEvidenceFactory(): ExecutionOrderEvidence[] {
+  return [
+    {
+      id: 'ev-signature-001',
+      mediaAssetId: 'ma-signature-001',
+      evidenceType: 'SIGNATURE',
+      requirementKey: 'CUSTOMER_SIGNATURE',
+      capturedAt: '2026-07-27T15:10:00.000Z',
+      receivedAt: '2026-07-27T15:11:00.000Z',
+      status: 'AVAILABLE',
+      createdAt: '2026-07-27T15:11:00.000Z',
+    },
+  ];
+}
+
 const terminalStatuses = [
   ExecutionOrderStatus.COMPLETED,
   ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
@@ -557,16 +572,15 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         onCloseOrder,
+        evidence: customerSignatureEvidenceFactory(),
       });
 
       await user.type(
         screen.getByRole('textbox', { name: 'Resumen de cierre' }),
         'Trabajo completado',
       );
-      await user.type(
-        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
-        'firma-001',
-      );
+      await user.click(screen.getByRole('combobox', { name: 'Referencia de evidencia' }));
+      await user.click(screen.getByRole('option', { name: /Firma del cliente/ }));
       await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
       await user.click(screen.getByRole('option', { name: 'Firma' }));
       await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
@@ -575,11 +589,11 @@ describe('ExecutionOrderDrawer', () => {
       expect(onCloseOrder).toHaveBeenCalledWith({
         result: ExecutionOrderResult.EXECUTED,
         summary: 'Trabajo completado',
-        customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
+        customerAcceptance: { artifactId: 'ma-signature-001', method: 'SIGNATURE' },
       });
     });
 
-    it('bloquea el cierre si la aceptación del cliente queda incompleta', async () => {
+    it('mantiene el cierre disponible cuando no hay aceptación opcional elegible', async () => {
       const user = userEvent.setup();
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
 
@@ -587,18 +601,20 @@ describe('ExecutionOrderDrawer', () => {
         screen.getByRole('textbox', { name: 'Resumen de cierre' }),
         'Trabajo completado',
       );
-      await user.type(
-        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
-        'firma-001',
-      );
+      expect(screen.getByRole('button', { name: 'Cerrar OT' })).not.toBeDisabled();
+      expect(screen.getByRole('combobox', { name: 'Referencia de evidencia' })).toBeDisabled();
+    });
 
-      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
+    it('no permite escribir artifactId y explica cuando falta evidencia CUSTOMER_SIGNATURE', () => {
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      expect(screen.getByRole('combobox', { name: 'Referencia de evidencia' })).toBeDisabled();
       expect(
-        screen.getByText(/Completa la referencia y la forma de aceptación/),
+        screen.getByText(/No hay una firma de cliente disponible y validada/),
       ).toBeInTheDocument();
     });
 
-    it('revalida la aceptación justo antes de enviar si afecta al sitio del cliente', async () => {
+    it('bloquea el cierre si afecta al sitio del cliente y falta evidencia elegible', async () => {
       const onCloseOrder = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
       renderDrawer({
@@ -611,34 +627,23 @@ describe('ExecutionOrderDrawer', () => {
         screen.getByRole('textbox', { name: 'Resumen de cierre' }),
         'Trabajo completado',
       );
-      await user.type(
-        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
-        'firma-001',
-      );
-      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
-      await user.click(screen.getByRole('option', { name: 'Firma' }));
-      await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
-
-      await user.clear(screen.getByRole('textbox', { name: 'Referencia de evidencia' }));
-      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
-
       expect(onCloseOrder).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
       expect(
-        screen.getByText(
-          'La aceptación del cliente es obligatoria cuando la orden afecta al sitio del cliente.',
-        ),
+        screen.getByText(/No hay una firma de cliente disponible y validada/),
       ).toBeInTheDocument();
     });
 
     it('mantiene la captura en memoria y no usa almacenamiento del navegador', async () => {
       const setItem = jest.spyOn(Storage.prototype, 'setItem');
       const user = userEvent.setup();
-      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        evidence: customerSignatureEvidenceFactory(),
+      });
 
-      await user.type(
-        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
-        'firma-001',
-      );
+      await user.click(screen.getByRole('combobox', { name: 'Referencia de evidencia' }));
+      await user.click(screen.getByRole('option', { name: /Firma del cliente/ }));
       await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
       await user.click(screen.getByRole('option', { name: 'Firma' }));
 

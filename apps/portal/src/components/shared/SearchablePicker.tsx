@@ -993,7 +993,7 @@ export function SearchableMultiPicker({
           {value.map((item) => (
             <Badge
               key={item.id}
-              variant="lime"
+              variant="neutral"
               className="inline-flex max-w-full items-center gap-1 pr-1"
             >
               <span className="truncate">{item.label}</span>

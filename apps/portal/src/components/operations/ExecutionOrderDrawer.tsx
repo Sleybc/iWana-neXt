@@ -160,6 +160,10 @@ function requirementIcon(kind: ExecutionOrderTemplateRequirement['kind']) {
   }
 }
 
+function measurementLabel(value: number | string | boolean, unit?: string): string {
+  return `Medición registrada: ${String(value)}${unit ? ` ${unit}` : ''}`;
+}
+
 // ─── Componente principal ───────────────────────────────────────────────────
 
 export function ExecutionOrderDrawer({
@@ -412,6 +416,26 @@ export function ExecutionOrderDrawer({
       { value: 'OTHER', label: 'Otra forma' },
     ],
     [],
+  );
+
+  const customerSignatureEvidence = useMemo(
+    () =>
+      evidence.filter(
+        (ev) =>
+          ev.status === 'AVAILABLE' &&
+          ev.evidenceType === 'SIGNATURE' &&
+          ev.requirementKey === 'CUSTOMER_SIGNATURE',
+      ),
+    [evidence],
+  );
+
+  const customerAcceptanceEvidenceOptions = useMemo(
+    () =>
+      customerSignatureEvidence.map((ev) => ({
+        value: ev.mediaAssetId,
+        label: `Firma del cliente · ${dateFormatter(ev.capturedAt ?? ev.receivedAt)}`,
+      })),
+    [customerSignatureEvidence],
   );
 
   // ─── Render ─────────────────────────────────────────────────────────
@@ -726,8 +750,7 @@ export function ExecutionOrderDrawer({
                             key={i}
                             className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400"
                           >
-                            {m.key}: {String(m.value)}
-                            {m.unit ? ` ${m.unit}` : ''}
+                            {measurementLabel(m.value, m.unit)}
                           </span>
                         ))}
                       </div>
@@ -1122,16 +1145,23 @@ export function ExecutionOrderDrawer({
                     {customerAcceptanceRequired ? '(obligatoria)' : '(opcional)'}
                   </legend>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Registra la referencia de la evidencia y cómo fue aceptado el trabajo.
+                    Selecciona una firma del cliente disponible y validada en esta orden.
                   </p>
-                  <Input
+                  <Select
                     id="eo-customer-acceptance-artifact"
                     label="Referencia de evidencia"
                     value={customerAcceptanceArtifactId}
-                    disabled={isSubmitting}
+                    options={customerAcceptanceEvidenceOptions}
+                    placeholder="Selecciona una firma disponible"
+                    disabled={isSubmitting || customerAcceptanceEvidenceOptions.length === 0}
+                    required={customerAcceptanceRequired}
+                    {...(customerAcceptanceEvidenceOptions.length === 0
+                      ? {
+                          helperText:
+                            'No hay una firma de cliente disponible y validada. Carga la evidencia de firma del cliente antes de cerrar.',
+                        }
+                      : {})}
                     onChange={(e) => setCustomerAcceptanceArtifactId(e.target.value)}
-                    placeholder="Ej. firma-001"
-                    requiredIndicator={customerAcceptanceRequired}
                   />
                   <Select
                     id="eo-customer-acceptance-method"

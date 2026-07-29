@@ -355,7 +355,7 @@ export function DocumentSupportSection({
             <Badge variant={getSummaryVariant(summary.blockStatus)}>
               {getSummaryLabel(summary.blockStatus)}
             </Badge>
-            <Badge variant="lime">{summary.approvedCount} aprobados</Badge>
+            <Badge variant="success">{summary.approvedCount} aprobados</Badge>
           </div>
         </div>
       </div>

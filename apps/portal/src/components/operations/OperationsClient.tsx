@@ -135,7 +135,7 @@ async function loadOperationalUsers(): Promise<InternalUser[]> {
 
 function buildUserLabel(user: InternalUser): string {
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || `Usuario ${user.id.slice(0, 8)}`;
+  return fullName || 'Usuario del equipo';
 }
 
 function requiresScheduling(task: OperationalTaskRecord | null): boolean {

@@ -167,7 +167,7 @@ const workTypeMeta: Record<
   [WfmWorkType.MAINTENANCE]: {
     label: 'Mantenimiento',
     description: 'Trabajo preventivo o programado.',
-    badgeVariant: 'lime',
+    badgeVariant: 'success',
   },
 };
 
@@ -208,7 +208,7 @@ const eventStatusMeta: Record<
   [ScheduleEventStatus.RESCHEDULED]: {
     label: 'Reagendado',
     description: 'Evento movido a una nueva franja horaria.',
-    badgeVariant: 'lime',
+    badgeVariant: 'success',
   },
   [ScheduleEventStatus.NO_SHOW]: {
     label: 'Sin atención',
