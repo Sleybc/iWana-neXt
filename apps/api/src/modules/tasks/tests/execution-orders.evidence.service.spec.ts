@@ -579,6 +579,64 @@ describe('ExecutionOrdersService — Evidence', () => {
       );
     });
 
+    it('rechaza un asset AVAILABLE y no reclamado creado para otra OT del mismo tenant', async () => {
+      const otherOrderId = '33333333-3333-4333-8333-333333333333';
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockImplementation(async (_entity, options: { where?: Record<string, string> }) => {
+            if (options.where?.['id'] === ORDER_UUID) {
+              // La primera lectura es la OT; la segunda debe encontrar solo el
+              // intent de la OT solicitada. El intent real pertenece a otra OT.
+              return mockOrder();
+            }
+            if (
+              options.where?.['executionOrderId'] === ORDER_UUID &&
+              options.where?.['tenantId'] === 'tenant-001'
+            ) {
+              return null;
+            }
+            if (options.where?.['executionOrderId'] === otherOrderId) {
+              return {
+                executionOrderId: otherOrderId,
+                tenantId: 'tenant-001',
+                mediaAssetId: ASSET_UUID,
+              };
+            }
+            return null;
+          }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      evidenceAssetPort.getAssetStatus.mockResolvedValue({
+        status: 'AVAILABLE',
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+        checksumSha256: 'a'.repeat(64),
+        uploadedAt: new Date().toISOString(),
+      });
+
+      await expect(
+        service.registerEvidence(ORDER_UUID, evidenceInput, actor),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'EVIDENCE_UPLOAD_INTENT_REQUIRED' }),
+      });
+      expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
+      expect(evidenceAssetPort.claimAsset).not.toHaveBeenCalled();
+      expect(manager.findOne).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          where: {
+            mediaAssetId: ASSET_UUID,
+            executionOrderId: ORDER_UUID,
+            tenantId: 'tenant-001',
+          },
+        }),
+      );
+    });
+
     it('rechaza vinculación sobre OT terminal', async () => {
       const manager = {
         findOne: jest.fn().mockResolvedValue(mockOrder(ExecutionOrderStatus.COMPLETED)),

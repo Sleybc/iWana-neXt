@@ -66,6 +66,8 @@ import {
   type IEvidenceAssetPort,
 } from '../ports/evidence-asset.port';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
   scheduleEventId: string;
@@ -491,6 +493,25 @@ export class ExecutionOrdersService {
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
 
+      if (validated.customerAcceptance?.artifactId) {
+        await this.assertCustomerAcceptanceArtifactLinked(
+          qr.manager,
+          tenantId,
+          id,
+          validated.customerAcceptance.artifactId,
+        );
+      }
+      // customerSignatureRef es la forma legacy del mismo dato. No puede
+      // convertirse en un bypass de la validación del artefacto vinculado.
+      if (validated.customerSignatureRef) {
+        await this.assertCustomerAcceptanceArtifactLinked(
+          qr.manager,
+          tenantId,
+          id,
+          validated.customerSignatureRef,
+        );
+      }
+
       // ── Closure gate evaluation ────────────────────────────────────
       if (order.templateRequirementsSnapshot && this.closureGateEvaluator) {
         const snapshot = order.templateRequirementsSnapshot as ExecutionOrderTemplateRequirement[];
@@ -748,6 +769,24 @@ export class ExecutionOrdersService {
       }
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+
+      // El asset no puede ser reutilizado por otra OT del mismo tenant aunque
+      // todavía esté AVAILABLE y no tenga claim. El upload-intent es la
+      // autorización durable que une Media con esta OT; se verifica antes de
+      // consultar el asset y, por tanto, antes de cualquier side effect.
+      const uploadIntent = await qr.manager.findOne(ExecutionOrderEvidenceUploadIntent, {
+        where: {
+          mediaAssetId: input.mediaAssetId,
+          executionOrderId: id,
+          tenantId,
+        },
+      });
+      if (!uploadIntent) {
+        throw new ConflictException({
+          code: 'EVIDENCE_UPLOAD_INTENT_REQUIRED',
+          message: 'El asset no tiene un intento de carga vigente vinculado a esta OT.',
+        });
+      }
 
       // ── Validación del asset contra Media/Assets ─────────────────────────
       // Verificar que el asset existe y está AVAILABLE
@@ -1164,6 +1203,7 @@ export class ExecutionOrdersService {
       if (receipt?.replay) return order;
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+
       const expectedVersion = order.version ?? 1;
       order.status = status;
       order.version = expectedVersion + 1;
@@ -1187,6 +1227,34 @@ export class ExecutionOrdersService {
       );
       return saved;
     });
+  }
+
+  private async assertCustomerAcceptanceArtifactLinked(
+    manager: EntityManager,
+    tenantId: string,
+    executionOrderId: string,
+    artifactId: string,
+  ): Promise<void> {
+    // El contrato actual permite texto libre. Fail-closed aquí evita que un
+    // valor no UUID llegue a una comparación contra una columna uuid y deja
+    // explícita la deuda de contrato para R2.1.
+    if (!UUID_PATTERN.test(artifactId)) {
+      throw new UnprocessableEntityException({
+        code: 'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_LINKED',
+        message:
+          'El artefacto de aceptación debe ser un MediaAsset UUID vinculado a una evidencia de esta OT.',
+      });
+    }
+
+    const linkedEvidence = await manager.findOne(ExecutionOrderEvidence, {
+      where: { mediaAssetId: artifactId, executionOrderId, tenantId },
+    });
+    if (!linkedEvidence) {
+      throw new UnprocessableEntityException({
+        code: 'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_LINKED',
+        message: 'El artefacto de aceptación no está vinculado a una evidencia de esta OT.',
+      });
+    }
   }
 
   private mapCloseResultToTaskStatus(result: ExecutionOrderResult): TaskStatus | null {
