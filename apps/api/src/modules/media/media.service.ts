@@ -132,6 +132,13 @@ export class MediaService {
   ): Promise<MediaAssetResponseDto> {
     const usage = dto.usage ?? MediaUsage.GENERAL;
 
+    if (usage === MediaUsage.EXECUTION_EVIDENCE) {
+      throw new BadRequestException({
+        code: 'MEDIA_GENERIC_EXECUTION_EVIDENCE_FORBIDDEN',
+        message: 'La evidencia de ejecución debe cargarse mediante el flujo de evidencia.',
+      });
+    }
+
     // Validar MIME type y tamaño según el uso declarado
     this.validateFile(file, usage);
 

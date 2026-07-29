@@ -182,6 +182,30 @@ describe('MediaService', () => {
       expect(mockStorage.putObject).not.toHaveBeenCalled();
     });
 
+    it('debe rechazar evidencia de ejecución en el upload genérico sin persistir ni escribir en storage', async () => {
+      const file = buildMulterFile({
+        mimetype: 'application/pdf',
+        originalname: 'evidence.pdf',
+      });
+
+      const rejection = service.upload(
+        'tenant_test_isp',
+        { usage: MediaUsage.EXECUTION_EVIDENCE },
+        file,
+        'user-001',
+      );
+
+      await expect(rejection).rejects.toBeInstanceOf(BadRequestException);
+      await expect(rejection).rejects.toMatchObject({
+        response: {
+          code: 'MEDIA_GENERIC_EXECUTION_EVIDENCE_FORBIDDEN',
+        },
+      });
+      expect(mockRepo.create).not.toHaveBeenCalled();
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
     it('debe lanzar BadRequestException si el archivo supera el tamaño máximo', async () => {
       // Logo tiene límite de 1 MB = 1048576 bytes
       const file = buildMulterFile({
