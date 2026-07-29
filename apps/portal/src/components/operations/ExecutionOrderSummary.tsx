@@ -24,6 +24,7 @@ export interface ExecutionOrderSummaryProps {
   readonly?: boolean;
   canOpen?: boolean;
   onOpen?: () => void;
+  onSyncVisit?: () => void | Promise<void>;
   onRetry?: () => void;
 }
 
@@ -53,6 +54,7 @@ export function ExecutionOrderSummary({
   readonly = true,
   canOpen = true,
   onOpen,
+  onSyncVisit,
   loading = false,
   error = null,
   successMessage = null,
@@ -100,9 +102,22 @@ export function ExecutionOrderSummary({
 
   if (availability === 'unlinked') {
     return (
-      <PortalEmptyState
-        title="Aún no hay una orden de trabajo vinculada"
-        description="La visita todavía no tiene una orden de trabajo de ejecución asociada."
+      <PortalAlert
+        variant="warning"
+        live="assertive"
+        title="Visita sin OT de ejecución vinculada"
+        description={
+          onSyncVisit
+            ? 'La visita todavía no tiene una orden de trabajo de ejecución asociada. Sincroniza la visita para consultar el vínculo más reciente.'
+            : 'La visita todavía no tiene una orden de trabajo de ejecución asociada. No hay una acción de sincronización disponible en este momento.'
+        }
+        action={
+          onSyncVisit ? (
+            <Button type="button" onClick={() => void onSyncVisit()}>
+              Sincronizar visita
+            </Button>
+          ) : undefined
+        }
       />
     );
   }

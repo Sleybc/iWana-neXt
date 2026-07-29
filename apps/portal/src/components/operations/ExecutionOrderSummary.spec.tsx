@@ -11,9 +11,22 @@ describe('ExecutionOrderSummary', () => {
     expect(document.querySelectorAll('.animate-pulse')).toHaveLength(3);
   });
 
-  it('muestra empty cuando no hay OT vinculada', () => {
+  it('muestra una alerta de advertencia cuando la visita no tiene OT vinculada', () => {
     render(<ExecutionOrderSummary order={null} availability="unlinked" />);
-    expect(screen.getByText('Aún no hay una orden de trabajo vinculada')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Visita sin OT de ejecución vinculada');
+    expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
+    expect(screen.getByText(/No hay una acción de sincronización disponible/)).toBeInTheDocument();
+  });
+
+  it('ofrece sincronizar la visita cuando existe un handler', async () => {
+    const onSyncVisit = jest.fn().mockResolvedValue(undefined);
+    render(
+      <ExecutionOrderSummary order={null} availability="unlinked" onSyncVisit={onSyncVisit} />,
+    );
+
+    const button = screen.getByRole('button', { name: 'Sincronizar visita' });
+    button.click();
+    expect(onSyncVisit).toHaveBeenCalledTimes(1);
   });
 
   it('muestra error recuperable y reintento', () => {

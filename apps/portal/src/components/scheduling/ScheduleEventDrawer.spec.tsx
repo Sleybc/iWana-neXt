@@ -97,7 +97,16 @@ describe('ScheduleEventDrawer — coordinación', () => {
   it('muestra la sección de resumen de OT', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
     expect(screen.getByText('Resumen de la OT')).toBeInTheDocument();
-    expect(screen.getByText(/Aún no hay una orden de trabajo vinculada/)).toBeInTheDocument();
+    expect(screen.getByText(/Visita sin OT de ejecución vinculada/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sincronizar visita' })).toBeInTheDocument();
+  });
+
+  it('no promete sincronización cuando la agenda no recibe handler', () => {
+    const { onRetry: _onRetry, ...propsWithoutRetry } = baseProps;
+    render(<ScheduleEventDrawer {...propsWithoutRetry} />);
+
+    expect(screen.getByText(/No hay una acción de sincronización disponible/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
   });
 
   it('muestra el enlace "Abrir OT de ejecución" cuando hay executionOrderId', () => {

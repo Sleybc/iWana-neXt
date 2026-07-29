@@ -78,7 +78,7 @@ export interface ExecutionOrderCustodyOption {
 // ─── Labels ─────────────────────────────────────────────────────────────────
 
 const EVIDENCE_STATUS_LABELS: Record<string, string> = {
-  PENDING_ANALYSIS: 'Pendiente de analisis',
+  PENDING_ANALYSIS: 'Pendiente de análisis',
   AVAILABLE: 'Disponible',
   REJECTED: 'Rechazada',
   EXPIRED: 'Expirada',
@@ -100,14 +100,14 @@ const ITEM_ACTION_LABELS: Record<string, string> = {
 const DISPOSITION_LABELS: Record<string, string> = {
   INSTALLED_AT_CUSTOMER: 'Instalado en cliente',
   INTERNAL_CONSUMPTION: 'Consumo interno',
-  RETURNED_TO_TECHNICIAN_STOCK: 'Retorno a custodia tecnica',
+  RETURNED_TO_TECHNICIAN_STOCK: 'Retorno a custodia técnica',
   RETURNED_TO_WAREHOUSE: 'Retorno a bodega',
-  DAMAGED_OR_LOST: 'Danado o perdido',
-  NOT_REQUIRED: 'No requiere conciliacion',
-  PENDING: 'Conciliacion pendiente',
-  CONFIRMED: 'Conciliacion confirmada',
-  REJECTED: 'Conciliacion rechazada',
-  DIVERGED: 'Conciliacion divergente',
+  DAMAGED_OR_LOST: 'Dañado o perdido',
+  NOT_REQUIRED: 'No requiere conciliación',
+  PENDING: 'Conciliación pendiente',
+  CONFIRMED: 'Conciliación confirmada',
+  REJECTED: 'Conciliación rechazada',
+  DIVERGED: 'Conciliación divergente',
 };
 
 const TERMINAL_STATUSES = new Set<ExecutionOrderStatus>([
@@ -128,11 +128,11 @@ function syncStateCopy(state: ExecutionOrderDetail['syncState']): string {
     case 'IN_SYNC':
       return 'Sincronizada';
     case 'PENDING':
-      return 'Sincronizacion pendiente';
+      return 'Sincronización pendiente';
     case 'DIVERGED':
-      return 'La orden cambio; revisa la version vigente';
+      return 'La orden cambió; revisa la versión vigente';
     case 'FAILED':
-      return 'Error de sincronizacion';
+      return 'Error de sincronización';
   }
 }
 
@@ -141,6 +141,16 @@ function dateFormatter(value: string | undefined): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function templateRequiresCustomerAcceptance(
+  template: ExecutionOrderTemplateVersion | null,
+): boolean {
+  return (
+    template?.requirements.some(
+      (requirement) => requirement.required && requirement.kind === 'COMPLIANCE',
+    ) ?? false
+  );
 }
 
 function requirementIcon(kind: ExecutionOrderTemplateRequirement['kind']) {
@@ -241,9 +251,9 @@ export function ExecutionOrderDrawer({
 
   const activityTypeOptions = useMemo(
     () => [
-      { value: 'INSTALLATION', label: 'Instalacion' },
+      { value: 'INSTALLATION', label: 'Instalación' },
       { value: 'FIELD_NOTE', label: 'Nota de campo' },
-      { value: 'CONFIGURATION', label: 'Configuracion' },
+      { value: 'CONFIGURATION', label: 'Configuración' },
       { value: 'TESTING', label: 'Prueba' },
       { value: 'NOVELTY', label: 'Novedad' },
     ],
@@ -296,9 +306,9 @@ export function ExecutionOrderDrawer({
     () => [
       { value: 'INSTALLED_AT_CUSTOMER', label: 'Instalado en cliente' },
       { value: 'INTERNAL_CONSUMPTION', label: 'Consumo interno' },
-      { value: 'RETURNED_TO_TECHNICIAN_STOCK', label: 'Retorno a custodia tecnica' },
+      { value: 'RETURNED_TO_TECHNICIAN_STOCK', label: 'Retorno a custodia técnica' },
       { value: 'RETURNED_TO_WAREHOUSE', label: 'Retorno a bodega' },
-      { value: 'DAMAGED_OR_LOST', label: 'Danado o perdido' },
+      { value: 'DAMAGED_OR_LOST', label: 'Dañado o perdido' },
     ],
     [],
   );
@@ -358,17 +368,14 @@ export function ExecutionOrderDrawer({
     if (!closeSummary.trim()) return;
 
     // La confirmación puede permanecer abierta mientras cambia el formulario. Revalidar aquí
-    // evita enviar un cierre sin aceptación cuando la orden afecta al sitio del cliente.
-    const customerSiteAtSend =
-      itemDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER ||
-      itemUsage.some(
-        (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
-      );
+    // contra el requisito contractual evita enviar un cierre sin aceptación cuando la plantilla
+    // exige conformidad del cliente.
+    const customerAcceptanceRequiredAtSend = templateRequiresCustomerAcceptance(template);
     const artifactId = customerAcceptanceArtifactId.trim();
     const acceptanceMethod = customerAcceptanceMethod;
-    if (customerSiteAtSend && (!artifactId || !acceptanceMethod)) {
+    if (customerAcceptanceRequiredAtSend && (!artifactId || !acceptanceMethod)) {
       setCloseValidationError(
-        'La aceptación del cliente es obligatoria cuando la orden afecta al sitio del cliente.',
+        'La aceptación del cliente es obligatoria según la plantilla de cierre.',
       );
       return;
     }
@@ -394,17 +401,11 @@ export function ExecutionOrderDrawer({
     closeSummary,
     customerAcceptanceArtifactId,
     customerAcceptanceMethod,
-    itemDisposition,
-    itemUsage,
+    template,
     onCloseOrder,
   ]);
 
-  const hasCustomerSiteDisposition =
-    itemDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER ||
-    itemUsage.some(
-      (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
-    );
-  const customerAcceptanceRequired = hasCustomerSiteDisposition;
+  const customerAcceptanceRequired = templateRequiresCustomerAcceptance(template);
   const customerAcceptanceIncomplete = customerAcceptanceRequired
     ? customerAcceptanceArtifactId.trim().length === 0 || !customerAcceptanceMethod
     : customerAcceptanceArtifactId.trim().length > 0 !== Boolean(customerAcceptanceMethod);
@@ -444,8 +445,8 @@ export function ExecutionOrderDrawer({
     <OperationalSidePeek
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={order?.number ?? 'OT de ejecucion'}
-      description="Espacio de ejecucion de la orden de trabajo"
+      title={order?.number ?? 'OT de ejecución'}
+      description="Espacio de ejecución de la orden de trabajo"
       size="wide"
       busy={isSubmitting}
     >
@@ -473,7 +474,7 @@ export function ExecutionOrderDrawer({
           {error && !isLoading ? (
             <PortalAlert
               variant="error"
-              title="No fue posible completar la operacion"
+              title="No fue posible completar la operación"
               description={error}
             />
           ) : null}
@@ -490,8 +491,8 @@ export function ExecutionOrderDrawer({
           {offline && (
             <PortalAlert
               variant="warning"
-              title="Sin conexion"
-              description="Sin conexion; vuelve a intentar cuando recuperes la red."
+              title="Sin conexión"
+              description="Sin conexión; vuelve a intentar cuando recuperes la red."
             />
           )}
 
@@ -508,7 +509,7 @@ export function ExecutionOrderDrawer({
           {order.syncState !== 'IN_SYNC' && (
             <PortalAlert
               variant={order.syncState === 'FAILED' ? 'error' : 'warning'}
-              title="Sincronizacion"
+              title="Sincronización"
               description={syncStateCopy(order.syncState)}
             />
           )}
@@ -605,9 +606,9 @@ export function ExecutionOrderDrawer({
                 className="mt-4"
                 disabled={isSubmitting}
                 loading={isSubmitting}
-                onClick={() => void onStart('Inicio de ejecucion en campo')}
+                onClick={() => void onStart('Inicio de ejecución en campo')}
               >
-                Iniciar ejecucion
+                Iniciar ejecución
               </Button>
             )}
             {/* Block/Unblock */}
@@ -640,13 +641,13 @@ export function ExecutionOrderDrawer({
               id="eo-checklist-heading"
               className="text-sm font-semibold text-gray-900 dark:text-white"
             >
-              Checklist de instalacion
+              Checklist de instalación
             </h3>
             <div className="mt-3">
               <ProgressMeter
                 value={order.completion.progress}
                 label="Avance de requisitos"
-                ariaLabel="Avance de requisitos de instalacion"
+                ariaLabel="Avance de requisitos de instalación"
               />
             </div>
             {template && template.requirements.length > 0 && (
@@ -1034,7 +1035,7 @@ export function ExecutionOrderDrawer({
               <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-4 text-center dark:border-dark-border">
                 <p className="text-sm text-gray-600 dark:text-gray-300">Adjuntar evidencia</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Arrastra fotos o documentos relacionados con la instalacion.
+                  Arrastra fotos o documentos relacionados con la instalación.
                 </p>
                 <input
                   ref={evidenceFileRef}
@@ -1087,7 +1088,7 @@ export function ExecutionOrderDrawer({
               /* Readonly close block */
               <div className="mt-3">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  La OT esta cerrada y solo puede consultarse.
+                  La OT está cerrada y solo puede consultarse.
                 </p>
                 {order.result && (
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -1186,7 +1187,7 @@ export function ExecutionOrderDrawer({
                   <PortalAlert
                     variant="warning"
                     title="Requisitos pendientes"
-                    description={`Aun faltan requisitos de la plantilla. Progreso actual: ${order.completion.progress}%`}
+                    description={`Aún faltan requisitos de la plantilla. Progreso actual: ${order.completion.progress}%`}
                   />
                 )}
 
@@ -1211,7 +1212,7 @@ export function ExecutionOrderDrawer({
                       Confirmar cierre
                     </p>
                     <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-300">
-                      Esta accion es definitiva. No podras editar la OT despues del cierre.
+                      Esta acción es definitiva. No podrás editar la OT después del cierre.
                     </p>
                     {closeValidationError && (
                       <p className="mt-2 text-xs font-medium text-red-800" role="alert">
@@ -1245,7 +1246,7 @@ export function ExecutionOrderDrawer({
               /* No close permission */
               <div className="mt-3">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {offline ? 'Sin conexion.' : 'No puedes cerrar esta orden.'}
+                  {offline ? 'Sin conexión.' : 'No puedes cerrar esta orden.'}
                 </p>
               </div>
             )}

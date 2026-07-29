@@ -72,7 +72,7 @@ function templateFactory(): ExecutionOrderTemplateVersion {
     requirements: [
       {
         key: 'req-verify-address',
-        label: 'Verificar direccion',
+        label: 'Verificar dirección',
         required: true,
         kind: 'FIELD',
         fieldType: 'BOOLEAN',
@@ -94,7 +94,7 @@ function templateFactory(): ExecutionOrderTemplateVersion {
       },
       {
         key: 'req-photo-install',
-        label: 'Foto de instalacion',
+        label: 'Foto de instalación',
         required: true,
         kind: 'EVIDENCE',
         evidenceType: 'PHOTO',
@@ -109,6 +109,23 @@ function templateFactory(): ExecutionOrderTemplateVersion {
     ],
     reasonCatalogs: ['CAUSA_TECNICA', 'CAUSA_CLIENTE'],
     effectiveFrom: '2026-07-01',
+  };
+}
+
+function customerAcceptanceTemplateFactory(): ExecutionOrderTemplateVersion {
+  const template = templateFactory();
+  return {
+    ...template,
+    requirements: [
+      ...template.requirements,
+      {
+        key: 'req-customer-acceptance',
+        label: 'Aceptación del cliente',
+        required: true,
+        kind: 'COMPLIANCE',
+        policyKey: 'CUSTOMER_ACCEPTANCE',
+      },
+    ],
   };
 }
 
@@ -257,7 +274,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         error: 'Error al registrar actividad',
       });
-      expect(screen.getByText('No fue posible completar la operacion')).toBeInTheDocument();
+      expect(screen.getByText('No fue posible completar la operación')).toBeInTheDocument();
       // OT number appears in both title and summary; verify at least 2 occurrences
       const matches = screen.getAllByText('OTE-20260727-001');
       expect(matches.length).toBeGreaterThanOrEqual(2);
@@ -273,8 +290,8 @@ describe('ExecutionOrderDrawer', () => {
 
     it('shows offline banner when no connection', () => {
       renderDrawer({ offline: true });
-      // "Sin conexion" appears in multiple places (banner title, description, close block)
-      const matches = screen.getAllByText(/Sin conexion/);
+      // "Sin conexión" aparece en varios lugares (título, descripción y cierre)
+      const matches = screen.getAllByText(/Sin conexión/);
       expect(matches.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -300,7 +317,7 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer({ order: detailFactory({ status }) });
       // Use headings that exist in sections
       expect(screen.getByText('Compromiso')).toBeInTheDocument();
-      expect(screen.getByText('Checklist de instalacion')).toBeInTheDocument();
+      expect(screen.getByText('Checklist de instalación')).toBeInTheDocument();
       expect(screen.getByText('Trabajo realizado')).toBeInTheDocument();
       expect(screen.getByText('Equipos y materiales')).toBeInTheDocument();
       expect(screen.getByText('Evidencia y conformidad')).toBeInTheDocument();
@@ -319,12 +336,12 @@ describe('ExecutionOrderDrawer', () => {
           itemUsage: itemUsageFactory(),
           evidence: evidenceFactory(),
         });
-        expect(screen.queryByRole('button', { name: 'Iniciar ejecucion' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
-        expect(screen.getByText(/La OT esta cerrada/)).toBeInTheDocument();
+        expect(screen.getByText(/La OT está cerrada/)).toBeInTheDocument();
       });
     } else {
       it('shows editable controls matching allowedActions', () => {
@@ -335,7 +352,7 @@ describe('ExecutionOrderDrawer', () => {
         renderDrawer({ order: detailFactory({ status, allowedActions: actions }) });
 
         if (actions.includes('START')) {
-          expect(screen.getByRole('button', { name: 'Iniciar ejecucion' })).toBeInTheDocument();
+          expect(screen.getByRole('button', { name: 'Iniciar ejecución' })).toBeInTheDocument();
         }
         if (actions.includes('REGISTER_ACTIVITY')) {
           expect(screen.getByRole('button', { name: 'Registrar actividad' })).toBeInTheDocument();
@@ -380,17 +397,17 @@ describe('ExecutionOrderDrawer', () => {
           completion: { progress: 60 },
         }),
       });
-      const section = screen.getByRole('region', { name: 'Checklist de instalacion' });
+      const section = screen.getByRole('region', { name: 'Checklist de instalación' });
       expect(within(section).getByRole('progressbar')).toBeInTheDocument();
       expect(within(section).getByText('60%')).toBeInTheDocument();
     });
 
     it('lists template requirements', () => {
       renderDrawer();
-      expect(screen.getByText('Verificar direccion')).toBeInTheDocument();
+      expect(screen.getByText('Verificar dirección')).toBeInTheDocument();
       expect(screen.getByText('Conectar ONU')).toBeInTheDocument();
       expect(screen.getByText('Prueba de velocidad')).toBeInTheDocument();
-      expect(screen.getByText('Foto de instalacion')).toBeInTheDocument();
+      expect(screen.getByText('Foto de instalación')).toBeInTheDocument();
       expect(screen.getByText('Serial ONT')).toBeInTheDocument();
     });
 
@@ -463,9 +480,9 @@ describe('ExecutionOrderDrawer', () => {
       const user = userEvent.setup();
       renderDrawer({ onStart });
 
-      await user.click(screen.getByRole('button', { name: 'Iniciar ejecucion' }));
+      await user.click(screen.getByRole('button', { name: 'Iniciar ejecución' }));
 
-      expect(onStart).toHaveBeenCalledWith('Inicio de ejecucion en campo');
+      expect(onStart).toHaveBeenCalledWith('Inicio de ejecución en campo');
     });
 
     it('envía serialNumber y technicianCustodyId al registrar inventario', async () => {
@@ -573,6 +590,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         onCloseOrder,
         evidence: customerSignatureEvidenceFactory(),
+        template: customerAcceptanceTemplateFactory(),
       });
 
       await user.type(
@@ -614,7 +632,7 @@ describe('ExecutionOrderDrawer', () => {
       ).toBeInTheDocument();
     });
 
-    it('bloquea el cierre si afecta al sitio del cliente y falta evidencia elegible', async () => {
+    it('no bloquea el cierre solo porque un material quedó instalado en el cliente', async () => {
       const onCloseOrder = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
       renderDrawer({
@@ -628,6 +646,23 @@ describe('ExecutionOrderDrawer', () => {
         'Trabajo completado',
       );
       expect(onCloseOrder).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Cerrar OT' })).not.toBeDisabled(),
+      );
+    });
+
+    it('bloquea el cierre cuando la plantilla exige aceptación y falta evidencia elegible', async () => {
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        template: customerAcceptanceTemplateFactory(),
+      });
+
+      await user.type(
+        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+        'Trabajo completado',
+      );
+
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
       expect(
         screen.getByText(/No hay una firma de cliente disponible y validada/),
@@ -709,7 +744,7 @@ describe('ExecutionOrderDrawer', () => {
           inventoryReconciliation: 'CONFIRMED',
         }),
       });
-      expect(screen.getByText(/Conciliacion confirmada/)).toBeInTheDocument();
+      expect(screen.getByText(/Conciliación confirmada/)).toBeInTheDocument();
     });
   });
 
@@ -722,7 +757,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         evidence: evidenceFactory(),
       });
-      expect(screen.getAllByText(/Foto de instalacion/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/Foto de instalación/).length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Disponible')).toBeInTheDocument();
     });
 
@@ -773,7 +808,7 @@ describe('ExecutionOrderDrawer', () => {
         }),
       });
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
-      expect(screen.getByText(/La OT esta cerrada/)).toBeInTheDocument();
+      expect(screen.getByText(/La OT está cerrada/)).toBeInTheDocument();
     });
 
     it('shows confirmation dialog before closing', async () => {
@@ -857,7 +892,7 @@ describe('ExecutionOrderDrawer', () => {
       // Each section has an aria-labelledby pointing to its heading
       const sectionLabels = [
         'Compromiso',
-        'Checklist de instalacion',
+        'Checklist de instalación',
         'Trabajo realizado',
         'Equipos y materiales',
         'Evidencia y conformidad',
@@ -884,10 +919,10 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         offline: true,
       });
-      // "Sin conexion" appears in multiple places
-      const matches = screen.getAllByText(/Sin conexion/);
+      // "Sin conexión" aparece en varios lugares
+      const matches = screen.getAllByText(/Sin conexión/);
       expect(matches.length).toBeGreaterThanOrEqual(2);
-      expect(screen.queryByRole('button', { name: 'Iniciar ejecucion' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();

@@ -217,6 +217,7 @@ export function ScheduleEventDrawer({
                 syncState={syncState}
                 readonly
                 canOpen={hasExecutionOrder && Boolean(onOpenExecutionOrder)}
+                {...(onRetry ? { onSyncVisit: onRetry } : {})}
                 {...(hasExecutionOrder && onOpenExecutionOrder
                   ? { onOpen: onOpenExecutionOrder }
                   : {})}
