@@ -1,7 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Badge, Button, Input, ProgressMeter, Select, OperationalSidePeek } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  Input,
+  ProgressMeter,
+  Select,
+  SkeletonBlock,
+  OperationalSidePeek,
+} from '@iwana/ui';
 import {
   ExecutionOrderResult,
   ExecutionOrderStatus,
@@ -43,6 +51,7 @@ interface ExecutionOrderDrawerProps {
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
+  successMessage?: string | null;
   offline: boolean;
   onClose: () => void;
   onStart: (notes?: string | null) => Promise<void>;
@@ -164,6 +173,7 @@ export function ExecutionOrderDrawer({
   isLoading,
   isSubmitting,
   error,
+  successMessage = null,
   offline,
   onClose,
   onStart,
@@ -214,6 +224,7 @@ export function ExecutionOrderDrawer({
     CustomerAcceptanceMethod | ''
   >('');
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [closeValidationError, setCloseValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     setItemAction('');
@@ -341,6 +352,24 @@ export function ExecutionOrderDrawer({
 
   const handleCloseConfirm = useCallback(async () => {
     if (!closeSummary.trim()) return;
+
+    // La confirmación puede permanecer abierta mientras cambia el formulario. Revalidar aquí
+    // evita enviar un cierre sin aceptación cuando la orden afecta al sitio del cliente.
+    const customerSiteAtSend =
+      itemDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER ||
+      itemUsage.some(
+        (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
+      );
+    const artifactId = customerAcceptanceArtifactId.trim();
+    const acceptanceMethod = customerAcceptanceMethod;
+    if (customerSiteAtSend && (!artifactId || !acceptanceMethod)) {
+      setCloseValidationError(
+        'La aceptación del cliente es obligatoria cuando la orden afecta al sitio del cliente.',
+      );
+      return;
+    }
+
+    setCloseValidationError(null);
     setCloseConfirmOpen(false);
     const payload: Parameters<typeof onCloseOrder>[0] = {
       result: closeResult,
@@ -348,11 +377,10 @@ export function ExecutionOrderDrawer({
     };
     const rc = closeReason.trim();
     if (rc) payload.reasonCode = rc;
-    const artifactId = customerAcceptanceArtifactId.trim();
-    if (artifactId && customerAcceptanceMethod) {
+    if (artifactId && acceptanceMethod) {
       payload.customerAcceptance = {
         artifactId,
-        method: customerAcceptanceMethod,
+        method: acceptanceMethod,
       };
     }
     await onCloseOrder(payload);
@@ -362,6 +390,8 @@ export function ExecutionOrderDrawer({
     closeSummary,
     customerAcceptanceArtifactId,
     customerAcceptanceMethod,
+    itemDisposition,
+    itemUsage,
     onCloseOrder,
   ]);
 
@@ -398,9 +428,9 @@ export function ExecutionOrderDrawer({
       {/* ── Loading ── */}
       {isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-label="Cargando orden de trabajo">
-          <div className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-          <div className="h-16 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-          <div className="h-48 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
+          <SkeletonBlock className="h-28" />
+          <SkeletonBlock className="h-16" />
+          <SkeletonBlock className="h-48" />
         </div>
       ) : !order ? (
         /* ── Empty / Error ── */
@@ -421,6 +451,14 @@ export function ExecutionOrderDrawer({
               variant="error"
               title="No fue posible completar la operacion"
               description={error}
+            />
+          ) : null}
+
+          {successMessage ? (
+            <PortalAlert
+              variant="success"
+              title="Operación completada"
+              description={successMessage}
             />
           ) : null}
 
@@ -628,9 +666,11 @@ export function ExecutionOrderDrawer({
               </div>
             )}
             {!template && (
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                Revisa los requisitos de la plantilla aplicada antes de cerrar.
-              </p>
+              <PortalEmptyState
+                className="mt-3"
+                title="Requisitos no disponibles"
+                description="Revisa la plantilla aplicada antes de cerrar la orden."
+              />
             )}
           </section>
 
@@ -648,9 +688,10 @@ export function ExecutionOrderDrawer({
             {/* Activity list */}
             <div className="mt-3 space-y-2">
               {activities.length === 0 ? (
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Aun no hay actividades registradas.
-                </p>
+                <PortalEmptyState
+                  title="Aún no hay actividades registradas"
+                  description="Registra el trabajo realizado para conservar la trazabilidad de la ejecución."
+                />
               ) : (
                 activities.map((act) => (
                   <article
@@ -753,9 +794,10 @@ export function ExecutionOrderDrawer({
             {/* Item usage list */}
             <div className="mt-3 space-y-2">
               {itemUsage.length === 0 ? (
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Aun no hay consumos registrados.
-                </p>
+                <PortalEmptyState
+                  title="Aún no hay consumos registrados"
+                  description="Los equipos y materiales registrados aparecerán aquí."
+                />
               ) : (
                 itemUsage.map((usage) => (
                   <article
@@ -906,9 +948,10 @@ export function ExecutionOrderDrawer({
             {/* Evidence list */}
             <div className="mt-3 space-y-2">
               {evidence.length === 0 ? (
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Sin evidencias registradas.
-                </p>
+                <PortalEmptyState
+                  title="Sin evidencias registradas"
+                  description="Adjunta fotos o documentos cuando formen parte de los requisitos de la orden."
+                />
               ) : (
                 evidence.map((ev) => (
                   <article
@@ -1125,7 +1168,10 @@ export function ExecutionOrderDrawer({
                       closeSummary.trim().length === 0 ||
                       customerAcceptanceIncomplete
                     }
-                    onClick={() => setCloseConfirmOpen(true)}
+                    onClick={() => {
+                      setCloseValidationError(null);
+                      setCloseConfirmOpen(true);
+                    }}
                   >
                     Cerrar OT
                   </Button>
@@ -1137,6 +1183,11 @@ export function ExecutionOrderDrawer({
                     <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-300">
                       Esta accion es definitiva. No podras editar la OT despues del cierre.
                     </p>
+                    {closeValidationError && (
+                      <p className="mt-2 text-xs font-medium text-red-800" role="alert">
+                        {closeValidationError}
+                      </p>
+                    )}
                     <div className="mt-3 flex gap-2">
                       <Button
                         type="button"

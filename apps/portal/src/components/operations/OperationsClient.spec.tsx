@@ -3,7 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskExecutionMode, TaskStatus } from '@iwana/shared';
 import { OperationsClient } from './OperationsClient';
-import { tasksApi } from '@/lib/api-client';
+import { ApiError, tasksApi } from '@/lib/api-client';
+import { getMissingRequirements } from './OperationsClient';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -103,6 +104,22 @@ describe('OperationsClient', () => {
       page: 1,
       limit: 20,
     } as never);
+  });
+
+  it('usa una etiqueta genérica y no expone la clave cruda de un requisito', () => {
+    const error = new ApiError(422, 'CLOSURE_GAP', 'Faltan requisitos');
+    Object.assign(error, { missingRequirements: ['req-photo-install'] });
+    const missing = getMissingRequirements(error);
+
+    expect(missing).toEqual([
+      {
+        requirementId: 'req-photo-install',
+        label: 'Requisito pendiente',
+        kind: 'OTHER',
+        reason: 'Completa el requisito pendiente antes de cerrar la orden.',
+      },
+    ]);
+    expect(missing[0]?.label).not.toContain('req-photo-install');
   });
 
   it('renders operations shell with task list', async () => {

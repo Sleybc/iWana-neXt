@@ -224,6 +224,7 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer({ isLoading: true });
       expect(screen.getByRole('dialog')).toBeInTheDocument();
       expect(document.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+      expect(document.querySelectorAll('.animate-pulse')).toHaveLength(3);
     });
 
     it('shows empty state when no order and no error', () => {
@@ -245,6 +246,14 @@ describe('ExecutionOrderDrawer', () => {
       // OT number appears in both title and summary; verify at least 2 occurrences
       const matches = screen.getAllByText('OTE-20260727-001');
       expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('shows a non-blocking success banner with the loaded order', () => {
+      renderDrawer({ successMessage: 'La actividad quedó registrada.' });
+
+      expect(screen.getByText('Operación completada')).toBeInTheDocument();
+      expect(screen.getByText('La actividad quedó registrada.')).toBeInTheDocument();
+      expect(screen.getByText('Compromiso')).toBeInTheDocument();
     });
 
     it('shows offline banner when no connection', () => {
@@ -401,7 +410,7 @@ describe('ExecutionOrderDrawer', () => {
 
     it('shows empty message when no activities', () => {
       renderDrawer({ activities: [] });
-      expect(screen.getByText(/Aun no hay actividades registradas/)).toBeInTheDocument();
+      expect(screen.getByText(/Aún no hay actividades registradas/)).toBeInTheDocument();
     });
 
     it('shows activity registration form when allowed', async () => {
@@ -589,6 +598,38 @@ describe('ExecutionOrderDrawer', () => {
       ).toBeInTheDocument();
     });
 
+    it('revalida la aceptación justo antes de enviar si afecta al sitio del cliente', async () => {
+      const onCloseOrder = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        itemUsage: itemUsageFactory(),
+        onCloseOrder,
+      });
+
+      await user.type(
+        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+        'Trabajo completado',
+      );
+      await user.type(
+        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
+        'firma-001',
+      );
+      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      await user.click(screen.getByRole('option', { name: 'Firma' }));
+      await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
+
+      await user.clear(screen.getByRole('textbox', { name: 'Referencia de evidencia' }));
+      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+
+      expect(onCloseOrder).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(
+          'La aceptación del cliente es obligatoria cuando la orden afecta al sitio del cliente.',
+        ),
+      ).toBeInTheDocument();
+    });
+
     it('mantiene la captura en memoria y no usa almacenamiento del navegador', async () => {
       const setItem = jest.spyOn(Storage.prototype, 'setItem');
       const user = userEvent.setup();
@@ -632,7 +673,7 @@ describe('ExecutionOrderDrawer', () => {
 
     it('shows empty message when no items', () => {
       renderDrawer({ itemUsage: [] });
-      expect(screen.getByText(/Aun no hay consumos registrados/)).toBeInTheDocument();
+      expect(screen.getByText(/Aún no hay consumos registrados/)).toBeInTheDocument();
     });
 
     it('shows add item form when allowed', () => {

@@ -86,7 +86,12 @@ export function getMissingRequirements(error: unknown): ExecutionOrderMissingReq
   return values.flatMap((value): ExecutionOrderMissingRequirement[] => {
     if (typeof value === 'string') {
       return [
-        { requirementId: value, label: value, kind: 'OTHER', reason: 'Requisito pendiente.' },
+        {
+          requirementId: value,
+          label: 'Requisito pendiente',
+          kind: 'OTHER',
+          reason: 'Completa el requisito pendiente antes de cerrar la orden.',
+        },
       ];
     }
     if (!value || typeof value !== 'object') return [];
@@ -185,6 +190,7 @@ export function OperationsClient() {
     ExecutionOrderMissingRequirement[]
   >([]);
   const [executionOrderError, setExecutionOrderError] = useState<string | null>(null);
+  const [executionOrderSuccess, setExecutionOrderSuccess] = useState<string | null>(null);
   const [isLoadingExecutionOrder, setIsLoadingExecutionOrder] = useState(false);
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -287,6 +293,7 @@ export function OperationsClient() {
   const openExecutionOrder = useCallback(async (executionOrderId: string) => {
     setIsLoadingExecutionOrder(true);
     setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
     try {
       const [order, activities, itemUsage, evidence] = await Promise.all([
         tasksApi.executionOrders.get(executionOrderId),
@@ -420,9 +427,11 @@ export function OperationsClient() {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
     try {
       await tasksApi.executionOrders.start(selectedExecutionOrder.id, { note: note ?? null });
       await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('La ejecución fue iniciada.');
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
     } finally {
@@ -434,9 +443,11 @@ export function OperationsClient() {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
     try {
       await tasksApi.executionOrders.registerFieldWork(selectedExecutionOrder.id, payload);
       await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('El trabajo realizado fue registrado.');
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
     } finally {
@@ -450,9 +461,11 @@ export function OperationsClient() {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
     try {
       await tasksApi.executionOrders.registerItemUsage(selectedExecutionOrder.id, payload);
       await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('El material fue registrado.');
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
     } finally {
@@ -464,6 +477,7 @@ export function OperationsClient() {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
     try {
       for (const file of files) {
         const uploadReceipt = await tasksApi.executionOrders.uploadEvidenceAsset(
@@ -477,6 +491,7 @@ export function OperationsClient() {
         });
       }
       await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('La evidencia fue registrada.');
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
     } finally {
@@ -488,9 +503,11 @@ export function OperationsClient() {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
     try {
       await tasksApi.executionOrders.close(selectedExecutionOrder.id, payload);
       await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('El cierre fue registrado.');
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
       setExecutionOrderMissingRequirements(getMissingRequirements(error));
@@ -634,6 +651,7 @@ export function OperationsClient() {
         isLoading={isLoadingExecutionOrder}
         isSubmitting={isSubmittingExecutionOrder}
         error={executionOrderError}
+        successMessage={executionOrderSuccess}
         offline={offline}
         onClose={() => {
           setSelectedExecutionOrder(null);
@@ -641,6 +659,7 @@ export function OperationsClient() {
           setExecutionOrderItemUsage([]);
           setExecutionOrderEvidence([]);
           setExecutionOrderError(null);
+          setExecutionOrderSuccess(null);
           setExecutionOrderTemplate(null);
           setExecutionOrderMissingRequirements([]);
           router.replace('/dashboard/operations');
