@@ -130,6 +130,7 @@ export class MediaService {
     file: Express.Multer.File,
     uploadedByUserId?: string,
   ): Promise<MediaAssetResponseDto> {
+    this.assertTenantSchema(tenantSchema);
     const usage = dto.usage ?? MediaUsage.GENERAL;
 
     if (usage === MediaUsage.EXECUTION_EVIDENCE) {
@@ -209,6 +210,7 @@ export class MediaService {
    * Obtiene un asset por ID y verifica que pertenece al tenant indicado.
    */
   async findOne(id: string, tenantSchema: string): Promise<MediaAssetResponseDto> {
+    this.assertTenantSchema(tenantSchema);
     const asset = await this.mediaRepo.findOne({
       where: { id, tenantSchema, deletedAt: IsNull() },
     });
@@ -229,6 +231,7 @@ export class MediaService {
     tenantSchema: string,
     expiresInSeconds = 3600,
   ): Promise<{ signedUrl: string; expiresAt: Date }> {
+    this.assertTenantSchema(tenantSchema);
     const asset = await this.mediaRepo.findOne({
       where: { id, tenantSchema },
     });
@@ -251,6 +254,7 @@ export class MediaService {
    * TODO: implementar job BullMQ de limpieza física (Fase 03B+).
    */
   async softDelete(id: string, tenantSchema: string): Promise<void> {
+    this.assertTenantSchema(tenantSchema);
     const asset = await this.mediaRepo.findOne({
       where: { id, tenantSchema },
     });
@@ -264,6 +268,16 @@ export class MediaService {
   }
 
   // ─── Helpers privados ────────────────────────────────────────────────────────
+
+  private assertTenantSchema(tenantSchema: string): void {
+    if (
+      typeof tenantSchema !== 'string' ||
+      tenantSchema.trim().length === 0 ||
+      tenantSchema === 'platform'
+    ) {
+      throw new BadRequestException('Se requiere un tenant autenticado para operar sobre media.');
+    }
+  }
 
   private validateFile(file: Express.Multer.File, usage: MediaUsage): void {
     const constraints: { maxBytes: number; allowedMimes: string[] } | undefined =

@@ -368,8 +368,26 @@ describe('ExecutionOrdersService — Evidence', () => {
       mediaAssetId: ASSET_UUID,
       evidenceType: 'PHOTO',
       requirementKey: 'req-photo-installation',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
       capturedAt: new Date().toISOString(),
     };
+
+    it.each([null, 'not-a-date', new Date(Date.now() - 1).toISOString()])(
+      'rechaza expiresAt ausente, inválido o vencido antes de consultar Media (%s)',
+      async (expiresAt) => {
+        await expect(
+          service.registerEvidence(
+            ORDER_UUID,
+            { ...evidenceInput, expiresAt: expiresAt as unknown as string },
+            actor,
+          ),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EVIDENCE_EXPIRES_AT_INVALID' }),
+        });
+        expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
+        expect(evidenceAssetPort.claimAsset).not.toHaveBeenCalled();
+      },
+    );
 
     it('registra evidencia solo cuando el asset está AVAILABLE', async () => {
       const manager = {
@@ -821,6 +839,7 @@ describe('ExecutionOrdersService — Evidence', () => {
             mediaAssetId: ASSET_UUID,
             evidenceType: 'PHOTO',
             requirementKey: 'req-1',
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
           },
           actor,
         ),
@@ -877,6 +896,7 @@ describe('ExecutionOrdersService — Evidence', () => {
           mediaAssetId: ASSET_UUID,
           evidenceType: 'PHOTO',
           requirementKey: 'req-1',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
         },
         actor,
       );

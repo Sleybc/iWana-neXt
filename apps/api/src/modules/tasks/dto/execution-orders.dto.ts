@@ -224,6 +224,7 @@ export const RegisterEvidenceSchema = z
     mediaAssetId: z.string().uuid(),
     evidenceType: z.string().trim().min(1).max(64),
     requirementKey: z.string().trim().min(1).max(128),
+    expiresAt: z.string().min(1).max(128),
     capturedAt: z.string().datetime().optional().nullable(),
   })
   .strict();
@@ -234,6 +235,9 @@ export class RegisterEvidenceDto {
   @ApiProperty() @Allow() mediaAssetId!: string;
   @ApiProperty() @Allow() evidenceType!: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
   @ApiProperty() @Allow() requirementKey!: string;
+  @ApiProperty({ description: 'Expiración del intento de evidencia; debe ser futura.' })
+  @Allow()
+  expiresAt!: string;
   @ApiPropertyOptional() @Allow() capturedAt?: string;
 }
 

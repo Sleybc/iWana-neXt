@@ -838,6 +838,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           evidenceType: 'PHOTO',
           requirementKey: 'req-1',
+          expiresAt: '2026-06-25T14:00:00.000Z',
         },
       },
       {

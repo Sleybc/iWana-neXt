@@ -494,6 +494,12 @@ export class ExecutionOrdersService {
       this.assertMutable(order);
 
       if (validated.customerAcceptance?.artifactId) {
+        if (validated.customerAcceptance.method !== 'SIGNATURE') {
+          throw new UnprocessableEntityException({
+            code: 'CUSTOMER_ACCEPTANCE_METHOD_INVALID',
+            message: 'La aceptación de cliente para una firma debe usar el método SIGNATURE.',
+          });
+        }
         await this.assertCustomerAcceptanceArtifactLinked(
           qr.manager,
           tenantId,
@@ -735,6 +741,7 @@ export class ExecutionOrdersService {
       mediaAssetId: string;
       evidenceType: string;
       requirementKey: string;
+      expiresAt: string;
       capturedAt?: string;
     },
     actor: JwtPayload,
@@ -747,6 +754,8 @@ export class ExecutionOrdersService {
         message: 'La evidencia requiere validación de Media antes de enlazarse a la OT.',
       });
     }
+
+    this.assertEvidenceExpiresAt(input.expiresAt);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -1289,6 +1298,23 @@ export class ExecutionOrdersService {
       throw new ConflictException({
         code: 'EVIDENCE_UPLOAD_INTENT_EXPIRED',
         message: 'El intento de carga de evidencia ha expirado.',
+      });
+    }
+  }
+
+  private assertEvidenceExpiresAt(expiresAt: string): void {
+    if (typeof expiresAt !== 'string' || expiresAt.trim().length === 0) {
+      throw new BadRequestException({
+        code: 'EVIDENCE_EXPIRES_AT_INVALID',
+        message: 'La evidencia debe incluir una expiración válida y futura.',
+      });
+    }
+
+    const parsed = Date.parse(expiresAt);
+    if (!Number.isFinite(parsed) || parsed <= Date.now()) {
+      throw new BadRequestException({
+        code: 'EVIDENCE_EXPIRES_AT_INVALID',
+        message: 'La evidencia debe incluir una expiración válida y futura.',
       });
     }
   }

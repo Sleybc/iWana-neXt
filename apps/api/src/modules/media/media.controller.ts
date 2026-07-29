@@ -27,12 +27,14 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
+import { TenantContext } from '@iwana/db';
+import { UserRole } from '@iwana/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AbacGuard } from '../auth/guards/abac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { UserRole } from '@iwana/shared';
 import { MediaService } from './media.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { MediaAssetResponseDto } from './dto/media-asset-response.dto';
@@ -51,7 +53,7 @@ import { MediaAssetResponseDto } from './dto/media-asset-response.dto';
  * ADR-034 — Bounded Context Media/Assets
  */
 @Controller('media')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
 @ApiTags('media')
 @ApiBearerAuth('access-token')
 export class MediaController {
@@ -99,7 +101,7 @@ export class MediaController {
     }
 
     // Resolver tenantSchema desde el contexto del JWT
-    const tenantSchema = user.schemaName ?? 'platform';
+    const tenantSchema = this.resolveTenantSchema(user);
 
     const data = await this.mediaService.upload(tenantSchema, dto, file, user.sub);
     return { data };
@@ -125,7 +127,7 @@ export class MediaController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('expiresIn') expiresIn?: string,
   ): Promise<{ data: { signedUrl: string; expiresAt: Date } }> {
-    const tenantSchema = user.schemaName ?? 'platform';
+    const tenantSchema = this.resolveTenantSchema(user);
     const expiresInSeconds = expiresIn ? parseInt(expiresIn, 10) : 3600;
 
     const data = await this.mediaService.getSignedUrl(id, tenantSchema, expiresInSeconds);
@@ -146,7 +148,24 @@ export class MediaController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    const tenantSchema = user.schemaName ?? 'platform';
+    const tenantSchema = this.resolveTenantSchema(user);
     await this.mediaService.softDelete(id, tenantSchema);
+  }
+
+  private resolveTenantSchema(user: JwtPayload): string {
+    const context = TenantContext.getOrThrow();
+
+    if (
+      user.type === 'tenant' &&
+      (user.tenantId !== context.tenantId || user.schemaName !== context.schemaName)
+    ) {
+      throw new BadRequestException('El contexto de tenant no coincide con el token verificado.');
+    }
+
+    if (!context.schemaName || context.schemaName === 'platform') {
+      throw new BadRequestException('Se requiere un contexto de tenant válido.');
+    }
+
+    return context.schemaName;
   }
 }

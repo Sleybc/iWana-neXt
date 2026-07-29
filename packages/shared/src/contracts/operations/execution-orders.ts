@@ -166,6 +166,7 @@ export interface RegisterEvidenceCommand {
   mediaAssetId: string;
   evidenceType: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
   requirementKey: string;
+  expiresAt: string;
   capturedAt?: string;
 }
 

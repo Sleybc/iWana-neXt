@@ -116,6 +116,19 @@ describe('MediaService', () => {
   });
 
   describe('upload', () => {
+    it('rechaza tenant ausente o platform sin escribir en BD ni storage', async () => {
+      const file = buildMulterFile();
+
+      await expect(
+        service.upload(undefined as unknown as string, { usage: MediaUsage.LOGO }, file),
+      ).rejects.toThrow(BadRequestException);
+      await expect(service.upload('platform', { usage: MediaUsage.LOGO }, file)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
     it('debe subir un archivo válido y retornar el DTO de respuesta', async () => {
       const saved = buildMediaAsset();
       mockRepo.create.mockReturnValue(saved);

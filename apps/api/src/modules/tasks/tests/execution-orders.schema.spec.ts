@@ -102,6 +102,7 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
         mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         evidenceType: 'PHOTO',
         requirementKey: 'req-photo-installation',
+        expiresAt: '2026-06-25T14:00:00.000Z',
         capturedAt: '2026-06-24T14:00:00.000Z',
       });
       expect(result.mediaAssetId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
@@ -114,6 +115,7 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
         mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         evidenceType: 'DOCUMENT',
         requirementKey: 'req-doc',
+        expiresAt: '2026-06-25T14:00:00.000Z',
       });
       expect(result.capturedAt).toBeUndefined();
     });

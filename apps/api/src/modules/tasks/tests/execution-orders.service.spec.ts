@@ -253,6 +253,48 @@ describe('ExecutionOrdersService', () => {
     },
   );
 
+  it.each(['OTP', 'OTHER'] as const)(
+    'rejects customer signature acceptance with non-canonical method %s',
+    async (method) => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            status: ExecutionOrderStatus.IN_PROGRESS,
+          })
+          .mockResolvedValueOnce({
+            executionOrderId: 'eo-001',
+            tenantId: 'tenant-001',
+            mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            evidenceType: 'CUSTOMER_SIGNATURE',
+            assetStatus: 'AVAILABLE',
+          }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.NOT_EXECUTED,
+            summary: 'Cierre con método no permitido',
+            customerAcceptance: {
+              artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              method,
+            },
+          },
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'CUSTOMER_ACCEPTANCE_METHOD_INVALID' }),
+      });
+    },
+  );
+
   it('notifies assurance when closing an order linked to a ticket', async () => {
     const assuranceNotifier = {
       notifyClosed: jest.fn().mockResolvedValue(undefined),
