@@ -28,6 +28,7 @@ jest.mock('@iwana/db', () => {
     ExecutionOrderActivity: class ExecutionOrderActivity {},
     ExecutionOrderItemUsage: class ExecutionOrderItemUsage {},
     ExecutionOrderEvidence: class ExecutionOrderEvidence {},
+    ExecutionOrderEvidenceUploadIntent: class ExecutionOrderEvidenceUploadIntent {},
   };
 });
 
@@ -73,6 +74,21 @@ describe('ExecutionOrdersService — Evidence', () => {
     closedAt: null,
     closeNotes: null,
     updatedByUserId: null,
+  });
+
+  const currentUploadIntent = (
+    overrides: Partial<{
+      status: string;
+      expiresAt: Date | null;
+    }> = {},
+  ) => ({
+    id: 'intent-001',
+    executionOrderId: ORDER_UUID,
+    tenantId: 'tenant-001',
+    mediaAssetId: ASSET_UUID,
+    status: 'PENDING_ANALYSIS',
+    expiresAt: new Date(Date.now() + 60_000),
+    ...overrides,
   });
 
   beforeEach(() => {
@@ -357,7 +373,10 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('registra evidencia solo cuando el asset está AVAILABLE', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -442,7 +461,10 @@ describe('ExecutionOrdersService — Evidence', () => {
       (service as unknown as { evidenceAssetPort: IEvidenceAssetPort }).evidenceAssetPort =
         provider;
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -471,7 +493,10 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('rechaza evidencia con asset PENDING_ANALYSIS', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -495,7 +520,10 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('rechaza evidencia con asset REJECTED', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -514,9 +542,59 @@ describe('ExecutionOrdersService — Evidence', () => {
       );
     });
 
+    it('rechaza intent expirado antes de consultar Media o reclamar', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(
+            currentUploadIntent({
+              expiresAt: new Date(Date.now() - 1),
+            }),
+          ),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.registerEvidence(ORDER_UUID, evidenceInput, actor),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'EVIDENCE_UPLOAD_INTENT_EXPIRED' }),
+      });
+      expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
+      expect(evidenceAssetPort.claimAsset).not.toHaveBeenCalled();
+    });
+
+    it.each(['EXPIRED', 'REJECTED', 'FAILED', 'UNKNOWN'])(
+      'rechaza intent con status %s antes de consultar Media',
+      async (status) => {
+        const manager = {
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce(mockOrder())
+            .mockResolvedValueOnce(currentUploadIntent({ status })),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerEvidence(ORDER_UUID, evidenceInput, actor),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EVIDENCE_UPLOAD_INTENT_NOT_ALLOWED' }),
+        });
+        expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
+        expect(evidenceAssetPort.claimAsset).not.toHaveBeenCalled();
+      },
+    );
+
     it('rechaza si el asset pertenece a otro tenant (cross-tenant)', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -537,7 +615,10 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('rechaza asset ya reclamado por otra OT (DATA-P1-2)', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -701,7 +782,10 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('no reclama asset si falla la persistencia de la OT (evidence no creada)', async () => {
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -749,7 +833,10 @@ describe('ExecutionOrdersService — Evidence', () => {
     it('crea evidencia antes de reclamar el asset (P0-2 orden de compensación)', async () => {
       let evidenceCreated = false;
       const manager = {
-        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(currentUploadIntent()),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -848,6 +935,24 @@ describe('ExecutionOrdersService — Evidence', () => {
       const result = await service.getEvidenceAssetReceipt(ORDER_UUID, ASSET_UUID);
       expect(result.status).toBe('PENDING_ANALYSIS');
       expect(evidenceAssetPort.getAssetStatus).toHaveBeenCalled();
+    });
+
+    it('rechaza polling con intent expirado antes de consultar Media', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(currentUploadIntent({ expiresAt: new Date(Date.now() - 1) })),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.getEvidenceAssetReceipt(ORDER_UUID, ASSET_UUID)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'EVIDENCE_UPLOAD_INTENT_EXPIRED' }),
+      });
+      expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
     });
 
     it('getEvidenceContentRedirect rechaza mediaAssetId no vinculado (404)', async () => {

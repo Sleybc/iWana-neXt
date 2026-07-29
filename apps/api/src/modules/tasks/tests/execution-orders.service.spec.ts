@@ -200,6 +200,59 @@ describe('ExecutionOrdersService', () => {
     ).rejects.toThrow('Debes registrar la evidencia de firma del cliente');
   });
 
+  it.each([
+    ['PHOTO', 'AVAILABLE', 'CUSTOMER_ACCEPTANCE_ARTIFACT_INVALID_TYPE'],
+    ['CUSTOMER_SIGNATURE', 'PENDING_ANALYSIS', 'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_AVAILABLE'],
+  ])(
+    'rejects customer acceptance artifact with type %s and asset status %s',
+    async (evidenceType, assetStatus, code) => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            taskId: null,
+            ticketId: null,
+            status: ExecutionOrderStatus.IN_PROGRESS,
+          })
+          .mockResolvedValueOnce({
+            executionOrderId: 'eo-001',
+            tenantId: 'tenant-001',
+            mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            evidenceType,
+            assetStatus,
+          }),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.NOT_EXECUTED,
+            summary: 'Cierre con artefacto inválido',
+            customerAcceptance: {
+              artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              method: 'SIGNATURE',
+            },
+          },
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code }),
+      });
+    },
+  );
+
   it('notifies assurance when closing an order linked to a ticket', async () => {
     const assuranceNotifier = {
       notifyClosed: jest.fn().mockResolvedValue(undefined),

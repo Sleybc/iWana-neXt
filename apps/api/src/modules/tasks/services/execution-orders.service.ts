@@ -787,6 +787,7 @@ export class ExecutionOrdersService {
           message: 'El asset no tiene un intento de carga vigente vinculado a esta OT.',
         });
       }
+      this.assertEvidenceUploadIntentCurrent(uploadIntent);
 
       // ── Validación del asset contra Media/Assets ─────────────────────────
       // Verificar que el asset existe y está AVAILABLE
@@ -971,6 +972,10 @@ export class ExecutionOrdersService {
 
       if (!intent && !evidence) {
         throw new NotFoundException('OT de ejecución no encontrada');
+      }
+
+      if (intent) {
+        this.assertEvidenceUploadIntentCurrent(intent);
       }
 
       // Vinculo existe — consultar estado real en Media
@@ -1253,6 +1258,37 @@ export class ExecutionOrdersService {
       throw new UnprocessableEntityException({
         code: 'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_LINKED',
         message: 'El artefacto de aceptación no está vinculado a una evidencia de esta OT.',
+      });
+    }
+
+    if (linkedEvidence.evidenceType !== 'CUSTOMER_SIGNATURE') {
+      throw new UnprocessableEntityException({
+        code: 'CUSTOMER_ACCEPTANCE_ARTIFACT_INVALID_TYPE',
+        message: 'El artefacto de aceptación debe corresponder a una firma del cliente.',
+      });
+    }
+
+    if (linkedEvidence.assetStatus !== 'AVAILABLE') {
+      throw new UnprocessableEntityException({
+        code: 'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_AVAILABLE',
+        message: 'El artefacto de aceptación debe tener un asset disponible.',
+      });
+    }
+  }
+
+  private assertEvidenceUploadIntentCurrent(intent: ExecutionOrderEvidenceUploadIntent): void {
+    const allowedStatuses = new Set(['PENDING_ANALYSIS', 'AVAILABLE']);
+    if (!allowedStatuses.has(intent.status)) {
+      throw new ConflictException({
+        code: 'EVIDENCE_UPLOAD_INTENT_NOT_ALLOWED',
+        message: 'El intento de carga no está en un estado permitido para esta operación.',
+      });
+    }
+
+    if (intent.expiresAt && intent.expiresAt.getTime() <= Date.now()) {
+      throw new ConflictException({
+        code: 'EVIDENCE_UPLOAD_INTENT_EXPIRED',
+        message: 'El intento de carga de evidencia ha expirado.',
       });
     }
   }
