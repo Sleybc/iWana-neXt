@@ -1,27 +1,34 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Button, Select } from '@iwana/ui';
+import { Button, Input, Select } from '@iwana/ui';
 import { ExecutionOrderResult } from '@iwana/shared';
 
 interface ExecutionOrderCloseStepProps {
-  requiresCustomerSignature?: boolean;
+  /** Solo es opcional cuando la plantilla/flujo declara que no aplica. */
+  requiresCustomerAcceptance?: boolean;
   disabled?: boolean;
   onSubmit: (payload: {
     result: ExecutionOrderResult;
-    closeNotes?: string | null;
-    customerSignatureRef?: string | null;
+    summary: string;
+    customerAcceptance?: {
+      artifactId: string;
+      method: 'SIGNATURE' | 'OTP' | 'OTHER';
+    };
   }) => Promise<void>;
 }
 
 export function ExecutionOrderCloseStep({
-  requiresCustomerSignature = false,
+  requiresCustomerAcceptance = true,
   disabled = false,
   onSubmit,
 }: ExecutionOrderCloseStepProps) {
   const [result, setResult] = useState<ExecutionOrderResult>(ExecutionOrderResult.EXECUTED);
-  const [closeNotes, setCloseNotes] = useState('');
-  const [customerSignatureRef, setCustomerSignatureRef] = useState('');
+  const [summary, setSummary] = useState('');
+  const [customerAcceptanceArtifactId, setCustomerAcceptanceArtifactId] = useState('');
+  const [customerAcceptanceMethod, setCustomerAcceptanceMethod] = useState<
+    'SIGNATURE' | 'OTP' | 'OTHER' | ''
+  >('');
 
   const resultOptions = useMemo(
     () => [
@@ -53,37 +60,67 @@ export function ExecutionOrderCloseStep({
         disabled={disabled}
         onChange={(event) => setResult(event.target.value as ExecutionOrderResult)}
       />
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-        Nota de cierre
-        <textarea
-          className="mt-1 min-h-24 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
-          value={closeNotes}
-          disabled={disabled}
-          onChange={(event) => setCloseNotes(event.target.value)}
-        />
-      </label>
-      {requiresCustomerSignature ? (
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-          Evidencia de firma del cliente
-          <input
-            type="text"
-            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
-            value={customerSignatureRef}
+      <Input
+        id="execution-order-summary"
+        label="Resumen de cierre"
+        value={summary}
+        disabled={disabled}
+        onChange={(event) => setSummary(event.target.value)}
+        requiredIndicator
+      />
+      {requiresCustomerAcceptance ? (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+            Aceptación del cliente
+          </p>
+          <Input
+            id="execution-order-acceptance-artifact"
+            label="Referencia de evidencia"
+            value={customerAcceptanceArtifactId}
             disabled={disabled}
-            onChange={(event) => setCustomerSignatureRef(event.target.value)}
-            placeholder="ej. ev-sign-ot-001"
+            onChange={(event) => setCustomerAcceptanceArtifactId(event.target.value)}
+            requiredIndicator
           />
-        </label>
+          <Select
+            id="execution-order-acceptance-method"
+            label="Forma de aceptación"
+            value={customerAcceptanceMethod}
+            options={[
+              { value: 'SIGNATURE', label: 'Firma' },
+              { value: 'OTP', label: 'Código de verificación' },
+              { value: 'OTHER', label: 'Otra forma' },
+            ]}
+            placeholder="Selecciona una forma"
+            disabled={disabled}
+            onChange={(event) =>
+              setCustomerAcceptanceMethod(event.target.value as 'SIGNATURE' | 'OTP' | 'OTHER')
+            }
+            required
+          />
+        </div>
       ) : null}
       <Button
         type="button"
-        disabled={disabled}
+        disabled={
+          disabled ||
+          summary.trim().length === 0 ||
+          (requiresCustomerAcceptance &&
+            (customerAcceptanceArtifactId.trim().length === 0 || !customerAcceptanceMethod))
+        }
         onClick={async () => {
-          await onSubmit({
+          const payload = {
             result,
-            closeNotes: closeNotes.trim() || null,
-            customerSignatureRef: customerSignatureRef.trim() || null,
-          });
+            summary: summary.trim(),
+            ...(requiresCustomerAcceptance
+              ? {
+                  customerAcceptance: {
+                    artifactId: customerAcceptanceArtifactId.trim(),
+                    method: customerAcceptanceMethod as 'SIGNATURE' | 'OTP' | 'OTHER',
+                  },
+                }
+              : {}),
+          };
+          await onSubmit(payload);
         }}
       >
         Cerrar OT

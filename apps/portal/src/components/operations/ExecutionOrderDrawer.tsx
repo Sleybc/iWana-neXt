@@ -54,6 +54,8 @@ interface ExecutionOrderDrawerProps {
   onCloseOrder: (payload: CloseExecutionOrderDto) => Promise<void>;
   /** Opciones entregadas por el boundary de asignacion; no admite texto libre. */
   custodyOptions?: ExecutionOrderCustodyOption[];
+  /** Opciones de inventario autorizadas; el formulario no acepta IDs escritos a mano. */
+  itemOptions?: Array<{ value: string; label: string }>;
 }
 
 type CustomerAcceptanceMethod = NonNullable<CloseExecutionOrderDto['customerAcceptance']>['method'];
@@ -172,6 +174,7 @@ export function ExecutionOrderDrawer({
   onUnblock,
   onCloseOrder,
   custodyOptions,
+  itemOptions = [],
 }: ExecutionOrderDrawerProps) {
   const terminal = order ? TERMINAL_STATUSES.has(order.status) : false;
   const forbidden = order ? order.allowedActions === null : false;
@@ -198,9 +201,7 @@ export function ExecutionOrderDrawer({
   const [itemSerial, setItemSerial] = useState('');
   const [itemAction, setItemAction] = useState<ExecutionOrderItemAction | ''>('');
   const [selectedCustodyId, setSelectedCustodyId] = useState('');
-  const [itemDisposition, setItemDisposition] = useState<InventoryDisposition>(
-    InventoryDisposition.INSTALLED_AT_CUSTOMER,
-  );
+  const [itemDisposition, setItemDisposition] = useState<InventoryDisposition | ''>('');
 
   // Block 6 — Cierre
   const [closeResult, setCloseResult] = useState<ExecutionOrderResult>(
@@ -213,14 +214,11 @@ export function ExecutionOrderDrawer({
     CustomerAcceptanceMethod | ''
   >('');
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const [blockReason, setBlockReason] = useState('');
-  const [unblockReason, setUnblockReason] = useState('');
 
   useEffect(() => {
     setItemAction('');
     setSelectedCustodyId('');
-    setBlockReason('');
-    setUnblockReason('');
+    setItemDisposition('');
   }, [order?.id]);
 
   // Evidencia — file input ref
@@ -279,16 +277,6 @@ export function ExecutionOrderDrawer({
     [resolvedCustodyOptions],
   );
 
-  const reasonOptions = useMemo(
-    () =>
-      (template?.reasonCatalogs ?? []).map((value, index) => ({
-        value,
-        // El contrato actual no entrega labels ni aplicabilidad por comando.
-        label: `Motivo disponible ${index + 1}`,
-      })),
-    [template?.reasonCatalogs],
-  );
-
   const dispositionOptions = useMemo(
     () => [
       { value: 'INSTALLED_AT_CUSTOMER', label: 'Instalado en cliente' },
@@ -323,13 +311,13 @@ export function ExecutionOrderDrawer({
   const handleRegisterItem = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!itemId.trim() || !itemAction || !selectedCustodyId) return;
+      if (!itemId.trim() || !itemAction || !selectedCustodyId || !itemDisposition) return;
       const payload: Parameters<typeof onRegisterItemUsage>[0] = {
         itemId: itemId.trim(),
         technicianCustodyId: selectedCustodyId,
         quantity: Number(itemQty) || 1,
         action: itemAction,
-        finalDisposition: itemDisposition,
+        finalDisposition: itemDisposition as InventoryDisposition,
       };
       const s = itemSerial.trim();
       if (s) payload.serialNumber = s;
@@ -377,8 +365,15 @@ export function ExecutionOrderDrawer({
     onCloseOrder,
   ]);
 
-  const customerAcceptanceIncomplete =
-    customerAcceptanceArtifactId.trim().length > 0 !== Boolean(customerAcceptanceMethod);
+  const hasCustomerSiteDisposition =
+    itemDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER ||
+    itemUsage.some(
+      (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
+    );
+  const customerAcceptanceRequired = hasCustomerSiteDisposition;
+  const customerAcceptanceIncomplete = customerAcceptanceRequired
+    ? customerAcceptanceArtifactId.trim().length === 0 || !customerAcceptanceMethod
+    : customerAcceptanceArtifactId.trim().length > 0 !== Boolean(customerAcceptanceMethod);
 
   const customerAcceptanceMethodOptions = useMemo(
     () => [
@@ -501,7 +496,7 @@ export function ExecutionOrderDrawer({
                   Tipo de trabajo
                 </p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}
+                  {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType] ?? 'Trabajo operativo'}
                 </p>
               </div>
               <div>
@@ -509,7 +504,7 @@ export function ExecutionOrderDrawer({
                   Estado
                 </p>
                 <Badge className="mt-1" variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
-                  {EXECUTION_ORDER_STATUS_LABELS[order.status]}
+                  {EXECUTION_ORDER_STATUS_LABELS[order.status] ?? 'Estado operativo'}
                 </Badge>
               </div>
               {order.result && (
@@ -518,7 +513,7 @@ export function ExecutionOrderDrawer({
                     Resultado
                   </p>
                   <Badge className="mt-1" variant="neutral">
-                    {EXECUTION_ORDER_RESULT_LABELS[order.result]}
+                    {EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Resultado registrado'}
                   </Badge>
                 </div>
               )}
@@ -554,52 +549,22 @@ export function ExecutionOrderDrawer({
               </Button>
             )}
             {/* Block/Unblock */}
-            {canInteract && canUnblock && (
+            {canInteract && canUnblock && onUnblock && (
               <div className="mt-4 space-y-3">
-                <Select
-                  id="eo-unblock-reason"
-                  label="Motivo de desbloqueo"
-                  value={unblockReason}
-                  placeholder="Selecciona un motivo"
-                  options={reasonOptions}
-                  disabled={isSubmitting || reasonOptions.length === 0}
-                  {...(reasonOptions.length === 0
-                    ? { helperText: 'El catálogo de motivos no está disponible.' }
-                    : {})}
-                  onChange={(e) => setUnblockReason(e.target.value)}
+                <PortalAlert
+                  variant="warning"
+                  title="Desbloqueo no disponible"
+                  description="El catálogo de motivos aún no informa qué opciones aplican a este comando."
                 />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={isSubmitting || !unblockReason}
-                  onClick={() => onUnblock?.({ resolutionCode: unblockReason })}
-                >
-                  Desbloquear OT
-                </Button>
               </div>
             )}
-            {canInteract && canBlock && (
+            {canInteract && canBlock && onBlock && (
               <div className="mt-4 space-y-3">
-                <Select
-                  id="eo-block-reason"
-                  label="Motivo de bloqueo"
-                  value={blockReason}
-                  placeholder="Selecciona un motivo"
-                  options={reasonOptions}
-                  disabled={isSubmitting || reasonOptions.length === 0}
-                  {...(reasonOptions.length === 0
-                    ? { helperText: 'El catálogo de motivos no está disponible.' }
-                    : {})}
-                  onChange={(e) => setBlockReason(e.target.value)}
+                <PortalAlert
+                  variant="warning"
+                  title="Bloqueo no disponible"
+                  description="El catálogo de motivos aún no informa qué opciones aplican a este comando."
                 />
-                <Button
-                  type="button"
-                  variant="softDestructive"
-                  disabled={isSubmitting || !blockReason}
-                  onClick={() => onBlock?.({ reasonCode: blockReason })}
-                >
-                  Bloquear OT
-                </Button>
               </div>
             )}
           </section>
@@ -746,27 +711,23 @@ export function ExecutionOrderDrawer({
                   disabled={isSubmitting}
                   onChange={(e) => setActivityType(e.target.value)}
                 />
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Descripcion de la actividad
-                  <textarea
-                    className="mt-1 min-h-20 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
-                    value={activityDescription}
-                    disabled={isSubmitting}
-                    onChange={(e) => setActivityDescription(e.target.value)}
-                    placeholder="Describe el trabajo realizado..."
-                  />
-                </label>
-
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300"
-                    checked={activityNovelty}
-                    onChange={(e) => setActivityNovelty(e.target.checked)}
-                    disabled={isSubmitting}
-                  />
+                <Input
+                  id="eo-activity-description"
+                  label="Descripción de la actividad"
+                  value={activityDescription}
+                  disabled={isSubmitting}
+                  onChange={(e) => setActivityDescription(e.target.value)}
+                  placeholder="Describe el trabajo realizado..."
+                />
+                <Button
+                  type="button"
+                  variant={activityNovelty ? 'secondary' : 'ghost'}
+                  aria-pressed={activityNovelty}
+                  disabled={isSubmitting}
+                  onClick={() => setActivityNovelty((current) => !current)}
+                >
                   Marcar como novedad
-                </label>
+                </Button>
                 <Button
                   type="submit"
                   variant="secondary"
@@ -807,7 +768,7 @@ export function ExecutionOrderDrawer({
                           {usage.serial ?? 'Material registrado'}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {ITEM_ACTION_LABELS[usage.action] ?? usage.action} · Cantidad:{' '}
+                          {ITEM_ACTION_LABELS[usage.action] ?? 'Movimiento registrado'} · Cantidad:{' '}
                           {usage.quantity}
                         </p>
                       </div>
@@ -832,7 +793,7 @@ export function ExecutionOrderDrawer({
             {/* Inventory reconciliation */}
             {order.inventoryReconciliation !== 'NOT_REQUIRED' && (
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {DISPOSITION_LABELS[order.inventoryReconciliation] ?? order.inventoryReconciliation}
+                {DISPOSITION_LABELS[order.inventoryReconciliation] ?? 'Estado de conciliación'}
               </p>
             )}
 
@@ -844,13 +805,21 @@ export function ExecutionOrderDrawer({
               >
                 <p className="text-xs font-medium text-gray-500">Agregar material o equipo</p>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Input
+                  <Select
                     id="eo-item-id"
-                    label="Item (SKU o descripcion)"
+                    label="Ítem"
                     value={itemId}
-                    disabled={isSubmitting}
+                    options={itemOptions}
+                    placeholder={
+                      itemOptions.length ? 'Selecciona un ítem' : 'No hay ítems disponibles'
+                    }
+                    {...(itemOptions.length === 0
+                      ? {
+                          helperText: 'Selecciona un ítem autorizado para registrar el movimiento.',
+                        }
+                      : {})}
+                    disabled={isSubmitting || itemOptions.length === 0}
                     onChange={(e) => setItemId(e.target.value)}
-                    placeholder="ej. ONT-001"
                   />
                   <Input
                     id="eo-item-qty"
@@ -909,7 +878,11 @@ export function ExecutionOrderDrawer({
                   type="submit"
                   variant="secondary"
                   disabled={
-                    isSubmitting || itemId.trim().length === 0 || !itemAction || !selectedCustodyId
+                    isSubmitting ||
+                    itemId.trim().length === 0 ||
+                    !itemAction ||
+                    !selectedCustodyId ||
+                    !itemDisposition
                   }
                 >
                   Registrar material
@@ -1061,7 +1034,7 @@ export function ExecutionOrderDrawer({
                             : 'error'
                       }
                     >
-                      {EXECUTION_ORDER_RESULT_LABELS[order.result]}
+                      {EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Resultado registrado'}
                     </Badge>
                   </div>
                 )}
@@ -1090,20 +1063,20 @@ export function ExecutionOrderDrawer({
                   onChange={(e) => setCloseReason(e.target.value)}
                   placeholder="ej. Sin acceso al sitio"
                 />
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Resumen de cierre
-                  <textarea
-                    className="mt-1 min-h-24 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
-                    value={closeSummary}
-                    disabled={isSubmitting}
-                    onChange={(e) => setCloseSummary(e.target.value)}
-                    placeholder="Describe el resultado final del trabajo..."
-                  />
-                </label>
+                <Input
+                  id="eo-close-summary"
+                  label="Resumen de cierre"
+                  value={closeSummary}
+                  disabled={isSubmitting}
+                  onChange={(e) => setCloseSummary(e.target.value)}
+                  placeholder="Describe el resultado final del trabajo..."
+                  requiredIndicator
+                />
 
                 <fieldset className="space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border">
                   <legend className="px-1 text-sm font-medium text-gray-700 dark:text-gray-200">
-                    Aceptación del cliente (opcional)
+                    Aceptación del cliente{' '}
+                    {customerAcceptanceRequired ? '(obligatoria)' : '(opcional)'}
                   </legend>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     Registra la referencia de la evidencia y cómo fue aceptado el trabajo.
@@ -1115,6 +1088,7 @@ export function ExecutionOrderDrawer({
                     disabled={isSubmitting}
                     onChange={(e) => setCustomerAcceptanceArtifactId(e.target.value)}
                     placeholder="Ej. firma-001"
+                    requiredIndicator={customerAcceptanceRequired}
                   />
                   <Select
                     id="eo-customer-acceptance-method"

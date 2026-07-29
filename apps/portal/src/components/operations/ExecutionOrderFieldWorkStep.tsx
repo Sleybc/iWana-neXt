@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input } from '@iwana/ui';
+import { Button, Input, Select } from '@iwana/ui';
 
 interface ExecutionOrderFieldWorkStepProps {
   disabled?: boolean;
@@ -12,7 +12,7 @@ export function ExecutionOrderFieldWorkStep({
   disabled = false,
   onSubmit,
 }: ExecutionOrderFieldWorkStepProps) {
-  const [activityType, setActivityType] = useState('FIELD_NOTE');
+  const [activityType, setActivityType] = useState('');
   const [description, setDescription] = useState('');
 
   return (
@@ -23,29 +23,35 @@ export function ExecutionOrderFieldWorkStep({
           Registra la actividad concreta ejecutada en campo.
         </p>
       </div>
-      <Input
+      <Select
         id="execution-order-activity-type"
         label="Tipo de actividad"
         value={activityType}
+        placeholder="Selecciona un tipo de actividad"
+        options={[
+          { value: 'INSTALLATION', label: 'Instalación' },
+          { value: 'FIELD_NOTE', label: 'Nota de campo' },
+          { value: 'CONFIGURATION', label: 'Configuración' },
+          { value: 'TESTING', label: 'Prueba' },
+          { value: 'NOVELTY', label: 'Novedad' },
+        ]}
         disabled={disabled}
         onChange={(event) => setActivityType(event.target.value)}
       />
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-        Descripción
-        <textarea
-          className="mt-1 min-h-24 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
-          value={description}
-          disabled={disabled}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-      </label>
+      <Input
+        id="execution-order-activity-description"
+        label="Descripción"
+        value={description}
+        disabled={disabled}
+        onChange={(event) => setDescription(event.target.value)}
+      />
       <Button
         type="button"
         variant="secondary"
-        disabled={disabled || description.trim().length === 0}
+        disabled={disabled || !activityType || description.trim().length === 0}
         onClick={async () => {
           await onSubmit({
-            activityType: activityType.trim() || 'FIELD_NOTE',
+            activityType,
             description: description.trim(),
           });
           setDescription('');

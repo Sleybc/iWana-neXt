@@ -4,7 +4,14 @@ import { useMemo, useState } from 'react';
 import { Button, Input, Select } from '@iwana/ui';
 import { ExecutionOrderItemAction, InventoryDisposition } from '@iwana/shared';
 
+export interface ExecutionOrderInventoryOption {
+  value: string;
+  label: string;
+}
+
 interface ExecutionOrderInventoryStepProps {
+  itemOptions: ExecutionOrderInventoryOption[];
+  custodyOptions: ExecutionOrderInventoryOption[];
   disabled?: boolean;
   onSubmit: (payload: {
     itemId: string;
@@ -17,6 +24,8 @@ interface ExecutionOrderInventoryStepProps {
 }
 
 export function ExecutionOrderInventoryStep({
+  itemOptions,
+  custodyOptions,
   disabled = false,
   onSubmit,
 }: ExecutionOrderInventoryStepProps) {
@@ -24,10 +33,8 @@ export function ExecutionOrderInventoryStep({
   const [technicianCustodyId, setTechnicianCustodyId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [serialNumber, setSerialNumber] = useState('');
-  const [action, setAction] = useState<ExecutionOrderItemAction>(ExecutionOrderItemAction.INSTALL);
-  const [disposition, setDisposition] = useState<InventoryDisposition>(
-    InventoryDisposition.INSTALLED_AT_CUSTOMER,
-  );
+  const [action, setAction] = useState<ExecutionOrderItemAction | ''>('');
+  const [disposition, setDisposition] = useState<InventoryDisposition | ''>('');
 
   const actionOptions = useMemo(
     () => [
@@ -62,18 +69,24 @@ export function ExecutionOrderInventoryStep({
         </p>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <Input
+        <Select
           id="execution-order-item-id"
           label="Ítem"
           value={itemId}
+          options={itemOptions}
+          placeholder={itemOptions.length ? 'Selecciona un ítem' : 'No hay ítems disponibles'}
           disabled={disabled}
           onChange={(event) => setItemId(event.target.value)}
         />
-        <Input
+        <Select
           id="execution-order-custody-id"
-          label="Custodia técnica"
+          label="Custodia de origen"
           value={technicianCustodyId}
-          disabled={disabled}
+          options={custodyOptions}
+          placeholder={
+            custodyOptions.length ? 'Selecciona una custodia' : 'No hay custodia elegible'
+          }
+          disabled={disabled || custodyOptions.length === 0}
           onChange={(event) => setTechnicianCustodyId(event.target.value)}
         />
         <Input
@@ -113,15 +126,21 @@ export function ExecutionOrderInventoryStep({
       <Button
         type="button"
         variant="secondary"
-        disabled={disabled || itemId.trim().length === 0 || technicianCustodyId.trim().length === 0}
+        disabled={
+          disabled ||
+          itemId.trim().length === 0 ||
+          technicianCustodyId.trim().length === 0 ||
+          !action ||
+          !disposition
+        }
         onClick={async () => {
           await onSubmit({
             itemId: itemId.trim(),
             technicianCustodyId: technicianCustodyId.trim(),
             quantity: Number(quantity || '1') || 1,
             serialNumber: serialNumber.trim() || null,
-            action,
-            finalDisposition: disposition,
+            action: action as ExecutionOrderItemAction,
+            finalDisposition: disposition as InventoryDisposition,
           });
           setItemId('');
           setTechnicianCustodyId('');

@@ -99,7 +99,7 @@ export function ExecutionOrderSummary({
         <Badge variant="neutral">
           <span className="font-mono">{number}</span>
         </Badge>
-        <Badge variant="info">{workType}</Badge>
+        <Badge variant="primary">{workType}</Badge>
         <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[status]}>
           {EXECUTION_ORDER_STATUS_LABELS[status]}
         </Badge>

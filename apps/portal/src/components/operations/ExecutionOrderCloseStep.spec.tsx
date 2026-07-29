@@ -8,16 +8,40 @@ describe('ExecutionOrderCloseStep', () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 
-    render(<ExecutionOrderCloseStep requiresCustomerSignature={true} onSubmit={onSubmit} />);
+    render(<ExecutionOrderCloseStep onSubmit={onSubmit} />);
 
-    await user.type(screen.getByLabelText('Nota de cierre'), 'Trabajo completado con ajuste menor');
-    await user.type(screen.getByLabelText('Evidencia de firma del cliente'), 'SIG-REF-001');
+    await user.type(
+      screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+      'Trabajo completado con ajuste menor',
+    );
+    await user.type(
+      screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
+      'SIG-REF-001',
+    );
+    await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+    await user.click(screen.getByRole('option', { name: 'Firma' }));
     await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       result: ExecutionOrderResult.EXECUTED,
-      closeNotes: 'Trabajo completado con ajuste menor',
-      customerSignatureRef: 'SIG-REF-001',
+      summary: 'Trabajo completado con ajuste menor',
+      customerAcceptance: { artifactId: 'SIG-REF-001', method: 'SIGNATURE' },
     });
+  });
+
+  it('permite omitir aceptación solo cuando el flujo declara que no aplica', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(<ExecutionOrderCloseStep requiresCustomerAcceptance={false} onSubmit={onSubmit} />);
+
+    await user.type(screen.getByRole('textbox', { name: 'Resumen de cierre' }), 'No se ejecutó');
+    await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      result: ExecutionOrderResult.EXECUTED,
+      summary: 'No se ejecutó',
+    });
+    expect(screen.queryByLabelText('Referencia de evidencia')).not.toBeInTheDocument();
   });
 });

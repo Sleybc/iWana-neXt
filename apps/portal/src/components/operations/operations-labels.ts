@@ -85,7 +85,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 
 export const TASK_STATUS_VARIANTS: Record<TaskStatus, OperationsBadgeVariant> = {
   [TaskStatus.OPEN]: 'neutral',
-  [TaskStatus.READY]: 'info',
+  [TaskStatus.READY]: 'primary',
   [TaskStatus.SCHEDULED]: 'primary',
   [TaskStatus.IN_PROGRESS]: 'warning',
   [TaskStatus.PENDING_EXTERNAL]: 'lime',

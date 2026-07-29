@@ -210,6 +210,7 @@ describe('ExecutionOrderDrawer', () => {
         onBlock={jest.fn().mockResolvedValue(undefined)}
         onUnblock={jest.fn().mockResolvedValue(undefined)}
         onCloseOrder={jest.fn().mockResolvedValue(undefined)}
+        itemOptions={[{ value: 'item-001', label: 'ONT de instalación' }]}
         {...props}
       />,
     );
@@ -411,7 +412,7 @@ describe('ExecutionOrderDrawer', () => {
         onRegisterActivity,
       });
 
-      const textarea = screen.getByLabelText('Descripcion de la actividad');
+      const textarea = screen.getByRole('textbox', { name: 'Descripción de la actividad' });
       await user.type(textarea, 'Cable tendido hasta el poste');
       await user.click(screen.getByRole('button', { name: 'Registrar actividad' }));
 
@@ -451,12 +452,15 @@ describe('ExecutionOrderDrawer', () => {
         onRegisterItemUsage,
       });
 
-      await user.type(screen.getByLabelText('Item (SKU o descripcion)'), 'item-001');
+      await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
+      await user.click(screen.getByRole('option', { name: 'ONT de instalación' }));
       await user.type(screen.getByLabelText('Serial o lote'), 'ONT-2026-001');
       await user.click(screen.getByRole('combobox', { name: 'Acción' }));
       await user.click(screen.getByRole('option', { name: 'Instalar' }));
       await user.click(screen.getByRole('combobox', { name: 'Custodia de origen' }));
       await user.click(screen.getByRole('option', { name: 'Carlos Lopez' }));
+      await user.click(screen.getByRole('combobox', { name: 'Destino' }));
+      await user.click(screen.getByRole('option', { name: 'Instalado en cliente' }));
       await user.click(screen.getByRole('button', { name: 'Registrar material' }));
 
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
@@ -475,6 +479,17 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
       expect(screen.getByLabelText('Acción')).toBeInTheDocument();
       expect(screen.getByLabelText('Custodia de origen')).toBeInTheDocument();
+    });
+
+    it('no fija una acción ni un destino por defecto', () => {
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      expect(screen.getByRole('combobox', { name: 'Acción' })).toHaveTextContent(
+        'Selecciona una acción',
+      );
+      expect(screen.getByRole('combobox', { name: 'Destino' })).toHaveTextContent(
+        'Selecciona una opción',
+      );
     });
 
     it('muestra estado vacío cuando la OT no tiene custodia elegible', () => {
@@ -513,7 +528,7 @@ describe('ExecutionOrderDrawer', () => {
         onCloseOrder,
       });
 
-      const summary = screen.getByLabelText('Resumen de cierre');
+      const summary = screen.getByRole('textbox', { name: 'Resumen de cierre' });
       await user.clear(summary);
       await user.type(summary, 'Trabajo completado');
       const closeButton = await screen.findByRole('button', { name: 'Cerrar OT' });
@@ -535,8 +550,14 @@ describe('ExecutionOrderDrawer', () => {
         onCloseOrder,
       });
 
-      await user.type(screen.getByLabelText('Resumen de cierre'), 'Trabajo completado');
-      await user.type(screen.getByLabelText('Referencia de evidencia'), 'firma-001');
+      await user.type(
+        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+        'Trabajo completado',
+      );
+      await user.type(
+        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
+        'firma-001',
+      );
       await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
       await user.click(screen.getByRole('option', { name: 'Firma' }));
       await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
@@ -553,8 +574,14 @@ describe('ExecutionOrderDrawer', () => {
       const user = userEvent.setup();
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
 
-      await user.type(screen.getByLabelText('Resumen de cierre'), 'Trabajo completado');
-      await user.type(screen.getByLabelText('Referencia de evidencia'), 'firma-001');
+      await user.type(
+        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+        'Trabajo completado',
+      );
+      await user.type(
+        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
+        'firma-001',
+      );
 
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
       expect(
@@ -567,7 +594,10 @@ describe('ExecutionOrderDrawer', () => {
       const user = userEvent.setup();
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
 
-      await user.type(screen.getByLabelText('Referencia de evidencia'), 'firma-001');
+      await user.type(
+        screen.getByRole('textbox', { name: 'Referencia de evidencia' }),
+        'firma-001',
+      );
       await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
       await user.click(screen.getByRole('option', { name: 'Firma' }));
 
@@ -609,7 +639,7 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
       });
-      expect(screen.getByLabelText('Item (SKU o descripcion)')).toBeInTheDocument();
+      expect(screen.getByLabelText('Ítem')).toBeInTheDocument();
       expect(screen.getByLabelText('Cantidad')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeInTheDocument();
     });
@@ -684,7 +714,7 @@ describe('ExecutionOrderDrawer', () => {
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
       });
       expect(screen.getByLabelText('Resultado')).toBeInTheDocument();
-      expect(screen.getByLabelText('Resumen de cierre')).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Resumen de cierre' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
     });
 
@@ -709,7 +739,7 @@ describe('ExecutionOrderDrawer', () => {
       });
 
       // Type summary to enable the close button
-      const textarea = screen.getByLabelText('Resumen de cierre');
+      const textarea = screen.getByRole('textbox', { name: 'Resumen de cierre' });
       await user.clear(textarea);
       await user.type(textarea, 'Trabajo completado exitosamente');
 
@@ -750,6 +780,20 @@ describe('ExecutionOrderDrawer', () => {
       // The status badge should say "Bloqueada" (appears in ExecutionOrderSummary and Block 1)
       const matches = screen.getAllByText('Bloqueada');
       expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Desbloqueo no disponible')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Desbloquear OT' })).toBeNull();
+    });
+
+    it('does not render block or unblock controls without real handlers', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.BLOCKED, allowedActions: ['UNBLOCK'] }),
+        onBlock: undefined as never,
+        onUnblock: undefined as never,
+      });
+
+      expect(screen.queryByRole('button', { name: 'Bloquear OT' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Desbloquear OT' })).toBeNull();
+      expect(screen.queryByText('Desbloqueo no disponible')).toBeNull();
     });
   });
 
