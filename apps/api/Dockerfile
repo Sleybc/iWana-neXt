@@ -17,6 +17,7 @@ COPY apps/worker/package.json       apps/worker/
 COPY packages/config/package.json   packages/config/
 COPY packages/database/package.json packages/database/
 COPY packages/shared/package.json   packages/shared/
+COPY packages/storage/package.json   packages/storage/
 COPY packages/ui/package.json       packages/ui/
 
 # HUSKY=0 evita que el hook "prepare" falle por ausencia de .git en Docker
@@ -29,6 +30,7 @@ COPY --from=deps /app/node_modules                 ./node_modules
 COPY --from=deps /app/packages/config/node_modules   ./packages/config/node_modules
 COPY --from=deps /app/packages/shared/node_modules   ./packages/shared/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/storage/node_modules  ./packages/storage/node_modules
 COPY --from=deps /app/apps/api/node_modules          ./apps/api/node_modules
 
 # Copiar el repo completo para preservar los links/junctions de workspace pnpm
@@ -39,6 +41,7 @@ RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
 
 # Compilar dependencias en orden correcto antes de compilar la API
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
+    pnpm exec tsc --project packages/storage/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json && \
     pnpm exec tsc --project apps/api/tsconfig.json
 
@@ -56,6 +59,7 @@ COPY --from=builder --chown=nestjs:nodejs /app/node_modules      ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api          ./apps/api
 COPY --from=builder --chown=nestjs:nodejs /app/packages/shared   ./packages/shared
 COPY --from=builder --chown=nestjs:nodejs /app/packages/database ./packages/database
+COPY --from=builder --chown=nestjs:nodejs /app/packages/storage  ./packages/storage
 
 # El runtime no debe depender de archivos .env copiados desde el workspace.
 # En contenedor la configuracion llega por variables de entorno inyectadas.
