@@ -635,6 +635,40 @@ describe('ExecutionOrderDrawer', () => {
       });
     });
 
+    it('exige firma cuando el material queda instalado en cliente y envía solo SIGNATURE', async () => {
+      const onCloseOrder = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        itemUsage: itemUsageFactory(),
+        evidence: customerSignatureEvidenceFactory(),
+        onCloseOrder,
+      });
+
+      await user.type(
+        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+        'Trabajo completado',
+      );
+      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
+      await user.click(screen.getByRole('combobox', { name: 'Referencia de evidencia' }));
+      await user.click(screen.getByRole('option', { name: /Firma del cliente/ }));
+      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      expect(screen.getByRole('option', { name: 'Firma' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('option', { name: 'Código de verificación' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: 'Otra forma' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('option', { name: 'Firma' }));
+      await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
+      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+
+      expect(onCloseOrder).toHaveBeenCalledWith({
+        result: ExecutionOrderResult.EXECUTED,
+        summary: 'Trabajo completado',
+        customerAcceptance: { artifactId: 'ma-signature-001', method: 'SIGNATURE' },
+      });
+    });
+
     it('mantiene el cierre disponible cuando no hay aceptación opcional elegible', async () => {
       const user = userEvent.setup();
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
@@ -656,7 +690,7 @@ describe('ExecutionOrderDrawer', () => {
       ).toBeInTheDocument();
     });
 
-    it('no bloquea el cierre solo porque un material quedó instalado en el cliente', async () => {
+    it('hace obligatoria la firma cuando el resultado implica material instalado en el cliente', async () => {
       const onCloseOrder = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
       renderDrawer({
@@ -670,9 +704,8 @@ describe('ExecutionOrderDrawer', () => {
         'Trabajo completado',
       );
       expect(onCloseOrder).not.toHaveBeenCalled();
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: 'Cerrar OT' })).not.toBeDisabled(),
-      );
+      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
+      expect(screen.getByText(/firma de cliente disponible y validada/)).toBeInTheDocument();
     });
 
     it('bloquea el cierre cuando la plantilla exige aceptación y falta evidencia elegible', async () => {
@@ -821,7 +854,11 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByLabelText('Resultado')).toBeInTheDocument();
       expect(screen.getByRole('textbox', { name: 'Resumen de cierre' })).toBeInTheDocument();
       expect(screen.queryByRole('textbox', { name: /Causa/ })).not.toBeInTheDocument();
-      expect(screen.getByText('Causa no disponible')).toBeInTheDocument();
+      expect(screen.getByText('Resultado no disponible')).toBeInTheDocument();
+      expect(
+        screen.getByText(/No ejecutada.*no está disponible temporalmente/),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: 'No ejecutada' })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
     });
 

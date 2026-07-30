@@ -92,6 +92,9 @@ jest.mock('@/lib/api-client', () => {
       create: jest.fn(),
       linkScheduleEvent: jest.fn(),
       linkWorkOrder: jest.fn(),
+      executionOrders: {
+        get: jest.fn(),
+      },
     },
     wfmApi: {
       visitRequests: {
@@ -137,6 +140,9 @@ const tasksApiMock = tasksApi as unknown as {
   create: jest.Mock;
   linkScheduleEvent: jest.Mock;
   linkWorkOrder: jest.Mock;
+  executionOrders: {
+    get: jest.Mock;
+  };
 };
 
 const wfmApiMock = wfmApi as unknown as {
@@ -731,6 +737,71 @@ describe('SchedulingClient', () => {
         'El evento volvió a pendientes para reprocesar su nueva ventana de atención.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('carga la OT vinculada desde executionOrderId al abrir el detalle de Agenda', async () => {
+    const event = {
+      ...buildEventForVisibleDay(1),
+      title: 'Instalación GPON barrio norte',
+      executionOrderId: 'eo-001',
+    };
+    wfmApiMock.events.list.mockResolvedValue({
+      data: [event],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+    wfmApiMock.events.get.mockResolvedValue(event);
+    tasksApiMock.executionOrders.get.mockResolvedValue({
+      id: 'eo-001',
+      tenantId: 'tenant-1',
+      executionOrderNumber: 'OT-001',
+      visitRequestId: null,
+      scheduleEventId: 'evt-1',
+      assignedTechnicianId: TECHNICIAN_ID,
+      assignedCrewId: null,
+      originContext: 'CRM',
+      originRefId: null,
+      customerDisplayLabel: 'Sitio autorizado',
+      serviceAddress: 'Cra 10 # 10 - 10',
+      municipality: 'Bogotá',
+      sector: 'Chapinero',
+      workType: WfmWorkType.INSTALLATION,
+      workSummary: 'Instalación GPON',
+      workInstructions: null,
+      plannedWindowStartAt: '2026-05-07T13:00:00.000Z',
+      plannedWindowEndAt: '2026-05-07T15:00:00.000Z',
+      status: 'ASSIGNED',
+      result: null,
+      startedAt: null,
+      closedAt: null,
+      closeNotes: null,
+      createdByUserId: 'user-1',
+      updatedByUserId: null,
+      createdAt: '2026-05-06T00:00:00.000Z',
+      updatedAt: '2026-05-06T00:00:00.000Z',
+    });
+
+    render(<SchedulingClient surface="agenda" />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Evento Instalación GPON barrio norte de/i }),
+    );
+
+    expect(await screen.findByText('OT-001')).toBeInTheDocument();
+    expect(tasksApiMock.executionOrders.get).toHaveBeenCalledWith('eo-001');
+    expect(screen.getByRole('link', { name: 'Abrir OT de ejecución' })).toHaveAttribute(
+      'href',
+      '/dashboard/operations?executionOrderId=eo-001',
+    );
   });
 
   it('abre una solicitud pendiente fijada desde query y conserva la vista diaria', async () => {

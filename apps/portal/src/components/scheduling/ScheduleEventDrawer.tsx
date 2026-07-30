@@ -32,10 +32,11 @@ export interface ScheduleEventDrawerProps {
   onOpenChange: (open: boolean) => void;
   onOpenMoveToPending?: () => void;
   onOpenExecutionOrder?: () => void;
-  onSyncVisit?: () => Promise<void>;
+  onRefreshDetail?: () => Promise<void>;
   canReschedule: boolean;
   isLoading: boolean;
   error: string | null;
+  executionOrderError?: string | null;
   onRetry?: () => Promise<void>;
 }
 
@@ -66,10 +67,11 @@ export function ScheduleEventDrawer({
   onOpenChange,
   onOpenMoveToPending,
   onOpenExecutionOrder,
-  onSyncVisit,
+  onRefreshDetail,
   canReschedule,
   isLoading,
   error,
+  executionOrderError = null,
   onRetry,
 }: ScheduleEventDrawerProps) {
   const terminalEvent = event ? isScheduleEventTerminalStatus(event.status) : true;
@@ -216,10 +218,12 @@ export function ScheduleEventDrawer({
                 availability={
                   hasExecutionOrder ? (executionOrder ? 'linked' : 'unavailable') : 'unlinked'
                 }
+                error={executionOrderError}
                 syncState={syncState}
                 readonly
                 canOpen={hasExecutionOrder && Boolean(onOpenExecutionOrder)}
-                {...(onSyncVisit ? { onSyncVisit } : {})}
+                {...(onRefreshDetail ? { onRefreshDetail } : {})}
+                {...(executionOrderError && onRetry ? { onRetry } : {})}
                 {...(hasExecutionOrder && onOpenExecutionOrder
                   ? { onOpen: onOpenExecutionOrder }
                   : {})}

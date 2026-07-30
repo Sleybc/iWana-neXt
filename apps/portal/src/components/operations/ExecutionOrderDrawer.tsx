@@ -154,6 +154,32 @@ function templateRequiresCustomerAcceptance(
   );
 }
 
+function closureRequiresCustomerAcceptance(
+  result: ExecutionOrderResult,
+  itemUsage: ExecutionOrderItemUsage[],
+  template: ExecutionOrderTemplateVersion | null,
+): boolean {
+  const resultImpliesInstallation = [
+    ExecutionOrderResult.EXECUTED,
+    ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS,
+  ].includes(result);
+  const materialInstalledAtCustomer = itemUsage.some(
+    (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
+  );
+
+  return (
+    templateRequiresCustomerAcceptance(template) ||
+    (resultImpliesInstallation && materialInstalledAtCustomer)
+  );
+}
+
+function isCustomerAcceptanceComplete(
+  artifactId: string,
+  method: CustomerAcceptanceMethod | '',
+): boolean {
+  return artifactId.trim().length > 0 && method === 'SIGNATURE';
+}
+
 function requirementIcon(kind: ExecutionOrderTemplateRequirement['kind']) {
   switch (kind) {
     case 'FIELD':
@@ -267,9 +293,14 @@ export function ExecutionOrderDrawer({
         value: ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS,
         label: 'Ejecutada con observaciones',
       },
-      { value: ExecutionOrderResult.NOT_EXECUTED, label: 'No ejecutada' },
     ],
     [],
+  );
+
+  const customerAcceptanceRequired = closureRequiresCustomerAcceptance(
+    closeResult,
+    itemUsage,
+    template,
   );
 
   const actionOptions = useMemo(
@@ -370,12 +401,21 @@ export function ExecutionOrderDrawer({
     // La confirmación puede permanecer abierta mientras cambia el formulario. Revalidar aquí
     // contra el requisito contractual evita enviar un cierre sin aceptación cuando la plantilla
     // exige conformidad del cliente.
-    const customerAcceptanceRequiredAtSend = templateRequiresCustomerAcceptance(template);
+    const customerAcceptanceRequiredAtSend = closureRequiresCustomerAcceptance(
+      closeResult,
+      itemUsage,
+      template,
+    );
     const artifactId = customerAcceptanceArtifactId.trim();
     const acceptanceMethod = customerAcceptanceMethod;
-    if (customerAcceptanceRequiredAtSend && (!artifactId || !acceptanceMethod)) {
+    const acceptanceProvided = artifactId.length > 0 || acceptanceMethod !== '';
+    const acceptanceComplete = isCustomerAcceptanceComplete(artifactId, acceptanceMethod);
+    if (
+      (customerAcceptanceRequiredAtSend && !acceptanceComplete) ||
+      (acceptanceProvided && !acceptanceComplete)
+    ) {
       setCloseValidationError(
-        'La aceptación del cliente es obligatoria según la plantilla de cierre.',
+        'La aceptación del cliente debe incluir una firma disponible y validada en esta orden.',
       );
       return;
     }
@@ -386,10 +426,10 @@ export function ExecutionOrderDrawer({
       result: closeResult,
       summary: closeSummary.trim(),
     };
-    if (artifactId && acceptanceMethod) {
+    if (acceptanceComplete) {
       payload.customerAcceptance = {
         artifactId,
-        method: acceptanceMethod,
+        method: 'SIGNATURE',
       };
     }
     await onCloseOrder(payload);
@@ -398,28 +438,26 @@ export function ExecutionOrderDrawer({
     closeSummary,
     customerAcceptanceArtifactId,
     customerAcceptanceMethod,
+    itemUsage,
     template,
     onCloseOrder,
   ]);
 
-  const customerAcceptanceRequired = templateRequiresCustomerAcceptance(template);
-  const customerAcceptanceIncomplete = customerAcceptanceRequired
-    ? customerAcceptanceArtifactId.trim().length === 0 || !customerAcceptanceMethod
-    : customerAcceptanceArtifactId.trim().length > 0 !== Boolean(customerAcceptanceMethod);
+  const customerAcceptanceProvided =
+    customerAcceptanceArtifactId.trim().length > 0 || customerAcceptanceMethod !== '';
+  const customerAcceptanceIncomplete =
+    customerAcceptanceRequired || customerAcceptanceProvided
+      ? !isCustomerAcceptanceComplete(customerAcceptanceArtifactId, customerAcceptanceMethod)
+      : false;
 
   const customerAcceptanceMethodOptions = useMemo(
-    () => [
-      { value: 'SIGNATURE', label: 'Firma' },
-      { value: 'OTP', label: 'Código de verificación' },
-      { value: 'OTHER', label: 'Otra forma' },
-    ],
+    () => [{ value: 'SIGNATURE', label: 'Firma' }],
     [],
   );
 
-  // El contrato vigente solo entrega códigos planos y no informa su aplicabilidad
-  // por comando. No se adivinan motivos ni se permite capturarlos como texto libre.
-  const closeReasonUnavailable = template !== null;
-  const closeReasonRequiredUnavailable = closeResult === ExecutionOrderResult.NOT_EXECUTED;
+  // Limitación vigente: reasonCatalogs es un array plano y no distingue aplicabilidad por comando.
+  // No se ofrece «No ejecutada» hasta contar con un catálogo tipado o una regla real del API.
+  const notExecutedUnavailable = template !== null;
 
   const customerSignatureEvidence = useMemo(
     () =>
@@ -1116,11 +1154,11 @@ export function ExecutionOrderDrawer({
                   disabled={isSubmitting}
                   onChange={(e) => setCloseResult(e.target.value as ExecutionOrderResult)}
                 />
-                {closeReasonUnavailable ? (
+                {notExecutedUnavailable ? (
                   <PortalAlert
                     variant="warning"
-                    title="Causa no disponible"
-                    description="La plantilla no distingue qué motivos aplican al cierre. No se puede seleccionar ni escribir una causa manualmente."
+                    title="Resultado no disponible"
+                    description="La opción «No ejecutada» no está disponible temporalmente porque el catálogo de causas no distingue cuáles aplican. Consulta al coordinador para registrar este caso."
                   />
                 ) : null}
                 <Input
@@ -1190,8 +1228,7 @@ export function ExecutionOrderDrawer({
                     disabled={
                       isSubmitting ||
                       closeSummary.trim().length === 0 ||
-                      customerAcceptanceIncomplete ||
-                      closeReasonRequiredUnavailable
+                      customerAcceptanceIncomplete
                     }
                     onClick={() => {
                       setCloseValidationError(null);

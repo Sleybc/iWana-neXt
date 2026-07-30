@@ -25,7 +25,7 @@ export interface ExecutionOrderSummaryProps {
   readonly?: boolean;
   canOpen?: boolean;
   onOpen?: () => void;
-  onSyncVisit?: () => void | Promise<void>;
+  onRefreshDetail?: () => void | Promise<void>;
   onRetry?: () => void;
 }
 
@@ -55,7 +55,7 @@ export function ExecutionOrderSummary({
   readonly = true,
   canOpen = true,
   onOpen,
-  onSyncVisit,
+  onRefreshDetail,
   loading = false,
   error = null,
   successMessage = null,
@@ -108,14 +108,14 @@ export function ExecutionOrderSummary({
         live="assertive"
         title="Visita sin OT de ejecución vinculada"
         description={
-          onSyncVisit
-            ? 'La visita todavía no tiene una orden de trabajo de ejecución asociada. Sincroniza la visita para consultar el vínculo más reciente.'
-            : 'La visita todavía no tiene una orden de trabajo de ejecución asociada. No hay una acción de sincronización disponible en este momento.'
+          onRefreshDetail
+            ? 'La visita todavía no tiene una orden de trabajo de ejecución asociada. Actualiza el detalle para consultar el vínculo más reciente.'
+            : 'La visita todavía no tiene una orden de trabajo de ejecución asociada. No hay una acción para actualizar el detalle disponible en este momento.'
         }
         action={
-          onSyncVisit ? (
-            <Button type="button" onClick={() => void onSyncVisit()}>
-              Sincronizar visita
+          onRefreshDetail ? (
+            <Button type="button" onClick={() => void onRefreshDetail()}>
+              Actualizar detalle
             </Button>
           ) : undefined
         }
@@ -130,7 +130,7 @@ export function ExecutionOrderSummary({
         description={
           onRetry
             ? 'No fue posible consultar la orden de trabajo. Intenta de nuevo más tarde.'
-            : 'No fue posible consultar la orden de trabajo. La información estará disponible cuando se sincronice nuevamente.'
+            : 'No fue posible consultar la orden de trabajo. La información estará disponible cuando se actualice el detalle.'
         }
         action={onRetry ? <Button onClick={onRetry}>Reintentar</Button> : undefined}
       />

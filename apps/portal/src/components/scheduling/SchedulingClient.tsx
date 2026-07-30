@@ -15,9 +15,10 @@ import type {
   WfmScheduleRecommendation,
   WfmVisitRequest,
   WfmWorkOrder,
+  ExecutionOrderRecord,
 } from '@/lib/api-client';
 import { UserRole } from '@iwana/shared';
-import { ApiError, assuranceApi, crmApi, wfmApi } from '@/lib/api-client';
+import { ApiError, assuranceApi, crmApi, tasksApi, wfmApi } from '@/lib/api-client';
 import { collectListPages } from '@/lib/list-meta';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
@@ -240,7 +241,9 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<WfmScheduleEvent | null>(null);
-  const [selectedWorkOrder, setSelectedWorkOrder] = useState<WfmWorkOrder | null>(null);
+  const [selectedExecutionOrder, setSelectedExecutionOrder] = useState<ExecutionOrderRecord | null>(
+    null,
+  );
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDrawerLoading, setIsDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
@@ -560,13 +563,25 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     try {
       const eventDetail = await wfmApi.events.get(eventId);
       let workOrderDetail: WfmWorkOrder | null = null;
+      let executionOrderDetail: ExecutionOrderRecord | null = null;
+      const detailWarnings: string[] = [];
 
       if (eventDetail.workOrderId) {
         try {
           workOrderDetail = await wfmApi.workOrders.get(eventDetail.workOrderId);
         } catch (workOrderError) {
-          setDrawerActionError(
+          detailWarnings.push(
             `La orden de trabajo vinculada no está disponible en este momento. ${mapSchedulingError(workOrderError)}`,
+          );
+        }
+      }
+
+      if (eventDetail.executionOrderId) {
+        try {
+          executionOrderDetail = await tasksApi.executionOrders.get(eventDetail.executionOrderId);
+        } catch (executionOrderError) {
+          detailWarnings.push(
+            `La orden de ejecución vinculada no está disponible en este momento. ${mapSchedulingError(executionOrderError)}`,
           );
         }
       }
@@ -577,10 +592,11 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         crmApi.getExpediente,
       );
       setSelectedEvent(enrichedEvent);
-      setSelectedWorkOrder(workOrderDetail);
+      setSelectedExecutionOrder(executionOrderDetail);
+      setDrawerActionError(detailWarnings.length > 0 ? detailWarnings.join(' ') : null);
     } catch (detailError) {
       setSelectedEvent(null);
-      setSelectedWorkOrder(null);
+      setSelectedExecutionOrder(null);
       setDrawerError(mapSchedulingError(detailError));
     } finally {
       setIsDrawerLoading(false);
@@ -1509,8 +1525,9 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
           if (!open) {
             setSelectedEventId(null);
             setSelectedEvent(null);
-            setSelectedWorkOrder(null);
+            setSelectedExecutionOrder(null);
             setDrawerError(null);
+            setDrawerActionError(null);
           }
         }}
         onOpenMoveToPending={() => {
@@ -1525,9 +1542,11 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         {...(selectedEventId
           ? {
               onRetry: () => loadEventDetails(selectedEventId),
-              onSyncVisit: () => loadEventDetails(selectedEventId),
+              onRefreshDetail: () => loadEventDetails(selectedEventId),
             }
           : {})}
+        executionOrder={selectedExecutionOrder}
+        executionOrderError={drawerActionError}
       />
 
       <MoveEventToPendingDialog
@@ -1563,7 +1582,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
             setIsMoveToPendingOpen(false);
             setSelectedEventId(null);
             setSelectedEvent(null);
-            setSelectedWorkOrder(null);
+            setSelectedExecutionOrder(null);
             await loadData();
           } catch (moveToPendingEventError) {
             const message = mapSchedulingError(moveToPendingEventError);

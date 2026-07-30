@@ -40,7 +40,7 @@ const baseProps = {
   executionOrder: null,
   onOpenChange: jest.fn(),
   onRetry: jest.fn().mockResolvedValue(undefined),
-  onSyncVisit: jest.fn().mockResolvedValue(undefined),
+  onRefreshDetail: jest.fn().mockResolvedValue(undefined),
   isLoading: false,
   error: null,
   canReschedule: true,
@@ -114,22 +114,24 @@ describe('ScheduleEventDrawer — coordinación', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
     expect(screen.getByText('Resumen de la OT')).toBeInTheDocument();
     expect(screen.getByText(/Visita sin OT de ejecución vinculada/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sincronizar visita' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
   });
 
-  it('no promete sincronización cuando la agenda no recibe handler', () => {
-    const { onSyncVisit: _onSyncVisit, ...propsWithoutSync } = baseProps;
-    render(<ScheduleEventDrawer {...propsWithoutSync} />);
+  it('no promete actualizar el detalle cuando la agenda no recibe handler', () => {
+    const { onRefreshDetail: _onRefreshDetail, ...propsWithoutRefresh } = baseProps;
+    render(<ScheduleEventDrawer {...propsWithoutRefresh} />);
 
-    expect(screen.getByText(/No hay una acción de sincronización disponible/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No hay una acción para actualizar el detalle disponible/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
   });
 
-  it('no usa el handler de reintento como sustituto de sincronización', () => {
-    const { onSyncVisit: _onSyncVisit, ...propsWithoutSync } = baseProps;
-    render(<ScheduleEventDrawer {...propsWithoutSync} />);
+  it('no usa el handler de reintento como sustituto de actualizar el detalle', () => {
+    const { onRefreshDetail: _onRefreshDetail, ...propsWithoutRefresh } = baseProps;
+    render(<ScheduleEventDrawer {...propsWithoutRefresh} />);
 
-    expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
   });
 
   it('muestra el enlace "Abrir OT de ejecución" cuando hay executionOrderId', () => {

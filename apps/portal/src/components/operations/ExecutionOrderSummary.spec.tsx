@@ -14,19 +14,25 @@ describe('ExecutionOrderSummary', () => {
   it('muestra una alerta de advertencia cuando la visita no tiene OT vinculada', () => {
     render(<ExecutionOrderSummary order={null} availability="unlinked" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Visita sin OT de ejecución vinculada');
-    expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
-    expect(screen.getByText(/No hay una acción de sincronización disponible/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No hay una acción para actualizar el detalle disponible/),
+    ).toBeInTheDocument();
   });
 
-  it('ofrece sincronizar la visita cuando existe un handler', async () => {
-    const onSyncVisit = jest.fn().mockResolvedValue(undefined);
+  it('ofrece actualizar el detalle cuando existe un handler', async () => {
+    const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
     render(
-      <ExecutionOrderSummary order={null} availability="unlinked" onSyncVisit={onSyncVisit} />,
+      <ExecutionOrderSummary
+        order={null}
+        availability="unlinked"
+        onRefreshDetail={onRefreshDetail}
+      />,
     );
 
-    const button = screen.getByRole('button', { name: 'Sincronizar visita' });
+    const button = screen.getByRole('button', { name: 'Actualizar detalle' });
     button.click();
-    expect(onSyncVisit).toHaveBeenCalledTimes(1);
+    expect(onRefreshDetail).toHaveBeenCalledTimes(1);
   });
 
   it('muestra error recuperable y reintento', () => {
@@ -45,7 +51,7 @@ describe('ExecutionOrderSummary', () => {
     render(<ExecutionOrderSummary order={null} availability="unavailable" />);
 
     expect(
-      screen.getByText(/La información estará disponible cuando se sincronice nuevamente/),
+      screen.getByText(/La información estará disponible cuando se actualice el detalle/),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
   });
