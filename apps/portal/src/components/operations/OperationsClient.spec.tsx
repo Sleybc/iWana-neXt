@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TaskExecutionMode, TaskStatus } from '@iwana/shared';
+import { TaskExecutionMode, TaskStatus, WfmWorkType } from '@iwana/shared';
 import { OperationsClient } from './OperationsClient';
 import { ApiError, tasksApi } from '@/lib/api-client';
-import { getMissingRequirements } from './OperationsClient';
+import type { ExecutionOrderTemplateVersion } from '@iwana/shared';
+import {
+  getMissingRequirements,
+  isValidFutureEvidenceExpiry,
+  resolveAssignedTemplateVersion,
+} from './OperationsClient';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -122,11 +127,46 @@ describe('OperationsClient', () => {
     expect(missing[0]?.label).not.toContain('req-photo-install');
   });
 
+  it('no sustituye la versión asignada por otra versión de plantilla', () => {
+    const assignedVersion: ExecutionOrderTemplateVersion = {
+      id: 'tplv-3',
+      templateId: 'tpl-001',
+      key: 'INSTALACION_FIBRA',
+      version: 3,
+      label: 'Instalación fibra',
+      workType: WfmWorkType.INSTALLATION,
+      status: 'PUBLISHED',
+      requirements: [],
+      reasonCatalogs: [],
+    };
+
+    expect(resolveAssignedTemplateVersion([assignedVersion], 3)).toBe(assignedVersion);
+    expect(resolveAssignedTemplateVersion([assignedVersion], 2)).toBeNull();
+  });
+
+  describe('expiración de evidencia', () => {
+    const now = Date.parse('2026-07-30T12:00:00.000Z');
+
+    it('acepta únicamente una fecha válida futura', () => {
+      expect(isValidFutureEvidenceExpiry('2026-07-30T12:00:01.000Z', now)).toBe(true);
+    });
+
+    it.each([
+      undefined,
+      null,
+      'no-es-una-fecha',
+      '2026-07-30T11:59:59.000Z',
+      '2026-07-30T12:00:00.000Z',
+    ])('rechaza expiresAt inválido o no futuro: %s', (expiresAt) => {
+      expect(isValidFutureEvidenceExpiry(expiresAt, now)).toBe(false);
+    });
+  });
+
   it('renders operations shell with task list', async () => {
     render(<OperationsClient />);
 
     expect(screen.getByRole('heading', { name: 'Operaciones' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Abrir Programacion' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Abrir Programación' })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Tarea operativa 1')).toBeInTheDocument();

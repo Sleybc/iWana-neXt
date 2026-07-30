@@ -42,10 +42,19 @@ export const EXECUTION_ORDER_STATUS_VARIANTS: Record<ExecutionOrderStatus, Opera
     [ExecutionOrderStatus.EN_ROUTE]: 'primary',
     [ExecutionOrderStatus.IN_PROGRESS]: 'primary',
     [ExecutionOrderStatus.BLOCKED]: 'warning',
-    [ExecutionOrderStatus.COMPLETED]: 'success',
+    [ExecutionOrderStatus.COMPLETED]: 'lime',
     [ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS]: 'warning',
     [ExecutionOrderStatus.NOT_EXECUTED]: 'error',
     [ExecutionOrderStatus.CANCELLED]: 'error',
+  };
+
+export const EXECUTION_ORDER_RESULT_VARIANTS: Record<ExecutionOrderResult, OperationsBadgeVariant> =
+  {
+    [ExecutionOrderResult.EXECUTED]: 'success',
+    [ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS]: 'warning',
+    [ExecutionOrderResult.NOT_EXECUTED]: 'error',
+    [ExecutionOrderResult.REQUIRES_FOLLOW_UP]: 'neutral',
+    [ExecutionOrderResult.CANCELLED]: 'error',
   };
 
 export const EXECUTION_ORDER_WORK_TYPE_LABELS: Record<WfmWorkType, string> = {

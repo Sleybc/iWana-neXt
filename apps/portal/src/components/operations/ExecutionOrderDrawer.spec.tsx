@@ -16,6 +16,10 @@ import type {
   ExecutionOrderEvidence,
 } from '@iwana/shared';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
+import {
+  EXECUTION_ORDER_RESULT_VARIANTS,
+  EXECUTION_ORDER_STATUS_VARIANTS,
+} from './operations-labels';
 
 // ---------------------------------------------------------------------------
 // Mock factories
@@ -32,7 +36,7 @@ function detailFactory(overrides: Partial<ExecutionOrderDetail> = {}): Execution
       id: 'tpl-001',
       key: 'INSTALACION_FIBRA',
       version: 3,
-      label: 'Instalacion fibra',
+      label: 'Instalación fibra',
     },
     schedule: {
       eventId: 'se-001',
@@ -41,7 +45,7 @@ function detailFactory(overrides: Partial<ExecutionOrderDetail> = {}): Execution
     assignee: {
       type: 'TECHNICIAN',
       id: 'tech-001',
-      displayLabel: 'Carlos Lopez',
+      displayLabel: 'Carlos López',
     },
     site: { id: 'site-001', label: 'Torre Norte', address: 'Calle 1 # 2 - 3' },
     completion: { progress: 0 },
@@ -66,7 +70,7 @@ function templateFactory(): ExecutionOrderTemplateVersion {
     templateId: 'tpl-001',
     key: 'INSTALACION_FIBRA',
     version: 3,
-    label: 'Instalacion fibra',
+    label: 'Instalación fibra',
     workType: WfmWorkType.INSTALLATION,
     status: 'PUBLISHED',
     requirements: [
@@ -134,7 +138,7 @@ function activitiesFactory(): ExecutionOrderActivity[] {
     {
       id: 'act-001',
       activityType: 'INSTALLATION',
-      description: 'Se instalo ONU en sala principal',
+      description: 'Se instaló ONU en sala principal',
       occurredAt: '2026-07-27T14:30:00.000Z',
       actorRef: { type: 'USER', id: 'tech-001' },
       createdAt: '2026-07-27T14:30:00.000Z',
@@ -220,6 +224,26 @@ const allStatuses = [...editableStatuses, ...terminalStatuses];
 
 describe('ExecutionOrderDrawer', () => {
   const noop = async () => undefined;
+
+  it('usa lima para el estado Ejecutada y reserva éxito para el resultado Ejecutada', () => {
+    expect(EXECUTION_ORDER_STATUS_VARIANTS[ExecutionOrderStatus.COMPLETED]).toBe('lime');
+    expect(EXECUTION_ORDER_RESULT_VARIANTS[ExecutionOrderResult.EXECUTED]).toBe('success');
+  });
+
+  it('renderiza el estado completado en lima y el resultado con variante de éxito', () => {
+    renderDrawer({
+      order: detailFactory({
+        status: ExecutionOrderStatus.COMPLETED,
+        result: ExecutionOrderResult.EXECUTED,
+      }),
+    });
+
+    const executedBadges = screen.getAllByText('Ejecutada');
+    expect(executedBadges.some((badge) => badge.className.includes('bg-iwana-secondary-100'))).toBe(
+      true,
+    );
+    expect(executedBadges.some((badge) => badge.className.includes('bg-success-50'))).toBe(true);
+  });
 
   function renderDrawer(props: Partial<Parameters<typeof ExecutionOrderDrawer>[0]> = {}) {
     return render(
@@ -375,8 +399,8 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer();
       const section = screen.getByRole('region', { name: 'Compromiso' });
       expect(within(section).getByText('Torre Norte')).toBeInTheDocument();
-      expect(within(section).getByText('Carlos Lopez')).toBeInTheDocument();
-      expect(within(section).getByText(/Instalacion fibra/)).toBeInTheDocument();
+      expect(within(section).getByText('Carlos López')).toBeInTheDocument();
+      expect(within(section).getByText(/Instalación fibra/)).toBeInTheDocument();
     });
 
     it('shows the OT number (title is also the OT number)', () => {
@@ -436,7 +460,7 @@ describe('ExecutionOrderDrawer', () => {
   describe('Block 3 — Trabajo realizado', () => {
     it('shows activity list when activities are available', () => {
       renderDrawer({ activities: activitiesFactory() });
-      expect(screen.getByText('Se instalo ONU en sala principal')).toBeInTheDocument();
+      expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
       expect(screen.getByText('Cableado externo en buen estado')).toBeInTheDocument();
     });
 
@@ -499,7 +523,7 @@ describe('ExecutionOrderDrawer', () => {
       await user.click(screen.getByRole('combobox', { name: 'Acción' }));
       await user.click(screen.getByRole('option', { name: 'Instalar' }));
       await user.click(screen.getByRole('combobox', { name: 'Custodia de origen' }));
-      await user.click(screen.getByRole('option', { name: 'Carlos Lopez' }));
+      await user.click(screen.getByRole('option', { name: 'Carlos López' }));
       await user.click(screen.getByRole('combobox', { name: 'Destino' }));
       await user.click(screen.getByRole('option', { name: 'Instalado en cliente' }));
       await user.click(screen.getByRole('button', { name: 'Registrar material' }));
@@ -790,13 +814,28 @@ describe('ExecutionOrderDrawer', () => {
   // Block 6 — Cierre
   // ----------------------------------------------------
   describe('Block 6 — Cierre', () => {
-    it('shows result selector, cause selector, and summary when closable', () => {
+    it('muestra resultado y resumen, sin causa de texto libre, cuando el catálogo no distingue aplicabilidad', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
       });
       expect(screen.getByLabelText('Resultado')).toBeInTheDocument();
       expect(screen.getByRole('textbox', { name: 'Resumen de cierre' })).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /Causa/ })).not.toBeInTheDocument();
+      expect(screen.getByText('Causa no disponible')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
+    });
+
+    it('bloquea el cierre cuando la versión asignada de la plantilla no está disponible', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        template: null,
+      });
+
+      expect(screen.getAllByText('Plantilla no disponible').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByRole('button', { name: 'Cerrar OT' })).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/No es posible validar los requisitos de cierre/),
+      ).toBeInTheDocument();
     });
 
     it('shows readonly close block on terminal OT', () => {

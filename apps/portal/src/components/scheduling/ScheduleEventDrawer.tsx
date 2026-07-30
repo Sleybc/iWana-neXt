@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { CalendarClock, Crosshair, MapPin, Route, Ticket } from 'lucide-react';
-import { Badge, Button, OperationalSidePeek } from '@iwana/ui';
+import { Badge, Button, OperationalSidePeek, SkeletonBlock } from '@iwana/ui';
 import { ScheduleEventStatus } from '@iwana/shared';
 import type { ExecutionOrderDetail } from '@iwana/shared';
 import type { InternalUser, WfmScheduleEvent, ExecutionOrderRecord } from '@/lib/api-client';
@@ -32,6 +32,7 @@ export interface ScheduleEventDrawerProps {
   onOpenChange: (open: boolean) => void;
   onOpenMoveToPending?: () => void;
   onOpenExecutionOrder?: () => void;
+  onSyncVisit?: () => Promise<void>;
   canReschedule: boolean;
   isLoading: boolean;
   error: string | null;
@@ -65,6 +66,7 @@ export function ScheduleEventDrawer({
   onOpenChange,
   onOpenMoveToPending,
   onOpenExecutionOrder,
+  onSyncVisit,
   canReschedule,
   isLoading,
   error,
@@ -84,8 +86,8 @@ export function ScheduleEventDrawer({
     >
       {isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-label="Cargando detalle del evento">
-          <div className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-          <div className="h-48 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
+          <SkeletonBlock className="h-28" />
+          <SkeletonBlock className="h-48" />
         </div>
       ) : error ? (
         <PortalAlert
@@ -217,7 +219,7 @@ export function ScheduleEventDrawer({
                 syncState={syncState}
                 readonly
                 canOpen={hasExecutionOrder && Boolean(onOpenExecutionOrder)}
-                {...(onRetry ? { onSyncVisit: onRetry } : {})}
+                {...(onSyncVisit ? { onSyncVisit } : {})}
                 {...(hasExecutionOrder && onOpenExecutionOrder
                   ? { onOpen: onOpenExecutionOrder }
                   : {})}
@@ -262,14 +264,13 @@ export function ScheduleEventDrawer({
             <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
               <p className="flex items-center justify-between py-1.5">
                 <span>
-                  Creado:{' '}
-                  {formatChangeTimestamp((event as any).createdAt ?? event.scheduledStartAt)}
+                  Creado: {formatChangeTimestamp(event.createdAt ?? event.scheduledStartAt)}
                 </span>
               </p>
               <p className="flex items-center justify-between py-1.5">
                 <span>
                   Última modificación:{' '}
-                  {formatChangeTimestamp((event as any).updatedAt ?? event.scheduledStartAt)}
+                  {formatChangeTimestamp(event.updatedAt ?? event.scheduledStartAt)}
                 </span>
               </p>
               <p className="flex items-center justify-between py-1.5">

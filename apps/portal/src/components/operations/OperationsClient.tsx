@@ -57,13 +57,13 @@ const INTERNAL_AREA_OPTIONS = [
 
 function mapOperationsError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesion expiro. Inicia sesion nuevamente para continuar.';
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente para continuar.';
     if (error.status === 403) return 'No tienes permisos para operar esta vista de Operaciones.';
-    if (error.status === 404) return 'La tarea consultada ya no esta disponible.';
+    if (error.status === 404) return 'La tarea consultada ya no está disponible.';
     return error.message;
   }
 
-  return 'No fue posible completar la operacion. Intenta de nuevo.';
+  return 'No fue posible completar la operación. Intenta de nuevo.';
 }
 
 export interface ExecutionOrderMissingRequirement {
@@ -116,6 +116,25 @@ export function getMissingRequirements(error: unknown): ExecutionOrderMissingReq
 
 function collectionData<T>(value: T[] | { data: T[] }): T[] {
   return Array.isArray(value) ? value : value.data;
+}
+
+export function resolveAssignedTemplateVersion(
+  versions: ExecutionOrderTemplateVersion[],
+  assignedVersion: number,
+): ExecutionOrderTemplateVersion | null {
+  return versions.find((version) => version.version === assignedVersion) ?? null;
+}
+
+export function isValidFutureEvidenceExpiry(
+  expiresAt: string | null | undefined,
+  now = Date.now(),
+): expiresAt is string {
+  if (!expiresAt) {
+    return false;
+  }
+
+  const parsedExpiry = Date.parse(expiresAt);
+  return Number.isFinite(parsedExpiry) && parsedExpiry > now;
 }
 
 async function loadOperationalUsers(): Promise<InternalUser[]> {
@@ -310,9 +329,7 @@ export function OperationsClient() {
         const versions = await tasksApi.executionOrders.listTemplateVersions(templateReference.id);
         const templateVersions = collectionData(versions);
         setExecutionOrderTemplate(
-          templateVersions.find((version) => version.version === templateReference.version) ??
-            templateVersions[0] ??
-            null,
+          resolveAssignedTemplateVersion(templateVersions, templateReference.version),
         );
       } else {
         setExecutionOrderTemplate(null);
@@ -484,7 +501,7 @@ export function OperationsClient() {
           selectedExecutionOrder.id,
           file,
         );
-        if (!uploadReceipt.expiresAt) {
+        if (!isValidFutureEvidenceExpiry(uploadReceipt.expiresAt)) {
           throw new Error('La evidencia subida no tiene una fecha de expiración válida.');
         }
         await tasksApi.executionOrders.registerEvidence(selectedExecutionOrder.id, {
@@ -524,10 +541,10 @@ export function OperationsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Operaciones"
-        subtitle="Crea, despacha y sigue tareas con responsable y destinatario explicitos."
+        subtitle="Crea, despacha y sigue tareas con responsable y destinatario explícitos."
         actions={
           <Button asChild={true} variant="secondary">
-            <Link href="/dashboard/scheduling">Abrir Programacion</Link>
+            <Link href="/dashboard/scheduling">Abrir Programación</Link>
           </Button>
         }
       />
@@ -557,7 +574,7 @@ export function OperationsClient() {
               title={`Tarea ${lastCreatedTask.taskNumber} creada`}
               description={
                 lastCreatedTaskNeedsScheduling
-                  ? 'La tarea ya quedo registrada. Si no elegiste un siguiente paso, puedes crear la solicitud de visita desde el detalle.'
+                  ? 'La tarea ya quedó registrada. Si no elegiste un siguiente paso, puedes crear la solicitud de visita desde el detalle.'
                   : 'La tarea ya aparece en la bandeja operativa y puede ejecutarse o seguirse desde el detalle.'
               }
               action={

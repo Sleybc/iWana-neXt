@@ -690,7 +690,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
       setWorkOrders(workOrdersResult.value.data);
     } else {
       warnings.push(
-        'No fue posible actualizar la lista de ordenes de trabajo. Se mantiene la última versión disponible.',
+        'No fue posible actualizar la lista de órdenes de trabajo. Se mantiene la última versión disponible.',
       );
     }
 
@@ -1522,13 +1522,12 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         canReschedule={canManage}
         isLoading={isDrawerLoading}
         error={drawerError}
-        onRetry={() => {
-          if (!selectedEventId) {
-            return Promise.resolve();
-          }
-
-          return loadEventDetails(selectedEventId);
-        }}
+        {...(selectedEventId
+          ? {
+              onRetry: () => loadEventDetails(selectedEventId),
+              onSyncVisit: () => loadEventDetails(selectedEventId),
+            }
+          : {})}
       />
 
       <MoveEventToPendingDialog

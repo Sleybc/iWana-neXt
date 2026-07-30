@@ -4,6 +4,7 @@ import { ExecutionOrderStatus } from '@iwana/shared';
 import type { ExecutionOrderRecord } from '@/lib/api-client';
 import {
   EXECUTION_ORDER_RESULT_LABELS,
+  EXECUTION_ORDER_RESULT_VARIANTS,
   EXECUTION_ORDER_STATUS_LABELS,
   EXECUTION_ORDER_STATUS_VARIANTS,
   EXECUTION_ORDER_WORK_TYPE_LABELS,
@@ -183,7 +184,11 @@ export function ExecutionOrderSummary({
         <Badge variant={EXECUTION_ORDER_STATUS_VARIANTS[status]}>
           {EXECUTION_ORDER_STATUS_LABELS[status]}
         </Badge>
-        {result ? <Badge variant="neutral">{EXECUTION_ORDER_RESULT_LABELS[result]}</Badge> : null}
+        {result ? (
+          <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[result]}>
+            {EXECUTION_ORDER_RESULT_LABELS[result]}
+          </Badge>
+        ) : null}
       </div>
       <div className="grid gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
         <div>

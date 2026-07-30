@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ExecutionOrderStatus, ScheduleEventStatus, WfmWorkType } from '@iwana/shared';
+import type { WfmScheduleEvent } from '@/lib/api-client';
 import { ScheduleEventDrawer } from './ScheduleEventDrawer';
 
-const baseEvent = {
+const baseEvent: WfmScheduleEvent = {
   id: 'evt-1',
+  tenantId: 'tenant-1',
   title: 'Instalación fibra óptica',
   type: WfmWorkType.INSTALLATION,
   status: ScheduleEventStatus.SCHEDULED,
@@ -16,7 +18,20 @@ const baseEvent = {
   description: 'Instalación de servicio FTTH',
   workOrderId: null,
   executionOrderId: null,
-} as any;
+  assignedTeamId: null,
+  latitude: null,
+  longitude: null,
+  expedienteId: null,
+  subscriberId: null,
+  organizationSiteId: null,
+  ticketId: null,
+  contractId: null,
+  createdBy: 'user-1',
+  updatedBy: 'user-1',
+  createdAt: '2026-07-27T08:00:00.000Z',
+  updatedAt: '2026-07-27T09:00:00.000Z',
+  deletedAt: null,
+};
 
 const baseProps = {
   open: true,
@@ -25,6 +40,7 @@ const baseProps = {
   executionOrder: null,
   onOpenChange: jest.fn(),
   onRetry: jest.fn().mockResolvedValue(undefined),
+  onSyncVisit: jest.fn().mockResolvedValue(undefined),
   isLoading: false,
   error: null,
   canReschedule: true,
@@ -102,10 +118,17 @@ describe('ScheduleEventDrawer — coordinación', () => {
   });
 
   it('no promete sincronización cuando la agenda no recibe handler', () => {
-    const { onRetry: _onRetry, ...propsWithoutRetry } = baseProps;
-    render(<ScheduleEventDrawer {...propsWithoutRetry} />);
+    const { onSyncVisit: _onSyncVisit, ...propsWithoutSync } = baseProps;
+    render(<ScheduleEventDrawer {...propsWithoutSync} />);
 
     expect(screen.getByText(/No hay una acción de sincronización disponible/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
+  });
+
+  it('no usa el handler de reintento como sustituto de sincronización', () => {
+    const { onSyncVisit: _onSyncVisit, ...propsWithoutSync } = baseProps;
+    render(<ScheduleEventDrawer {...propsWithoutSync} />);
+
     expect(screen.queryByRole('button', { name: 'Sincronizar visita' })).not.toBeInTheDocument();
   });
 

@@ -32,6 +32,7 @@ import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
 import {
   EXECUTION_ORDER_RESULT_LABELS,
+  EXECUTION_ORDER_RESULT_VARIANTS,
   EXECUTION_ORDER_STATUS_LABELS,
   EXECUTION_ORDER_STATUS_VARIANTS,
   EXECUTION_ORDER_WORK_TYPE_LABELS,
@@ -208,7 +209,7 @@ export function ExecutionOrderDrawer({
   const canRegisterActivity = order ? actionAllowed(order, 'REGISTER_ACTIVITY') : false;
   const canRegisterItems = order ? actionAllowed(order, 'REGISTER_ITEM_USAGE') : false;
   const canRegisterEvidence = order ? actionAllowed(order, 'REGISTER_EVIDENCE') : false;
-  const canClose = order ? actionAllowed(order, 'CLOSE') : false;
+  const canClose = order ? template !== null && actionAllowed(order, 'CLOSE') : false;
   const canBlock = order ? actionAllowed(order, 'BLOCK') : false;
   const canUnblock = order ? actionAllowed(order, 'UNBLOCK') : false;
 
@@ -231,7 +232,6 @@ export function ExecutionOrderDrawer({
   const [closeResult, setCloseResult] = useState<ExecutionOrderResult>(
     ExecutionOrderResult.EXECUTED,
   );
-  const [closeReason, setCloseReason] = useState('');
   const [closeSummary, setCloseSummary] = useState('');
   const [customerAcceptanceArtifactId, setCustomerAcceptanceArtifactId] = useState('');
   const [customerAcceptanceMethod, setCustomerAcceptanceMethod] = useState<
@@ -386,8 +386,6 @@ export function ExecutionOrderDrawer({
       result: closeResult,
       summary: closeSummary.trim(),
     };
-    const rc = closeReason.trim();
-    if (rc) payload.reasonCode = rc;
     if (artifactId && acceptanceMethod) {
       payload.customerAcceptance = {
         artifactId,
@@ -397,7 +395,6 @@ export function ExecutionOrderDrawer({
     await onCloseOrder(payload);
   }, [
     closeResult,
-    closeReason,
     closeSummary,
     customerAcceptanceArtifactId,
     customerAcceptanceMethod,
@@ -418,6 +415,11 @@ export function ExecutionOrderDrawer({
     ],
     [],
   );
+
+  // El contrato vigente solo entrega códigos planos y no informa su aplicabilidad
+  // por comando. No se adivinan motivos ni se permite capturarlos como texto libre.
+  const closeReasonUnavailable = template !== null;
+  const closeReasonRequiredUnavailable = closeResult === ExecutionOrderResult.NOT_EXECUTED;
 
   const customerSignatureEvidence = useMemo(
     () =>
@@ -575,7 +577,7 @@ export function ExecutionOrderDrawer({
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
                     Resultado
                   </p>
-                  <Badge className="mt-1" variant="neutral">
+                  <Badge className="mt-1" variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
                     {EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Resultado registrado'}
                   </Badge>
                 </div>
@@ -587,7 +589,7 @@ export function ExecutionOrderDrawer({
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
                   {template
                     ? `${template.label} · v${template.version}`
-                    : `${order.template.label} · v${order.template.version}`}
+                    : 'Plantilla no disponible'}
                 </p>
               </div>
               <div>
@@ -726,11 +728,11 @@ export function ExecutionOrderDrawer({
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">
                         {act.activityType === 'INSTALLATION'
-                          ? 'Instalacion'
+                          ? 'Instalación'
                           : act.activityType === 'FIELD_NOTE'
                             ? 'Nota de campo'
                             : act.activityType === 'CONFIGURATION'
-                              ? 'Configuracion'
+                              ? 'Configuración'
                               : act.activityType === 'TESTING'
                                 ? 'Prueba'
                                 : act.activityType === 'NOVELTY'
@@ -1092,15 +1094,7 @@ export function ExecutionOrderDrawer({
                 </p>
                 {order.result && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge
-                      variant={
-                        order.result === ExecutionOrderResult.EXECUTED
-                          ? 'lime'
-                          : order.result === ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS
-                            ? 'warning'
-                            : 'error'
-                      }
-                    >
+                    <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
                       {EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Resultado registrado'}
                     </Badge>
                   </div>
@@ -1122,14 +1116,13 @@ export function ExecutionOrderDrawer({
                   disabled={isSubmitting}
                   onChange={(e) => setCloseResult(e.target.value as ExecutionOrderResult)}
                 />
-                <Input
-                  id="eo-close-reason"
-                  label="Causa (cuando no se ejecuta)"
-                  value={closeReason}
-                  disabled={isSubmitting}
-                  onChange={(e) => setCloseReason(e.target.value)}
-                  placeholder="ej. Sin acceso al sitio"
-                />
+                {closeReasonUnavailable ? (
+                  <PortalAlert
+                    variant="warning"
+                    title="Causa no disponible"
+                    description="La plantilla no distingue qué motivos aplican al cierre. No se puede seleccionar ni escribir una causa manualmente."
+                  />
+                ) : null}
                 <Input
                   id="eo-close-summary"
                   label="Resumen de cierre"
@@ -1197,7 +1190,8 @@ export function ExecutionOrderDrawer({
                     disabled={
                       isSubmitting ||
                       closeSummary.trim().length === 0 ||
-                      customerAcceptanceIncomplete
+                      customerAcceptanceIncomplete ||
+                      closeReasonRequiredUnavailable
                     }
                     onClick={() => {
                       setCloseValidationError(null);
@@ -1245,9 +1239,17 @@ export function ExecutionOrderDrawer({
             ) : (
               /* No close permission */
               <div className="mt-3">
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {offline ? 'Sin conexión.' : 'No puedes cerrar esta orden.'}
-                </p>
+                {template === null && !terminal ? (
+                  <PortalAlert
+                    variant="error"
+                    title="Plantilla no disponible"
+                    description="No es posible validar los requisitos de cierre. La orden permanece abierta hasta recuperar la versión asignada."
+                  />
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {offline ? 'Sin conexión.' : 'No puedes cerrar esta orden.'}
+                  </p>
+                )}
               </div>
             )}
           </section>
