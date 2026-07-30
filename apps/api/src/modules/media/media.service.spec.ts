@@ -167,6 +167,14 @@ describe('MediaService', () => {
       expect(result.publicUrl).toBe(
         'http://localhost:3000/storage/tenant_test_isp/logo/00000000-0000-0000-0000-000000000001.png',
       );
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalFilename: expect.stringMatching(/^[0-9a-f-]{36}\.png$/i),
+        }),
+      );
+      expect(mockRepo.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ originalFilename: file.originalname }),
+      );
     });
 
     it('debe asignar publicUrl cuando existe S3_PUBLIC_BASE_URL aunque el bucket no sea público', async () => {

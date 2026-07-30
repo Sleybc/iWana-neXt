@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, NotFoundException } fr
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import { randomUUID } from 'node:crypto';
 import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import { imageSize } from 'image-size';
@@ -42,15 +43,7 @@ const MEDIA_CONSTRAINTS: Record<MediaUsage, { maxBytes: number; allowedMimes: st
   },
   [MediaUsage.EXECUTION_EVIDENCE]: {
     maxBytes: 25 * 1024 * 1024, // 25 MB
-    allowedMimes: [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      'image/gif',
-      'application/pdf',
-      'image/heic',
-      'image/heif',
-    ],
+    allowedMimes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
   },
 };
 
@@ -151,7 +144,8 @@ export class MediaService {
       tenantSchema,
       usage,
       themeVariant: dto.themeVariant ?? null,
-      originalFilename: file.originalname,
+      // El nombre recibido es no confiable y no se persiste.
+      originalFilename: `${randomUUID()}.${ext}`,
       mimeType: file.mimetype,
       ext,
       sizeBytes: file.size,

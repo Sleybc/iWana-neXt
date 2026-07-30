@@ -111,6 +111,29 @@ export class MinioStorageAdapter implements StoragePort {
     }
   }
 
+  async getObject(objectKey: string): Promise<Buffer> {
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: objectKey,
+      }),
+    );
+
+    if (!response.Body) {
+      throw new Error('Storage object returned without a body');
+    }
+
+    if ('transformToByteArray' in response.Body) {
+      return Buffer.from(await response.Body.transformToByteArray());
+    }
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array | string>) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
   getPublicUrl(objectKey: string): string {
     return `${this.publicBaseUrl}/${objectKey}`;
   }

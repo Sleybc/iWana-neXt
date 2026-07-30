@@ -113,15 +113,7 @@ export const EVIDENCE_ASSET_CONSTRAINTS = {
   /** Tamaño máximo: 25 MB */
   MAX_BYTES: 25 * 1024 * 1024,
   /** MIME types permitidos para evidencia (SEC-F04) */
-  ALLOWED_MIMES: [
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'image/gif',
-    'application/pdf',
-    'image/heic',
-    'image/heif',
-  ],
+  ALLOWED_MIMES: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
   /** TTL máximo para signed URL: 15 minutos */
   MAX_SIGNED_URL_TTL_SECONDS: 900,
   /** TTL para assets huérfanos: 24 horas (antes de ser considerados expirados) */

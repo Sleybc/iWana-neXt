@@ -147,15 +147,16 @@ export class TenantAwareThrottlerGuard implements CanActivate {
       throw new UnauthorizedException('El contexto autenticado de actor y tenant es requerido.');
     }
 
+    let contextTenantId: string;
     try {
-      const contextTenantId = TenantContext.getOrThrow().tenantId;
-      if (contextTenantId !== user.tenantId) {
-        throw new UnauthorizedException('El contexto de tenant no coincide con el token.');
-      }
-    } catch (error) {
-      if (error instanceof UnauthorizedException) throw error;
-      // Los tests unitarios pueden no instalar TenantMiddleware; el tenant
-      // sigue siendo exclusivamente el claim verificado del JWT.
+      contextTenantId = TenantContext.getOrThrow().tenantId;
+    } catch {
+      // El contexto es un requisito de seguridad y se valida antes de tocar Redis.
+      throw new UnauthorizedException('El contexto de tenant autenticado es requerido.');
+    }
+
+    if (contextTenantId !== user.tenantId) {
+      throw new UnauthorizedException('El contexto de tenant no coincide con el token.');
     }
 
     return { actorId: user.sub, tenantId: user.tenantId };

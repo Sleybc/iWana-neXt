@@ -1,4 +1,12 @@
-import { createReadStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import type { PutObjectOptions, StoragePort } from '../ports/storage.port';
@@ -63,6 +71,10 @@ export class LocalFsStorageAdapter implements StoragePort {
   async objectExists(objectKey: string): Promise<boolean> {
     const filePath = join(this.resolvedBase, objectKey);
     return existsSync(filePath) && statSync(filePath).isFile();
+  }
+
+  async getObject(objectKey: string): Promise<Buffer> {
+    return readFileSync(join(this.resolvedBase, objectKey));
   }
 
   getPublicUrl(objectKey: string): string {

@@ -39,8 +39,6 @@ const MAGIC_BYTES: Array<{ mime: string; offset: number; bytes: number[] }> = [
   { mime: 'image/gif', offset: 0, bytes: [0x47, 0x49, 0x46, 0x38] },
   { mime: 'image/webp', offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] },
   { mime: 'application/pdf', offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] },
-  // HEIC/HEIF: ftyp box at offset 4, 'heic' or 'mif1' or 'heif' at offset 8
-  { mime: 'image/heic', offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] },
 ];
 
 /**
@@ -80,8 +78,6 @@ function mimeToExt(mimeType: string): string {
     'image/webp': 'webp',
     'image/gif': 'gif',
     'application/pdf': 'pdf',
-    'image/heic': 'heic',
-    'image/heif': 'heif',
   };
   return map[mimeType] ?? 'bin';
 }
@@ -160,23 +156,18 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     }
 
     // ── Validación magic bytes ─────────────────────────────────────────────
-    // Solo para tipos donde tenemos patrones definidos. HEIF/HEIC requiere
-    // verificación adicional del ftyp box.
-    if (MAGIC_BYTES.some((p) => p.mime === declaredMime)) {
-      if (!validateMagicBytes(file.buffer, declaredMime)) {
-        this.logger.warn(`Magic bytes mismatch: declared=${declaredMime} size=${file.size}`);
-        throw new BadRequestException({
-          code: 'EVIDENCE_MIME_MISMATCH',
-          message: 'El contenido del archivo no coincide con el tipo declarado.',
-        });
-      }
+    if (!validateMagicBytes(file.buffer, declaredMime)) {
+      this.logger.warn(`Magic bytes mismatch: declared=${declaredMime} size=${file.size}`);
+      throw new BadRequestException({
+        code: 'EVIDENCE_MIME_MISMATCH',
+        message: 'El contenido del archivo no coincide con el tipo declarado.',
+      });
     }
 
     // ── SHA-256 checksum ───────────────────────────────────────────────────
     const checksumSha256 = createHash('sha256').update(file.buffer).digest('hex');
 
-    // ── Sanitizar nombre de archivo ─────────────────────────────────────────
-    const safeFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
+    // ── Nombre de archivo opaco generado por el servidor ───────────────────
     const ext = mimeToExt(declaredMime);
 
     // ── Crear registro en BD (QUARANTINED) ──────────────────────────────────
@@ -187,7 +178,9 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
       tenantSchema,
       usage: MediaUsage.EXECUTION_EVIDENCE,
       themeVariant: null,
-      originalFilename: safeFilename || 'evidence',
+      // El nombre recibido es no confiable y no se persiste. El nombre opaco
+      // servidor-side evita filtrar datos aportados por el cliente.
+      originalFilename: `${assetId}.${ext}`,
       mimeType: declaredMime,
       ext,
       sizeBytes: file.size,

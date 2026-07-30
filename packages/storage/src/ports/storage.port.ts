@@ -48,6 +48,12 @@ export interface StoragePort {
   objectExists(objectKey: string): Promise<boolean>;
 
   /**
+   * Lee el contenido completo de un objeto para validaciones de integridad.
+   * El consumidor debe tratar el resultado como bytes no confiables.
+   */
+  getObject(objectKey: string): Promise<Buffer>;
+
+  /**
    * Construye la URL pública de un objeto (bucket público o CDN configurado).
    * Síncrono — no realiza ninguna petición de red.
    */
