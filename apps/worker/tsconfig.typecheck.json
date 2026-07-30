@@ -7,10 +7,16 @@
       "@iwana/worker": ["./src/index.ts"],
       "@iwana/db": ["../../packages/database/src/index.ts"],
       "@iwana/shared": ["../../packages/shared/src/index.ts"],
-      "@iwana/config": ["../../packages/config/index.ts"]
+      "@iwana/config": ["../../packages/config/index.ts"],
+      "@iwana/storage": ["../../packages/storage/src/index.ts"]
     }
   },
-  "include": ["src/**/*", "../../packages/database/src/**/*", "../../packages/shared/src/**/*"],
+  "include": [
+    "src/**/*",
+    "../../packages/database/src/**/*",
+    "../../packages/shared/src/**/*",
+    "../../packages/storage/src/**/*"
+  ],
   "exclude": [
     "src/**/*.spec.ts",
     "src/**/*.test.ts",

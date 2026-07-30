@@ -6,6 +6,8 @@ import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT } from '@iwana/storage';
 import { imageSize } from 'image-size';
 import { MediaService } from './media.service';
+import { UploadMediaDto } from './dto/upload-media.dto';
+import { validate } from 'class-validator';
 
 jest.mock('image-size', () => ({
   imageSize: jest.fn(),
@@ -116,6 +118,17 @@ describe('MediaService', () => {
   });
 
   describe('upload', () => {
+    it('rechaza EXECUTION_EVIDENCE en la validación del DTO genérico', async () => {
+      const dto = Object.assign(new UploadMediaDto(), {
+        usage: MediaUsage.EXECUTION_EVIDENCE,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((error) => error.property === 'usage')).toBe(true);
+      expect(errors[0]?.constraints).toEqual(expect.objectContaining({ isIn: expect.any(String) }));
+    });
+
     it('rechaza tenant ausente o platform sin escribir en BD ni storage', async () => {
       const file = buildMulterFile();
 

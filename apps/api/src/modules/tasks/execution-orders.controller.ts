@@ -317,7 +317,7 @@ export class ExecutionOrdersController {
   @ApiOperation({ summary: 'Consultar estado del recibo de asset de evidencia' })
   getEvidenceAsset(
     @Param('id', ParseUUIDPipe) id: string,
-    @Param('mediaAssetId') mediaAssetId: string,
+    @Param('mediaAssetId', ParseUUIDPipe) mediaAssetId: string,
   ) {
     return this.executionOrdersService.getEvidenceAssetReceipt(id, mediaAssetId);
   }
@@ -329,7 +329,7 @@ export class ExecutionOrdersController {
   @ApiOperation({ summary: 'Descargar contenido de asset de evidencia (302 signed URL)' })
   async getEvidenceContent(
     @Param('id', ParseUUIDPipe) id: string,
-    @Param('mediaAssetId') mediaAssetId: string,
+    @Param('mediaAssetId', ParseUUIDPipe) mediaAssetId: string,
   ) {
     const signedUrl = await this.executionOrdersService.getEvidenceContentRedirect(
       id,

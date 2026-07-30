@@ -18,3 +18,24 @@ El contrato vigente declara `artifactId` como `string` libre y no expresa que de
 ## Fuera de alcance
 
 No se implementó rate limiting.
+
+## Cierre R2.1 — ciclo de retención
+
+- La ruta genérica `POST /media/upload` rechaza `execution_evidence` también en
+  la validación del DTO; la carga de evidencia conserva el flujo dedicado con
+  cuarentena, magic bytes, checksum SHA-256 y tenant resuelto desde contexto.
+- El `POST /:id/evidence` devuelve el contrato mínimo de evidencia y no expone
+  `tenantId` ni `actorUserId`. Los endpoints de recibo y descarga validan
+  `mediaAssetId` con `ParseUUIDPipe`.
+- El reconciliador conserva `QUARANTINED` como `PENDING_ANALYSIS`, recupera
+  claims idempotentes y terminaliza claims imposibles sin promover cuarentena.
+- El worker registra el soft-delete en `<tenant>.audit_logs` dentro de la misma
+  transacción y borra el objeto mediante `StoragePort` antes de marcar
+  `DELETED`; los fallos de storage dejan el asset en `EXPIRED` para retry.
+
+### Consulta DATA-ENG
+
+Se consultó `INFORME-MOD11-DATA-RETENTION-REVERSIBILITY-R2.4-G6-v1.0.md`.
+La retención de `evidence_upload_intents` queda gobernada por R2.4 y no se
+añade una migración de tablas en R2.1: este bloque completa el TTL del objeto
+físico y no altera la retención del registro canónico de evidencia/auditoría.

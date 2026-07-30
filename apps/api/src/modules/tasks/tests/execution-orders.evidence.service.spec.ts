@@ -634,6 +634,8 @@ describe('ExecutionOrdersService — Evidence', () => {
       expect(result).toBeDefined();
       expect(result.mediaAssetId).toBe(ASSET_UUID);
       expect(result.assetStatus).toBe('AVAILABLE');
+      expect(result).not.toHaveProperty('tenantId');
+      expect(result).not.toHaveProperty('actorUserId');
       expect(evidenceAssetPort.claimAsset).toHaveBeenCalledWith(
         ASSET_UUID,
         'tenant_001',

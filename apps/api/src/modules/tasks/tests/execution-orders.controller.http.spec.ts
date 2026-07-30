@@ -338,6 +338,16 @@ describe('ExecutionOrdersController HTTP', () => {
 
   // ─── CA-00-01: BOLA a nivel HTTP ────────────────────────────────────────
 
+  it.each(['evidence-assets/not-a-uuid', 'evidence-assets/not-a-uuid/content'])(
+    'rechaza mediaAssetId malformado con 400 antes de consultar el servicio (%s)',
+    async (suffix) => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}/${suffix}`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(400);
+    },
+  );
+
   describe('autorización (BOLA)', () => {
     it('retorna 401 sin token', async () => {
       await request(app.getHttpServer())

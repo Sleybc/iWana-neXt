@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { dataSourceOptions } from '@iwana/db';
+import { createStorageAdapter, STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import {
   ASSURANCE_FIELD_SERVICE_QUEUE,
   REFRESH_TOKEN_PURGE_QUEUE,
@@ -81,6 +82,33 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
       process.env[key] = value;
     }
   }
+}
+
+function createWorkerStorageAdapter(config: ConfigService): StoragePort {
+  const driver = config.get<string>('STORAGE_DRIVER', 'local') as 'minio' | 'local';
+
+  if (driver === 'minio') {
+    return createStorageAdapter({
+      driver: 'minio',
+      minio: {
+        endpoint: config.get<string>('S3_ENDPOINT', 'http://minio:9000'),
+        region: config.get<string>('S3_REGION', 'us-east-1'),
+        accessKeyId: config.get<string>('S3_ACCESS_KEY_ID', ''),
+        secretAccessKey: config.get<string>('S3_SECRET_ACCESS_KEY', ''),
+        bucket: config.get<string>('S3_BUCKET', 'iwana-media'),
+        forcePathStyle: config.get<string>('S3_FORCE_PATH_STYLE', 'true') === 'true',
+        ...(config.get<string>('S3_PUBLIC_BASE_URL')
+          ? { publicBaseUrl: config.get<string>('S3_PUBLIC_BASE_URL') as string }
+          : {}),
+      },
+    });
+  }
+
+  return createStorageAdapter({
+    driver: 'local',
+    localBasePath: resolve(process.cwd(), 'storage', 'media'),
+    localPublicBaseUrl: `${config.get('API_PUBLIC_BASE_URL', `http://localhost:${config.get('PORT', 3000)}`)}/storage`,
+  });
 }
 
 /**
@@ -180,6 +208,11 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
   ],
   providers: [
+    {
+      provide: STORAGE_PORT,
+      useFactory: createWorkerStorageAdapter,
+      inject: [ConfigService],
+    },
     TenantProvisioningProcessor,
     TenantSeedService,
     RefreshTokenPurgeProcessor,

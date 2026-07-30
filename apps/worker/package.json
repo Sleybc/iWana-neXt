@@ -15,6 +15,7 @@
   "dependencies": {
     "@iwana/db": "workspace:*",
     "@iwana/shared": "workspace:*",
+    "@iwana/storage": "workspace:*",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.1.14",
     "@nestjs/config": "^4.0.3",

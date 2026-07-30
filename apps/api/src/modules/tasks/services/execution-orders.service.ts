@@ -1019,7 +1019,7 @@ export class ExecutionOrdersService {
     },
     actor: JwtPayload,
     context?: ExecutionOrderCommandContext,
-  ): Promise<ExecutionOrderEvidence & { assetStatus: string | null }> {
+  ): Promise<ExecutionOrderEvidenceContract> {
     const port = this.evidenceAssetPort;
     if (!port) {
       throw new ServiceUnavailableException({
@@ -1046,7 +1046,7 @@ export class ExecutionOrdersService {
           where: { id: receipt.resourceRef, tenantId },
         });
         if (existing) {
-          return { ...existing, assetStatus: existing.assetStatus };
+          return this.toEvidenceContract(existing);
         }
       }
       this.assertVersion(order, context?.ifMatch);
@@ -1149,7 +1149,7 @@ export class ExecutionOrdersService {
         receipt,
       );
 
-      return { ...evidence, assetStatus: 'AVAILABLE' };
+      return this.toEvidenceContract({ ...evidence, assetStatus: 'AVAILABLE' });
     });
   }
 
@@ -1769,16 +1769,19 @@ export class ExecutionOrdersService {
           ? 'REJECTED'
           : 'PENDING_ANALYSIS';
 
+    const createdAt =
+      evidence.createdAt instanceof Date ? evidence.createdAt : new Date(evidence.createdAt ?? 0);
+
     return {
       id: evidence.id,
       mediaAssetId: evidence.mediaAssetId as string,
       evidenceType: evidence.evidenceType as ExecutionOrderEvidenceContract['evidenceType'],
       requirementKey: evidence.requirementKey ?? '',
       capturedAt: evidence.capturedAt ? evidence.capturedAt.toISOString() : null,
-      receivedAt: evidence.createdAt.toISOString(),
+      receivedAt: createdAt.toISOString(),
       status,
       assetStatus,
-      createdAt: evidence.createdAt.toISOString(),
+      createdAt: createdAt.toISOString(),
     };
   }
 
