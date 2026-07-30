@@ -246,10 +246,18 @@ export interface ExecutionOrderEvidence {
   mediaAssetId: string;
   evidenceType: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
   requirementKey: string;
-  capturedAt?: string;
+  capturedAt: string | null;
   receivedAt: string;
   verifiedAt?: string;
   status: 'PENDING_ANALYSIS' | 'AVAILABLE' | 'REJECTED' | 'EXPIRED';
+  assetStatus?:
+    | 'PENDING'
+    | 'PENDING_ANALYSIS'
+    | 'AVAILABLE'
+    | 'REJECTED'
+    | 'EXPIRED'
+    | 'CLAIM_FAILED'
+    | null;
   createdAt: string;
 }
 

@@ -11,6 +11,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Redirect,
   Req,
   UploadedFile,
@@ -19,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AccessPermissionKey, UserRole, ExecutionOrderStatus } from '@iwana/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -42,6 +43,9 @@ import {
   UnblockExecutionOrderSchema,
   RegisterEvidenceDto,
   RegisterEvidenceSchema,
+  ListExecutionOrderEvidencesQueryDto,
+  ListExecutionOrderEvidencesSchema,
+  ExecutionOrderEvidencePageDto,
   FollowUpDto,
   FollowUpSchema,
   StartExecutionOrderSchema,
@@ -75,6 +79,21 @@ export class ExecutionOrdersController {
     @Optional()
     private readonly inventoryReconciliationService?: ExecutionOrderInventoryReconciliationService,
   ) {}
+
+  @Get(':id/evidences')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
+  @ApiOperation({ summary: 'Listar evidencias autorizadas de la OT' })
+  @ApiQuery({ name: 'page', required: false, type: Number, minimum: 1, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100, example: 25 })
+  @ApiOkResponse({ type: ExecutionOrderEvidencePageDto })
+  async listEvidences(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(ListExecutionOrderEvidencesSchema))
+    query: ListExecutionOrderEvidencesQueryDto,
+  ) {
+    return this.executionOrdersService.listEvidences(id, query);
+  }
 
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)

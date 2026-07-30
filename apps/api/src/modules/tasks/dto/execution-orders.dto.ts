@@ -6,6 +6,7 @@ import {
   ExecutionOrderResult,
   InventoryDisposition,
 } from '@iwana/shared';
+import { MAX_LIMIT } from '../../../common/pagination';
 
 /**
  * Patrones colombianos de PII que no deben aparecer en campos de texto libre.
@@ -239,6 +240,64 @@ export class RegisterEvidenceDto {
   @Allow()
   expiresAt!: string;
   @ApiPropertyOptional() @Allow() capturedAt?: string;
+}
+
+export const ListExecutionOrderEvidencesSchema = z
+  .object({
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional().default(25),
+  })
+  .strict();
+
+export type ListExecutionOrderEvidencesInput = z.infer<typeof ListExecutionOrderEvidencesSchema>;
+
+export class ListExecutionOrderEvidencesQueryDto {
+  @ApiPropertyOptional({ minimum: 1, default: 1, description: 'Número de página (1-based).' })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: MAX_LIMIT,
+    default: 25,
+    description: 'Número máximo de evidencias por página.',
+  })
+  @Allow()
+  limit?: number;
+}
+
+export class ExecutionOrderEvidenceResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ enum: ['PENDING_ANALYSIS', 'AVAILABLE', 'REJECTED', 'EXPIRED'] })
+  status!: 'PENDING_ANALYSIS' | 'AVAILABLE' | 'REJECTED' | 'EXPIRED';
+
+  @ApiProperty({ enum: ['PHOTO', 'DOCUMENT', 'SIGNATURE'] })
+  evidenceType!: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
+
+  @ApiProperty()
+  requirementKey!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  mediaAssetId!: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  capturedAt!: string | null;
+
+  @ApiProperty({ format: 'date-time' })
+  receivedAt!: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  assetStatus!: string | null;
+}
+
+export class ExecutionOrderEvidencePageDto {
+  @ApiProperty({ type: [ExecutionOrderEvidenceResponseDto] })
+  data!: ExecutionOrderEvidenceResponseDto[];
+
+  @ApiProperty({ type: Object })
+  meta!: unknown;
 }
 
 export class EvidenceAssetUploadIntentDto {

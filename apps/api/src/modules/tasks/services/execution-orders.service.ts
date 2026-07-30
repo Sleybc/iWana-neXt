@@ -37,6 +37,7 @@ import {
   type ExecutionOrderEvidence as ExecutionOrderEvidenceContract,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { buildPageMeta, clampPage } from '../../../common/pagination';
 import {
   CloseExecutionOrderInput,
   CloseExecutionOrderSchema,
@@ -188,6 +189,61 @@ export class ExecutionOrdersService {
         .orderBy('usage.created_at', 'ASC')
         .getMany(),
     );
+  }
+
+  async listEvidences(
+    executionOrderId: string,
+    input: { page?: number; limit?: number },
+  ): Promise<{
+    data: ExecutionOrderEvidenceContract[];
+    total: number;
+    page: number;
+    limit: number;
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
+    const { page, limit } = clampPage(input.page ?? 1, input.limit ?? 25);
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.requireOrder(qr.manager, tenantId, executionOrderId);
+
+      const [evidences, total] = await qr.manager
+        .createQueryBuilder(ExecutionOrderEvidence, 'evidence')
+        .select([
+          'evidence.id',
+          'evidence.evidenceType',
+          'evidence.mediaAssetId',
+          'evidence.requirementKey',
+          'evidence.assetStatus',
+          'evidence.capturedAt',
+          'evidence.createdAt',
+        ])
+        .where('evidence.execution_order_id = :executionOrderId', { executionOrderId })
+        .andWhere('evidence.tenant_id = :tenantId', { tenantId })
+        .andWhere('evidence.media_asset_id IS NOT NULL')
+        .orderBy('evidence.created_at', 'ASC')
+        .addOrderBy('evidence.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+
+      return { evidences, total };
+    });
+
+    const data = result.evidences.map((evidence) => this.toEvidenceContract(evidence));
+    return {
+      data,
+      total: result.total,
+      page,
+      limit,
+      meta: buildPageMeta({
+        total: result.total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: [],
+      }),
+    };
   }
 
   async createFromScheduling(
@@ -850,6 +906,7 @@ export class ExecutionOrdersService {
           mediaAssetId: input.mediaAssetId,
           requirementKey: input.requirementKey,
           assetStatus: 'PENDING', // Evidencia creada pero asset aún no reclamado (P0-2)
+          capturedAt: input.capturedAt ? new Date(input.capturedAt) : null,
           fileName: null,
           notes: null,
           actorUserId: actor.sub,
@@ -1401,6 +1458,31 @@ export class ExecutionOrdersService {
         actorUserId: actor.sub,
       }),
     );
+  }
+
+  private toEvidenceContract(evidence: ExecutionOrderEvidence): ExecutionOrderEvidenceContract {
+    const assetStatus = evidence.assetStatus as Exclude<
+      ExecutionOrderEvidenceContract['assetStatus'],
+      undefined
+    >;
+    const status: ExecutionOrderEvidenceContract['status'] =
+      assetStatus === 'AVAILABLE'
+        ? 'AVAILABLE'
+        : assetStatus === 'REJECTED' || assetStatus === 'EXPIRED' || assetStatus === 'CLAIM_FAILED'
+          ? 'REJECTED'
+          : 'PENDING_ANALYSIS';
+
+    return {
+      id: evidence.id,
+      mediaAssetId: evidence.mediaAssetId as string,
+      evidenceType: evidence.evidenceType as ExecutionOrderEvidenceContract['evidenceType'],
+      requirementKey: evidence.requirementKey ?? '',
+      capturedAt: evidence.capturedAt ? evidence.capturedAt.toISOString() : null,
+      receivedAt: evidence.createdAt.toISOString(),
+      status,
+      assetStatus,
+      createdAt: evidence.createdAt.toISOString(),
+    };
   }
 
   private async requireOrder(

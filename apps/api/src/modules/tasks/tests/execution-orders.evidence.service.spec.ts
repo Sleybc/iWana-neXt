@@ -113,6 +113,90 @@ describe('ExecutionOrdersService — Evidence', () => {
     jest.clearAllMocks();
   });
 
+  describe('listEvidences', () => {
+    it('verifica la OT y devuelve solo el contrato mínimo ordenado y paginado', async () => {
+      const capturedAt = new Date('2026-07-27T15:00:00.000Z');
+      const receivedAt = new Date('2026-07-27T15:01:00.000Z');
+      const evidence = {
+        id: 'evidence-001',
+        executionOrderId: ORDER_UUID,
+        tenantId: 'tenant-001',
+        evidenceType: 'PHOTO',
+        mediaAssetId: ASSET_UUID,
+        requirementKey: 'req-photo-install',
+        assetStatus: 'AVAILABLE',
+        capturedAt,
+        createdAt: receivedAt,
+        actorUserId: 'actor-001',
+      };
+      const queryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[evidence], 1]),
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      const result = await service.listEvidences(ORDER_UUID, { page: 1, limit: 100 });
+
+      expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
+        where: { id: ORDER_UUID, tenantId: 'tenant-001' },
+      });
+      expect(queryBuilder.orderBy).toHaveBeenCalledWith('evidence.created_at', 'ASC');
+      expect(queryBuilder.addOrderBy).toHaveBeenCalledWith('evidence.id', 'ASC');
+      expect(queryBuilder.take).toHaveBeenCalledWith(100);
+      expect(result.data).toEqual([
+        {
+          id: 'evidence-001',
+          mediaAssetId: ASSET_UUID,
+          evidenceType: 'PHOTO',
+          requirementKey: 'req-photo-install',
+          capturedAt: capturedAt.toISOString(),
+          receivedAt: receivedAt.toISOString(),
+          status: 'AVAILABLE',
+          assetStatus: 'AVAILABLE',
+          createdAt: receivedAt.toISOString(),
+        },
+      ]);
+      expect(result.data[0]).not.toHaveProperty('tenantId');
+      expect(result.data[0]).not.toHaveProperty('actorUserId');
+      expect(result.meta).toMatchObject({ total: 1, page: 1, limit: 100, hasMore: false });
+    });
+
+    it('rechaza una OT inexistente antes de consultar evidencias', async () => {
+      const queryBuilder = { getManyAndCount: jest.fn() };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(service.listEvidences(ORDER_UUID, { page: 1, limit: 25 })).rejects.toThrow(
+        'OT de ejecución no encontrada',
+      );
+      expect(manager.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('rechaza una página que excede la cota de offset', async () => {
+      await expect(service.listEvidences(ORDER_UUID, { page: 100, limit: 100 })).rejects.toThrow(
+        'El número de página excede el límite permitido',
+      );
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+  });
+
   // ──────────────────────────────────────────────────────────────────────────
   // 1. createEvidenceAssetReceipt — Upload-intent
   // ──────────────────────────────────────────────────────────────────────────

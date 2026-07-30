@@ -39,6 +39,9 @@ export class ExecutionOrderEvidence {
   @Column({ name: 'asset_status', type: 'varchar', length: 32, nullable: true })
   assetStatus: string | null;
 
+  @Column({ name: 'captured_at', type: 'timestamptz', nullable: true })
+  capturedAt: Date | null;
+
   @Column({ name: 'actor_user_id', type: 'uuid', nullable: true })
   actorUserId: string | null;
 

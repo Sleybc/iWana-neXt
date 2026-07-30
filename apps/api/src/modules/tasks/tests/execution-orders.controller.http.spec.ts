@@ -196,6 +196,35 @@ describe('ExecutionOrdersController HTTP', () => {
     }),
     listActivities: jest.fn().mockResolvedValue([]),
     listItemUsage: jest.fn().mockResolvedValue([]),
+    listEvidences: jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'evidence-001',
+          status: 'AVAILABLE',
+          evidenceType: 'PHOTO',
+          requirementKey: 'req-photo-install',
+          mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          capturedAt: '2026-07-27T15:00:00.000Z',
+          receivedAt: '2026-07-27T15:01:00.000Z',
+          assetStatus: 'AVAILABLE',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 100,
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    }),
     start: jest.fn().mockResolvedValue({
       id: ORDER_UUID,
       status: ExecutionOrderStatus.IN_PROGRESS,
@@ -330,6 +359,35 @@ describe('ExecutionOrdersController HTTP', () => {
         .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/start`)
         .send({ notes: 'Inicio sin token' })
         .expect(401);
+    });
+
+    it('retorna la lista mínima de evidencias para una OT autorizada', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidences?limit=100`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      expect(response.body.data).toEqual([
+        expect.objectContaining({
+          id: 'evidence-001',
+          status: 'AVAILABLE',
+          evidenceType: 'PHOTO',
+          requirementKey: 'req-photo-install',
+          mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          capturedAt: '2026-07-27T15:00:00.000Z',
+          receivedAt: '2026-07-27T15:01:00.000Z',
+          assetStatus: 'AVAILABLE',
+        }),
+      ]);
+      expect(response.body.data[0]).not.toHaveProperty('tenantId');
+      expect(response.body.data[0]).not.toHaveProperty('actorUserId');
+    });
+
+    it('rechaza un límite superior al máximo contractual', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidences?limit=101`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(400);
     });
   });
 
@@ -901,6 +959,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       `/api/v1/tasks/execution-orders/${ORDER_UUID}`,
       `/api/v1/tasks/execution-orders/${ORDER_UUID}/activities`,
       `/api/v1/tasks/execution-orders/${ORDER_UUID}/item-usage`,
+      `/api/v1/tasks/execution-orders/${ORDER_UUID}/evidences`,
       `/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets/media-001`,
     ];
 
@@ -1110,6 +1169,13 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       // filtrar existencia de recursos cross-tenant.
       await request(appWithTenantIsolation.getHttpServer())
         .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
+        .set('Authorization', 'Bearer contractor-tenantb-token')
+        .expect(404);
+    });
+
+    it('usuario Tenant B no puede listar evidencias de una OT de Tenant A', async () => {
+      await request(appWithTenantIsolation.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidences?limit=100`)
         .set('Authorization', 'Bearer contractor-tenantb-token')
         .expect(404);
     });
