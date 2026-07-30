@@ -523,6 +523,28 @@ export interface HealthStatusResponse {
   db: 'ok' | 'error';
   redis: 'ok' | 'error';
   timestamp: string;
+  relay:
+    | {
+        outboxDepth: number;
+        oldestPendingAgeSeconds: number | null;
+        dlqSize: number;
+        reconciliationDiscrepancies: number;
+        lastScanAt: string | null;
+        lagDistributionSeconds: {
+          count: number;
+          minSeconds: number | null;
+          p50Seconds: number | null;
+          p95Seconds: number | null;
+          p99Seconds: number | null;
+          maxSeconds: number | null;
+        };
+        lagThresholds: {
+          degradedSeconds: number | null;
+          stoppedSeconds: number | null;
+        };
+        lagThresholdStatus: 'configured' | 'sin umbral aprobado';
+      }
+    | { status: 'unavailable'; reason: 'telemetry_unavailable' };
 }
 
 export interface UpdatePlatformBrandingPayload {

@@ -46,4 +46,11 @@ describe('AppModule configuration', () => {
 
     expect(validation.error?.details.map(({ path }) => path.join('.'))).toContain(variable);
   });
+
+  it('no asigna umbrales de lag por defecto', () => {
+    const keys = createAppConfigurationSchema().describe().keys;
+
+    expect(keys?.OUTBOX_RELAY_LAG_DEGRADED_SECONDS?.flags?.default).toBeUndefined();
+    expect(keys?.OUTBOX_RELAY_LAG_STOPPED_SECONDS?.flags?.default).toBeUndefined();
+  });
 });

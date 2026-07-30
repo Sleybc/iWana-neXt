@@ -133,7 +133,19 @@ describe('ExecutionOrderRelayService', () => {
       .mockResolvedValueOnce(undefined) // BEGIN
       .mockResolvedValueOnce(undefined) // SET LOCAL
       .mockResolvedValueOnce({
-        rows: [{ pending_count: '5', oldest_age_seconds: '120' }],
+        rows: [
+          {
+            pending_count: '5',
+            oldest_age_seconds: '120',
+            dlq_size: '2',
+            lag_count: '5',
+            lag_min_seconds: '3',
+            lag_p50_seconds: '30',
+            lag_p95_seconds: '120',
+            lag_p99_seconds: '120',
+            lag_max_seconds: '120',
+          },
+        ],
       } as never)
       .mockResolvedValueOnce(undefined); // COMMIT
 
@@ -141,6 +153,8 @@ describe('ExecutionOrderRelayService', () => {
     expect(metrics).toHaveLength(1);
     expect(metrics[0]!.pendingCount).toBe(5);
     expect(metrics[0]!.oldestAgeSeconds).toBe(120);
+    expect(metrics[0]!.dlqSize).toBe(2);
+    expect(metrics[0]!.lagDistributionSeconds.p95Seconds).toBe(120);
   });
 
   it('distingue un fallo de enqueue de un fallo de marcado', async () => {

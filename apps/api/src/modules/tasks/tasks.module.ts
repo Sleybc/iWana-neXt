@@ -81,6 +81,11 @@ import { TasksService } from './services/tasks.service';
     ExecutionOrderResponseHeadersInterceptor,
     { provide: EXECUTION_ORDER_SCHEDULING_PORT, useExisting: ExecutionOrdersService },
   ],
-  exports: [TasksService, ExecutionOrdersService, EXECUTION_ORDER_SCHEDULING_PORT],
+  exports: [
+    TasksService,
+    ExecutionOrdersService,
+    ExecutionOrderProjectionConvergenceService,
+    EXECUTION_ORDER_SCHEDULING_PORT,
+  ],
 })
 export class TasksModule {}

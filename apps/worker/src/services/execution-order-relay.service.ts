@@ -33,6 +33,15 @@ interface TenantScanResult {
   error?: string;
 }
 
+interface RelayLagDistribution {
+  count: number;
+  minSeconds: number | null;
+  p50Seconds: number | null;
+  p95Seconds: number | null;
+  p99Seconds: number | null;
+  maxSeconds: number | null;
+}
+
 const RELAY_POOL_MAX = 10;
 const RELAY_SCAN_CONCURRENCY = RELAY_POOL_MAX - 1;
 
@@ -263,6 +272,8 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
       schemaName: string;
       pendingCount: number;
       oldestAgeSeconds: number | null;
+      dlqSize: number;
+      lagDistributionSeconds: RelayLagDistribution;
     }>
   > {
     const client = await this.pool.connect();
@@ -277,6 +288,8 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
         schemaName: string;
         pendingCount: number;
         oldestAgeSeconds: number | null;
+        dlqSize: number;
+        lagDistributionSeconds: RelayLagDistribution;
       }> = [];
 
       for (const tenant of tenants.rows) {
@@ -287,15 +300,32 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
           const pending = await client.query<{
             pending_count: string;
             oldest_age_seconds: string | null;
+            dlq_size: string;
+            lag_count: string;
+            lag_min_seconds: string | null;
+            lag_p50_seconds: string | null;
+            lag_p95_seconds: string | null;
+            lag_p99_seconds: string | null;
+            lag_max_seconds: string | null;
           }>(
             `SELECT
-               COUNT(*) AS pending_count,
-               COALESCE(
-                 EXTRACT(EPOCH FROM NOW() - MIN(occurred_at))::bigint,
-                 NULL
-               ) AS oldest_age_seconds
+               COUNT(*) FILTER (WHERE published_at IS NULL) AS pending_count,
+               EXTRACT(EPOCH FROM NOW() - MIN(occurred_at)
+                 FILTER (WHERE published_at IS NULL))::bigint AS oldest_age_seconds,
+               COUNT(*) FILTER (WHERE last_error IS NOT NULL) AS dlq_size,
+               COUNT(*) FILTER (WHERE published_at IS NULL) AS lag_count,
+               MIN(EXTRACT(EPOCH FROM NOW() - occurred_at))
+                 FILTER (WHERE published_at IS NULL) AS lag_min_seconds,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM NOW() - occurred_at))
+                 FILTER (WHERE published_at IS NULL) AS lag_p50_seconds,
+               percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM NOW() - occurred_at))
+                 FILTER (WHERE published_at IS NULL) AS lag_p95_seconds,
+               percentile_cont(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM NOW() - occurred_at))
+                 FILTER (WHERE published_at IS NULL) AS lag_p99_seconds,
+               MAX(EXTRACT(EPOCH FROM NOW() - occurred_at))
+                 FILTER (WHERE published_at IS NULL) AS lag_max_seconds
              FROM execution_order_outbox_events
-             WHERE published_at IS NULL`,
+             WHERE TRUE`,
           );
 
           await client.query('COMMIT');
@@ -306,10 +336,16 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
             oldestAgeSeconds: pending.rows[0]?.oldest_age_seconds
               ? parseInt(pending.rows[0].oldest_age_seconds, 10)
               : null,
+            dlqSize: parseInt(pending.rows[0]?.dlq_size ?? '0', 10),
+            lagDistributionSeconds: this.parseLagDistribution(pending.rows[0]),
           });
         } catch (error) {
           await client.query('ROLLBACK').catch(() => undefined);
-          this.logger.warn(`Relay: fallo de métricas tenant=${tenant.id}; se omite del reporte.`);
+          this.logger.warn(
+            `Relay: fallo de métricas tenant=${tenant.id}; se omite del reporte: ${
+              error instanceof Error ? error.message : 'unknown'
+            }`,
+          );
         }
       }
 
@@ -317,5 +353,39 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
     } finally {
       client.release();
     }
+  }
+
+  private parseLagDistribution(row?: {
+    lag_count: string;
+    lag_min_seconds: string | null;
+    lag_p50_seconds: string | null;
+    lag_p95_seconds: string | null;
+    lag_p99_seconds: string | null;
+    lag_max_seconds: string | null;
+  }): RelayLagDistribution {
+    if (!row) {
+      return {
+        count: 0,
+        minSeconds: null,
+        p50Seconds: null,
+        p95Seconds: null,
+        p99Seconds: null,
+        maxSeconds: null,
+      };
+    }
+    return {
+      count: parseInt(row.lag_count ?? '0', 10),
+      minSeconds: this.parseMetricFloat(row.lag_min_seconds),
+      p50Seconds: this.parseMetricFloat(row.lag_p50_seconds),
+      p95Seconds: this.parseMetricFloat(row.lag_p95_seconds),
+      p99Seconds: this.parseMetricFloat(row.lag_p99_seconds),
+      maxSeconds: this.parseMetricFloat(row.lag_max_seconds),
+    };
+  }
+
+  private parseMetricFloat(value: string | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 }

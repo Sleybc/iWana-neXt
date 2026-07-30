@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { ExecutionOrderProjectionConvergenceService } from '../services/execution-order-projection-convergence.service';
 
@@ -7,6 +8,7 @@ const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
 
 jest.mock('@iwana/db', () => ({
+  isValidSchemaName: (schemaName: string) => schemaName.startsWith('tenant_'),
   runInTenantSchema: (...args: unknown[]) => mockRunInTenantSchema(...args),
   TenantContext: {
     getOrThrow: () => mockTenantContextGetOrThrow(),
@@ -16,9 +18,13 @@ jest.mock('@iwana/db', () => ({
 describe('ExecutionOrderProjectionConvergenceService', () => {
   let service: ExecutionOrderProjectionConvergenceService;
   let queryRunner: { query: jest.Mock; manager: Record<string, unknown> };
+  let config: { get: jest.Mock };
+  let dataSource: { query: jest.Mock };
 
   beforeEach(async () => {
     queryRunner = { query: jest.fn(), manager: {} };
+    config = { get: jest.fn().mockReturnValue(undefined) };
+    dataSource = { query: jest.fn() };
 
     mockTenantContextGetOrThrow.mockReturnValue({
       tenantId: 't0000000-0000-4000-8000-000000000001',
@@ -30,65 +36,132 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
         fn(queryRunner),
     );
 
-    const dataSource = {
+    const queryRunnerDataSource = {
       createQueryRunner: () => queryRunner,
+      query: dataSource.query,
     } as unknown as DataSource;
 
     const module = await Test.createTestingModule({
       providers: [
         ExecutionOrderProjectionConvergenceService,
-        { provide: DataSource, useValue: dataSource },
+        { provide: DataSource, useValue: queryRunnerDataSource },
+        { provide: ConfigService, useValue: config },
       ],
     }).compile();
 
     service = module.get(ExecutionOrderProjectionConvergenceService);
   });
 
-  describe('getRelayHealth', () => {
-    it('devuelve HEALTHY si no hay eventos pendientes', async () => {
-      queryRunner.query.mockResolvedValueOnce([
-        {
-          pending_count: '0',
-          oldest_age_seconds: null,
-          last_published_at: null,
-        },
+  describe('getPlatformRelayTelemetry', () => {
+    it('agrega profundidad, DLQ, reconciliación y distribución sin umbral', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 't0000000-0000-4000-8000-000000000001', schema_name: 'tenant_test001' },
       ]);
+      queryRunner.query
+        .mockResolvedValueOnce([
+          {
+            pending_count: '2',
+            oldest_age_seconds: '45',
+            last_published_at: '2026-07-30T12:00:00.000Z',
+            dlq_size: '1',
+          },
+        ])
+        .mockResolvedValueOnce([{ lag_seconds: '5' }, { lag_seconds: '45' }])
+        .mockResolvedValueOnce([
+          {
+            execution_order_status: 'IN_PROGRESS',
+            execution_order_result: null,
+            schedule_status: 'SCHEDULED',
+            visit_status: 'IN_EXECUTION',
+            task_status: 'IN_PROGRESS',
+          },
+        ]);
+
+      const telemetry = await service.getPlatformRelayTelemetry();
+
+      expect(telemetry.outboxDepth).toBe(2);
+      expect(telemetry.oldestPendingAgeSeconds).toBe(45);
+      expect(telemetry.dlqSize).toBe(1);
+      expect(telemetry.reconciliationDiscrepancies).toBe(1);
+      expect(telemetry.lagDistributionSeconds).toMatchObject({
+        count: 2,
+        minSeconds: 5,
+        p95Seconds: 45,
+        maxSeconds: 45,
+      });
+      expect(telemetry.lagThresholdStatus).toBe('sin umbral aprobado');
+    });
+  });
+
+  describe('getRelayHealth', () => {
+    it('reporta medición sin veredicto cuando no hay umbral aprobado', async () => {
+      queryRunner.query
+        .mockResolvedValueOnce([
+          {
+            pending_count: '0',
+            oldest_age_seconds: null,
+            last_published_at: null,
+          },
+        ])
+        .mockResolvedValueOnce([]);
 
       const health = await service.getRelayHealth();
 
-      expect(health.relayStatus).toBe('HEALTHY');
+      expect(health.relayStatus).toBe('UNVERIFIED');
       expect(health.pendingEvents).toBe(0);
       expect(health.oldestPendingAgeSeconds).toBeNull();
+      expect(health.lagThresholdStatus).toBe('sin umbral aprobado');
     });
 
-    it('devuelve DEGRADED si el evento más antiguo tiene más de 2 minutos', async () => {
-      queryRunner.query.mockResolvedValueOnce([
-        {
-          pending_count: '3',
-          oldest_age_seconds: '180',
-          last_published_at: null,
-        },
-      ]);
+    it('no inventa un veredicto aunque el lag pendiente crezca', async () => {
+      queryRunner.query
+        .mockResolvedValueOnce([
+          {
+            pending_count: '3',
+            oldest_age_seconds: '180',
+            last_published_at: '2026-07-30T12:00:00.000Z',
+            dlq_size: '1',
+            lag_count: '3',
+            lag_min_seconds: '10',
+            lag_p50_seconds: '180',
+            lag_p95_seconds: '240',
+            lag_p99_seconds: '240',
+            lag_max_seconds: '240',
+          },
+        ])
+        .mockResolvedValueOnce([]);
 
       const health = await service.getRelayHealth();
 
-      expect(health.relayStatus).toBe('DEGRADED');
+      expect(health.relayStatus).toBe('UNVERIFIED');
       expect(health.pendingEvents).toBe(3);
+      expect(health.lastScanAt).toBe('2026-07-30T12:00:00.000Z');
+      expect(health.dlqSize).toBe(1);
+      expect(health.lagDistributionSeconds.p95Seconds).toBe(240);
     });
 
-    it('devuelve STOPPED si el evento más antiguo tiene más de 10 minutos', async () => {
-      queryRunner.query.mockResolvedValueOnce([
-        {
-          pending_count: '10',
-          oldest_age_seconds: '900',
-          last_published_at: null,
-        },
-      ]);
+    it('aplica solo los umbrales explícitamente configurados', async () => {
+      config.get.mockImplementation((key: string) => {
+        if (key === 'OUTBOX_RELAY_LAG_DEGRADED_SECONDS') return 100;
+        if (key === 'OUTBOX_RELAY_LAG_STOPPED_SECONDS') return 500;
+        return undefined;
+      });
+      queryRunner.query
+        .mockResolvedValueOnce([
+          {
+            pending_count: '10',
+            oldest_age_seconds: '900',
+            last_published_at: null,
+          },
+        ])
+        .mockResolvedValueOnce([]);
 
       const health = await service.getRelayHealth();
 
       expect(health.relayStatus).toBe('STOPPED');
       expect(health.pendingEvents).toBe(10);
+      expect(health.lagThresholds).toEqual({ degradedSeconds: 100, stoppedSeconds: 500 });
+      expect(health.lagThresholdStatus).toBe('configured');
     });
   });
 

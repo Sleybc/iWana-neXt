@@ -302,6 +302,23 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
             db: 'ok',
             redis: 'ok',
             timestamp: new Date().toISOString(),
+            relay: {
+              outboxDepth: 0,
+              oldestPendingAgeSeconds: null,
+              dlqSize: 0,
+              reconciliationDiscrepancies: 0,
+              lastScanAt: null,
+              lagDistributionSeconds: {
+                count: 0,
+                minSeconds: null,
+                p50Seconds: null,
+                p95Seconds: null,
+                p99Seconds: null,
+                maxSeconds: null,
+              },
+              lagThresholds: { degradedSeconds: null, stoppedSeconds: null },
+              lagThresholdStatus: 'sin umbral aprobado',
+            },
           }),
         });
         return;

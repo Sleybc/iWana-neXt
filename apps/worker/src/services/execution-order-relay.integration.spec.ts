@@ -176,6 +176,13 @@ describe('R0.3 relay outbox (PostgreSQL real)', () => {
 
   it('marca published_at dentro del ciclo del relay', async () => {
     if (!relay || !database) throw new Error('[BLOCKED] El setup PostgreSQL no terminó.');
+    const beforeRelay = await relay.getPendingEventsPerTenant();
+    const beforeRelayMetric = beforeRelay.find((metric) => metric.schemaName === schemaName);
+    expect(beforeRelayMetric?.pendingCount).toBe(1);
+    expect(beforeRelayMetric?.oldestAgeSeconds).not.toBeNull();
+    expect(beforeRelayMetric?.lagDistributionSeconds.count).toBe(1);
+    expect(beforeRelayMetric?.lagDistributionSeconds.p95Seconds).not.toBeNull();
+
     await relay.scanAndRelay(10);
     const result = await database.query<{ published_at: Date | null }>(
       `SELECT published_at FROM "${schemaName}".execution_order_outbox_events WHERE event_id = $1`,

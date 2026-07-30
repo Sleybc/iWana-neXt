@@ -5,6 +5,10 @@ import { DataSource } from 'typeorm';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { Public } from '../auth/decorators/public.decorator';
+import {
+  ExecutionOrderProjectionConvergenceService,
+  type PlatformRelayTelemetry,
+} from '../tasks/services/execution-order-projection-convergence.service';
 
 /**
  * Endpoint de health check para Docker healthcheck y Nginx.
@@ -22,6 +26,7 @@ export class HealthController {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly relayTelemetry: ExecutionOrderProjectionConvergenceService,
   ) {}
 
   @Get()
@@ -32,9 +37,15 @@ export class HealthController {
     db: 'ok' | 'error';
     redis: 'ok' | 'error';
     timestamp: string;
+    relay: PlatformRelayTelemetry | { status: 'unavailable'; reason: 'telemetry_unavailable' };
   }> {
     let dbStatus: 'ok' | 'error' = 'ok';
     let redisStatus: 'ok' | 'error' = 'ok';
+    let relay: PlatformRelayTelemetry | { status: 'unavailable'; reason: 'telemetry_unavailable' } =
+      {
+        status: 'unavailable',
+        reason: 'telemetry_unavailable',
+      };
 
     try {
       await this.dataSource.query('SELECT 1');
@@ -48,11 +59,19 @@ export class HealthController {
       redisStatus = 'error';
     }
 
+    try {
+      relay = await this.relayTelemetry.getPlatformRelayTelemetry();
+    } catch {
+      // La telemetría no convierte un health básico de DB/Redis en un falso
+      // negativo durante una ventana de migración o una tabla aún ausente.
+    }
+
     return {
       status: dbStatus === 'ok' && redisStatus === 'ok' ? 'ok' : 'degraded',
       db: dbStatus,
       redis: redisStatus,
       timestamp: new Date().toISOString(),
+      relay,
     };
   }
 }

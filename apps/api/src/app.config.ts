@@ -29,6 +29,10 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     JWT_PUBLIC_KEY: Joi.string().required(),
     // Secreto HMAC para idempotencia durable de comandos de órdenes de ejecución.
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
+    // Umbrales operativos del relay: no hay valores por defecto aprobados.
+    // Si faltan, health expone la medición con "sin umbral aprobado" y no emite veredicto.
+    OUTBOX_RELAY_LAG_DEGRADED_SECONDS: Joi.number().integer().min(0).optional(),
+    OUTBOX_RELAY_LAG_STOPPED_SECONDS: Joi.number().integer().min(0).optional(),
     // Clave AES-256-GCM: 64 hex + rechazo de entropía nula (SEC-02 / ADR-058).
     // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
     MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,
