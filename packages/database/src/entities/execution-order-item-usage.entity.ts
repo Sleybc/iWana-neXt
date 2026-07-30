@@ -20,8 +20,8 @@ export class ExecutionOrderItemUsage {
   @Column({ name: 'technician_custody_id', type: 'varchar', length: 160 })
   technicianCustodyId: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 2, default: 1 })
-  quantity: string;
+  @Column({ type: 'integer', default: 1 })
+  quantity: number;
 
   @Column({ name: 'serial_number', type: 'varchar', length: 160, nullable: true })
   serialNumber: string | null;

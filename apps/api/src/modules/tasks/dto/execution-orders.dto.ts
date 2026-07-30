@@ -6,7 +6,7 @@ import {
   ExecutionOrderResult,
   InventoryDisposition,
 } from '@iwana/shared';
-import { MAX_LIMIT } from '../../../common/pagination';
+import { ListMetaDto, MAX_LIMIT } from '../../../common/pagination';
 
 /**
  * Patrones colombianos de PII que no deben aparecer en campos de texto libre.
@@ -88,7 +88,7 @@ export const RegisterExecutionOrderItemUsageSchema = z
   .object({
     itemId: z.string().trim().min(1).max(160),
     technicianCustodyId: z.string().trim().min(1).max(160),
-    quantity: z.coerce.number().positive().default(1),
+    quantity: z.coerce.number().int().positive().default(1),
     serialNumber: z.string().trim().max(160).optional().nullable(),
     action: z.nativeEnum(ExecutionOrderItemAction),
     finalDisposition: z.nativeEnum(InventoryDisposition),
@@ -105,9 +105,9 @@ export class RegisterExecutionOrderItemUsageDto {
   @Allow()
   itemId!: string;
 
-  @ApiPropertyOptional({ default: 1 })
+  @ApiProperty({ default: 1, minimum: 1, type: Number })
   @Allow()
-  quantity?: number;
+  quantity!: number;
 
   @ApiPropertyOptional()
   @Allow()
@@ -242,16 +242,16 @@ export class RegisterEvidenceDto {
   @ApiPropertyOptional() @Allow() capturedAt?: string;
 }
 
-export const ListExecutionOrderEvidencesSchema = z
+export const ListExecutionOrderEntriesSchema = z
   .object({
     page: z.coerce.number().int().min(1).optional().default(1),
     limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional().default(25),
   })
   .strict();
 
-export type ListExecutionOrderEvidencesInput = z.infer<typeof ListExecutionOrderEvidencesSchema>;
+export type ListExecutionOrderEntriesInput = z.infer<typeof ListExecutionOrderEntriesSchema>;
 
-export class ListExecutionOrderEvidencesQueryDto {
+export class ListExecutionOrderEntriesQueryDto {
   @ApiPropertyOptional({ minimum: 1, default: 1, description: 'Número de página (1-based).' })
   @Allow()
   page?: number;
@@ -260,11 +260,88 @@ export class ListExecutionOrderEvidencesQueryDto {
     minimum: 1,
     maximum: MAX_LIMIT,
     default: 25,
-    description: 'Número máximo de evidencias por página.',
+    description: 'Número máximo de registros por página.',
   })
   @Allow()
   limit?: number;
 }
+
+export class ExecutionOrderActivityResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  activityType!: string;
+
+  @ApiProperty()
+  description!: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  occurredAt?: string;
+
+  @ApiProperty({
+    type: Object,
+    example: { type: 'USER', id: 'user-001' },
+  })
+  actorRef!: { type: 'USER' | 'SYSTEM'; id: string };
+
+  @ApiPropertyOptional({ type: Array })
+  measurements?: Array<{ key: string; value: number | string | boolean; unit?: string }>;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+}
+
+export class ExecutionOrderActivityPageDto {
+  @ApiProperty({ type: [ExecutionOrderActivityResponseDto] })
+  data!: ExecutionOrderActivityResponseDto[];
+
+  @ApiProperty({ type: ListMetaDto })
+  meta!: ListMetaDto;
+}
+
+export class ExecutionOrderItemUsageResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  itemId!: string;
+
+  @ApiProperty({ minimum: 1, type: Number })
+  quantity!: number;
+
+  @ApiPropertyOptional()
+  serial?: string;
+
+  @ApiProperty({ enum: ExecutionOrderItemAction })
+  action!: ExecutionOrderItemAction;
+
+  @ApiProperty({ enum: InventoryDisposition })
+  finalDisposition!: InventoryDisposition;
+
+  @ApiProperty({ format: 'uuid' })
+  inventoryRequestId!: string;
+
+  @ApiProperty({ enum: ['PENDING', 'CONFIRMED', 'REJECTED'] })
+  movementStatus!: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+}
+
+export class ExecutionOrderItemUsagePageDto {
+  @ApiProperty({ type: [ExecutionOrderItemUsageResponseDto] })
+  data!: ExecutionOrderItemUsageResponseDto[];
+
+  @ApiProperty({ type: ListMetaDto })
+  meta!: ListMetaDto;
+}
+
+export const ListExecutionOrderEvidencesSchema = ListExecutionOrderEntriesSchema;
+
+export type ListExecutionOrderEvidencesInput = z.infer<typeof ListExecutionOrderEvidencesSchema>;
+
+export class ListExecutionOrderEvidencesQueryDto extends ListExecutionOrderEntriesQueryDto {}
 
 export class ExecutionOrderEvidenceResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -288,16 +365,29 @@ export class ExecutionOrderEvidenceResponseDto {
   @ApiProperty({ format: 'date-time' })
   receivedAt!: string;
 
-  @ApiProperty({ nullable: true, type: String })
-  assetStatus!: string | null;
+  @ApiProperty({
+    nullable: true,
+    enum: ['PENDING', 'PENDING_ANALYSIS', 'AVAILABLE', 'REJECTED', 'EXPIRED', 'CLAIM_FAILED'],
+  })
+  assetStatus!:
+    | 'PENDING'
+    | 'PENDING_ANALYSIS'
+    | 'AVAILABLE'
+    | 'REJECTED'
+    | 'EXPIRED'
+    | 'CLAIM_FAILED'
+    | null;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
 }
 
 export class ExecutionOrderEvidencePageDto {
   @ApiProperty({ type: [ExecutionOrderEvidenceResponseDto] })
   data!: ExecutionOrderEvidenceResponseDto[];
 
-  @ApiProperty({ type: Object })
-  meta!: unknown;
+  @ApiProperty({ type: ListMetaDto })
+  meta!: ListMetaDto;
 }
 
 export class EvidenceAssetUploadIntentDto {

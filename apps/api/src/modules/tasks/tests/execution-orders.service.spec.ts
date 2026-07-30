@@ -108,6 +108,59 @@ describe('ExecutionOrdersService', () => {
     expect(result.subscriberId).toBe('sub-uuid');
   });
 
+  it('calcula progress como porcentaje desde requisitos satisfechos y total', async () => {
+    const closureGateEvaluator = {
+      evaluate: jest.fn().mockReturnValue({
+        totalRequired: 5,
+        satisfiedRequired: 2,
+        missingRequirements: [],
+        allEvaluations: [],
+        passed: false,
+      }),
+    };
+    service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      closureGateEvaluator as never,
+    );
+
+    const queryBuilder = () => ({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    });
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        templateRequirementsSnapshot: [
+          { key: 'one', label: 'Uno', required: true, kind: 'FIELD', fieldType: 'TEXT' },
+        ],
+      }),
+      createQueryBuilder: jest
+        .fn()
+        .mockReturnValueOnce(queryBuilder())
+        .mockReturnValueOnce(queryBuilder())
+        .mockReturnValueOnce(queryBuilder()),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(service.getCompletion('eo-001')).resolves.toEqual({
+      progress: 40,
+      completed: 2,
+      total: 5,
+    });
+    expect(closureGateEvaluator.evaluate).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ activities: [], evidences: [], itemUsages: [] }),
+    );
+  });
+
   it('rechaza el cierre cuando la OT no tiene snapshot de plantilla', async () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue({

@@ -287,6 +287,7 @@ describe('ExecutionOrdersController HTTP', () => {
       status: 'QUEUED',
     }),
     getSyncState: jest.fn().mockResolvedValue('IN_SYNC' as const),
+    getCompletion: jest.fn().mockResolvedValue({ progress: 40, completed: 2, total: 5 }),
     computeAllowedActions: jest.fn().mockReturnValue(['START', 'REGISTER_ACTIVITY'] as const),
   });
 
@@ -381,6 +382,18 @@ describe('ExecutionOrdersController HTTP', () => {
       ]);
       expect(response.body.data[0]).not.toHaveProperty('tenantId');
       expect(response.body.data[0]).not.toHaveProperty('actorUserId');
+    });
+
+    it('publica progreso porcentual y conteos de requisitos separados', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      expect(response.body.completion).toEqual(
+        expect.objectContaining({ progress: 40, completed: 2, total: 5 }),
+      );
+      expect(response.body.completion.progress).not.toBe(0.4);
     });
 
     it('rechaza un límite superior al máximo contractual', async () => {
@@ -821,6 +834,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       status: 'QUEUED',
     }),
     getSyncState: jest.fn().mockResolvedValue('IN_SYNC' as const),
+    getCompletion: jest.fn().mockResolvedValue({ progress: 0, completed: 0, total: 0 }),
     computeAllowedActions: jest.fn().mockReturnValue(['START', 'REGISTER_ACTIVITY'] as const),
   });
 
@@ -925,6 +939,23 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
 
         await req.expect(403);
       });
+    });
+
+    it('403 visible no expone permisos, roles ni datos de la OT', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/start`)
+        .set('Authorization', 'Bearer coordinator-readonly-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'coord-readonly-generic-001')
+        .send({ note: 'intento' })
+        .expect(403);
+
+      expect(response.body).toEqual({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
+      expect(JSON.stringify(response.body)).not.toContain('OPERATIONS_EXECUTION_ORDERS_EXECUTE');
+      expect(JSON.stringify(response.body)).not.toContain(ORDER_UUID);
     });
 
     it('el coordinador puede leer la OT con permiso read', async () => {
@@ -1051,9 +1082,9 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
 
     beforeAll(async () => {
       serviceMock = buildExecutionOrdersServiceMock();
-      // assertActorAccess lanza ForbiddenException para contratista no asignado
+      // assertActorAccess lanza 404 uniforme para contratista fuera de alcance
       serviceMock.assertActorAccess.mockRejectedValue(
-        new ForbiddenException('El recurso no pertenece al actor autenticado.'),
+        new NotFoundException('OT de ejecución no encontrada'),
       );
 
       const moduleRef: TestingModule = await Test.createTestingModule({
@@ -1094,21 +1125,21 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       await appWithAbac.close();
     });
 
-    it('contratista sin asignación recibe 403 en start a pesar de tener execute', async () => {
+    it('contratista sin asignación recibe 404 en start a pesar de tener execute', async () => {
       await request(appWithAbac.getHttpServer())
         .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/start`)
         .set('Authorization', 'Bearer contractor-token')
         .set('If-Match', '1')
         .set('Idempotency-Key', 'contractor-start-00001')
         .send({ note: 'Contratista sin asignación' })
-        .expect(403);
+        .expect(404);
     });
 
-    it('contratista sin asignación recibe 403 en GET', async () => {
+    it('contratista sin asignación recibe 404 en GET', async () => {
       await request(appWithAbac.getHttpServer())
         .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
         .set('Authorization', 'Bearer contractor-token')
-        .expect(403);
+        .expect(404);
     });
   });
 

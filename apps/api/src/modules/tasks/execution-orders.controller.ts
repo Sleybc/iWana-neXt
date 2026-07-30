@@ -21,7 +21,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { AccessPermissionKey, UserRole, ExecutionOrderStatus } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -46,6 +46,10 @@ import {
   ListExecutionOrderEvidencesQueryDto,
   ListExecutionOrderEvidencesSchema,
   ExecutionOrderEvidencePageDto,
+  ListExecutionOrderEntriesQueryDto,
+  ListExecutionOrderEntriesSchema,
+  ExecutionOrderActivityPageDto,
+  ExecutionOrderItemUsagePageDto,
   FollowUpDto,
   FollowUpSchema,
   StartExecutionOrderSchema,
@@ -128,11 +132,7 @@ export class ExecutionOrdersController {
         : undefined,
       site: { id: order.id, label: order.municipality ?? order.customerDisplayLabel },
       completion: {
-        progress:
-          order.status === ExecutionOrderStatus.COMPLETED ||
-          order.status === ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS
-            ? 1
-            : 0,
+        ...(await this.executionOrdersService.getCompletion(order.id)),
         startedAt: this.dateOrString(order.startedAt),
         closedAt: this.dateOrString(order.closedAt),
       },
@@ -150,26 +150,34 @@ export class ExecutionOrdersController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   @ApiOperation({ summary: 'Listar actividades registradas en la OT' })
-  async listActivities(@Param('id', ParseUUIDPipe) id: string) {
-    const data = await this.executionOrdersService.listActivities(id);
-    return this.page(
-      data.map(({ tenantId: _tenantId, actorUserId: _actorUserId, ...safe }) => safe),
-    );
+  @ApiQuery({ name: 'page', required: false, type: Number, minimum: 1, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100, example: 25 })
+  @ApiOkResponse({ type: ExecutionOrderActivityPageDto })
+  async listActivities(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(ListExecutionOrderEntriesSchema))
+    query: ListExecutionOrderEntriesQueryDto,
+  ) {
+    return this.executionOrdersService.listActivities(id, query);
   }
 
   @Get(':id/item-usage')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   @ApiOperation({ summary: 'Listar consumos e instalaciones registradas en la OT' })
-  async listItemUsage(@Param('id', ParseUUIDPipe) id: string) {
-    const data = await this.executionOrdersService.listItemUsage(id);
-    return this.page(
-      data.map(({ tenantId: _tenantId, actorUserId: _actorUserId, ...safe }) => safe),
-    );
+  @ApiQuery({ name: 'page', required: false, type: Number, minimum: 1, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100, example: 25 })
+  @ApiOkResponse({ type: ExecutionOrderItemUsagePageDto })
+  async listItemUsage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(ListExecutionOrderEntriesSchema))
+    query: ListExecutionOrderEntriesQueryDto,
+  ) {
+    return this.executionOrdersService.listItemUsage(id, query);
   }
 
   @Post(':id/start')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar OT de ejecución' })
@@ -190,7 +198,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/field-work')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @ApiOperation({ summary: 'Registrar trabajo realizado en campo' })
   registerFieldWork(
@@ -210,7 +218,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/item-usage')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Registrar consumo o instalación desde custodia técnica' })
@@ -227,7 +235,7 @@ export class ExecutionOrdersController {
       id,
       {
         ...dto,
-        quantity: dto.quantity ?? 1,
+        quantity: dto.quantity,
         technicianCustodyId: dto.technicianCustodyId,
         serialNumber: dto.serialNumber ?? null,
       },
@@ -237,7 +245,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/close')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cerrar OT de ejecución' })
@@ -278,7 +286,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/evidence-assets')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.ACCEPTED)
   @UseInterceptors(
@@ -331,7 +339,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/evidence')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @ApiOperation({ summary: 'Registrar evidencia vinculando un asset AVAILABLE' })
   registerEvidence(
@@ -351,7 +359,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/block')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.OK)
   block(
@@ -461,24 +469,6 @@ export class ExecutionOrdersController {
       ...(idempotencyKey ? { idempotencyKey } : {}),
       requireIdempotency: true,
       correlationId: validCorrelation,
-    };
-  }
-
-  private page<T>(data: T[]) {
-    return {
-      data,
-      meta: {
-        nextCursor: null,
-        total: data.length,
-        totalIsEstimate: false,
-        page: 1,
-        limit: data.length || 25,
-        totalPages: 1,
-        hasMore: false,
-        mode: 'page' as const,
-        capabilities: { randomAccess: true, sortableFields: [] },
-        sort: null,
-      },
     };
   }
 

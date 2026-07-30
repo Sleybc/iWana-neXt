@@ -33,9 +33,13 @@ import {
   UserRole,
   OperationalEventTypeV1,
   type ExecutionOrderAllowedAction,
+  type ExecutionOrderCompletionView,
   type ExecutionOrderTemplateRequirement,
   type EvidenceAssetReceipt,
   type ExecutionOrderEvidence as ExecutionOrderEvidenceContract,
+  type ExecutionOrderActivity as ExecutionOrderActivityContract,
+  type ExecutionOrderItemUsage as ExecutionOrderItemUsageContract,
+  type Page,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { buildPageMeta, clampPage } from '../../../common/pagination';
@@ -152,6 +156,62 @@ export class ExecutionOrdersService {
   }
 
   /**
+   * Calcula el avance exclusivamente desde el snapshot de requisitos y el
+   * estado persistido de la OT. `progress` es porcentaje (0-100); `completed`
+   * y `total` son conteos independientes.
+   */
+  async getCompletion(executionOrderId: string): Promise<ExecutionOrderCompletionView> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, executionOrderId);
+      const snapshot = order.templateRequirementsSnapshot;
+
+      if (!Array.isArray(snapshot) || !this.closureGateEvaluator) {
+        return { progress: 0, completed: 0, total: 0 };
+      }
+
+      const [activities, evidences, itemUsages] = await Promise.all([
+        qr.manager
+          .createQueryBuilder(ExecutionOrderActivity, 'activity')
+          .select(['activity.activityType'])
+          .where('activity.execution_order_id = :executionOrderId', { executionOrderId })
+          .andWhere('activity.tenant_id = :tenantId', { tenantId })
+          .getMany(),
+        qr.manager
+          .createQueryBuilder(ExecutionOrderEvidence, 'evidence')
+          .select(['evidence.evidenceType', 'evidence.requirementKey'])
+          .where('evidence.execution_order_id = :executionOrderId', { executionOrderId })
+          .andWhere('evidence.tenant_id = :tenantId', { tenantId })
+          .getMany(),
+        qr.manager
+          .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
+          .select(['usage.itemId'])
+          .where('usage.execution_order_id = :executionOrderId', { executionOrderId })
+          .andWhere('usage.tenant_id = :tenantId', { tenantId })
+          .getMany(),
+      ]);
+
+      const evaluation = this.closureGateEvaluator.evaluate(
+        snapshot as unknown as ExecutionOrderTemplateRequirement[],
+        {
+          activities: activities.map((activity) => ({ activityType: activity.activityType })),
+          evidences: evidences.map((evidence) => ({
+            evidenceType: evidence.evidenceType,
+            requirementKey: evidence.requirementKey ?? '',
+          })),
+          itemUsages: itemUsages.map((usage) => ({ itemId: usage.itemId })),
+        },
+      );
+      const total = evaluation.totalRequired;
+      const completed = evaluation.satisfiedRequired;
+      const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+      return { progress, completed, total };
+    });
+  }
+
+  /**
    * ABAC server-side. La OT se carga dentro del schema del JWT; nunca se
    * confía en un site/tenant enviado por el cliente.
    */
@@ -188,42 +248,98 @@ export class ExecutionOrdersService {
     });
   }
 
-  async listActivities(executionOrderId: string): Promise<ExecutionOrderActivity[]> {
+  async listActivities(
+    executionOrderId: string,
+    input: { page?: number; limit?: number },
+  ): Promise<Page<ExecutionOrderActivityContract>> {
+    const { page, limit } = clampPage(input.page ?? 1, input.limit ?? 25);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.requireOrder(qr.manager, tenantId, executionOrderId);
+
+      const [activities, total] = await qr.manager
         .createQueryBuilder(ExecutionOrderActivity, 'activity')
+        .select([
+          'activity.id',
+          'activity.activityType',
+          'activity.description',
+          'activity.actorUserId',
+          'activity.createdAt',
+        ])
         .where('activity.execution_order_id = :executionOrderId', { executionOrderId })
         .andWhere('activity.tenant_id = :tenantId', { tenantId })
         .orderBy('activity.created_at', 'ASC')
-        .getMany(),
-    );
+        .addOrderBy('activity.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+
+      return { activities, total };
+    });
+
+    return {
+      data: result.activities.map((activity) => this.toActivityContract(activity)),
+      meta: buildPageMeta({
+        total: result.total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: [],
+      }),
+    };
   }
 
-  async listItemUsage(executionOrderId: string): Promise<ExecutionOrderItemUsage[]> {
+  async listItemUsage(
+    executionOrderId: string,
+    input: { page?: number; limit?: number },
+  ): Promise<Page<ExecutionOrderItemUsageContract>> {
+    const { page, limit } = clampPage(input.page ?? 1, input.limit ?? 25);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.requireOrder(qr.manager, tenantId, executionOrderId);
+
+      const [usages, total] = await qr.manager
         .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
+        .select([
+          'usage.id',
+          'usage.itemId',
+          'usage.quantity',
+          'usage.serialNumber',
+          'usage.action',
+          'usage.finalDisposition',
+          'usage.inventoryRequestId',
+          'usage.movementStatus',
+          'usage.createdAt',
+        ])
         .where('usage.execution_order_id = :executionOrderId', { executionOrderId })
         .andWhere('usage.tenant_id = :tenantId', { tenantId })
         .orderBy('usage.created_at', 'ASC')
-        .getMany(),
-    );
+        .addOrderBy('usage.id', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+
+      return { usages, total };
+    });
+
+    return {
+      data: result.usages.map((usage) => this.toItemUsageContract(usage)),
+      meta: buildPageMeta({
+        total: result.total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: [],
+      }),
+    };
   }
 
   async listEvidences(
     executionOrderId: string,
     input: { page?: number; limit?: number },
-  ): Promise<{
-    data: ExecutionOrderEvidenceContract[];
-    total: number;
-    page: number;
-    limit: number;
-    meta: ReturnType<typeof buildPageMeta>;
-  }> {
+  ): Promise<Page<ExecutionOrderEvidenceContract>> {
     const { page, limit } = clampPage(input.page ?? 1, input.limit ?? 25);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
@@ -256,9 +372,6 @@ export class ExecutionOrdersService {
     const data = result.evidences.map((evidence) => this.toEvidenceContract(evidence));
     return {
       data,
-      total: result.total,
-      page,
-      limit,
       meta: buildPageMeta({
         total: result.total,
         page,
@@ -573,7 +686,7 @@ export class ExecutionOrdersService {
           tenantId,
           itemId: validated.itemId,
           technicianCustodyId: validated.technicianCustodyId,
-          quantity: String(validated.quantity),
+          quantity: validated.quantity,
           serialNumber: validated.serialNumber ?? null,
           action: validated.action,
           finalDisposition: validated.finalDisposition,
@@ -1666,6 +1779,34 @@ export class ExecutionOrdersService {
       status,
       assetStatus,
       createdAt: evidence.createdAt.toISOString(),
+    };
+  }
+
+  private toActivityContract(activity: ExecutionOrderActivity): ExecutionOrderActivityContract {
+    return {
+      id: activity.id,
+      activityType: activity.activityType,
+      description: activity.description,
+      actorRef: activity.actorUserId
+        ? { type: 'USER', id: activity.actorUserId }
+        : { type: 'SYSTEM', id: 'system' },
+      createdAt: activity.createdAt.toISOString(),
+    };
+  }
+
+  private toItemUsageContract(usage: ExecutionOrderItemUsage): ExecutionOrderItemUsageContract {
+    return {
+      id: usage.id,
+      itemId: usage.itemId,
+      quantity: Number(usage.quantity),
+      ...(usage.serialNumber ? { serial: usage.serialNumber } : {}),
+      action: usage.action,
+      finalDisposition: usage.finalDisposition,
+      // Las filas heredadas sin intent conservan su identidad como referencia
+      // estable de lectura; las nuevas siempre reciben inventoryRequestId.
+      inventoryRequestId: usage.inventoryRequestId ?? usage.id,
+      movementStatus: usage.movementStatus ?? 'PENDING',
+      createdAt: usage.createdAt.toISOString(),
     };
   }
 

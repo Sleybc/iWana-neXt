@@ -53,9 +53,10 @@ export class RolesGuard implements CanActivate {
     const user = request.user;
 
     if (!user || !requiredRoles.includes(user.role)) {
-      throw new ForbiddenException(
-        `Acceso denegado. Se requiere uno de los roles: ${requiredRoles.join(', ')}.`,
-      );
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
     }
 
     // El rol coincide: verificar que la procedencia del rol case con el tipo de token.
@@ -64,7 +65,10 @@ export class RolesGuard implements CanActivate {
 
     if (requiresPlatformToken !== isPlatformToken) {
       // Mensaje deliberadamente generico: no revelar la razon exacta del rechazo.
-      throw new ForbiddenException('Acceso denegado. El token no habilita este recurso.');
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
     }
 
     return true;

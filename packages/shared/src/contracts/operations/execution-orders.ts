@@ -107,7 +107,12 @@ export interface ExecutionOrderSiteView {
 }
 
 export interface ExecutionOrderCompletionView {
+  /** Porcentaje canónico calculado por backend sobre requisitos requeridos (0-100). */
   progress: number;
+  /** Cantidad de requisitos requeridos satisfechos; no es un porcentaje. El backend siempre lo publica. */
+  completed?: number;
+  /** Cantidad total de requisitos requeridos; no es un porcentaje. El backend siempre lo publica. */
+  total?: number;
   startedAt?: string;
   closedAt?: string;
 }

@@ -31,7 +31,10 @@ export class PermissionsGuard implements CanActivate {
     const user = request.user;
 
     if (!user?.sub) {
-      throw new ForbiddenException('No fue posible resolver el usuario autenticado.');
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
     }
 
     if (user.type === 'platform') {
@@ -49,9 +52,10 @@ export class PermissionsGuard implements CanActivate {
     );
 
     if (missingPermissions.length > 0) {
-      throw new ForbiddenException(
-        `Acceso denegado. Faltan permisos requeridos: ${missingPermissions.join(', ')}.`,
-      );
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
     }
 
     return true;

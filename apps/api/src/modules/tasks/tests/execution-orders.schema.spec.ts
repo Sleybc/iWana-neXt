@@ -52,6 +52,18 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
       const { technicianCustodyId: _technicianCustodyId, ...withoutCustody } = validPayload;
       expect(() => RegisterExecutionOrderItemUsageSchema.parse(withoutCustody)).toThrow();
     });
+
+    it.each([0, -1, 1.5, '2.5'])('rechaza quantity no entero positivo: %s', (quantity) => {
+      expect(() =>
+        RegisterExecutionOrderItemUsageSchema.parse({ ...validPayload, quantity }),
+      ).toThrow();
+    });
+
+    it('coercea una cantidad entera positiva de transporte a number', () => {
+      expect(
+        RegisterExecutionOrderItemUsageSchema.parse({ ...validPayload, quantity: '2' }).quantity,
+      ).toBe(2);
+    });
   });
 
   // ── AssignExecutionOrder ───────────────────────────────────────────────

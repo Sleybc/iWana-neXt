@@ -125,9 +125,13 @@ describe('TasksController Swagger', () => {
     const published = require('../../../openapi/tasks-execution-orders.v1.json') as {
       openapi: string;
       paths: Record<string, Record<string, unknown>>;
+      components?: { schemas?: Record<string, Record<string, unknown>> };
     };
     expect(published.openapi).toBe('3.0.3');
     expect(published.paths['/tasks/execution-orders/{id}/close']?.post).toBeDefined();
+    expect(published.paths['/tasks/execution-orders/{id}/activities']?.get).toBeDefined();
+    expect(published.paths['/tasks/execution-orders/{id}/item-usage']?.get).toBeDefined();
+    expect(published.paths['/tasks/execution-orders/{id}/evidences']?.get).toBeDefined();
     for (const path of [
       '/tasks/execution-orders/{id}/assign',
       '/tasks/execution-orders/{id}/evidence',
@@ -150,5 +154,18 @@ describe('TasksController Swagger', () => {
         '#/components/parameters/IdempotencyKey',
       ]),
     );
+
+    const schemas = published.components?.schemas as Record<string, Record<string, unknown>>;
+    expect(schemas.ExecutionOrderCompletionView?.properties).toEqual(
+      expect.objectContaining({
+        progress: expect.objectContaining({ minimum: 0, maximum: 100 }),
+        completed: expect.objectContaining({ type: 'integer' }),
+        total: expect.objectContaining({ type: 'integer' }),
+      }),
+    );
+    expect(schemas.RegisterItemUsageCommand?.properties).toEqual(
+      expect.objectContaining({ quantity: { type: 'integer', minimum: 1 } }),
+    );
+    expect(schemas.ExecutionOrderEvidence?.required).toEqual(expect.arrayContaining(['createdAt']));
   });
 });

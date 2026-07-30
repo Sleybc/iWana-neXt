@@ -265,9 +265,11 @@
       "ExecutionOrderCompletionView": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["progress"],
+        "required": ["progress", "completed", "total"],
         "properties": {
-          "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+          "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "completed": { "type": "integer", "minimum": 0 },
+          "total": { "type": "integer", "minimum": 0 },
           "startedAt": { "type": "string", "format": "date-time" },
           "closedAt": { "type": "string", "format": "date-time" }
         }
@@ -390,7 +392,7 @@
         "required": ["itemId", "quantity", "technicianCustodyId", "action", "finalDisposition"],
         "properties": {
           "itemId": { "type": "string" },
-          "quantity": { "type": "number", "exclusiveMinimum": 0 },
+          "quantity": { "type": "integer", "minimum": 1 },
           "serialNumber": { "type": "string", "nullable": true, "maxLength": 160 },
           "technicianCustodyId": { "type": "string", "minLength": 1, "maxLength": 160 },
           "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },
@@ -409,11 +411,12 @@
       "RegisterEvidenceCommand": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["mediaAssetId", "evidenceType", "requirementKey"],
+        "required": ["mediaAssetId", "evidenceType", "requirementKey", "expiresAt"],
         "properties": {
           "mediaAssetId": { "type": "string", "format": "uuid" },
           "evidenceType": { "type": "string", "enum": ["PHOTO", "DOCUMENT", "SIGNATURE"] },
           "requirementKey": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" },
           "capturedAt": { "type": "string", "format": "date-time" }
         }
       },
@@ -584,7 +587,7 @@
         "properties": {
           "id": { "type": "string", "format": "uuid" },
           "itemId": { "type": "string" },
-          "quantity": { "type": "number" },
+          "quantity": { "type": "integer", "minimum": 1 },
           "serial": { "type": "string" },
           "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },
           "finalDisposition": {

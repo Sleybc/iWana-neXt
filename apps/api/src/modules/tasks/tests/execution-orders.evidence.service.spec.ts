@@ -197,6 +197,107 @@ describe('ExecutionOrdersService — Evidence', () => {
     });
   });
 
+  describe('listActivities y listItemUsage', () => {
+    it('devuelve actividades paginadas con actorRef y sin campos tenant-owned', async () => {
+      const queryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([
+          [
+            {
+              id: 'activity-001',
+              activityType: 'INSTALLATION',
+              description: 'Actividad autorizada',
+              actorUserId: 'actor-001',
+              createdAt: new Date('2026-07-27T15:00:00.000Z'),
+              tenantId: 'tenant-001',
+            },
+          ],
+          3,
+        ]),
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      const result = await service.listActivities(ORDER_UUID, { page: 2, limit: 1 });
+
+      expect(result).toEqual({
+        data: [
+          {
+            id: 'activity-001',
+            activityType: 'INSTALLATION',
+            description: 'Actividad autorizada',
+            actorRef: { type: 'USER', id: 'actor-001' },
+            createdAt: '2026-07-27T15:00:00.000Z',
+          },
+        ],
+        meta: expect.objectContaining({ total: 3, page: 2, limit: 1, totalPages: 3 }),
+      });
+      expect(result.data[0]).not.toHaveProperty('tenantId');
+    });
+
+    it('devuelve consumos paginados con quantity entero y forma de contrato', async () => {
+      const queryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([
+          [
+            {
+              id: 'usage-001',
+              itemId: 'item-001',
+              quantity: 2,
+              serialNumber: null,
+              action: 'CONSUME',
+              finalDisposition: 'INTERNAL_CONSUMPTION',
+              inventoryRequestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              movementStatus: 'PENDING',
+              createdAt: new Date('2026-07-27T15:01:00.000Z'),
+            },
+          ],
+          1,
+        ]),
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(mockOrder()),
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      const result = await service.listItemUsage(ORDER_UUID, { page: 1, limit: 25 });
+
+      expect(result.data).toEqual([
+        {
+          id: 'usage-001',
+          itemId: 'item-001',
+          quantity: 2,
+          action: 'CONSUME',
+          finalDisposition: 'INTERNAL_CONSUMPTION',
+          inventoryRequestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          movementStatus: 'PENDING',
+          createdAt: '2026-07-27T15:01:00.000Z',
+        },
+      ]);
+      expect(result.meta).toMatchObject({ total: 1, page: 1, limit: 25 });
+    });
+  });
+
   // ──────────────────────────────────────────────────────────────────────────
   // 1. createEvidenceAssetReceipt — Upload-intent
   // ──────────────────────────────────────────────────────────────────────────
