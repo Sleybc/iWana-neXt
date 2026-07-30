@@ -32,8 +32,12 @@ import type { APIRequestContext, Page } from '@playwright/test';
 const API_BASE = process.env.API_BASE_URL || 'http://127.0.0.1:3000';
 const API_PREFIX = `${API_BASE}/api/v1`;
 
-const PLATFORM_EMAIL = process.env.E2E_PLATFORM_EMAIL || 'admin@iwana.local';
-const PLATFORM_PASSWORD = process.env.E2E_PLATFORM_PASSWORD || 'Admin123!';
+const PLATFORM_EMAIL =
+  process.env.E2E_PLATFORM_EMAIL ?? process.env.PLATFORM_SUPER_ADMIN_EMAIL ?? 'admin@iwana.co';
+const PLATFORM_PASSWORD =
+  process.env.E2E_PLATFORM_PASSWORD ??
+  process.env.PLATFORM_SUPER_ADMIN_PASSWORD ??
+  'IwanaAdmin!2026';
 
 const TENANT_SLUG = process.env.E2E_TENANT_SLUG || 'isp-demo';
 
@@ -117,6 +121,10 @@ async function platformLogin(api: APIRequestContext): Promise<string> {
 /**
  * Login de tenant con rol específico.
  * Requiere que el usuario exista en el tenant.
+ *
+ * Contrato vigente: POST /api/v1/auth/login con header X-Tenant-Slug
+ * y body { email, password }. Reemplaza al legado /auth/tenant/login
+ * que aceptaba tenantSlug en el body.
  */
 async function tenantLogin(
   api: APIRequestContext,
@@ -124,8 +132,11 @@ async function tenantLogin(
   password: string,
   slug: string,
 ): Promise<{ token: string; sub: string }> {
-  const res = await api.post(`${API_PREFIX}/auth/tenant/login`, {
-    data: { email, password, tenantSlug: slug },
+  const res = await api.post(`${API_PREFIX}/auth/login`, {
+    data: { email, password },
+    headers: {
+      'X-Tenant-Slug': slug,
+    },
   });
   expect(res.status()).toBe(200);
   const body = await res.json();
@@ -457,8 +468,10 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       const activities = listBody.data;
       expect(activities.length).toBeGreaterThanOrEqual(1);
 
-      // La versión no cambia por field-work (no modifica la OT directamente)
-      ctx.otVersion = ctx.otVersion;
+      // El field-work incrementa la versión de la OT (persistOrderOptimistically)
+      // La respuesta es ExecutionOrderActivity (sin campo version), por lo que el
+      // ETag del interceptor personalizado no se aplica; incrementar manualmente.
+      ctx.otVersion = ctx.otVersion + 1;
     });
 
     test('1d. Registrar consumo de ítem', async ({ page }) => {
@@ -479,24 +492,9 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         itemId = 'ONT-HG8245';
       }
 
-      // Buscar custodias técnicas del técnico
-      const locationsRes = await authedGet(page, '/inventory/locations', ctx.nocToken);
-      let custodyId = process.env.E2E_TECH_CUSTODY_ID || '';
-      if (!custodyId && locationsRes.status() === 200) {
-        const locsBody = await locationsRes.json();
-        const locs = locsBody.data || locsBody;
-        if (Array.isArray(locs)) {
-          const techCustody = locs.find(
-            (l: Record<string, unknown>) => l.type === 'MOBILE_TECHNICIAN',
-          );
-          if (techCustody) {
-            custodyId = String(techCustody.code || techCustody.id || '');
-          }
-        }
-      }
-      if (!custodyId) {
-        custodyId = 'MOV-001';
-      }
+      // technicianCustodyId debe ser el user ID del técnico asignado a la OT
+      // (assertCustodyAssignment compara contra assignedTechnicianId, no contra location code)
+      const custodyId = ctx.techUserId;
 
       const res = await authedPost(
         page,
@@ -517,13 +515,12 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
 
       expect(res.status()).toBe(202);
       const receipt = await res.json();
-      expectMutationHeaders(res, receipt.version);
+      expectMutationHeaders(res);
       expect(receipt).toEqual(
         expect.objectContaining({
-          intentId: expect.any(String),
+          id: expect.any(String),
           inventoryRequestId: expect.any(String),
-          status: expect.stringMatching(/^(PENDING|ACCEPTED|REJECTED)$/),
-          version: expect.any(Number),
+          movementStatus: expect.stringMatching(/^(PENDING|CONFIRMED|REJECTED)$/),
         }),
       );
 
@@ -538,6 +535,10 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expect(usagePage).toEqual(
         expect.objectContaining({ data: expect.any(Array), meta: expect.any(Object) }),
       );
+
+      // El consumo de ítem incrementa la versión de la OT (persistOrderOptimistically),
+      // pero la respuesta es un receipt sin campo version. Incrementar manualmente.
+      ctx.otVersion = ctx.otVersion + 1;
     });
 
     test('1e. Subir evidencia y registrar', async ({ page }) => {
@@ -551,6 +552,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           headers: {
             Authorization: `Bearer ${ctx.techToken}`,
             'Idempotency-Key': `e2e-evidence-upload-${ctx.executionOrderId}`,
+            'If-Match': String(ctx.otVersion),
           },
           multipart: {
             file: {
@@ -623,6 +625,9 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           requirementKey: 'e2e-test-evidence',
         }),
       );
+
+      // El registro de evidencia incrementa la versión de la OT
+      ctx.otVersion = ctx.otVersion + 1;
 
       // 4. Verificar que se puede descargar la evidencia (signed URL)
       const contentRes = await page.request.get(
