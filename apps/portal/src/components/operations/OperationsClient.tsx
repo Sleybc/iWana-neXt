@@ -14,27 +14,26 @@ import {
   TaskStatus,
 } from '@iwana/shared';
 import type {
-  ExecutionOrderActivityRecord,
-  ExecutionOrderItemUsageRecord,
   ExecutionOrderRecord,
   CreateOperationalTaskDto,
   InternalUser,
   OperationalTaskAssignmentHistoryRecord,
   OperationalTaskRecord,
   OperationalTaskTimelineEvent,
-  ExecutionOrderEvidencePage,
   ExecutionOrderEvidenceRecord,
   RegisterExecutionOrderItemUsageDto,
   CloseExecutionOrderDto,
+  ExecutionOrderDetailResponse,
 } from '@/lib/api-client';
 import type {
-  ExecutionOrderDetail,
   ExecutionOrderActivity,
   ExecutionOrderItemUsage,
   ExecutionOrderEvidence,
   ExecutionOrderTemplateVersion,
 } from '@iwana/shared';
+import type { ListMeta } from '@iwana/shared';
 import { ApiError, inventoryApi, tasksApi, usersApi } from '@/lib/api-client';
+import { EMPTY_LIST_META, normalizeListMeta } from '@/lib/list-meta';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -52,7 +51,7 @@ import { TasksToolbar } from './TasksToolbar';
 import { createTaskVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 
 type EvidenceCollection =
-  | ExecutionOrderEvidencePage
+  | { data?: ExecutionOrderEvidenceRecord[] | null; meta?: Partial<ListMeta> | null }
   | ExecutionOrderEvidenceRecord[]
   | null
   | undefined;
@@ -65,6 +64,65 @@ export function normalizeExecutionOrderEvidence(
   }
 
   return value?.data ?? [];
+}
+
+type ExecutionOrderCollectionResponse<T> =
+  | T[]
+  | { data?: T[] | null; meta?: Partial<ListMeta> | null };
+
+export interface CollectedExecutionOrderCollection<T> {
+  data: T[];
+  meta: ListMeta;
+}
+
+/**
+ * Carga las páginas posteriores de una colección de OT sin convertirla en un
+ * listado sin cota. Conserva el total del servidor y deja `hasMore` en true si
+ * se alcanza el límite de seguridad antes de consumir todas las páginas.
+ */
+export async function collectExecutionOrderCollectionPages<T>(
+  fetchPage: (page: number, limit: number) => Promise<ExecutionOrderCollectionResponse<T>>,
+  options: { limit?: number; maxPages?: number } = {},
+): Promise<CollectedExecutionOrderCollection<T>> {
+  const limit = options.limit ?? 100;
+  const maxPages = options.maxPages ?? 20;
+  const data: T[] = [];
+  let page = 1;
+  let lastMeta = EMPTY_LIST_META;
+  let serverHasMore = false;
+
+  while (page <= maxPages) {
+    const response = await fetchPage(page, limit);
+    const pageData = Array.isArray(response) ? response : (response.data ?? []);
+    const responseMeta = Array.isArray(response) ? undefined : response.meta;
+    lastMeta = normalizeListMeta(responseMeta, { dataLength: pageData.length, limit });
+    data.push(...pageData);
+    serverHasMore = responseMeta
+      ? (responseMeta.hasMore ??
+        (responseMeta.nextCursor != null ||
+          (responseMeta.total !== undefined && responseMeta.total > data.length)))
+      : false;
+
+    if (!serverHasMore) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  const reachedPageLimit = serverHasMore && page > maxPages;
+  const total = Math.max(lastMeta.total, data.length);
+  return {
+    data,
+    meta: {
+      ...lastMeta,
+      total,
+      page: lastMeta.page ?? Math.min(page, maxPages),
+      totalPages:
+        lastMeta.limit > 0 ? Math.max(1, Math.ceil(total / lastMeta.limit)) : lastMeta.totalPages,
+      hasMore: reachedPageLimit,
+    },
+  };
 }
 
 const USERS_PAGE_SIZE = 100;
@@ -116,22 +174,94 @@ export function getMissingRequirements(error: unknown): ExecutionOrderMissingReq
     }
     if (!value || typeof value !== 'object') return [];
     const requirement = value as Record<string, unknown>;
-    if (
-      typeof requirement.requirementId !== 'string' ||
-      typeof requirement.label !== 'string' ||
-      typeof requirement.reason !== 'string'
-    ) {
+    if (typeof requirement.requirementId !== 'string') {
       return [];
     }
+    const kind = typeof requirement.kind === 'string' ? requirement.kind : 'OTHER';
+    const label = productRequirementLabel(
+      typeof requirement.label === 'string' ? requirement.label : undefined,
+      kind,
+      requirement.requirementId,
+    );
     return [
       {
         requirementId: requirement.requirementId,
-        label: requirement.label,
-        kind: typeof requirement.kind === 'string' ? requirement.kind : 'OTHER',
-        reason: requirement.reason,
+        label,
+        kind,
+        reason: productRequirementReason(
+          typeof requirement.reason === 'string' ? requirement.reason : undefined,
+          kind,
+          label,
+        ),
       },
     ];
   });
+}
+
+const REQUIREMENT_KIND_LABELS: Record<string, string> = {
+  FIELD: 'Información requerida',
+  ACTIVITY: 'Actividad pendiente',
+  MEASUREMENT: 'Medición pendiente',
+  EVIDENCE: 'Evidencia pendiente',
+  MATERIAL: 'Material pendiente',
+  COMPLIANCE: 'Aceptación del cliente pendiente',
+  OTHER: 'Requisito pendiente',
+};
+
+function containsRawRequirementToken(value: string): boolean {
+  return (
+    /^[A-Z0-9_:-]+$/u.test(value) ||
+    /\b(?:FIELD|ACTIVITY|MEASUREMENT|EVIDENCE|MATERIAL|COMPLIANCE|PHOTO|DOCUMENT|SIGNATURE)\b/u.test(
+      value,
+    )
+  );
+}
+
+export function productRequirementLabel(
+  label: string | undefined,
+  kind: string,
+  requirementId: string,
+): string {
+  if (label?.trim() && !containsRawRequirementToken(label.trim())) {
+    return label.trim();
+  }
+
+  const normalizedId = requirementId.toLowerCase();
+  if (/(?:photo|foto|evidence|evidencia)/u.test(normalizedId)) return 'Evidencia requerida';
+  if (/(?:signature|firma|acceptance|aceptación)/u.test(normalizedId)) {
+    return 'Aceptación del cliente';
+  }
+  if (/(?:serial|ont|material|item|equipment|equipo)/u.test(normalizedId)) {
+    return 'Material o equipo requerido';
+  }
+  if (/(?:measurement|medición|speed|prueba)/u.test(normalizedId)) return 'Medición requerida';
+  if (/(?:activity|actividad|install|installation)/u.test(normalizedId)) {
+    return 'Actividad requerida';
+  }
+  return REQUIREMENT_KIND_LABELS[kind] ?? 'Requisito pendiente';
+}
+
+function productRequirementReason(reason: string | undefined, kind: string, label: string): string {
+  if (reason?.trim() && !containsRawRequirementToken(reason) && !/categoría\s+"/iu.test(reason)) {
+    return reason.trim();
+  }
+
+  switch (kind) {
+    case 'EVIDENCE':
+      return `Adjunta ${label.toLowerCase()} antes de cerrar la orden.`;
+    case 'MATERIAL':
+      return 'Registra el material o equipo requerido antes de cerrar la orden.';
+    case 'COMPLIANCE':
+      return 'Registra la aceptación del cliente antes de cerrar la orden.';
+    case 'ACTIVITY':
+      return 'Registra la actividad requerida antes de cerrar la orden.';
+    case 'MEASUREMENT':
+      return 'Registra la medición requerida antes de cerrar la orden.';
+    case 'FIELD':
+      return 'Completa la información requerida antes de cerrar la orden.';
+    default:
+      return 'Completa el requisito pendiente antes de cerrar la orden.';
+  }
 }
 
 export function normalizeExecutionOrderCollection<T>(
@@ -213,18 +343,23 @@ export function OperationsClient() {
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
-  const [selectedExecutionOrder, setSelectedExecutionOrder] = useState<ExecutionOrderDetail | null>(
-    null,
-  );
+  const [selectedExecutionOrder, setSelectedExecutionOrder] =
+    useState<ExecutionOrderDetailResponse | null>(null);
   const [executionOrderActivities, setExecutionOrderActivities] = useState<
     ExecutionOrderActivity[]
   >([]);
+  const [executionOrderActivitiesMeta, setExecutionOrderActivitiesMeta] =
+    useState<ListMeta>(EMPTY_LIST_META);
   const [executionOrderItemUsage, setExecutionOrderItemUsage] = useState<ExecutionOrderItemUsage[]>(
     [],
   );
+  const [executionOrderItemUsageMeta, setExecutionOrderItemUsageMeta] =
+    useState<ListMeta>(EMPTY_LIST_META);
   const [executionOrderEvidence, setExecutionOrderEvidence] = useState<ExecutionOrderEvidence[]>(
     [],
   );
+  const [executionOrderEvidenceMeta, setExecutionOrderEvidenceMeta] =
+    useState<ListMeta>(EMPTY_LIST_META);
   const [executionOrderEvidenceState, setExecutionOrderEvidenceState] = useState<
     'loading' | 'available' | 'unavailable'
   >('available');
@@ -348,17 +483,19 @@ export function OperationsClient() {
     try {
       const [order, activities, itemUsage] = await Promise.all([
         tasksApi.executionOrders.get(executionOrderId),
-        tasksApi.executionOrders.listActivities(executionOrderId),
-        tasksApi.executionOrders.listItemUsage(executionOrderId),
+        collectExecutionOrderCollectionPages((page, limit) =>
+          tasksApi.executionOrders.listActivities(executionOrderId, { page, limit }),
+        ),
+        collectExecutionOrderCollectionPages((page, limit) =>
+          tasksApi.executionOrders.listItemUsage(executionOrderId, { page, limit }),
+        ),
       ]);
-      const detail = order as unknown as ExecutionOrderDetail;
+      const detail = order;
       setSelectedExecutionOrder(detail);
-      setExecutionOrderActivities(
-        normalizeExecutionOrderCollection(activities) as unknown as ExecutionOrderActivity[],
-      );
-      setExecutionOrderItemUsage(
-        normalizeExecutionOrderCollection(itemUsage) as unknown as ExecutionOrderItemUsage[],
-      );
+      setExecutionOrderActivities(activities.data);
+      setExecutionOrderActivitiesMeta(activities.meta);
+      setExecutionOrderItemUsage(itemUsage.data);
+      setExecutionOrderItemUsageMeta(itemUsage.meta);
 
       try {
         const [items, locations] = await Promise.all([
@@ -386,13 +523,15 @@ export function OperationsClient() {
       }
 
       try {
-        const evidence = await tasksApi.executionOrders.listEvidence(executionOrderId);
-        setExecutionOrderEvidence(
-          normalizeExecutionOrderEvidence(evidence) as unknown as ExecutionOrderEvidence[],
+        const evidence = await collectExecutionOrderCollectionPages((page, limit) =>
+          tasksApi.executionOrders.listEvidence(executionOrderId, { page, limit }),
         );
+        setExecutionOrderEvidence(evidence.data);
+        setExecutionOrderEvidenceMeta(evidence.meta);
         setExecutionOrderEvidenceState('available');
       } catch {
         setExecutionOrderEvidence([]);
+        setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
         setExecutionOrderEvidenceState('unavailable');
       }
 
@@ -420,8 +559,11 @@ export function OperationsClient() {
       setExecutionOrderError(mapOperationsError(loadError));
       setSelectedExecutionOrder(null);
       setExecutionOrderActivities([]);
+      setExecutionOrderActivitiesMeta(EMPTY_LIST_META);
       setExecutionOrderItemUsage([]);
+      setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
       setExecutionOrderEvidence([]);
+      setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
       setExecutionOrderEvidenceState('available');
       setExecutionOrderTemplate(null);
       setExecutionOrderItemOptions([]);
@@ -530,7 +672,11 @@ export function OperationsClient() {
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     try {
-      await tasksApi.executionOrders.start(selectedExecutionOrder.id, { note: note ?? null });
+      await tasksApi.executionOrders.start(
+        selectedExecutionOrder.id,
+        { note: note ?? null },
+        selectedExecutionOrder.version,
+      );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('La ejecución fue iniciada.');
     } catch (error) {
@@ -546,7 +692,11 @@ export function OperationsClient() {
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     try {
-      await tasksApi.executionOrders.registerFieldWork(selectedExecutionOrder.id, payload);
+      await tasksApi.executionOrders.registerFieldWork(
+        selectedExecutionOrder.id,
+        payload,
+        selectedExecutionOrder.version,
+      );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('El trabajo realizado fue registrado.');
     } catch (error) {
@@ -564,7 +714,11 @@ export function OperationsClient() {
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     try {
-      await tasksApi.executionOrders.registerItemUsage(selectedExecutionOrder.id, payload);
+      await tasksApi.executionOrders.registerItemUsage(
+        selectedExecutionOrder.id,
+        payload,
+        selectedExecutionOrder.version,
+      );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('El material fue registrado.');
     } catch (error) {
@@ -610,7 +764,11 @@ export function OperationsClient() {
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     try {
-      await tasksApi.executionOrders.close(selectedExecutionOrder.id, payload);
+      await tasksApi.executionOrders.close(
+        selectedExecutionOrder.id,
+        payload,
+        selectedExecutionOrder.version,
+      );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('El cierre fue registrado.');
     } catch (error) {
@@ -749,8 +907,11 @@ export function OperationsClient() {
         open={Boolean(selectedExecutionOrder) || isLoadingExecutionOrder}
         order={selectedExecutionOrder}
         activities={executionOrderActivities}
+        activitiesMeta={executionOrderActivitiesMeta}
         itemUsage={executionOrderItemUsage}
+        itemUsageMeta={executionOrderItemUsageMeta}
         evidence={executionOrderEvidence}
+        evidenceMeta={executionOrderEvidenceMeta}
         evidenceState={executionOrderEvidenceState}
         template={executionOrderTemplate}
         itemOptions={executionOrderItemOptions}
@@ -764,8 +925,11 @@ export function OperationsClient() {
         onClose={() => {
           setSelectedExecutionOrder(null);
           setExecutionOrderActivities([]);
+          setExecutionOrderActivitiesMeta(EMPTY_LIST_META);
           setExecutionOrderItemUsage([]);
+          setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
           setExecutionOrderEvidence([]);
+          setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
           setExecutionOrderEvidenceState('available');
           setExecutionOrderError(null);
           setExecutionOrderSuccess(null);

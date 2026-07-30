@@ -15,7 +15,7 @@ import type {
   WfmScheduleRecommendation,
   WfmVisitRequest,
   WfmWorkOrder,
-  ExecutionOrderRecord,
+  ExecutionOrderDetailResponse,
 } from '@/lib/api-client';
 import { UserRole } from '@iwana/shared';
 import { ApiError, assuranceApi, crmApi, tasksApi, wfmApi } from '@/lib/api-client';
@@ -241,9 +241,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<WfmScheduleEvent | null>(null);
-  const [selectedExecutionOrder, setSelectedExecutionOrder] = useState<ExecutionOrderRecord | null>(
-    null,
-  );
+  const [selectedExecutionOrder, setSelectedExecutionOrder] =
+    useState<ExecutionOrderDetailResponse | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDrawerLoading, setIsDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
@@ -565,7 +564,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     try {
       const eventDetail = await wfmApi.events.get(eventId);
       let workOrderDetail: WfmWorkOrder | null = null;
-      let executionOrderDetail: ExecutionOrderRecord | null = null;
+      let executionOrderDetail: ExecutionOrderDetailResponse | null = null;
       if (eventDetail.workOrderId) {
         try {
           workOrderDetail = await wfmApi.workOrders.get(eventDetail.workOrderId);

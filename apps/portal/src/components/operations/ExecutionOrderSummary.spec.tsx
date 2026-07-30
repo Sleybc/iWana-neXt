@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import { ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
+import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 
 describe('ExecutionOrderSummary', () => {
   it('muestra skeleton durante la carga', () => {
@@ -56,6 +58,21 @@ describe('ExecutionOrderSummary', () => {
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
   });
 
+  it('prioriza reintentar o actualizar detalle antes de abrir la OT ante un error', () => {
+    render(
+      <ExecutionOrderSummary
+        order={null}
+        availability="unavailable"
+        canOpen
+        onOpen={jest.fn()}
+        onRetry={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir OT' })).not.toBeInTheDocument();
+  });
+
   it('muestra success sin ocultar el resumen', () => {
     render(<ExecutionOrderSummary order={null} successMessage="La orden quedó sincronizada." />);
     expect(screen.getByText('Operación completada')).toBeInTheDocument();
@@ -66,8 +83,8 @@ describe('ExecutionOrderSummary', () => {
     const order = {
       id: 'ot-001',
       executionOrderNumber: 'OT-001',
-      status: 'ASSIGNED',
-      workType: 'INSTALLATION',
+      status: ExecutionOrderStatus.ASSIGNED,
+      workType: WfmWorkType.INSTALLATION,
       plannedWindowStartAt: '2026-07-27T14:00:00.000Z',
       plannedWindowEndAt: '2026-07-27T16:00:00.000Z',
       customerDisplayLabel: 'Sitio autorizado',
@@ -79,22 +96,28 @@ describe('ExecutionOrderSummary', () => {
   });
 
   it('mantiene el resumen seguro cuando la plantilla no está disponible', () => {
-    const order = {
+    const order: ExecutionOrderDetailResponse = {
       id: 'eo-001',
       number: 'OT-001',
-      status: 'ASSIGNED',
-      workType: 'INSTALLATION',
+      version: 1,
+      status: ExecutionOrderStatus.ASSIGNED,
+      workType: WfmWorkType.INSTALLATION,
       template: null,
       schedule: {
+        eventId: 'event-001',
         window: {
           startAt: '2026-07-27T14:00:00.000Z',
           endAt: '2026-07-27T16:00:00.000Z',
         },
       },
-      site: { label: 'Sitio autorizado' },
-      completion: { completed: 2, total: 5 },
+      site: { id: 'site-001', label: 'Sitio autorizado' },
+      completion: { progress: 40, completed: 2, total: 5 },
       syncState: 'IN_SYNC',
-    } as never;
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: [],
+      createdAt: '2026-07-27T12:00:00.000Z',
+      updatedAt: '2026-07-27T12:00:00.000Z',
+    };
 
     render(<ExecutionOrderSummary order={order} />);
 

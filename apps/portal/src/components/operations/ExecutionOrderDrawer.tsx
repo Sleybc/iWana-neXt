@@ -18,15 +18,19 @@ import {
 } from '@iwana/shared';
 import type {
   ExecutionOrderAllowedAction,
-  ExecutionOrderDetail,
   ExecutionOrderTemplateVersion,
   ExecutionOrderActivity,
   ExecutionOrderItemUsage,
   ExecutionOrderEvidence,
   ExecutionOrderTemplateRequirement,
   RegisterActivityCommand,
+  ListMeta,
 } from '@iwana/shared';
-import type { CloseExecutionOrderDto, RegisterExecutionOrderItemUsageDto } from '@/lib/api-client';
+import type {
+  CloseExecutionOrderDto,
+  ExecutionOrderDetailResponse,
+  RegisterExecutionOrderItemUsageDto,
+} from '@/lib/api-client';
 import type { ExecutionOrderMissingRequirement } from './OperationsClient';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
@@ -44,10 +48,13 @@ import { Camera, FileText, MapPin, AlertTriangle, CheckCircle2, XCircle } from '
 
 interface ExecutionOrderDrawerProps {
   open: boolean;
-  order: ExecutionOrderDetail | null;
+  order: ExecutionOrderDetailResponse | null;
   activities: ExecutionOrderActivity[];
+  activitiesMeta?: ListMeta;
   itemUsage: ExecutionOrderItemUsage[];
+  itemUsageMeta?: ListMeta;
   evidence?: ExecutionOrderEvidence[] | null;
+  evidenceMeta?: ListMeta;
   evidenceState?: 'loading' | 'available' | 'unavailable';
   template: ExecutionOrderTemplateVersion | null;
   missingRequirements?: ExecutionOrderMissingRequirement[];
@@ -124,11 +131,14 @@ const EMPTY_EVIDENCE: ExecutionOrderEvidence[] = [];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function actionAllowed(order: ExecutionOrderDetail, action: ExecutionOrderAllowedAction): boolean {
+function actionAllowed(
+  order: ExecutionOrderDetailResponse,
+  action: ExecutionOrderAllowedAction,
+): boolean {
   return order.allowedActions?.includes(action) === true;
 }
 
-function syncStateCopy(state: ExecutionOrderDetail['syncState']): string {
+function syncStateCopy(state: ExecutionOrderDetailResponse['syncState']): string {
   switch (state) {
     case 'IN_SYNC':
       return 'Sincronizada';
@@ -205,14 +215,21 @@ function measurementLabel(value: number | string | boolean, unit?: string): stri
   return `Medición registrada: ${String(value)}${unit ? ` ${unit}` : ''}`;
 }
 
+function collectionCountLabel(visible: number, total: number, noun: string): string {
+  return visible < total ? `Mostrando ${visible} de ${total} ${noun}` : `${total} ${noun}`;
+}
+
 // ─── Componente principal ───────────────────────────────────────────────────
 
 export function ExecutionOrderDrawer({
   open,
   order,
   activities,
+  activitiesMeta,
   itemUsage,
+  itemUsageMeta,
   evidence,
+  evidenceMeta,
   evidenceState = 'available',
   template = null,
   missingRequirements = [],
@@ -235,7 +252,8 @@ export function ExecutionOrderDrawer({
   const normalizedEvidence = evidence ?? EMPTY_EVIDENCE;
   const terminal = order ? TERMINAL_STATUSES.has(order.status) : false;
   const forbidden = order ? order.allowedActions === null : false;
-  const canInteract = !terminal && !offline && !forbidden && order !== null;
+  const canInteract =
+    !terminal && !offline && !forbidden && order !== null && order.syncState === 'IN_SYNC';
 
   const canStart = order ? actionAllowed(order, 'START') : false;
   const canRegisterActivity = order ? actionAllowed(order, 'REGISTER_ACTIVITY') : false;
@@ -380,7 +398,7 @@ export function ExecutionOrderDrawer({
         !itemAction ||
         !selectedCustodyId ||
         !itemDisposition ||
-        !Number.isFinite(quantity) ||
+        !Number.isInteger(quantity) ||
         quantity <= 0
       ) {
         return;
@@ -414,9 +432,9 @@ export function ExecutionOrderDrawer({
 
   const itemQuantityError =
     itemQty.trim().length === 0
-      ? 'Ingresa una cantidad mayor que cero.'
-      : !Number.isFinite(Number(itemQty)) || Number(itemQty) <= 0
-        ? 'La cantidad debe ser mayor que cero.'
+      ? 'Ingresa una cantidad entera mayor que cero.'
+      : !Number.isInteger(Number(itemQty)) || Number(itemQty) <= 0
+        ? 'La cantidad debe ser entera y mayor que cero.'
         : null;
 
   const handleCloseConfirm = useCallback(async () => {
@@ -571,7 +589,7 @@ export function ExecutionOrderDrawer({
             <PortalAlert
               variant={order.syncState === 'FAILED' ? 'error' : 'warning'}
               title="Sincronización"
-              description={syncStateCopy(order.syncState)}
+              description={`${syncStateCopy(order.syncState)}. Solo puedes consultar o actualizar el detalle.`}
             />
           )}
 
@@ -758,6 +776,11 @@ export function ExecutionOrderDrawer({
             </h3>
             {/* Activity list */}
             <div className="mt-3 space-y-2">
+              {activitiesMeta && activitiesMeta.total > 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
+                  {collectionCountLabel(activities.length, activitiesMeta.total, 'actividades')}
+                </p>
+              ) : null}
               {activities.length === 0 ? (
                 <PortalEmptyState
                   title="Aún no hay actividades registradas"
@@ -865,6 +888,11 @@ export function ExecutionOrderDrawer({
             </h3>
             {/* Item usage list */}
             <div className="mt-3 space-y-2">
+              {itemUsageMeta && itemUsageMeta.total > 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
+                  {collectionCountLabel(itemUsage.length, itemUsageMeta.total, 'consumos')}
+                </p>
+              ) : null}
               {itemUsage.length === 0 ? (
                 <PortalEmptyState
                   title="Aún no hay consumos registrados"
@@ -1041,48 +1069,59 @@ export function ExecutionOrderDrawer({
                   description="Adjunta fotos o documentos cuando formen parte de los requisitos de la orden."
                 />
               ) : (
-                normalizedEvidence.map((ev) => (
-                  <article
-                    key={ev.id}
-                    className="flex items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border"
-                  >
-                    {ev.evidenceType === 'PHOTO' ? (
-                      <Camera className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-                    ) : ev.evidenceType === 'SIGNATURE' ? (
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-                    ) : (
-                      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {ev.evidenceType === 'PHOTO'
-                          ? 'Foto '
-                          : ev.evidenceType === 'SIGNATURE'
-                            ? 'Firma '
-                            : 'Documento '}
-                        ·{' '}
-                        {template?.requirements.find((req) => req.key === ev.requirementKey)
-                          ?.label ?? 'Evidencia asociada'}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {dateFormatter(ev.capturedAt ?? ev.receivedAt)}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        ev.status === 'AVAILABLE'
-                          ? 'success'
-                          : ev.status === 'REJECTED'
-                            ? 'error'
-                            : ev.status === 'EXPIRED'
-                              ? 'error'
-                              : 'warning'
-                      }
+                <>
+                  {evidenceMeta && evidenceMeta.total > 0 ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
+                      {collectionCountLabel(
+                        normalizedEvidence.length,
+                        evidenceMeta.total,
+                        'evidencias',
+                      )}
+                    </p>
+                  ) : null}
+                  {normalizedEvidence.map((ev) => (
+                    <article
+                      key={ev.id}
+                      className="flex items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border"
                     >
-                      {EVIDENCE_STATUS_LABELS[ev.status] ?? 'Estado no disponible'}
-                    </Badge>
-                  </article>
-                ))
+                      {ev.evidenceType === 'PHOTO' ? (
+                        <Camera className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
+                      ) : ev.evidenceType === 'SIGNATURE' ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
+                      ) : (
+                        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {ev.evidenceType === 'PHOTO'
+                            ? 'Foto '
+                            : ev.evidenceType === 'SIGNATURE'
+                              ? 'Firma '
+                              : 'Documento '}
+                          ·{' '}
+                          {template?.requirements.find((req) => req.key === ev.requirementKey)
+                            ?.label ?? 'Evidencia asociada'}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {dateFormatter(ev.capturedAt ?? ev.receivedAt)}
+                        </p>
+                      </div>
+                      <Badge
+                        variant={
+                          ev.status === 'AVAILABLE'
+                            ? 'success'
+                            : ev.status === 'REJECTED'
+                              ? 'error'
+                              : ev.status === 'EXPIRED'
+                                ? 'error'
+                                : 'warning'
+                        }
+                      >
+                        {EVIDENCE_STATUS_LABELS[ev.status] ?? 'Estado no disponible'}
+                      </Badge>
+                    </article>
+                  ))}
+                </>
               )}
             </div>
 

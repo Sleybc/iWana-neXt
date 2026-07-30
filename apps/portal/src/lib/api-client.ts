@@ -106,6 +106,11 @@ import {
   type RegisterEvidenceCommand,
   type EvidenceAssetReceipt,
   type ExecutionOrderTemplateVersion,
+  type ExecutionOrderDetail,
+  type ExecutionOrderActivity,
+  type ExecutionOrderItemUsage,
+  type ExecutionOrderEvidence,
+  type Page,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 import { PICKER_SOFT_CAP } from './picker-soft-cap';
@@ -6168,51 +6173,26 @@ export interface ExecutionOrderRecord {
   updatedAt: string;
 }
 
-export interface ExecutionOrderActivityRecord {
-  id: string;
-  executionOrderId: string;
-  tenantId: string;
-  activityType: string;
-  description: string;
-  actorUserId: string | null;
-  createdAt: string;
-}
+/**
+ * Respuesta observada del endpoint de detalle.
+ *
+ * El contrato compartido mantiene la referencia de plantilla como obligatoria;
+ * el endpoint puede devolverla nula cuando la plantilla no está disponible. La
+ * UI conserva la OT y bloquea únicamente las acciones que dependen de ella.
+ */
+export type ExecutionOrderDetailResponse = Omit<ExecutionOrderDetail, 'template'> & {
+  template: ExecutionOrderDetail['template'] | null;
+};
 
-export interface ExecutionOrderItemUsageRecord {
-  id: string;
-  executionOrderId: string;
-  tenantId: string;
-  itemId: string;
-  technicianCustodyId: string;
-  quantity: string;
-  serialNumber: string | null;
-  action: ExecutionOrderItemAction;
-  finalDisposition: InventoryDisposition;
-  stockMovementId: string | null;
-  actorUserId: string | null;
-  createdAt: string;
-}
+export type ExecutionOrderActivityRecord = ExecutionOrderActivity;
+export type ExecutionOrderItemUsageRecord = ExecutionOrderItemUsage;
+export type ExecutionOrderEvidenceRecord = ExecutionOrderEvidence;
+export type ExecutionOrderEvidencePage = Page<ExecutionOrderEvidenceRecord>;
+export type ExecutionOrderCollectionPage<T> = Page<T>;
 
-export interface ExecutionOrderEvidenceRecord {
-  id: string;
-  executionOrderId: string;
-  mediaAssetId: string;
-  evidenceType: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
-  requirementKey: string;
-  capturedAt: string | null;
-  receivedAt: string;
-  status: 'PENDING_ANALYSIS' | 'AVAILABLE' | 'REJECTED' | 'EXPIRED';
-  createdAt: string;
-}
-
-export interface ExecutionOrderEvidencePage {
-  data: ExecutionOrderEvidenceRecord[];
-  meta?: { nextCursor?: string | null };
-}
-
-export interface ExecutionOrderCollectionPage<T> {
-  data: T[];
-  meta: ListMeta;
+export interface ListExecutionOrderEntriesParams {
+  page?: number;
+  limit?: number;
 }
 
 /** DTO legacy derivado del comando congelado de @iwana/shared. */
@@ -6239,6 +6219,30 @@ export type CloseExecutionOrderDto = CloseExecutionOrderCommand & {
 };
 
 export type RegisterExecutionOrderEvidenceDto = RegisterEvidenceCommand;
+
+/** Headers obligatorios para cada comando de mutación de una OT. */
+export function buildExecutionOrderCommandHeaders(currentVersion: number): Record<string, string> {
+  if (!Number.isInteger(currentVersion) || currentVersion < 1) {
+    throw new Error('La versión actual de la OT debe ser un entero positivo.');
+  }
+
+  return {
+    'Idempotency-Key': crypto.randomUUID(),
+    'If-Match': String(currentVersion),
+  };
+}
+
+function buildExecutionOrderEntriesPath(
+  id: string,
+  resource: 'activities' | 'item-usage' | 'evidences',
+  params?: ListExecutionOrderEntriesParams,
+): string {
+  const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) searchParams.set('page', String(params.page));
+  if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+  const query = searchParams.toString();
+  return `/tasks/execution-orders/${id}/${resource}${query ? `?${query}` : ''}`;
+}
 
 export const tasksApi = {
   list: (params?: ListOperationalTasksParams, tenantSlug?: string) => {
@@ -6318,26 +6322,34 @@ export const tasksApi = {
 
   executionOrders: {
     get: (id: string, tenantSlug?: string) =>
-      request<ExecutionOrderRecord>(
+      request<ExecutionOrderDetailResponse>(
         `/tasks/execution-orders/${id}`,
         { returnFullResponse: true },
         tenantSlug,
       ),
 
-    listActivities: (id: string, tenantSlug?: string) =>
+    listActivities: (id: string, params?: ListExecutionOrderEntriesParams, tenantSlug?: string) =>
       request<
         ExecutionOrderCollectionPage<ExecutionOrderActivityRecord> | ExecutionOrderActivityRecord[]
-      >(`/tasks/execution-orders/${id}/activities`, { returnFullResponse: true }, tenantSlug),
+      >(
+        buildExecutionOrderEntriesPath(id, 'activities', params),
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
 
-    listItemUsage: (id: string, tenantSlug?: string) =>
+    listItemUsage: (id: string, params?: ListExecutionOrderEntriesParams, tenantSlug?: string) =>
       request<
         | ExecutionOrderCollectionPage<ExecutionOrderItemUsageRecord>
         | ExecutionOrderItemUsageRecord[]
-      >(`/tasks/execution-orders/${id}/item-usage`, { returnFullResponse: true }, tenantSlug),
+      >(
+        buildExecutionOrderEntriesPath(id, 'item-usage', params),
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
 
-    listEvidence: (id: string, tenantSlug?: string) =>
+    listEvidence: (id: string, params?: ListExecutionOrderEntriesParams, tenantSlug?: string) =>
       request<ExecutionOrderEvidencePage | ExecutionOrderEvidenceRecord[]>(
-        `/tasks/execution-orders/${id}/evidences?limit=100`,
+        buildExecutionOrderEntriesPath(id, 'evidences', params),
         { returnFullResponse: true },
         tenantSlug,
       ),
@@ -6349,24 +6361,49 @@ export const tasksApi = {
         tenantSlug,
       ),
 
-    start: (id: string, dto: StartExecutionOrderDto, tenantSlug?: string) =>
+    start: (id: string, dto: StartExecutionOrderDto, currentVersion: number, tenantSlug?: string) =>
       request<ExecutionOrderRecord>(
         `/tasks/execution-orders/${id}/start`,
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
         tenantSlug,
       ),
 
-    registerFieldWork: (id: string, dto: RegisterExecutionOrderFieldWorkDto, tenantSlug?: string) =>
+    registerFieldWork: (
+      id: string,
+      dto: RegisterExecutionOrderFieldWorkDto,
+      currentVersion: number,
+      tenantSlug?: string,
+    ) =>
       request<ExecutionOrderActivityRecord>(
         `/tasks/execution-orders/${id}/field-work`,
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
         tenantSlug,
       ),
 
-    registerItemUsage: (id: string, dto: RegisterExecutionOrderItemUsageDto, tenantSlug?: string) =>
+    registerItemUsage: (
+      id: string,
+      dto: RegisterExecutionOrderItemUsageDto,
+      currentVersion: number,
+      tenantSlug?: string,
+    ) =>
       request<ExecutionOrderItemUsageRecord>(
         `/tasks/execution-orders/${id}/item-usage`,
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
         tenantSlug,
       ),
 
@@ -6387,10 +6424,15 @@ export const tasksApi = {
         tenantSlug,
       ),
 
-    close: (id: string, dto: CloseExecutionOrderDto, tenantSlug?: string) =>
+    close: (id: string, dto: CloseExecutionOrderDto, currentVersion: number, tenantSlug?: string) =>
       request<ExecutionOrderRecord>(
         `/tasks/execution-orders/${id}/close`,
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
         tenantSlug,
       ),
   },

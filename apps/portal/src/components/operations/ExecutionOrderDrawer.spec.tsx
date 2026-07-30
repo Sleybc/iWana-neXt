@@ -8,13 +8,13 @@ import {
   WfmWorkType,
 } from '@iwana/shared';
 import type {
-  ExecutionOrderDetail,
   ExecutionOrderAllowedAction,
   ExecutionOrderTemplateVersion,
   ExecutionOrderActivity,
   ExecutionOrderItemUsage,
   ExecutionOrderEvidence,
 } from '@iwana/shared';
+import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
 import {
   EXECUTION_ORDER_RESULT_VARIANTS,
@@ -25,7 +25,9 @@ import {
 // Mock factories
 // ---------------------------------------------------------------------------
 
-function detailFactory(overrides: Partial<ExecutionOrderDetail> = {}): ExecutionOrderDetail {
+function detailFactory(
+  overrides: Partial<ExecutionOrderDetailResponse> = {},
+): ExecutionOrderDetailResponse {
   return {
     id: 'eo-001',
     number: 'OTE-20260727-001',
@@ -353,7 +355,7 @@ describe('ExecutionOrderDrawer', () => {
 
     if (isTerminal) {
       it('shows no editable controls (terminal)', () => {
-        const overrides: Partial<ExecutionOrderDetail> = { status };
+        const overrides: Partial<ExecutionOrderDetailResponse> = { status };
         if (status === ExecutionOrderStatus.COMPLETED) {
           overrides.result = ExecutionOrderResult.EXECUTED;
         }
@@ -442,7 +444,7 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer({
         order: detailFactory({
           status: ExecutionOrderStatus.IN_PROGRESS,
-          completion: { completed: 2, total: 5 } as never,
+          completion: { progress: 40, completed: 2, total: 5 },
         }),
       });
 
@@ -809,7 +811,12 @@ describe('ExecutionOrderDrawer', () => {
       await user.clear(quantity);
       await user.type(quantity, '0');
 
-      expect(screen.getByText('La cantidad debe ser mayor que cero.')).toBeInTheDocument();
+      expect(screen.getByText('La cantidad debe ser entera y mayor que cero.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+
+      await user.clear(quantity);
+      await user.type(quantity, '1.5');
+      expect(screen.getByText('La cantidad debe ser entera y mayor que cero.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
     });
 
@@ -1056,6 +1063,33 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
     });
+  });
+
+  describe('syncState', () => {
+    it.each(['PENDING', 'DIVERGED', 'FAILED'] as const)(
+      'mantiene la OT en solo lectura cuando la sincronización está en %s',
+      (syncState) => {
+        renderDrawer({
+          order: detailFactory({
+            status: ExecutionOrderStatus.IN_PROGRESS,
+            syncState,
+            allowedActions: ['START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'CLOSE'],
+          }),
+        });
+
+        expect(
+          screen.getByText(/Solo puedes consultar o actualizar el detalle/),
+        ).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Registrar actividad' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Registrar material' }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Cerrar OT' })).not.toBeInTheDocument();
+      },
+    );
   });
 
   // ----------------------------------------------------

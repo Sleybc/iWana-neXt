@@ -230,6 +230,7 @@ describe('tasksApi execution order payloads', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    Reflect.deleteProperty(globalThis.crypto, 'randomUUID');
     window.localStorage.clear();
   });
 
@@ -252,9 +253,26 @@ describe('tasksApi execution order payloads', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const { persistAccessToken, tasksApi } = await import('./api-client');
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: jest
+        .fn()
+        .mockReturnValueOnce('command-start-key')
+        .mockReturnValueOnce('command-field-work-key')
+        .mockReturnValueOnce('command-item-usage-key')
+        .mockReturnValueOnce('command-close-key'),
+    });
+    const storageSetItem = jest.spyOn(Storage.prototype, 'setItem');
     persistAccessToken('portal-token');
+    const writesAfterAuth = storageSetItem.mock.calls.length;
 
-    await tasksApi.executionOrders.start('eo-001', { note: 'Inicio en campo' }, 'isp-demo');
+    await tasksApi.executionOrders.start('eo-001', { note: 'Inicio en campo' }, 3, 'isp-demo');
+    await tasksApi.executionOrders.registerFieldWork(
+      'eo-001',
+      { activityType: 'INSTALLATION', description: 'ONU instalada' },
+      4,
+      'isp-demo',
+    );
     await tasksApi.executionOrders.registerItemUsage(
       'eo-001',
       {
@@ -265,6 +283,7 @@ describe('tasksApi execution order payloads', () => {
         action: ExecutionOrderItemAction.INSTALL,
         finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
       },
+      5,
       'isp-demo',
     );
     const file = new File(['foto'], 'instalacion.jpg', { type: 'image/jpeg' });
@@ -286,11 +305,45 @@ describe('tasksApi execution order payloads', () => {
         summary: 'Trabajo completado',
         customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
       },
+      6,
       'isp-demo',
     );
 
+    const commandHeaders = (index: number) => {
+      const headers = new Headers(calls[index]?.init?.headers);
+      return {
+        'Idempotency-Key': headers.get('Idempotency-Key'),
+        'If-Match': headers.get('If-Match'),
+      };
+    };
+
+    expect(commandHeaders(0)).toEqual({
+      'Idempotency-Key': 'command-start-key',
+      'If-Match': '3',
+    });
+    expect(commandHeaders(1)).toEqual({
+      'Idempotency-Key': 'command-field-work-key',
+      'If-Match': '4',
+    });
+    expect(commandHeaders(2)).toEqual({
+      'Idempotency-Key': 'command-item-usage-key',
+      'If-Match': '5',
+    });
+    expect(commandHeaders(5)).toEqual({
+      'Idempotency-Key': 'command-close-key',
+      'If-Match': '6',
+    });
+    expect(
+      new Set([0, 1, 2, 5].map(commandHeaders).map((headers) => headers['Idempotency-Key'])).size,
+    ).toBe(4);
+    expect(storageSetItem.mock.calls.length).toBe(writesAfterAuth);
+
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ note: 'Inicio en campo' });
     expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      activityType: 'INSTALLATION',
+      description: 'ONU instalada',
+    });
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({
       itemId: 'item-001',
       technicianCustodyId: 'tech-001',
       quantity: 1,
@@ -298,15 +351,15 @@ describe('tasksApi execution order payloads', () => {
       action: 'INSTALL',
       finalDisposition: 'INSTALLED_AT_CUSTOMER',
     });
-    expect(calls[2]?.init?.body).toBeInstanceOf(FormData);
-    expect(new Headers(calls[2]?.init?.headers).get('Authorization')).toBe('Bearer portal-token');
-    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({
+    expect(calls[3]?.init?.body).toBeInstanceOf(FormData);
+    expect(new Headers(calls[3]?.init?.headers).get('Authorization')).toBe('Bearer portal-token');
+    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
       mediaAssetId: 'asset-001',
       evidenceType: 'PHOTO',
       requirementKey: 'req-photo-install',
       expiresAt: evidenceExpiresAt,
     });
-    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
+    expect(JSON.parse(String(calls[5]?.init?.body))).toEqual({
       result: 'EXECUTED',
       summary: 'Trabajo completado',
       customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },

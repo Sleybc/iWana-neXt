@@ -3,8 +3,12 @@
 import { CalendarClock, Crosshair, MapPin, Route, Ticket } from 'lucide-react';
 import { Badge, Button, OperationalSidePeek, SkeletonBlock } from '@iwana/ui';
 import { ScheduleEventStatus } from '@iwana/shared';
-import type { ExecutionOrderDetail } from '@iwana/shared';
-import type { InternalUser, WfmScheduleEvent, ExecutionOrderRecord } from '@/lib/api-client';
+import type {
+  InternalUser,
+  WfmScheduleEvent,
+  ExecutionOrderDetailResponse,
+  ExecutionOrderRecord,
+} from '@/lib/api-client';
 import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary } from '@/components/operations/ExecutionOrderSummary';
 import type { ExecutionOrderSyncState } from '@/components/operations/ExecutionOrderSummary';
@@ -26,7 +30,7 @@ export interface ScheduleEventDrawerProps {
   open: boolean;
   event: WfmScheduleEvent | null;
   technician: InternalUser | null;
-  executionOrder?: ExecutionOrderRecord | ExecutionOrderDetail | null;
+  executionOrder?: ExecutionOrderRecord | ExecutionOrderDetailResponse | null;
   syncState?: ExecutionOrderSyncState;
   onOpenChange: (open: boolean) => void;
   onOpenMoveToPending?: () => void;

@@ -134,11 +134,11 @@ describe('ScheduleEventDrawer — coordinación', () => {
     expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
   });
 
-  it('muestra una sola CTA para abrir la OT cuando hay executionOrderId', () => {
+  it('prioriza actualizar el detalle antes de abrir la OT cuando hay error de consulta', () => {
     const event = { ...baseEvent, executionOrderId: 'eo-001' };
     render(<ScheduleEventDrawer {...baseProps} event={event} onOpenExecutionOrder={jest.fn()} />);
-    expect(screen.getByRole('button', { name: 'Abrir OT' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Abrir OT' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir OT' })).not.toBeInTheDocument();
   });
 
   it('no muestra enlace a OT cuando no hay executionOrderId', () => {

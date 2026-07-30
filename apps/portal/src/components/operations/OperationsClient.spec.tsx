@@ -11,6 +11,8 @@ import {
   resolveAssignedTemplateVersion,
   normalizeExecutionOrderEvidence,
   normalizeExecutionOrderCollection,
+  collectExecutionOrderCollectionPages,
+  productRequirementLabel,
 } from './OperationsClient';
 
 jest.mock('next/link', () => ({
@@ -158,6 +160,89 @@ describe('OperationsClient', () => {
     ).toEqual([row]);
   });
 
+  it('concatena páginas posteriores de actividades y conserva el total', async () => {
+    const calls: Array<{ page: number; limit: number }> = [];
+    const result = await collectExecutionOrderCollectionPages(
+      async (page, limit) => {
+        calls.push({ page, limit });
+        return page === 1
+          ? {
+              data: [{ id: 'activity-001' }],
+              meta: {
+                page: 1,
+                limit,
+                total: 2,
+                totalIsEstimate: false,
+                totalPages: 2,
+                nextCursor: null,
+                hasMore: true,
+                mode: 'page' as const,
+                capabilities: { randomAccess: true, sortableFields: [] },
+                sort: null,
+              },
+            }
+          : {
+              data: [{ id: 'activity-002' }],
+              meta: {
+                page: 2,
+                limit,
+                total: 2,
+                totalIsEstimate: false,
+                totalPages: 2,
+                nextCursor: null,
+                hasMore: false,
+                mode: 'page' as const,
+                capabilities: { randomAccess: true, sortableFields: [] },
+                sort: null,
+              },
+            };
+      },
+      { limit: 1, maxPages: 5 },
+    );
+
+    expect(calls).toEqual([
+      { page: 1, limit: 1 },
+      { page: 2, limit: 1 },
+    ]);
+    expect(result.data).toEqual([{ id: 'activity-001' }, { id: 'activity-002' }]);
+    expect(result.meta.total).toBe(2);
+    expect(result.meta.hasMore).toBe(false);
+  });
+
+  it('deja visible el total y hasMore cuando alcanza la cota de páginas', async () => {
+    const result = await collectExecutionOrderCollectionPages(
+      async (page, limit) => ({
+        data: [{ id: `activity-${page}` }],
+        meta: {
+          page,
+          limit,
+          total: 3,
+          totalIsEstimate: false,
+          totalPages: 3,
+          nextCursor: null,
+          hasMore: true,
+          mode: 'page' as const,
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      }),
+      { limit: 1, maxPages: 2 },
+    );
+
+    expect(result.data).toHaveLength(2);
+    expect(result.meta.total).toBe(3);
+    expect(result.meta.hasMore).toBe(true);
+  });
+
+  it('traduce kind y categorías internas a labels seguros de producto', () => {
+    expect(productRequirementLabel('MATERIAL', 'MATERIAL', 'ONT')).toBe(
+      'Material o equipo requerido',
+    );
+    expect(productRequirementLabel(undefined, 'EVIDENCE', 'req-photo-install')).toBe(
+      'Evidencia requerida',
+    );
+  });
+
   it('mantiene la OT visible cuando el endpoint de evidencias todavía no está disponible', async () => {
     const order = {
       id: 'eo-001',
@@ -246,7 +331,18 @@ describe('OperationsClient', () => {
     } as never);
     jest.mocked(tasksApi.executionOrders.listEvidence).mockResolvedValue({
       data: [],
-      meta: { nextCursor: null },
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
     });
     jest
       .mocked(tasksApi.executionOrders.listTemplateVersions)

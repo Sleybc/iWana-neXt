@@ -1,7 +1,6 @@
 import { Badge, Button, ProgressMeter, SkeletonBlock } from '@iwana/ui';
-import type { ExecutionOrderDetail } from '@iwana/shared';
 import { ExecutionOrderStatus } from '@iwana/shared';
-import type { ExecutionOrderRecord } from '@/lib/api-client';
+import type { ExecutionOrderDetailResponse, ExecutionOrderRecord } from '@/lib/api-client';
 import {
   EXECUTION_ORDER_RESULT_LABELS,
   EXECUTION_ORDER_RESULT_VARIANTS,
@@ -12,7 +11,7 @@ import {
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 
-type SummaryOrder = ExecutionOrderDetail | ExecutionOrderRecord;
+type SummaryOrder = ExecutionOrderDetailResponse | ExecutionOrderRecord;
 export type ExecutionOrderAvailability = 'linked' | 'unlinked' | 'unavailable';
 export type ExecutionOrderSyncState = 'synced' | 'pending' | 'error' | 'stale' | 'conflict';
 
@@ -30,7 +29,7 @@ export interface ExecutionOrderSummaryProps {
   onRetry?: () => void;
 }
 
-function isDetail(order: SummaryOrder): order is ExecutionOrderDetail {
+function isDetail(order: SummaryOrder): order is ExecutionOrderDetailResponse {
   return 'number' in order;
 }
 
@@ -134,12 +133,16 @@ export function ExecutionOrderSummary({
             : 'No fue posible consultar la orden de trabajo. La información estará disponible cuando se actualice el detalle.'
         }
         action={
-          canOpen && onOpen ? (
+          onRetry ? (
+            <Button onClick={onRetry}>Reintentar</Button>
+          ) : onRefreshDetail ? (
+            <Button type="button" onClick={() => void onRefreshDetail()}>
+              Actualizar detalle
+            </Button>
+          ) : canOpen && onOpen ? (
             <Button type="button" variant="secondary" onClick={onOpen}>
               Abrir OT
             </Button>
-          ) : onRetry ? (
-            <Button onClick={onRetry}>Reintentar</Button>
           ) : undefined
         }
       />
