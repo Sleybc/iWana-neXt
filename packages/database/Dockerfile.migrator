@@ -12,4 +12,10 @@ COPY packages/config ./packages/config
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json
 WORKDIR /app/packages/database
-CMD ["node", "dist/cli/tenant-migrate.js"]
+
+# El migrator es el único actor que ejecuta DDL durante el arranque productivo.
+# `-e` conserva stderr y propaga el primer código de salida distinto de cero:
+# una migración fallida nunca puede terminar con un mensaje de éxito falso.
+# El script public de TypeORM corre antes que el runner tenant, que solo puede
+# consultar `public.tenants` después de que exista el esquema público.
+CMD ["sh", "-ec", "pnpm migration:run && pnpm migration:tenant:run"]
