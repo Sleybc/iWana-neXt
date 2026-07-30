@@ -484,10 +484,14 @@ export function OperationsClient() {
           selectedExecutionOrder.id,
           file,
         );
+        if (!uploadReceipt.expiresAt) {
+          throw new Error('La evidencia subida no tiene una fecha de expiración válida.');
+        }
         await tasksApi.executionOrders.registerEvidence(selectedExecutionOrder.id, {
           mediaAssetId: uploadReceipt.mediaAssetId,
           evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
           requirementKey,
+          expiresAt: uploadReceipt.expiresAt,
         });
       }
       await refreshExecutionOrder(selectedExecutionOrder.id);

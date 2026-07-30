@@ -235,6 +235,7 @@ describe('tasksApi execution order payloads', () => {
 
   it('envía las formas exactas del contrato y autoriza multipart', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const evidenceExpiresAt = '2026-08-01T00:00:00.000Z';
     const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, init });
@@ -243,6 +244,7 @@ describe('tasksApi execution order payloads', () => {
           intentId: 'intent-001',
           mediaAssetId: 'asset-001',
           status: 'PENDING_ANALYSIS',
+          expiresAt: evidenceExpiresAt,
         });
       }
       return createJsonResponse(200, { id: 'receipt-001' });
@@ -273,6 +275,7 @@ describe('tasksApi execution order payloads', () => {
         mediaAssetId: 'asset-001',
         evidenceType: 'PHOTO',
         requirementKey: 'req-photo-install',
+        expiresAt: evidenceExpiresAt,
       },
       'isp-demo',
     );
@@ -301,6 +304,7 @@ describe('tasksApi execution order payloads', () => {
       mediaAssetId: 'asset-001',
       evidenceType: 'PHOTO',
       requirementKey: 'req-photo-install',
+      expiresAt: evidenceExpiresAt,
     });
     expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
       result: 'EXECUTED',
