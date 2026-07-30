@@ -63,11 +63,12 @@ El ciclo real también mostró un tenant local legado sin la tabla outbox; se
 registró como warning operativo y no afectó el schema aislado del test. No se
 inventó una métrica para ese tenant.
 
-`pnpm --filter @iwana/api build` permanece bloqueado por defectos preexistentes
-fuera de R3.3 en `apps/api/src/modules/tasks/services/execution-orders.service.ts`
-(contrato `ExecutionOrderEvidence`/entidad, líneas 1638 y 1653). El
-`typecheck` focalizado de API sí pasa; este informe no declara el build global
-verde.
+La primera corrida de `pnpm --filter @iwana/api build` durante la implementación
+encontró defectos preexistentes fuera de R3.3 en
+`apps/api/src/modules/tasks/services/execution-orders.service.ts` (contrato
+`ExecutionOrderEvidence`/entidad, líneas 1638 y 1653). La verificación fresca
+post-commit, después de la sincronización concurrente de esos cambios, pasó el
+build de API; también pasó el build de worker y el typecheck de web/portal.
 
 ## 5. Consulta y stop/go
 
