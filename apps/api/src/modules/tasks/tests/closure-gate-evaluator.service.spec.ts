@@ -241,8 +241,23 @@ describe('ClosureGateEvaluatorService', () => {
         kind: 'MATERIAL',
         itemCategory: 'CPE',
       } as any);
-      const result = evaluator.evaluate([req], { itemUsages: [{ itemId: 'item-001' }] });
+      const result = evaluator.evaluate([req], {
+        itemUsages: [{ itemId: 'item-001', itemCategory: 'CPE', requirementKey: 'cpe-equipo' }],
+      });
       expect(result.passed).toBe(true);
+    });
+
+    it('should fail when the consumed item category does not match the requirement', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'cpe-equipo',
+        label: 'CPE/Equipo',
+        kind: 'MATERIAL',
+        itemCategory: 'CPE',
+      } as unknown as TemplateRequirement);
+      const result = evaluator.evaluate([req], {
+        itemUsages: [{ itemId: 'item-001', itemCategory: 'CABLE', requirementKey: 'cpe-equipo' }],
+      });
+      expect(result.passed).toBe(false);
     });
 
     it('should fail when no item usage', () => {
@@ -292,6 +307,19 @@ describe('ClosureGateEvaluatorService', () => {
       const result = evaluator.evaluate([req], {});
       expect(result.passed).toBe(false);
     });
+  });
+
+  it('should fail closed for an unknown requirement kind', () => {
+    const req = makeReq({
+      key: 'unsupported',
+      label: 'Requisito no soportado',
+      kind: 'UNSUPPORTED',
+    } as unknown as TemplateRequirement);
+
+    const result = evaluator.evaluate([req], {});
+
+    expect(result.passed).toBe(false);
+    expect(result.missingRequirements[0]?.satisfied).toBe(false);
   });
 
   describe('evaluate against frozen snapshot, not live template', () => {

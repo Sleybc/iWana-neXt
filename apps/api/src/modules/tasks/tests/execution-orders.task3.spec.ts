@@ -642,6 +642,7 @@ describe('ExecutionOrdersService — ETag/If-Match concurrency (Task 3.2)', () =
         result: null,
         closeNotes: null,
         updatedByUserId: null,
+        templateRequirementsSnapshot: [],
       }),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
@@ -711,6 +712,7 @@ describe('ExecutionOrdersService — ETag/If-Match concurrency (Task 3.2)', () =
       closedAt: null,
       closeNotes: null,
       updatedByUserId: null,
+      templateRequirementsSnapshot: [],
     };
 
     // Primera transacción: éxito
@@ -791,6 +793,7 @@ describe('ExecutionOrdersService — ETag/If-Match concurrency (Task 3.2)', () =
       closedAt: null,
       closeNotes: null,
       updatedByUserId: null,
+      templateRequirementsSnapshot: [],
     };
 
     // Start tiene éxito

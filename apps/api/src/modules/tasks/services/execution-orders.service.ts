@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import {
   ExecutionOrder,
   ExecutionOrderActivity,
@@ -20,6 +20,7 @@ import {
   ExecutionOrderEvidenceUploadIntent,
   ExecutionOrderItemUsage,
   ExecutionOrderOutboxEvent,
+  ExecutionOrderTemplateRequirement as DbTemplateRequirement,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -69,6 +70,28 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
+const EXECUTION_ORDER_NUMBER_RETRY_LIMIT = 3;
+const EXECUTION_ORDER_UNIQUE_CONSTRAINTS = new Set([
+  'uq_execution_orders_tenant_number',
+  'uq_execution_orders_tenant_schedule_event',
+]);
+
+type UniqueConstraintDriverError = { code?: unknown; constraint?: unknown };
+
+function isExecutionOrderUniqueViolation(error: unknown): boolean {
+  const driverError =
+    error instanceof QueryFailedError
+      ? (error.driverError as UniqueConstraintDriverError)
+      : typeof error === 'object' && error !== null && 'driverError' in error
+        ? ((error as { driverError?: unknown }).driverError as UniqueConstraintDriverError)
+        : undefined;
+
+  return (
+    driverError?.code === '23505' &&
+    (driverError.constraint === undefined ||
+      EXECUTION_ORDER_UNIQUE_CONSTRAINTS.has(String(driverError.constraint)))
+  );
+}
 
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
@@ -252,9 +275,34 @@ export class ExecutionOrdersService {
   ): Promise<ExecutionOrder> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      this.createFromSchedulingWithManager(qr.manager, tenantId, input, actor),
-    );
+    for (let attempt = 0; attempt < EXECUTION_ORDER_NUMBER_RETRY_LIMIT; attempt += 1) {
+      try {
+        return await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+          this.createFromSchedulingWithManager(qr.manager, tenantId, input, actor),
+        );
+      } catch (error) {
+        // Una violación única deja la transacción abortada en PostgreSQL. El
+        // reintento vuelve a entrar por runInTenantSchema para obtener un
+        // QueryRunner y un search_path nuevos.
+        if (
+          !isExecutionOrderUniqueViolation(error) ||
+          attempt === EXECUTION_ORDER_NUMBER_RETRY_LIMIT - 1
+        ) {
+          if (isExecutionOrderUniqueViolation(error)) {
+            throw new ConflictException({
+              code: 'EXECUTION_ORDER_NUMBER_CONFLICT',
+              message: 'No fue posible generar un consecutivo único para la OT.',
+            });
+          }
+          throw error;
+        }
+      }
+    }
+
+    throw new ConflictException({
+      code: 'EXECUTION_ORDER_NUMBER_CONFLICT',
+      message: 'No fue posible generar un consecutivo único para la OT.',
+    });
   }
 
   async createFromSchedulingWithManager(
@@ -263,6 +311,11 @@ export class ExecutionOrdersService {
     input: CreateExecutionOrderFromSchedulingInput,
     actor: JwtPayload,
   ): Promise<ExecutionOrder> {
+    // La serialización debe preceder a la lectura idempotente de scheduleEventId:
+    // dos transacciones pueden haber leído "no existe" antes de competir por
+    // el mismo consecutivo o por la unicidad de la visita.
+    await this.acquireExecutionOrderNumberLock(manager, tenantId);
+
     const existing = await manager.findOne(ExecutionOrder, {
       where: {
         tenantId,
@@ -281,13 +334,25 @@ export class ExecutionOrdersService {
       templateKey: string;
       version: number;
       label: string;
-      requirements: any[];
+      requirements: ExecutionOrderTemplateRequirement[];
     } | null = null;
     if (this.templatesService) {
       try {
-        templateVersion = await this.templatesService.getActiveVersionForWorkType(input.workType);
+        const activeVersion = await this.templatesService.getActiveVersionForWorkType(
+          input.workType,
+        );
+        templateVersion = activeVersion
+          ? {
+              id: activeVersion.id,
+              templateId: activeVersion.templateId,
+              templateKey: activeVersion.templateKey,
+              version: activeVersion.version,
+              label: activeVersion.label,
+              requirements: this.mapTemplateRequirements(activeVersion.requirements),
+            }
+          : null;
       } catch {
-        // Template lookup is best-effort; OT creation doesn't fail if no template exists
+        // La ausencia de plantilla se conserva para que el cierre falle cerrado.
       }
     }
 
@@ -590,8 +655,29 @@ export class ExecutionOrdersService {
       }
 
       // ── Closure gate evaluation ────────────────────────────────────
-      if (order.templateRequirementsSnapshot && this.closureGateEvaluator) {
-        const snapshot = order.templateRequirementsSnapshot as ExecutionOrderTemplateRequirement[];
+      if (!Array.isArray(order.templateRequirementsSnapshot)) {
+        throw new UnprocessableEntityException({
+          code: 'CLOSURE_GATE_SNAPSHOT_MISSING',
+          message: 'No se puede cerrar la OT porque no tiene una plantilla de cierre congelada.',
+          missingRequirements: [
+            {
+              requirementId: 'template-snapshot',
+              label: 'Plantilla de cierre',
+              kind: 'TEMPLATE',
+              reason: 'La OT no tiene un snapshot de requisitos de cierre.',
+            },
+          ],
+        });
+      }
+      const snapshot =
+        order.templateRequirementsSnapshot as unknown as ExecutionOrderTemplateRequirement[];
+      if (!this.closureGateEvaluator && snapshot.length > 0) {
+        throw new ServiceUnavailableException({
+          code: 'CLOSURE_GATE_UNAVAILABLE',
+          message: 'El gate de cierre no está disponible temporalmente.',
+        });
+      }
+      if (this.closureGateEvaluator) {
         const activities = await qr.manager
           .createQueryBuilder(ExecutionOrderActivity, 'a')
           .where('a.execution_order_id = :executionOrderId', { executionOrderId: id })
@@ -616,6 +702,8 @@ export class ExecutionOrdersService {
             evidenceType: e.evidenceType,
             requirementKey: e.requirementKey ?? '',
           })),
+          // La categoría no se infiere desde itemId: si el recibo de MOD12 no
+          // la aporta, el requisito MATERIAL permanece insatisfecho.
           itemUsages: itemUsages.map((u) => ({ itemId: u.itemId })),
           hasCustomerAcceptance: !!validated.customerAcceptance,
           closeCommand: validated as Record<string, unknown>,
@@ -1415,6 +1503,102 @@ export class ExecutionOrdersService {
     }
   }
 
+  /**
+   * Reconstruye el requisito compartido desde la fila normalizada de plantilla.
+   * La configuración JSONB se valida antes de llegar al snapshot de la OT;
+   * nunca se persiste una forma parcialmente tipada para que el gate la adivine.
+   */
+  private mapTemplateRequirements(
+    requirements: DbTemplateRequirement[],
+  ): ExecutionOrderTemplateRequirement[] {
+    const isOneOf = <T extends string>(value: unknown, values: readonly T[]): value is T =>
+      typeof value === 'string' && values.some((candidate) => candidate === value);
+    const invalidTemplate = (): never => {
+      throw new ConflictException({
+        code: 'TEMPLATE_INVALID',
+        message: 'La plantilla activa contiene una configuración inválida.',
+      });
+    };
+    const requireString = (config: Record<string, unknown>, key: string): string => {
+      const value = config[key];
+      return typeof value === 'string' && value.trim().length > 0 ? value : invalidTemplate();
+    };
+
+    return requirements.map((requirement) => {
+      const config = requirement.config ?? {};
+      const base = {
+        key: requirement.key,
+        label: requirement.label,
+        required: requirement.required,
+      };
+
+      switch (requirement.kind) {
+        case 'FIELD': {
+          const fieldType = config.fieldType;
+          if (!isOneOf(fieldType, ['TEXT', 'NUMBER', 'BOOLEAN', 'SELECT'] as const)) {
+            return invalidTemplate();
+          }
+          const options = config.options;
+          if (
+            options !== undefined &&
+            (!Array.isArray(options) || !options.every((item) => typeof item === 'string'))
+          ) {
+            return invalidTemplate();
+          }
+          return {
+            ...base,
+            kind: 'FIELD' as const,
+            fieldType,
+            ...(options === undefined ? {} : { options }),
+          };
+        }
+        case 'ACTIVITY':
+          return {
+            ...base,
+            kind: 'ACTIVITY' as const,
+            activityType: requireString(config, 'activityType'),
+          };
+        case 'MEASUREMENT': {
+          const measurement = config.measurement;
+          if (!isOneOf(measurement, ['NUMBER', 'TEXT'] as const)) {
+            return invalidTemplate();
+          }
+          const unit = config.unit;
+          if (unit !== undefined && typeof unit !== 'string') {
+            return invalidTemplate();
+          }
+          return {
+            ...base,
+            kind: 'MEASUREMENT' as const,
+            measurement,
+            ...(unit === undefined ? {} : { unit }),
+          };
+        }
+        case 'EVIDENCE': {
+          const evidenceType = config.evidenceType;
+          if (!isOneOf(evidenceType, ['PHOTO', 'DOCUMENT', 'SIGNATURE'] as const)) {
+            return invalidTemplate();
+          }
+          return { ...base, kind: 'EVIDENCE' as const, evidenceType };
+        }
+        case 'MATERIAL':
+          return {
+            ...base,
+            kind: 'MATERIAL' as const,
+            itemCategory: requireString(config, 'itemCategory'),
+          };
+        case 'COMPLIANCE':
+          return {
+            ...base,
+            kind: 'COMPLIANCE' as const,
+            policyKey: requireString(config, 'policyKey'),
+          };
+        default:
+          return invalidTemplate();
+      }
+    });
+  }
+
   async createEvidence(
     executionOrderId: string,
     evidenceType: string,
@@ -1692,11 +1876,13 @@ export class ExecutionOrdersService {
   }
 
   private async generateExecutionOrderNumber(
-    manager: Pick<EntityManager, 'createQueryBuilder'>,
+    manager: Pick<EntityManager, 'query' | 'createQueryBuilder'>,
     tenantId: string,
   ): Promise<string> {
     const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `OTE-${datePart}-`;
+
+    await this.acquireExecutionOrderNumberLock(manager, tenantId, datePart);
 
     const latestOrder = await manager
       .createQueryBuilder(ExecutionOrder, 'executionOrder')
@@ -1708,6 +1894,16 @@ export class ExecutionOrdersService {
     const latestSequence = latestOrder?.executionOrderNumber.split('-').at(-1) ?? '000';
     const seq = (Number.parseInt(latestSequence, 10) + 1).toString().padStart(3, '0');
     return `${prefix}${seq}`;
+  }
+
+  private async acquireExecutionOrderNumberLock(
+    manager: Pick<EntityManager, 'query'>,
+    tenantId: string,
+    datePart = new Date().toISOString().slice(0, 10).replace(/-/g, ''),
+  ): Promise<void> {
+    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `execution-order-number:${tenantId}:${datePart}`,
+    ]);
   }
 
   private mapResultToStatus(result: ExecutionOrderResult): ExecutionOrderStatus {

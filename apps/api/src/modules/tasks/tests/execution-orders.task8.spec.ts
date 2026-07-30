@@ -90,7 +90,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
       closedAt: null,
       closeNotes: null,
       updatedByUserId: null,
-      templateRequirementsSnapshot: null,
+      templateRequirementsSnapshot: [],
       ...overrides,
     };
 
@@ -627,7 +627,7 @@ describe('Task 8.3 — Inventory reconciliation', () => {
       closedAt: null,
       closeNotes: null,
       updatedByUserId: null,
-      templateRequirementsSnapshot: null,
+      templateRequirementsSnapshot: [],
     };
 
     const pendingUsage = {

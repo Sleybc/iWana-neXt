@@ -62,6 +62,7 @@ describe('ExecutionOrdersService', () => {
   it('creates an execution order from scheduling context', async () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
+      query: jest.fn().mockResolvedValue([]),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -105,6 +106,29 @@ describe('ExecutionOrdersService', () => {
     expect(result.taskId).toBe('task-uuid');
     expect(result.ticketId).toBe('ticket-uuid');
     expect(result.subscriberId).toBe('sub-uuid');
+  });
+
+  it('rechaza el cierre cuando la OT no tiene snapshot de plantilla', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+        templateRequirementsSnapshot: null,
+      }),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.close(
+        'eo-001',
+        { result: ExecutionOrderResult.EXECUTED, summary: 'Cierre sin snapshot' },
+        actor,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CLOSURE_GATE_SNAPSHOT_MISSING' }),
+    });
   });
 
   it('registers item usage from technician custody and records stock movement id', async () => {
@@ -167,6 +191,7 @@ describe('ExecutionOrdersService', () => {
         taskId: null,
         ticketId: null,
         status: ExecutionOrderStatus.IN_PROGRESS,
+        templateRequirementsSnapshot: [],
       }),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
@@ -221,6 +246,7 @@ describe('ExecutionOrdersService', () => {
             taskId: null,
             ticketId: null,
             status: ExecutionOrderStatus.IN_PROGRESS,
+            templateRequirementsSnapshot: [],
           })
           .mockResolvedValueOnce({
             executionOrderId: 'eo-001',
@@ -270,6 +296,7 @@ describe('ExecutionOrdersService', () => {
             id: 'eo-001',
             tenantId: 'tenant-001',
             status: ExecutionOrderStatus.IN_PROGRESS,
+            templateRequirementsSnapshot: [],
           })
           .mockResolvedValueOnce({
             executionOrderId: 'eo-001',
@@ -313,6 +340,7 @@ describe('ExecutionOrdersService', () => {
           taskId: null,
           ticketId: null,
           status: ExecutionOrderStatus.IN_PROGRESS,
+          templateRequirementsSnapshot: [],
         })
         .mockResolvedValueOnce({
           executionOrderId: 'eo-001',
@@ -328,6 +356,7 @@ describe('ExecutionOrdersService', () => {
           taskId: null,
           ticketId: null,
           status: ExecutionOrderStatus.IN_PROGRESS,
+          templateRequirementsSnapshot: [],
         }),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
@@ -389,6 +418,7 @@ describe('ExecutionOrdersService', () => {
         taskId: null,
         ticketId: 'ticket-uuid',
         status: ExecutionOrderStatus.IN_PROGRESS,
+        templateRequirementsSnapshot: [],
       }),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
@@ -438,6 +468,7 @@ describe('ExecutionOrdersService', () => {
         taskId: 'task-uuid',
         ticketId: null,
         status: ExecutionOrderStatus.IN_PROGRESS,
+        templateRequirementsSnapshot: [],
       }),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
@@ -851,6 +882,7 @@ describe('ExecutionOrdersService', () => {
           taskId: null,
           ticketId: null,
           status: ExecutionOrderStatus.IN_PROGRESS,
+          templateRequirementsSnapshot: [],
         }),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
@@ -896,6 +928,7 @@ describe('ExecutionOrdersService', () => {
         closedAt: null,
         closeNotes: null,
         updatedByUserId: null,
+        templateRequirementsSnapshot: [],
       };
 
       // Primera transacción: éxito (actualiza versión 1 → 2)
@@ -1079,6 +1112,7 @@ describe('ExecutionOrdersService', () => {
       // Simulamos que no hay OTs previas para el tenant
       const makeManager = () => ({
         findOne: jest.fn().mockResolvedValue(null),
+        query: jest.fn().mockResolvedValue([]),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -1139,6 +1173,7 @@ describe('ExecutionOrdersService', () => {
 
       const managerA = {
         findOne: jest.fn().mockResolvedValue(null),
+        query: jest.fn().mockResolvedValue([]),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -1168,6 +1203,7 @@ describe('ExecutionOrdersService', () => {
 
       const managerB = {
         findOne: jest.fn().mockResolvedValue(null),
+        query: jest.fn().mockResolvedValue([]),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -1193,6 +1229,37 @@ describe('ExecutionOrdersService', () => {
 
       // Los números son idénticos pero pertenecen a tenants diferentes
       expect(otTenantA.executionOrderNumber).toBe(otTenantB.executionOrderNumber);
+    });
+
+    it('reintenta una transacción nueva si el consecutivo colisiona con 23505', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        query: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest
+          .fn()
+          .mockRejectedValueOnce({
+            driverError: {
+              code: '23505',
+              constraint: 'uq_execution_orders_tenant_number',
+            },
+          })
+          .mockImplementation(async (_entity, payload) => ({ id: 'eo-retried', ...payload })),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      const result = await service.createFromScheduling(buildSchedulingInput(), actor);
+
+      expect(result.id).toBe('eo-retried');
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(2);
     });
   });
 });

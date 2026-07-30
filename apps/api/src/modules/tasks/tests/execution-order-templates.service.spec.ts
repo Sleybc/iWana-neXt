@@ -111,16 +111,30 @@ describe('ExecutionOrderTemplatesService', () => {
   let templateRepo: jest.Mocked<Repository<ExecutionOrderTemplate>>;
   let versionRepo: jest.Mocked<Repository<ExecutionOrderTemplateVersion>>;
   let requirementRepo: jest.Mocked<Repository<ExecutionOrderTemplateRequirement>>;
+  let manager: {
+    findOne: jest.Mock;
+    find: jest.Mock;
+    save: jest.Mock;
+    create: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
 
   beforeAll(() => {
     // Mock TenantContext
     (TenantContext.getOrThrow as jest.Mock) = jest.fn().mockReturnValue({
       tenantId: 'tenant-001',
-      schemaName: 'tenant_001',
+      schemaName: 'tenant_test',
     });
   });
 
   beforeEach(async () => {
+    manager = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      save: jest.fn(),
+      create: jest.fn().mockImplementation((_entity, data) => data),
+      createQueryBuilder: jest.fn(),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ExecutionOrderTemplatesService,
@@ -133,13 +147,8 @@ describe('ExecutionOrderTemplatesService', () => {
               commitTransaction: jest.fn(),
               rollbackTransaction: jest.fn(),
               release: jest.fn(),
-              manager: {
-                findOne: jest.fn(),
-                find: jest.fn(),
-                save: jest.fn(),
-                create: jest.fn().mockImplementation((_entity, data) => data),
-                createQueryBuilder: jest.fn(),
-              },
+              query: jest.fn(),
+              manager,
             }),
           },
         },
@@ -164,6 +173,40 @@ describe('ExecutionOrderTemplatesService', () => {
       const maxVersion = '2';
       const nextVersion = Number.parseInt(maxVersion, 10) + 1;
       expect(nextVersion).toBe(3);
+    });
+
+    it('bloquea la plantilla y reabre la transacción tras un 23505 de versionado', async () => {
+      manager.findOne.mockImplementation((_entity, options) =>
+        options?.lock
+          ? Promise.resolve(makeTemplate())
+          : Promise.resolve(makeVersion({ id: 'ver-retried', version: 2 })),
+      );
+      manager.createQueryBuilder.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ maxVersion: '1' }),
+      });
+      manager.save
+        .mockRejectedValueOnce({
+          driverError: {
+            code: '23505',
+            constraint: 'idx_execution_order_template_versions_key_version',
+          },
+        })
+        .mockImplementation(async (_entity, value) => ({ id: 'ver-retried', ...value }));
+
+      const result = await service.createVersion('tpl-001', {
+        label: 'Instalación fibra — v2',
+        requirements: [],
+      });
+
+      expect(result.id).toBe('ver-retried');
+      expect(manager.findOne).toHaveBeenCalledWith(
+        ExecutionOrderTemplate,
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+      expect(manager.save).toHaveBeenCalledTimes(2);
     });
   });
 

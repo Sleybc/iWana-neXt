@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError, QueryRunner } from 'typeorm';
 import {
   ExecutionOrderTemplate,
   ExecutionOrderTemplateVersion,
@@ -26,6 +26,26 @@ export interface CreateVersionInput {
   requirements: TemplateRequirement[];
   reasonCatalogs?: string[];
   effectiveFrom?: string;
+}
+
+const TEMPLATE_VERSION_RETRY_LIMIT = 3;
+const TEMPLATE_VERSION_UNIQUE_CONSTRAINT = 'idx_execution_order_template_versions_key_version';
+
+type UniqueConstraintDriverError = { code?: unknown; constraint?: unknown };
+
+function isTemplateVersionUniqueViolation(error: unknown): boolean {
+  const driverError =
+    error instanceof QueryFailedError
+      ? (error.driverError as UniqueConstraintDriverError)
+      : typeof error === 'object' && error !== null && 'driverError' in error
+        ? ((error as { driverError?: unknown }).driverError as UniqueConstraintDriverError)
+        : undefined;
+
+  return (
+    driverError?.code === '23505' &&
+    (driverError.constraint === undefined ||
+      driverError.constraint === TEMPLATE_VERSION_UNIQUE_CONSTRAINT)
+  );
 }
 
 @Injectable()
@@ -138,59 +158,93 @@ export class ExecutionOrderTemplatesService {
   ): Promise<ExecutionOrderTemplateVersion> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const template = await qr.manager.findOne(ExecutionOrderTemplate, {
-        where: { id: templateId, tenantId },
-      });
-      if (!template) {
-        throw new NotFoundException('Plantilla no encontrada');
-      }
-
-      // Compute next version number
-      const maxResult = await qr.manager
-        .createQueryBuilder(ExecutionOrderTemplateVersion, 'v')
-        .select('MAX(v.version)', 'maxVersion')
-        .where('v.templateId = :templateId', { templateId })
-        .andWhere('v.tenantId = :tenantId', { tenantId })
-        .getRawOne<{ maxVersion: string | null }>();
-
-      const nextVersion = Number.parseInt(maxResult?.maxVersion ?? '0', 10) + 1;
-
-      const version = qr.manager.create(ExecutionOrderTemplateVersion, {
-        tenantId,
-        templateId,
-        templateKey: template.key,
-        version: nextVersion,
-        label: input.label,
-        status: 'DRAFT',
-        effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : null,
-        reasonCatalogs: input.reasonCatalogs ?? null,
-      });
-
-      const savedVersion = await qr.manager.save(ExecutionOrderTemplateVersion, version);
-
-      // Create requirement rows
-      if (input.requirements.length > 0) {
-        const requirementEntities = input.requirements.map((req, index) =>
-          qr.manager.create(ExecutionOrderTemplateRequirement, {
-            tenantId,
-            versionId: savedVersion.id,
-            key: req.key,
-            label: req.label,
-            required: req.required,
-            kind: req.kind,
-            config: this.extractConfig(req),
-            sortOrder: index,
-          }),
+    for (let attempt = 0; attempt < TEMPLATE_VERSION_RETRY_LIMIT; attempt += 1) {
+      try {
+        return await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+          this.createVersionInTransaction(qr, tenantId, templateId, input),
         );
-        await qr.manager.save(ExecutionOrderTemplateRequirement, requirementEntities);
+      } catch (error) {
+        // El 23505 aborta la transacción PostgreSQL; el reintento debe abrir
+        // una transacción tenant nueva, no continuar con el QueryRunner actual.
+        if (
+          !isTemplateVersionUniqueViolation(error) ||
+          attempt === TEMPLATE_VERSION_RETRY_LIMIT - 1
+        ) {
+          if (isTemplateVersionUniqueViolation(error)) {
+            throw new ConflictException({
+              code: 'TEMPLATE_VERSION_CONFLICT',
+              message: 'No fue posible generar una versión única para la plantilla.',
+            });
+          }
+          throw error;
+        }
       }
+    }
 
-      return qr.manager.findOne(ExecutionOrderTemplateVersion, {
-        where: { id: savedVersion.id, tenantId },
-        relations: ['requirements'],
-      }) as Promise<ExecutionOrderTemplateVersion>;
+    throw new ConflictException({
+      code: 'TEMPLATE_VERSION_CONFLICT',
+      message: 'No fue posible generar una versión única para la plantilla.',
     });
+  }
+
+  private async createVersionInTransaction(
+    qr: QueryRunner,
+    tenantId: string,
+    templateId: string,
+    input: CreateVersionInput,
+  ): Promise<ExecutionOrderTemplateVersion> {
+    const template = await qr.manager.findOne(ExecutionOrderTemplate, {
+      where: { id: templateId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!template) {
+      throw new NotFoundException('Plantilla no encontrada');
+    }
+
+    // Compute next version number while holding the template row lock.
+    const maxResult = await qr.manager
+      .createQueryBuilder(ExecutionOrderTemplateVersion, 'v')
+      .select('MAX(v.version)', 'maxVersion')
+      .where('v.templateId = :templateId', { templateId })
+      .andWhere('v.tenantId = :tenantId', { tenantId })
+      .getRawOne<{ maxVersion: string | null }>();
+
+    const nextVersion = Number.parseInt(maxResult?.maxVersion ?? '0', 10) + 1;
+
+    const version = qr.manager.create(ExecutionOrderTemplateVersion, {
+      tenantId,
+      templateId,
+      templateKey: template.key,
+      version: nextVersion,
+      label: input.label,
+      status: 'DRAFT',
+      effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : null,
+      reasonCatalogs: input.reasonCatalogs ?? null,
+    });
+
+    const savedVersion = await qr.manager.save(ExecutionOrderTemplateVersion, version);
+
+    // Create requirement rows
+    if (input.requirements.length > 0) {
+      const requirementEntities = input.requirements.map((req, index) =>
+        qr.manager.create(ExecutionOrderTemplateRequirement, {
+          tenantId,
+          versionId: savedVersion.id,
+          key: req.key,
+          label: req.label,
+          required: req.required,
+          kind: req.kind,
+          config: this.extractConfig(req),
+          sortOrder: index,
+        }),
+      );
+      await qr.manager.save(ExecutionOrderTemplateRequirement, requirementEntities);
+    }
+
+    return qr.manager.findOne(ExecutionOrderTemplateVersion, {
+      where: { id: savedVersion.id, tenantId },
+      relations: ['requirements'],
+    }) as Promise<ExecutionOrderTemplateVersion>;
   }
 
   async publishVersion(versionId: string): Promise<ExecutionOrderTemplateVersion> {
@@ -316,7 +370,7 @@ export class ExecutionOrderTemplatesService {
    * excluyendo las propiedades comunes que ya van en columnas propias.
    */
   private extractConfig(req: TemplateRequirement): Record<string, unknown> {
-    const { key: _key, label: _label, required: _required, kind, ...rest } = req as any;
+    const { key: _key, label: _label, required: _required, kind: _kind, ...rest } = req;
     return rest;
   }
 }

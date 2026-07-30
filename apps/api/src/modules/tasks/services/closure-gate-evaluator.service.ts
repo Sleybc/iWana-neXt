@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { ExecutionOrderTemplateRequirement as TemplateRequirement } from '@iwana/shared';
 
+type FieldRequirement = Extract<TemplateRequirement, { kind: 'FIELD' }>;
+type ActivityRequirement = Extract<TemplateRequirement, { kind: 'ACTIVITY' }>;
+type MeasurementRequirement = Extract<TemplateRequirement, { kind: 'MEASUREMENT' }>;
+type EvidenceRequirement = Extract<TemplateRequirement, { kind: 'EVIDENCE' }>;
+type MaterialRequirement = Extract<TemplateRequirement, { kind: 'MATERIAL' }>;
+type ComplianceRequirement = Extract<TemplateRequirement, { kind: 'COMPLIANCE' }>;
+
 /**
  * Resultado de evaluar un requisito contra el estado actual de la OT.
  */
@@ -36,8 +43,14 @@ export interface OrderEvaluationContext {
   measurements?: Array<{ key: string; value: unknown }>;
   /** Evidencias vinculadas (para EVIDENCE). */
   evidences?: Array<{ evidenceType: string; requirementKey: string }>;
-  /** Consumos de items registrados (para MATERIAL). */
-  itemUsages?: Array<{ itemId: string }>;
+  /**
+   * Consumos de items registrados (para MATERIAL).
+   *
+   * La categoría debe proceder de una fuente autoritativa del consumo. Si no
+   * está presente, el requisito falla cerrado; el evaluador no infiere una
+   * categoría a partir del identificador del item.
+   */
+  itemUsages?: Array<{ itemId: string; itemCategory?: string; requirementKey?: string }>;
   /** Artefactos de aceptación del cliente (para COMPLIANCE). */
   complianceArtifacts?: Array<{ policyKey?: string }>;
   /** Si la OT tiene aceptación del cliente registrada. */
@@ -119,46 +132,46 @@ export class ClosureGateEvaluatorService {
       case 'COMPLIANCE':
         return this.evaluateCompliance(req, context);
       default:
-        return true; // Unknown kinds don't block
+        return false;
     }
   }
 
-  private evaluateField(req: TemplateRequirement, context: OrderEvaluationContext): boolean {
-    if (!req.kind) return true; // FIELD por defecto
+  private evaluateField(req: FieldRequirement, context: OrderEvaluationContext): boolean {
     const fieldData = context.fieldData ?? {};
     return req.key in fieldData && fieldData[req.key] !== null && fieldData[req.key] !== '';
   }
 
-  private evaluateActivity(req: TemplateRequirement, context: OrderEvaluationContext): boolean {
+  private evaluateActivity(req: ActivityRequirement, context: OrderEvaluationContext): boolean {
     const activities = context.activities ?? [];
-    // Extract activityType from discriminated union
-    const activityType = (req as any).activityType as string | undefined;
-    if (!activityType) return false;
-    return activities.some((a) => a.activityType === activityType);
+    return activities.some((a) => a.activityType === req.activityType);
   }
 
-  private evaluateMeasurement(req: TemplateRequirement, context: OrderEvaluationContext): boolean {
+  private evaluateMeasurement(
+    req: MeasurementRequirement,
+    context: OrderEvaluationContext,
+  ): boolean {
     const measurements = context.measurements ?? [];
     return measurements.some((m) => m.key === req.key && m.value !== null && m.value !== undefined);
   }
 
-  private evaluateEvidence(req: TemplateRequirement, context: OrderEvaluationContext): boolean {
+  private evaluateEvidence(req: EvidenceRequirement, context: OrderEvaluationContext): boolean {
     const evidences = context.evidences ?? [];
-    return evidences.some((e) => e.requirementKey === req.key);
+    return evidences.some(
+      (e) => e.requirementKey === req.key && e.evidenceType === req.evidenceType,
+    );
   }
 
-  private evaluateMaterial(req: TemplateRequirement, context: OrderEvaluationContext): boolean {
-    // MATERIAL requirements check that at least one item usage exists
-    // with matching category. For now, we check that any item usage is recorded
-    // that references this requirement key via a mapping.
+  private evaluateMaterial(req: MaterialRequirement, context: OrderEvaluationContext): boolean {
     const usages = context.itemUsages ?? [];
-    // If there's at least one item usage and the template requires materials, pass
-    // In a full implementation, category matching would be done here
-    if (usages.length === 0) return false;
-    return true;
+    return usages.some(
+      (usage) =>
+        usage.itemId.trim().length > 0 &&
+        usage.itemCategory === req.itemCategory &&
+        (usage.requirementKey === undefined || usage.requirementKey === req.key),
+    );
   }
 
-  private evaluateCompliance(req: TemplateRequirement, context: OrderEvaluationContext): boolean {
+  private evaluateCompliance(req: ComplianceRequirement, context: OrderEvaluationContext): boolean {
     // COMPLIANCE checks for customer acceptance artifact or policy satisfaction
     if (context.hasCustomerAcceptance) return true;
     const cmd = context.closeCommand as Record<string, unknown> | undefined;
@@ -175,36 +188,30 @@ export class ClosureGateEvaluatorService {
       case 'FIELD':
         return `El campo "${req.label}" no se ha completado.`;
       case 'ACTIVITY': {
-        const at = (req as any).activityType as string | undefined;
-        return `No se ha registrado una actividad de tipo "${at ?? req.label}".`;
+        return `No se ha registrado una actividad de tipo "${req.activityType}".`;
       }
       case 'MEASUREMENT': {
-        const unit = (req as any).unit as string | undefined;
-        return `No se ha registrado la medición "${req.label}"${unit ? ` (${unit})` : ''}.`;
+        return `No se ha registrado la medición "${req.label}"${req.unit ? ` (${req.unit})` : ''}.`;
       }
       case 'EVIDENCE': {
-        const et = (req as any).evidenceType as string | undefined;
         // Traducir el tipo de evidencia a texto visible
         const evidenceLabel =
-          et === 'PHOTO'
+          req.evidenceType === 'PHOTO'
             ? 'foto'
-            : et === 'SIGNATURE'
+            : req.evidenceType === 'SIGNATURE'
               ? 'firma'
-              : et === 'DOCUMENT'
+              : req.evidenceType === 'DOCUMENT'
                 ? 'documento'
                 : 'evidencia';
         return `No se ha vinculado una ${evidenceLabel} para "${req.label}".`;
       }
       case 'MATERIAL': {
-        const cat = (req as any).itemCategory as string | undefined;
-        return `No se ha registrado consumo de materiales${cat ? ` de categoría "${cat}"` : ''}.`;
+        return `No se ha registrado consumo de materiales de categoría "${req.itemCategory}".`;
       }
       case 'COMPLIANCE':
         return `No se ha registrado la aceptación del cliente para "${req.label}".`;
-      default: {
-        const r = req as { label: string };
-        return `El requisito "${r.label}" no se ha cumplido.`;
-      }
+      default:
+        return 'El requisito no se ha cumplido.';
     }
   }
 }
