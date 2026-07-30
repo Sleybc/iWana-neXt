@@ -108,7 +108,7 @@ export class RegisterExecutionOrderItemUsageDto {
   @Allow()
   itemId!: string;
 
-  @ApiProperty({ default: 1, minimum: 1, type: Number })
+  @ApiProperty({ default: 1, minimum: 1, type: 'integer' })
   @Allow()
   quantity!: number;
 
@@ -226,10 +226,16 @@ export const UnblockExecutionOrderSchema = z
 export const RegisterEvidenceSchema = z
   .object({
     mediaAssetId: z.string().uuid(),
-    evidenceType: z.string().trim().min(1).max(64),
+    evidenceType: z.enum(['PHOTO', 'DOCUMENT', 'SIGNATURE']),
     requirementKey: z.string().trim().min(1).max(128),
-    expiresAt: z.string().min(1).max(128),
-    capturedAt: z.string().datetime().optional().nullable(),
+    expiresAt: z
+      .string()
+      .datetime()
+      .max(128)
+      .refine((value) => new Date(value).getTime() > Date.now(), {
+        message: 'expiresAt debe ser una fecha futura.',
+      }),
+    capturedAt: z.string().datetime().nullable().optional(),
   })
   .strict();
 
@@ -237,12 +243,21 @@ export type RegisterEvidenceInput = z.infer<typeof RegisterEvidenceSchema>;
 
 export class RegisterEvidenceDto {
   @ApiProperty() @Allow() mediaAssetId!: string;
-  @ApiProperty() @Allow() evidenceType!: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
-  @ApiProperty() @Allow() requirementKey!: string;
-  @ApiProperty({ description: 'Expiración del intento de evidencia; debe ser futura.' })
+  @ApiProperty({ enum: ['PHOTO', 'DOCUMENT', 'SIGNATURE'] })
+  @Allow()
+  evidenceType!: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @Allow()
+  requirementKey!: string;
+  @ApiProperty({
+    format: 'date-time',
+    description: 'Expiración del intento de evidencia; debe ser futura.',
+  })
   @Allow()
   expiresAt!: string;
-  @ApiPropertyOptional() @Allow() capturedAt?: string;
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  @Allow()
+  capturedAt?: string;
 }
 
 export const ListExecutionOrderEntriesSchema = z
@@ -310,7 +325,7 @@ export class ExecutionOrderItemUsageResponseDto {
   @ApiProperty()
   itemId!: string;
 
-  @ApiProperty({ minimum: 1, type: Number })
+  @ApiProperty({ minimum: 1, type: 'integer' })
   quantity!: number;
 
   @ApiPropertyOptional()

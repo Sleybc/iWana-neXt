@@ -114,7 +114,7 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
         mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         evidenceType: 'PHOTO',
         requirementKey: 'req-photo-installation',
-        expiresAt: '2026-06-25T14:00:00.000Z',
+        expiresAt: '2099-06-25T14:00:00.000Z',
         capturedAt: '2026-06-24T14:00:00.000Z',
       });
       expect(result.mediaAssetId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
@@ -122,12 +122,23 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
       expect(result.requirementKey).toBe('req-photo-installation');
     });
 
-    it('acepta payload sin capturedAt', () => {
+    it('acepta capturedAt explícitamente nulo', () => {
       const result = RegisterEvidenceSchema.parse({
         mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         evidenceType: 'DOCUMENT',
         requirementKey: 'req-doc',
-        expiresAt: '2026-06-25T14:00:00.000Z',
+        expiresAt: '2099-06-25T14:00:00.000Z',
+        capturedAt: null,
+      });
+      expect(result.capturedAt).toBeNull();
+    });
+
+    it('acepta payload sin capturedAt porque es opcional y nullable', () => {
+      const result = RegisterEvidenceSchema.parse({
+        mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        evidenceType: 'DOCUMENT',
+        requirementKey: 'req-doc',
+        expiresAt: '2099-06-25T14:00:00.000Z',
       });
       expect(result.capturedAt).toBeUndefined();
     });
@@ -148,6 +159,43 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
           mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           evidenceType: 'PHOTO',
           requirementKey: '',
+          expiresAt: '2099-06-25T14:00:00.000Z',
+        }),
+      ).toThrow();
+    });
+
+    it('rechaza evidenceType fuera del enum canónico', () => {
+      expect(() =>
+        RegisterEvidenceSchema.parse({
+          mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          evidenceType: 'VIDEO',
+          requirementKey: 'req-video',
+          expiresAt: '2099-06-25T14:00:00.000Z',
+        }),
+      ).toThrow();
+    });
+
+    it('rechaza expiresAt vencido o no date-time', () => {
+      for (const expiresAt of ['2020-06-25T14:00:00.000Z', 'not-a-date']) {
+        expect(() =>
+          RegisterEvidenceSchema.parse({
+            mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            evidenceType: 'PHOTO',
+            requirementKey: 'req-photo',
+            expiresAt,
+          }),
+        ).toThrow();
+      }
+    });
+
+    it('rechaza capturedAt no date-time', () => {
+      expect(() =>
+        RegisterEvidenceSchema.parse({
+          mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          evidenceType: 'PHOTO',
+          requirementKey: 'req-photo',
+          expiresAt: '2099-06-25T14:00:00.000Z',
+          capturedAt: 'not-a-date',
         }),
       ).toThrow();
     });

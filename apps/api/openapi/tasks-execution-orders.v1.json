@@ -422,9 +422,13 @@
         "properties": {
           "mediaAssetId": { "type": "string", "format": "uuid" },
           "evidenceType": { "type": "string", "enum": ["PHOTO", "DOCUMENT", "SIGNATURE"] },
-          "requirementKey": { "type": "string" },
-          "expiresAt": { "type": "string", "format": "date-time" },
-          "capturedAt": { "type": "string", "format": "date-time" }
+          "requirementKey": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Expiración del intento de evidencia; debe ser futura."
+          },
+          "capturedAt": { "type": "string", "format": "date-time", "nullable": true }
         }
       },
       "BlockExecutionOrderCommand": {

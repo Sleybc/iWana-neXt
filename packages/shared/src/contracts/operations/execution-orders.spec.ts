@@ -1,4 +1,8 @@
-import type { ExecutionOrderDetail, ExecutionOrderError } from './execution-orders';
+import type {
+  ExecutionOrderDetail,
+  ExecutionOrderError,
+  RegisterEvidenceCommand,
+} from './execution-orders';
 
 describe('execution order shared contracts', () => {
   it('accepts a missing template in the detail contract', () => {
@@ -16,5 +20,17 @@ describe('execution order shared contracts', () => {
     };
 
     expect(error.missingRequirements).toEqual(['Instalación de fibra']);
+  });
+
+  it('models nullable capturedAt explicitly in evidence requests', () => {
+    const command: RegisterEvidenceCommand = {
+      mediaAssetId: '00000000-0000-4000-8000-000000000001',
+      evidenceType: 'PHOTO',
+      requirementKey: 'req-photo',
+      expiresAt: '2099-06-25T14:00:00.000Z',
+      capturedAt: null,
+    };
+
+    expect(command.capturedAt).toBeNull();
   });
 });

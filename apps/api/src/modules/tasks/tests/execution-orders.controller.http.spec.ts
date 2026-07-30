@@ -475,6 +475,40 @@ describe('ExecutionOrdersController HTTP', () => {
     });
   });
 
+  describe('contrato de evidencia R1', () => {
+    const validEvidence = {
+      mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      evidenceType: 'PHOTO',
+      requirementKey: 'req-photo-installation',
+      expiresAt: '2099-06-25T14:00:00.000Z',
+      capturedAt: null,
+    };
+
+    it('acepta capturedAt nulo y delega el comando validado', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'evidence-r1-valid-0001')
+        .send(validEvidence)
+        .expect(201);
+    });
+
+    it.each([
+      { field: 'evidenceType', value: 'VIDEO' },
+      { field: 'expiresAt', value: '2020-06-25T14:00:00.000Z' },
+      { field: 'requirementKey', value: '   ' },
+    ])('rechaza $field inválido con 400', async ({ field, value }) => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', `evidence-r1-invalid-${field}`)
+        .send({ ...validEvidence, [field]: value })
+        .expect(400);
+    });
+  });
+
   // ─── Mass Assignment Protection ──────────────────────────────────────────
 
   describe('protección contra mass assignment', () => {

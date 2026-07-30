@@ -172,7 +172,7 @@ export interface RegisterEvidenceCommand {
   evidenceType: 'PHOTO' | 'DOCUMENT' | 'SIGNATURE';
   requirementKey: string;
   expiresAt: string;
-  capturedAt?: string;
+  capturedAt?: string | null;
 }
 
 export interface BlockExecutionOrderCommand {
