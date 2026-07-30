@@ -201,11 +201,17 @@ describe('ExecutionOrdersService', () => {
   });
 
   it.each([
-    ['PHOTO', 'AVAILABLE', 'CUSTOMER_ACCEPTANCE_ARTIFACT_INVALID_TYPE'],
-    ['CUSTOMER_SIGNATURE', 'PENDING_ANALYSIS', 'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_AVAILABLE'],
+    ['PHOTO', 'CUSTOMER_SIGNATURE', 'AVAILABLE', 'CUSTOMER_ACCEPTANCE_ARTIFACT_INVALID_TYPE'],
+    ['SIGNATURE', 'OTHER_REQUIREMENT', 'AVAILABLE', 'CUSTOMER_ACCEPTANCE_ARTIFACT_INVALID_TYPE'],
+    [
+      'SIGNATURE',
+      'CUSTOMER_SIGNATURE',
+      'PENDING_ANALYSIS',
+      'CUSTOMER_ACCEPTANCE_ARTIFACT_NOT_AVAILABLE',
+    ],
   ])(
-    'rejects customer acceptance artifact with type %s and asset status %s',
-    async (evidenceType, assetStatus, code) => {
+    'rejects customer acceptance artifact with type %s, requirement %s and asset status %s',
+    async (evidenceType, requirementKey, assetStatus, code) => {
       const manager = {
         findOne: jest
           .fn()
@@ -221,6 +227,7 @@ describe('ExecutionOrdersService', () => {
             tenantId: 'tenant-001',
             mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
             evidenceType,
+            requirementKey,
             assetStatus,
           }),
         createQueryBuilder: jest.fn().mockReturnValue({
@@ -268,7 +275,8 @@ describe('ExecutionOrdersService', () => {
             executionOrderId: 'eo-001',
             tenantId: 'tenant-001',
             mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            evidenceType: 'CUSTOMER_SIGNATURE',
+            evidenceType: 'SIGNATURE',
+            requirementKey: 'CUSTOMER_SIGNATURE',
             assetStatus: 'AVAILABLE',
           }),
       };
@@ -294,6 +302,73 @@ describe('ExecutionOrdersService', () => {
       });
     },
   );
+
+  it('persists customer acceptance with canonical signature evidence fields', async () => {
+    const manager = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          taskId: null,
+          ticketId: null,
+          status: ExecutionOrderStatus.IN_PROGRESS,
+        })
+        .mockResolvedValueOnce({
+          executionOrderId: 'eo-001',
+          tenantId: 'tenant-001',
+          mediaAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          evidenceType: 'SIGNATURE',
+          requirementKey: 'CUSTOMER_SIGNATURE',
+          assetStatus: 'AVAILABLE',
+        })
+        .mockResolvedValueOnce({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          taskId: null,
+          ticketId: null,
+          status: ExecutionOrderStatus.IN_PROGRESS,
+        }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      create: jest.fn((_entity, payload) => payload),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await service.close(
+      'eo-001',
+      {
+        result: ExecutionOrderResult.NOT_EXECUTED,
+        summary: 'Cierre con firma',
+        customerAcceptance: {
+          artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          method: 'SIGNATURE',
+        },
+      },
+      actor,
+    );
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        evidenceType: 'SIGNATURE',
+        requirementKey: 'CUSTOMER_SIGNATURE',
+        notes: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      }),
+    );
+    expect(manager.create).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ evidenceType: 'CUSTOMER_SIGNATURE' }),
+    );
+  });
 
   it('notifies assurance when closing an order linked to a ticket', async () => {
     const assuranceNotifier = {
@@ -504,6 +579,65 @@ describe('ExecutionOrdersService', () => {
       await expect(service.assertActorAccess('eo-001', actor, true)).rejects.toThrow(
         'OT de ejecución no encontrada',
       );
+    });
+
+    it.each([UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT])(
+      'deniega ejecución técnica a %s aunque esté asignado',
+      async (role) => {
+        const assignedSupervisor: JwtPayload = { ...actor, role };
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            assignedTechnicianId: assignedSupervisor.sub,
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.assertActorAccess('eo-001', assignedSupervisor, true, true),
+        ).rejects.toThrow('OT de ejecución no encontrada');
+      },
+    );
+
+    it.each([UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT])(
+      'permite lectura a %s sin convertirla en ejecución técnica',
+      async (role) => {
+        const supervisor: JwtPayload = { ...actor, role };
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'eo-001',
+            tenantId: 'tenant-001',
+            assignedTechnicianId: 'tech-001',
+          }),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.assertActorAccess('eo-001', supervisor, false, false),
+        ).resolves.toBeUndefined();
+      },
+    );
+
+    it('permite escritura de coordinación a un supervisor sin asignación técnica', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          assignedTechnicianId: 'tech-001',
+        }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.assertActorAccess('eo-001', actor, true, false),
+      ).resolves.toBeUndefined();
     });
 
     it('permite escritura a técnico asignado', async () => {

@@ -67,6 +67,7 @@ import {
 } from '../ports/evidence-asset.port';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
 
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
@@ -130,7 +131,12 @@ export class ExecutionOrdersService {
    * ABAC server-side. La OT se carga dentro del schema del JWT; nunca se
    * confía en un site/tenant enviado por el cliente.
    */
-  async assertActorAccess(id: string, actor: JwtPayload, write: boolean): Promise<void> {
+  async assertActorAccess(
+    id: string,
+    actor: JwtPayload,
+    write: boolean,
+    requiresTechnicalExecution = write,
+  ): Promise<void> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
@@ -141,9 +147,18 @@ export class ExecutionOrdersService {
       const supervisor = [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT].includes(
         actor.role as UserRole,
       );
+      // Supervisores pueden leer y ejecutar operaciones de coordinación, pero
+      // nunca escribir sobre la ejecución técnica, aunque estén asignados.
+      if (requiresTechnicalExecution) {
+        if (supervisor || !assigned) {
+          throw new NotFoundException('OT de ejecución no encontrada');
+        }
+        return;
+      }
+
       // Contractors/technicians only act when explicitly assigned. Supervisors
-      // may read for coordination but never write execution evidence/activities.
-      if (!assigned && (write || !supervisor)) {
+      // may read and coordinate without estar asignados a la OT.
+      if (!assigned && !supervisor) {
         throw new NotFoundException('OT de ejecución no encontrada');
       }
     });
@@ -601,7 +616,8 @@ export class ExecutionOrdersService {
           qr.manager,
           tenantId,
           order.id,
-          'CUSTOMER_SIGNATURE',
+          'SIGNATURE',
+          CUSTOMER_SIGNATURE_REQUIREMENT_KEY,
           acceptanceRef,
           actor,
         );
@@ -1270,10 +1286,14 @@ export class ExecutionOrdersService {
       });
     }
 
-    if (linkedEvidence.evidenceType !== 'CUSTOMER_SIGNATURE') {
+    if (
+      linkedEvidence.evidenceType !== 'SIGNATURE' ||
+      linkedEvidence.requirementKey !== CUSTOMER_SIGNATURE_REQUIREMENT_KEY
+    ) {
       throw new UnprocessableEntityException({
         code: 'CUSTOMER_ACCEPTANCE_ARTIFACT_INVALID_TYPE',
-        message: 'El artefacto de aceptación debe corresponder a una firma del cliente.',
+        message:
+          'El artefacto de aceptación debe corresponder a una evidencia SIGNATURE con requirementKey CUSTOMER_SIGNATURE.',
       });
     }
 
@@ -1294,10 +1314,15 @@ export class ExecutionOrdersService {
       });
     }
 
-    if (intent.expiresAt && intent.expiresAt.getTime() <= Date.now()) {
+    const expiresAt = intent.expiresAt;
+    if (
+      !(expiresAt instanceof Date) ||
+      !Number.isFinite(expiresAt.getTime()) ||
+      expiresAt.getTime() <= Date.now()
+    ) {
       throw new ConflictException({
         code: 'EVIDENCE_UPLOAD_INTENT_EXPIRED',
-        message: 'El intento de carga de evidencia ha expirado.',
+        message: 'El intento de carga de evidencia no tiene una expiración futura válida.',
       });
     }
   }
@@ -1347,6 +1372,7 @@ export class ExecutionOrdersService {
         tenantId,
         executionOrderId,
         evidenceType,
+        null,
         notes,
         actor,
       );
@@ -1358,6 +1384,7 @@ export class ExecutionOrdersService {
     tenantId: string,
     executionOrderId: string,
     evidenceType: string,
+    requirementKey: string | null,
     notes: string | null,
     actor: JwtPayload,
   ): Promise<ExecutionOrderEvidence> {
@@ -1368,6 +1395,7 @@ export class ExecutionOrdersService {
         executionOrderId,
         tenantId,
         evidenceType,
+        requirementKey,
         fileName: null,
         notes,
         actorUserId: actor.sub,

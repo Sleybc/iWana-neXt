@@ -389,6 +389,29 @@ describe('ExecutionOrdersService — Evidence', () => {
       },
     );
 
+    it.each([null, undefined, new Date(Number.NaN), new Date(Date.now())])(
+      'rechaza intent con expiresAt no futuro (%s)',
+      async (expiresAt) => {
+        const manager = {
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce(mockOrder())
+            .mockResolvedValueOnce(currentUploadIntent({ expiresAt: expiresAt as Date | null })),
+        };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerEvidence(ORDER_UUID, evidenceInput, actor),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EVIDENCE_UPLOAD_INTENT_EXPIRED' }),
+        });
+        expect(evidenceAssetPort.getAssetStatus).not.toHaveBeenCalled();
+        expect(evidenceAssetPort.claimAsset).not.toHaveBeenCalled();
+      },
+    );
+
     it('registra evidencia solo cuando el asset está AVAILABLE', async () => {
       const manager = {
         findOne: jest
@@ -938,7 +961,7 @@ describe('ExecutionOrdersService — Evidence', () => {
           .fn()
           .mockResolvedValueOnce(mockOrder()) // requireOrder
           .mockResolvedValueOnce(null) // no evidence yet
-          .mockResolvedValueOnce({ id: 'intent-001', status: 'PENDING_ANALYSIS' }), // intent exists
+          .mockResolvedValueOnce(currentUploadIntent()), // intent exists
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
