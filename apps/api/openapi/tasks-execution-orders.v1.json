@@ -722,9 +722,10 @@
       "EventRedriveReceipt": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["eventId", "status"],
+        "required": ["eventId", "correlationId", "status"],
         "properties": {
           "eventId": { "type": "string", "format": "uuid" },
+          "correlationId": { "type": "string", "format": "uuid" },
           "status": { "type": "string", "enum": ["QUEUED"] }
         }
       },

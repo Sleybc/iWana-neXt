@@ -1316,3 +1316,269 @@ describe('ExecutionOrdersService', () => {
     });
   });
 });
+
+describe('ExecutionOrdersService — redrive y seguimiento', () => {
+  const actor: JwtPayload = {
+    sub: 'support-001',
+    email: 'support@example.test',
+    role: UserRole.SUPPORT,
+    tenantId: 'tenant-001',
+    schemaName: 'tenant_001',
+    jti: 'jti-support',
+    type: 'tenant',
+  };
+  const context = {
+    idempotencyKey: 'operation-key-0001',
+    requireIdempotency: true,
+    requireIfMatch: false,
+    correlationId: '00000000-0000-4000-8000-000000000001',
+  };
+
+  let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
+
+  beforeEach(() => {
+    mockRunInTenantSchema = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
+    const { TenantContext } = require('@iwana/db') as {
+      TenantContext: { getOrThrow: jest.Mock };
+    };
+    TenantContext.getOrThrow.mockReturnValue({ tenantId: 'tenant-001', schemaName: 'tenant_001' });
+    jest.clearAllMocks();
+  });
+
+  it('reencola un evento DLQ conservando eventId/correlationId y limpia el marcador terminal', async () => {
+    const event = {
+      id: 'outbox-row-001',
+      eventId: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-001',
+      aggregateVersion: 4,
+      correlationId: '22222222-2222-4222-8222-222222222222',
+      lastError: 'consumer failed',
+    };
+    const updateExecute = jest.fn().mockResolvedValue({ affected: 1 });
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(event),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: updateExecute,
+      }),
+    };
+    const reliability = {
+      beginIdempotent: jest.fn().mockResolvedValue({
+        intentId: 'intent-redrive-001',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      }),
+      completeIdempotency: jest.fn().mockResolvedValue(undefined),
+      appendAuditIntent: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliability as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(service.redriveEvent(event.eventId, actor, context)).resolves.toEqual({
+      eventId: event.eventId,
+      correlationId: event.correlationId,
+      status: 'QUEUED',
+    });
+
+    expect(reliability.beginIdempotent).toHaveBeenCalledWith(
+      manager,
+      'tenant-001',
+      'execution_event.redrive',
+      context.idempotencyKey,
+      expect.objectContaining({ payload: { eventId: event.eventId } }),
+    );
+    expect(updateExecute).toHaveBeenCalledTimes(2);
+    expect(reliability.appendAuditIntent).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        operation: 'execution_event.redrive',
+        resourceRef: event.eventId,
+        correlationId: context.correlationId,
+      }),
+    );
+  });
+
+  it('redrive repetido con la misma clave devuelve replay sin reencolar ni auditar otra vez', async () => {
+    const event = {
+      id: 'outbox-row-002',
+      eventId: '33333333-3333-4333-8333-333333333333',
+      tenantId: 'tenant-001',
+      aggregateVersion: 5,
+      correlationId: '44444444-4444-4444-8444-444444444444',
+      lastError: 'consumer failed',
+    };
+    const manager = { findOne: jest.fn().mockResolvedValue(event) };
+    const reliability = {
+      beginIdempotent: jest.fn().mockResolvedValue({
+        intentId: 'intent-redrive-002',
+        replay: true,
+        resourceRef: event.eventId,
+        resultStatus: 'COMPLETED',
+        resourceVersion: event.aggregateVersion,
+      }),
+      completeIdempotency: jest.fn(),
+      appendAuditIntent: jest.fn(),
+    };
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliability as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(service.redriveEvent(event.eventId, actor, context)).resolves.toEqual({
+      eventId: event.eventId,
+      correlationId: event.correlationId,
+      status: 'QUEUED',
+    });
+    expect(reliability.completeIdempotency).not.toHaveBeenCalled();
+    expect(reliability.appendAuditIntent).not.toHaveBeenCalled();
+  });
+
+  it('rechaza redrive de un evento que no está en DLQ', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'outbox-row-003',
+        eventId: '55555555-5555-4555-8555-555555555555',
+        tenantId: 'tenant-001',
+        aggregateVersion: 2,
+        correlationId: '66666666-6666-4666-8666-666666666666',
+        lastError: null,
+      }),
+    };
+    const reliability = {
+      beginIdempotent: jest.fn().mockResolvedValue({
+        intentId: 'intent-redrive-003',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      }),
+    };
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliability as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.redriveEvent('55555555-5555-4555-8555-555555555555', actor, context),
+    ).rejects.toMatchObject({ response: { code: 'EVENT_NOT_IN_DLQ' } });
+  });
+
+  it('crea un seguimiento idempotente y publica ExecutionOrderFollowUpRequiredV1', async () => {
+    const order = {
+      id: 'eo-001',
+      tenantId: 'tenant-001',
+      status: ExecutionOrderStatus.COMPLETED,
+      version: 3,
+    };
+    const savedPayloads: unknown[] = [];
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(order),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        savedPayloads.push(payload);
+        return payload;
+      }),
+    };
+    const reliability = {
+      beginIdempotent: jest.fn().mockResolvedValue({
+        intentId: 'intent-followup-001',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      }),
+      completeIdempotency: jest.fn().mockResolvedValue(undefined),
+      appendAuditIntent: jest.fn().mockResolvedValue(undefined),
+      appendOutbox: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliability as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    const result = await service.createFollowUp(
+      order.id,
+      { reasonCode: 'REVISIT_REQUIRED' },
+      actor,
+      { ...context, idempotencyKey: 'follow-up-key-0001' },
+    );
+
+    expect(result).toMatchObject({
+      intentId: 'intent-followup-001',
+      status: 'ACCEPTED',
+      version: 4,
+    });
+    expect(result.resourceRef).toMatch(/^[0-9a-f-]{36}$/iu);
+    expect(reliability.appendOutbox).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        aggregateId: order.id,
+        aggregateVersion: 4,
+        eventType: 'ExecutionOrderFollowUpRequiredV1',
+        correlationId: context.correlationId,
+        payload: expect.objectContaining({
+          executionOrderId: order.id,
+          followUpId: result.resourceRef,
+          reasonCode: 'REVISIT_REQUIRED',
+        }),
+      }),
+    );
+    expect(savedPayloads[0]).toMatchObject({ version: 4 });
+  });
+
+  it('rechaza seguimiento sobre una OT activa que no está bloqueada', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+      }),
+    };
+    const reliability = {
+      beginIdempotent: jest.fn().mockResolvedValue({
+        intentId: 'intent-followup-002',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      }),
+    };
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliability as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.createFollowUp('eo-001', { reasonCode: 'REVISIT_REQUIRED' }, actor, {
+        ...context,
+        idempotencyKey: 'follow-up-key-0002',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'FOLLOW_UP_NOT_ALLOWED' } });
+  });
+});

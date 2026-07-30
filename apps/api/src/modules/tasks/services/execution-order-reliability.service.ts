@@ -14,6 +14,7 @@ export interface ExecutionOrderCommandContext {
   ifMatch?: string;
   correlationId: string;
   requireIdempotency?: boolean;
+  requireIfMatch?: boolean;
 }
 
 export interface IdempotencyReceipt {

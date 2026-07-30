@@ -24,6 +24,7 @@ interface OutboxRow {
   payload: OperationalEventEnvelopeV1['payload'];
   correlation_id: string;
   occurred_at: string;
+  attempt_count: number;
 }
 
 interface TenantScanResult {
@@ -183,15 +184,19 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
            aggregate_version,
            event_type,
            payload,
-           correlation_id,
-           occurred_at`,
+            correlation_id,
+            occurred_at,
+            attempt_count`,
         [this.leaseSeconds, batchSize],
       );
       await client.query('COMMIT');
 
       // Encolar cada evento con retry exponencial (8 intentos)
       for (const row of rows.rows) {
-        const jobId = `execution-event-${row.event_id}`;
+        // Cada redrive aumenta attempt_count y, por tanto, obtiene un jobId
+        // nuevo sin mutar eventId/correlationId del envelope. Esto evita que
+        // BullMQ devuelva silenciosamente el job fallido original.
+        const jobId = `execution-event-${row.event_id}-${row.attempt_count}`;
 
         try {
           await this.eventsQueue.add(

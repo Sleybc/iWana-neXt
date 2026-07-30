@@ -70,6 +70,7 @@ describe('ExecutionOrderRelayService', () => {
             },
             correlation_id: 'c0000000-0000-4000-8000-000000000001',
             occurred_at: new Date().toISOString(),
+            attempt_count: 1,
           },
         ],
       } as never)
@@ -94,10 +95,11 @@ describe('ExecutionOrderRelayService', () => {
         envelope: expect.objectContaining({
           eventId: 'e0000000-0000-4000-8000-000000000001',
           eventType: 'ExecutionOrderStartedV1',
+          correlationId: 'c0000000-0000-4000-8000-000000000001',
         }),
       }),
       expect.objectContaining({
-        jobId: 'execution-event-e0000000-0000-4000-8000-000000000001',
+        jobId: 'execution-event-e0000000-0000-4000-8000-000000000001-1',
         attempts: 8,
         backoff: expect.objectContaining({ type: 'exponential', delay: 1000 }),
       }),

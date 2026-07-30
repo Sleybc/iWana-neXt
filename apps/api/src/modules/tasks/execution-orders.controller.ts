@@ -415,7 +415,7 @@ export class ExecutionOrdersController {
       id,
       dto,
       actor,
-      this.commandContext(undefined, key, correlationId),
+      this.commandContext(undefined, key, correlationId, false),
     );
   }
 
@@ -427,6 +427,7 @@ export class ExecutionOrdersController {
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @CurrentUser() actor: JwtPayload,
     @Headers('idempotency-key') key?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
     if (!key) {
       throw new BadRequestException({
@@ -434,7 +435,11 @@ export class ExecutionOrdersController {
         message: 'Idempotency-Key es obligatorio para redrive.',
       });
     }
-    return this.executionOrdersService.redriveEvent(eventId, actor);
+    return this.executionOrdersService.redriveEvent(
+      eventId,
+      actor,
+      this.commandContext(undefined, key, correlationId, false),
+    );
   }
 
   /** PLAT-P1-04: Health del relay de eventos outbox. */
@@ -459,6 +464,7 @@ export class ExecutionOrdersController {
     ifMatch?: string,
     idempotencyKey?: string,
     correlationId?: string,
+    requireIfMatch = true,
   ): ExecutionOrderCommandContext {
     const candidate = correlationId?.trim();
     const validCorrelation =
@@ -470,6 +476,7 @@ export class ExecutionOrdersController {
       ...(ifMatch ? { ifMatch } : {}),
       ...(idempotencyKey ? { idempotencyKey } : {}),
       requireIdempotency: true,
+      requireIfMatch,
       correlationId: validCorrelation,
     };
   }

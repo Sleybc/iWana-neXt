@@ -801,6 +801,7 @@ describe('ExecutionOrdersController HTTP', () => {
 describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
   let app: INestApplication;
   let effectivePermissionsMock: jest.Mock;
+  let serviceMock: ReturnType<typeof buildExecutionOrdersServiceMock>;
 
   const ORDER_UUID = '22222222-2222-4222-8222-222222222222';
 
@@ -900,7 +901,10 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       providers: [
         {
           provide: ExecutionOrdersService,
-          useFactory: buildExecutionOrdersServiceMock,
+          useFactory: () => {
+            serviceMock = buildExecutionOrdersServiceMock();
+            return serviceMock;
+          },
         },
         {
           provide: EffectivePermissionsService,
@@ -1125,7 +1129,45 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         .post(`/api/v1/tasks/execution-orders/events/${EVENT_UUID}/redrive`)
         .set('Authorization', 'Bearer coordinator-token')
         .set('Idempotency-Key', 'redrive-req-001')
+        .set('X-Correlation-Id', '55555555-5555-4555-8555-555555555555')
         .expect(202);
+
+      expect(serviceMock.redriveEvent).toHaveBeenCalledWith(
+        EVENT_UUID,
+        expect.objectContaining({ tenantId: 'tenant-001' }),
+        expect.objectContaining({
+          idempotencyKey: 'redrive-req-001',
+          requireIdempotency: true,
+          requireIfMatch: false,
+          correlationId: '55555555-5555-4555-8555-555555555555',
+        }),
+      );
+    });
+
+    it('supervisor con permiso supervise crea seguimiento y propaga la clave idempotente', async () => {
+      effectivePermissionsMock.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+      ]);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/follow-ups`)
+        .set('Authorization', 'Bearer coordinator-token')
+        .set('Idempotency-Key', 'follow-up-http-0001')
+        .set('X-Correlation-Id', '77777777-7777-4777-8777-777777777777')
+        .send({ reasonCode: 'REVISIT_REQUIRED' })
+        .expect(201);
+
+      expect(serviceMock.createFollowUp).toHaveBeenCalledWith(
+        ORDER_UUID,
+        { reasonCode: 'REVISIT_REQUIRED' },
+        expect.objectContaining({ tenantId: 'tenant-001' }),
+        expect.objectContaining({
+          idempotencyKey: 'follow-up-http-0001',
+          requireIdempotency: true,
+          requireIfMatch: false,
+          correlationId: '77777777-7777-4777-8777-777777777777',
+        }),
+      );
     });
   });
 

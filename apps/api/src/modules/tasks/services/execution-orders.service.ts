@@ -18,6 +18,7 @@ import {
   ExecutionOrderActivity,
   ExecutionOrderEvidence,
   ExecutionOrderEvidenceUploadIntent,
+  ExecutionOrderInboxEvent,
   ExecutionOrderItemUsage,
   ExecutionOrderOutboxEvent,
   ExecutionOrderTemplateRequirement as DbTemplateRequirement,
@@ -1319,29 +1320,157 @@ export class ExecutionOrdersService {
 
   async createFollowUp(
     id: string,
-    _input: { reasonCode: string; dueAt?: string },
-    _actor: JwtPayload,
-    _context?: ExecutionOrderCommandContext,
-  ): Promise<{ intentId: string; resourceRef: string; status: 'ACCEPTED' }> {
-    void id;
-    void _input;
-    void _actor;
-    void _context;
-    throw new ServiceUnavailableException({
-      code: 'FOLLOW_UP_BOUNDARY_UNAVAILABLE',
-      message: 'El seguimiento requiere una entidad de necesidad vinculada.',
+    input: { reasonCode: string; dueAt?: string | null },
+    actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
+  ): Promise<{ intentId: string; resourceRef: string; status: 'ACCEPTED'; version: number }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, id);
+      const receipt = await this.beginCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.follow_up',
+        { executionOrderId: id, input },
+        context,
+      );
+
+      if (receipt?.replay && receipt.resourceRef && receipt.resourceVersion !== null) {
+        return {
+          intentId: receipt.intentId,
+          resourceRef: receipt.resourceRef,
+          status: 'ACCEPTED',
+          version: receipt.resourceVersion,
+        };
+      }
+
+      const isTerminal = [
+        ExecutionOrderStatus.COMPLETED,
+        ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
+        ExecutionOrderStatus.NOT_EXECUTED,
+        ExecutionOrderStatus.CANCELLED,
+      ].includes(order.status);
+      if (!isTerminal && order.status !== ExecutionOrderStatus.BLOCKED) {
+        throw new ConflictException({
+          code: 'FOLLOW_UP_NOT_ALLOWED',
+          message: 'La OT solo admite seguimiento cuando está bloqueada o cerrada.',
+        });
+      }
+
+      const followUpId = randomUUID();
+      const expectedVersion = order.version ?? 1;
+      order.version = expectedVersion + 1;
+      order.updatedByUserId = actor.sub;
+      const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+
+      await this.finishCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.follow_up',
+        id,
+        saved.version,
+        context,
+        receipt,
+        'ExecutionOrderFollowUpRequiredV1',
+        { followUpId, reasonCode: input.reasonCode },
+        followUpId,
+      );
+
+      return {
+        intentId: receipt?.intentId ?? followUpId,
+        resourceRef: followUpId,
+        status: 'ACCEPTED',
+        version: saved.version,
+      };
     });
   }
 
   async redriveEvent(
     eventId: string,
-    _actor: JwtPayload,
-  ): Promise<{ eventId: string; status: 'QUEUED' }> {
-    void eventId;
-    void _actor;
-    throw new ServiceUnavailableException({
-      code: 'EVENT_REDRIVE_UNAVAILABLE',
-      message: 'El redrive requiere un consumidor DLQ y auditoría de eventos disponibles.',
+    actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
+  ): Promise<{ eventId: string; correlationId: string; status: 'QUEUED' }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const event = await qr.manager.findOne(ExecutionOrderOutboxEvent, {
+        where: { tenantId, eventId },
+      });
+      if (!event) {
+        throw new NotFoundException('Evento operativo no encontrado');
+      }
+
+      const receipt = await this.beginCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_event.redrive',
+        { eventId },
+        context,
+      );
+      if (receipt?.replay) {
+        return { eventId, correlationId: event.correlationId, status: 'QUEUED' };
+      }
+
+      if (!event.lastError) {
+        throw new ConflictException({
+          code: 'EVENT_NOT_IN_DLQ',
+          message: 'El evento no está disponible en la cola de intervención.',
+        });
+      }
+
+      const result = await qr.manager
+        .createQueryBuilder()
+        .update(ExecutionOrderOutboxEvent)
+        .set({
+          publishedAt: null,
+          availableAt: new Date(),
+          leaseUntil: null,
+          lastError: null,
+          // Genera un nuevo identificador de job en el relay sin cambiar el
+          // eventId del envelope. Los duplicados siguen siendo neutralizados
+          // por el inbox del consumidor.
+          attemptCount: () => 'attempt_count + 1',
+        })
+        .where('id = :id AND tenant_id = :tenantId AND last_error IS NOT NULL', {
+          id: event.id,
+          tenantId,
+        })
+        .execute();
+      if ((result.affected ?? 0) !== 1) {
+        throw new ConflictException({
+          code: 'EVENT_REDRIVE_CONFLICT',
+          message: 'El evento cambió mientras se solicitaba su redrive.',
+        });
+      }
+
+      // El marcador terminal de DLQ no es el inbox del consumidor: se limpia
+      // para que el operador pueda distinguir el redrive en curso del fallo
+      // anterior, sin tocar el historial durable de la operación.
+      await qr.manager
+        .createQueryBuilder()
+        .update(ExecutionOrderInboxEvent)
+        .set({ processedAt: null, lastError: null })
+        .where('tenant_id = :tenantId AND consumer = :consumer AND event_id = :eventId', {
+          tenantId,
+          consumer: 'mod11-dlq-terminal',
+          eventId,
+        })
+        .execute();
+
+      await this.finishCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_event.redrive',
+        eventId,
+        event.aggregateVersion,
+        context,
+        receipt,
+      );
+
+      return { eventId, correlationId: event.correlationId, status: 'QUEUED' };
     });
   }
 
@@ -1951,7 +2080,7 @@ export class ExecutionOrdersService {
         message: 'Idempotency-Key es obligatorio.',
       });
     }
-    if (context.requireIdempotency && !context.ifMatch) {
+    if (context.requireIdempotency && context.requireIfMatch !== false && !context.ifMatch) {
       throw new BadRequestException({
         code: 'IF_MATCH_REQUIRED',
         message: 'If-Match es obligatorio.',
@@ -1983,10 +2112,11 @@ export class ExecutionOrdersService {
     receipt: IdempotencyReceipt | null,
     eventType?: OperationalEventTypeV1,
     eventPayload: Record<string, unknown> = {},
+    resultResourceRef = aggregateId,
   ): Promise<void> {
     if (!this.reliabilityService || !context || !receipt || receipt.replay) return;
     await this.reliabilityService.completeIdempotency(manager, receipt.intentId, {
-      resourceRef: aggregateId,
+      resourceRef: resultResourceRef,
       resultCode: 'ACCEPTED',
       resultStatus: 'COMPLETED',
       resourceVersion: aggregateVersion,
@@ -1996,7 +2126,7 @@ export class ExecutionOrdersService {
       intentId: receipt.intentId,
       actorRef: actor.sub,
       operation,
-      resourceRef: aggregateId,
+      resourceRef: resultResourceRef,
       resultCode: 'ACCEPTED',
       correlationId: context.correlationId,
     });
