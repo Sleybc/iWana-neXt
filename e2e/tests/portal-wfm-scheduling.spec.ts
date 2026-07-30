@@ -1324,7 +1324,7 @@ test('admin crea, reagenda y completa un evento con orden de trabajo desde Progr
   await expect(page.getByRole('heading', { name: 'Programación' })).toBeVisible();
   await expect(page.getByText('Pulso ejecutivo de programación')).toBeVisible();
   await page.getByRole('link', { name: 'Abrir agenda' }).click();
-  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Instalacion inicial de fibra' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Agendar tarea' }).click();
@@ -1597,7 +1597,7 @@ test('technician solo visualiza trabajos asignados en su agenda', async ({ page 
 
   await page.goto('/dashboard/scheduling');
 
-  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Instalacion inicial de fibra' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Agendar tarea' })).toHaveCount(0);
 
@@ -1613,7 +1613,7 @@ test('admin conserva una agenda operativa usable en viewport movil', async ({ pa
 
   await page.goto('/dashboard/scheduling/agenda');
 
-  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Actualizar' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Agendar tarea' })).toBeVisible();
 

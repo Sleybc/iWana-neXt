@@ -850,7 +850,7 @@ test('agenda abre el resumen de la OT y conserva una sola CTA hacia ejecución',
   await seedPortalSession(page);
 
   await gotoAuthedDashboard(page, '/dashboard/scheduling/agenda');
-  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agenda', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Soporte en sitio - cableado' }).click();
 
   const eventDialog = page.getByRole('dialog').filter({

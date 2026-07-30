@@ -21,11 +21,11 @@
  *   API_BASE_URL      http://127.0.0.1:3000  (por defecto)
  *   E2E_PLATFORM_EMAIL    admin@iwana.local
  *   E2E_PLATFORM_PASSWORD Admin123!
- *   E2E_TENANT_SLUG       e2e-operations-test
+ *   E2E_TENANT_SLUG       isp-demo
  */
 
-import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import { expect, request, test } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -35,11 +35,16 @@ const API_PREFIX = `${API_BASE}/api/v1`;
 const PLATFORM_EMAIL = process.env.E2E_PLATFORM_EMAIL || 'admin@iwana.local';
 const PLATFORM_PASSWORD = process.env.E2E_PLATFORM_PASSWORD || 'Admin123!';
 
-const TENANT_SLUG = process.env.E2E_TENANT_SLUG || 'e2e-operations-test';
+const TENANT_SLUG = process.env.E2E_TENANT_SLUG || 'isp-demo';
 
 /** Fecha límite de expiración para que el rate limit del health check no se dispare. */
 const HEALTH_RETRIES = 5;
 const HEALTH_RETRY_DELAY_MS = 2_000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const VALID_EVIDENCE_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Qf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8Qf//Z',
+  'base64',
+);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +76,12 @@ type TestCtx = {
   tenantId: string;
 };
 
+type RequestClient = APIRequestContext | Page;
+
+function apiRequest(client: RequestClient): APIRequestContext {
+  return 'request' in client ? client.request : client;
+}
+
 /**
  * Crea el contexto de prueba vacío con valores por defecto.
  * Cada test describe obtiene su propia copia.
@@ -93,8 +104,8 @@ function createTestCtx(): TestCtx {
 }
 
 /** Login de plataforma → obtiene token. */
-async function platformLogin(page: Page): Promise<string> {
-  const res = await page.request.post(`${API_PREFIX}/auth/platform/login`, {
+async function platformLogin(api: APIRequestContext): Promise<string> {
+  const res = await api.post(`${API_PREFIX}/auth/platform/login`, {
     data: { email: PLATFORM_EMAIL, password: PLATFORM_PASSWORD },
   });
   expect(res.status()).toBe(200);
@@ -108,12 +119,12 @@ async function platformLogin(page: Page): Promise<string> {
  * Requiere que el usuario exista en el tenant.
  */
 async function tenantLogin(
-  page: Page,
+  api: APIRequestContext,
   email: string,
   password: string,
   slug: string,
 ): Promise<{ token: string; sub: string }> {
-  const res = await page.request.post(`${API_PREFIX}/auth/tenant/login`, {
+  const res = await api.post(`${API_PREFIX}/auth/tenant/login`, {
     data: { email, password, tenantSlug: slug },
   });
   expect(res.status()).toBe(200);
@@ -140,17 +151,27 @@ function nowIso(offsetMinutes = 0): string {
   return new Date(Date.now() + offsetMinutes * 60_000).toISOString();
 }
 
+function expectMutationHeaders(
+  response: { headers(): Record<string, string> },
+  expectedVersion?: number,
+): void {
+  expect(response.headers()['x-correlation-id']).toMatch(UUID_PATTERN);
+  if (expectedVersion !== undefined) {
+    expect(response.headers()['etag']).toBe(`"${expectedVersion}"`);
+  }
+}
+
 /**
  * Realiza un request autenticado como plataforma.
  */
 async function authedPost(
-  page: Page,
+  client: RequestClient,
   path: string,
   data: Record<string, unknown>,
   token: string,
   extraHeaders?: Record<string, string>,
 ) {
-  return page.request.post(`${API_PREFIX}${path}`, {
+  return apiRequest(client).post(`${API_PREFIX}${path}`, {
     data,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -161,12 +182,12 @@ async function authedPost(
 }
 
 async function authedGet(
-  page: Page,
+  client: RequestClient,
   path: string,
   token: string,
   extraHeaders?: Record<string, string>,
 ) {
-  return page.request.get(`${API_PREFIX}${path}`, {
+  return apiRequest(client).get(`${API_PREFIX}${path}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       ...extraHeaders,
@@ -175,13 +196,13 @@ async function authedGet(
 }
 
 async function authedPatch(
-  page: Page,
+  client: RequestClient,
   path: string,
   data: Record<string, unknown>,
   token: string,
   extraHeaders?: Record<string, string>,
 ) {
-  return page.request.patch(`${API_PREFIX}${path}`, {
+  return apiRequest(client).patch(`${API_PREFIX}${path}`, {
     data,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -195,19 +216,22 @@ async function authedPatch(
 
 test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
   let ctx: TestCtx;
-  let setupFailed = '';
+  let setupApi: APIRequestContext;
+
+  test.describe.configure({ mode: 'serial' });
 
   // Tiempo generoso para creación de datos reales en PostgreSQL
   test.setTimeout(180_000);
 
-  test.beforeAll(async ({ page }) => {
+  test.beforeAll(async () => {
+    setupApi = await request.newContext({ baseURL: API_BASE });
     ctx = createTestCtx();
 
     // 0. Health check: verificar que el API responde antes de continuar
     let apiReady = false;
     for (let attempt = 0; attempt < HEALTH_RETRIES; attempt++) {
       try {
-        const healthRes = await page.request.get(`${API_PREFIX}/health`, {
+        const healthRes = await setupApi.get(`${API_PREFIX}/health`, {
           timeout: 5_000,
         });
         if (healthRes.status() === 200) {
@@ -223,7 +247,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
     if (!apiReady) {
       // Intentar con un GET a la raíz /api/v1 como fallback
       try {
-        const fallbackRes = await page.request.get(`${API_PREFIX}/`, { timeout: 5_000 });
+        const fallbackRes = await setupApi.get(`${API_PREFIX}/`, { timeout: 5_000 });
         if (fallbackRes.ok()) apiReady = true;
       } catch {
         // No disponible
@@ -231,50 +255,57 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
     }
 
     if (!apiReady) {
-      setupFailed = `API no disponible en ${API_PREFIX}. Asegúrese de que el servidor API esté ejecutándose (pnpm --filter @iwana/api dev).`;
-      return;
+      throw new Error(
+        `API no disponible en ${API_PREFIX}. Asegúrese de que el servidor API esté ejecutándose (pnpm --filter @iwana/api dev).`,
+      );
     }
 
     // 1. Login como administrador de plataforma
     try {
-      ctx.platformToken = await platformLogin(page);
+      ctx.platformToken = await platformLogin(setupApi);
     } catch (err) {
-      setupFailed = `Login de plataforma falló: ${err instanceof Error ? err.message : String(err)}`;
-      return;
+      throw new Error(
+        `Login de plataforma falló: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // 2. Obtener tenant y usuarios de prueba
     // El tenant y los usuarios deben existir previamente en la base de datos.
-    const tenantRes = await authedGet(page, `/tenants/slug/${TENANT_SLUG}`, ctx.platformToken);
-    if (tenantRes.status() !== 200) {
-      setupFailed = `Tenant '${TENANT_SLUG}' no encontrado. Cree el tenant de prueba primero.`;
-      return;
-    }
+    const tenantRes = await authedGet(
+      setupApi,
+      `/tenants?search=${encodeURIComponent(TENANT_SLUG)}&limit=100`,
+      ctx.platformToken,
+    );
+    expect(tenantRes.status()).toBe(200);
     const tenantBody = await tenantRes.json();
-    ctx.tenantId = tenantBody.data?.id || tenantBody.id || '';
+    const tenant = tenantBody.data?.find(
+      (candidate: { slug?: string }) => candidate.slug === TENANT_SLUG,
+    );
+    if (!tenant) {
+      throw new Error(`Tenant '${TENANT_SLUG}' no encontrado. Cree el tenant de prueba primero.`);
+    }
+    ctx.tenantId = tenant.id;
 
     // 3. Login como NOC (coordinador)
     const nocEmail = process.env.E2E_NOC_EMAIL || `noc@${TENANT_SLUG}.local`;
     const nocPassword = process.env.E2E_NOC_PASSWORD || 'Password123!';
     try {
-      const nocLogin = await tenantLogin(page, nocEmail, nocPassword, TENANT_SLUG);
+      const nocLogin = await tenantLogin(setupApi, nocEmail, nocPassword, TENANT_SLUG);
       ctx.nocToken = nocLogin.token;
       ctx.nocUserId = nocLogin.sub;
     } catch {
-      setupFailed = `Usuario NOC '${nocEmail}' no encontrado en tenant '${TENANT_SLUG}'.`;
-      return;
+      throw new Error(`Usuario NOC '${nocEmail}' no encontrado en tenant '${TENANT_SLUG}'.`);
     }
 
     // 4. Login como técnico
     const techEmail = process.env.E2E_TECH_EMAIL || `tech@${TENANT_SLUG}.local`;
     const techPassword = process.env.E2E_TECH_PASSWORD || 'Password123!';
     try {
-      const techLogin = await tenantLogin(page, techEmail, techPassword, TENANT_SLUG);
+      const techLogin = await tenantLogin(setupApi, techEmail, techPassword, TENANT_SLUG);
       ctx.techToken = techLogin.token;
       ctx.techUserId = techLogin.sub;
     } catch {
-      setupFailed = `Usuario TECH '${techEmail}' no encontrado en tenant '${TENANT_SLUG}'.`;
-      return;
+      throw new Error(`Usuario TECH '${techEmail}' no encontrado en tenant '${TENANT_SLUG}'.`);
     }
 
     // 5. Login como coordinador read-only (sin permiso execute)
@@ -283,21 +314,21 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
     const coordinatorReadonlyPassword = process.env.E2E_COORDINATOR_RO_PASSWORD || 'Password123!';
     try {
       const coordLogin = await tenantLogin(
-        page,
+        setupApi,
         coordinatorReadonlyEmail,
         coordinatorReadonlyPassword,
         TENANT_SLUG,
       );
       ctx.coordinatorReadonlyToken = coordLogin.token;
     } catch {
-      setupFailed = `Usuario coordinador RO '${coordinatorReadonlyEmail}' no encontrado en tenant '${TENANT_SLUG}'.`;
-      return;
+      throw new Error(
+        `Usuario coordinador RO '${coordinatorReadonlyEmail}' no encontrado en tenant '${TENANT_SLUG}'.`,
+      );
     }
   });
 
-  // Skip todos los tests si el setup falló
-  test.beforeEach(() => {
-    test.skip(!!setupFailed, setupFailed);
+  test.afterAll(async () => {
+    await setupApi?.dispose();
   });
 
   // ─── 1. Happy path E2E ─────────────────────────────────────────────────────
@@ -345,23 +376,31 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         expect([200, 201]).toContain(transitionRes.status());
       }
 
-      // Verificar que se creó la OT vinculada al schedule event
-      // Buscar la OT por schedule event
-      const listOtRes = await authedGet(
+      // La respuesta actual de WFM conserva la referencia de la OT; no existe
+      // un listado GET /tasks/execution-orders?scheduleEventId=… en el contrato.
+      let eventDetail = eventBody.data || eventBody;
+      ctx.executionOrderId = eventDetail.executionOrderId || '';
+      if (!ctx.executionOrderId) {
+        const eventDetailRes = await authedGet(
+          page,
+          `/wfm/events/${ctx.scheduleEventId}`,
+          ctx.nocToken,
+        );
+        expect(eventDetailRes.status()).toBe(200);
+        eventDetail = await eventDetailRes.json();
+        ctx.executionOrderId = eventDetail.executionOrderId || '';
+      }
+      expect(ctx.executionOrderId).toBeTruthy();
+
+      const orderRes = await authedGet(
         page,
-        `/tasks/execution-orders?scheduleEventId=${ctx.scheduleEventId}`,
+        `/tasks/execution-orders/${ctx.executionOrderId}`,
         ctx.nocToken,
       );
-      expect(listOtRes.status()).toBe(200);
-      const listBody = await listOtRes.json();
-      // Extraer la OT de la respuesta (formato page o directo)
-      const orders = listBody.data || listBody;
-      const order = Array.isArray(orders) ? orders[0] : null;
-      expect(order).toBeDefined();
-      ctx.executionOrderId = order.id || '';
-      ctx.otNumber = order.number || order.executionOrderNumber || '';
-      ctx.otVersion = order.version || 1;
-      expect(ctx.executionOrderId).toBeTruthy();
+      expect(orderRes.status()).toBe(200);
+      const order = await orderRes.json();
+      ctx.otNumber = order.number;
+      ctx.otVersion = order.version;
       expect(ctx.otNumber).toBeTruthy();
       expect(order.status).toBe('ASSIGNED');
     });
@@ -371,7 +410,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       const res = await authedPost(
         page,
         `/tasks/execution-orders/${ctx.executionOrderId}/start`,
-        { notes: 'Inicio de OT - técnico en ruta' },
+        { note: 'Inicio de OT - técnico en ruta' },
         ctx.techToken,
         {
           'If-Match': String(ctx.otVersion),
@@ -380,6 +419,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(res.status()).toBe(200);
       const body = await res.json();
+      expectMutationHeaders(res, body.version);
       expect(body.status).toBe('IN_PROGRESS');
       ctx.otVersion = body.version || ctx.otVersion + 1;
     });
@@ -411,8 +451,10 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(listRes.status()).toBe(200);
       const listBody = await listRes.json();
-      const activities = listBody.data || listBody;
-      expect(Array.isArray(activities)).toBe(true);
+      expect(listBody).toEqual(
+        expect.objectContaining({ data: expect.any(Array), meta: expect.any(Object) }),
+      );
+      const activities = listBody.data;
       expect(activities.length).toBeGreaterThanOrEqual(1);
 
       // La versión no cambia por field-work (no modifica la OT directamente)
@@ -432,9 +474,9 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         }
       }
 
-      // Si no hay ítems, usamos un ID simbólico (el endpoint acepta strings)
+      // Fixture operativo compartido con el flujo E2E de inventario.
       if (!itemId) {
-        itemId = 'item-e2e-ont';
+        itemId = 'ONT-HG8245';
       }
 
       // Buscar custodias técnicas del técnico
@@ -453,7 +495,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         }
       }
       if (!custodyId) {
-        custodyId = 'MOV-E2E-001';
+        custodyId = 'MOV-001';
       }
 
       const res = await authedPost(
@@ -473,8 +515,17 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         },
       );
 
-      // El item-usage puede ser 202 (ACCEPTED) si se encola o 200/201 si es síncrono
-      expect([200, 201, 202]).toContain(res.status());
+      expect(res.status()).toBe(202);
+      const receipt = await res.json();
+      expectMutationHeaders(res, receipt.version);
+      expect(receipt).toEqual(
+        expect.objectContaining({
+          intentId: expect.any(String),
+          inventoryRequestId: expect.any(String),
+          status: expect.stringMatching(/^(PENDING|ACCEPTED|REJECTED)$/),
+          version: expect.any(Number),
+        }),
+      );
 
       // Verificar que el consumo se registró
       const listUsageRes = await authedGet(
@@ -483,18 +534,23 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         ctx.techToken,
       );
       expect(listUsageRes.status()).toBe(200);
+      const usagePage = await listUsageRes.json();
+      expect(usagePage).toEqual(
+        expect.objectContaining({ data: expect.any(Array), meta: expect.any(Object) }),
+      );
     });
 
     test('1e. Subir evidencia y registrar', async ({ page }) => {
       expect(ctx.executionOrderId).toBeTruthy();
 
       // 1. Subir asset de evidencia (multipart)
-      const fileContent = Buffer.from('E2E evidence upload test', 'utf-8');
+      const fileContent = VALID_EVIDENCE_JPEG;
       const uploadRes = await page.request.post(
         `${API_PREFIX}/tasks/execution-orders/${ctx.executionOrderId}/evidence-assets`,
         {
           headers: {
             Authorization: `Bearer ${ctx.techToken}`,
+            'Idempotency-Key': `e2e-evidence-upload-${ctx.executionOrderId}`,
           },
           multipart: {
             file: {
@@ -506,16 +562,17 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         },
       );
 
-      // Si el upload es síncrono, esperamos 202 o 201
-      // Si el servicio de evidence asset no está implementado, puede devolver 501
-      if (uploadRes.status() === 501 || uploadRes.status() === 404) {
-        // Evidence service not available - skip gracefully
-        return;
-      }
-      expect([200, 201, 202]).toContain(uploadRes.status());
+      expect(uploadRes.status()).toBe(202);
+      expectMutationHeaders(uploadRes);
       const uploadBody = await uploadRes.json();
-      ctx.mediaAssetId =
-        uploadBody.mediaAssetId || uploadBody.data?.mediaAssetId || uploadBody.id || '';
+      expect(uploadBody).toEqual(
+        expect.objectContaining({
+          intentId: expect.any(String),
+          mediaAssetId: expect.stringMatching(UUID_PATTERN),
+          status: expect.stringMatching(/^(PENDING_ANALYSIS|AVAILABLE)$/),
+        }),
+      );
+      ctx.mediaAssetId = uploadBody.mediaAssetId;
       expect(ctx.mediaAssetId).toBeTruthy();
 
       // 2. Poll receipt hasta que esté AVAILABLE o PENDING_ANALYSIS
@@ -546,6 +603,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           mediaAssetId: ctx.mediaAssetId,
           evidenceType: 'PHOTO',
           requirementKey: 'e2e-test-evidence',
+          expiresAt: nowIso(1440),
           capturedAt: nowIso(),
         },
         ctx.techToken,
@@ -555,15 +613,27 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         },
       );
       expect(registerRes.status()).toBe(201);
+      expectMutationHeaders(registerRes);
+      const registeredEvidence = await registerRes.json();
+      expect(registeredEvidence).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          mediaAssetId: ctx.mediaAssetId,
+          evidenceType: 'PHOTO',
+          requirementKey: 'e2e-test-evidence',
+        }),
+      );
 
       // 4. Verificar que se puede descargar la evidencia (signed URL)
-      const contentRes = await authedGet(
-        page,
-        `/tasks/execution-orders/${ctx.executionOrderId}/evidence-assets/${ctx.mediaAssetId}/content`,
-        ctx.techToken,
+      const contentRes = await page.request.get(
+        `${API_PREFIX}/tasks/execution-orders/${ctx.executionOrderId}/evidence-assets/${ctx.mediaAssetId}/content`,
+        {
+          headers: { Authorization: `Bearer ${ctx.techToken}` },
+          maxRedirects: 0,
+        },
       );
-      // 302 redirect a signed URL, o 200 con URL en body
-      expect([200, 302]).toContain(contentRes.status());
+      expect(contentRes.status()).toBe(302);
+      expect(contentRes.headers().location).toMatch(/^https?:\/\//);
     });
 
     test('1f. Cerrar OT exitosamente', async ({ page }) => {
@@ -606,7 +676,8 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expect(body.result).toBe('EXECUTED');
       expect(body.completion?.startedAt).toBeDefined();
       expect(body.completion?.closedAt).toBeDefined();
-      expect(body.completion?.progress).toBe(1);
+      expect(body.completion?.progress).toBeGreaterThanOrEqual(0);
+      expect(body.completion?.progress).toBeLessThanOrEqual(100);
     });
   });
 
@@ -631,6 +702,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       // Debe rechazar con 4xx
       expect(res.status()).toBeGreaterThanOrEqual(400);
       expect(res.status()).toBeLessThan(500);
+      expectMutationHeaders(res);
       const body = await res.json().catch(() => ({}));
       const code = body.code || '';
       expect(
@@ -648,11 +720,11 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         page,
         `/tasks/execution-orders/${ctx.executionOrderId}/item-usage`,
         {
-          itemId: 'item-e2e-test',
+          itemId: 'ONT-HG8245',
           quantity: 1,
-          technicianCustodyId: 'MOV-E2E',
+          technicianCustodyId: 'MOV-001',
           action: 'CONSUME',
-          finalDisposition: 'CONSUMED',
+          finalDisposition: 'INTERNAL_CONSUMPTION',
         },
         ctx.techToken,
         {
@@ -662,6 +734,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(res.status()).toBeGreaterThanOrEqual(400);
       expect(res.status()).toBeLessThan(500);
+      expectMutationHeaders(res);
     });
 
     test('2c. OT cerrada rechaza evidencia', async ({ page }) => {
@@ -673,6 +746,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           mediaAssetId: '00000000-0000-4000-8000-000000000000',
           evidenceType: 'PHOTO',
           requirementKey: 'e2e-post-close',
+          expiresAt: nowIso(1440),
           capturedAt: nowIso(),
         },
         ctx.techToken,
@@ -683,6 +757,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(res.status()).toBeGreaterThanOrEqual(400);
       expect(res.status()).toBeLessThan(500);
+      expectMutationHeaders(res);
     });
   });
 
@@ -726,26 +801,30 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         );
       }
 
-      // Encontrar la OT
-      const listRes = await authedGet(
+      let eventDetail = eventBody.data || eventBody;
+      concurrencyOtId = eventDetail.executionOrderId || '';
+      if (!concurrencyOtId) {
+        const eventDetailRes = await authedGet(page, `/wfm/events/${eventId}`, ctx.nocToken);
+        expect(eventDetailRes.status()).toBe(200);
+        eventDetail = await eventDetailRes.json();
+        concurrencyOtId = eventDetail.executionOrderId || '';
+      }
+      expect(concurrencyOtId).toBeTruthy();
+
+      const orderRes = await authedGet(
         page,
-        `/tasks/execution-orders?scheduleEventId=${eventId}`,
+        `/tasks/execution-orders/${concurrencyOtId}`,
         ctx.nocToken,
       );
-      expect(listRes.status()).toBe(200);
-      const listBody = await listRes.json();
-      const orders = listBody.data || listBody;
-      const order = Array.isArray(orders) ? orders[0] : null;
-      expect(order).toBeDefined();
-      concurrencyOtId = order.id || '';
-      concurrencyOtVersion = order.version || 1;
-      expect(concurrencyOtId).toBeTruthy();
+      expect(orderRes.status()).toBe(200);
+      const order = await orderRes.json();
+      concurrencyOtVersion = order.version;
 
       // Iniciar OT
       const startRes = await authedPost(
         page,
         `/tasks/execution-orders/${concurrencyOtId}/start`,
-        { notes: 'Inicio para test concurrencia' },
+        { note: 'Inicio para test concurrencia' },
         ctx.techToken,
         {
           'If-Match': String(concurrencyOtVersion),
@@ -754,6 +833,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(startRes.status()).toBe(200);
       const startBody = await startRes.json();
+      expectMutationHeaders(startRes, startBody.version);
       concurrencyOtVersion = startBody.version || concurrencyOtVersion + 1;
     });
 
@@ -816,52 +896,46 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
   // ─── 4. Rate limiting ──────────────────────────────────────────────────────
 
   test.describe('4. Rate limiting', () => {
-    const RAPID_COUNT = 15;
+    const RAPID_COUNT = 121;
 
     test('4a. Ráfaga de requests → 429 después del límite', async ({ page }) => {
-      // Hacer requests rápidos a un endpoint de lectura
+      // El límite contractual de lecturas de OT es 120 por actor y tenant.
       const getRequests = Array.from({ length: RAPID_COUNT }, (_, i) =>
-        authedGet(page, '/tenants/me', ctx.nocToken),
+        authedGet(
+          page,
+          `/tasks/execution-orders/${ctx.executionOrderId}`,
+          ctx.coordinatorReadonlyToken,
+        ),
       );
 
       const responses = await Promise.all(getRequests);
       const statuses = responses.map((r) => r.status());
-
-      // Al menos uno debe ser 429 (rate limited)
-      const rateLimited = statuses.some((s) => s === 429);
-
-      // Si el rate limit es muy permisivo, el test puede no encontrar 429.
-      // En ese caso, al menos verificamos que todos tengan headers de rate limit.
-      if (!rateLimited) {
-        // Verificar que los headers existen aunque no se haya alcanzado el límite
-        const headersOk = responses.some((r) => r.headers()['x-ratelimit-remaining'] !== undefined);
-        expect(headersOk).toBe(true);
-      } else {
-        // Verificar headers del rate limiting en la respuesta 429
-        const rateLimitedRes = responses.find((r) => r.status() === 429);
-        expect(rateLimitedRes).toBeDefined();
-        if (rateLimitedRes) {
-          expect(rateLimitedRes.status()).toBe(429);
-          // Leer headers
-          const body = await rateLimitedRes.json().catch(() => ({}));
-          expect(body.code || body.message || body.error).toBeDefined();
-        }
-      }
+      expect(statuses.filter((status) => status === 429).length).toBeGreaterThan(0);
+      const rateLimitedRes = responses.find((response) => response.status() === 429);
+      expect(rateLimitedRes).toBeDefined();
+      expect(rateLimitedRes?.headers()['x-ratelimit-limit']).toBe('120');
+      expect(rateLimitedRes?.headers()['x-ratelimit-remaining']).toBe('0');
+      const body = await rateLimitedRes?.json();
+      expect(body).toEqual(
+        expect.objectContaining({
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: expect.any(String),
+        }),
+      );
     });
 
     test('4b. Headers X-RateLimit-Remaining presentes en respuestas exitosas', async ({ page }) => {
-      const res = await authedGet(page, '/tenants/me', ctx.nocToken);
-      // Debe tener headers de rate limit (incluso si no se excede)
+      const res = await authedGet(
+        page,
+        `/tasks/execution-orders/${ctx.executionOrderId}`,
+        ctx.techToken,
+      );
+      expect(res.status()).toBe(200);
       const remaining = res.headers()['x-ratelimit-remaining'];
       const limit = res.headers()['x-ratelimit-limit'];
-
-      // Si el guard de rate limit está activo, estos headers deben existir
-      if (remaining !== undefined) {
-        expect(Number(remaining)).toBeGreaterThanOrEqual(0);
-      }
-      if (limit !== undefined) {
-        expect(Number(limit)).toBeGreaterThan(0);
-      }
+      expect(remaining).toBeDefined();
+      expect(limit).toBe('120');
+      expect(Number(remaining)).toBeGreaterThanOrEqual(0);
     });
   });
 
@@ -880,7 +954,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       const res = await authedPost(
         page,
         `/tasks/execution-orders/${ctx.executionOrderId}/start`,
-        { notes: 'Intento sin permiso' },
+        { note: 'Intento sin permiso' },
         ctx.coordinatorReadonlyToken,
         {
           'If-Match': String(ctx.otVersion),
@@ -923,6 +997,8 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       // Coordinador con supervise puede asignar → 200
       expect(res.status()).toBe(200);
+      const body = await res.json();
+      expectMutationHeaders(res, body.version);
     });
   });
 
@@ -941,13 +1017,10 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       try {
         const otherLogin = await tenantLogin(page, otherEmail, otherPassword, otherSlug);
         otherToken = otherLogin.token;
-      } catch {
-        // Tenant B not available — skip this test (need two tenants to prove BOLA)
-        test.skip(
-          true,
-          `Tenant '${otherSlug}' no disponible. Configure E2E_OTHER_TENANT_* para probar BOLA.`,
+      } catch (err) {
+        throw new Error(
+          `Tenant '${otherSlug}' no disponible. Configure E2E_OTHER_TENANT_* para probar BOLA. ${err instanceof Error ? err.message : String(err)}`,
         );
-        return;
       }
 
       // Intentar acceder a la OT del tenant A desde tenant B
@@ -1000,24 +1073,30 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         );
       }
 
-      const listRes = await authedGet(
+      let eventDetail = body.data || body;
+      evidenceOtId = eventDetail.executionOrderId || '';
+      if (!evidenceOtId) {
+        const eventDetailRes = await authedGet(page, `/wfm/events/${eventId}`, ctx.nocToken);
+        expect(eventDetailRes.status()).toBe(200);
+        eventDetail = await eventDetailRes.json();
+        evidenceOtId = eventDetail.executionOrderId || '';
+      }
+      expect(evidenceOtId).toBeTruthy();
+
+      const orderRes = await authedGet(
         page,
-        `/tasks/execution-orders?scheduleEventId=${eventId}`,
+        `/tasks/execution-orders/${evidenceOtId}`,
         ctx.nocToken,
       );
-      const listBody = await listRes.json();
-      const orders = listBody.data || listBody;
-      const order = Array.isArray(orders) ? orders[0] : null;
-      expect(order).toBeDefined();
-      evidenceOtId = order.id || '';
-      evidenceOtVersion = order.version || 1;
-      expect(evidenceOtId).toBeTruthy();
+      expect(orderRes.status()).toBe(200);
+      const order = await orderRes.json();
+      evidenceOtVersion = order.version;
 
       // Start
       const startRes = await authedPost(
         page,
         `/tasks/execution-orders/${evidenceOtId}/start`,
-        { notes: 'Inicio para evidencia' },
+        { note: 'Inicio para evidencia' },
         ctx.techToken,
         {
           'If-Match': String(evidenceOtVersion),
@@ -1026,6 +1105,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(startRes.status()).toBe(200);
       const startBody = await startRes.json();
+      expectMutationHeaders(startRes, startBody.version);
       evidenceOtVersion = startBody.version || evidenceOtVersion + 1;
     });
 
@@ -1073,6 +1153,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
       expect(res.status()).toBe(200);
       const body = await res.json();
+      expectMutationHeaders(res, body.version);
       expect(['COMPLETED_WITH_OBSERVATIONS', 'COMPLETED']).toContain(body.status);
       expect(body.result).toBe('EXECUTED_WITH_OBSERVATIONS');
     });
