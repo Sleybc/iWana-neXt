@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -65,7 +66,11 @@ type HttpResponse = {
  */
 @Injectable()
 export class TenantAwareThrottlerGuard implements CanActivate {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(@Optional() @Inject(REDIS_CLIENT) private readonly redis?: Redis) {
+    if (!redis && process.env.NODE_ENV === 'production') {
+      throw new Error('Redis client is required for the operations rate limiter.');
+    }
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<HttpRequest>();
@@ -110,6 +115,10 @@ export class TenantAwareThrottlerGuard implements CanActivate {
   }
 
   private async incrementBucket(key: string): Promise<number> {
+    if (!this.redis) {
+      throw new Error('Redis client is not configured for the operations rate limiter.');
+    }
+
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await Promise.race([

@@ -22,6 +22,7 @@ import { TasksService } from '../services/tasks.service';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { TenantAwareThrottlerGuard } from '../guards/tenant-aware-throttler.guard';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -147,6 +148,7 @@ describe('TasksController HTTP', () => {
         { provide: TaskTimelineService, useValue: timelineServiceMock },
         { provide: PermissionsGuard, useValue: { canActivate: () => true } },
         { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: { eval: jest.fn().mockResolvedValue(1) } },
         {
           provide: EffectivePermissionsService,
           useValue: {

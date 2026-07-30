@@ -9,6 +9,7 @@ import { EffectivePermissionsService } from '../access-control/services/effectiv
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
+import { REDIS_CLIENT } from '../redis/redis.module';
 import { TaskAssignmentService } from './services/task-assignment.service';
 import { TaskTimelineService } from './services/task-timeline.service';
 import { TasksService } from './services/tasks.service';
@@ -50,6 +51,7 @@ describe('TasksController Swagger', () => {
         { provide: PermissionsGuard, useValue: { canActivate: () => true } },
         { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
         { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: { eval: jest.fn().mockResolvedValue(1) } },
       ],
     }).compile();
 
