@@ -1,5 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
 /**
  * Migración 094: plantillas versionadas, requisitos declarativos,
  * gate de cierre determinista y alineación de entidades existentes.
@@ -213,6 +215,30 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // Preflight antes de soltar constraints: sin el flag el down debe fallar
+    // sin mutar el schema; con el flag el operador declara la pérdida.
+    if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
+      await this.assertTableEmpty(queryRunner, 'execution_order_template_requirements');
+      await this.assertTableEmpty(queryRunner, 'execution_order_template_versions');
+      await this.assertTableEmpty(queryRunner, 'execution_order_templates');
+      for (const column of [
+        'template_requirements_snapshot',
+        'template_label',
+        'template_version_number',
+        'template_key',
+        'template_version_id',
+        'template_id',
+      ]) {
+        await this.assertColumnEmpty(queryRunner, 'execution_orders', column);
+      }
+      for (const column of ['asset_status', 'requirement_key', 'media_asset_id']) {
+        await this.assertColumnEmpty(queryRunner, 'execution_order_evidence', column);
+      }
+      for (const column of ['movement_status', 'inventory_request_id']) {
+        await this.assertColumnEmpty(queryRunner, 'execution_order_item_usage', column);
+      }
+    }
+
     // ── Drop check constraints ──────────────────────────────────────────
     await queryRunner.query(
       `ALTER TABLE execution_order_template_requirements
@@ -232,7 +258,6 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
     await queryRunner.query(
       `DROP INDEX IF EXISTS idx_execution_order_template_requirements_version`,
     );
-    await this.assertTableEmpty(queryRunner, 'execution_order_template_requirements');
     await queryRunner.query(`DROP TABLE IF EXISTS execution_order_template_requirements`);
 
     // ── Drop versions ───────────────────────────────────────────────────
@@ -240,24 +265,16 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
       `DROP INDEX IF EXISTS idx_execution_order_template_versions_key_version`,
     );
     await queryRunner.query(`DROP INDEX IF EXISTS idx_execution_order_template_versions_template`);
-    await this.assertTableEmpty(queryRunner, 'execution_order_template_versions');
     await queryRunner.query(`DROP TABLE IF EXISTS execution_order_template_versions`);
 
     // ── Drop templates ──────────────────────────────────────────────────
     await queryRunner.query(`DROP INDEX IF EXISTS idx_execution_order_templates_tenant_work_type`);
     await queryRunner.query(`DROP INDEX IF EXISTS uq_execution_order_templates_tenant_key`);
-    await this.assertTableEmpty(queryRunner, 'execution_order_templates');
     await queryRunner.query(`DROP TABLE IF EXISTS execution_order_templates`);
 
     // ── Drop execution_orders template columns ──────────────────────────
     // Columnas agregadas como nullable en up(); down() seguro solo si no contienen datos.
     await queryRunner.query(`DROP INDEX IF EXISTS idx_execution_orders_template_version`);
-    await this.assertColumnEmpty(queryRunner, 'execution_orders', 'template_requirements_snapshot');
-    await this.assertColumnEmpty(queryRunner, 'execution_orders', 'template_label');
-    await this.assertColumnEmpty(queryRunner, 'execution_orders', 'template_version_number');
-    await this.assertColumnEmpty(queryRunner, 'execution_orders', 'template_key');
-    await this.assertColumnEmpty(queryRunner, 'execution_orders', 'template_version_id');
-    await this.assertColumnEmpty(queryRunner, 'execution_orders', 'template_id');
     await queryRunner.query(
       `ALTER TABLE execution_orders DROP COLUMN IF EXISTS template_requirements_snapshot`,
     );
@@ -273,9 +290,6 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
 
     // ── Drop evidence columns ───────────────────────────────────────────
     await queryRunner.query(`DROP INDEX IF EXISTS uq_execution_order_evidence_tenant_media_asset`);
-    await this.assertColumnEmpty(queryRunner, 'execution_order_evidence', 'asset_status');
-    await this.assertColumnEmpty(queryRunner, 'execution_order_evidence', 'requirement_key');
-    await this.assertColumnEmpty(queryRunner, 'execution_order_evidence', 'media_asset_id');
     await queryRunner.query(
       `ALTER TABLE execution_order_evidence DROP COLUMN IF EXISTS asset_status`,
     );
@@ -294,8 +308,6 @@ export class TemplateVersioningAndClosureGate0940000000000 implements MigrationI
       `ALTER TABLE execution_order_item_usage
        DROP CONSTRAINT IF EXISTS chk_execution_order_item_usage_movement_status`,
     );
-    await this.assertColumnEmpty(queryRunner, 'execution_order_item_usage', 'movement_status');
-    await this.assertColumnEmpty(queryRunner, 'execution_order_item_usage', 'inventory_request_id');
     await queryRunner.query(
       `ALTER TABLE execution_order_item_usage DROP COLUMN IF EXISTS movement_status`,
     );

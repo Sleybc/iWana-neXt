@@ -97,11 +97,6 @@ export class CreateExecutionOrdersModule0460000000000 implements MigrationInterf
     `);
 
     await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS idx_execution_orders_tenant_schedule_event
-        ON execution_orders (tenant_id, schedule_event_id)
-    `);
-
-    await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_execution_orders_tenant_assigned_technician
         ON execution_orders (tenant_id, assigned_technician_id)
     `);

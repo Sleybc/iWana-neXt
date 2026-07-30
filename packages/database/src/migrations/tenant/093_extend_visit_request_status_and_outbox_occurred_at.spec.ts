@@ -32,8 +32,14 @@ describe('ExtendVisitRequestStatusAndOutboxOccurredAt093', () => {
         ]),
       );
 
+      const addColumn = queries.find((q) => q.includes('ADD COLUMN IF NOT EXISTS occurred_at'));
+      expect(addColumn).toBeDefined();
+      expect(addColumn).not.toContain('NOT NULL DEFAULT NOW()');
       expect(queries).toEqual(
-        expect.arrayContaining([expect.stringContaining('ADD COLUMN IF NOT EXISTS occurred_at')]),
+        expect.arrayContaining([
+          expect.stringContaining('ALTER COLUMN occurred_at SET DEFAULT NOW()'),
+          expect.stringContaining('ALTER COLUMN occurred_at SET NOT NULL'),
+        ]),
       );
     });
 

@@ -1,13 +1,13 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
 /**
  * Migración 093: extiende VisitRequestStatus con IN_EXECUTION, CLOSED,
  * REQUIRES_RESCHEDULE (DATA-P0-1) y agrega occurred_at al outbox (DATA-P1-1).
  *
  * Schema: tenant (search_path)
- * Reversible: documental — PostgreSQL no soporta quitar valores de un enum.
- *    El down documenta que el downgrade lógico acepta los nuevos valores como
- *    no-error (el código que no los conoce no debe romper al encontrarlos).
+ * Reversible: sí para occurred_at; PostgreSQL no soporta quitar valores de un enum.
  *
  * ADR-068: Matriz de convergencia §"Agregar estados a VisitRequestStatus requiere
  * migración tenant versionada y reversible."
@@ -28,7 +28,7 @@ export class ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 implements
     // DATA-P1-1: Agregar occurred_at al outbox
     await queryRunner.query(
       `ALTER TABLE execution_order_outbox_events
-       ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+       ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ`,
     );
 
     // Actualizar filas existentes: occurred_at = created_at para eventos ya escritos
@@ -36,6 +36,14 @@ export class ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 implements
       `UPDATE execution_order_outbox_events
        SET occurred_at = created_at
        WHERE occurred_at IS NULL`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE execution_order_outbox_events
+       ALTER COLUMN occurred_at SET DEFAULT NOW()`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE execution_order_outbox_events
+       ALTER COLUMN occurred_at SET NOT NULL`,
     );
 
     // Mejorar índice de pending para incluir lease_until
@@ -58,6 +66,20 @@ export class ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000 implements
    * su forma anterior.
    */
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
+      const rows = ((await queryRunner.query(
+        `SELECT COUNT(*)::int AS total FROM execution_order_outbox_events WHERE occurred_at IS NOT NULL`,
+      )) ?? []) as Array<{ total: number }>;
+      const total = rows[0]?.total ?? 0;
+      if (total > 0) {
+        throw new Error(
+          `Rollback de ExtendVisitRequestStatusAndOutboxOccurredAt bloqueado: ` +
+            `occurred_at contiene ${total} evento(s). Para continuar de forma destructiva, ` +
+            `exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true de forma explícita.`,
+        );
+      }
+    }
+
     // Reconstruir el índice pending en su forma anterior a 093
     await queryRunner.query(`DROP INDEX IF EXISTS idx_execution_order_outbox_pending`);
     await queryRunner.query(

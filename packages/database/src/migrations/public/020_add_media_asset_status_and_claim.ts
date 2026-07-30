@@ -1,5 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
 /**
  * Migración 020 — Agrega columnas de ciclo de vida de evidencia a media_assets.
  *
@@ -76,20 +78,24 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Liberar assets reclamados antes de eliminar claim_ref
-    await queryRunner.query(
-      `UPDATE "public"."media_assets"
-       SET "claim_ref" = NULL
-       WHERE "claim_ref" IS NOT NULL`,
-    );
-
-    // Resetear asset_status a AVAILABLE (default) antes de eliminar la columna
-    // para evitar errores si hay filas con valores no nulos
-    await queryRunner.query(
-      `UPDATE "public"."media_assets"
-       SET "asset_status" = 'AVAILABLE'
-       WHERE "asset_status" IS NOT NULL`,
-    );
+    if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
+      const rows = ((await queryRunner.query(
+        `SELECT "id"
+         FROM "public"."media_assets"
+         WHERE "usage" = 'execution_evidence'
+            OR "claim_ref" IS NOT NULL
+            OR "checksum_sha256" IS NOT NULL
+            OR "asset_status" IS DISTINCT FROM 'AVAILABLE'
+         LIMIT 1`,
+      )) ?? []) as Array<{ id: string }>;
+      if (rows.length > 0) {
+        throw new Error(
+          `Rollback de AddMediaAssetStatusAndClaim bloqueado: existen datos de evidencia ` +
+            `o lifecycle que no pertenecen al esquema anterior. Para continuar de forma ` +
+            `destructiva, exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true de forma explícita.`,
+        );
+      }
+    }
 
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_media_assets_checksum"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_media_assets_status_claim"`);
@@ -97,16 +103,9 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
       `ALTER TABLE "public"."media_assets"
        DROP CONSTRAINT IF EXISTS "chk_media_assets_asset_status"`,
     );
-    // Revert usage check to original (without execution_evidence).
-    // P0-5: los assets creados con usage='execution_evidence' deben migrarse a
-    // un valor permitido por el CHECK anterior, o el ALTER fallará si hay filas.
-    // Se elige 'general' porque representa un asset genérico no especializado;
-    // los assets reclamados ya perdieron su claim_ref en el paso anterior.
-    await queryRunner.query(
-      `UPDATE "public"."media_assets"
-       SET "usage" = 'general'
-       WHERE "usage" = 'execution_evidence'`,
-    );
+    // Revert usage check to original (without execution_evidence). No se
+    // reescriben filas: con datos de evidencia el guard bloquea el down, y el
+    // flag explícito documenta la pérdida para el procedimiento destructivo.
     await queryRunner.query(
       `ALTER TABLE "public"."media_assets"
        DROP CONSTRAINT IF EXISTS "chk_media_assets_usage"`,

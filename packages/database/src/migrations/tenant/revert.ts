@@ -40,6 +40,11 @@ export const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
  */
 export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'InitialTenantSchema1700000000000',
+  'ExecutionOrderContractReliability0900000000000',
+  'ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000',
+  'TemplateVersioningAndClosureGate0940000000000',
+  'CreateExecutionOrderEvidenceUploadIntents0950000000000',
+  'AddExecutionOrderEvidenceCapturedAt0960000000000',
 ];
 
 export interface TenantRevertStep {
