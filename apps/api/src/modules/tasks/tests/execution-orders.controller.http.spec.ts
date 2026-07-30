@@ -25,6 +25,7 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { ExecutionOrderResponseHeadersInterceptor } from '../interceptors/execution-order-response-headers.interceptor';
 import { ExecutionOrderProjectionConvergenceService } from '../services/execution-order-projection-convergence.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
+import { createVerifiedTenantContextMiddleware } from './tenant-context-test.middleware';
 
 /** Double compartido que reproduce la operación atómica EVAL del store Redis. */
 class SharedRedisRateLimitDouble {
@@ -201,6 +202,10 @@ describe('ExecutionOrdersController HTTP', () => {
       status: ExecutionOrderStatus.ASSIGNED,
       result: null,
       workType: 'INSTALLATION',
+      templateId: null,
+      templateKey: null,
+      templateVersionNumber: null,
+      templateLabel: null,
       scheduleEventId: '33333333-3333-4333-8333-333333333333',
       plannedWindowStartAt: '2026-07-27T14:00:00.000Z',
       plannedWindowEndAt: '2026-07-27T16:00:00.000Z',
@@ -319,7 +324,7 @@ describe('ExecutionOrdersController HTTP', () => {
         },
         { provide: PermissionsGuard, useValue: { canActivate: () => true } },
         { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
-        { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        TenantAwareThrottlerGuard,
         { provide: REDIS_CLIENT, useValue: unusedRedisClient },
         {
           provide: EffectivePermissionsService,
@@ -344,6 +349,7 @@ describe('ExecutionOrdersController HTTP', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
+    app.use(createVerifiedTenantContextMiddleware());
     await app.init();
   });
 
@@ -680,6 +686,7 @@ describe('ExecutionOrdersController HTTP', () => {
 
       const app = moduleRef.createNestApplication();
       app.setGlobalPrefix('api/v1');
+      app.use(createVerifiedTenantContextMiddleware());
       await app.init();
       return app;
     };
@@ -815,6 +822,10 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
       status: ExecutionOrderStatus.ASSIGNED,
       result: null,
       workType: 'INSTALLATION',
+      templateId: null,
+      templateKey: null,
+      templateVersionNumber: null,
+      templateLabel: null,
       scheduleEventId: '33333333-3333-4333-8333-333333333333',
       plannedWindowStartAt: '2026-07-27T14:00:00.000Z',
       plannedWindowEndAt: '2026-07-27T16:00:00.000Z',
@@ -913,7 +924,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         },
         PermissionsGuard,
         { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
-        { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        TenantAwareThrottlerGuard,
         { provide: REDIS_CLIENT, useValue: unusedRedisClient },
         JwtAuthGuard,
         RolesGuard,
@@ -927,6 +938,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
+    app.use(createVerifiedTenantContextMiddleware());
     await app.init();
   });
 
@@ -1203,7 +1215,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           PermissionsGuard,
           // ABAC en acción: ExecutionOrderAccessGuard es real con el mock service
           ExecutionOrderAccessGuard,
-          { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+          TenantAwareThrottlerGuard,
           { provide: REDIS_CLIENT, useValue: unusedRedisClient },
           JwtAuthGuard,
           RolesGuard,
@@ -1217,6 +1229,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
 
       appWithAbac = moduleRef.createNestApplication();
       appWithAbac.setGlobalPrefix('api/v1');
+      appWithAbac.use(createVerifiedTenantContextMiddleware());
       await appWithAbac.init();
     });
 
@@ -1272,7 +1285,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           },
           PermissionsGuard,
           ExecutionOrderAccessGuard,
-          { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+          TenantAwareThrottlerGuard,
           { provide: REDIS_CLIENT, useValue: unusedRedisClient },
           JwtAuthGuard,
           RolesGuard,
@@ -1286,6 +1299,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
 
       appWithTenantIsolation = moduleRef.createNestApplication();
       appWithTenantIsolation.setGlobalPrefix('api/v1');
+      appWithTenantIsolation.use(createVerifiedTenantContextMiddleware());
       await appWithTenantIsolation.init();
     });
 
