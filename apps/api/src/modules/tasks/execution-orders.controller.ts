@@ -316,6 +316,9 @@ export class ExecutionOrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() actor: JwtPayload,
+    @Headers('if-match') ifMatch?: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
     if (!file) {
       throw new BadRequestException({
@@ -325,7 +328,12 @@ export class ExecutionOrdersController {
     }
     // El multipart parser de NestJS ya valida MIME declarado por el cliente,
     // pero la validación real por magic bytes ocurre en el puerto de Media.
-    return this.executionOrdersService.createEvidenceAssetReceipt(id, file, actor);
+    return this.executionOrdersService.createEvidenceAssetReceipt(
+      id,
+      file,
+      actor,
+      this.commandContext(ifMatch, idempotencyKey, correlationId),
+    );
   }
 
   @Get(':id/evidence-assets/:mediaAssetId')

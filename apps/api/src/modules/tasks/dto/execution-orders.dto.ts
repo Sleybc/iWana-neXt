@@ -257,7 +257,7 @@ export class RegisterEvidenceDto {
   expiresAt!: string;
   @ApiPropertyOptional({ format: 'date-time', nullable: true })
   @Allow()
-  capturedAt?: string;
+  capturedAt?: string | null;
 }
 
 export const ListExecutionOrderEntriesSchema = z

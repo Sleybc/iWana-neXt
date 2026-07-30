@@ -48,6 +48,11 @@ describe('ExecutionOrdersService — Evidence', () => {
 
   let service: ExecutionOrdersService;
   let evidenceAssetPort: jest.Mocked<IEvidenceAssetPort>;
+  let reliabilityService: {
+    beginIdempotent: jest.Mock;
+    completeIdempotency: jest.Mock;
+    appendAuditIntent: jest.Mock;
+  };
   let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
 
   const mockFile = (overrides: Partial<Express.Multer.File> = {}): Express.Multer.File => ({
@@ -99,12 +104,18 @@ describe('ExecutionOrdersService — Evidence', () => {
       claimAsset: jest.fn(),
     } as jest.Mocked<IEvidenceAssetPort>;
 
+    reliabilityService = {
+      beginIdempotent: jest.fn().mockResolvedValue(null),
+      completeIdempotency: jest.fn().mockResolvedValue(undefined),
+      appendAuditIntent: jest.fn().mockResolvedValue(undefined),
+    };
+
     service = new ExecutionOrdersService(
       {} as DataSource,
       undefined,
       undefined,
       undefined,
-      undefined,
+      reliabilityService as never,
       undefined,
       undefined,
       evidenceAssetPort,
@@ -346,6 +357,186 @@ describe('ExecutionOrdersService — Evidence', () => {
         expect.objectContaining({ mimetype: 'image/jpeg' }),
         'tech-001',
       );
+    });
+
+    it('crea un único intent con headers de comando e idempotencia tenant-aware', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValueOnce(mockOrder()),
+        save: jest.fn().mockResolvedValue({
+          id: 'intent-first-001',
+          executionOrderId: ORDER_UUID,
+          tenantId: 'tenant-001',
+          mediaAssetId: null,
+          status: 'PENDING',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          actorUserId: actor.sub,
+        }),
+        create: jest.fn().mockImplementation((_entity, value) => value),
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+      reliabilityService.beginIdempotent.mockResolvedValue({
+        intentId: 'idempotency-intent-001',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      });
+      evidenceAssetPort.createUploadIntent.mockResolvedValue({
+        mediaAssetId: ASSET_UUID,
+        checksumSha256: 'a'.repeat(64),
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+        uploadedAt: '2026-07-30T12:00:00.000Z',
+      });
+
+      const result = await service.createEvidenceAssetReceipt(ORDER_UUID, mockFile(), actor, {
+        idempotencyKey: 'evidence-upload-key-001',
+        ifMatch: '1',
+        requireIdempotency: true,
+        requireIfMatch: true,
+        correlationId: '00000000-0000-4000-8000-000000000001',
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({ intentId: 'intent-first-001', mediaAssetId: ASSET_UUID }),
+      );
+      expect(reliabilityService.beginIdempotent).toHaveBeenCalledWith(
+        manager,
+        'tenant-001',
+        'execution_order.evidence_asset',
+        'evidence-upload-key-001',
+        expect.objectContaining({
+          tenantId: 'tenant-001',
+          payload: expect.objectContaining({ executionOrderId: ORDER_UUID }),
+        }),
+      );
+      expect(evidenceAssetPort.createUploadIntent).toHaveBeenCalledTimes(1);
+      expect(reliabilityService.completeIdempotency).toHaveBeenCalledTimes(2);
+    });
+
+    it('reproduce el recibo original sin validar If-Match ni crear otro asset', async () => {
+      const createdAt = new Date('2026-07-30T12:00:00.000Z');
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce({
+            id: 'intent-first-001',
+            executionOrderId: ORDER_UUID,
+            tenantId: 'tenant-001',
+            mediaAssetId: ASSET_UUID,
+            status: 'PENDING_ANALYSIS',
+            expiresAt: new Date('2026-07-31T12:00:00.000Z'),
+            createdAt,
+          }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+      reliabilityService.beginIdempotent.mockResolvedValue({
+        intentId: 'idempotency-intent-001',
+        replay: true,
+        resourceRef: 'intent-first-001',
+        resultStatus: 'COMPLETED',
+        resourceVersion: 1,
+      });
+
+      const result = await service.createEvidenceAssetReceipt(ORDER_UUID, mockFile(), actor, {
+        idempotencyKey: 'evidence-upload-key-001',
+        ifMatch: '0',
+        requireIdempotency: true,
+        requireIfMatch: true,
+        correlationId: '00000000-0000-4000-8000-000000000001',
+      });
+
+      expect(result).toEqual({
+        intentId: 'intent-first-001',
+        mediaAssetId: ASSET_UUID,
+        status: 'PENDING_ANALYSIS',
+        uploadedAt: createdAt.toISOString(),
+        expiresAt: '2026-07-31T12:00:00.000Z',
+      });
+      expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
+      expect(reliabilityService.completeIdempotency).not.toHaveBeenCalled();
+    });
+
+    it('devuelve 409 si la misma clave llega con fingerprint distinto', async () => {
+      const manager = { findOne: jest.fn().mockResolvedValueOnce(mockOrder()) };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+      reliabilityService.beginIdempotent.mockRejectedValue(
+        new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' }),
+      );
+
+      await expect(
+        service.createEvidenceAssetReceipt(
+          ORDER_UUID,
+          mockFile({ buffer: Buffer.from('different-content') }),
+          actor,
+          {
+            idempotencyKey: 'evidence-upload-key-001',
+            ifMatch: '1',
+            requireIdempotency: true,
+            requireIfMatch: true,
+            correlationId: '00000000-0000-4000-8000-000000000001',
+          },
+        ),
+      ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+      expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
+    });
+
+    it('rechaza el primer request por If-Match obsoleto antes de crear intent o asset', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValueOnce(mockOrder()),
+        save: jest.fn(),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+      reliabilityService.beginIdempotent.mockResolvedValue({
+        intentId: 'idempotency-intent-002',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      });
+
+      await expect(
+        service.createEvidenceAssetReceipt(ORDER_UUID, mockFile(), actor, {
+          idempotencyKey: 'evidence-upload-key-002',
+          ifMatch: '2',
+          requireIdempotency: true,
+          requireIfMatch: true,
+          correlationId: '00000000-0000-4000-8000-000000000001',
+        }),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { label: 'Idempotency-Key', idempotencyKey: undefined, ifMatch: '1' },
+      { label: 'If-Match', idempotencyKey: 'evidence-upload-key-003', ifMatch: undefined },
+    ])('rechaza upload sin $label', async ({ idempotencyKey, ifMatch }) => {
+      const manager = { findOne: jest.fn().mockResolvedValueOnce(mockOrder()) };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      await expect(
+        service.createEvidenceAssetReceipt(ORDER_UUID, mockFile(), actor, {
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(ifMatch ? { ifMatch } : {}),
+          requireIdempotency: true,
+          requireIfMatch: true,
+          correlationId: '00000000-0000-4000-8000-000000000001',
+        }),
+      ).rejects.toMatchObject({ response: { code: expect.stringMatching(/REQUIRED/u) } });
+      expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
     });
 
     it('rechaza OT en estado terminal', async () => {

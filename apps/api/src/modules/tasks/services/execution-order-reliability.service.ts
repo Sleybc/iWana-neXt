@@ -45,7 +45,7 @@ export class ExecutionOrderReliabilityService {
     this.idempotencySecret = config.getOrThrow<string>('EXECUTION_ORDER_IDEMPOTENCY_SECRET');
   }
 
-  beginIdempotent(
+  async beginIdempotent(
     manager: EntityManager,
     tenantId: string,
     operation: string,
@@ -58,67 +58,82 @@ export class ExecutionOrderReliabilityService {
     }
     const keyHmac = this.hmac(key);
     const payloadHmac = this.hmac(this.canonicalize(payload));
-    return manager
-      .findOne(ExecutionOrderIdempotencyRecord, { where: { tenantId, operation, keyHmac } })
-      .then(async (existing) => {
-        if (existing) {
-          if (existing.payloadHmac !== payloadHmac) {
-            throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+    // El índice histórico incluye operation; este lock tenant+key evita que
+    // dos operaciones distintas puedan reservar la misma clave en paralelo.
+    if (typeof manager.query === 'function') {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `execution-order-idempotency:${tenantId}:${keyHmac}`,
+      ]);
+    }
+    return (
+      manager
+        // La clave es una intención del actor dentro del tenant, no un
+        // namespace reutilizable por operación. Así, reciclarla en otra
+        // operación también falla cerrado con IDEMPOTENCY_CONFLICT.
+        .findOne(ExecutionOrderIdempotencyRecord, { where: { tenantId, keyHmac } })
+        .then(async (existing) => {
+          if (existing) {
+            if (existing.operation !== undefined && existing.operation !== operation) {
+              throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+            }
+            if (existing.payloadHmac !== payloadHmac) {
+              throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+            }
+            if (existing.tombstonedAt || existing.expiresAt.getTime() <= Date.now()) {
+              throw new ConflictException({ code: 'IDEMPOTENCY_EXPIRED' });
+            }
+            return {
+              intentId: existing.intentId,
+              replay: true,
+              resourceRef: existing.resourceRef,
+              resultStatus: existing.resultStatus,
+              resourceVersion: existing.resourceVersion,
+            };
           }
-          if (existing.tombstonedAt || existing.expiresAt.getTime() <= Date.now()) {
-            throw new ConflictException({ code: 'IDEMPOTENCY_EXPIRED' });
-          }
-          return {
-            intentId: existing.intentId,
-            replay: true,
-            resourceRef: existing.resourceRef,
-            resultStatus: existing.resultStatus,
-            resourceVersion: existing.resourceVersion,
-          };
-        }
-        const record = manager.create(ExecutionOrderIdempotencyRecord, {
-          tenantId,
-          operation,
-          keyId: this.keyId,
-          keyHmac,
-          payloadHmac,
-          intentId: randomUUID(),
-          resourceRef: null,
-          resultCode: null,
-          resultStatus: 'PENDING',
-          resourceVersion: null,
-          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-          tombstonedAt: null,
-        });
-        let saved: ExecutionOrderIdempotencyRecord;
-        try {
-          saved = await manager.save(ExecutionOrderIdempotencyRecord, record);
-        } catch (error) {
-          // La unicidad tenant+operación+HMAC gana la carrera concurrente;
-          // leer el ganador convierte el 23505 en replay determinista.
-          if (!this.isUniqueViolation(error)) throw error;
-          const winner = await manager.findOne(ExecutionOrderIdempotencyRecord, {
-            where: { tenantId, operation, keyHmac },
+          const record = manager.create(ExecutionOrderIdempotencyRecord, {
+            tenantId,
+            operation,
+            keyId: this.keyId,
+            keyHmac,
+            payloadHmac,
+            intentId: randomUUID(),
+            resourceRef: null,
+            resultCode: null,
+            resultStatus: 'PENDING',
+            resourceVersion: null,
+            expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            tombstonedAt: null,
           });
-          if (!winner) throw error;
-          if (winner.payloadHmac !== payloadHmac)
-            throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+          let saved: ExecutionOrderIdempotencyRecord;
+          try {
+            saved = await manager.save(ExecutionOrderIdempotencyRecord, record);
+          } catch (error) {
+            // La unicidad tenant+operación+HMAC gana la carrera concurrente;
+            // leer el ganador convierte el 23505 en replay determinista.
+            if (!this.isUniqueViolation(error)) throw error;
+            const winner = await manager.findOne(ExecutionOrderIdempotencyRecord, {
+              where: { tenantId, operation, keyHmac },
+            });
+            if (!winner) throw error;
+            if (winner.payloadHmac !== payloadHmac)
+              throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+            return {
+              intentId: winner.intentId,
+              replay: true,
+              resourceRef: winner.resourceRef,
+              resultStatus: winner.resultStatus,
+              resourceVersion: winner.resourceVersion,
+            };
+          }
           return {
-            intentId: winner.intentId,
-            replay: true,
-            resourceRef: winner.resourceRef,
-            resultStatus: winner.resultStatus,
-            resourceVersion: winner.resourceVersion,
+            intentId: saved.intentId,
+            replay: false,
+            resourceRef: saved.resourceRef,
+            resultStatus: saved.resultStatus,
+            resourceVersion: saved.resourceVersion,
           };
-        }
-        return {
-          intentId: saved.intentId,
-          replay: false,
-          resourceRef: saved.resourceRef,
-          resultStatus: saved.resultStatus,
-          resourceVersion: saved.resourceVersion,
-        };
-      });
+        })
+    );
   }
 
   async completeIdempotency(

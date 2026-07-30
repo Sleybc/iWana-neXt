@@ -10,7 +10,7 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import {
@@ -1051,7 +1051,7 @@ export class ExecutionOrdersService {
       evidenceType: string;
       requirementKey: string;
       expiresAt: string;
-      capturedAt?: string;
+      capturedAt?: string | null;
     },
     actor: JwtPayload,
     context?: ExecutionOrderCommandContext,
@@ -1193,6 +1193,7 @@ export class ExecutionOrdersService {
     id: string,
     file: Express.Multer.File,
     actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
   ): Promise<EvidenceAssetReceipt> {
     const port = this.evidenceAssetPort;
     if (!port) {
@@ -1204,19 +1205,66 @@ export class ExecutionOrdersService {
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    // ── Paso 1: Crear intento durable en schema tenant ──────────────────
+    const fileFingerprint = this.createEvidenceUploadFingerprint(file);
+
+    // ── Paso 1: Reservar la clave y crear el intent durable ───────────────
     // El intent sobrevive al upload de Media para autorizar polling y
     // reconciliación. Si el upload falla, el intent queda FAILED y es visible
     // en el recibo.
     const intent = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
+      const receipt = await this.beginCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.evidence_asset',
+        { executionOrderId: id, fileFingerprint },
+        context,
+      );
+
+      if (receipt?.replay) {
+        if (!receipt.resourceRef) {
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_IN_PROGRESS',
+            message: 'La carga de evidencia todavía está en proceso.',
+          });
+        }
+
+        const replayIntent = await qr.manager.findOne(ExecutionOrderEvidenceUploadIntent, {
+          where: {
+            id: receipt.resourceRef,
+            executionOrderId: id,
+            tenantId,
+          },
+        });
+        if (!replayIntent || !replayIntent.mediaAssetId) {
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_IN_PROGRESS',
+            message: 'La carga de evidencia todavía está en proceso.',
+          });
+        }
+        if (replayIntent.status === 'FAILED') {
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_FAILED',
+            message: 'La carga original de evidencia no pudo completarse.',
+          });
+        }
+
+        return {
+          intent: replayIntent,
+          receipt,
+          orderVersion: order.version ?? 1,
+        };
+      }
+
+      this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
 
       const expiresAt = new Date(
         Date.now() + 24 * 60 * 60 * 1000, // 24h TTL
       );
 
-      return qr.manager.save(
+      const createdIntent = await qr.manager.save(
         qr.manager.create(ExecutionOrderEvidenceUploadIntent, {
           executionOrderId: id,
           tenantId,
@@ -1226,7 +1274,25 @@ export class ExecutionOrdersService {
           actorUserId: actor.sub,
         }),
       );
+
+      // Vincular la reserva al intent antes de salir de la transacción evita
+      // que un retry concurrente pueda reservar un segundo intent mientras
+      // Media procesa el binario.
+      if (receipt && this.reliabilityService) {
+        await this.reliabilityService.completeIdempotency(qr.manager, receipt.intentId, {
+          resourceRef: createdIntent.id,
+          resultCode: 'UPLOAD_INTENT_CREATED',
+          resultStatus: 'PENDING',
+          resourceVersion: order.version ?? 1,
+        });
+      }
+
+      return { intent: createdIntent, receipt, orderVersion: order.version ?? 1 };
     });
+
+    if (intent.receipt?.replay) {
+      return this.toEvidenceAssetReceipt(intent.intent);
+    }
 
     // ── Paso 2: Subir asset a Media (bounded context independiente) ─────
     let uploadResult: EvidenceUploadResult;
@@ -1234,7 +1300,7 @@ export class ExecutionOrdersService {
       uploadResult = await port.createUploadIntent(schemaName, file, actor.sub);
     } catch (err: unknown) {
       await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-        await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.id, {
+        await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.intent.id, {
           status: 'FAILED',
           mediaAssetId: null,
         });
@@ -1244,22 +1310,36 @@ export class ExecutionOrdersService {
 
     // ── Paso 3: Vincular intent con el asset creado ─────────────────────
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.id, {
+      await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.intent.id, {
         mediaAssetId: uploadResult.mediaAssetId,
         status: 'PENDING_ANALYSIS',
       });
+
+      if (intent.receipt) {
+        await this.finishCommand(
+          qr.manager,
+          tenantId,
+          actor,
+          'execution_order.evidence_asset',
+          id,
+          intent.orderVersion,
+          context,
+          intent.receipt,
+          undefined,
+          {},
+          intent.intent.id,
+        );
+      }
     });
 
-    const receipt: EvidenceAssetReceipt = {
-      intentId: intent.id,
-      mediaAssetId: uploadResult.mediaAssetId,
-      status: 'PENDING_ANALYSIS',
-      uploadedAt: uploadResult.uploadedAt,
-    };
-    if (intent.expiresAt) {
-      receipt.expiresAt = intent.expiresAt.toISOString();
-    }
-    return receipt;
+    return this.toEvidenceAssetReceipt(
+      {
+        ...intent.intent,
+        mediaAssetId: uploadResult.mediaAssetId,
+        status: 'PENDING_ANALYSIS',
+      },
+      uploadResult.uploadedAt,
+    );
   }
 
   async getEvidenceAssetReceipt(id: string, mediaAssetId: string): Promise<EvidenceAssetReceipt> {
@@ -1945,6 +2025,41 @@ export class ExecutionOrdersService {
       assetStatus,
       createdAt: createdAt.toISOString(),
     };
+  }
+
+  private toEvidenceAssetReceipt(
+    intent: ExecutionOrderEvidenceUploadIntent,
+    uploadedAt?: string,
+  ): EvidenceAssetReceipt {
+    if (!intent.mediaAssetId) {
+      throw new ConflictException({
+        code: 'EVIDENCE_UPLOAD_IN_PROGRESS',
+        message: 'La carga de evidencia todavía está en proceso.',
+      });
+    }
+
+    const receipt: EvidenceAssetReceipt = {
+      intentId: intent.id,
+      mediaAssetId: intent.mediaAssetId,
+      status: intent.status as EvidenceAssetReceipt['status'],
+      ...(uploadedAt
+        ? { uploadedAt }
+        : intent.createdAt instanceof Date
+          ? { uploadedAt: intent.createdAt.toISOString() }
+          : {}),
+    };
+    if (intent.expiresAt) receipt.expiresAt = intent.expiresAt.toISOString();
+    return receipt;
+  }
+
+  private createEvidenceUploadFingerprint(file: Express.Multer.File): string {
+    return createHash('sha256')
+      .update(file.buffer)
+      .update('\0')
+      .update(file.mimetype ?? '')
+      .update('\0')
+      .update(String(file.size))
+      .digest('hex');
   }
 
   private toActivityContract(activity: ExecutionOrderActivity): ExecutionOrderActivityContract {

@@ -494,6 +494,35 @@ describe('ExecutionOrdersController HTTP', () => {
         .expect(201);
     });
 
+    it('propaga Idempotency-Key, If-Match y correlación al servicio de upload', async () => {
+      const service = app.get(ExecutionOrdersService) as {
+        createEvidenceAssetReceipt: jest.Mock;
+      };
+      service.createEvidenceAssetReceipt.mockClear();
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+        .set('Authorization', 'Bearer tech-token')
+        .set('If-Match', '1')
+        .set('Idempotency-Key', 'evidence-upload-http-001')
+        .set('X-Correlation-Id', '00000000-0000-4000-8000-000000000001')
+        .attach('file', Buffer.from('multipart-evidence'), 'evidence.jpg')
+        .expect(202);
+
+      expect(service.createEvidenceAssetReceipt).toHaveBeenCalledWith(
+        ORDER_UUID,
+        expect.objectContaining({ fieldname: 'file' }),
+        expect.objectContaining({ sub: 'tech-001' }),
+        expect.objectContaining({
+          idempotencyKey: 'evidence-upload-http-001',
+          ifMatch: '1',
+          requireIdempotency: true,
+          requireIfMatch: true,
+          correlationId: '00000000-0000-4000-8000-000000000001',
+        }),
+      );
+    });
+
     it.each([
       { field: 'evidenceType', value: 'VIDEO' },
       { field: 'expiresAt', value: '2020-06-25T14:00:00.000Z' },

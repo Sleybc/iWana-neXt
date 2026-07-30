@@ -1197,9 +1197,10 @@
         "tags": ["tasks-execution-orders"],
         "operationId": "createExecutionOrderEvidenceAsset",
         "summary": "Crear upload-intent para evidencia de la OT",
-        "description": "MIME allowlist (SEC-F04): image/jpeg, image/png, image/heic, application/pdf. Tamaño máximo 20 MB. El servidor valida magic bytes, no confía en Content-Type del cliente.",
+        "description": "MIME allowlist: image/jpeg, image/png, image/webp, image/gif y application/pdf. Tamaño máximo 25 MB. El servidor valida magic bytes, no confía en Content-Type del cliente. La misma Idempotency-Key con el mismo fingerprint devuelve el recibo original, incluso si el retry trae un If-Match obsoleto; una reutilización incompatible responde 409.",
         "parameters": [
           { "$ref": "#/components/parameters/ExecutionOrderId" },
+          { "$ref": "#/components/parameters/IfMatch" },
           { "$ref": "#/components/parameters/IdempotencyKey" },
           { "$ref": "#/components/parameters/CorrelationId" }
         ],

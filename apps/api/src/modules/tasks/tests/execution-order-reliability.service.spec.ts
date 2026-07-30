@@ -81,6 +81,31 @@ describe('ExecutionOrderReliabilityService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('rechaza reutilizar la misma clave en otra operación', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        operation: 'execution_order.start',
+        payloadHmac: 'same-payload-hmac',
+        intentId: 'intent-001',
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+        expiresAt: new Date(Date.now() + 10000),
+        tombstonedAt: null,
+      }),
+    } as never;
+
+    await expect(
+      service.beginIdempotent(
+        manager,
+        'tenant-001',
+        'execution_order.close',
+        'key-00000000000001',
+        { value: 'x' },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+  });
+
   it('propaga fallo de audit-intent y fuerza rollback de la transacción llamadora', async () => {
     const manager = {
       create: jest.fn(),
