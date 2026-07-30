@@ -20,6 +20,8 @@ import type {
   OperationalTaskAssignmentHistoryRecord,
   OperationalTaskRecord,
   OperationalTaskTimelineEvent,
+  ExecutionOrderEvidencePage,
+  ExecutionOrderEvidenceRecord,
   RegisterExecutionOrderItemUsageDto,
   CloseExecutionOrderDto,
 } from '@/lib/api-client';
@@ -46,6 +48,22 @@ import type { TaskFormSubmitOptions } from './TaskForm';
 import { TasksTable } from './TasksTable';
 import { TasksToolbar } from './TasksToolbar';
 import { createTaskVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
+
+type EvidenceCollection =
+  | ExecutionOrderEvidencePage
+  | ExecutionOrderEvidenceRecord[]
+  | null
+  | undefined;
+
+export function normalizeExecutionOrderEvidence(
+  value: EvidenceCollection,
+): ExecutionOrderEvidenceRecord[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value?.data ?? [];
+}
 
 const USERS_PAGE_SIZE = 100;
 const TASKS_PAGE_SIZE = 20;
@@ -114,8 +132,8 @@ export function getMissingRequirements(error: unknown): ExecutionOrderMissingReq
   });
 }
 
-function collectionData<T>(value: T[] | { data: T[] }): T[] {
-  return Array.isArray(value) ? value : value.data;
+function collectionData<T>(value: T[] | { data?: T[] | null } | null | undefined): T[] {
+  return Array.isArray(value) ? value : (value?.data ?? []);
 }
 
 export function resolveAssignedTemplateVersion(
@@ -203,6 +221,9 @@ export function OperationsClient() {
   const [executionOrderEvidence, setExecutionOrderEvidence] = useState<ExecutionOrderEvidence[]>(
     [],
   );
+  const [executionOrderEvidenceState, setExecutionOrderEvidenceState] = useState<
+    'loading' | 'available' | 'unavailable'
+  >('available');
   const [executionOrderTemplate, setExecutionOrderTemplate] =
     useState<ExecutionOrderTemplateVersion | null>(null);
   const [executionOrderMissingRequirements, setExecutionOrderMissingRequirements] = useState<
@@ -313,17 +334,28 @@ export function OperationsClient() {
     setIsLoadingExecutionOrder(true);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
+    setExecutionOrderEvidenceState('loading');
     try {
-      const [order, activities, itemUsage, evidence] = await Promise.all([
+      const [order, activities, itemUsage] = await Promise.all([
         tasksApi.executionOrders.get(executionOrderId),
         tasksApi.executionOrders.listActivities(executionOrderId),
         tasksApi.executionOrders.listItemUsage(executionOrderId),
-        tasksApi.executionOrders.listEvidence(executionOrderId),
       ]);
       setSelectedExecutionOrder(order as unknown as ExecutionOrderDetail);
       setExecutionOrderActivities(activities as unknown as ExecutionOrderActivity[]);
       setExecutionOrderItemUsage(itemUsage as unknown as ExecutionOrderItemUsage[]);
-      setExecutionOrderEvidence(collectionData(evidence) as unknown as ExecutionOrderEvidence[]);
+
+      try {
+        const evidence = await tasksApi.executionOrders.listEvidence(executionOrderId);
+        setExecutionOrderEvidence(
+          normalizeExecutionOrderEvidence(evidence) as unknown as ExecutionOrderEvidence[],
+        );
+        setExecutionOrderEvidenceState('available');
+      } catch {
+        setExecutionOrderEvidence([]);
+        setExecutionOrderEvidenceState('unavailable');
+      }
+
       const templateReference = (order as unknown as ExecutionOrderDetail).template;
       if (templateReference?.id) {
         const versions = await tasksApi.executionOrders.listTemplateVersions(templateReference.id);
@@ -341,6 +373,7 @@ export function OperationsClient() {
       setExecutionOrderActivities([]);
       setExecutionOrderItemUsage([]);
       setExecutionOrderEvidence([]);
+      setExecutionOrderEvidenceState('available');
       setExecutionOrderTemplate(null);
       setExecutionOrderMissingRequirements([]);
     } finally {
@@ -667,6 +700,7 @@ export function OperationsClient() {
         activities={executionOrderActivities}
         itemUsage={executionOrderItemUsage}
         evidence={executionOrderEvidence}
+        evidenceState={executionOrderEvidenceState}
         template={executionOrderTemplate}
         missingRequirements={executionOrderMissingRequirements}
         isLoading={isLoadingExecutionOrder}
@@ -679,6 +713,7 @@ export function OperationsClient() {
           setExecutionOrderActivities([]);
           setExecutionOrderItemUsage([]);
           setExecutionOrderEvidence([]);
+          setExecutionOrderEvidenceState('available');
           setExecutionOrderError(null);
           setExecutionOrderSuccess(null);
           setExecutionOrderTemplate(null);

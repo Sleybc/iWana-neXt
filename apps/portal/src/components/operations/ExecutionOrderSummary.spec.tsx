@@ -13,7 +13,7 @@ describe('ExecutionOrderSummary', () => {
 
   it('muestra una alerta de advertencia cuando la visita no tiene OT vinculada', () => {
     render(<ExecutionOrderSummary order={null} availability="unlinked" />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Visita sin OT de ejecución vinculada');
+    expect(screen.getByRole('alert')).toHaveTextContent('Visita sin OT vinculada');
     expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
     expect(
       screen.getByText(/No hay una acción para actualizar el detalle disponible/),
@@ -75,6 +75,31 @@ describe('ExecutionOrderSummary', () => {
       result: null,
     } as never;
     render(<ExecutionOrderSummary order={order} readonly canOpen onOpen={jest.fn()} />);
-    expect(screen.getByRole('button', { name: 'Abrir OT de ejecución' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir OT' })).toBeInTheDocument();
+  });
+
+  it('mantiene el resumen seguro cuando la plantilla no está disponible', () => {
+    const order = {
+      id: 'eo-001',
+      number: 'OT-001',
+      status: 'ASSIGNED',
+      workType: 'INSTALLATION',
+      template: null,
+      schedule: {
+        window: {
+          startAt: '2026-07-27T14:00:00.000Z',
+          endAt: '2026-07-27T16:00:00.000Z',
+        },
+      },
+      site: { label: 'Sitio autorizado' },
+      completion: { completed: 2, total: 5 },
+      syncState: 'IN_SYNC',
+    } as never;
+
+    render(<ExecutionOrderSummary order={order} />);
+
+    expect(screen.getByText('Plantilla no disponible')).toBeInTheDocument();
+    expect(screen.getByText('2 de 5 requisitos completados')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveValue(40);
   });
 });

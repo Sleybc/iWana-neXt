@@ -113,7 +113,7 @@ describe('ScheduleEventDrawer — coordinación', () => {
   it('muestra la sección de resumen de OT', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
     expect(screen.getByText('Resumen de la OT')).toBeInTheDocument();
-    expect(screen.getByText(/Visita sin OT de ejecución vinculada/)).toBeInTheDocument();
+    expect(screen.getByText(/Visita sin OT vinculada/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
   });
 
@@ -134,15 +134,16 @@ describe('ScheduleEventDrawer — coordinación', () => {
     expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
   });
 
-  it('muestra el enlace "Abrir OT de ejecución" cuando hay executionOrderId', () => {
+  it('muestra una sola CTA para abrir la OT cuando hay executionOrderId', () => {
     const event = { ...baseEvent, executionOrderId: 'eo-001' };
     render(<ScheduleEventDrawer {...baseProps} event={event} onOpenExecutionOrder={jest.fn()} />);
-    expect(screen.getByRole('link', { name: 'Abrir OT de ejecución' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir OT' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Abrir OT' })).toHaveLength(1);
   });
 
   it('no muestra enlace a OT cuando no hay executionOrderId', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
-    expect(screen.queryByRole('link', { name: 'Abrir OT de ejecución' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir OT' })).not.toBeInTheDocument();
   });
 
   it('explica cuando la OT vinculada aún no está disponible sin ofrecer una acción inefectiva', () => {
@@ -151,6 +152,22 @@ describe('ScheduleEventDrawer — coordinación', () => {
 
     expect(screen.getByText('Orden no disponible')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Reintentar/ })).not.toBeInTheDocument();
+  });
+
+  it('separa la advertencia de la orden de trabajo del error de la OT', () => {
+    const event = { ...baseEvent, executionOrderId: 'eo-001', workOrderId: 'wo-001' };
+    render(
+      <ScheduleEventDrawer
+        {...baseProps}
+        event={event}
+        workOrderWarning="La orden de trabajo vinculada no está disponible."
+        executionOrderError="La OT vinculada no está disponible."
+      />,
+    );
+
+    expect(screen.getByText('Orden de trabajo no disponible')).toBeInTheDocument();
+    expect(screen.getByText('No fue posible cargar el resumen')).toBeInTheDocument();
+    expect(screen.getByText('La OT vinculada no está disponible.')).toBeInTheDocument();
   });
 
   // ─── Positive: acción de coordinación ───

@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { CalendarClock, Crosshair, MapPin, Route, Ticket } from 'lucide-react';
 import { Badge, Button, OperationalSidePeek, SkeletonBlock } from '@iwana/ui';
 import { ScheduleEventStatus } from '@iwana/shared';
@@ -37,6 +36,7 @@ export interface ScheduleEventDrawerProps {
   isLoading: boolean;
   error: string | null;
   executionOrderError?: string | null;
+  workOrderWarning?: string | null;
   onRetry?: () => Promise<void>;
 }
 
@@ -72,6 +72,7 @@ export function ScheduleEventDrawer({
   isLoading,
   error,
   executionOrderError = null,
+  workOrderWarning = null,
   onRetry,
 }: ScheduleEventDrawerProps) {
   const terminalEvent = event ? isScheduleEventTerminalStatus(event.status) : true;
@@ -119,7 +120,7 @@ export function ScheduleEventDrawer({
             <Badge variant={getScheduleEventStatusVariant(event.status)}>
               {getScheduleEventStatusLabel(event.status)}
             </Badge>
-            {hasExecutionOrder ? <Badge variant="primary">OT de ejecución vinculada</Badge> : null}
+            {hasExecutionOrder ? <Badge variant="primary">OT vinculada</Badge> : null}
           </div>
 
           {/* ── Contexto operativo ── */}
@@ -127,10 +128,7 @@ export function ScheduleEventDrawer({
             aria-labelledby="agenda-context"
             className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3"
           >
-            <h3
-              id="agenda-context"
-              className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500"
-            >
+            <h3 id="agenda-context" className="portal-eyebrow-muted">
               Contexto operativo
             </h3>
             <div className="mt-3 space-y-3 text-sm text-gray-600 dark:text-gray-300">
@@ -166,6 +164,14 @@ export function ScheduleEventDrawer({
               {event.description || 'Sin descripción interna registrada para esta actividad.'}
             </p>
           </section>
+
+          {workOrderWarning ? (
+            <PortalAlert
+              variant="warning"
+              title="Orden de trabajo no disponible"
+              description={workOrderWarning}
+            />
+          ) : null}
 
           {/* ── Siguiente acción de coordinación ── */}
           <section
@@ -208,7 +214,7 @@ export function ScheduleEventDrawer({
                   Resumen de la OT
                 </h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  La ejecución se registra en MOD11; Agenda solo muestra su resumen.
+                  La información completa se registra en la OT; Agenda solo muestra su resumen.
                 </p>
               </div>
             </div>
@@ -229,15 +235,6 @@ export function ScheduleEventDrawer({
                   : {})}
               />
             </div>
-            {hasExecutionOrder ? (
-              <div className="mt-4">
-                <Button asChild variant="secondary" size="sm">
-                  <Link href={`/dashboard/operations?executionOrderId=${event.executionOrderId}`}>
-                    Abrir OT de ejecución
-                  </Link>
-                </Button>
-              </div>
-            ) : null}
           </section>
 
           {/* ── Excepciones ── */}

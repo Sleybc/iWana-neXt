@@ -12,6 +12,7 @@ import { ApiError, tasksApi, wfmApi } from '@/lib/api-client';
 
 const useAuthMock = jest.fn();
 const replaceMock = jest.fn();
+const pushMock = jest.fn();
 const useOperatingWindowMock = jest.fn();
 let searchParamsMock = new URLSearchParams();
 let pathnameMock = '/dashboard/scheduling/agenda';
@@ -52,7 +53,7 @@ jest.mock('./useOperatingWindow', () => ({
 
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
-  useRouter: () => ({ replace: replaceMock }),
+  useRouter: () => ({ replace: replaceMock, push: pushMock }),
   useSearchParams: () => searchParamsMock,
 }));
 
@@ -317,6 +318,7 @@ describe('SchedulingClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     replaceMock.mockReset();
+    pushMock.mockReset();
     searchParamsMock = new URLSearchParams();
     pathnameMock = '/dashboard/scheduling/agenda';
     useOperatingWindowMock.mockReturnValue({
@@ -798,10 +800,10 @@ describe('SchedulingClient', () => {
 
     expect(await screen.findByText('OT-001')).toBeInTheDocument();
     expect(tasksApiMock.executionOrders.get).toHaveBeenCalledWith('eo-001');
-    expect(screen.getByRole('link', { name: 'Abrir OT de ejecución' })).toHaveAttribute(
-      'href',
-      '/dashboard/operations?executionOrderId=eo-001',
-    );
+    const openButton = screen.getByRole('button', { name: 'Abrir OT' });
+    expect(openButton).toBeInTheDocument();
+    fireEvent.click(openButton);
+    expect(pushMock).toHaveBeenCalledWith('/dashboard/operations?executionOrderId=eo-001');
   });
 
   it('abre una solicitud pendiente fijada desde query y conserva la vista diaria', async () => {

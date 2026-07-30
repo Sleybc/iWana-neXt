@@ -435,6 +435,19 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByText('Serial ONT')).toBeInTheDocument();
     });
 
+    it('muestra completados sobre total sin interpretar el valor completado como porcentaje', () => {
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          completion: { completed: 2, total: 5 } as never,
+        }),
+      });
+
+      const section = screen.getByRole('region', { name: 'Checklist de instalación' });
+      expect(within(section).getByText(/2 de 5/)).toBeInTheDocument();
+      expect(within(section).getByRole('progressbar')).toHaveValue(40);
+    });
+
     it('shows actionable closure gaps without exposing internal identifiers', () => {
       renderDrawer({
         missingRequirements: [
@@ -782,6 +795,21 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeInTheDocument();
     });
 
+    it('exige una cantidad positiva y muestra el error junto al campo', async () => {
+      const user = userEvent.setup();
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      const quantity = screen.getByLabelText('Cantidad');
+      expect(quantity).toHaveAttribute('min', '1');
+      expect(quantity).toHaveAttribute('step', '1');
+
+      await user.clear(quantity);
+      await user.type(quantity, '0');
+
+      expect(screen.getByText('La cantidad debe ser mayor que cero.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+    });
+
     it('disables add item form on terminal OT', () => {
       renderDrawer({
         order: detailFactory({
@@ -809,6 +837,27 @@ describe('ExecutionOrderDrawer', () => {
   // Block 5 — Evidencia y conformidad
   // ----------------------------------------------------
   describe('Block 5 — Evidencia y conformidad', () => {
+    it('normaliza evidencias null y mantiene el estado vacío', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        evidence: null,
+      });
+
+      expect(screen.getByText('Sin evidencias registradas')).toBeInTheDocument();
+    });
+
+    it('explica honestamente cuando el servicio de evidencias no está disponible', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        evidence: null,
+        evidenceState: 'unavailable',
+      });
+
+      expect(screen.getByText('Evidencias no disponibles')).toBeInTheDocument();
+      expect(screen.getByText(/No pudimos consultar las evidencias/)).toBeInTheDocument();
+      expect(screen.queryByText('Sin evidencias registradas')).not.toBeInTheDocument();
+    });
+
     it('shows evidence list with status', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),

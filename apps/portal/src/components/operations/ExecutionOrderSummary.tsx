@@ -10,6 +10,7 @@ import {
   EXECUTION_ORDER_WORK_TYPE_LABELS,
 } from './operations-labels';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
+import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 
 type SummaryOrder = ExecutionOrderDetail | ExecutionOrderRecord;
 export type ExecutionOrderAvailability = 'linked' | 'unlinked' | 'unavailable';
@@ -106,11 +107,11 @@ export function ExecutionOrderSummary({
       <PortalAlert
         variant="warning"
         live="assertive"
-        title="Visita sin OT de ejecución vinculada"
+        title="Visita sin OT vinculada"
         description={
           onRefreshDetail
-            ? 'La visita todavía no tiene una orden de trabajo de ejecución asociada. Actualiza el detalle para consultar el vínculo más reciente.'
-            : 'La visita todavía no tiene una orden de trabajo de ejecución asociada. No hay una acción para actualizar el detalle disponible en este momento.'
+            ? 'La visita todavía no tiene una orden de trabajo asociada. Actualiza el detalle para consultar el vínculo más reciente.'
+            : 'La visita todavía no tiene una orden de trabajo asociada. No hay una acción para actualizar el detalle disponible en este momento.'
         }
         action={
           onRefreshDetail ? (
@@ -132,7 +133,15 @@ export function ExecutionOrderSummary({
             ? 'No fue posible consultar la orden de trabajo. Intenta de nuevo más tarde.'
             : 'No fue posible consultar la orden de trabajo. La información estará disponible cuando se actualice el detalle.'
         }
-        action={onRetry ? <Button onClick={onRetry}>Reintentar</Button> : undefined}
+        action={
+          canOpen && onOpen ? (
+            <Button type="button" variant="secondary" onClick={onOpen}>
+              Abrir OT
+            </Button>
+          ) : onRetry ? (
+            <Button onClick={onRetry}>Reintentar</Button>
+          ) : undefined
+        }
       />
     );
   }
@@ -140,7 +149,7 @@ export function ExecutionOrderSummary({
     return (
       <PortalEmptyState
         title="Aún no hay una orden de trabajo"
-        description="La visita todavía no tiene una orden de trabajo de ejecución asociada."
+        description="La visita todavía no tiene una orden de trabajo asociada."
       />
     );
   }
@@ -160,14 +169,16 @@ export function ExecutionOrderSummary({
     : order.assignedTechnicianId
       ? 'Responsable asignado'
       : undefined;
-  const progress = isDetail(order)
-    ? order.completion.progress
+  const completion = isDetail(order)
+    ? getExecutionOrderCompletionDisplay(order.completion)
     : status === ExecutionOrderStatus.COMPLETED ||
         status === ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS
-      ? 100
-      : 0;
+      ? { value: 100, label: '100%', isComplete: true }
+      : { value: 0, label: '0%', isComplete: false };
   const template = isDetail(order)
-    ? `${order.template.label} · v${order.template.version}`
+    ? order.template
+      ? `${order.template.label} · v${order.template.version}`
+      : 'Plantilla no disponible'
     : 'Plantilla de instalación aplicada';
   const dateFormatter = new Intl.DateTimeFormat('es-CO', {
     dateStyle: 'medium',
@@ -175,7 +186,7 @@ export function ExecutionOrderSummary({
   });
 
   return (
-    <section aria-label="Resumen de la OT de ejecución" className="space-y-4">
+    <section aria-label="Resumen de la OT" className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="neutral">
           <span className="font-mono">{number}</span>
@@ -192,48 +203,43 @@ export function ExecutionOrderSummary({
       </div>
       <div className="grid gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Sitio</p>
+          <p className="portal-eyebrow-muted">Sitio</p>
           <p className="mt-1 font-medium text-gray-900 dark:text-white">
             {site ?? 'Sitio autorizado'}
           </p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Ventana</p>
+          <p className="portal-eyebrow-muted">Ventana</p>
           <p className="mt-1 text-gray-700 dark:text-gray-200">
             {dateFormatter.format(new Date(window.startAt))} –{' '}
             {dateFormatter.format(new Date(window.endAt))}
           </p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-            Responsable
-          </p>
+          <p className="portal-eyebrow-muted">Responsable</p>
           <p className="mt-1 text-gray-700 dark:text-gray-200">
             {assignee ?? 'Sin responsable asignado'}
           </p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-            Plantilla
-          </p>
+          <p className="portal-eyebrow-muted">Plantilla</p>
           <p className="mt-1 text-gray-700 dark:text-gray-200">{template}</p>
         </div>
       </div>
       <ProgressMeter
-        value={progress}
+        value={completion.value}
         label="Requisitos de instalación"
         ariaLabel="Avance de requisitos de instalación"
       />
+      <p className="text-sm text-gray-700 dark:text-gray-200">
+        {completion.label} requisitos completados
+      </p>
       <p role="status" className="text-xs text-gray-500 dark:text-gray-400">
         {syncCopy(syncState)}
       </p>
-      {!readonly && canOpen && onOpen ? (
+      {canOpen && onOpen ? (
         <Button type="button" variant="secondary" onClick={onOpen}>
-          Abrir OT de ejecución
-        </Button>
-      ) : canOpen && onOpen ? (
-        <Button type="button" variant="secondary" onClick={onOpen}>
-          Abrir OT de ejecución
+          Abrir OT
         </Button>
       ) : null}
     </section>

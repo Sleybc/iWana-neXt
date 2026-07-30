@@ -9,6 +9,7 @@ import {
   getMissingRequirements,
   isValidFutureEvidenceExpiry,
   resolveAssignedTemplateVersion,
+  normalizeExecutionOrderEvidence,
 } from './OperationsClient';
 
 jest.mock('next/link', () => ({
@@ -67,6 +68,13 @@ jest.mock('@/lib/api-client', () => ({
     timeline: jest.fn().mockResolvedValue([]),
     assignmentHistory: jest.fn().mockResolvedValue([]),
     transition: jest.fn(),
+    executionOrders: {
+      get: jest.fn(),
+      listActivities: jest.fn().mockResolvedValue([]),
+      listItemUsage: jest.fn().mockResolvedValue([]),
+      listEvidence: jest.fn().mockResolvedValue({ data: [] }),
+      listTemplateVersions: jest.fn().mockResolvedValue({ data: [] }),
+    },
   },
   usersApi: {
     list: jest.fn().mockResolvedValue({
@@ -125,6 +133,60 @@ describe('OperationsClient', () => {
       },
     ]);
     expect(missing[0]?.label).not.toContain('req-photo-install');
+  });
+
+  it('normaliza evidencias ausentes a una colección vacía', () => {
+    expect(normalizeExecutionOrderEvidence(null)).toEqual([]);
+    expect(normalizeExecutionOrderEvidence(undefined)).toEqual([]);
+    expect(normalizeExecutionOrderEvidence({ data: [] })).toEqual([]);
+  });
+
+  it('mantiene la OT visible cuando el endpoint de evidencias todavía no está disponible', async () => {
+    const order = {
+      id: 'eo-001',
+      number: 'OT-001',
+      status: 'IN_PROGRESS',
+      workType: WfmWorkType.INSTALLATION,
+      template: {
+        id: 'tpl-001',
+        key: 'INSTALACION_FIBRA',
+        version: 1,
+        label: 'Instalación fibra',
+      },
+      schedule: {
+        eventId: 'event-001',
+        window: {
+          startAt: '2026-07-30T14:00:00.000Z',
+          endAt: '2026-07-30T16:00:00.000Z',
+        },
+      },
+      site: { id: 'site-001', label: 'Sitio autorizado' },
+      completion: { progress: 0 },
+      syncState: 'IN_SYNC',
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: [],
+      createdAt: '2026-07-30T12:00:00.000Z',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    } as never;
+
+    jest.mocked(tasksApi.executionOrders.get).mockResolvedValue(order);
+    jest.mocked(tasksApi.executionOrders.listActivities).mockResolvedValue([]);
+    jest.mocked(tasksApi.executionOrders.listItemUsage).mockResolvedValue([]);
+    jest
+      .mocked(tasksApi.executionOrders.listEvidence)
+      .mockRejectedValue(new Error('Endpoint no disponible'));
+    jest.mocked(tasksApi.executionOrders.listTemplateVersions).mockResolvedValue({ data: [] });
+    window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-001');
+
+    try {
+      render(<OperationsClient />);
+
+      expect(await screen.findByText('Evidencias no disponibles')).toBeInTheDocument();
+      expect(screen.getAllByText('OT-001').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText('Sin evidencias registradas')).not.toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, '', '/dashboard/operations');
+    }
   });
 
   it('no sustituye la versión asignada por otra versión de plantilla', () => {

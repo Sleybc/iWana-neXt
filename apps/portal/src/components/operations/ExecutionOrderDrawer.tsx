@@ -30,6 +30,7 @@ import type { CloseExecutionOrderDto, RegisterExecutionOrderItemUsageDto } from 
 import type { ExecutionOrderMissingRequirement } from './OperationsClient';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary } from './ExecutionOrderSummary';
+import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 import {
   EXECUTION_ORDER_RESULT_LABELS,
   EXECUTION_ORDER_RESULT_VARIANTS,
@@ -46,7 +47,8 @@ interface ExecutionOrderDrawerProps {
   order: ExecutionOrderDetail | null;
   activities: ExecutionOrderActivity[];
   itemUsage: ExecutionOrderItemUsage[];
-  evidence: ExecutionOrderEvidence[];
+  evidence?: ExecutionOrderEvidence[] | null;
+  evidenceState?: 'loading' | 'available' | 'unavailable';
   template: ExecutionOrderTemplateVersion | null;
   missingRequirements?: ExecutionOrderMissingRequirement[];
   isLoading: boolean;
@@ -117,6 +119,8 @@ const TERMINAL_STATUSES = new Set<ExecutionOrderStatus>([
   ExecutionOrderStatus.NOT_EXECUTED,
   ExecutionOrderStatus.CANCELLED,
 ]);
+
+const EMPTY_EVIDENCE: ExecutionOrderEvidence[] = [];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -208,7 +212,8 @@ export function ExecutionOrderDrawer({
   order,
   activities,
   itemUsage,
-  evidence = [],
+  evidence,
+  evidenceState = 'available',
   template = null,
   missingRequirements = [],
   isLoading,
@@ -227,6 +232,7 @@ export function ExecutionOrderDrawer({
   custodyOptions,
   itemOptions = [],
 }: ExecutionOrderDrawerProps) {
+  const normalizedEvidence = evidence ?? EMPTY_EVIDENCE;
   const terminal = order ? TERMINAL_STATUSES.has(order.status) : false;
   const forbidden = order ? order.allowedActions === null : false;
   const canInteract = !terminal && !offline && !forbidden && order !== null;
@@ -238,6 +244,7 @@ export function ExecutionOrderDrawer({
   const canClose = order ? template !== null && actionAllowed(order, 'CLOSE') : false;
   const canBlock = order ? actionAllowed(order, 'BLOCK') : false;
   const canUnblock = order ? actionAllowed(order, 'UNBLOCK') : false;
+  const completion = getExecutionOrderCompletionDisplay(order?.completion);
 
   // ─── State local ────────────────────────────────────────────────────
 
@@ -367,11 +374,21 @@ export function ExecutionOrderDrawer({
   const handleRegisterItem = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!itemId.trim() || !itemAction || !selectedCustodyId || !itemDisposition) return;
+      const quantity = Number(itemQty);
+      if (
+        !itemId.trim() ||
+        !itemAction ||
+        !selectedCustodyId ||
+        !itemDisposition ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0
+      ) {
+        return;
+      }
       const payload: Parameters<typeof onRegisterItemUsage>[0] = {
         itemId: itemId.trim(),
         technicianCustodyId: selectedCustodyId,
-        quantity: Number(itemQty) || 1,
+        quantity,
         action: itemAction,
         finalDisposition: itemDisposition as InventoryDisposition,
       };
@@ -394,6 +411,13 @@ export function ExecutionOrderDrawer({
       onRegisterItemUsage,
     ],
   );
+
+  const itemQuantityError =
+    itemQty.trim().length === 0
+      ? 'Ingresa una cantidad mayor que cero.'
+      : !Number.isFinite(Number(itemQty)) || Number(itemQty) <= 0
+        ? 'La cantidad debe ser mayor que cero.'
+        : null;
 
   const handleCloseConfirm = useCallback(async () => {
     if (!closeSummary.trim()) return;
@@ -461,13 +485,13 @@ export function ExecutionOrderDrawer({
 
   const customerSignatureEvidence = useMemo(
     () =>
-      evidence.filter(
+      normalizedEvidence.filter(
         (ev) =>
           ev.status === 'AVAILABLE' &&
           ev.evidenceType === 'SIGNATURE' &&
           ev.requirementKey === 'CUSTOMER_SIGNATURE',
       ),
-    [evidence],
+    [normalizedEvidence],
   );
 
   const customerAcceptanceEvidenceOptions = useMemo(
@@ -485,8 +509,8 @@ export function ExecutionOrderDrawer({
     <OperationalSidePeek
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={order?.number ?? 'OT de ejecución'}
-      description="Espacio de ejecución de la orden de trabajo"
+      title={order?.number ?? 'OT'}
+      description="Registra y consulta el trabajo realizado en la OT"
       size="wide"
       busy={isSubmitting}
     >
@@ -570,60 +594,46 @@ export function ExecutionOrderDrawer({
             </h3>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Sitio
-                </p>
+                <p className="portal-eyebrow-muted">Sitio</p>
                 <p className="mt-1 text-sm text-gray-900 dark:text-white">
                   {order.site.label || order.site.address || 'Sitio autorizado'}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Ventana
-                </p>
+                <p className="portal-eyebrow-muted">Ventana</p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
                   {dateFormatter(order.schedule.window.startAt)} –{' '}
                   {dateFormatter(order.schedule.window.endAt)}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Responsable
-                </p>
+                <p className="portal-eyebrow-muted">Responsable</p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
                   {order.assignee?.displayLabel ?? 'Sin responsable asignado'}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Tipo de trabajo
-                </p>
+                <p className="portal-eyebrow-muted">Tipo de trabajo</p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
                   {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType] ?? 'Trabajo operativo'}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Estado
-                </p>
+                <p className="portal-eyebrow-muted">Estado</p>
                 <Badge className="mt-1" variant={EXECUTION_ORDER_STATUS_VARIANTS[order.status]}>
                   {EXECUTION_ORDER_STATUS_LABELS[order.status] ?? 'Estado operativo'}
                 </Badge>
               </div>
               {order.result && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                    Resultado
-                  </p>
+                  <p className="portal-eyebrow-muted">Resultado</p>
                   <Badge className="mt-1" variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
                     {EXECUTION_ORDER_RESULT_LABELS[order.result] ?? 'Resultado registrado'}
                   </Badge>
                 </div>
               )}
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Plantilla
-                </p>
+                <p className="portal-eyebrow-muted">Plantilla</p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
                   {template
                     ? `${template.label} · v${template.version}`
@@ -631,12 +641,8 @@ export function ExecutionOrderDrawer({
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Requisitos completados
-                </p>
-                <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {order.completion.progress}%
-                </p>
+                <p className="portal-eyebrow-muted">Requisitos completados</p>
+                <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">{completion.label}</p>
               </div>
             </div>
             {/* Start button */}
@@ -685,10 +691,13 @@ export function ExecutionOrderDrawer({
             </h3>
             <div className="mt-3">
               <ProgressMeter
-                value={order.completion.progress}
+                value={completion.value}
                 label="Avance de requisitos"
                 ariaLabel="Avance de requisitos de instalación"
               />
+              <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                Completados: {completion.label}
+              </p>
             </div>
             {template && template.requirements.length > 0 && (
               <ul className="mt-4 space-y-1.5" role="list">
@@ -777,7 +786,7 @@ export function ExecutionOrderDrawer({
                                   ? 'Novedad'
                                   : 'Actividad de campo'}
                       </p>
-                      <span className="shrink-0 text-xs text-gray-500 font-mono">
+                      <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
                         {dateFormatter(act.occurredAt ?? act.createdAt)}
                       </span>
                     </div>
@@ -807,7 +816,9 @@ export function ExecutionOrderDrawer({
                 onSubmit={handleRegisterActivity}
                 className="mt-4 space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border"
               >
-                <p className="text-xs font-medium text-gray-500">Registrar nueva actividad</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Registrar nueva actividad
+                </p>
                 <Select
                   id="eo-activity-type"
                   label="Tipo de actividad"
@@ -835,7 +846,7 @@ export function ExecutionOrderDrawer({
                 </Button>
                 <Button
                   type="submit"
-                  variant="secondary"
+                  variant="primary"
                   disabled={isSubmitting || activityDescription.trim().length === 0}
                 >
                   Registrar actividad
@@ -909,7 +920,9 @@ export function ExecutionOrderDrawer({
                 onSubmit={handleRegisterItem}
                 className="mt-4 space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border"
               >
-                <p className="text-xs font-medium text-gray-500">Agregar material o equipo</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Agregar material o equipo
+                </p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <Select
                     id="eo-item-id"
@@ -931,7 +944,10 @@ export function ExecutionOrderDrawer({
                     id="eo-item-qty"
                     label="Cantidad"
                     type="number"
+                    min="1"
+                    step="1"
                     value={itemQty}
+                    error={itemQuantityError ?? undefined}
                     disabled={isSubmitting}
                     onChange={(e) => setItemQty(e.target.value)}
                   />
@@ -982,10 +998,11 @@ export function ExecutionOrderDrawer({
                 </div>
                 <Button
                   type="submit"
-                  variant="secondary"
+                  variant="primary"
                   disabled={
                     isSubmitting ||
                     itemId.trim().length === 0 ||
+                    itemQuantityError !== null ||
                     !itemAction ||
                     !selectedCustodyId ||
                     !itemDisposition
@@ -1011,13 +1028,23 @@ export function ExecutionOrderDrawer({
 
             {/* Evidence list */}
             <div className="mt-3 space-y-2">
-              {evidence.length === 0 ? (
+              {evidenceState === 'unavailable' ? (
+                <PortalAlert
+                  variant="warning"
+                  title="Evidencias no disponibles"
+                  description="No pudimos consultar las evidencias en este momento. La OT sigue disponible y podrás intentarlo cuando el servicio esté disponible."
+                />
+              ) : evidenceState === 'loading' ? (
+                <div aria-busy="true" aria-label="Cargando evidencias">
+                  <SkeletonBlock className="h-20" />
+                </div>
+              ) : normalizedEvidence.length === 0 ? (
                 <PortalEmptyState
                   title="Sin evidencias registradas"
                   description="Adjunta fotos o documentos cuando formen parte de los requisitos de la orden."
                 />
               ) : (
-                evidence.map((ev) => (
+                normalizedEvidence.map((ev) => (
                   <article
                     key={ev.id}
                     className="flex items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border"
@@ -1138,7 +1165,7 @@ export function ExecutionOrderDrawer({
                   </div>
                 )}
                 {order.completion.closedAt && (
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Cerrada el {dateFormatter(order.completion.closedAt)}
                   </p>
                 )}
@@ -1214,11 +1241,11 @@ export function ExecutionOrderDrawer({
                 </fieldset>
 
                 {/* Incomplete requirements */}
-                {template && order.completion.progress < 100 && (
+                {template && !completion.isComplete && (
                   <PortalAlert
                     variant="warning"
                     title="Requisitos pendientes"
-                    description={`Aún faltan requisitos de la plantilla. Progreso actual: ${order.completion.progress}%`}
+                    description={`Aún faltan requisitos de la plantilla. Progreso actual: ${completion.label}`}
                   />
                 )}
 

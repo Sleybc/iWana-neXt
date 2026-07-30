@@ -247,7 +247,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDrawerLoading, setIsDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
-  const [drawerActionError, setDrawerActionError] = useState<string | null>(null);
+  const [workOrderWarning, setWorkOrderWarning] = useState<string | null>(null);
+  const [executionOrderError, setExecutionOrderError] = useState<string | null>(null);
   const [isMoveToPendingOpen, setIsMoveToPendingOpen] = useState(false);
   const [moveToPendingError, setMoveToPendingError] = useState<string | null>(null);
   const [isMoveToPendingSubmitting, setIsMoveToPendingSubmitting] = useState(false);
@@ -558,19 +559,18 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     setIsDrawerOpen(true);
     setIsDrawerLoading(true);
     setDrawerError(null);
-    setDrawerActionError(null);
+    setWorkOrderWarning(null);
+    setExecutionOrderError(null);
 
     try {
       const eventDetail = await wfmApi.events.get(eventId);
       let workOrderDetail: WfmWorkOrder | null = null;
       let executionOrderDetail: ExecutionOrderRecord | null = null;
-      const detailWarnings: string[] = [];
-
       if (eventDetail.workOrderId) {
         try {
           workOrderDetail = await wfmApi.workOrders.get(eventDetail.workOrderId);
         } catch (workOrderError) {
-          detailWarnings.push(
+          setWorkOrderWarning(
             `La orden de trabajo vinculada no está disponible en este momento. ${mapSchedulingError(workOrderError)}`,
           );
         }
@@ -580,8 +580,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         try {
           executionOrderDetail = await tasksApi.executionOrders.get(eventDetail.executionOrderId);
         } catch (executionOrderError) {
-          detailWarnings.push(
-            `La orden de ejecución vinculada no está disponible en este momento. ${mapSchedulingError(executionOrderError)}`,
+          setExecutionOrderError(
+            `La OT vinculada no está disponible en este momento. ${mapSchedulingError(executionOrderError)}`,
           );
         }
       }
@@ -593,10 +593,11 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
       );
       setSelectedEvent(enrichedEvent);
       setSelectedExecutionOrder(executionOrderDetail);
-      setDrawerActionError(detailWarnings.length > 0 ? detailWarnings.join(' ') : null);
     } catch (detailError) {
       setSelectedEvent(null);
       setSelectedExecutionOrder(null);
+      setWorkOrderWarning(null);
+      setExecutionOrderError(null);
       setDrawerError(mapSchedulingError(detailError));
     } finally {
       setIsDrawerLoading(false);
@@ -1527,7 +1528,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
             setSelectedEvent(null);
             setSelectedExecutionOrder(null);
             setDrawerError(null);
-            setDrawerActionError(null);
+            setWorkOrderWarning(null);
+            setExecutionOrderError(null);
           }
         }}
         onOpenMoveToPending={() => {
@@ -1546,7 +1548,16 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
             }
           : {})}
         executionOrder={selectedExecutionOrder}
-        executionOrderError={drawerActionError}
+        executionOrderError={executionOrderError}
+        workOrderWarning={workOrderWarning}
+        {...(selectedEvent?.executionOrderId
+          ? {
+              onOpenExecutionOrder: () =>
+                router.push(
+                  `/dashboard/operations?executionOrderId=${selectedEvent.executionOrderId}`,
+                ),
+            }
+          : {})}
       />
 
       <MoveEventToPendingDialog
@@ -1571,7 +1582,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
           }
 
           setMoveToPendingError(null);
-          setDrawerActionError(null);
+          setWorkOrderWarning(null);
+          setExecutionOrderError(null);
           setIsMoveToPendingSubmitting(true);
           try {
             await wfmApi.events.moveToPending(selectedEventId, reason ? { reason } : undefined);
@@ -1587,7 +1599,6 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
           } catch (moveToPendingEventError) {
             const message = mapSchedulingError(moveToPendingEventError);
             setMoveToPendingError(message);
-            setDrawerActionError(message);
           } finally {
             setIsMoveToPendingSubmitting(false);
           }
