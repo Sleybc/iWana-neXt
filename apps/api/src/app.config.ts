@@ -1,8 +1,44 @@
 import * as Joi from 'joi';
+import { ConfigService } from '@nestjs/config';
+import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import {
   mfaEncryptionKeyJoiSchema,
   mfaEncryptionKeyPreviousJoiSchema,
 } from './common/crypto/aes-gcm.util';
+
+type ApiDataSourceOptions = Pick<
+  TypeOrmModuleOptions,
+  'entities' | 'migrations' | 'migrationsTableName' | 'extra'
+>;
+
+/**
+ * Construye las opciones efectivas del runtime de la API.
+ *
+ * El DDL productivo pertenece exclusivamente al migrator; la API solo usa
+ * TypeORM para ejecutar consultas con el rol de aplicación.
+ */
+export function createApiTypeOrmOptions(
+  config: ConfigService,
+  sourceOptions: ApiDataSourceOptions,
+): TypeOrmModuleOptions {
+  return {
+    type: 'postgres',
+    host: config.get<string>('DB_HOST', 'localhost'),
+    port: config.get<number>('DB_PORT', 5432),
+    username: config.get<string>('DB_USER', 'iwana'),
+    password: config.get<string>('DB_PASSWORD', ''),
+    database: config.get<string>('DB_NAME', 'iwana_next'),
+    entities: sourceOptions.entities ?? [],
+    migrations: sourceOptions.migrations ?? [],
+    migrationsTableName: sourceOptions.migrationsTableName ?? 'typeorm_migrations',
+    migrationsRun: false,
+    synchronize: false,
+    ssl: false,
+    logging: config.get<string>('NODE_ENV') !== 'production' ? ['error', 'migration'] : ['error'],
+    extra: sourceOptions.extra,
+    autoLoadEntities: true,
+  };
+}
 
 /** Esquema único de configuración validado por el bootstrap de AppModule. */
 export function createAppConfigurationSchema(): Joi.ObjectSchema {
@@ -48,10 +84,11 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     SMTP_SECURE: Joi.boolean().optional(),
     FRONTEND_URL: Joi.string().uri().optional(),
     API_PUBLIC_BASE_URL: Joi.string().uri().optional(),
-    STORAGE_DRIVER: Joi.string()
-      .valid('minio', 'local')
-      .default('local')
-      .when('NODE_ENV', { is: 'production', then: Joi.required() }),
+    STORAGE_DRIVER: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().valid('minio').required(),
+      otherwise: Joi.string().valid('minio', 'local').default('local'),
+    }),
     S3_ENDPOINT: Joi.string().uri().optional(),
     S3_REGION: Joi.string().default('us-east-1'),
     S3_ACCESS_KEY_ID: Joi.string()

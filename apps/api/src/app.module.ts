@@ -33,7 +33,7 @@ import { SearchModule } from './modules/search/search.module';
 import { AssuranceModule } from './modules/assurance/assurance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TasksModule } from './modules/tasks/tasks.module';
-import { createAppConfigurationSchema } from './app.config';
+import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -138,26 +138,8 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService): TypeOrmModuleOptions => ({
-        type: 'postgres',
-        host: config.get<string>('DB_HOST', 'localhost'),
-        port: config.get<number>('DB_PORT', 5432),
-        username: config.get<string>('DB_USER', 'iwana'),
-        password: config.get<string>('DB_PASSWORD', ''),
-        database: config.get<string>('DB_NAME', 'iwana_next'),
-        entities: dataSourceOptions.entities ?? [],
-        migrations: dataSourceOptions.migrations ?? [],
-        migrationsTableName: dataSourceOptions.migrationsTableName ?? 'typeorm_migrations',
-        // Correr migraciones automáticamente en producción — nunca synchronize
-        migrationsRun: config.get<string>('NODE_ENV') === 'production',
-        synchronize: false,
-        ssl: false,
-        logging:
-          config.get<string>('NODE_ENV') !== 'production' ? ['error', 'migration'] : ['error'],
-        extra: dataSourceOptions.extra,
-        // autoLoadEntities permite que TypeOrmModule.forFeature() registre entidades
-        autoLoadEntities: true,
-      }),
+      useFactory: (config: ConfigService): TypeOrmModuleOptions =>
+        createApiTypeOrmOptions(config, dataSourceOptions),
     }),
 
     // Modulo de correo electronico: modo dev (Logger) o produccion (Nodemailer SMTP)

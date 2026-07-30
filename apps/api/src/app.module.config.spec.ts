@@ -1,4 +1,5 @@
-import { createAppConfigurationSchema } from './app.config';
+import { ConfigService } from '@nestjs/config';
+import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
 
 describe('AppModule configuration', () => {
   it.each([
@@ -52,5 +53,87 @@ describe('AppModule configuration', () => {
 
     expect(keys?.OUTBOX_RELAY_LAG_DEGRADED_SECONDS?.flags?.default).toBeUndefined();
     expect(keys?.OUTBOX_RELAY_LAG_STOPPED_SECONDS?.flags?.default).toBeUndefined();
+  });
+
+  it('rechaza el almacenamiento local en producción', () => {
+    const validation = createAppConfigurationSchema().validate(
+      {
+        NODE_ENV: 'production',
+        DB_NAME: 'dbiw',
+        DB_USER: 'iwana_app',
+        DB_PASSWORD: 'test-placeholder',
+        JWT_PRIVATE_KEY: 'not-a-real-key',
+        JWT_PUBLIC_KEY: 'not-a-real-key',
+        EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
+        MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+        STORAGE_DRIVER: 'local',
+        S3_ACCESS_KEY_ID: 'not-a-secret',
+        S3_SECRET_ACCESS_KEY: 'not-a-secret',
+        TYPESENSE_HOST: 'typesense',
+        TYPESENSE_API_KEY: 'not-a-secret',
+      },
+      { abortEarly: false },
+    );
+
+    expect(validation.error?.details.map(({ path }) => path.join('.'))).toContain('STORAGE_DRIVER');
+  });
+
+  it('acepta MinIO como driver de almacenamiento en producción', () => {
+    const validation = createAppConfigurationSchema().validate(
+      {
+        NODE_ENV: 'production',
+        DB_NAME: 'dbiw',
+        DB_USER: 'iwana_app',
+        DB_PASSWORD: 'test-placeholder',
+        JWT_PRIVATE_KEY: 'not-a-real-key',
+        JWT_PUBLIC_KEY: 'not-a-real-key',
+        EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
+        MFA_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+        STORAGE_DRIVER: 'minio',
+        S3_ACCESS_KEY_ID: 'not-a-secret',
+        S3_SECRET_ACCESS_KEY: 'not-a-secret',
+        TYPESENSE_HOST: 'typesense',
+        TYPESENSE_API_KEY: 'not-a-secret',
+      },
+      { abortEarly: false },
+    );
+
+    expect(validation.error).toBeUndefined();
+    expect(validation.value.STORAGE_DRIVER).toBe('minio');
+  });
+
+  it('exige un driver de almacenamiento aprobado en producción', () => {
+    const validation = createAppConfigurationSchema().validate(
+      {
+        NODE_ENV: 'production',
+        DB_NAME: 'dbiw',
+        DB_USER: 'iwana_app',
+        DB_PASSWORD: 'test-placeholder',
+        JWT_PRIVATE_KEY: 'not-a-real-key',
+        JWT_PUBLIC_KEY: 'not-a-real-key',
+        EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
+        MFA_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+        S3_ACCESS_KEY_ID: 'not-a-secret',
+        S3_SECRET_ACCESS_KEY: 'not-a-secret',
+        TYPESENSE_HOST: 'typesense',
+        TYPESENSE_API_KEY: 'not-a-secret',
+      },
+      { abortEarly: false },
+    );
+
+    expect(validation.error?.details.map(({ path }) => path.join('.'))).toContain('STORAGE_DRIVER');
+  });
+
+  it('mantiene desactivado el DDL automático del runtime en producción', () => {
+    const config = new ConfigService({ NODE_ENV: 'production' });
+
+    const options = createApiTypeOrmOptions(config, {
+      entities: [],
+      migrations: [],
+      migrationsTableName: 'typeorm_migrations',
+    });
+
+    expect(options.migrationsRun).toBe(false);
+    expect(options.synchronize).toBe(false);
   });
 });
