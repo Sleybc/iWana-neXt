@@ -260,6 +260,8 @@ describe('tasksApi execution order payloads', () => {
         .mockReturnValueOnce('command-start-key')
         .mockReturnValueOnce('command-field-work-key')
         .mockReturnValueOnce('command-item-usage-key')
+        .mockReturnValueOnce('command-upload-evidence-key')
+        .mockReturnValueOnce('command-register-evidence-key')
         .mockReturnValueOnce('command-close-key'),
     });
     const storageSetItem = jest.spyOn(Storage.prototype, 'setItem');
@@ -287,7 +289,7 @@ describe('tasksApi execution order payloads', () => {
       'isp-demo',
     );
     const file = new File(['foto'], 'instalacion.jpg', { type: 'image/jpeg' });
-    await tasksApi.executionOrders.uploadEvidenceAsset('eo-001', file, 'isp-demo');
+    await tasksApi.executionOrders.uploadEvidenceAsset('eo-001', file, 6, 'isp-demo');
     await tasksApi.executionOrders.registerEvidence(
       'eo-001',
       {
@@ -296,6 +298,7 @@ describe('tasksApi execution order payloads', () => {
         requirementKey: 'req-photo-install',
         expiresAt: evidenceExpiresAt,
       },
+      7,
       'isp-demo',
     );
     await tasksApi.executionOrders.close(
@@ -305,7 +308,7 @@ describe('tasksApi execution order payloads', () => {
         summary: 'Trabajo completado',
         customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
       },
-      6,
+      8,
       'isp-demo',
     );
 
@@ -329,13 +332,22 @@ describe('tasksApi execution order payloads', () => {
       'Idempotency-Key': 'command-item-usage-key',
       'If-Match': '5',
     });
-    expect(commandHeaders(5)).toEqual({
-      'Idempotency-Key': 'command-close-key',
+    expect(commandHeaders(3)).toEqual({
+      'Idempotency-Key': 'command-upload-evidence-key',
       'If-Match': '6',
     });
+    expect(commandHeaders(4)).toEqual({
+      'Idempotency-Key': 'command-register-evidence-key',
+      'If-Match': '7',
+    });
+    expect(commandHeaders(5)).toEqual({
+      'Idempotency-Key': 'command-close-key',
+      'If-Match': '8',
+    });
     expect(
-      new Set([0, 1, 2, 5].map(commandHeaders).map((headers) => headers['Idempotency-Key'])).size,
-    ).toBe(4);
+      new Set([0, 1, 2, 3, 4, 5].map(commandHeaders).map((headers) => headers['Idempotency-Key']))
+        .size,
+    ).toBe(6);
     expect(storageSetItem.mock.calls.length).toBe(writesAfterAuth);
 
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ note: 'Inicio en campo' });
@@ -352,6 +364,7 @@ describe('tasksApi execution order payloads', () => {
       finalDisposition: 'INSTALLED_AT_CUSTOMER',
     });
     expect(calls[3]?.init?.body).toBeInstanceOf(FormData);
+    expect(new Headers(calls[3]?.init?.headers).get('If-Match')).toBe('6');
     expect(new Headers(calls[3]?.init?.headers).get('Authorization')).toBe('Bearer portal-token');
     expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
       mediaAssetId: 'asset-001',
@@ -359,10 +372,33 @@ describe('tasksApi execution order payloads', () => {
       requirementKey: 'req-photo-install',
       expiresAt: evidenceExpiresAt,
     });
+    expect(new Headers(calls[4]?.init?.headers).get('If-Match')).toBe('7');
     expect(JSON.parse(String(calls[5]?.init?.body))).toEqual({
       result: 'EXECUTED',
       summary: 'Trabajo completado',
       customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
     });
+  });
+
+  it('no envía el comando de evidencia cuando falta el requisito de plantilla', async () => {
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { tasksApi } = await import('./api-client');
+
+    expect(() =>
+      tasksApi.executionOrders.registerEvidence(
+        'eo-001',
+        {
+          mediaAssetId: 'asset-001',
+          evidenceType: 'PHOTO',
+          requirementKey: '  ',
+          expiresAt: '2026-08-01T00:00:00.000Z',
+        },
+        3,
+        'isp-demo',
+      ),
+    ).toThrow('La evidencia requiere un requisito válido de la plantilla.');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

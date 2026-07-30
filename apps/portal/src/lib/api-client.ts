@@ -6399,22 +6399,42 @@ export const tasksApi = {
         tenantSlug,
       ),
 
-    uploadEvidenceAsset: (id: string, file: File, tenantSlug?: string) => {
+    uploadEvidenceAsset: (id: string, file: File, currentVersion: number, tenantSlug?: string) => {
       const formData = new FormData();
       formData.append('file', file);
       return request<EvidenceAssetReceipt>(
         `/tasks/execution-orders/${id}/evidence-assets`,
-        { method: 'POST', body: formData, returnFullResponse: true },
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: formData,
+          returnFullResponse: true,
+        },
         tenantSlug,
       );
     },
 
-    registerEvidence: (id: string, dto: RegisterExecutionOrderEvidenceDto, tenantSlug?: string) =>
-      request<ExecutionOrderEvidenceRecord>(
+    registerEvidence: (
+      id: string,
+      dto: RegisterExecutionOrderEvidenceDto,
+      currentVersion: number,
+      tenantSlug?: string,
+    ) => {
+      if (!dto.requirementKey.trim()) {
+        throw new Error('La evidencia requiere un requisito válido de la plantilla.');
+      }
+
+      return request<ExecutionOrderEvidenceRecord>(
         `/tasks/execution-orders/${id}/evidence`,
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
         tenantSlug,
-      ),
+      );
+    },
 
     close: (id: string, dto: CloseExecutionOrderDto, currentVersion: number, tenantSlug?: string) =>
       request<ExecutionOrderRecord>(

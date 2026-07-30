@@ -21,7 +21,7 @@ export interface ExecutionOrderSummaryProps {
   error?: string | null;
   successMessage?: string | null;
   availability?: ExecutionOrderAvailability;
-  syncState?: ExecutionOrderSyncState;
+  syncState?: ExecutionOrderSyncState | undefined;
   readonly?: boolean;
   canOpen?: boolean;
   onOpen?: () => void;
@@ -33,7 +33,24 @@ function isDetail(order: SummaryOrder): order is ExecutionOrderDetailResponse {
   return 'number' in order;
 }
 
-function syncCopy(state: ExecutionOrderSyncState): string {
+function detailSyncState(order: SummaryOrder): ExecutionOrderSyncState | undefined {
+  if (!isDetail(order)) return 'synced';
+
+  switch (order.syncState) {
+    case 'IN_SYNC':
+      return 'synced';
+    case 'PENDING':
+      return 'pending';
+    case 'DIVERGED':
+      return 'conflict';
+    case 'FAILED':
+      return 'error';
+    default:
+      return undefined;
+  }
+}
+
+function syncCopy(state: ExecutionOrderSyncState | undefined): string {
   switch (state) {
     case 'pending':
       return 'Sincronización pendiente';
@@ -44,14 +61,14 @@ function syncCopy(state: ExecutionOrderSyncState): string {
     case 'conflict':
       return 'La orden cambió; revisa la versión vigente';
     default:
-      return 'Sincronizada';
+      return 'Estado de sincronización no disponible';
   }
 }
 
 export function ExecutionOrderSummary({
   order,
   availability = 'linked',
-  syncState = 'synced',
+  syncState,
   readonly = true,
   canOpen = true,
   onOpen,
@@ -91,7 +108,7 @@ export function ExecutionOrderSummary({
           <ExecutionOrderSummary
             order={order}
             availability={availability}
-            syncState={syncState}
+            {...(syncState !== undefined ? { syncState } : {})}
             readonly={readonly}
             canOpen={canOpen}
             {...(onOpen ? { onOpen } : {})}
@@ -187,6 +204,7 @@ export function ExecutionOrderSummary({
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+  const resolvedSyncState = syncState ?? detailSyncState(order);
 
   return (
     <section aria-label="Resumen de la OT" className="space-y-4">
@@ -238,7 +256,7 @@ export function ExecutionOrderSummary({
         {completion.label} requisitos completados
       </p>
       <p role="status" className="text-xs text-gray-500 dark:text-gray-400">
-        {syncCopy(syncState)}
+        {syncCopy(resolvedSyncState)}
       </p>
       {canOpen && onOpen ? (
         <Button type="button" variant="secondary" onClick={onOpen}>

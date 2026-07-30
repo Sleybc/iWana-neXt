@@ -244,6 +244,7 @@ describe('OperationsClient', () => {
   });
 
   it('mantiene la OT visible cuando el endpoint de evidencias todavía no está disponible', async () => {
+    const user = userEvent.setup();
     const order = {
       id: 'eo-001',
       number: 'OT-001',
@@ -286,6 +287,10 @@ describe('OperationsClient', () => {
       expect(await screen.findByText('Evidencias no disponibles')).toBeInTheDocument();
       expect(screen.getAllByText('OT-001').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText('Sin evidencias registradas')).not.toBeInTheDocument();
+      const refreshButtons = screen.getAllByRole('button', { name: 'Actualizar detalle' });
+      expect(refreshButtons.length).toBeGreaterThanOrEqual(1);
+      await user.click(refreshButtons[0]!);
+      expect(screen.getAllByText('OT-001').length).toBeGreaterThanOrEqual(1);
     } finally {
       window.history.pushState({}, '', '/dashboard/operations');
     }

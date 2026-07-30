@@ -380,6 +380,7 @@ export function OperationsClient() {
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
   const [offline, setOffline] = useState(false);
   const detailRequestRef = useRef(0);
+  const executionOrderRequestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const updateConnectionState = () => setOffline(!navigator.onLine);
@@ -476,6 +477,7 @@ export function OperationsClient() {
   }, []);
 
   const openExecutionOrder = useCallback(async (executionOrderId: string) => {
+    executionOrderRequestIdRef.current = executionOrderId;
     setIsLoadingExecutionOrder(true);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
@@ -518,8 +520,9 @@ export function OperationsClient() {
           })),
         );
       } catch {
-        setExecutionOrderItemOptions([]);
-        setExecutionOrderCustodyOptions([]);
+        setExecutionOrderError(
+          'No fue posible cargar el inventario autorizado. El formulario conserva lo que ingresaste; actualiza el detalle para reintentar.',
+        );
       }
 
       try {
@@ -530,9 +533,10 @@ export function OperationsClient() {
         setExecutionOrderEvidenceMeta(evidence.meta);
         setExecutionOrderEvidenceState('available');
       } catch {
-        setExecutionOrderEvidence([]);
-        setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
         setExecutionOrderEvidenceState('unavailable');
+        setExecutionOrderError(
+          'No fue posible cargar las evidencias. La OT se conserva abierta; actualiza el detalle para reintentar.',
+        );
       }
 
       const templateReference = detail.template;
@@ -557,18 +561,6 @@ export function OperationsClient() {
       setExecutionOrderMissingRequirements([]);
     } catch (loadError) {
       setExecutionOrderError(mapOperationsError(loadError));
-      setSelectedExecutionOrder(null);
-      setExecutionOrderActivities([]);
-      setExecutionOrderActivitiesMeta(EMPTY_LIST_META);
-      setExecutionOrderItemUsage([]);
-      setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
-      setExecutionOrderEvidence([]);
-      setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
-      setExecutionOrderEvidenceState('available');
-      setExecutionOrderTemplate(null);
-      setExecutionOrderItemOptions([]);
-      setExecutionOrderCustodyOptions([]);
-      setExecutionOrderMissingRequirements([]);
     } finally {
       setIsLoadingExecutionOrder(false);
     }
@@ -666,6 +658,13 @@ export function OperationsClient() {
     await openExecutionOrder(executionOrderId);
   }
 
+  const retryExecutionOrder = useCallback(async () => {
+    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    if (executionOrderId) {
+      await openExecutionOrder(executionOrderId);
+    }
+  }, [selectedExecutionOrder?.id, openExecutionOrder]);
+
   async function handleStartExecutionOrder(note?: string | null) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
@@ -687,7 +686,7 @@ export function OperationsClient() {
   }
 
   async function handleRegisterExecutionOrderFieldWork(payload: RegisterActivityCommand) {
-    if (!selectedExecutionOrder) return;
+    if (!selectedExecutionOrder) return false;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
@@ -699,8 +698,10 @@ export function OperationsClient() {
       );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('El trabajo realizado fue registrado.');
+      return true;
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
+      return false;
     } finally {
       setIsSubmittingExecutionOrder(false);
     }
@@ -709,7 +710,7 @@ export function OperationsClient() {
   async function handleRegisterExecutionOrderItemUsage(
     payload: RegisterExecutionOrderItemUsageDto,
   ) {
-    if (!selectedExecutionOrder) return;
+    if (!selectedExecutionOrder) return false;
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
@@ -721,15 +722,23 @@ export function OperationsClient() {
       );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('El material fue registrado.');
+      return true;
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
+      return false;
     } finally {
       setIsSubmittingExecutionOrder(false);
     }
   }
 
   async function handleUploadEvidence(files: File[], requirementKey: string) {
-    if (!selectedExecutionOrder) return;
+    if (!selectedExecutionOrder) return false;
+    if (!requirementKey.trim()) {
+      setExecutionOrderError(
+        'No hay un requisito de evidencia válido para asociar el archivo. Actualiza el detalle antes de intentarlo.',
+      );
+      return false;
+    }
     setIsSubmittingExecutionOrder(true);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
@@ -738,21 +747,28 @@ export function OperationsClient() {
         const uploadReceipt = await tasksApi.executionOrders.uploadEvidenceAsset(
           selectedExecutionOrder.id,
           file,
+          selectedExecutionOrder.version,
         );
         if (!isValidFutureEvidenceExpiry(uploadReceipt.expiresAt)) {
           throw new Error('La evidencia subida no tiene una fecha de expiración válida.');
         }
-        await tasksApi.executionOrders.registerEvidence(selectedExecutionOrder.id, {
-          mediaAssetId: uploadReceipt.mediaAssetId,
-          evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
-          requirementKey,
-          expiresAt: uploadReceipt.expiresAt,
-        });
+        await tasksApi.executionOrders.registerEvidence(
+          selectedExecutionOrder.id,
+          {
+            mediaAssetId: uploadReceipt.mediaAssetId,
+            evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
+            requirementKey,
+            expiresAt: uploadReceipt.expiresAt,
+          },
+          selectedExecutionOrder.version,
+        );
       }
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('La evidencia fue registrada.');
+      return true;
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
+      return false;
     } finally {
       setIsSubmittingExecutionOrder(false);
     }
@@ -904,7 +920,9 @@ export function OperationsClient() {
       />
 
       <ExecutionOrderDrawer
-        open={Boolean(selectedExecutionOrder) || isLoadingExecutionOrder}
+        open={
+          Boolean(selectedExecutionOrder) || isLoadingExecutionOrder || Boolean(executionOrderError)
+        }
         order={selectedExecutionOrder}
         activities={executionOrderActivities}
         activitiesMeta={executionOrderActivitiesMeta}
@@ -922,6 +940,7 @@ export function OperationsClient() {
         error={executionOrderError}
         successMessage={executionOrderSuccess}
         offline={offline}
+        onRefreshDetail={retryExecutionOrder}
         onClose={() => {
           setSelectedExecutionOrder(null);
           setExecutionOrderActivities([]);
@@ -937,6 +956,7 @@ export function OperationsClient() {
           setExecutionOrderItemOptions([]);
           setExecutionOrderCustodyOptions([]);
           setExecutionOrderMissingRequirements([]);
+          executionOrderRequestIdRef.current = null;
           router.replace('/dashboard/operations');
         }}
         onStart={handleStartExecutionOrder}

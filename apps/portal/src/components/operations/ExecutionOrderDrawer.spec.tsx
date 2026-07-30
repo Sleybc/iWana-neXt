@@ -291,8 +291,11 @@ describe('ExecutionOrderDrawer', () => {
     });
 
     it('shows error alert when loading fails', () => {
-      renderDrawer({ order: null, error: 'Error de red al cargar la OT' });
+      const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
+      renderDrawer({ order: null, error: 'Error de red al cargar la OT', onRefreshDetail });
       expect(screen.getByText('No fue posible cargar la OT')).toBeInTheDocument();
+      screen.getByRole('button', { name: 'Reintentar' }).click();
+      expect(onRefreshDetail).toHaveBeenCalledTimes(1);
     });
 
     it('shows inline error banner alongside content', () => {
@@ -857,15 +860,19 @@ describe('ExecutionOrderDrawer', () => {
     });
 
     it('explica honestamente cuando el servicio de evidencias no está disponible', () => {
+      const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         evidence: null,
         evidenceState: 'unavailable',
+        onRefreshDetail,
       });
 
       expect(screen.getByText('Evidencias no disponibles')).toBeInTheDocument();
       expect(screen.getByText(/No pudimos consultar las evidencias/)).toBeInTheDocument();
       expect(screen.queryByText('Sin evidencias registradas')).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Actualizar detalle' }).click();
+      expect(onRefreshDetail).toHaveBeenCalledTimes(1);
     });
 
     it('shows evidence list with status', () => {
@@ -932,6 +939,52 @@ describe('ExecutionOrderDrawer', () => {
       expect(
         screen.getByText(/No es posible validar los requisitos de cierre/),
       ).toBeInTheDocument();
+    });
+
+    it('bloquea la subida cuando la plantilla no está disponible y ofrece actualizar el detalle', () => {
+      const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          allowedActions: ['REGISTER_EVIDENCE'],
+        }),
+        template: null,
+        onRefreshDetail,
+      });
+
+      expect(screen.getAllByText('Plantilla no disponible').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByLabelText('Adjuntar evidencia')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Seleccionar archivos' }),
+      ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Actualizar detalle' }).click();
+      expect(onRefreshDetail).toHaveBeenCalledTimes(1);
+    });
+
+    it('usa copy seguro en checklist y requisitos pendientes sin label', () => {
+      const template = templateFactory();
+      template.requirements[0] = {
+        ...template.requirements[0],
+        label: '',
+      } as (typeof template.requirements)[number];
+      renderDrawer({
+        template,
+        missingRequirements: [
+          {
+            requirementId: 'req-unknown',
+            label: '',
+            kind: 'MEASUREMENT',
+            reason: '',
+          },
+        ],
+      });
+
+      expect(screen.getByText('Información requerida')).toBeInTheDocument();
+      expect(screen.getByText('Medición requerida')).toBeInTheDocument();
+      expect(
+        screen.getByText('Completa el requisito pendiente antes de cerrar la orden.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('req-unknown')).not.toBeInTheDocument();
     });
 
     it('shows readonly close block on terminal OT', () => {
@@ -1090,6 +1143,14 @@ describe('ExecutionOrderDrawer', () => {
         expect(screen.queryByRole('button', { name: 'Cerrar OT' })).not.toBeInTheDocument();
       },
     );
+
+    it('no afirma sincronización cuando el estado no está disponible', () => {
+      renderDrawer({ order: detailFactory({ syncState: undefined as never }) });
+
+      expect(screen.getByText('Estado de sincronización no disponible')).toBeInTheDocument();
+      expect(screen.queryByText('Sincronizada')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).not.toBeInTheDocument();
+    });
   });
 
   // ----------------------------------------------------

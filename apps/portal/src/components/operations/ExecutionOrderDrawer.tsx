@@ -33,7 +33,7 @@ import type {
 } from '@/lib/api-client';
 import type { ExecutionOrderMissingRequirement } from './OperationsClient';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
-import { ExecutionOrderSummary } from './ExecutionOrderSummary';
+import { ExecutionOrderSummary, type ExecutionOrderSyncState } from './ExecutionOrderSummary';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 import {
   EXECUTION_ORDER_RESULT_LABELS,
@@ -64,10 +64,11 @@ interface ExecutionOrderDrawerProps {
   successMessage?: string | null;
   offline: boolean;
   onClose: () => void;
+  onRefreshDetail?: () => Promise<void>;
   onStart: (notes?: string | null) => Promise<void>;
-  onRegisterActivity: (payload: RegisterActivityCommand) => Promise<void>;
-  onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void>;
-  onUploadEvidence: (files: File[], requirementKey: string) => Promise<void>;
+  onRegisterActivity: (payload: RegisterActivityCommand) => Promise<void | boolean>;
+  onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void | boolean>;
+  onUploadEvidence: (files: File[], requirementKey: string) => Promise<void | boolean>;
   onBlock?: (payload: { reasonCode: string; note?: string }) => Promise<void>;
   onUnblock?: (payload: { resolutionCode: string; note?: string }) => Promise<void>;
   onCloseOrder: (payload: CloseExecutionOrderDto) => Promise<void>;
@@ -138,7 +139,9 @@ function actionAllowed(
   return order.allowedActions?.includes(action) === true;
 }
 
-function syncStateCopy(state: ExecutionOrderDetailResponse['syncState']): string {
+function syncStateCopy(
+  state: ExecutionOrderDetailResponse['syncState'] | null | undefined,
+): string {
   switch (state) {
     case 'IN_SYNC':
       return 'Sincronizada';
@@ -148,7 +151,50 @@ function syncStateCopy(state: ExecutionOrderDetailResponse['syncState']): string
       return 'La orden cambió; revisa la versión vigente';
     case 'FAILED':
       return 'Error de sincronización';
+    default:
+      return 'Estado de sincronización no disponible';
   }
+}
+
+function toSummarySyncState(
+  state: ExecutionOrderDetailResponse['syncState'] | null | undefined,
+): ExecutionOrderSyncState | undefined {
+  switch (state) {
+    case 'IN_SYNC':
+      return 'synced';
+    case 'PENDING':
+      return 'pending';
+    case 'DIVERGED':
+      return 'conflict';
+    case 'FAILED':
+      return 'error';
+    default:
+      return undefined;
+  }
+}
+
+function requirementKindLabel(kind: string): string {
+  switch (kind) {
+    case 'FIELD':
+      return 'Información requerida';
+    case 'ACTIVITY':
+      return 'Actividad requerida';
+    case 'MEASUREMENT':
+      return 'Medición requerida';
+    case 'EVIDENCE':
+      return 'Evidencia requerida';
+    case 'MATERIAL':
+      return 'Material o equipo requerido';
+    case 'COMPLIANCE':
+      return 'Aceptación del cliente';
+    default:
+      return 'Requisito pendiente';
+  }
+}
+
+function requirementLabel(requirement: ExecutionOrderTemplateRequirement): string {
+  const label = typeof requirement.label === 'string' ? requirement.label.trim() : '';
+  return label || requirementKindLabel(requirement.kind);
 }
 
 function dateFormatter(value: string | undefined): string {
@@ -239,6 +285,7 @@ export function ExecutionOrderDrawer({
   successMessage = null,
   offline,
   onClose,
+  onRefreshDetail,
   onStart,
   onRegisterActivity,
   onRegisterItemUsage,
@@ -263,6 +310,11 @@ export function ExecutionOrderDrawer({
   const canBlock = order ? actionAllowed(order, 'BLOCK') : false;
   const canUnblock = order ? actionAllowed(order, 'UNBLOCK') : false;
   const completion = getExecutionOrderCompletionDisplay(order?.completion);
+  const evidenceRequirementKey =
+    template?.requirements
+      .find((requirement) => requirement.kind === 'EVIDENCE' && requirement.key.trim().length > 0)
+      ?.key.trim() ?? null;
+  const canUploadEvidence = canInteract && canRegisterEvidence && evidenceRequirementKey !== null;
 
   // ─── State local ────────────────────────────────────────────────────
 
@@ -382,7 +434,8 @@ export function ExecutionOrderDrawer({
       if (activityNovelty) {
         payload.measurements = [{ key: 'novedad', value: true }];
       }
-      await onRegisterActivity(payload);
+      const result = await onRegisterActivity(payload);
+      if (result === false) return;
       setActivityDescription('');
       setActivityNovelty(false);
     },
@@ -412,7 +465,18 @@ export function ExecutionOrderDrawer({
       };
       const s = itemSerial.trim();
       if (s) payload.serialNumber = s;
-      await onRegisterItemUsage(payload);
+      const result = await onRegisterItemUsage(payload);
+      if (result === false) {
+        // El boundary puede informar un fallo sin lanzar; restituimos explícitamente la captura
+        // para que el operador pueda corregirla o actualizar el detalle sin perderla.
+        setItemId(itemId);
+        setItemQty(itemQty);
+        setItemSerial(itemSerial);
+        setItemAction(itemAction);
+        setSelectedCustodyId(selectedCustodyId);
+        setItemDisposition(itemDisposition);
+        return;
+      }
       setItemId('');
       setItemQty('1');
       setItemSerial('');
@@ -542,7 +606,18 @@ export function ExecutionOrderDrawer({
       ) : !order ? (
         /* ── Empty / Error ── */
         error ? (
-          <PortalAlert variant="error" title="No fue posible cargar la OT" description={error} />
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar la OT"
+            description={error}
+            action={
+              onRefreshDetail ? (
+                <Button type="button" onClick={() => void onRefreshDetail()}>
+                  Reintentar
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <PortalEmptyState
             title="Sin OT seleccionada"
@@ -564,6 +639,13 @@ export function ExecutionOrderDrawer({
               variant="error"
               title="No fue posible completar la operación"
               description={error}
+              action={
+                onRefreshDetail ? (
+                  <Button type="button" onClick={() => void onRefreshDetail()}>
+                    Actualizar detalle
+                  </Button>
+                ) : undefined
+              }
             />
           ) : null}
 
@@ -594,7 +676,12 @@ export function ExecutionOrderDrawer({
           )}
 
           {/* ── Resumen ── */}
-          <ExecutionOrderSummary order={order} readonly={terminal || offline} canOpen={false} />
+          <ExecutionOrderSummary
+            order={order}
+            syncState={toSummarySyncState(order.syncState)}
+            readonly={terminal || offline || order.syncState !== 'IN_SYNC'}
+            canOpen={false}
+          />
 
           {/* ── 1. Compromiso ── */}
           <section
@@ -722,7 +809,9 @@ export function ExecutionOrderDrawer({
                     className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
                   >
                     {requirementIcon(req.kind)}
-                    <span className="text-gray-700 dark:text-gray-200">{req.label}</span>
+                    <span className="text-gray-700 dark:text-gray-200">
+                      {requirementLabel(req)}
+                    </span>
                     {req.required && (
                       <Badge variant="warning" className="ml-auto shrink-0 text-xs">
                         Requerido
@@ -744,10 +833,11 @@ export function ExecutionOrderDrawer({
                       className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/30"
                     >
                       <p className="font-medium text-amber-950 dark:text-amber-100">
-                        {requirement.label}
+                        {requirement.label?.trim() || requirementKindLabel(requirement.kind)}
                       </p>
                       <p className="mt-0.5 text-amber-900 dark:text-amber-200">
-                        {requirement.reason}
+                        {requirement.reason?.trim() ||
+                          'Completa el requisito pendiente antes de cerrar la orden.'}
                       </p>
                     </li>
                   ))}
@@ -1058,6 +1148,13 @@ export function ExecutionOrderDrawer({
                   variant="warning"
                   title="Evidencias no disponibles"
                   description="No pudimos consultar las evidencias en este momento. La OT sigue disponible y podrás intentarlo cuando el servicio esté disponible."
+                  action={
+                    onRefreshDetail ? (
+                      <Button type="button" onClick={() => void onRefreshDetail()}>
+                        Actualizar detalle
+                      </Button>
+                    ) : undefined
+                  }
                 />
               ) : evidenceState === 'loading' ? (
                 <div aria-busy="true" aria-label="Cargando evidencias">
@@ -1099,8 +1196,14 @@ export function ExecutionOrderDrawer({
                               ? 'Firma '
                               : 'Documento '}
                           ·{' '}
-                          {template?.requirements.find((req) => req.key === ev.requirementKey)
-                            ?.label ?? 'Evidencia asociada'}
+                          {(() => {
+                            const requirement = template?.requirements.find(
+                              (req) => req.key === ev.requirementKey,
+                            );
+                            return requirement
+                              ? requirementLabel(requirement)
+                              : 'Evidencia asociada';
+                          })()}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {dateFormatter(ev.capturedAt ?? ev.receivedAt)}
@@ -1134,7 +1237,27 @@ export function ExecutionOrderDrawer({
             )}
 
             {/* Upload area */}
-            {canInteract && canRegisterEvidence && (
+            {canInteract && canRegisterEvidence && !canUploadEvidence && (
+              <PortalAlert
+                variant="warning"
+                title={
+                  template ? 'Requisito de evidencia no disponible' : 'Plantilla no disponible'
+                }
+                description={
+                  template
+                    ? 'No hay un requisito de evidencia válido para asociar el archivo. Actualiza el detalle antes de intentarlo.'
+                    : 'No es posible asociar evidencia sin la plantilla aplicada. Actualiza el detalle antes de intentarlo.'
+                }
+                action={
+                  onRefreshDetail ? (
+                    <Button type="button" onClick={() => void onRefreshDetail()}>
+                      Actualizar detalle
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
+            {canUploadEvidence && (
               <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-4 text-center dark:border-dark-border">
                 <p className="text-sm text-gray-600 dark:text-gray-300">Adjuntar evidencia</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1150,14 +1273,14 @@ export function ExecutionOrderDrawer({
                   onChange={(e) => {
                     const files = Array.from(e.target.files ?? []);
                     if (files.length === 0) return;
-                    const requirementKey =
-                      template?.requirements?.filter((r) => r.kind === 'EVIDENCE')?.find(() => true)
-                        ?.key ?? '';
-                    void onUploadEvidence(files, requirementKey);
-                    // Reset para permitir re-subir el mismo archivo
-                    if (evidenceFileRef.current) {
-                      evidenceFileRef.current.value = '';
-                    }
+                    if (!evidenceRequirementKey) return;
+                    void onUploadEvidence(files, evidenceRequirementKey).then((result) => {
+                      if (result === false) return;
+                      // Reset para permitir re-subir el mismo archivo tras un registro exitoso.
+                      if (evidenceFileRef.current) {
+                        evidenceFileRef.current.value = '';
+                      }
+                    });
                   }}
                 />
                 <Button
