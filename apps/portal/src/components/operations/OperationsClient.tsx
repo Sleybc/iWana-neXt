@@ -222,7 +222,7 @@ export function productRequirementLabel(
   kind: string,
   requirementId: string,
 ): string {
-  if (label?.trim() && !containsRawRequirementToken(label.trim())) {
+  if (label?.trim()) {
     return label.trim();
   }
 
@@ -268,6 +268,28 @@ export function normalizeExecutionOrderCollection<T>(
   value: T[] | { data?: T[] | null; meta?: unknown } | null | undefined,
 ): T[] {
   return Array.isArray(value) ? value : (value?.data ?? []);
+}
+
+export async function loadMoreExecutionOrderCollection<T>(
+  fetchPage: (page: number, limit: number) => Promise<ExecutionOrderCollectionResponse<T>>,
+  currentMeta: ListMeta,
+  currentLength: number,
+): Promise<CollectedExecutionOrderCollection<T>> {
+  const response = await fetchPage((currentMeta.page ?? 1) + 1, currentMeta.limit);
+  const pageData = normalizeExecutionOrderCollection(response);
+  const responseMeta = Array.isArray(response) ? undefined : response.meta;
+  const nextMeta = normalizeListMeta(responseMeta, {
+    dataLength: pageData.length,
+    limit: currentMeta.limit,
+  });
+
+  return {
+    data: pageData,
+    meta: {
+      ...nextMeta,
+      total: Math.max(nextMeta.total, currentMeta.total, currentLength + pageData.length),
+    },
+  };
 }
 
 export function resolveAssignedTemplateVersion(
@@ -363,6 +385,12 @@ export function OperationsClient() {
   const [executionOrderEvidenceState, setExecutionOrderEvidenceState] = useState<
     'loading' | 'available' | 'unavailable'
   >('available');
+  const [isLoadingMoreExecutionOrderActivities, setIsLoadingMoreExecutionOrderActivities] =
+    useState(false);
+  const [isLoadingMoreExecutionOrderItemUsage, setIsLoadingMoreExecutionOrderItemUsage] =
+    useState(false);
+  const [isLoadingMoreExecutionOrderEvidence, setIsLoadingMoreExecutionOrderEvidence] =
+    useState(false);
   const [executionOrderTemplate, setExecutionOrderTemplate] =
     useState<ExecutionOrderTemplateVersion | null>(null);
   const [executionOrderItemOptions, setExecutionOrderItemOptions] = useState<
@@ -478,6 +506,9 @@ export function OperationsClient() {
 
   const openExecutionOrder = useCallback(async (executionOrderId: string) => {
     executionOrderRequestIdRef.current = executionOrderId;
+    setIsLoadingMoreExecutionOrderActivities(false);
+    setIsLoadingMoreExecutionOrderItemUsage(false);
+    setIsLoadingMoreExecutionOrderEvidence(false);
     setIsLoadingExecutionOrder(true);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
@@ -658,6 +689,99 @@ export function OperationsClient() {
     await openExecutionOrder(executionOrderId);
   }
 
+  const loadMoreExecutionOrderActivities = useCallback(async () => {
+    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    if (
+      !executionOrderId ||
+      !executionOrderActivitiesMeta.hasMore ||
+      isLoadingMoreExecutionOrderActivities
+    ) {
+      return;
+    }
+
+    setIsLoadingMoreExecutionOrderActivities(true);
+    try {
+      const nextPage = await loadMoreExecutionOrderCollection(
+        (page, limit) => tasksApi.executionOrders.listActivities(executionOrderId, { page, limit }),
+        executionOrderActivitiesMeta,
+        executionOrderActivities.length,
+      );
+      setExecutionOrderActivities((current) => [...current, ...nextPage.data]);
+      setExecutionOrderActivitiesMeta(nextPage.meta);
+    } catch (loadError) {
+      setExecutionOrderError(mapOperationsError(loadError));
+    } finally {
+      setIsLoadingMoreExecutionOrderActivities(false);
+    }
+  }, [
+    executionOrderActivities,
+    executionOrderActivitiesMeta,
+    isLoadingMoreExecutionOrderActivities,
+    selectedExecutionOrder?.id,
+  ]);
+
+  const loadMoreExecutionOrderItemUsage = useCallback(async () => {
+    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    if (
+      !executionOrderId ||
+      !executionOrderItemUsageMeta.hasMore ||
+      isLoadingMoreExecutionOrderItemUsage
+    ) {
+      return;
+    }
+
+    setIsLoadingMoreExecutionOrderItemUsage(true);
+    try {
+      const nextPage = await loadMoreExecutionOrderCollection(
+        (page, limit) => tasksApi.executionOrders.listItemUsage(executionOrderId, { page, limit }),
+        executionOrderItemUsageMeta,
+        executionOrderItemUsage.length,
+      );
+      setExecutionOrderItemUsage((current) => [...current, ...nextPage.data]);
+      setExecutionOrderItemUsageMeta(nextPage.meta);
+    } catch (loadError) {
+      setExecutionOrderError(mapOperationsError(loadError));
+    } finally {
+      setIsLoadingMoreExecutionOrderItemUsage(false);
+    }
+  }, [
+    executionOrderItemUsage,
+    executionOrderItemUsageMeta,
+    isLoadingMoreExecutionOrderItemUsage,
+    selectedExecutionOrder?.id,
+  ]);
+
+  const loadMoreExecutionOrderEvidence = useCallback(async () => {
+    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    if (
+      !executionOrderId ||
+      !executionOrderEvidenceMeta.hasMore ||
+      isLoadingMoreExecutionOrderEvidence
+    ) {
+      return;
+    }
+
+    setIsLoadingMoreExecutionOrderEvidence(true);
+    try {
+      const nextPage = await loadMoreExecutionOrderCollection(
+        (page, limit) => tasksApi.executionOrders.listEvidence(executionOrderId, { page, limit }),
+        executionOrderEvidenceMeta,
+        executionOrderEvidence.length,
+      );
+      setExecutionOrderEvidence((current) => [...current, ...nextPage.data]);
+      setExecutionOrderEvidenceMeta(nextPage.meta);
+    } catch (loadError) {
+      setExecutionOrderError(mapOperationsError(loadError));
+    } finally {
+      setIsLoadingMoreExecutionOrderEvidence(false);
+    }
+  }, [
+    executionOrderEvidence,
+    executionOrderEvidenceMeta,
+    isLoadingMoreExecutionOrderEvidence,
+    selectedExecutionOrder?.id,
+  ]);
+
   const retryExecutionOrder = useCallback(async () => {
     const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
     if (executionOrderId) {
@@ -731,7 +855,7 @@ export function OperationsClient() {
     }
   }
 
-  async function handleUploadEvidence(files: File[], requirementKey: string) {
+  async function handleUploadEvidence(file: File, requirementKey: string) {
     if (!selectedExecutionOrder) return false;
     if (!requirementKey.trim()) {
       setExecutionOrderError(
@@ -743,26 +867,24 @@ export function OperationsClient() {
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     try {
-      for (const file of files) {
-        const uploadReceipt = await tasksApi.executionOrders.uploadEvidenceAsset(
-          selectedExecutionOrder.id,
-          file,
-          selectedExecutionOrder.version,
-        );
-        if (!isValidFutureEvidenceExpiry(uploadReceipt.expiresAt)) {
-          throw new Error('La evidencia subida no tiene una fecha de expiración válida.');
-        }
-        await tasksApi.executionOrders.registerEvidence(
-          selectedExecutionOrder.id,
-          {
-            mediaAssetId: uploadReceipt.mediaAssetId,
-            evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
-            requirementKey,
-            expiresAt: uploadReceipt.expiresAt,
-          },
-          selectedExecutionOrder.version,
-        );
+      const uploadReceipt = await tasksApi.executionOrders.uploadEvidenceAsset(
+        selectedExecutionOrder.id,
+        file,
+        selectedExecutionOrder.version,
+      );
+      if (!isValidFutureEvidenceExpiry(uploadReceipt.expiresAt)) {
+        throw new Error('La evidencia subida no tiene una fecha de expiración válida.');
       }
+      await tasksApi.executionOrders.registerEvidence(
+        selectedExecutionOrder.id,
+        {
+          mediaAssetId: uploadReceipt.mediaAssetId,
+          evidenceType: file.type.startsWith('image/') ? 'PHOTO' : 'DOCUMENT',
+          requirementKey,
+          expiresAt: uploadReceipt.expiresAt,
+        },
+        selectedExecutionOrder.version,
+      );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('La evidencia fue registrada.');
       return true;
@@ -930,6 +1052,12 @@ export function OperationsClient() {
         itemUsageMeta={executionOrderItemUsageMeta}
         evidence={executionOrderEvidence}
         evidenceMeta={executionOrderEvidenceMeta}
+        isLoadingMoreActivities={isLoadingMoreExecutionOrderActivities}
+        isLoadingMoreItemUsage={isLoadingMoreExecutionOrderItemUsage}
+        isLoadingMoreEvidence={isLoadingMoreExecutionOrderEvidence}
+        onLoadMoreActivities={loadMoreExecutionOrderActivities}
+        onLoadMoreItemUsage={loadMoreExecutionOrderItemUsage}
+        onLoadMoreEvidence={loadMoreExecutionOrderEvidence}
         evidenceState={executionOrderEvidenceState}
         template={executionOrderTemplate}
         itemOptions={executionOrderItemOptions}
@@ -949,6 +1077,9 @@ export function OperationsClient() {
           setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
           setExecutionOrderEvidence([]);
           setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
+          setIsLoadingMoreExecutionOrderActivities(false);
+          setIsLoadingMoreExecutionOrderItemUsage(false);
+          setIsLoadingMoreExecutionOrderEvidence(false);
           setExecutionOrderEvidenceState('available');
           setExecutionOrderError(null);
           setExecutionOrderSuccess(null);

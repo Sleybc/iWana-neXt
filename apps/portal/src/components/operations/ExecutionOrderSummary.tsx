@@ -52,6 +52,8 @@ function detailSyncState(order: SummaryOrder): ExecutionOrderSyncState | undefin
 
 function syncCopy(state: ExecutionOrderSyncState | undefined): string {
   switch (state) {
+    case 'synced':
+      return 'Sincronizada';
     case 'pending':
       return 'Sincronización pendiente';
     case 'error':

@@ -12,6 +12,7 @@ import {
   normalizeExecutionOrderEvidence,
   normalizeExecutionOrderCollection,
   collectExecutionOrderCollectionPages,
+  loadMoreExecutionOrderCollection,
   productRequirementLabel,
 } from './OperationsClient';
 
@@ -126,20 +127,50 @@ describe('OperationsClient', () => {
     } as never);
   });
 
-  it('usa una etiqueta genérica y no expone la clave cruda de un requisito', () => {
+  it('conserva la etiqueta real de un requisito faltante', () => {
     const error = new ApiError(422, 'CLOSURE_GAP', 'Faltan requisitos');
-    Object.assign(error, { missingRequirements: ['req-photo-install'] });
+    Object.assign(error, {
+      missingRequirements: [
+        {
+          requirementId: 'req-photo-install',
+          label: 'Foto de instalación',
+          kind: 'EVIDENCE',
+          reason: 'Adjunta una foto de la instalación.',
+        },
+      ],
+    });
+    const missing = getMissingRequirements(error);
+
+    expect(missing[0]).toEqual({
+      requirementId: 'req-photo-install',
+      label: 'Foto de instalación',
+      kind: 'EVIDENCE',
+      reason: 'Adjunta una foto de la instalación.',
+    });
+  });
+
+  it('usa el fallback genérico solo cuando la etiqueta está vacía', () => {
+    const error = new ApiError(422, 'CLOSURE_GAP', 'Faltan requisitos');
+    Object.assign(error, {
+      missingRequirements: [
+        {
+          requirementId: 'req-photo-install',
+          label: '   ',
+          kind: 'EVIDENCE',
+          reason: '',
+        },
+      ],
+    });
     const missing = getMissingRequirements(error);
 
     expect(missing).toEqual([
       {
         requirementId: 'req-photo-install',
-        label: 'Requisito pendiente',
-        kind: 'OTHER',
-        reason: 'Completa el requisito pendiente antes de cerrar la orden.',
+        label: 'Evidencia requerida',
+        kind: 'EVIDENCE',
+        reason: 'Adjunta evidencia requerida antes de cerrar la orden.',
       },
     ]);
-    expect(missing[0]?.label).not.toContain('req-photo-install');
   });
 
   it('normaliza evidencias ausentes a una colección vacía', () => {
@@ -234,9 +265,49 @@ describe('OperationsClient', () => {
     expect(result.meta.hasMore).toBe(true);
   });
 
-  it('traduce kind y categorías internas a labels seguros de producto', () => {
-    expect(productRequirementLabel('MATERIAL', 'MATERIAL', 'ONT')).toBe(
-      'Material o equipo requerido',
+  it('carga la página siguiente cuando hasMore mantiene datos pendientes visibles', async () => {
+    const fetchPage = jest.fn().mockResolvedValue({
+      data: [{ id: 'activity-002' }],
+      meta: {
+        page: 21,
+        limit: 1,
+        total: 2,
+        totalIsEstimate: false,
+        totalPages: 21,
+        nextCursor: null,
+        hasMore: false,
+        mode: 'page' as const,
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+
+    const result = await loadMoreExecutionOrderCollection(
+      fetchPage,
+      {
+        page: 20,
+        limit: 1,
+        total: 2,
+        totalIsEstimate: false,
+        totalPages: 21,
+        nextCursor: null,
+        hasMore: true,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+      1,
+    );
+
+    expect(fetchPage).toHaveBeenCalledWith(21, 1);
+    expect(result.data).toEqual([{ id: 'activity-002' }]);
+    expect(result.meta.hasMore).toBe(false);
+    expect(result.meta.total).toBe(2);
+  });
+
+  it('conserva labels de producto y deriva copy cuando no hay label', () => {
+    expect(productRequirementLabel('Material o equipo', 'MATERIAL', 'ONT')).toBe(
+      'Material o equipo',
     );
     expect(productRequirementLabel(undefined, 'EVIDENCE', 'req-photo-install')).toBe(
       'Evidencia requerida',

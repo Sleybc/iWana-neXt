@@ -125,4 +125,33 @@ describe('ExecutionOrderSummary', () => {
     expect(screen.getByText('2 de 5 requisitos completados')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveValue(40);
   });
+
+  it('muestra Sincronizada cuando el estado está mapeado a synced', () => {
+    const order = {
+      id: 'eo-001',
+      number: 'OT-001',
+      version: 1,
+      status: ExecutionOrderStatus.ASSIGNED,
+      workType: WfmWorkType.INSTALLATION,
+      template: null,
+      schedule: {
+        eventId: 'event-001',
+        window: {
+          startAt: '2026-07-27T14:00:00.000Z',
+          endAt: '2026-07-27T16:00:00.000Z',
+        },
+      },
+      site: { id: 'site-001', label: 'Sitio autorizado' },
+      completion: { progress: 0 },
+      syncState: 'IN_SYNC',
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: [],
+      createdAt: '2026-07-27T12:00:00.000Z',
+      updatedAt: '2026-07-27T12:00:00.000Z',
+    } as ExecutionOrderDetailResponse;
+
+    render(<ExecutionOrderSummary order={order} syncState="synced" />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Sincronizada');
+  });
 });

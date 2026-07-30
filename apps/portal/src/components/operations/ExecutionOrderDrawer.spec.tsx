@@ -261,6 +261,12 @@ describe('ExecutionOrderDrawer', () => {
         error={null}
         offline={false}
         onClose={jest.fn()}
+        isLoadingMoreActivities={false}
+        isLoadingMoreItemUsage={false}
+        isLoadingMoreEvidence={false}
+        onLoadMoreActivities={jest.fn()}
+        onLoadMoreItemUsage={jest.fn()}
+        onLoadMoreEvidence={jest.fn()}
         onStart={jest.fn().mockResolvedValue(undefined)}
         onRegisterActivity={jest.fn().mockResolvedValue(undefined)}
         onRegisterItemUsage={jest.fn().mockResolvedValue(undefined)}
@@ -592,7 +598,7 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
     });
 
-    it('conserva el requirementKey real al subir evidencia', async () => {
+    it('conserva el requirementKey real y selecciona un solo archivo al subir evidencia', async () => {
       const onUploadEvidence = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
       renderDrawer({
@@ -601,9 +607,36 @@ describe('ExecutionOrderDrawer', () => {
       });
 
       const file = new File(['evidencia'], 'instalacion.jpg', { type: 'image/jpeg' });
-      await user.upload(screen.getByLabelText('Adjuntar evidencia'), file);
+      const input = screen.getByLabelText('Adjuntar evidencia');
+      await user.upload(input, file);
 
-      expect(onUploadEvidence).toHaveBeenCalledWith([file], 'req-photo-install');
+      expect(input).not.toHaveAttribute('multiple');
+      expect(onUploadEvidence).toHaveBeenCalledWith(file, 'req-photo-install');
+    });
+
+    it('muestra Cargar más cuando quedan evidencias y conserva el callback', async () => {
+      const onLoadMoreEvidence = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        evidence: evidenceFactory(),
+        evidenceMeta: {
+          page: 20,
+          limit: 1,
+          total: 2,
+          totalIsEstimate: false,
+          totalPages: 2,
+          nextCursor: null,
+          hasMore: true,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+        onLoadMoreEvidence,
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+
+      expect(onLoadMoreEvidence).toHaveBeenCalledTimes(1);
     });
 
     it('envía summary obligatorio al cerrar la OT', async () => {

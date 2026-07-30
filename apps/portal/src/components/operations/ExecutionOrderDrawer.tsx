@@ -32,7 +32,11 @@ import type {
   RegisterExecutionOrderItemUsageDto,
 } from '@/lib/api-client';
 import type { ExecutionOrderMissingRequirement } from './OperationsClient';
-import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalTablePagination,
+} from '@/components/shared/portal-ui';
 import { ExecutionOrderSummary, type ExecutionOrderSyncState } from './ExecutionOrderSummary';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 import {
@@ -65,10 +69,16 @@ interface ExecutionOrderDrawerProps {
   offline: boolean;
   onClose: () => void;
   onRefreshDetail?: () => Promise<void>;
+  isLoadingMoreActivities: boolean;
+  isLoadingMoreItemUsage: boolean;
+  isLoadingMoreEvidence: boolean;
+  onLoadMoreActivities: () => void | Promise<void>;
+  onLoadMoreItemUsage: () => void | Promise<void>;
+  onLoadMoreEvidence: () => void | Promise<void>;
   onStart: (notes?: string | null) => Promise<void>;
   onRegisterActivity: (payload: RegisterActivityCommand) => Promise<void | boolean>;
   onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void | boolean>;
-  onUploadEvidence: (files: File[], requirementKey: string) => Promise<void | boolean>;
+  onUploadEvidence: (file: File, requirementKey: string) => Promise<void | boolean>;
   onBlock?: (payload: { reasonCode: string; note?: string }) => Promise<void>;
   onUnblock?: (payload: { resolutionCode: string; note?: string }) => Promise<void>;
   onCloseOrder: (payload: CloseExecutionOrderDto) => Promise<void>;
@@ -286,6 +296,12 @@ export function ExecutionOrderDrawer({
   offline,
   onClose,
   onRefreshDetail,
+  isLoadingMoreActivities,
+  isLoadingMoreItemUsage,
+  isLoadingMoreEvidence,
+  onLoadMoreActivities,
+  onLoadMoreItemUsage,
+  onLoadMoreEvidence,
   onStart,
   onRegisterActivity,
   onRegisterItemUsage,
@@ -918,6 +934,14 @@ export function ExecutionOrderDrawer({
                   </article>
                 ))
               )}
+              <PortalTablePagination
+                hasMore={activitiesMeta?.hasMore === true}
+                onLoadMore={() => void onLoadMoreActivities()}
+                loading={isLoadingMoreActivities}
+                resourceLabel="actividades"
+                shown={activities.length}
+                total={activitiesMeta?.total}
+              />
             </div>
 
             {/* Registration form */}
@@ -1020,6 +1044,14 @@ export function ExecutionOrderDrawer({
                   </article>
                 ))
               )}
+              <PortalTablePagination
+                hasMore={itemUsageMeta?.hasMore === true}
+                onLoadMore={() => void onLoadMoreItemUsage()}
+                loading={isLoadingMoreItemUsage}
+                resourceLabel="consumos"
+                shown={itemUsage.length}
+                total={itemUsageMeta?.total}
+              />
             </div>
 
             {/* Inventory reconciliation */}
@@ -1224,6 +1256,14 @@ export function ExecutionOrderDrawer({
                       </Badge>
                     </article>
                   ))}
+                  <PortalTablePagination
+                    hasMore={evidenceMeta?.hasMore === true}
+                    onLoadMore={() => void onLoadMoreEvidence()}
+                    loading={isLoadingMoreEvidence}
+                    resourceLabel="evidencias"
+                    shown={normalizedEvidence.length}
+                    total={evidenceMeta?.total}
+                  />
                 </>
               )}
             </div>
@@ -1268,13 +1308,12 @@ export function ExecutionOrderDrawer({
                   type="file"
                   aria-label="Adjuntar evidencia"
                   accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length === 0) return;
+                    const file = e.target.files?.[0];
+                    if (!file) return;
                     if (!evidenceRequirementKey) return;
-                    void onUploadEvidence(files, evidenceRequirementKey).then((result) => {
+                    void onUploadEvidence(file, evidenceRequirementKey).then((result) => {
                       if (result === false) return;
                       // Reset para permitir re-subir el mismo archivo tras un registro exitoso.
                       if (evidenceFileRef.current) {
