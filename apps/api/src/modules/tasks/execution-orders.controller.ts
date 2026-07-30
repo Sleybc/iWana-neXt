@@ -69,10 +69,12 @@ import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/executi
 @ApiBearerAuth('access-token')
 @UseGuards(
   JwtAuthGuard,
+  // JWT debe ejecutarse primero para poblar actor y tenant; este guard queda
+  // antes de los guards de permisos/ABAC que pueden consultar la base de datos.
+  TenantAwareThrottlerGuard,
   RolesGuard,
   PermissionsGuard,
   ExecutionOrderAccessGuard,
-  TenantAwareThrottlerGuard,
 )
 @UseInterceptors(ExecutionOrderResponseHeadersInterceptor)
 @Controller('tasks/execution-orders')

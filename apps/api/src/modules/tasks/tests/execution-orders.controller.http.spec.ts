@@ -1,7 +1,5 @@
 import {
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   INestApplication,
   NotFoundException,
   UnauthorizedException,
@@ -26,6 +24,26 @@ import { TenantAwareThrottlerGuard } from '../guards/tenant-aware-throttler.guar
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { ExecutionOrderResponseHeadersInterceptor } from '../interceptors/execution-order-response-headers.interceptor';
 import { ExecutionOrderProjectionConvergenceService } from '../services/execution-order-projection-convergence.service';
+import { REDIS_CLIENT } from '../../redis/redis.module';
+
+/** Double compartido que reproduce la operación atómica EVAL del store Redis. */
+class SharedRedisRateLimitDouble {
+  private readonly entries = new Map<string, { count: number; expiresAt: number }>();
+
+  async eval(_script: string, _keyCount: number, key: string, windowMs: string): Promise<number> {
+    const now = Date.now();
+    const current = this.entries.get(key);
+    if (!current || current.expiresAt <= now) {
+      this.entries.set(key, { count: 1, expiresAt: now + Number(windowMs) });
+      return 1;
+    }
+
+    current.count += 1;
+    return current.count;
+  }
+}
+
+const unusedRedisClient = { eval: jest.fn().mockResolvedValue(1) };
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -302,6 +320,7 @@ describe('ExecutionOrdersController HTTP', () => {
         { provide: PermissionsGuard, useValue: { canActivate: () => true } },
         { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
         { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
         {
           provide: EffectivePermissionsService,
           useValue: {
@@ -622,17 +641,9 @@ describe('ExecutionOrdersController HTTP', () => {
   // ─── Rate Limiting (TenantAwareThrottlerGuard) ──────────────────────────
 
   describe('rate limiting tenant-aware', () => {
-    it('devuelve 429 cuando se excede el rate limit', async () => {
-      const guardMock = jest.fn().mockImplementation(() => {
-        throw new HttpException(
-          {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: 'Demasiadas solicitudes. Intente de nuevo en un momento.',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      });
-
+    const buildRateLimitApp = async (
+      redis: SharedRedisRateLimitDouble | { eval: jest.Mock },
+    ): Promise<INestApplication> => {
       const moduleRef: TestingModule = await Test.createTestingModule({
         controllers: [ExecutionOrdersController],
         providers: [
@@ -654,6 +665,8 @@ describe('ExecutionOrdersController HTTP', () => {
           },
           { provide: PermissionsGuard, useValue: { canActivate: () => true } },
           { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+          { provide: REDIS_CLIENT, useValue: redis },
+          TenantAwareThrottlerGuard,
           JwtAuthGuard,
           RolesGuard,
           ExecutionOrderResponseHeadersInterceptor,
@@ -662,92 +675,123 @@ describe('ExecutionOrdersController HTTP', () => {
             useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
           },
         ],
-      })
-        .overrideGuard(TenantAwareThrottlerGuard)
-        .useValue({ canActivate: guardMock })
-        .compile();
+      }).compile();
 
-      const appWithRateLimit = moduleRef.createNestApplication();
-      appWithRateLimit.setGlobalPrefix('api/v1');
-      await appWithRateLimit.init();
+      const app = moduleRef.createNestApplication();
+      app.setGlobalPrefix('api/v1');
+      await app.init();
+      return app;
+    };
 
+    it('devuelve 429 en una ráfaga real por actor y tenant', async () => {
+      const redis = new SharedRedisRateLimitDouble();
+      const app = await buildRateLimitApp(redis);
       try {
-        await request(appWithRateLimit.getHttpServer())
-          .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/assign`)
-          .set('Authorization', 'Bearer coordinator-token')
-          .set('If-Match', '1')
-          .set('Idempotency-Key', 'rate-limit-exceeded-001')
-          .send({
-            assigneeType: 'TECHNICIAN' as const,
-            assigneeId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          })
-          .expect(429);
+        const responses = await Promise.all(
+          Array.from({ length: 11 }, (_, index) =>
+            request(app.getHttpServer())
+              .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+              .set('Authorization', 'Bearer tech-token')
+              .attach('file', Buffer.from(`evidence-${index}`), 'evidence.txt'),
+          ),
+        );
 
-        expect(guardMock).toHaveBeenCalled();
+        expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
+        expect(responses.filter((response) => response.status !== 429)).toHaveLength(10);
       } finally {
-        await appWithRateLimit.close();
+        await app.close();
       }
     });
 
-    it('incluye encabezado X-RateLimit-Remaining en la respuesta', async () => {
-      const moduleRefWithHeaders: TestingModule = await Test.createTestingModule({
-        controllers: [ExecutionOrdersController],
-        providers: [
-          {
-            provide: ExecutionOrdersService,
-            useFactory: buildExecutionOrdersServiceMock,
-          },
-          {
-            provide: EffectivePermissionsService,
-            useValue: {
-              getEffectivePermissionsForUser: jest
-                .fn()
-                .mockResolvedValue([AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ]),
-            },
-          },
-          { provide: PermissionsGuard, useValue: { canActivate: () => true } },
-          { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
-          JwtAuthGuard,
-          RolesGuard,
-          ExecutionOrderResponseHeadersInterceptor,
-          {
-            provide: ExecutionOrderProjectionConvergenceService,
-            useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
-          },
-        ],
-      })
-        .overrideGuard(TenantAwareThrottlerGuard)
-        .useValue({
-          canActivate: (context: {
-            switchToHttp: () => {
-              getResponse: () => {
-                setHeader: (name: string, value: string) => void;
-              };
-            };
-          }) => {
-            const res = context.switchToHttp().getResponse();
-            res.setHeader('X-RateLimit-Limit', '120');
-            res.setHeader('X-RateLimit-Remaining', '119');
-            return true;
-          },
-        })
-        .compile();
+    it('mantiene buckets independientes para actor y tenant', async () => {
+      const redis = new SharedRedisRateLimitDouble();
+      const app = await buildRateLimitApp(redis);
+      try {
+        const burst = async (token: string): Promise<number[]> => {
+          const responses = await Promise.all(
+            Array.from({ length: 11 }, () =>
+              request(app.getHttpServer())
+                .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+                .set('Authorization', `Bearer ${token}`)
+                .attach('file', Buffer.from('evidence'), 'evidence.txt'),
+            ),
+          );
+          return responses.map((response) => response.status);
+        };
 
-      const appWithHeaders = moduleRefWithHeaders.createNestApplication();
-      appWithHeaders.setGlobalPrefix('api/v1');
-      await appWithHeaders.init();
+        const sameActorTenantA = await burst('tech-token');
+        const differentActorSameTenant = await burst('tech-002-token');
+        const differentActorTenantB = await burst('contractor-tenantb-token');
+
+        expect(sameActorTenantA.filter((status) => status === 429)).toHaveLength(1);
+        expect(differentActorSameTenant.filter((status) => status === 429)).toHaveLength(1);
+        expect(differentActorTenantB.filter((status) => status === 429)).toHaveLength(1);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('falla cerrado con 503 si Redis no responde', async () => {
+      const redis = { eval: jest.fn().mockRejectedValue(new Error('connection unavailable')) };
+      const app = await buildRateLimitApp(redis);
 
       try {
-        const res = await request(appWithHeaders.getHttpServer())
+        const response = await request(app.getHttpServer())
+          .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+          .set('Authorization', 'Bearer tech-token')
+          .attach('file', Buffer.from('evidence'), 'evidence.txt')
+          .expect(503);
+
+        expect(response.body).toEqual(
+          expect.objectContaining({ code: 'RATE_LIMIT_STORE_UNAVAILABLE' }),
+        );
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('falla cerrado con 503 si Redis excede el timeout', async () => {
+      const redis = {
+        eval: jest.fn().mockImplementation(() => new Promise<number>(() => undefined)),
+      };
+      const app = await buildRateLimitApp(redis);
+
+      try {
+        await request(app.getHttpServer())
+          .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+          .set('Authorization', 'Bearer tech-token')
+          .attach('file', Buffer.from('evidence'), 'evidence.txt')
+          .expect(503);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('incluye encabezados de rate limit en una lectura permitida', async () => {
+      const redis = new SharedRedisRateLimitDouble();
+      const app = await buildRateLimitApp(redis);
+
+      try {
+        const response = await request(app.getHttpServer())
           .get(`/api/v1/tasks/execution-orders/${ORDER_UUID}`)
           .set('Authorization', 'Bearer support-token')
           .expect(200);
 
-        expect(res.headers['x-ratelimit-remaining']).toBeDefined();
-        expect(res.headers['x-ratelimit-limit']).toBeDefined();
+        expect(response.headers['x-ratelimit-remaining']).toBeDefined();
+        expect(response.headers['x-ratelimit-limit']).toBeDefined();
       } finally {
-        await appWithHeaders.close();
+        await app.close();
       }
+    });
+
+    it('declara el rate limit antes de los guards de autorización con acceso a datos', () => {
+      const guards = Reflect.getMetadata('__guards__', ExecutionOrdersController) as unknown[];
+      const throttlerIndex = guards.indexOf(TenantAwareThrottlerGuard);
+      const accessIndex = guards.indexOf(ExecutionOrderAccessGuard);
+
+      expect(throttlerIndex).toBeGreaterThanOrEqual(0);
+      expect(accessIndex).toBeGreaterThanOrEqual(0);
+      expect(throttlerIndex).toBeLessThan(accessIndex);
     });
   });
 });
@@ -865,6 +909,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         PermissionsGuard,
         { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
         { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
         JwtAuthGuard,
         RolesGuard,
         ExecutionOrderResponseHeadersInterceptor,
@@ -1116,6 +1161,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           // ABAC en acción: ExecutionOrderAccessGuard es real con el mock service
           ExecutionOrderAccessGuard,
           { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+          { provide: REDIS_CLIENT, useValue: unusedRedisClient },
           JwtAuthGuard,
           RolesGuard,
           ExecutionOrderResponseHeadersInterceptor,
@@ -1184,6 +1230,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
           PermissionsGuard,
           ExecutionOrderAccessGuard,
           { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+          { provide: REDIS_CLIENT, useValue: unusedRedisClient },
           JwtAuthGuard,
           RolesGuard,
           ExecutionOrderResponseHeadersInterceptor,
