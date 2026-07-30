@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@iwana/ui';
 import {
   ExecutionOrderResult,
+  InventoryItemStatus,
+  StockLocationStatus,
   type RegisterActivityCommand,
   TaskExecutionMode,
   TaskOriginContext,
@@ -32,7 +34,7 @@ import type {
   ExecutionOrderEvidence,
   ExecutionOrderTemplateVersion,
 } from '@iwana/shared';
-import { ApiError, tasksApi, usersApi } from '@/lib/api-client';
+import { ApiError, inventoryApi, tasksApi, usersApi } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -132,7 +134,9 @@ export function getMissingRequirements(error: unknown): ExecutionOrderMissingReq
   });
 }
 
-function collectionData<T>(value: T[] | { data?: T[] | null } | null | undefined): T[] {
+export function normalizeExecutionOrderCollection<T>(
+  value: T[] | { data?: T[] | null; meta?: unknown } | null | undefined,
+): T[] {
   return Array.isArray(value) ? value : (value?.data ?? []);
 }
 
@@ -226,6 +230,12 @@ export function OperationsClient() {
   >('available');
   const [executionOrderTemplate, setExecutionOrderTemplate] =
     useState<ExecutionOrderTemplateVersion | null>(null);
+  const [executionOrderItemOptions, setExecutionOrderItemOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [executionOrderCustodyOptions, setExecutionOrderCustodyOptions] = useState<
+    Array<{ type: 'TECHNICIAN' | 'CREW'; id: string; label: string }>
+  >([]);
   const [executionOrderMissingRequirements, setExecutionOrderMissingRequirements] = useState<
     ExecutionOrderMissingRequirement[]
   >([]);
@@ -341,9 +351,39 @@ export function OperationsClient() {
         tasksApi.executionOrders.listActivities(executionOrderId),
         tasksApi.executionOrders.listItemUsage(executionOrderId),
       ]);
-      setSelectedExecutionOrder(order as unknown as ExecutionOrderDetail);
-      setExecutionOrderActivities(activities as unknown as ExecutionOrderActivity[]);
-      setExecutionOrderItemUsage(itemUsage as unknown as ExecutionOrderItemUsage[]);
+      const detail = order as unknown as ExecutionOrderDetail;
+      setSelectedExecutionOrder(detail);
+      setExecutionOrderActivities(
+        normalizeExecutionOrderCollection(activities) as unknown as ExecutionOrderActivity[],
+      );
+      setExecutionOrderItemUsage(
+        normalizeExecutionOrderCollection(itemUsage) as unknown as ExecutionOrderItemUsage[],
+      );
+
+      try {
+        const [items, locations] = await Promise.all([
+          inventoryApi.listItems({ status: InventoryItemStatus.ACTIVE, limit: 100 }),
+          inventoryApi.listLocations({
+            custody: 'mobile',
+            status: StockLocationStatus.ACTIVE,
+            withStock: true,
+            limit: 100,
+          }),
+        ]);
+        setExecutionOrderItemOptions(
+          items.data.map((item) => ({ value: item.id, label: `${item.sku} · ${item.name}` })),
+        );
+        setExecutionOrderCustodyOptions(
+          locations.data.map((location) => ({
+            type: location.type === 'MOBILE_CREW' ? 'CREW' : 'TECHNICIAN',
+            id: location.id,
+            label: location.name,
+          })),
+        );
+      } catch {
+        setExecutionOrderItemOptions([]);
+        setExecutionOrderCustodyOptions([]);
+      }
 
       try {
         const evidence = await tasksApi.executionOrders.listEvidence(executionOrderId);
@@ -356,13 +396,22 @@ export function OperationsClient() {
         setExecutionOrderEvidenceState('unavailable');
       }
 
-      const templateReference = (order as unknown as ExecutionOrderDetail).template;
+      const templateReference = detail.template;
       if (templateReference?.id) {
-        const versions = await tasksApi.executionOrders.listTemplateVersions(templateReference.id);
-        const templateVersions = collectionData(versions);
-        setExecutionOrderTemplate(
-          resolveAssignedTemplateVersion(templateVersions, templateReference.version),
-        );
+        try {
+          const versions = await tasksApi.executionOrders.listTemplateVersions(
+            templateReference.id,
+          );
+          const templateVersions = normalizeExecutionOrderCollection(versions);
+          setExecutionOrderTemplate(
+            resolveAssignedTemplateVersion(templateVersions, templateReference.version),
+          );
+        } catch {
+          setExecutionOrderTemplate(null);
+          setExecutionOrderError(
+            'No fue posible cargar la plantilla aplicada. La orden se conserva abierta y el cierre permanece bloqueado.',
+          );
+        }
       } else {
         setExecutionOrderTemplate(null);
       }
@@ -375,6 +424,8 @@ export function OperationsClient() {
       setExecutionOrderEvidence([]);
       setExecutionOrderEvidenceState('available');
       setExecutionOrderTemplate(null);
+      setExecutionOrderItemOptions([]);
+      setExecutionOrderCustodyOptions([]);
       setExecutionOrderMissingRequirements([]);
     } finally {
       setIsLoadingExecutionOrder(false);
@@ -702,6 +753,8 @@ export function OperationsClient() {
         evidence={executionOrderEvidence}
         evidenceState={executionOrderEvidenceState}
         template={executionOrderTemplate}
+        itemOptions={executionOrderItemOptions}
+        custodyOptions={executionOrderCustodyOptions}
         missingRequirements={executionOrderMissingRequirements}
         isLoading={isLoadingExecutionOrder}
         isSubmitting={isSubmittingExecutionOrder}
@@ -717,6 +770,8 @@ export function OperationsClient() {
           setExecutionOrderError(null);
           setExecutionOrderSuccess(null);
           setExecutionOrderTemplate(null);
+          setExecutionOrderItemOptions([]);
+          setExecutionOrderCustodyOptions([]);
           setExecutionOrderMissingRequirements([]);
           router.replace('/dashboard/operations');
         }}

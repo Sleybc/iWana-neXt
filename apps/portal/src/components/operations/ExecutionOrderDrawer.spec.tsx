@@ -322,6 +322,9 @@ describe('ExecutionOrderDrawer', () => {
     it('shows forbidden state when allowedActions is null', () => {
       renderDrawer({ order: detailFactory({ allowedActions: null }) });
       expect(screen.getByText(/No tienes acceso a esta orden/)).toBeInTheDocument();
+      expect(screen.queryByText('Resumen de la OT')).not.toBeInTheDocument();
+      expect(screen.queryByText('Compromiso')).not.toBeInTheDocument();
+      expect(screen.queryByText('Equipos y materiales')).not.toBeInTheDocument();
     });
   });
 

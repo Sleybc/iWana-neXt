@@ -509,7 +509,7 @@ export function ExecutionOrderDrawer({
     <OperationalSidePeek
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={order?.number ?? 'OT'}
+      title={forbidden ? 'Orden de trabajo' : (order?.number ?? 'OT')}
       description="Registra y consulta el trabajo realizado en la OT"
       size="wide"
       busy={isSubmitting}
@@ -531,6 +531,12 @@ export function ExecutionOrderDrawer({
             description="Abre una orden de trabajo desde Agenda u Operaciones."
           />
         )
+      ) : forbidden ? (
+        <PortalAlert
+          variant="info"
+          title="Sin acceso"
+          description="No tienes acceso a esta orden."
+        />
       ) : (
         /* ── Contenido ── */
         <div className="space-y-5">
@@ -557,15 +563,6 @@ export function ExecutionOrderDrawer({
               variant="warning"
               title="Sin conexión"
               description="Sin conexión; vuelve a intentar cuando recuperes la red."
-            />
-          )}
-
-          {/* Forbidden */}
-          {forbidden && (
-            <PortalAlert
-              variant="info"
-              title="Sin acceso"
-              description="No tienes acceso a esta orden."
             />
           )}
 
@@ -1050,11 +1047,11 @@ export function ExecutionOrderDrawer({
                     className="flex items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border"
                   >
                     {ev.evidenceType === 'PHOTO' ? (
-                      <Camera className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                      <Camera className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
                     ) : ev.evidenceType === 'SIGNATURE' ? (
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
                     ) : (
-                      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">
@@ -1273,7 +1270,10 @@ export function ExecutionOrderDrawer({
                       Esta acción es definitiva. No podrás editar la OT después del cierre.
                     </p>
                     {closeValidationError && (
-                      <p className="mt-2 text-xs font-medium text-red-800" role="alert">
+                      <p
+                        className="mt-2 text-xs font-medium text-red-800 dark:text-red-200"
+                        role="alert"
+                      >
                         {closeValidationError}
                       </p>
                     )}

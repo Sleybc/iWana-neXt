@@ -123,6 +123,7 @@ export function OperationalSidePeek({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-labelledby={titleId}
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
@@ -147,18 +148,30 @@ export function OperationalSidePeek({
               </div>
             ) : null}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Cerrar"
-            disabled={busy}
-            onClick={() => void requestClose()}
-          >
-            <span aria-hidden="true" className="text-lg leading-none">
-              ×
-            </span>
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {busy ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="text-xs text-gray-600 dark:text-gray-300"
+              >
+                Procesando…
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="min-h-11 min-w-11"
+              aria-label="Cerrar"
+              disabled={busy}
+              onClick={() => void requestClose()}
+            >
+              <span aria-hidden="true" className="text-lg leading-none">
+                ×
+              </span>
+            </Button>
+          </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer ? (

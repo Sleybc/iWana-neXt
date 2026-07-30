@@ -56,6 +56,7 @@ type FlowState = {
   executionOrder: JsonRecord;
   executionOrderActivities: JsonRecord[];
   executionOrderItemUsage: JsonRecord[];
+  executionOrderEvidences: JsonRecord[];
   locations: JsonRecord[];
   balances: JsonRecord[];
   tasks: JsonRecord[];
@@ -77,43 +78,82 @@ function createFlowState(): FlowState {
       workOrderId: 'wo-field-001',
       status: 'SCHEDULED',
       title: 'Soporte en sitio - cableado',
-      workType: 'SUPPORT',
+      type: 'INSTALLATION',
       scheduledStartAt: nowIso(60),
       scheduledEndAt: nowIso(120),
       assignedUserId: SUPPORT_USER_ID,
+      assignedTeamId: null,
       address: 'Cra 10 # 10-10',
       municipality: 'Bogotá',
       sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: SUBSCRIBER_ID,
+      organizationSiteId: null,
+      ticketId: TICKET_ID,
+      contractId: null,
+      createdBy: SUPPORT_USER_ID,
+      updatedBy: SUPPORT_USER_ID,
       createdAt: nowIso(-10),
       updatedAt: nowIso(-10),
     },
     executionOrder: {
       id: EXECUTION_ORDER_ID,
-      tenantId: 'tenant-field-flow-001',
-      executionOrderNumber: 'OT-0001',
-      workOrderId: 'wo-field-001',
+      number: 'OT-0001',
+      version: 1,
       status: 'ASSIGNED',
       result: null,
       workType: 'SUPPORT',
-      ticketId: TICKET_ID,
-      taskId: 'task-field-001',
-      subscriberId: SUBSCRIBER_ID,
-      customerDisplayLabel: 'Suscriptor demo',
-      serviceAddress: 'Cra 10 # 10-10',
-      sector: 'Centro',
-      municipality: 'Bogotá',
-      workSummary: 'Soporte técnico por falla de cableado',
-      workInstructions: 'Validar acometida y reemplazar ONT si aplica.',
-      assignedUserId: SUPPORT_USER_ID,
-      scheduledStartAt: nowIso(60),
-      scheduledEndAt: nowIso(120),
-      startedAt: null,
-      closedAt: null,
+      template: {
+        id: 'template-field-001',
+        key: 'SOPORTE_CABLEADO',
+        version: 1,
+        label: 'Soporte de cableado',
+      },
+      schedule: {
+        eventId: SCHEDULE_EVENT_ID,
+        window: { startAt: nowIso(60), endAt: nowIso(120) },
+        plannedResource: { type: 'TECHNICIAN', id: SUPPORT_USER_ID },
+      },
+      assignee: {
+        type: 'TECHNICIAN',
+        id: SUPPORT_USER_ID,
+        displayLabel: 'Paula Mesa',
+      },
+      site: {
+        id: CUSTOMER_SITE_LOCATION_ID,
+        label: 'Sitio cliente subscriber-001',
+        address: 'Cra 10 # 10-10',
+      },
+      completion: { progress: 0 },
+      syncState: 'IN_SYNC',
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: [
+        'START',
+        'REGISTER_ACTIVITY',
+        'REGISTER_ITEM_USAGE',
+        'REGISTER_EVIDENCE',
+        'CLOSE',
+      ],
       createdAt: nowIso(-10),
       updatedAt: nowIso(-10),
     },
     executionOrderActivities: [],
     executionOrderItemUsage: [],
+    executionOrderEvidences: [
+      {
+        id: 'evidence-signature-001',
+        executionOrderId: EXECUTION_ORDER_ID,
+        mediaAssetId: 'media-signature-001',
+        evidenceType: 'SIGNATURE',
+        requirementKey: 'CUSTOMER_SIGNATURE',
+        capturedAt: nowIso(-5),
+        receivedAt: nowIso(-5),
+        status: 'AVAILABLE',
+        createdAt: nowIso(-5),
+      },
+    ],
     locations: [
       {
         id: TECH_LOCATION_ID,
@@ -210,7 +250,7 @@ async function seedPortalSession(page: import('@playwright/test').Page) {
 async function selectComboboxOption(
   page: import('@playwright/test').Page,
   label: string,
-  optionName: string,
+  optionName: string | RegExp,
 ) {
   await page.getByRole('combobox', { name: label }).click();
   await page.getByRole('option', { name: optionName, exact: true }).click();
@@ -244,6 +284,7 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       lastName: 'Mesa',
       phone: null,
       jobTitle: 'Agente de soporte',
+      isOperationalResource: true,
       documentType: null,
       documentNumber: null,
       avatarUrl: null,
@@ -480,7 +521,29 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
     }
 
     if (pathname.endsWith('/wfm/events') && method === 'GET') {
-      await fulfillJson(route, state.scheduleEvent ? [state.scheduleEvent] : []);
+      await fulfillJson(route, {
+        data: state.scheduleEvent ? [state.scheduleEvent] : [],
+        meta: {
+          page: 1,
+          limit: 100,
+          total: state.scheduleEvent ? 1 : 0,
+          totalPages: 1,
+          hasMore: false,
+        },
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/wfm/work-orders') && method === 'GET') {
+      await fulfillJson(route, {
+        data: [],
+        meta: { page: 1, limit: 100, total: 0, totalPages: 1, hasMore: false },
+      });
+      return;
+    }
+
+    if (pathname.endsWith(`/wfm/events/${SCHEDULE_EVENT_ID}`) && method === 'GET') {
+      await fulfillJson(route, state.scheduleEvent);
       return;
     }
 
@@ -503,7 +566,16 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       pathname.endsWith(`/tasks/execution-orders/${EXECUTION_ORDER_ID}/activities`) &&
       method === 'GET'
     ) {
-      await fulfillJson(route, state.executionOrderActivities);
+      await fulfillJson(route, {
+        data: state.executionOrderActivities,
+        meta: {
+          page: 1,
+          limit: 25,
+          total: state.executionOrderActivities.length,
+          totalPages: 1,
+          hasMore: false,
+        },
+      });
       return;
     }
 
@@ -511,7 +583,71 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       pathname.endsWith(`/tasks/execution-orders/${EXECUTION_ORDER_ID}/item-usage`) &&
       method === 'GET'
     ) {
-      await fulfillJson(route, state.executionOrderItemUsage);
+      await fulfillJson(route, {
+        data: state.executionOrderItemUsage,
+        meta: {
+          page: 1,
+          limit: 25,
+          total: state.executionOrderItemUsage.length,
+          totalPages: 1,
+          hasMore: false,
+        },
+      });
+      return;
+    }
+
+    if (
+      pathname.endsWith(`/tasks/execution-orders/${EXECUTION_ORDER_ID}/evidences`) &&
+      method === 'GET'
+    ) {
+      await fulfillJson(route, {
+        data: state.executionOrderEvidences,
+        meta: {
+          page: 1,
+          limit: 25,
+          total: state.executionOrderEvidences.length,
+          totalPages: 1,
+          hasMore: false,
+        },
+      });
+      return;
+    }
+
+    if (
+      pathname.endsWith('/tasks/execution-order-templates/template-field-001/versions') &&
+      method === 'GET'
+    ) {
+      await fulfillJson(route, {
+        data: [
+          {
+            id: 'template-version-field-001',
+            templateId: 'template-field-001',
+            key: 'SOPORTE_CABLEADO',
+            version: 1,
+            label: 'Soporte de cableado',
+            workType: 'SUPPORT',
+            status: 'PUBLISHED',
+            requirements: [],
+            reasonCatalogs: [],
+          },
+        ],
+        meta: { page: 1, limit: 25, total: 1, totalPages: 1, hasMore: false },
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/items') && method === 'GET') {
+      await fulfillJson(route, {
+        data: [
+          {
+            id: ITEM_ID,
+            sku: ITEM_ID,
+            name: 'ONT Huawei HG8245',
+            status: 'ACTIVE',
+          },
+        ],
+        meta: { page: 1, limit: 100, total: 1, totalPages: 1, hasMore: false },
+      });
       return;
     }
 
@@ -533,15 +669,14 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       const payload = JSON.parse(request.postData() ?? '{}') as JsonRecord;
       const usage = {
         id: `usage-${state.executionOrderItemUsage.length + 1}`,
-        tenantId: 'tenant-field-flow-001',
         executionOrderId: EXECUTION_ORDER_ID,
         itemId: payload.itemId ?? ITEM_ID,
-        technicianCustodyId: payload.technicianCustodyId ?? TECH_CUSTODY_ID,
-        quantity: payload.quantity ?? 1,
-        serialNumber: payload.serialNumber ?? null,
+        quantity: Number(payload.quantity ?? 1),
+        serial: payload.serialNumber ?? null,
         action: payload.action ?? 'INSTALL',
         finalDisposition: payload.finalDisposition ?? 'INSTALLED_AT_CUSTOMER',
-        stockMovementId: null,
+        inventoryRequestId: 'inventory-request-001',
+        movementStatus: 'CONFIRMED',
         createdAt: nowIso(),
       };
       state.executionOrderItemUsage.push(usage);
@@ -558,8 +693,14 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       const requiresSignature = state.executionOrderItemUsage.some(
         (usage) => usage.finalDisposition === 'INSTALLED_AT_CUSTOMER',
       );
+      const customerAcceptance =
+        payload.customerAcceptance && typeof payload.customerAcceptance === 'object'
+          ? (payload.customerAcceptance as JsonRecord)
+          : null;
       const customerSignatureRef =
-        typeof payload.customerSignatureRef === 'string' ? payload.customerSignatureRef.trim() : '';
+        typeof customerAcceptance?.artifactId === 'string'
+          ? customerAcceptance.artifactId.trim()
+          : '';
 
       if (requiresSignature && customerSignatureRef.length === 0) {
         await fulfillJson(
@@ -576,11 +717,10 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
 
       state.executionOrder.status = 'COMPLETED';
       state.executionOrder.result = payload.result ?? 'EXECUTED';
-      state.executionOrder.customerSignatureRef = customerSignatureRef || null;
-      state.executionOrder.closeNotes =
-        typeof payload.closeNotes === 'string' ? payload.closeNotes : null;
-      state.executionOrder.closedAt = nowIso();
+      state.executionOrder.completion = { progress: 100, closedAt: nowIso() };
+      state.executionOrder.customerAcceptance = customerSignatureRef || null;
       state.executionOrder.updatedAt = nowIso();
+      state.executionOrder.allowedActions = ['OPEN', 'CREATE_FOLLOW_UP'];
 
       if (requiresSignature && !state.inventoryApplied) {
         const techBalance = state.balances.find(
@@ -606,7 +746,10 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
     }
 
     if (pathname.endsWith('/inventory/locations') && method === 'GET') {
-      await fulfillJson(route, state.locations);
+      await fulfillJson(route, {
+        data: state.locations,
+        meta: { page: 1, limit: 100, total: state.locations.length, totalPages: 1, hasMore: false },
+      });
       return;
     }
 
@@ -641,32 +784,36 @@ async function runOperationsCloseFlow(page: import('@playwright/test').Page, sta
   await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Iniciar ejecución' }).click();
-  await expect(page.getByRole('dialog').getByText('En progreso', { exact: true })).toBeVisible();
-
-  await page.getByLabel('Ítem').fill(ITEM_ID);
-  await page.getByLabel('Custodia técnica').fill(TECH_CUSTODY_ID);
-  await page.getByLabel('Serial').fill('ONT-SN-001');
-  await page.getByRole('button', { name: 'Registrar material' }).click();
-
-  await expect(page.getByText(`${ITEM_ID} · 1`, { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Evidencia de firma del cliente')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Cerrar OT' }).click();
   await expect(
-    page.getByText(
-      'La OT requiere evidencia de firma del cliente cuando hay instalación en sitio.',
-    ),
+    page.getByRole('region', { name: 'Compromiso' }).getByText('En progreso', { exact: true }),
   ).toBeVisible();
 
-  await page.getByLabel('Evidencia de firma del cliente').fill('SIG-OT-001');
+  await page.getByRole('combobox', { name: 'Ítem' }).click();
+  await page.getByRole('option', { name: new RegExp(ITEM_ID) }).click();
+  await selectComboboxOption(page, 'Custodia de origen', 'Custodia técnico soporte');
+  await page.getByLabel('Serial o lote').fill('ONT-SN-001');
+  await selectComboboxOption(page, 'Acción', 'Instalar');
+  await selectComboboxOption(page, 'Destino', 'Instalado en cliente');
+  await page.getByRole('button', { name: 'Registrar material' }).click();
+
+  await expect(page.getByText('ONT-SN-001', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Cantidad: 1/)).toBeVisible();
+  await expect(page.getByLabel('Referencia de evidencia')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
+
+  await selectComboboxOption(page, 'Referencia de evidencia', /Firma del cliente/);
+  await selectComboboxOption(page, 'Forma de aceptación', 'Firma');
   await page
-    .getByLabel('Nota de cierre')
+    .getByLabel('Resumen de cierre')
     .fill('Instalación finalizada con validación del cliente.');
   await page.getByRole('button', { name: 'Cerrar OT' }).click();
+  await page.getByRole('button', { name: 'Confirmar cierre' }).click();
 
-  await expect(page.getByText('Completada', { exact: true })).toBeVisible();
-  expect(state.closeAttempts).toBe(2);
-  expect(state.executionOrder.customerSignatureRef).toBe('SIG-OT-001');
+  await expect(
+    page.getByRole('region', { name: 'Cierre' }).getByText('Ejecutada', { exact: true }),
+  ).toBeVisible();
+  expect(state.closeAttempts).toBe(1);
+  expect(state.executionOrder.customerAcceptance).toBe('media-signature-001');
   expect(
     state.balances.find(
       (entry) => entry.locationId === TECH_LOCATION_ID && entry.itemId === ITEM_ID,
@@ -690,6 +837,30 @@ test('escenario operaciones — cierre OT con firma e inventario en sitio client
   await runOperationsCloseFlow(page, state);
 
   // Intake Assurance → visita SUPPORT queda cubierto por unit tests (portal + worker).
-  expect(state.executionOrder.ticketId).toBe(TICKET_ID);
-  expect(state.executionOrder.subscriberId).toBe(SUBSCRIBER_ID);
+  expect(state.executionOrder.site).toEqual(
+    expect.objectContaining({ id: CUSTOMER_SITE_LOCATION_ID }),
+  );
+});
+
+test('agenda abre el resumen de la OT y conserva una sola CTA hacia ejecución', async ({
+  page,
+}) => {
+  const state = createFlowState();
+  await setupTask8Mocks(page, state);
+  await seedPortalSession(page);
+
+  await gotoAuthedDashboard(page, '/dashboard/scheduling/agenda');
+  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
+  await page.getByRole('button', { name: 'Soporte en sitio - cableado' }).click();
+
+  const eventDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Soporte en sitio - cableado' }),
+  });
+  await expect(eventDialog).toBeVisible();
+  await expect(eventDialog.getByText('Resumen de la OT')).toBeVisible();
+  await expect(eventDialog.getByRole('button', { name: 'Abrir OT' })).toHaveCount(1);
+
+  await eventDialog.getByRole('button', { name: 'Abrir OT' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/operations\?executionOrderId=eo-field-001/);
+  await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
 });

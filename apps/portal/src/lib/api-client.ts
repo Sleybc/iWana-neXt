@@ -6210,6 +6210,11 @@ export interface ExecutionOrderEvidencePage {
   meta?: { nextCursor?: string | null };
 }
 
+export interface ExecutionOrderCollectionPage<T> {
+  data: T[];
+  meta: ListMeta;
+}
+
 /** DTO legacy derivado del comando congelado de @iwana/shared. */
 export type StartExecutionOrderDto = Omit<StartExecutionOrderCommand, 'note'> & {
   note?: string | null;
@@ -6320,18 +6325,15 @@ export const tasksApi = {
       ),
 
     listActivities: (id: string, tenantSlug?: string) =>
-      request<ExecutionOrderActivityRecord[]>(
-        `/tasks/execution-orders/${id}/activities`,
-        { returnFullResponse: true },
-        tenantSlug,
-      ),
+      request<
+        ExecutionOrderCollectionPage<ExecutionOrderActivityRecord> | ExecutionOrderActivityRecord[]
+      >(`/tasks/execution-orders/${id}/activities`, { returnFullResponse: true }, tenantSlug),
 
     listItemUsage: (id: string, tenantSlug?: string) =>
-      request<ExecutionOrderItemUsageRecord[]>(
-        `/tasks/execution-orders/${id}/item-usage`,
-        { returnFullResponse: true },
-        tenantSlug,
-      ),
+      request<
+        | ExecutionOrderCollectionPage<ExecutionOrderItemUsageRecord>
+        | ExecutionOrderItemUsageRecord[]
+      >(`/tasks/execution-orders/${id}/item-usage`, { returnFullResponse: true }, tenantSlug),
 
     listEvidence: (id: string, tenantSlug?: string) =>
       request<ExecutionOrderEvidencePage | ExecutionOrderEvidenceRecord[]>(

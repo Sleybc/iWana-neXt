@@ -31,4 +31,16 @@ describe('componentes de ejecución', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('anuncia busy, muestra indicador y conserva un cierre táctil de 44 px', () => {
+    render(
+      <OperationalSidePeek open busy onOpenChange={jest.fn()} title="Detalle operativo">
+        <button type="button">Primera acción</button>
+      </OperationalSidePeek>,
+    );
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('Procesando…');
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveClass('min-h-11', 'min-w-11');
+  });
 });

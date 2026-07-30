@@ -10,6 +10,7 @@ import {
   isValidFutureEvidenceExpiry,
   resolveAssignedTemplateVersion,
   normalizeExecutionOrderEvidence,
+  normalizeExecutionOrderCollection,
 } from './OperationsClient';
 
 jest.mock('next/link', () => ({
@@ -34,6 +35,10 @@ jest.mock('@/lib/api-client', () => ({
       super(message);
       this.status = status;
     }
+  },
+  inventoryApi: {
+    listItems: jest.fn().mockResolvedValue({ data: [] }),
+    listLocations: jest.fn().mockResolvedValue({ data: [] }),
   },
   crmApi: {
     listExpedientes: jest.fn().mockResolvedValue({ data: [], total: 0 }),
@@ -141,6 +146,18 @@ describe('OperationsClient', () => {
     expect(normalizeExecutionOrderEvidence({ data: [] })).toEqual([]);
   });
 
+  it('normaliza colecciones de operaciones tanto planas como paginadas', () => {
+    const row = { id: 'activity-001' };
+
+    expect(normalizeExecutionOrderCollection([row])).toEqual([row]);
+    expect(
+      normalizeExecutionOrderCollection({
+        data: [row],
+        meta: { page: 1, limit: 25, total: 1 },
+      }),
+    ).toEqual([row]);
+  });
+
   it('mantiene la OT visible cuando el endpoint de evidencias todavía no está disponible', async () => {
     const order = {
       id: 'eo-001',
@@ -184,6 +201,69 @@ describe('OperationsClient', () => {
       expect(await screen.findByText('Evidencias no disponibles')).toBeInTheDocument();
       expect(screen.getAllByText('OT-001').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByText('Sin evidencias registradas')).not.toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, '', '/dashboard/operations');
+    }
+  });
+
+  it('mantiene la OT y bloquea el cierre si falla la plantilla aplicada', async () => {
+    const order = {
+      id: 'eo-template-error',
+      number: 'OT-TEMPLATE-ERROR',
+      version: 1,
+      status: 'IN_PROGRESS',
+      workType: WfmWorkType.INSTALLATION,
+      template: {
+        id: 'tpl-001',
+        key: 'INSTALACION_FIBRA',
+        version: 1,
+        label: 'Instalación fibra',
+      },
+      schedule: {
+        eventId: 'event-001',
+        window: {
+          startAt: '2026-07-30T14:00:00.000Z',
+          endAt: '2026-07-30T16:00:00.000Z',
+        },
+      },
+      site: { id: 'site-001', label: 'Sitio autorizado' },
+      completion: { progress: 0 },
+      syncState: 'IN_SYNC',
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: ['CLOSE'],
+      createdAt: '2026-07-30T12:00:00.000Z',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    } as never;
+
+    jest.mocked(tasksApi.executionOrders.get).mockResolvedValue(order);
+    jest.mocked(tasksApi.executionOrders.listActivities).mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 25, total: 0 },
+    } as never);
+    jest.mocked(tasksApi.executionOrders.listItemUsage).mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 25, total: 0 },
+    } as never);
+    jest.mocked(tasksApi.executionOrders.listEvidence).mockResolvedValue({
+      data: [],
+      meta: { nextCursor: null },
+    });
+    jest
+      .mocked(tasksApi.executionOrders.listTemplateVersions)
+      .mockRejectedValue(new Error('plantilla no disponible'));
+    window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-template-error');
+
+    try {
+      render(<OperationsClient />);
+
+      expect((await screen.findAllByText('OT-TEMPLATE-ERROR')).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Plantilla no disponible').length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getByText(
+          'No fue posible cargar la plantilla aplicada. La orden se conserva abierta y el cierre permanece bloqueado.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cerrar OT' })).not.toBeInTheDocument();
     } finally {
       window.history.pushState({}, '', '/dashboard/operations');
     }
