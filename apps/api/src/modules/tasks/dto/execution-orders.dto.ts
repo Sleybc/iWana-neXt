@@ -4,8 +4,11 @@ import { z } from 'zod';
 import {
   ExecutionOrderItemAction,
   ExecutionOrderResult,
+  ExecutionOrderStatus,
   InventoryDisposition,
+  WfmWorkType,
 } from '@iwana/shared';
+import type { ExecutionOrderAllowedAction } from '@iwana/shared';
 import { ListMetaDto, MAX_LIMIT } from '../../../common/pagination';
 
 /**
@@ -388,6 +391,123 @@ export class ExecutionOrderEvidencePageDto {
 
   @ApiProperty({ type: ListMetaDto })
   meta!: ListMetaDto;
+}
+
+export class ExecutionOrderTemplateReferenceResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  key!: string;
+
+  @ApiProperty({ minimum: 1 })
+  version!: number;
+
+  @ApiProperty()
+  label!: string;
+}
+
+export class ExecutionOrderScheduleResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  eventId!: string;
+
+  @ApiProperty({ type: Object })
+  window!: { startAt: string; endAt: string };
+
+  @ApiPropertyOptional({ type: Object })
+  plannedResource?: { type: 'TECHNICIAN' | 'CREW'; id: string };
+}
+
+export class ExecutionOrderAssigneeResponseDto {
+  @ApiProperty({ enum: ['TECHNICIAN', 'CREW'] })
+  type!: 'TECHNICIAN' | 'CREW';
+
+  @ApiProperty()
+  id!: string;
+
+  @ApiPropertyOptional()
+  displayLabel?: string;
+}
+
+export class ExecutionOrderSiteResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  label!: string;
+
+  @ApiPropertyOptional()
+  address?: string;
+}
+
+export class ExecutionOrderCompletionResponseDto {
+  @ApiProperty({ minimum: 0, maximum: 100, type: Number })
+  progress!: number;
+
+  @ApiProperty({ minimum: 0, type: Number })
+  completed!: number;
+
+  @ApiProperty({ minimum: 0, type: Number })
+  total!: number;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  startedAt?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  closedAt?: string;
+}
+
+/** Respuesta tipada del detalle de una OT; una OT puede no tener plantilla. */
+export class ExecutionOrderDetailResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  number!: string;
+
+  @ApiProperty({ minimum: 1 })
+  version!: number;
+
+  @ApiProperty({ enum: ExecutionOrderStatus })
+  status!: ExecutionOrderStatus;
+
+  @ApiPropertyOptional({ enum: ExecutionOrderResult })
+  result?: ExecutionOrderResult;
+
+  @ApiProperty({ enum: WfmWorkType })
+  workType!: WfmWorkType;
+
+  @ApiProperty({ type: ExecutionOrderTemplateReferenceResponseDto, nullable: true })
+  template!: ExecutionOrderTemplateReferenceResponseDto | null;
+
+  @ApiProperty({ type: ExecutionOrderScheduleResponseDto })
+  schedule!: ExecutionOrderScheduleResponseDto;
+
+  @ApiPropertyOptional({ type: ExecutionOrderAssigneeResponseDto })
+  assignee?: ExecutionOrderAssigneeResponseDto;
+
+  @ApiProperty({ type: ExecutionOrderSiteResponseDto })
+  site!: ExecutionOrderSiteResponseDto;
+
+  @ApiProperty({ type: ExecutionOrderCompletionResponseDto })
+  completion!: ExecutionOrderCompletionResponseDto;
+
+  @ApiProperty({ enum: ['IN_SYNC', 'PENDING', 'DIVERGED', 'FAILED'] })
+  syncState!: 'IN_SYNC' | 'PENDING' | 'DIVERGED' | 'FAILED';
+
+  @ApiProperty({
+    enum: ['NOT_REQUIRED', 'PENDING', 'CONFIRMED', 'REJECTED', 'DIVERGED'],
+  })
+  inventoryReconciliation!: 'NOT_REQUIRED' | 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'DIVERGED';
+
+  @ApiProperty({ type: [String], nullable: true })
+  allowedActions!: ExecutionOrderAllowedAction[] | null;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
 }
 
 export class EvidenceAssetUploadIntentDto {

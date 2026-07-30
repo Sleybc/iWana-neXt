@@ -177,6 +177,45 @@ describe('ClosureGateEvaluatorService', () => {
       const result = evaluator.evaluate([req], { activities: [{ activityType: 'CONFIGURATION' }] });
       expect(result.passed).toBe(false);
     });
+
+    it('uses the canonical Spanish product label instead of the technical activity type', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'act-instalacion',
+        label: 'Instalación de fibra',
+        kind: 'ACTIVITY',
+        activityType: 'INSTALLATION',
+      } as any);
+
+      const result = evaluator.evaluate([req], { activities: [] });
+
+      expect(result.missingRequirements[0]).toEqual(
+        expect.objectContaining({
+          requirementId: 'act-instalacion',
+          label: 'Instalación de fibra',
+        }),
+      );
+      expect(result.missingRequirements[0]?.reason).toBe(
+        'No se ha registrado la actividad "Instalación de fibra".',
+      );
+      expect(result.missingRequirements[0]?.reason).not.toContain('INSTALLATION');
+    });
+
+    it('uses a safe generic label when an activity label is empty', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'act-instalacion',
+        label: '',
+        kind: 'ACTIVITY',
+        activityType: 'INSTALLATION',
+      } as any);
+
+      const result = evaluator.evaluate([req], { activities: [] });
+
+      expect(result.missingRequirements[0]?.label).toBe('Actividad requerida');
+      expect(result.missingRequirements[0]?.reason).toBe(
+        'No se ha registrado la actividad requerida.',
+      );
+      expect(result.missingRequirements[0]?.reason).not.toContain('INSTALLATION');
+    });
   });
 
   describe('MEASUREMENT requirement', () => {
@@ -269,6 +308,45 @@ describe('ClosureGateEvaluatorService', () => {
       } as any);
       const result = evaluator.evaluate([req], { itemUsages: [] });
       expect(result.passed).toBe(false);
+    });
+
+    it('uses the canonical Spanish product label instead of the technical item category', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'cpe-equipo',
+        label: 'Equipo del cliente',
+        kind: 'MATERIAL',
+        itemCategory: 'CPE',
+      } as any);
+
+      const result = evaluator.evaluate([req], { itemUsages: [] });
+
+      expect(result.missingRequirements[0]).toEqual(
+        expect.objectContaining({
+          requirementId: 'cpe-equipo',
+          label: 'Equipo del cliente',
+        }),
+      );
+      expect(result.missingRequirements[0]?.reason).toBe(
+        'No se ha registrado el material "Equipo del cliente".',
+      );
+      expect(result.missingRequirements[0]?.reason).not.toContain('CPE');
+    });
+
+    it('uses a safe generic label when a material label is empty', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'cpe-equipo',
+        label: '',
+        kind: 'MATERIAL',
+        itemCategory: 'CPE',
+      } as any);
+
+      const result = evaluator.evaluate([req], { itemUsages: [] });
+
+      expect(result.missingRequirements[0]?.label).toBe('Material requerido');
+      expect(result.missingRequirements[0]?.reason).toBe(
+        'No se ha registrado el material requerido.',
+      );
+      expect(result.missingRequirements[0]?.reason).not.toContain('CPE');
     });
   });
 

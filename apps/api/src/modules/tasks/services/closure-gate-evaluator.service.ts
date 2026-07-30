@@ -55,8 +55,8 @@ export interface OrderEvaluationContext {
   complianceArtifacts?: Array<{ policyKey?: string }>;
   /** Si la OT tiene aceptación del cliente registrada. */
   hasCustomerAcceptance?: boolean;
-  /** Datos del comando de cierre (summary, result, customerAcceptance). */
-  closeCommand?: Record<string, unknown>;
+  /** Datos mínimos del comando de cierre usados por el requisito COMPLIANCE. */
+  closeCommand?: { customerAcceptance?: unknown };
 }
 
 /**
@@ -88,12 +88,13 @@ export class ClosureGateEvaluatorService {
   ): ClosureGateEvaluation {
     const evaluations: RequirementEvaluation[] = requirements.map((req) => {
       const satisfied = this.evaluateRequirement(req, context);
+      const label = this.productLabelFor(req);
       return {
         requirementId: req.key,
-        label: req.label,
+        label,
         kind: req.kind,
         satisfied,
-        reason: satisfied ? undefined : this.reasonForRequirement(req),
+        reason: satisfied ? undefined : this.reasonForRequirement(req, label),
       };
     });
 
@@ -183,15 +184,17 @@ export class ClosureGateEvaluatorService {
   /**
    * Genera un mensaje de razón accionable para un requisito no satisfecho.
    */
-  private reasonForRequirement(req: TemplateRequirement): string {
+  private reasonForRequirement(req: TemplateRequirement, label: string): string {
     switch (req.kind) {
       case 'FIELD':
-        return `El campo "${req.label}" no se ha completado.`;
+        return `El campo "${label}" no se ha completado.`;
       case 'ACTIVITY': {
-        return `No se ha registrado una actividad de tipo "${req.activityType}".`;
+        return label === 'Actividad requerida'
+          ? 'No se ha registrado la actividad requerida.'
+          : `No se ha registrado la actividad "${label}".`;
       }
       case 'MEASUREMENT': {
-        return `No se ha registrado la medición "${req.label}"${req.unit ? ` (${req.unit})` : ''}.`;
+        return `No se ha registrado la medición "${label}"${req.unit ? ` (${req.unit})` : ''}.`;
       }
       case 'EVIDENCE': {
         // Traducir el tipo de evidencia a texto visible
@@ -203,15 +206,39 @@ export class ClosureGateEvaluatorService {
               : req.evidenceType === 'DOCUMENT'
                 ? 'documento'
                 : 'evidencia';
-        return `No se ha vinculado una ${evidenceLabel} para "${req.label}".`;
+        return `No se ha vinculado una ${evidenceLabel} para "${label}".`;
       }
       case 'MATERIAL': {
-        return `No se ha registrado consumo de materiales de categoría "${req.itemCategory}".`;
+        return label === 'Material requerido'
+          ? 'No se ha registrado el material requerido.'
+          : `No se ha registrado el material "${label}".`;
       }
       case 'COMPLIANCE':
-        return `No se ha registrado la aceptación del cliente para "${req.label}".`;
+        return `No se ha registrado la aceptación del cliente para "${label}".`;
       default:
         return 'El requisito no se ha cumplido.';
+    }
+  }
+
+  private productLabelFor(req: TemplateRequirement): string {
+    const label = req.label.trim();
+    if (label.length > 0) return label;
+
+    switch (req.kind) {
+      case 'ACTIVITY':
+        return 'Actividad requerida';
+      case 'MATERIAL':
+        return 'Material requerido';
+      case 'FIELD':
+        return 'Campo requerido';
+      case 'MEASUREMENT':
+        return 'Medición requerida';
+      case 'EVIDENCE':
+        return 'Evidencia requerida';
+      case 'COMPLIANCE':
+        return 'Aceptación requerida';
+      default:
+        return 'Requisito requerido';
     }
   }
 }

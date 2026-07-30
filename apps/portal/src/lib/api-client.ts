@@ -6173,16 +6173,8 @@ export interface ExecutionOrderRecord {
   updatedAt: string;
 }
 
-/**
- * Respuesta observada del endpoint de detalle.
- *
- * El contrato compartido mantiene la referencia de plantilla como obligatoria;
- * el endpoint puede devolverla nula cuando la plantilla no está disponible. La
- * UI conserva la OT y bloquea únicamente las acciones que dependen de ella.
- */
-export type ExecutionOrderDetailResponse = Omit<ExecutionOrderDetail, 'template'> & {
-  template: ExecutionOrderDetail['template'] | null;
-};
+/** Respuesta contractual del detalle de una OT; la plantilla puede no existir. */
+export type ExecutionOrderDetailResponse = ExecutionOrderDetail;
 
 export type ExecutionOrderActivityRecord = ExecutionOrderActivity;
 export type ExecutionOrderItemUsageRecord = ExecutionOrderItemUsage;

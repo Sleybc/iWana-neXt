@@ -180,7 +180,77 @@ describe('ExecutionOrdersService', () => {
         actor,
       ),
     ).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'CLOSURE_GATE_SNAPSHOT_MISSING' }),
+      response: expect.objectContaining({
+        code: 'CLOSURE_GATE_SNAPSHOT_MISSING',
+        missingRequirements: ['Plantilla de cierre'],
+      }),
+    });
+  });
+
+  it('publica solo labels de producto en missingRequirements del cierre', async () => {
+    const closureGateEvaluator = {
+      evaluate: jest.fn().mockReturnValue({
+        passed: false,
+        totalRequired: 1,
+        satisfiedRequired: 0,
+        allEvaluations: [],
+        missingRequirements: [
+          {
+            requirementId: 'actividad-instalacion',
+            label: 'Instalación de fibra',
+            kind: 'ACTIVITY',
+            satisfied: false,
+            reason: 'No se ha registrado la actividad "Instalación de fibra".',
+          },
+        ],
+      }),
+    };
+    service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      closureGateEvaluator as never,
+    );
+
+    const queryBuilder = () => ({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    });
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+        templateRequirementsSnapshot: [
+          {
+            key: 'actividad-instalacion',
+            label: 'Instalación de fibra',
+            required: true,
+            kind: 'ACTIVITY',
+            activityType: 'INSTALLATION',
+          },
+        ],
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder()),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.close(
+        'eo-001',
+        { result: ExecutionOrderResult.NOT_EXECUTED, summary: 'Cierre pendiente' },
+        actor,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'CLOSURE_GATE_INCOMPLETE',
+        missingRequirements: ['Instalación de fibra'],
+      }),
     });
   });
 

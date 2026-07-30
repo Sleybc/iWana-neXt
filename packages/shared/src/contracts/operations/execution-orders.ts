@@ -124,7 +124,7 @@ export interface ExecutionOrderDetail {
   status: ExecutionOrderStatus;
   result?: ExecutionOrderResult;
   workType: WfmWorkType;
-  template: ExecutionOrderTemplateReference;
+  template: ExecutionOrderTemplateReference | null;
   schedule: ExecutionOrderScheduleView;
   assignee?: ExecutionOrderAssigneeView;
   site: ExecutionOrderSiteView;
@@ -212,6 +212,7 @@ export interface ExecutionOrderError {
     | 'SERVICE_UNAVAILABLE';
   message: string;
   correlationId: string;
+  /** Labels de producto en español; las claves técnicas no se publican. */
   missingRequirements?: string[];
 }
 

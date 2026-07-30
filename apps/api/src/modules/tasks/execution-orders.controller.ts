@@ -32,6 +32,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   CloseExecutionOrderDto,
+  ExecutionOrderDetailResponseDto,
   RegisterExecutionOrderItemUsageDto,
   RegisterFieldWorkDto,
   StartExecutionOrderDto,
@@ -105,38 +106,52 @@ export class ExecutionOrdersController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   @ApiOperation({ summary: 'Obtener OT de ejecución por id' })
-  async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
+  @ApiOkResponse({ type: ExecutionOrderDetailResponseDto })
+  async getById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<ExecutionOrderDetailResponseDto> {
     const order = await this.executionOrdersService.getById(id);
-    return {
-      id: order.id,
-      number: order.executionOrderNumber,
-      version: order.version,
-      status: order.status,
-      result: order.result ?? undefined,
-      workType: order.workType,
-      template: order.templateKey
+    const template =
+      order.templateId !== null &&
+      order.templateKey !== null &&
+      order.templateVersionNumber !== null &&
+      order.templateLabel !== null
         ? {
             id: order.templateId,
             key: order.templateKey,
             version: order.templateVersionNumber,
             label: order.templateLabel,
           }
-        : null,
+        : null;
+    const completion = await this.executionOrdersService.getCompletion(order.id);
+    const startedAt = this.dateOrString(order.startedAt);
+    const closedAt = this.dateOrString(order.closedAt);
+    return {
+      id: order.id,
+      number: order.executionOrderNumber,
+      version: order.version,
+      status: order.status,
+      ...(order.result ? { result: order.result } : {}),
+      workType: order.workType,
+      template,
       schedule: {
         eventId: order.scheduleEventId,
         window: {
-          startAt: this.dateOrString(order.plannedWindowStartAt),
-          endAt: this.dateOrString(order.plannedWindowEndAt),
+          startAt: this.dateOrString(order.plannedWindowStartAt) ?? '',
+          endAt: this.dateOrString(order.plannedWindowEndAt) ?? '',
         },
       },
-      assignee: order.assignedTechnicianId
-        ? { type: 'TECHNICIAN' as const, id: order.assignedTechnicianId }
-        : undefined,
+      ...(order.assignedTechnicianId
+        ? { assignee: { type: 'TECHNICIAN' as const, id: order.assignedTechnicianId } }
+        : {}),
       site: { id: order.id, label: order.municipality ?? order.customerDisplayLabel },
       completion: {
-        ...(await this.executionOrdersService.getCompletion(order.id)),
-        startedAt: this.dateOrString(order.startedAt),
-        closedAt: this.dateOrString(order.closedAt),
+        progress: completion.progress,
+        completed: completion.completed ?? 0,
+        total: completion.total ?? 0,
+        ...(startedAt ? { startedAt } : {}),
+        ...(closedAt ? { closedAt } : {}),
       },
       syncState: await this.executionOrdersService.getSyncState(order.id),
       inventoryReconciliation:

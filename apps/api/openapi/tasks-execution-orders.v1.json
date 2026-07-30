@@ -186,7 +186,11 @@
           },
           "message": { "type": "string" },
           "correlationId": { "type": "string", "format": "uuid" },
-          "missingRequirements": { "type": "array", "items": { "type": "string" } }
+          "missingRequirements": {
+            "type": "array",
+            "description": "Labels de producto en español; no incluye claves técnicas.",
+            "items": { "type": "string" }
+          }
         }
       },
       "ExecutionOrderAllowedAction": {
@@ -325,7 +329,10 @@
             "type": "string",
             "enum": ["INSTALLATION", "SUPPORT", "TECHNICAL_VISIT", "RETIREMENT", "MAINTENANCE"]
           },
-          "template": { "$ref": "#/components/schemas/ExecutionOrderTemplateReference" },
+          "template": {
+            "$ref": "#/components/schemas/ExecutionOrderTemplateReference",
+            "nullable": true
+          },
           "schedule": { "$ref": "#/components/schemas/ExecutionOrderScheduleView" },
           "assignee": { "$ref": "#/components/schemas/ExecutionOrderAssigneeView" },
           "site": { "$ref": "#/components/schemas/ExecutionOrderSiteView" },

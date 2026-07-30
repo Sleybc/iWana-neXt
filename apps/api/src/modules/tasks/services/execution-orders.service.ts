@@ -81,6 +81,57 @@ const EXECUTION_ORDER_UNIQUE_CONSTRAINTS = new Set([
   'uq_execution_orders_tenant_schedule_event',
 ]);
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const isOneOf = <T extends string>(value: unknown, values: readonly T[]): value is T =>
+  typeof value === 'string' && values.some((candidate) => candidate === value);
+
+function isTemplateRequirement(value: unknown): value is ExecutionOrderTemplateRequirement {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.key) ||
+    typeof value.label !== 'string' ||
+    typeof value.required !== 'boolean' ||
+    typeof value.kind !== 'string'
+  ) {
+    return false;
+  }
+
+  switch (value.kind) {
+    case 'FIELD':
+      return (
+        isOneOf(value.fieldType, ['TEXT', 'NUMBER', 'BOOLEAN', 'SELECT'] as const) &&
+        (value.options === undefined ||
+          (Array.isArray(value.options) && value.options.every((item) => typeof item === 'string')))
+      );
+    case 'ACTIVITY':
+      return isNonEmptyString(value.activityType);
+    case 'MEASUREMENT':
+      return (
+        isOneOf(value.measurement, ['NUMBER', 'TEXT'] as const) &&
+        (value.unit === undefined || typeof value.unit === 'string')
+      );
+    case 'EVIDENCE':
+      return isOneOf(value.evidenceType, ['PHOTO', 'DOCUMENT', 'SIGNATURE'] as const);
+    case 'MATERIAL':
+      return isNonEmptyString(value.itemCategory);
+    case 'COMPLIANCE':
+      return isNonEmptyString(value.policyKey);
+    default:
+      return false;
+  }
+}
+
+function readTemplateRequirementsSnapshot(
+  value: unknown,
+): ExecutionOrderTemplateRequirement[] | null {
+  return Array.isArray(value) && value.every(isTemplateRequirement) ? value : null;
+}
+
 type UniqueConstraintDriverError = { code?: unknown; constraint?: unknown };
 
 function isExecutionOrderUniqueViolation(error: unknown): boolean {
@@ -166,9 +217,9 @@ export class ExecutionOrdersService {
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, executionOrderId);
-      const snapshot = order.templateRequirementsSnapshot;
+      const snapshot = readTemplateRequirementsSnapshot(order.templateRequirementsSnapshot);
 
-      if (!Array.isArray(snapshot) || !this.closureGateEvaluator) {
+      if (!snapshot || !this.closureGateEvaluator) {
         return { progress: 0, completed: 0, total: 0 };
       }
 
@@ -193,17 +244,14 @@ export class ExecutionOrdersService {
           .getMany(),
       ]);
 
-      const evaluation = this.closureGateEvaluator.evaluate(
-        snapshot as unknown as ExecutionOrderTemplateRequirement[],
-        {
-          activities: activities.map((activity) => ({ activityType: activity.activityType })),
-          evidences: evidences.map((evidence) => ({
-            evidenceType: evidence.evidenceType,
-            requirementKey: evidence.requirementKey ?? '',
-          })),
-          itemUsages: itemUsages.map((usage) => ({ itemId: usage.itemId })),
-        },
-      );
+      const evaluation = this.closureGateEvaluator.evaluate(snapshot, {
+        activities: activities.map((activity) => ({ activityType: activity.activityType })),
+        evidences: evidences.map((evidence) => ({
+          evidenceType: evidence.evidenceType,
+          requirementKey: evidence.requirementKey ?? '',
+        })),
+        itemUsages: itemUsages.map((usage) => ({ itemId: usage.itemId })),
+      });
       const total = evaluation.totalRequired;
       const completed = evaluation.satisfiedRequired;
       const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
@@ -769,22 +817,14 @@ export class ExecutionOrdersService {
       }
 
       // ── Closure gate evaluation ────────────────────────────────────
-      if (!Array.isArray(order.templateRequirementsSnapshot)) {
+      const snapshot = readTemplateRequirementsSnapshot(order.templateRequirementsSnapshot);
+      if (!snapshot) {
         throw new UnprocessableEntityException({
           code: 'CLOSURE_GATE_SNAPSHOT_MISSING',
           message: 'No se puede cerrar la OT porque no tiene una plantilla de cierre congelada.',
-          missingRequirements: [
-            {
-              requirementId: 'template-snapshot',
-              label: 'Plantilla de cierre',
-              kind: 'TEMPLATE',
-              reason: 'La OT no tiene un snapshot de requisitos de cierre.',
-            },
-          ],
+          missingRequirements: ['Plantilla de cierre'],
         });
       }
-      const snapshot =
-        order.templateRequirementsSnapshot as unknown as ExecutionOrderTemplateRequirement[];
       if (!this.closureGateEvaluator && snapshot.length > 0) {
         throw new ServiceUnavailableException({
           code: 'CLOSURE_GATE_UNAVAILABLE',
@@ -820,19 +860,14 @@ export class ExecutionOrdersService {
           // la aporta, el requisito MATERIAL permanece insatisfecho.
           itemUsages: itemUsages.map((u) => ({ itemId: u.itemId })),
           hasCustomerAcceptance: !!validated.customerAcceptance,
-          closeCommand: validated as Record<string, unknown>,
+          closeCommand: { customerAcceptance: validated.customerAcceptance },
         });
 
         if (!evaluation.passed) {
           throw new UnprocessableEntityException({
             code: 'CLOSURE_GATE_INCOMPLETE',
             message: 'No se puede cerrar la OT: requisitos pendientes.',
-            missingRequirements: evaluation.missingRequirements.map((m) => ({
-              requirementId: m.requirementId,
-              label: m.label,
-              kind: m.kind,
-              reason: m.reason,
-            })),
+            missingRequirements: evaluation.missingRequirements.map((m) => m.label),
           });
         }
       }
@@ -1753,8 +1788,6 @@ export class ExecutionOrdersService {
   private mapTemplateRequirements(
     requirements: DbTemplateRequirement[],
   ): ExecutionOrderTemplateRequirement[] {
-    const isOneOf = <T extends string>(value: unknown, values: readonly T[]): value is T =>
-      typeof value === 'string' && values.some((candidate) => candidate === value);
     const invalidTemplate = (): never => {
       throw new ConflictException({
         code: 'TEMPLATE_INVALID',

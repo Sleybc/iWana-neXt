@@ -423,6 +423,7 @@ describe('ExecutionOrdersController HTTP', () => {
         expect.objectContaining({ progress: 40, completed: 2, total: 5 }),
       );
       expect(response.body.completion.progress).not.toBe(0.4);
+      expect(response.body.template).toBeNull();
     });
 
     it('rechaza un límite superior al máximo contractual', async () => {

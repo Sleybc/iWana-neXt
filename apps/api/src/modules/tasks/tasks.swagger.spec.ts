@@ -165,6 +165,10 @@ describe('TasksController Swagger', () => {
         total: expect.objectContaining({ type: 'integer' }),
       }),
     );
+    const detailProperties = schemas.ExecutionOrderDetail?.properties as
+      | Record<string, unknown>
+      | undefined;
+    expect(detailProperties?.template).toEqual(expect.objectContaining({ nullable: true }));
     expect(schemas.RegisterItemUsageCommand?.properties).toEqual(
       expect.objectContaining({ quantity: { type: 'integer', minimum: 1 } }),
     );
