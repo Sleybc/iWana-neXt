@@ -41,6 +41,38 @@ jobs:
       - name: Auditar ubicación documental
         run: node scripts/audit-doc-locations.mjs
 
+  production-images:
+    name: Build y validación de imágenes production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No se publican imágenes ni se inyectan secretos: este job solo valida que
+      # los cuatro Dockerfiles construyan en un runner limpio. El valor público es
+      # un placeholder no operativo requerido por el build de Next.js.
+      - name: Build API image
+        run: docker build --file apps/api/Dockerfile --tag "iwana-ci/api:${GITHUB_SHA}" .
+
+      - name: Build web image
+        run: >-
+          docker build --file apps/web/Dockerfile
+          --build-arg NEXT_PUBLIC_API_URL=https://ci.invalid/api/v1
+          --tag "iwana-ci/web:${GITHUB_SHA}" .
+
+      - name: Build portal image
+        run: >-
+          docker build --file apps/portal/Dockerfile
+          --build-arg NEXT_PUBLIC_API_URL=https://ci.invalid/api/v1
+          --tag "iwana-ci/portal:${GITHUB_SHA}" .
+
+      - name: Build worker image
+        run: docker build --file apps/worker/Dockerfile --tag "iwana-ci/worker:${GITHUB_SHA}" .
+
+      - name: Validate production Compose configuration
+        run: docker compose --profile production --env-file .env.production.example config --quiet
+
   ci:
     name: Lint + Typecheck + Build + Unit tests
     runs-on: ubuntu-latest
