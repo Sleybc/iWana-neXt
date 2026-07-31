@@ -43,4 +43,106 @@ describe('componentes de ejecución', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Procesando…');
     expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveClass('min-h-11', 'min-w-11');
   });
+
+  it('OperationalSidePeek renderiza variante wide con max-w más amplio', () => {
+    render(
+      <OperationalSidePeek open size="wide" onOpenChange={jest.fn()} title="OT amplia">
+        <span>Contenido</span>
+      </OperationalSidePeek>,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('md:max-w-[48rem]');
+  });
+
+  it('OperationalSidePeek renderiza eyebrow como texto de contexto', () => {
+    render(
+      <OperationalSidePeek
+        open
+        eyebrow="OT-2026-0001"
+        onOpenChange={jest.fn()}
+        title="Detalle de instalación"
+      >
+        <span>Contenido</span>
+      </OperationalSidePeek>,
+    );
+
+    expect(screen.getByText('OT-2026-0001')).toBeInTheDocument();
+  });
+
+  it('OperationalSidePeek renderiza description asociada por aria-describedby', () => {
+    render(
+      <OperationalSidePeek
+        open
+        description="Complete los datos requeridos antes de iniciar"
+        onOpenChange={jest.fn()}
+        title="Formulario"
+      >
+        <span>Contenido</span>
+      </OperationalSidePeek>,
+    );
+
+    expect(screen.getByText('Complete los datos requeridos antes de iniciar')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-describedby');
+  });
+
+  it('OperationalSidePeek renderiza footer fijo al pie', () => {
+    render(
+      <OperationalSidePeek
+        open
+        footer={<button type="button">Guardar</button>}
+        onOpenChange={jest.fn()}
+        title="Formulario"
+      >
+        <span>Contenido</span>
+      </OperationalSidePeek>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+  });
+
+  it('OperationalSidePeek no cierra si onBeforeClose retorna false', () => {
+    const onOpenChange = jest.fn();
+    const onBeforeClose = jest.fn().mockReturnValue(false);
+
+    render(
+      <OperationalSidePeek
+        open
+        onBeforeClose={onBeforeClose}
+        onOpenChange={onOpenChange}
+        title="Confirmación"
+      >
+        <span>Contenido</span>
+      </OperationalSidePeek>,
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onBeforeClose).toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('OperationalSidePeek cierra al hacer clic en el overlay', () => {
+    const onOpenChange = jest.fn();
+
+    render(
+      <OperationalSidePeek open onOpenChange={onOpenChange} title="Detalle">
+        <span>Contenido</span>
+      </OperationalSidePeek>,
+    );
+
+    const overlay = screen.getByRole('button', { name: 'Cerrar detalle operativo' });
+    fireEvent.click(overlay);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('OperationalSidePeek no se renderiza cuando open=false', () => {
+    render(
+      <OperationalSidePeek open={false} onOpenChange={jest.fn()} title="Oculto">
+        <span>No visible</span>
+      </OperationalSidePeek>,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });

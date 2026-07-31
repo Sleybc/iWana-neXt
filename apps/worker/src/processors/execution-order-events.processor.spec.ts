@@ -350,6 +350,140 @@ describe('ExecutionOrderEventsProcessor', () => {
     });
   });
 
+  it('ExecutionOrderClosedV1 EXECUTED_WITH_OBSERVATIONS: mismo mapeo que EXECUTED', async () => {
+    setupHappyPath(poolClient)
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ task_id: 'task-001' }] } as never)
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce(undefined);
+
+    const job = {
+      data: {
+        tenantId: 't0000000-0000-4000-8000-000000000001',
+        envelope: makeEnvelope({
+          aggregateVersion: 2,
+          eventType: 'ExecutionOrderClosedV1',
+          payload: {
+            executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+            result: 'EXECUTED_WITH_OBSERVATIONS',
+            closedAt: new Date().toISOString(),
+          } as never,
+        }),
+      },
+    } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
+
+    await processor.process(job);
+
+    const queries = poolClient.query.mock.calls.map((call: [string, ...unknown[]]) => call[0]);
+    const taskCall = poolClient.query.mock.calls.find((call: [string, ...unknown[]]) =>
+      (call[0] as string).includes('UPDATE operational_tasks'),
+    );
+    expect(taskCall).toBeDefined();
+    expect((taskCall![1] as unknown[])[2]).toBe('RESOLVED');
+
+    const scheduleUpdate = queries.find(
+      (q: string) => q.includes('UPDATE schedule_events') && q.includes('COMPLETED'),
+    );
+    expect(scheduleUpdate).toBeDefined();
+  });
+
+  it('ExecutionOrderFollowUpRequiredV1 REQUIRES_FOLLOW_UP: ScheduleEvent→COMPLETED, VisitRequest→REQUIRES_RESCHEDULE, Task→PENDING_INTERNAL', async () => {
+    setupHappyPath(poolClient)
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ task_id: 'task-001' }] } as never)
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce(undefined);
+
+    const job = {
+      data: {
+        tenantId: 't0000000-0000-4000-8000-000000000001',
+        envelope: makeEnvelope({
+          aggregateVersion: 2,
+          eventType: 'ExecutionOrderFollowUpRequiredV1',
+          payload: {
+            executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+          } as never,
+        }),
+      },
+    } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
+
+    await processor.process(job);
+
+    const queries = poolClient.query.mock.calls.map((call: [string, ...unknown[]]) => call[0]);
+
+    const scheduleCompleted = queries.find(
+      (q: string) => q.includes('UPDATE schedule_events') && q.includes('COMPLETED'),
+    );
+    expect(scheduleCompleted).toBeDefined();
+
+    const visitReschedule = queries.find(
+      (q: string) => q.includes('UPDATE visit_requests') && q.includes('REQUIRES_RESCHEDULE'),
+    );
+    expect(visitReschedule).toBeDefined();
+
+    const taskCall = poolClient.query.mock.calls.find((call: [string, ...unknown[]]) =>
+      (call[0] as string).includes('UPDATE operational_tasks'),
+    );
+    expect(taskCall).toBeDefined();
+    expect((taskCall![1] as unknown[])[2]).toBe('PENDING_INTERNAL');
+  });
+
+  describe('fiabilidad de entrega con reintentos y DLQ', () => {
+    it('reintenta tras fallo transitorio sin llegar a DLQ en el primer intento', async () => {
+      const schemaName = 'tenant_test001';
+      const failOnceClient = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ schema_name: schemaName }] } as never)
+          .mockResolvedValueOnce(undefined)
+          .mockResolvedValueOnce(undefined)
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 })
+          .mockResolvedValueOnce({ rowCount: 1 })
+          .mockResolvedValueOnce({ rowCount: 1 })
+          .mockResolvedValueOnce({ rows: [{ task_id: 'task-001' }] } as never)
+          .mockResolvedValueOnce({ rowCount: 1 })
+          .mockRejectedValueOnce(new Error('Connection terminated unexpectedly'))
+          .mockResolvedValueOnce(undefined),
+        release: jest.fn(),
+      };
+
+      const testProcessor = new ExecutionOrderEventsProcessor(
+        makeConfig(),
+        dlqQueue as unknown as Queue,
+      );
+      (testProcessor as unknown as { pool: { connect: jest.Mock } }).pool = {
+        connect: jest.fn().mockResolvedValue(failOnceClient),
+      } as never;
+
+      const job = {
+        data: {
+          tenantId: 't0000000-0000-4000-8000-000000000001',
+          envelope: makeEnvelope({
+            aggregateVersion: 1,
+            eventType: 'ExecutionOrderStartedV1',
+          }),
+        },
+        attemptsMade: 1,
+        opts: { attempts: 8 },
+      } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
+
+      await expect(testProcessor.process(job)).rejects.toThrow(
+        'Connection terminated unexpectedly',
+      );
+
+      const rollbackCalls = failOnceClient.query.mock.calls.filter(([query]) =>
+        String(query).includes('ROLLBACK'),
+      );
+      expect(rollbackCalls.length).toBeGreaterThanOrEqual(1);
+      expect(failOnceClient.release).toHaveBeenCalled();
+    });
+  });
+
   describe('validación de envelope', () => {
     it('rechaza eventos con tenantId vacío', async () => {
       poolClient.query.mockReset();

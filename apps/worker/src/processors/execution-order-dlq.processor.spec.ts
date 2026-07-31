@@ -99,4 +99,68 @@ describe('ExecutionOrderDlqProcessor', () => {
     // Debe completar sin lanzar
     await expect(processor.process(dlqJob)).resolves.toBeUndefined();
   });
+
+  describe('fault injection', () => {
+    it('no relanza el error si la consulta DB falla (último eslabón)', async () => {
+      poolClient.query.mockRejectedValueOnce(new Error('DB connection pool exhausted'));
+
+      const dlqJob = {
+        data: {
+          tenantId: 't0000000-0000-4000-8000-000000000001',
+          envelope: {
+            eventId: 'e0000000-0000-4000-8000-000000000003',
+            eventType: 'ExecutionOrderStartedV1' as const,
+            tenantId: 't0000000-0000-4000-8000-000000000001',
+            aggregateId: 'a0000000-0000-4000-8000-000000000003',
+            aggregateVersion: 3,
+            occurredAt: new Date().toISOString(),
+            correlationId: 'c0000000-0000-4000-8000-000000000003',
+            payload: {} as never,
+          },
+          diagnostic: {
+            failedAt: new Date().toISOString(),
+            attemptsMade: 8,
+            errorMessage: 'Fatal error',
+            errorName: 'Error',
+          },
+        },
+      } as Job;
+
+      // No debe lanzar: el catch traga el error
+      await expect(processor.process(dlqJob)).resolves.toBeUndefined();
+    });
+
+    it('no falla si la actualización del outbox afecta 0 filas', async () => {
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // SET LOCAL
+        .mockResolvedValueOnce({ rowCount: 0 }) // UPDATE outbox → 0 filas
+        .mockResolvedValueOnce({ rowCount: 1 }); // INSERT inbox
+
+      const dlqJob = {
+        data: {
+          tenantId: 't0000000-0000-4000-8000-000000000001',
+          envelope: {
+            eventId: 'e0000000-0000-4000-8000-000000000004',
+            eventType: 'ExecutionOrderStartedV1' as const,
+            tenantId: 't0000000-0000-4000-8000-000000000001',
+            aggregateId: 'a0000000-0000-4000-8000-000000000004',
+            aggregateVersion: 4,
+            occurredAt: new Date().toISOString(),
+            correlationId: 'c0000000-0000-4000-8000-000000000004',
+            payload: {} as never,
+          },
+          diagnostic: {
+            failedAt: new Date().toISOString(),
+            attemptsMade: 8,
+            errorMessage: 'Timeout',
+            errorName: 'TimeoutError',
+          },
+        },
+      } as Job;
+
+      // No debe lanzar — outbox puede no tener el evento
+      await expect(processor.process(dlqJob)).resolves.toBeUndefined();
+    });
+  });
 });
