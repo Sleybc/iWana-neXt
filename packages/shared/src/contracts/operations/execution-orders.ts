@@ -289,6 +289,14 @@ export interface FollowUpReceipt {
   version: number;
 }
 
+/** Comando estricto para reencolar un evento OT desde la DLQ. */
+export interface RedriveExecutionOrderEventCommand {
+  /** Código operacional controlado por el consumidor de la DLQ. */
+  causeCode: string;
+  /** Referencia obligatoria al ticket operativo que autoriza la intervención. */
+  ticketId: string;
+}
+
 export interface CreateExecutionOrderTemplateCommand {
   key: string;
   label: string;
