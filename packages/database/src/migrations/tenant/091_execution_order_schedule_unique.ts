@@ -14,5 +14,12 @@ export class ExecutionOrderScheduleUnique0910000000000 implements MigrationInter
   }
   async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS uq_execution_orders_tenant_schedule_event`);
+    // 046 era el dueño del índice no único. 091 lo sustituye por la variante
+    // UNIQUE; al revertir solo 091 se debe restaurar la ruta de consulta
+    // anterior, no dejar la tabla sin índice.
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS idx_execution_orders_tenant_schedule_event
+       ON execution_orders (tenant_id, schedule_event_id)`,
+    );
   }
 }

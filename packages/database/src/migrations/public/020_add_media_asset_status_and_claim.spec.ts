@@ -44,4 +44,22 @@ describe('AddMediaAssetStatusAndClaim020', () => {
     expect(all).toContain('DROP COLUMN IF EXISTS "claim_ref"');
     expect(all).toContain('DROP COLUMN IF EXISTS "asset_status"');
   });
+
+  it('con flag elimina evidencia incompatible y completa el down', async () => {
+    process.env[FLAG] = 'true';
+    const queries: string[] = [];
+    const query = jest.fn(async (sql: string) => {
+      queries.push(sql);
+      return [];
+    });
+
+    await new AddMediaAssetStatusAndClaim0200000000000().down({ query } as never);
+
+    const all = queries.join(' ');
+    expect(all).toContain(
+      'DELETE FROM "public"."media_assets" WHERE "usage" = \'execution_evidence\'',
+    );
+    expect(all).toContain('ADD CONSTRAINT "chk_media_assets_usage"');
+    expect(all).toContain('DROP COLUMN IF EXISTS "asset_status"');
+  });
 });

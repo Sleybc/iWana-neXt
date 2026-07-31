@@ -12,6 +12,10 @@ describe('ExecutionOrderScheduleUnique091', () => {
     expect(query.mock.calls[1][0]).toContain('UNIQUE INDEX');
     expect(query.mock.calls[1][0]).toContain('tenant_id, schedule_event_id');
     expect(query.mock.calls[2][0]).toContain('DROP INDEX');
+    expect(query.mock.calls[3][0]).toContain(
+      'CREATE INDEX IF NOT EXISTS idx_execution_orders_tenant_schedule_event',
+    );
+    expect(query.mock.calls[3][0]).toContain('tenant_id, schedule_event_id');
     expect(query.mock.calls.join(' ')).not.toContain('tenant_alpha');
   });
 });

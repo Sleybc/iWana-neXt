@@ -62,7 +62,7 @@ describe('ExtendVisitRequestStatusAndOutboxOccurredAt093', () => {
       expect(createIndex).toContain('lease_until');
     });
 
-    it('actualiza occurred_at = created_at para eventos existentes que tengan occurred_at NULL', async () => {
+    it('backfill occurred_at = created_at en ventanas de 500 filas', async () => {
       const queries: string[] = [];
       const queryRunner = {
         query: jest.fn(async (sql: string) => {
@@ -72,9 +72,7 @@ describe('ExtendVisitRequestStatusAndOutboxOccurredAt093', () => {
 
       await migration.up(queryRunner);
 
-      const updateQ = queries.find(
-        (q) => q.includes('SET occurred_at') && q.includes('WHERE occurred_at IS NULL'),
-      );
+      const updateQ = queries.find((q) => q.includes('SET occurred_at') && q.includes('LIMIT 500'));
       expect(updateQ).toBeDefined();
     });
   });
@@ -99,6 +97,38 @@ describe('ExtendVisitRequestStatusAndOutboxOccurredAt093', () => {
         (q) => q.includes('CREATE INDEX') && q.includes('tenant_id') && q.includes('published_at'),
       );
       expect(newIndex).toBeDefined();
+    });
+
+    it('reconstruye el enum histórico en vez de dejar valores nuevos huérfanos', async () => {
+      const queries: string[] = [];
+      const queryRunner = {
+        query: jest.fn(async (sql: string) => {
+          queries.push(sql);
+          return [];
+        }),
+      } as never;
+
+      await migration.down(queryRunner);
+
+      const all = queries.join(' ');
+      expect(all).toContain(
+        'ALTER TYPE visit_request_status RENAME TO visit_request_status_093_extended',
+      );
+      expect(all).toContain('CREATE TYPE visit_request_status AS ENUM');
+      expect(all).toContain('USING status::text::visit_request_status');
+      expect(all).toContain('DROP TYPE visit_request_status_093_extended');
+    });
+
+    it('bloquea si quedan estados nuevos porque no hace un mapeo semántico implícito', async () => {
+      const query = jest.fn(async (sql: string) => {
+        if (sql.includes('status::text IN')) return [{ total: 1 }];
+        return [];
+      });
+
+      await expect(migration.down({ query } as never)).rejects.toThrow(
+        /Reconcilie esos estados a un valor histórico/,
+      );
+      expect(query.mock.calls.map(([sql]) => String(sql)).join(' ')).not.toContain('DROP COLUMN');
     });
   });
 });

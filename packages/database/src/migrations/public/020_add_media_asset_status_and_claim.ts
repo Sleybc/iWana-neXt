@@ -78,7 +78,8 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
+    const destructiveDown = process.env[DESTRUCTIVE_DOWN_ENV_VAR] === 'true';
+    if (!destructiveDown) {
       const rows = ((await queryRunner.query(
         `SELECT "id"
          FROM "public"."media_assets"
@@ -95,6 +96,17 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
             `destructiva, exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true de forma explícita.`,
         );
       }
+    }
+
+    // El CHECK histórico no admite execution_evidence. Con el flag explícito
+    // el operador acepta perder esos assets; eliminarlos aquí evita que la
+    // reinstalación del CHECK falle por filas que ya no son válidas para el
+    // esquema anterior. Sin el flag, la guarda anterior aborta antes de tocar
+    // datos o DDL.
+    if (destructiveDown) {
+      await queryRunner.query(
+        `DELETE FROM "public"."media_assets" WHERE "usage" = 'execution_evidence'`,
+      );
     }
 
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_media_assets_checksum"`);
