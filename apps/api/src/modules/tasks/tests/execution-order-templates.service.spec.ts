@@ -1,32 +1,30 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import {
   ExecutionOrderTemplate,
   ExecutionOrderTemplateVersion,
-  ExecutionOrderTemplateRequirement,
+  runInTenantSchema,
   TenantContext,
 } from '@iwana/db';
-import {
-  WfmWorkType,
-  type ExecutionOrderTemplateRequirement as TemplateRequirement,
-} from '@iwana/shared';
+import { WfmWorkType } from '@iwana/shared';
 import { ExecutionOrderTemplatesService } from '../services/execution-order-templates.service';
 
-/**
- * Tests de plantillas versionadas de ejecución.
- *
- * Cubre:
- * - CRUD del catálogo de templates
- * - Versionado monótono
- * - Publicación (inmutabilidad DATA-P1-3)
- * - Retiro
- * - Consulta de versión activa por workType
- */
+jest.mock('@iwana/db', () => ({
+  TenantContext: {
+    getOrThrow: jest.fn().mockReturnValue({
+      tenantId: 'tenant-001',
+      schemaName: 'tenant_001',
+    }),
+  },
+  runInTenantSchema: jest.fn(),
+  ExecutionOrderTemplate: class ExecutionOrderTemplate {},
+  ExecutionOrderTemplateVersion: class ExecutionOrderTemplateVersion {},
+  ExecutionOrderTemplateRequirement: class ExecutionOrderTemplateRequirement {},
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-const makeTemplate = (overrides: Partial<ExecutionOrderTemplate> = {}): ExecutionOrderTemplate =>
+const makeTemplate = (overrides: any = {}) =>
   ({
     id: 'tpl-001',
     tenantId: 'tenant-001',
@@ -34,15 +32,10 @@ const makeTemplate = (overrides: Partial<ExecutionOrderTemplate> = {}): Executio
     label: 'Instalación fibra estándar',
     workType: WfmWorkType.INSTALLATION,
     status: 'DRAFT',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    versions: [],
     ...overrides,
   }) as ExecutionOrderTemplate;
 
-const makeVersion = (
-  overrides: Partial<ExecutionOrderTemplateVersion> = {},
-): ExecutionOrderTemplateVersion =>
+const makeVersion = (overrides: any = {}) =>
   ({
     id: 'ver-001',
     tenantId: 'tenant-001',
@@ -55,212 +48,485 @@ const makeVersion = (
     reasonCatalogs: null,
     publishedAt: null,
     retiredAt: null,
-    createdAt: new Date(),
-    template: makeTemplate(),
     requirements: [],
     ...overrides,
   }) as ExecutionOrderTemplateVersion;
-
-const makeReq = (
-  overrides: Partial<ExecutionOrderTemplateRequirement> = {},
-): ExecutionOrderTemplateRequirement =>
-  ({
-    id: 'req-001',
-    tenantId: 'tenant-001',
-    versionId: 'ver-001',
-    key: 'firma-cliente',
-    label: 'Firma del cliente',
-    required: true,
-    kind: 'EVIDENCE',
-    config: { evidenceType: 'SIGNATURE' },
-    sortOrder: 0,
-    createdAt: new Date(),
-    version: makeVersion(),
-    ...overrides,
-  }) as ExecutionOrderTemplateRequirement;
-
-const sampleRequirements: TemplateRequirement[] = [
-  {
-    key: 'foto-cpe',
-    label: 'Foto del CPE instalado',
-    required: true,
-    kind: 'EVIDENCE',
-    evidenceType: 'PHOTO',
-  },
-  {
-    key: 'firma-cliente',
-    label: 'Firma del cliente',
-    required: true,
-    kind: 'EVIDENCE',
-    evidenceType: 'SIGNATURE',
-  },
-  {
-    key: 'medicion-potencia',
-    label: 'Potencia óptica',
-    required: false,
-    kind: 'MEASUREMENT',
-    measurement: 'NUMBER',
-    unit: 'dBm',
-  },
-];
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('ExecutionOrderTemplatesService', () => {
   let service: ExecutionOrderTemplatesService;
-  let templateRepo: jest.Mocked<Repository<ExecutionOrderTemplate>>;
-  let versionRepo: jest.Mocked<Repository<ExecutionOrderTemplateVersion>>;
-  let requirementRepo: jest.Mocked<Repository<ExecutionOrderTemplateRequirement>>;
-  let manager: {
-    findOne: jest.Mock;
-    find: jest.Mock;
-    save: jest.Mock;
-    create: jest.Mock;
-    createQueryBuilder: jest.Mock;
-  };
+  let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
 
-  beforeAll(() => {
-    // Mock TenantContext
-    (TenantContext.getOrThrow as jest.Mock) = jest.fn().mockReturnValue({
-      tenantId: 'tenant-001',
-      schemaName: 'tenant_test',
-    });
+  beforeEach(() => {
+    mockRunInTenantSchema = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
+    service = new ExecutionOrderTemplatesService({} as DataSource);
+    jest.clearAllMocks();
   });
 
-  beforeEach(async () => {
-    manager = {
-      findOne: jest.fn(),
-      find: jest.fn(),
-      save: jest.fn(),
-      create: jest.fn().mockImplementation((_entity, data) => data),
-      createQueryBuilder: jest.fn(),
-    };
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ExecutionOrderTemplatesService,
-        {
-          provide: DataSource,
-          useValue: {
-            createQueryRunner: jest.fn().mockReturnValue({
-              connect: jest.fn(),
-              startTransaction: jest.fn(),
-              commitTransaction: jest.fn(),
-              rollbackTransaction: jest.fn(),
-              release: jest.fn(),
-              query: jest.fn(),
-              manager,
-            }),
-          },
-        },
-      ],
-    }).compile();
-
-    service = module.get<ExecutionOrderTemplatesService>(ExecutionOrderTemplatesService);
+  const setupManager = (overrides: any = {}) => ({
+    findOne: jest.fn(),
+    save: jest.fn(),
+    create: jest.fn().mockImplementation((_entity, data) => data),
+    createQueryBuilder: jest.fn(),
+    ...overrides,
   });
 
-  describe('createTemplate', () => {
-    it('should create a draft template', async () => {
-      // This test validates through the service mock + real entity creation
-      // via the runInTenantSchema wrapper. For actual integration tests,
-      // see the HTTP spec.
-      expect(service).toBeDefined();
-    });
-  });
-
-  describe('createVersion', () => {
-    it('should compute version numbers monotonically', () => {
-      // The next version is computed as MAX(version) + 1
-      const maxVersion = '2';
-      const nextVersion = Number.parseInt(maxVersion, 10) + 1;
-      expect(nextVersion).toBe(3);
-    });
-
-    it('bloquea la plantilla y reabre la transacción tras un 23505 de versionado', async () => {
-      manager.findOne.mockImplementation((_entity, options) =>
-        options?.lock
-          ? Promise.resolve(makeTemplate())
-          : Promise.resolve(makeVersion({ id: 'ver-retried', version: 2 })),
-      );
-      manager.createQueryBuilder.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
+  // ═══════════════════════════════════════════════════════════════════
+  // listTemplates
+  // ═══════════════════════════════════════════════════════════════════
+  describe('listTemplates', () => {
+    it('debe listar templates con filtros opcionales', async () => {
+      const templates = [makeTemplate(), makeTemplate({ id: 'tpl-002', key: 'mantenimiento' })];
+      const getMany = jest.fn().mockResolvedValue(templates);
+      // El QB debe soportar encadenamiento: .where().orderBy().andWhere().getMany()
+      const qb = {
         where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ maxVersion: '1' }),
+        getMany,
+      };
+      const createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.listTemplates({
+        workType: WfmWorkType.INSTALLATION,
+        status: 'DRAFT',
       });
-      manager.save
-        .mockRejectedValueOnce({
-          driverError: {
-            code: '23505',
-            constraint: 'idx_execution_order_template_versions_key_version',
-          },
-        })
-        .mockImplementation(async (_entity, value) => ({ id: 'ver-retried', ...value }));
+
+      expect(result).toEqual(templates);
+      expect(createQueryBuilder).toHaveBeenCalledWith(ExecutionOrderTemplate, 'template');
+      expect(qb.where).toHaveBeenCalledWith('template.tenantId = :tenantId', {
+        tenantId: 'tenant-001',
+      });
+    });
+
+    it('debe listar todos los templates sin filtros', async () => {
+      const getMany = jest.fn().mockResolvedValue([]);
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany,
+      };
+      const createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.listTemplates({});
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // getTemplateById
+  // ═══════════════════════════════════════════════════════════════════
+  describe('getTemplateById', () => {
+    it('debe retornar template por id', async () => {
+      const template = makeTemplate();
+      const findOne = jest.fn().mockResolvedValue(template);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      const result = await service.getTemplateById('tpl-001');
+
+      expect(result).toEqual(template);
+      expect(findOne).toHaveBeenCalledWith(ExecutionOrderTemplate, {
+        where: { id: 'tpl-001', tenantId: 'tenant-001' },
+      });
+    });
+
+    it('debe lanzar NotFoundException si no existe', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      await expect(service.getTemplateById('tpl-999')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // createTemplate
+  // ═══════════════════════════════════════════════════════════════════
+  describe('createTemplate', () => {
+    it('debe crear un template en estado DRAFT', async () => {
+      const saved = makeTemplate();
+      const save = jest.fn().mockResolvedValue(saved);
+      const create = jest.fn().mockReturnValue(saved);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { create, save } }),
+      );
+
+      const result = await service.createTemplate({
+        key: 'instalacion-fibra-estandar',
+        label: 'Instalación fibra estándar',
+        workType: WfmWorkType.INSTALLATION,
+        requirements: [],
+      });
+
+      expect(result.status).toBe('DRAFT');
+      expect(create).toHaveBeenCalledWith(
+        ExecutionOrderTemplate,
+        expect.objectContaining({
+          key: 'instalacion-fibra-estandar',
+          status: 'DRAFT',
+        }),
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // listVersions / getVersionById
+  // ═══════════════════════════════════════════════════════════════════
+  describe('listVersions', () => {
+    it('debe listar versiones de un template', async () => {
+      const versions = [makeVersion(), makeVersion({ id: 'ver-002', version: 2 })];
+      const getMany = jest.fn().mockResolvedValue(versions);
+      const addOrderBy = jest.fn().mockReturnValue({ getMany });
+      const orderBy = jest.fn().mockReturnValue({ addOrderBy });
+      const andWhere = jest.fn().mockReturnValue({ orderBy });
+      const where = jest.fn().mockReturnValue({ andWhere });
+      const leftJoinAndSelect = jest.fn().mockReturnValue({ where });
+      const createQueryBuilder = jest.fn().mockReturnValue({ leftJoinAndSelect });
+      const findOne = jest.fn().mockResolvedValue(makeTemplate());
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne, createQueryBuilder } }),
+      );
+
+      const result = await service.listVersions('tpl-001');
+
+      expect(result).toEqual(versions);
+      expect(findOne).toHaveBeenCalledWith(ExecutionOrderTemplate, {
+        where: { id: 'tpl-001', tenantId: 'tenant-001' },
+      });
+    });
+
+    it('debe lanzar NotFoundException si el template no existe', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      await expect(service.listVersions('tpl-999')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getVersionById', () => {
+    it('debe retornar una versión por id con sus requirements', async () => {
+      const version = makeVersion();
+      const findOne = jest.fn().mockResolvedValue(version);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      const result = await service.getVersionById('ver-001');
+
+      expect(result).toEqual(version);
+      expect(findOne).toHaveBeenCalledWith(ExecutionOrderTemplateVersion, {
+        where: { id: 'ver-001', tenantId: 'tenant-001' },
+        relations: ['requirements'],
+      });
+    });
+
+    it('debe lanzar NotFoundException si la versión no existe', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      await expect(service.getVersionById('ver-999')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // createVersion
+  // ═══════════════════════════════════════════════════════════════════
+  describe('createVersion', () => {
+    it('debe crear una versión con número monótono', async () => {
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(makeTemplate()) // template lookup (locked)
+        .mockResolvedValueOnce(makeVersion({ id: 'ver-002', version: 2 })); // final lookup with relations
+
+      const getRawOne = jest.fn().mockResolvedValue({ maxVersion: '1' });
+      const andWhere = jest.fn().mockReturnValue({ getRawOne });
+      const where = jest.fn().mockReturnValue({ andWhere });
+      const select = jest.fn().mockReturnValue({ where });
+      const createQueryBuilder = jest.fn().mockReturnValue({ select });
+
+      const save = jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'ver-002', version: 2, templateId: 'tpl-001' }) // version save
+        .mockResolvedValueOnce([]); // requirements save
+
+      const create = jest.fn().mockImplementation((_entity, data) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne, createQueryBuilder, save, create } }),
+      );
 
       const result = await service.createVersion('tpl-001', {
         label: 'Instalación fibra — v2',
         requirements: [],
+        effectiveFrom: '2026-08-01',
       });
 
-      expect(result.id).toBe('ver-retried');
-      expect(manager.findOne).toHaveBeenCalledWith(
+      expect(result.id).toBe('ver-002');
+      expect(result.version).toBe(2);
+      expect(findOne).toHaveBeenCalledWith(
         ExecutionOrderTemplate,
         expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
       );
-      expect(manager.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('debe crear requirements para la versión', async () => {
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(makeTemplate())
+        .mockResolvedValueOnce(makeVersion({ id: 'ver-003', version: 3 }));
+
+      const getRawOne = jest.fn().mockResolvedValue({ maxVersion: '2' });
+      const andWhere = jest.fn().mockReturnValue({ getRawOne });
+      const where = jest.fn().mockReturnValue({ andWhere });
+      const select = jest.fn().mockReturnValue({ where });
+      const createQueryBuilder = jest.fn().mockReturnValue({ select });
+
+      const save = jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'ver-003', version: 3, templateId: 'tpl-001' })
+        .mockResolvedValueOnce([]);
+
+      const create = jest.fn().mockImplementation((_entity, data) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne, createQueryBuilder, save, create } }),
+      );
+
+      const result = await service.createVersion('tpl-001', {
+        label: 'Instalación fibra — v3',
+        requirements: [
+          {
+            key: 'foto-cpe',
+            label: 'Foto del CPE',
+            required: true,
+            kind: 'EVIDENCE',
+            evidenceType: 'PHOTO',
+          },
+        ],
+      });
+
+      expect(result.id).toBe('ver-003');
+      // Requirements should have been created
+      expect(save).toHaveBeenCalledTimes(2); // once for version, once for requirements
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════════
+  // publishVersion
+  // ═══════════════════════════════════════════════════════════════════
   describe('publishVersion', () => {
-    it('should make a published version immutable', () => {
-      // DATA-P1-3: A published version should not be editable
-      const ver = makeVersion({ status: 'PUBLISHED', publishedAt: new Date() });
-      expect(ver.status).toBe('PUBLISHED');
-      expect(ver.publishedAt).not.toBeNull();
+    it('debe publicar una versión DRAFT y actualizar el template', async () => {
+      const version = makeVersion({ status: 'DRAFT' });
+      const template = makeTemplate({ status: 'DRAFT' });
+
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(version) // initial version lookup
+        .mockResolvedValueOnce(template) // template lookup
+        .mockResolvedValueOnce({ ...version, status: 'PUBLISHED', publishedAt: new Date() }); // final lookup
+
+      const save = jest.fn().mockImplementation(async (_entity, data) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne, save } }),
+      );
+
+      const result = await service.publishVersion('ver-001');
+
+      expect(result.status).toBe('PUBLISHED');
     });
 
-    it('should be idempotent', () => {
-      // If already published, return as-is
-      const ver = makeVersion({ status: 'PUBLISHED' });
-      expect(ver.status).toBe('PUBLISHED');
+    it('debe ser idempotente en versión ya publicada', async () => {
+      const version = makeVersion({ status: 'PUBLISHED', publishedAt: new Date() });
+      const findOne = jest.fn().mockResolvedValue(version);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      const result = await service.publishVersion('ver-001');
+
+      expect(result.status).toBe('PUBLISHED');
+    });
+
+    it('debe rechazar publicación de versión RETIRED', async () => {
+      const version = makeVersion({ status: 'RETIRED', retiredAt: new Date() });
+      const findOne = jest.fn().mockResolvedValue(version);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      await expect(service.publishVersion('ver-001')).rejects.toThrow(ConflictException);
+    });
+
+    it('debe lanzar NotFoundException si la versión no existe', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      await expect(service.publishVersion('ver-999')).rejects.toThrow(NotFoundException);
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════════
+  // retireVersion
+  // ═══════════════════════════════════════════════════════════════════
   describe('retireVersion', () => {
-    it('should mark version as RETIRED', () => {
-      const ver = makeVersion({ status: 'PUBLISHED' });
-      ver.status = 'RETIRED';
-      ver.retiredAt = new Date();
-      expect(ver.status).toBe('RETIRED');
-      expect(ver.retiredAt).not.toBeNull();
+    it('debe retirar una versión publicada', async () => {
+      const version = makeVersion({ status: 'PUBLISHED' });
+
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(version)
+        .mockResolvedValueOnce({ ...version, status: 'RETIRED', retiredAt: new Date() });
+
+      const save = jest.fn().mockImplementation(async (_entity, data) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne, save } }),
+      );
+
+      const result = await service.retireVersion('ver-001');
+
+      expect(result.status).toBe('RETIRED');
     });
 
-    it('should not delete published versions with active OTs (DATA-P1-3)', () => {
-      // A published version that has OTs referencing it should not be deletable.
-      // The service's countOrdersReferencingVersion must return > 0 before allowing delete.
-      expect(service).toBeDefined(); // Delete is prevented at DB level via FK RESTRICT
+    it('debe ser idempotente en versión ya retirada', async () => {
+      const version = makeVersion({ status: 'RETIRED', retiredAt: new Date() });
+      const findOne = jest.fn().mockResolvedValue(version);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      const result = await service.retireVersion('ver-001');
+
+      expect(result.status).toBe('RETIRED');
+    });
+
+    it('debe lanzar NotFoundException si la versión no existe', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      await expect(service.retireVersion('ver-999')).rejects.toThrow(NotFoundException);
     });
   });
 
+  // ═══════════════════════════════════════════════════════════════════
+  // getActiveVersionForWorkType
+  // ═══════════════════════════════════════════════════════════════════
   describe('getActiveVersionForWorkType', () => {
-    it('should find the latest published version for a given work type', () => {
-      expect(service).toBeDefined();
-      // The active version is the one with the highest version number
-      // for the matching template with status = PUBLISHED
+    it('debe retornar la versión publicada más reciente para un workType', async () => {
+      const version = makeVersion({ id: 'ver-003', version: 3, status: 'PUBLISHED' });
+
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(makeTemplate({ status: 'PUBLISHED' })) // template
+        .mockResolvedValueOnce(version); // version
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      const result = await service.getActiveVersionForWorkType(WfmWorkType.INSTALLATION);
+
+      expect(result).toEqual(version);
+    });
+
+    it('debe retornar null si no hay template publicado', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { findOne } }),
+      );
+
+      const result = await service.getActiveVersionForWorkType(WfmWorkType.MAINTENANCE);
+
+      expect(result).toBeNull();
     });
   });
 
-  describe('requirement config extraction', () => {
-    it('should extract config excluding common properties', () => {
-      const req: TemplateRequirement = {
-        key: 'test-key',
-        label: 'Test Label',
-        required: true,
-        kind: 'FIELD',
-        fieldType: 'TEXT',
-      };
-      const { key: _key, label: _label, required: _required, kind: _kind, ...config } = req as any;
-      expect(config).toEqual({ fieldType: 'TEXT' });
-      expect(_key).toBe('test-key');
+  // ═══════════════════════════════════════════════════════════════════
+  // countOrdersReferencingVersion
+  // ═══════════════════════════════════════════════════════════════════
+  describe('countOrdersReferencingVersion', () => {
+    it('debe contar OTs que referencian una versión', async () => {
+      const getRawOne = jest.fn().mockResolvedValue({ cnt: '5' });
+      const andWhere = jest.fn().mockReturnValue({ getRawOne });
+      const where = jest.fn().mockReturnValue({ andWhere });
+      const select = jest.fn().mockReturnValue({ where });
+      const createQueryBuilder = jest.fn().mockReturnValue({ select });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.countOrdersReferencingVersion('ver-001');
+
+      expect(result).toBe(5);
+    });
+
+    it('debe retornar 0 si no hay OTs', async () => {
+      const getRawOne = jest.fn().mockResolvedValue({ cnt: '0' });
+      const andWhere = jest.fn().mockReturnValue({ getRawOne });
+      const where = jest.fn().mockReturnValue({ andWhere });
+      const select = jest.fn().mockReturnValue({ where });
+      const createQueryBuilder = jest.fn().mockReturnValue({ select });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.countOrdersReferencingVersion('ver-002');
+
+      expect(result).toBe(0);
+    });
+
+    it('debe manejar resultado null', async () => {
+      const getRawOne = jest.fn().mockResolvedValue(null);
+      const andWhere = jest.fn().mockReturnValue({ getRawOne });
+      const where = jest.fn().mockReturnValue({ andWhere });
+      const select = jest.fn().mockReturnValue({ where });
+      const createQueryBuilder = jest.fn().mockReturnValue({ select });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
+        fn({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.countOrdersReferencingVersion('ver-003');
+
+      expect(result).toBe(0);
     });
   });
 });
