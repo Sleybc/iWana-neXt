@@ -497,6 +497,20 @@
           "dueAt": { "type": "string", "format": "date-time" }
         }
       },
+      "RedriveExecutionOrderEventCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["causeCode", "ticketId"],
+        "properties": {
+          "causeCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Z0-9][A-Z0-9_.:-]*$"
+          },
+          "ticketId": { "type": "string", "minLength": 1, "maxLength": 160 }
+        }
+      },
       "ListMeta": {
         "type": "object",
         "additionalProperties": false,
@@ -1577,6 +1591,14 @@
           { "$ref": "#/components/parameters/IdempotencyKey" },
           { "$ref": "#/components/parameters/CorrelationId" }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RedriveExecutionOrderEventCommand" }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Evento re-encolado.",
