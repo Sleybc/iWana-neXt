@@ -4,7 +4,7 @@
 **Responsable:** AI-DATA-ENG
 **Estado:** Remediación R2.4 implementada para revisión cruzada
 **Fecha:** 2026-07-31
-**Commit:** `fix(db): complete migration rollback and real down coverage`
+**Commit:** `fix(db): order media asset migration before execution evidence changes`
 
 ## Alcance
 
@@ -48,6 +48,25 @@ UX ni contratos públicos.
   `NUMERIC(12,2)` eliminando el CHECK. No se altera porque su round-trip actual
   es coherente.
 
+### Corrección R4/R2.4 — orden público de media assets
+
+- La fuente canónica de `public.media_assets` es `008_create_media_assets_table.ts`.
+  La migración pública 020 tenía el sufijo `0200000000000`, que TypeORM interpretaba
+  como timestamp anterior a 008 aunque el nombre de archivo comenzara por `020`.
+- 020 ahora usa el timestamp TypeORM `1784419208000`, posterior a 019
+  (`1784419207000`), y verifica `public.media_assets` antes de cualquier DDL. Si la
+  tabla no existe, falla cerrado con referencia explícita a 008; no crea una tabla
+  paralela ni continúa ocultando el error.
+- La comprobación de constraints acepta únicamente la definición canónica ya
+  existente o la reemplaza desde la definición histórica conocida. Una definición
+  incompatible aborta. Si una instalación anterior registró el nombre histórico de
+  020, la migración consolida ese registro después del DDL dentro de la transacción.
+- Se añadió integración PostgreSQL real que ejecuta el camino público 001 → 008 → 020
+  y crea un schema tenant limpio para aplicar el runner completo hasta 098. Se
+  verifican las columnas públicas y el orden registrado de 089–098; el `down()` de
+  098 se ejecuta contra PostgreSQL real y deja `execution_orders` sin la columna
+  agregada.
+
 ## Retención operativa propuesta
 
 La migración instala índices parciales sobre las columnas de corte de las cinco
@@ -81,10 +100,13 @@ evidencia canónica, settlement ni `audit_logs`.
   históricos; 094 revierte tablas/columnas pobladas con flag; 096 revierte
   `captured_at` poblado con flag. La limpieza usa `DROP SCHEMA ... CASCADE`
   sobre nombres aleatorios propios del test.
+- Nueva integración R4/R2.4: 020 se aplica contra PostgreSQL real después de 008 y
+  el runner tenant aplica 089–098 desde un schema limpio. 098 conserva su guard
+  fail-closed en `down()` y la prueba real verifica el rollback sin datos.
 
 Verificación ejecutada el 2026-07-31 contra PostgreSQL real en
-`127.0.0.1:5433/dbiw`: suite unitaria de `@iwana/db` — 11 suites y 56 tests
-pasaron; suite de integración — 3 suites y 21 tests pasaron. También pasaron
+`127.0.0.1:5433/dbiw`: suite unitaria de `@iwana/db` — 11 suites y 59 tests
+pasaron; suite de integración — 4 suites y 23 tests pasaron. También pasaron
 `pnpm --filter @iwana/db typecheck` y ESLint sobre los archivos modificados.
 
 ## Regulación y dependencia abierta

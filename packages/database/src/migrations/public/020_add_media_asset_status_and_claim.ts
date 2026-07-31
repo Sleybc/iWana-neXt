@@ -1,6 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+const LEGACY_MIGRATION_NAME = 'AddMediaAssetStatusAndClaim0200000000000';
 
 /**
  * Migración 020 — Agrega columnas de ciclo de vida de evidencia a media_assets.
@@ -17,10 +18,100 @@ const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
  * ADR-068 — Sincronización de OT de ejecución y proyecciones operativas
  * ADR-034 — Bounded Context Media/Assets
  */
-export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterface {
-  name = 'AddMediaAssetStatusAndClaim0200000000000';
+export class AddMediaAssetStatusAndClaim1784419208000 implements MigrationInterface {
+  // El sufijo es el timestamp que TypeORM usa para ordenar migraciones. Debe
+  // ser posterior a 019 (1784419207000), no el número de archivo 020.
+  name = 'AddMediaAssetStatusAndClaim1784419208000';
+
+  private async assertMediaAssetsTableExists(queryRunner: QueryRunner): Promise<void> {
+    const rows = (await queryRunner.query(
+      `SELECT to_regclass('public.media_assets') IS NOT NULL AS present`,
+    )) as Array<{ present: boolean }>;
+
+    if (rows[0]?.present !== true) {
+      throw new Error(
+        'Migración 020 abortada: public.media_assets no existe. ' +
+          'Aplique primero la migración canónica 008_create_media_assets_table.',
+      );
+    }
+  }
+
+  private async readConstraintDefinition(
+    queryRunner: QueryRunner,
+    constraintName: string,
+  ): Promise<string | undefined> {
+    const rows = (await queryRunner.query(
+      `SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = 'public.media_assets'::regclass
+         AND conname = $1`,
+      [constraintName],
+    )) as Array<{ definition: string }>;
+
+    return rows[0]?.definition;
+  }
+
+  private async ensureAssetStatusConstraint(queryRunner: QueryRunner): Promise<void> {
+    const definition = await this.readConstraintDefinition(
+      queryRunner,
+      'chk_media_assets_asset_status',
+    );
+    if (definition) {
+      const normalized = definition.toLowerCase();
+      const expectedValues = ['quarantined', 'available', 'rejected', 'expired', 'deleted'];
+      if (expectedValues.every((value) => normalized.includes(value))) {
+        return;
+      }
+
+      throw new Error(
+        'Migración 020 abortada: chk_media_assets_asset_status existe con una definición incompatible.',
+      );
+    }
+
+    await queryRunner.query(
+      `ALTER TABLE "public"."media_assets"
+       ADD CONSTRAINT "chk_media_assets_asset_status" CHECK (
+         "asset_status" IN ('QUARANTINED', 'AVAILABLE', 'REJECTED', 'EXPIRED', 'DELETED')
+       )`,
+    );
+  }
+
+  private async ensureUsageConstraint(queryRunner: QueryRunner): Promise<void> {
+    const definition = await this.readConstraintDefinition(queryRunner, 'chk_media_assets_usage');
+    if (definition?.toLowerCase().includes('execution_evidence')) {
+      return;
+    }
+
+    if (definition) {
+      const normalized = definition.toLowerCase();
+      const legacyValues = ['logo', 'seal', 'favicon', 'login_background', 'general'];
+      if (!legacyValues.every((value) => normalized.includes(value))) {
+        throw new Error(
+          'Migración 020 abortada: chk_media_assets_usage existe con una definición incompatible.',
+        );
+      }
+    }
+
+    await queryRunner.query(
+      `ALTER TABLE "public"."media_assets"
+       DROP CONSTRAINT IF EXISTS "chk_media_assets_usage"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "public"."media_assets"
+       ADD CONSTRAINT "chk_media_assets_usage" CHECK (
+         "usage" IN (
+           'logo', 'seal', 'favicon', 'login_background', 'general',
+           'execution_evidence'
+         )
+       )`,
+    );
+  }
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Fail-closed: 020 solo modifica la tabla canónica creada por 008. No se
+    // crea una tabla alternativa ni se oculta un orden de migraciones inválido.
+    await this.assertMediaAssetsTableExists(queryRunner);
+
     // ── asset_status: estado del asset en el ciclo de vida de evidencia ────
     await queryRunner.query(
       `ALTER TABLE "public"."media_assets"
@@ -40,27 +131,13 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
     );
 
     // ── Update CHECK constraint on usage to include execution_evidence ──────
-    await queryRunner.query(
-      `ALTER TABLE "public"."media_assets"
-       DROP CONSTRAINT IF EXISTS "chk_media_assets_usage"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "public"."media_assets"
-       ADD CONSTRAINT "chk_media_assets_usage" CHECK (
-         "usage" IN (
-           'logo', 'seal', 'favicon', 'login_background', 'general',
-           'execution_evidence'
-         )
-       )`,
-    );
+    // La inspección previa permite reanudar una instalación que registró el
+    // nombre histórico de 020 sin convertir un constraint desconocido en un
+    // estado aparentemente válido.
+    await this.ensureUsageConstraint(queryRunner);
 
     // ── CHECK constraint on asset_status ────────────────────────────────────
-    await queryRunner.query(
-      `ALTER TABLE "public"."media_assets"
-       ADD CONSTRAINT "chk_media_assets_asset_status" CHECK (
-         "asset_status" IN ('QUARANTINED', 'AVAILABLE', 'REJECTED', 'EXPIRED', 'DELETED')
-       )`,
-    );
+    await this.ensureAssetStatusConstraint(queryRunner);
 
     // ── Index for orphan detection ──────────────────────────────────────────
     await queryRunner.query(
@@ -75,9 +152,21 @@ export class AddMediaAssetStatusAndClaim0200000000000 implements MigrationInterf
        ON "public"."media_assets" ("checksum_sha256")
        WHERE "checksum_sha256" IS NOT NULL`,
     );
+
+    // 020 nació con un sufijo que TypeORM ordenaba antes de 008. Si una
+    // instalación alcanzó a registrar ese nombre histórico, se consolida aquí
+    // después de validar/aplicar el DDL: el registro no queda con dos dueños
+    // lógicos de la misma migración y el revert sigue siendo determinista.
+    await queryRunner.query(`DELETE FROM "public"."typeorm_migrations" WHERE "name" = $1`, [
+      LEGACY_MIGRATION_NAME,
+    ]);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // El rollback también debe abortar antes de tocar nada si el estado base
+    // está incompleto o desincronizado.
+    await this.assertMediaAssetsTableExists(queryRunner);
+
     const destructiveDown = process.env[DESTRUCTIVE_DOWN_ENV_VAR] === 'true';
     if (!destructiveDown) {
       const rows = ((await queryRunner.query(

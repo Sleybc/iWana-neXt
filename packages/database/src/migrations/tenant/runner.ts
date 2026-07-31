@@ -54,6 +54,7 @@ import { TemplateVersioningAndClosureGate0940000000000 } from './094_template_ve
 import { CreateExecutionOrderEvidenceUploadIntents0950000000000 } from './095_create_execution_order_evidence_upload_intents';
 import { AddExecutionOrderEvidenceCapturedAt0960000000000 } from './096_add_execution_order_evidence_captured_at';
 import { ExecutionOrderItemUsageIntegerQuantity0970000000000 } from './097_execution_order_item_usage_integer_quantity';
+import { ExecutionOrderServerScope0980000000000 } from './098_execution_order_server_scope';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -187,6 +188,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateExecutionOrderEvidenceUploadIntents0950000000000,
   AddExecutionOrderEvidenceCapturedAt0960000000000,
   ExecutionOrderItemUsageIntegerQuantity0970000000000,
+  ExecutionOrderServerScope0980000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

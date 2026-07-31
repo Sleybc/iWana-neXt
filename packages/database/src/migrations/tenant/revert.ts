@@ -44,6 +44,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'ExtendVisitRequestStatusAndOutboxOccurredAt0930000000000',
   'TemplateVersioningAndClosureGate0940000000000',
   'CreateExecutionOrderEvidenceUploadIntents0950000000000',
+  'ExecutionOrderServerScope0980000000000',
   'AddExecutionOrderEvidenceCapturedAt0960000000000',
 ];
 

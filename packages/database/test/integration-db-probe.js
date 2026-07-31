@@ -90,6 +90,7 @@ module.exports = async function globalSetup() {
       [
         '',
         '='.repeat(78),
+        '[BLOQUEO] Integración PostgreSQL no disponible; no se genera evidencia.',
         '[089-integration] SUITE OMITIDA — no hay PostgreSQL alcanzable.',
         `  destino : ${target}`,
         `  motivo  : ${reason}`,
