@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { TasksController } from './tasks.controller';
 import { ExecutionOrdersController } from './execution-orders.controller';
+import { ExecutionOrderTemplatesController } from './execution-order-templates.controller';
 import { ExecutionOrdersService } from './services/execution-orders.service';
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
@@ -134,6 +135,13 @@ describe('TasksController Swagger', () => {
     expect(published.paths['/tasks/execution-orders/{id}/activities']?.get).toBeDefined();
     expect(published.paths['/tasks/execution-orders/{id}/item-usage']?.get).toBeDefined();
     expect(published.paths['/tasks/execution-orders/{id}/evidences']?.get).toBeDefined();
+    expect(
+      (
+        published.paths['/tasks/execution-orders/events/{eventId}/redrive']?.post as {
+          requestBody?: { content?: { 'application/json'?: { schema?: { $ref?: string } } } };
+        }
+      ).requestBody?.content?.['application/json']?.schema?.$ref,
+    ).toBe('#/components/schemas/RedriveExecutionOrderEventCommand');
     for (const path of [
       '/tasks/execution-orders/{id}/assign',
       '/tasks/execution-orders/{id}/evidence',
@@ -173,5 +181,15 @@ describe('TasksController Swagger', () => {
       expect.objectContaining({ quantity: { type: 'integer', minimum: 1 } }),
     );
     expect(schemas.ExecutionOrderEvidence?.required).toEqual(expect.arrayContaining(['createdAt']));
+  });
+});
+
+describe('Tasks guard order', () => {
+  it('ejecuta throttling antes de permisos en Tasks y Templates', () => {
+    for (const controller of [TasksController, ExecutionOrderTemplatesController]) {
+      const guards = Reflect.getMetadata('__guards__', controller) as unknown[];
+      expect(guards.indexOf(TenantAwareThrottlerGuard)).toBe(1);
+      expect(guards.indexOf(PermissionsGuard)).toBe(3);
+    }
   });
 });

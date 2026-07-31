@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { NotFoundException } from '@nestjs/common';
 import { runInTenantSchema } from '@iwana/db';
 import {
   ExecutionOrderItemAction,
@@ -172,6 +173,7 @@ describe('ExecutionOrdersService', () => {
       findOne: jest.fn().mockResolvedValue({
         id: 'eo-001',
         tenantId: 'tenant-001',
+        organizationSiteId: 'site-001',
         status: ExecutionOrderStatus.IN_PROGRESS,
         version: 1,
         templateRequirementsSnapshot: null,
@@ -230,6 +232,7 @@ describe('ExecutionOrdersService', () => {
       findOne: jest.fn().mockResolvedValue({
         id: 'eo-001',
         tenantId: 'tenant-001',
+        organizationSiteId: 'site-001',
         status: ExecutionOrderStatus.IN_PROGRESS,
         version: 1,
         templateRequirementsSnapshot: [
@@ -1514,13 +1517,22 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       id: 'outbox-row-001',
       eventId: '11111111-1111-4111-8111-111111111111',
       tenantId: 'tenant-001',
+      aggregateId: 'eo-001',
       aggregateVersion: 4,
+      eventType: 'ExecutionOrderClosedV1',
+      payload: { executionOrderId: 'eo-001' },
       correlationId: '22222222-2222-4222-8222-222222222222',
       lastError: 'consumer failed',
     };
+    const order = {
+      id: 'eo-001',
+      tenantId: 'tenant-001',
+      organizationSiteId: 'site-001',
+      ticketId: 'ticket-001',
+    };
     const updateExecute = jest.fn().mockResolvedValue({ affected: 1 });
     const manager = {
-      findOne: jest.fn().mockResolvedValue(event),
+      findOne: jest.fn().mockResolvedValueOnce(event).mockResolvedValueOnce(order),
       createQueryBuilder: jest.fn().mockReturnValue({
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
@@ -1539,16 +1551,28 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       completeIdempotency: jest.fn().mockResolvedValue(undefined),
       appendAuditIntent: jest.fn().mockResolvedValue(undefined),
     };
+    const organizationAccess = { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(true) };
     const service = new ExecutionOrdersService(
       {} as DataSource,
       undefined,
       undefined,
       undefined,
       reliability as never,
+      undefined,
+      undefined,
+      undefined,
+      organizationAccess as never,
     );
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
-    await expect(service.redriveEvent(event.eventId, actor, context)).resolves.toEqual({
+    await expect(
+      service.redriveEvent(
+        event.eventId,
+        { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' },
+        actor,
+        context,
+      ),
+    ).resolves.toEqual({
       eventId: event.eventId,
       correlationId: event.correlationId,
       status: 'QUEUED',
@@ -1559,7 +1583,14 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       'tenant-001',
       'execution_event.redrive',
       context.idempotencyKey,
-      expect.objectContaining({ payload: { eventId: event.eventId } }),
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          eventId: event.eventId,
+          eventType: event.eventType,
+          causeCode: 'DELIVERY_TIMEOUT',
+          ticketId: 'ticket-001',
+        }),
+      }),
     );
     expect(updateExecute).toHaveBeenCalledTimes(2);
     expect(reliability.appendAuditIntent).toHaveBeenCalledWith(
@@ -1577,11 +1608,21 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       id: 'outbox-row-002',
       eventId: '33333333-3333-4333-8333-333333333333',
       tenantId: 'tenant-001',
+      aggregateId: 'eo-002',
       aggregateVersion: 5,
+      eventType: 'ExecutionOrderClosedV1',
+      payload: { executionOrderId: 'eo-002' },
       correlationId: '44444444-4444-4444-8444-444444444444',
       lastError: 'consumer failed',
     };
-    const manager = { findOne: jest.fn().mockResolvedValue(event) };
+    const manager = {
+      findOne: jest.fn().mockResolvedValueOnce(event).mockResolvedValueOnce({
+        id: 'eo-002',
+        tenantId: 'tenant-001',
+        organizationSiteId: 'site-001',
+        ticketId: 'ticket-001',
+      }),
+    };
     const reliability = {
       beginIdempotent: jest.fn().mockResolvedValue({
         intentId: 'intent-redrive-002',
@@ -1599,10 +1640,21 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       undefined,
       undefined,
       reliability as never,
+      undefined,
+      undefined,
+      undefined,
+      { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(true) } as never,
     );
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
-    await expect(service.redriveEvent(event.eventId, actor, context)).resolves.toEqual({
+    await expect(
+      service.redriveEvent(
+        event.eventId,
+        { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' },
+        actor,
+        context,
+      ),
+    ).resolves.toEqual({
       eventId: event.eventId,
       correlationId: event.correlationId,
       status: 'QUEUED',
@@ -1617,7 +1669,10 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
         id: 'outbox-row-003',
         eventId: '55555555-5555-4555-8555-555555555555',
         tenantId: 'tenant-001',
+        aggregateId: 'eo-003',
         aggregateVersion: 2,
+        eventType: 'ExecutionOrderClosedV1',
+        payload: { executionOrderId: 'eo-003' },
         correlationId: '66666666-6666-4666-8666-666666666666',
         lastError: null,
       }),
@@ -1637,11 +1692,20 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       undefined,
       undefined,
       reliability as never,
+      undefined,
+      undefined,
+      undefined,
+      { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(true) } as never,
     );
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
     await expect(
-      service.redriveEvent('55555555-5555-4555-8555-555555555555', actor, context),
+      service.redriveEvent(
+        '55555555-5555-4555-8555-555555555555',
+        { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' },
+        actor,
+        context,
+      ),
     ).rejects.toMatchObject({ response: { code: 'EVENT_NOT_IN_DLQ' } });
   });
 
@@ -1651,6 +1715,7 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       tenantId: 'tenant-001',
       status: ExecutionOrderStatus.COMPLETED,
       version: 3,
+      organizationSiteId: 'site-001',
     };
     const savedPayloads: unknown[] = [];
     const manager = {
@@ -1678,6 +1743,10 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       undefined,
       undefined,
       reliability as never,
+      undefined,
+      undefined,
+      undefined,
+      { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(true) } as never,
     );
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
@@ -1716,6 +1785,7 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       findOne: jest.fn().mockResolvedValue({
         id: 'eo-001',
         tenantId: 'tenant-001',
+        organizationSiteId: 'site-001',
         status: ExecutionOrderStatus.IN_PROGRESS,
         version: 1,
       }),
@@ -1735,6 +1805,10 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
       undefined,
       undefined,
       reliability as never,
+      undefined,
+      undefined,
+      undefined,
+      { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(true) } as never,
     );
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
@@ -1744,5 +1818,78 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
         idempotencyKey: 'follow-up-key-0002',
       }),
     ).rejects.toMatchObject({ response: { code: 'FOLLOW_UP_NOT_ALLOWED' } });
+  });
+
+  it('rechaza eventos DLQ cuyo owner no es MOD11', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'outbox-row-foreign',
+        eventId: '77777777-7777-4777-8777-777777777777',
+        tenantId: 'tenant-001',
+        aggregateId: 'eo-foreign',
+        aggregateVersion: 1,
+        eventType: 'VisitCancelledV1',
+        payload: { executionOrderId: 'eo-foreign' },
+        correlationId: '88888888-8888-4888-8888-888888888888',
+        lastError: 'consumer failed',
+      }),
+    };
+    const service = new ExecutionOrdersService({} as DataSource);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.redriveEvent(
+        '77777777-7777-4777-8777-777777777777',
+        { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' },
+        actor,
+        context,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('falla cerrado si la asignación de supervisión fue revocada antes del comando', async () => {
+    const event = {
+      id: 'outbox-row-revoked',
+      eventId: '99999999-9999-4999-8999-999999999999',
+      tenantId: 'tenant-001',
+      aggregateId: 'eo-revoked',
+      aggregateVersion: 2,
+      eventType: 'ExecutionOrderClosedV1',
+      payload: { executionOrderId: 'eo-revoked' },
+      correlationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      lastError: 'consumer failed',
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValueOnce(event).mockResolvedValueOnce({
+        id: 'eo-revoked',
+        tenantId: 'tenant-001',
+        organizationSiteId: 'site-revoked',
+        ticketId: 'ticket-001',
+      }),
+      createQueryBuilder: jest.fn(),
+    };
+    const reliability = { beginIdempotent: jest.fn() };
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliability as never,
+      undefined,
+      undefined,
+      undefined,
+      { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(false) } as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.redriveEvent(
+        event.eventId,
+        { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' },
+        actor,
+        context,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(reliability.beginIdempotent).not.toHaveBeenCalled();
   });
 });

@@ -195,6 +195,7 @@ describe('ExecutionOrdersController HTTP', () => {
 
   const buildExecutionOrdersServiceMock = () => ({
     assertActorAccess: jest.fn().mockResolvedValue(undefined),
+    assertActorCanRedrive: jest.fn().mockResolvedValue(undefined),
     getById: jest.fn().mockResolvedValue({
       id: ORDER_UUID,
       executionOrderNumber: 'OTE-20260727-001',
@@ -878,6 +879,7 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
 
   const buildExecutionOrdersServiceMock = () => ({
     assertActorAccess: jest.fn().mockResolvedValue(undefined),
+    assertActorCanRedrive: jest.fn().mockResolvedValue(undefined),
     getById: jest.fn().mockResolvedValue({
       id: ORDER_UUID,
       executionOrderNumber: 'OTE-20260727-001',
@@ -1206,10 +1208,12 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
         .set('Authorization', 'Bearer coordinator-token')
         .set('Idempotency-Key', 'redrive-req-001')
         .set('X-Correlation-Id', '55555555-5555-4555-8555-555555555555')
+        .send({ causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' })
         .expect(202);
 
       expect(serviceMock.redriveEvent).toHaveBeenCalledWith(
         EVENT_UUID,
+        { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' },
         expect.objectContaining({ tenantId: 'tenant-001' }),
         expect.objectContaining({
           idempotencyKey: 'redrive-req-001',

@@ -16,6 +16,7 @@ import {
   BlockExecutionOrderSchema,
   UnblockExecutionOrderSchema,
   RegisterExecutionOrderItemUsageSchema,
+  RedriveExecutionOrderEventSchema,
 } from '../dto/execution-orders.dto';
 import {
   ExecutionOrderResult,
@@ -24,6 +25,27 @@ import {
 } from '@iwana/shared';
 
 describe('ExecutionOrders Schema Validation (P1-1)', () => {
+  describe('RedriveExecutionOrderEventSchema (R2.2)', () => {
+    it('acepta causa acotada y ticket obligatorio', () => {
+      expect(
+        RedriveExecutionOrderEventSchema.parse({
+          causeCode: 'DELIVERY_TIMEOUT',
+          ticketId: 'ticket-001',
+        }),
+      ).toEqual({ causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001' });
+    });
+
+    it.each([
+      {},
+      { causeCode: 'DELIVERY_TIMEOUT' },
+      { ticketId: 'ticket-001' },
+      { causeCode: 'lower-case', ticketId: 'ticket-001' },
+      { causeCode: 'DELIVERY_TIMEOUT', ticketId: 'ticket-001', payload: 'forbidden' },
+    ])('rechaza redrive incompleto o fuera del contrato: %o', (payload) => {
+      expect(() => RedriveExecutionOrderEventSchema.parse(payload)).toThrow();
+    });
+  });
+
   describe('RegisterExecutionOrderItemUsageSchema (R1.4)', () => {
     const validPayload = {
       itemId: 'item-001',
