@@ -1,0 +1,36 @@
+# Overlay del perfil `development`: SOLO publicación de puertos.
+#
+# En desarrollo la API, el worker, web y portal corren en el host y leen
+# `.env.development` (DB_PORT=5433, REDIS_PORT=6380, S3_ENDPOINT=localhost:9002,
+# TYPESENSE_PORT=8108). `nginx.dev.conf` solo hace proxy HTTP hacia la API del
+# host: no puentea TCP. Sin estas publicaciones no hay ruta al Postgres del
+# contenedor y `pnpm db:migrate:all` falla.
+#
+# Todas las publicaciones están ligadas a 127.0.0.1 — nunca 0.0.0.0. Es más
+# restrictivo que el estado previo a `c8f3d14c` y mantiene los servicios de datos
+# fuera de la red del equipo. `docker-compose.yml` conserva `expose:`; producción
+# nunca carga este archivo y por tanto no publica ningún puerto de datos.
+#
+# Invocación de desarrollo:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml <comando>
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:${DB_PORT:-5433}:5432'
+
+  redis:
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6380}:6379'
+
+  pgbouncer:
+    ports:
+      - '127.0.0.1:${PGBOUNCER_PORT:-6433}:6432'
+
+  minio:
+    ports:
+      - '127.0.0.1:${MINIO_API_PORT:-9002}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9003}:9001'
+
+  typesense:
+    ports:
+      - '127.0.0.1:${TYPESENSE_PORT:-8108}:8108'

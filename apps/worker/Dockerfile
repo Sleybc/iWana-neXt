@@ -16,6 +16,7 @@ COPY apps/worker/package.json       apps/worker/
 COPY packages/config/package.json   packages/config/
 COPY packages/database/package.json packages/database/
 COPY packages/shared/package.json   packages/shared/
+COPY packages/storage/package.json  packages/storage/
 COPY packages/ui/package.json       packages/ui/
 
 # HUSKY=0 evita que el hook "prepare" falle por ausencia de .git
@@ -28,6 +29,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/storage/node_modules ./packages/storage/node_modules
 COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 
 # Se copia el repo completo para preservar los links/junctions de workspace que usa pnpm.
@@ -40,6 +42,7 @@ RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
 # El worker depende de artefactos compilados de @iwana/shared y @iwana/db.
 # `pnpm exec` resuelve el binario real dentro de `.pnpm` sin depender de rutas fijas.
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
+    pnpm exec tsc --project packages/storage/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json && \
     pnpm exec tsc --project apps/worker/tsconfig.json
 
@@ -57,6 +60,7 @@ COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=worker:nodejs /app/apps/worker ./apps/worker
 COPY --from=builder --chown=worker:nodejs /app/packages/shared ./packages/shared
 COPY --from=builder --chown=worker:nodejs /app/packages/database ./packages/database
+COPY --from=builder --chown=worker:nodejs /app/packages/storage ./packages/storage
 
 # El runtime no debe heredar archivos .env del workspace local.
 RUN rm -f /app/apps/worker/.env /app/apps/worker/.env.*
