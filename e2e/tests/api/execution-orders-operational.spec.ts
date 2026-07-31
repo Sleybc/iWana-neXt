@@ -45,6 +45,20 @@ const TENANT_SLUG = process.env.E2E_TENANT_SLUG || 'isp-demo';
 const HEALTH_RETRIES = 5;
 const HEALTH_RETRY_DELAY_MS = 2_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+/**
+ * Clave de requisito que el contrato de cierre exige para la firma del cliente.
+ * Debe coincidir con CUSTOMER_SIGNATURE_REQUIREMENT_KEY del servicio de OT.
+ */
+const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
+/** Ventana máxima de espera a que el análisis del asset lo deje AVAILABLE. */
+const EVIDENCE_ASSET_AVAILABLE_TIMEOUT_MS = 30_000;
+/**
+ * Desplazamiento por reintento de las ventanas de agenda del happy path.
+ * Un día por intento evita que el retry choque contra el evento que creó el
+ * intento anterior para el mismo técnico y no invade las ventanas del resto
+ * de la suite (máximo 450 minutos).
+ */
+const RETRY_WINDOW_SHIFT_MINUTES = 24 * 60;
 const VALID_EVIDENCE_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Qf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8Qf//Z',
   'base64',
@@ -74,10 +88,16 @@ type TestCtx = {
   nocUserId: string;
   /** Technician user ID. */
   techUserId: string;
-  /** ID del asset de evidencia. */
+  /** ID del asset de evidencia (foto). */
   mediaAssetId: string;
+  /** ID del asset de la evidencia de firma del cliente (aceptación de cierre). */
+  signatureMediaAssetId: string;
   /** Tenant ID. */
   tenantId: string;
+  /** ID de la plantilla congelada creada en beforeAll (happy path). */
+  templateId?: string;
+  /** ID de la versión publicada de la plantilla (happy path). */
+  templateVersionId?: string;
 };
 
 type RequestClient = APIRequestContext | Page;
@@ -119,6 +139,7 @@ function createTestCtx(): TestCtx {
     nocUserId: '',
     techUserId: '',
     mediaAssetId: '',
+    signatureMediaAssetId: '',
     tenantId: '',
   };
 }
@@ -237,6 +258,48 @@ async function authedPatch(
       ...extraHeaders,
     },
   });
+}
+
+/**
+ * Espera por condición (nunca por sleep fijo) a que el asset de evidencia
+ * quede AVAILABLE.
+ *
+ * El asset nace QUARANTINED y solo el análisis asíncrono lo promueve. Tanto el
+ * registro de evidencia como la validación del artefacto de aceptación exigen
+ * AVAILABLE, así que la espera es una precondición del contrato, no una pausa
+ * de conveniencia.
+ */
+async function waitForEvidenceAssetAvailable(
+  page: Page,
+  executionOrderId: string,
+  mediaAssetId: string,
+  token: string,
+): Promise<void> {
+  expect(mediaAssetId, 'El asset de evidencia debe tener un identificador').toBeTruthy();
+  await expect
+    .poll(
+      async () => {
+        const receiptRes = await authedGet(
+          page,
+          `/tasks/execution-orders/${executionOrderId}/evidence-assets/${mediaAssetId}`,
+          token,
+        );
+        if (receiptRes.status() !== 200) {
+          return `HTTP_${receiptRes.status()}`;
+        }
+        const receiptBody = (await receiptRes.json()) as {
+          status?: string;
+          data?: { status?: string };
+        };
+        return receiptBody.status ?? receiptBody.data?.status ?? '';
+      },
+      {
+        timeout: EVIDENCE_ASSET_AVAILABLE_TIMEOUT_MS,
+        intervals: [250, 500, 1_000, 2_000, 3_000],
+        message: `El asset de evidencia ${mediaAssetId} no alcanzó AVAILABLE dentro de la ventana de espera.`,
+      },
+    )
+    .toBe('AVAILABLE');
 }
 
 async function createScheduledOrder(
@@ -403,6 +466,75 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         `Usuario coordinador RO '${coordinatorReadonlyEmail}' no encontrado en tenant '${TENANT_SLUG}'.`,
       );
     }
+
+    // 6. Crear plantilla congelada mínima para el cierre del happy path.
+    //    El gate de cierre exige templateRequirementsSnapshot ≠ null; sin
+    //    plantilla activa el createFromSchedulingWithManager deja el snapshot
+    //    en null y el cierre devuelve 422 CLOSURE_GATE_SNAPSHOT_MISSING.
+    const templateKey = `E2E_HAPPY_PATH_${Date.now()}`;
+    const templateRes = await authedPost(
+      setupApi,
+      '/tasks/execution-order-templates',
+      {
+        key: templateKey,
+        label: 'E2E Happy Path - Cierre mínimo',
+        workType: 'INSTALLATION',
+        requirements: [],
+      },
+      ctx.nocToken,
+    );
+    expect(templateRes.status(), 'Crear plantilla happy path').toBe(201);
+    const template = (await templateRes.json()) as { id: string };
+    const templateId = template.id;
+    expect(templateId).toBeTruthy();
+
+    const versionRes = await authedPost(
+      setupApi,
+      `/tasks/execution-order-templates/${templateId}/versions`,
+      {
+        label: 'E2E Happy Path v1',
+        requirements: [
+          {
+            key: 'installation-activity',
+            label: 'Actividad de instalación',
+            required: true,
+            kind: 'ACTIVITY',
+            activityType: 'INSTALLATION',
+          },
+          {
+            key: 'e2e-test-evidence',
+            label: 'Evidencia de trabajo',
+            required: true,
+            kind: 'EVIDENCE',
+            evidenceType: 'PHOTO',
+          },
+          {
+            key: CUSTOMER_SIGNATURE_REQUIREMENT_KEY,
+            label: 'Firma del cliente',
+            required: true,
+            kind: 'EVIDENCE',
+            evidenceType: 'SIGNATURE',
+          },
+        ],
+      },
+      ctx.nocToken,
+    );
+    expect(versionRes.status(), 'Crear versión de plantilla').toBe(201);
+    const version = (await versionRes.json()) as { id: string };
+    const versionId = version.id;
+    expect(versionId).toBeTruthy();
+
+    const publishRes = await authedPost(
+      setupApi,
+      `/tasks/execution-order-templates/versions/${versionId}/publish`,
+      {},
+      ctx.nocToken,
+    );
+    expect(publishRes.status(), 'Publicar plantilla').toBe(200);
+
+    // Guardar para posible limpieza
+    ctx.templateId = templateId;
+    ctx.templateVersionId = versionId;
   });
 
   test.afterAll(async () => {
@@ -412,7 +544,16 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
   // ─── 1. Happy path E2E ─────────────────────────────────────────────────────
 
   test.describe('1. Happy path — ciclo completo de OT', () => {
-    test('1a. Crear evento de agenda → OT asignada', async ({ page }) => {
+    // Dependencia intencional: los casos 1b–1g operan sobre la OT creada en 1a
+    // y sobre `ctx.otVersion`, que avanza con cada comando. El modo serial deja
+    // explícito ese estado compartido en lugar de heredarlo de forma implícita.
+    test.describe.configure({ mode: 'serial' });
+
+    test('1a. Crear evento de agenda → OT asignada', async ({ page }, testInfo) => {
+      // Cada reintento usa su propia ventana horaria: el técnico ya tiene el
+      // evento del intento anterior y la agenda rechaza solapamientos (400).
+      const windowShift = testInfo.retry * RETRY_WINDOW_SHIFT_MINUTES;
+
       // Crear schedule event con embed work order
       const createEventRes = await authedPost(
         page,
@@ -421,8 +562,8 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           type: 'INSTALLATION',
           title: 'E2E Instalación fibra óptica',
           description: 'OT generada por prueba E2E operativa',
-          scheduledStartAt: nowIso(60),
-          scheduledEndAt: nowIso(180),
+          scheduledStartAt: nowIso(60 + windowShift),
+          scheduledEndAt: nowIso(180 + windowShift),
           assignedUserId: ctx.techUserId,
           address: 'Cra 10 # 10-10',
           municipality: 'Bogotá',
@@ -644,25 +785,17 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       ctx.mediaAssetId = uploadBody.mediaAssetId;
       expect(ctx.mediaAssetId).toBeTruthy();
 
-      // 2. Poll receipt hasta que esté AVAILABLE o PENDING_ANALYSIS
-      let receiptStatus = 'PENDING_ANALYSIS';
-      const maxPolls = 5;
-      for (let i = 0; i < maxPolls; i++) {
-        const receiptRes = await authedGet(
-          page,
-          `/tasks/execution-orders/${ctx.executionOrderId}/evidence-assets/${ctx.mediaAssetId}`,
-          ctx.techToken,
-        );
-        if (receiptRes.status() === 200) {
-          const receiptBody = await receiptRes.json();
-          receiptStatus = receiptBody.status || receiptBody.data?.status || '';
-          if (receiptStatus === 'AVAILABLE' || receiptStatus === 'PENDING_ANALYSIS') {
-            break;
-          }
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      expect(['AVAILABLE', 'PENDING_ANALYSIS']).toContain(receiptStatus);
+      // 2. Esperar por condición a que el asset quede AVAILABLE: el registro de
+      //    evidencia solo acepta assets disponibles.
+      //    Se usa nocToken para el polling (GET read-only) y así aislar el
+      //    contador del rate limiter eo-evidence-media (límite 10) para que los
+      //    POST de subida y registro del técnico no compitan con los GET del poll.
+      await waitForEvidenceAssetAvailable(
+        page,
+        ctx.executionOrderId,
+        ctx.mediaAssetId,
+        ctx.nocToken,
+      );
 
       // 3. Registrar evidencia vinculando el asset
       const registerRes = await authedPost(
@@ -708,8 +841,96 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expect(contentRes.headers().location).toMatch(/^https?:\/\//);
     });
 
+    test('1e-bis. Registrar evidencia de firma del cliente', async ({ page }) => {
+      expect(ctx.executionOrderId).toBeTruthy();
+
+      // El cierre con aceptación del cliente exige que el artefacto sea una
+      // evidencia SIGNATURE con requirementKey CUSTOMER_SIGNATURE y con su
+      // asset AVAILABLE. Se sube un asset propio porque cada asset solo puede
+      // reclamarse por una evidencia.
+      const uploadRes = await page.request.post(
+        `${API_PREFIX}/tasks/execution-orders/${ctx.executionOrderId}/evidence-assets`,
+        {
+          headers: {
+            Authorization: `Bearer ${ctx.techToken}`,
+            'Idempotency-Key': `e2e-signature-upload-${ctx.executionOrderId}`,
+            'If-Match': String(ctx.otVersion),
+          },
+          multipart: {
+            file: {
+              name: 'e2e-firma-cliente.jpg',
+              mimeType: 'image/jpeg',
+              buffer: VALID_EVIDENCE_JPEG,
+            },
+          },
+        },
+      );
+
+      expect(uploadRes.status()).toBe(202);
+      expectMutationHeaders(uploadRes);
+      const uploadBody = await uploadRes.json();
+      expect(uploadBody).toEqual(
+        expect.objectContaining({
+          intentId: expect.any(String),
+          mediaAssetId: expect.stringMatching(UUID_PATTERN),
+          status: expect.stringMatching(/^(PENDING_ANALYSIS|AVAILABLE)$/),
+        }),
+      );
+      const signatureAssetId: string = uploadBody.mediaAssetId;
+      expect(signatureAssetId).not.toBe(ctx.mediaAssetId);
+
+      // El artefacto de aceptación debe tener el asset disponible.
+      // Mismo aislamiento de rate limiter que en 1e: polling con nocToken.
+      await waitForEvidenceAssetAvailable(
+        page,
+        ctx.executionOrderId,
+        signatureAssetId,
+        ctx.nocToken,
+      );
+
+      const registerRes = await authedPost(
+        page,
+        `/tasks/execution-orders/${ctx.executionOrderId}/evidence`,
+        {
+          mediaAssetId: signatureAssetId,
+          evidenceType: 'SIGNATURE',
+          requirementKey: CUSTOMER_SIGNATURE_REQUIREMENT_KEY,
+          expiresAt: nowIso(1440),
+          capturedAt: nowIso(),
+        },
+        ctx.techToken,
+        {
+          'If-Match': String(ctx.otVersion),
+          'Idempotency-Key': `e2e-signature-reg-${ctx.executionOrderId}`,
+        },
+      );
+      expect(registerRes.status()).toBe(201);
+      expectMutationHeaders(registerRes);
+      const registeredSignature = await registerRes.json();
+      expect(registeredSignature).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          mediaAssetId: signatureAssetId,
+          evidenceType: 'SIGNATURE',
+          requirementKey: CUSTOMER_SIGNATURE_REQUIREMENT_KEY,
+          status: 'AVAILABLE',
+        }),
+      );
+
+      ctx.signatureMediaAssetId = signatureAssetId;
+
+      // El registro de evidencia incrementa la versión de la OT.
+      ctx.otVersion = ctx.otVersion + 1;
+    });
+
     test('1f. Cerrar OT exitosamente', async ({ page }) => {
       expect(ctx.executionOrderId).toBeTruthy();
+      // Sin fallback: si la evidencia de firma no se registró, el fallo debe
+      // señalar el fixture roto y no degenerar en un 422 del cierre.
+      expect(
+        ctx.signatureMediaAssetId,
+        'La evidencia de firma del cliente debe haberse registrado en 1e-bis',
+      ).toBeTruthy();
       const res = await authedPost(
         page,
         `/tasks/execution-orders/${ctx.executionOrderId}/close`,
@@ -718,7 +939,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           summary: 'Instalación completada exitosamente. Cliente satisfecho.',
           closeNotes: 'Se instaló ONT HG8245. Potencia óptica: -18dBm.',
           customerAcceptance: {
-            artifactId: ctx.mediaAssetId || 'sig-e2e-001',
+            artifactId: ctx.signatureMediaAssetId,
             method: 'SIGNATURE',
           },
         },
@@ -728,8 +949,11 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           'Idempotency-Key': `e2e-close-${ctx.executionOrderId}`,
         },
       );
-      expect(res.status()).toBe(200);
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
+      // El cuerpo viaja en el mensaje: un 422 de cierre puede venir del
+      // artefacto de aceptación o del gate de cierre, y el diagnóstico no
+      // puede depender de leer los logs de la API.
+      expect(res.status(), `Respuesta del cierre: ${JSON.stringify(body)}`).toBe(200);
       expect(body.status).toBe('COMPLETED');
       expect(body.result).toBe('EXECUTED');
       ctx.otVersion = body.version || ctx.otVersion + 1;
@@ -969,6 +1193,29 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
 
   test.describe('4. Rate limiting', () => {
     const RAPID_COUNT = 121;
+
+    // La clave de rate limiter es operations-rate:{bucket}:{actorId}:{tenantId}.
+    // Test 4a usa coordinatorReadonlyToken (eo-lightweight-read, límite 120).
+    // Ningún otro test usa la misma combinación (actor, bucket), así que la
+    // contaminación entre describes es nula con workers:1. Para re-runs dentro
+    // de la ventana de 60 s, el beforeAll drena el bucket residual.
+    test.beforeAll(async () => {
+      // Drenar el bucket eo-lightweight-read del coordinatorReadonlyToken
+      // para garantizar un baseline limpio en 4a, incluso si la ejecución
+      // anterior dejó el contador parcialmente consumido.
+      let remaining = 120;
+      while (remaining > 0) {
+        const probe = await authedGet(
+          setupApi,
+          `/tasks/execution-orders/${ctx.executionOrderId}`,
+          ctx.coordinatorReadonlyToken,
+        );
+        remaining = Number(probe.headers()['x-ratelimit-remaining']);
+        if (remaining <= 0) break;
+      }
+      // El bucket queda vacío tras el drenaje. El test 4a recién creado
+      // parte siempre de 121 requests → 120 OK + 1 429, determinista.
+    });
 
     test('4a. Ráfaga de requests → 429 después del límite', async ({ page }) => {
       // El límite contractual de lecturas de OT es 120 por actor y tenant.
