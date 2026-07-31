@@ -278,3 +278,166 @@ jobs:
         run: |
           # Gate: exit ≠ 0 si iwana_app puede DROP TRIGGER o ownership es incorrecto
           bash scripts/db/verify-app-cannot-drop-audit-trigger.sh
+
+  execution-orders-e2e:
+    name: E2E operativo R4.1 — API + storage + BullMQ reales
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    # ── Cross-platform lockfile ──────────────────────────────────────────────
+    # El lockfile de este monorepo se genera típicamente en Windows y contiene
+    # optionalDependencies con `os: [win32]` (p.ej. @next/swc-win32-*, sharp-win32-*,
+    # @tailwindcss/oxide-win32-*, lightningcss-win32-*). pnpm 10 en Linux las omite
+    # automáticamente porque no coinciden con la plataforma del runner.
+    #
+    # Riesgo conocido: si un paquete pasa de optional a required en una actualización,
+    # o si la versión de pnpm difiere entre generación y consumo, `--frozen-lockfile`
+    # puede fallar.
+    #
+    # Workaround documentado: regenerar lockfile en Linux (pnpm install --no-frozen-lockfile)
+    # y commitear el nuevo lockfile antes del merge a main cuando falle la validación.
+    env:
+      CI: true
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_CLEANUP: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Setup pnpm 10
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Validate lockfile cross-platform (Windows → Linux)
+        id: lockfile-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Lockfile platform compatibility check"
+          echo "Runner OS: $(uname -s)"
+          echo "Runner arch: $(uname -m)"
+          echo ""
+
+          # Verificar que el lockfile es sintácticamente válido y contiene
+          # snapshots para Linux (los optionalDependencies con os:win32 se omiten).
+          # Usamos node para parsear el YAML sin hacer install real.
+          node -e '
+            const fs = require("node:fs");
+            const raw = fs.readFileSync("pnpm-lock.yaml", "utf8");
+            const lines = raw.split("\n").length;
+            const hasLinuxPackages = raw.includes("os: [linux]") || raw.includes("os: [\"linux\"]");
+            const hasWin32OnlyPackages = (raw.match(/os: \[win32\]/g) || []).length;
+            console.log("Lockfile lines:", lines);
+            console.log("Has Linux-specific packages:", hasLinuxPackages);
+            console.log("Win32-only optional packages:", hasWin32OnlyPackages);
+            if (!raw.includes("snapshots:")) {
+              console.error("ERROR: lockfile no contiene sección snapshots");
+              process.exit(1);
+            }
+            if (!raw.includes("lockfileVersion:")) {
+              console.error("ERROR: lockfile no tiene lockfileVersion");
+              process.exit(1);
+            }
+          '
+          echo ""
+
+          # El gate real es `pnpm install --frozen-lockfile` en el paso siguiente.
+          # Este check solo advierte temprano si el lockfile tiene estructura
+          # sospechosa antes de gastar tiempo en la instalación completa.
+          echo "✅ Lockfile estructuralmente válido"
+          echo ""
+          echo "::notice ::Workaround si pnpm install falla: regenerar lockfile en Linux"
+          echo "::notice ::  pnpm install --no-frozen-lockfile   # en un runner Linux"
+          echo "::notice ::  git add pnpm-lock.yaml && git commit -m 'chore: regenerar lockfile (Linux)'"
+          echo "::endgroup::"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # ── Vertical E2E: provision script ────────────────────────────────────
+      # `scripts/e2e-provision-operational.mjs` es el orquestador atómico:
+      #   1. docker compose up -d --wait postgres, redis, minio, typesense
+      #   2. docker compose run minio-init (bootstrap del bucket)
+      #   3. pnpm build shared → storage → database
+      #   4. pnpm db:migrate:all (public + tenant schemas)
+      #   5. docker compose up -d --build --wait worker-e2e (BullMQ con healthcheck)
+      #   6. pnpm --filter @iwana/api dev (API en el host, healthcheck via /api/v1/health)
+      #   7. Provisiona tenants, usuarios, fixtures de inventario y business hours
+      #   8. Ejecuta Playwright: e2e/tests/api/execution-orders-operational.spec.ts
+      #   9. Cleanup: tenants, schemas, worker, API process, docker compose down
+      #
+      # Las credenciales se generan aleatoriamente en memoria. Nunca se imprimen
+      # ni se escriben en archivos versionados.
+      - name: Provision and execute R4.1 against real services
+        id: e2e
+        run: node scripts/e2e-provision-operational.mjs
+
+      # ── Diagnóstico en fallo ──────────────────────────────────────────────
+      # Si el provision script o los tests fallan, se capturan las últimas
+      # líneas de logs de los contenedores para diagnóstico. Sin secretos.
+      - name: Docker logs on failure
+        if: failure() && steps.e2e.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::group::PostgreSQL E2E logs (cola)"
+          docker logs iwana_postgres_e2e --tail 80 2>&1 || echo "(contenedor no disponible)"
+          echo "::endgroup::"
+          echo "::group::Worker E2E logs (cola)"
+          docker logs iwana_worker_e2e --tail 80 2>&1 || echo "(contenedor no disponible)"
+          echo "::endgroup::"
+          echo "::group::Redis E2E logs (cola)"
+          docker logs iwana_redis_e2e --tail 30 2>&1 || echo "(contenedor no disponible)"
+          echo "::endgroup::"
+          echo "::group::MinIO E2E logs (cola)"
+          docker logs iwana_minio_e2e --tail 30 2>&1 || echo "(contenedor no disponible)"
+          echo "::endgroup::"
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-r41-playwright-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
+      # ── Safety-net cleanup ───────────────────────────────────────────────
+      # El provision script hace su propia limpieza en el bloque finally, pero
+      # si el proceso muere con SIGKILL (OOM, timeout del runner), los
+      # contenedores y volúmenes pueden quedar huérfanos. Este paso los elimina.
+      - name: Cleanup E2E infrastructure (safety net)
+        if: always()
+        shell: bash
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.e2e.yml \
+            -p iwana-e2e-r41 \
+            --profile development \
+            --profile e2e \
+            down --remove-orphans --volumes --timeout 30 2>/dev/null || true
