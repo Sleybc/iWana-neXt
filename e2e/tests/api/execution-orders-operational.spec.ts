@@ -13,6 +13,15 @@
  * - BOLA: inquilino A no accede a OT de inquilino B → 404
  * - Evidencia: upload → poll receipt → register → signed URL
  *
+ * PRERREQUISITO — Ejecutar el script de provisión antes de correr la suite:
+ *   npx tsx e2e/scripts/provision-execution-template.ts
+ *
+ * Este script inserta la plantilla E2E_HAPPY_PATH directamente en la base de
+ * datos del tenant (la API no expone el endpoint de creación de plantillas con
+ * los tokens disponibles en la suite: nocToken carece del permiso
+ * operations.execution_order_templates.manage y platformToken no pasa el
+ * RolesGuard del controller).
+ *
  * Ejecución:
  *   pnpm exec playwright test e2e/tests/api/execution-orders-operational.spec.ts \
  *     --config e2e/playwright.api.config.ts
@@ -467,74 +476,20 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       );
     }
 
-    // 6. Crear plantilla congelada mínima para el cierre del happy path.
+    // 6. La plantilla E2E_HAPPY_PATH debe existir en el tenant de prueba.
     //    El gate de cierre exige templateRequirementsSnapshot ≠ null; sin
     //    plantilla activa el createFromSchedulingWithManager deja el snapshot
     //    en null y el cierre devuelve 422 CLOSURE_GATE_SNAPSHOT_MISSING.
-    const templateKey = `E2E_HAPPY_PATH_${Date.now()}`;
-    const templateRes = await authedPost(
-      setupApi,
-      '/tasks/execution-order-templates',
-      {
-        key: templateKey,
-        label: 'E2E Happy Path - Cierre mínimo',
-        workType: 'INSTALLATION',
-        requirements: [],
-      },
-      ctx.nocToken,
-    );
-    expect(templateRes.status(), 'Crear plantilla happy path').toBe(201);
-    const template = (await templateRes.json()) as { id: string };
-    const templateId = template.id;
-    expect(templateId).toBeTruthy();
-
-    const versionRes = await authedPost(
-      setupApi,
-      `/tasks/execution-order-templates/${templateId}/versions`,
-      {
-        label: 'E2E Happy Path v1',
-        requirements: [
-          {
-            key: 'installation-activity',
-            label: 'Actividad de instalación',
-            required: true,
-            kind: 'ACTIVITY',
-            activityType: 'INSTALLATION',
-          },
-          {
-            key: 'e2e-test-evidence',
-            label: 'Evidencia de trabajo',
-            required: true,
-            kind: 'EVIDENCE',
-            evidenceType: 'PHOTO',
-          },
-          {
-            key: CUSTOMER_SIGNATURE_REQUIREMENT_KEY,
-            label: 'Firma del cliente',
-            required: true,
-            kind: 'EVIDENCE',
-            evidenceType: 'SIGNATURE',
-          },
-        ],
-      },
-      ctx.nocToken,
-    );
-    expect(versionRes.status(), 'Crear versión de plantilla').toBe(201);
-    const version = (await versionRes.json()) as { id: string };
-    const versionId = version.id;
-    expect(versionId).toBeTruthy();
-
-    const publishRes = await authedPost(
-      setupApi,
-      `/tasks/execution-order-templates/versions/${versionId}/publish`,
-      {},
-      ctx.nocToken,
-    );
-    expect(publishRes.status(), 'Publicar plantilla').toBe(200);
-
-    // Guardar para posible limpieza
-    ctx.templateId = templateId;
-    ctx.templateVersionId = versionId;
+    //
+    //    La creación vía API no es accesible con los tokens de la suite:
+    //    - nocToken: NOC no tiene el permiso operations.execution_order_templates.manage
+    //    - platformToken: SYSTEM_ADMIN no satisface @Roles(UserRole.ADMIN, UserRole.NOC)
+    //
+    //    La plantilla se provisiona vía SQL directo con el script:
+    //      npx tsx e2e/scripts/provision-execution-template.ts
+    //
+    //    El OT creation en el test 1a consulta getActiveVersionForWorkType('INSTALLATION')
+    //    y congela automáticamente el snapshot de la plantilla publicada activa.
   });
 
   test.afterAll(async () => {
