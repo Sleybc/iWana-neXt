@@ -1,9 +1,9 @@
 # Informe de fase — MOD09–MOD11 OT de instalación R2.2
 
-**Versión:** 1.0  
-**Estado:** Implementación entregada para revisión cruzada  
-**Fecha:** 2026-07-31  
-**Agente:** AI-SR-FULL  
+**Versión:** 1.0
+**Estado:** Implementación entregada para revisión cruzada
+**Fecha:** 2026-07-31
+**Agente:** AI-SR-FULL
 **Prompt:** `docs/prompts/PROMPT-MOD09-MOD11-OT-INSTALACION-R2.2-v1.0.md`
 
 ## Alcance ejecutado
