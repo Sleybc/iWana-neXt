@@ -41,10 +41,10 @@
     "helmet": "^8.1.0",
     "image-size": "^2.0.2",
     "ioredis": "^5.10.0",
-    "joi": "^18.0.2",
+    "joi": "^18.2.1",
     "jszip": "^3.10.1",
-    "multer": "2.1.1",
-    "nodemailer": "^8.0.2",
+    "multer": "^2.2.0",
+    "nodemailer": "^8.0.9",
     "otplib": "^13.3.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -54,7 +54,7 @@
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "0.3.28",
+    "typeorm": "^0.3.31",
     "zod": "^3.24.2"
   },
   "devDependencies": {
