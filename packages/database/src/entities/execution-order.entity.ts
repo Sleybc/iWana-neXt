@@ -12,6 +12,7 @@ import { ExecutionOrderResult, ExecutionOrderStatus, WfmWorkType } from '@iwana/
 @Index('idx_execution_orders_tenant_status', ['tenantId', 'status'])
 @Index('idx_execution_orders_tenant_schedule_event', ['tenantId', 'scheduleEventId'])
 @Index('idx_execution_orders_tenant_assigned_technician', ['tenantId', 'assignedTechnicianId'])
+@Index('idx_execution_orders_tenant_organization_site', ['tenantId', 'organizationSiteId'])
 @Index('idx_execution_orders_template_version', ['templateVersionId'])
 @Entity({ name: 'execution_orders' })
 export class ExecutionOrder {
@@ -29,6 +30,10 @@ export class ExecutionOrder {
 
   @Column({ name: 'schedule_event_id', type: 'uuid' })
   scheduleEventId: string;
+
+  /** Alcance organizacional copiado desde WFM al crear la OT. */
+  @Column({ name: 'organization_site_id', type: 'uuid', nullable: true })
+  organizationSiteId: string | null;
 
   @Column({ name: 'assigned_technician_id', type: 'uuid', nullable: true })
   assignedTechnicianId: string | null;
