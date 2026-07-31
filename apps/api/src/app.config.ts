@@ -69,6 +69,12 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // Si faltan, health expone la medición con "sin umbral aprobado" y no emite veredicto.
     OUTBOX_RELAY_LAG_DEGRADED_SECONDS: Joi.number().integer().min(0).optional(),
     OUTBOX_RELAY_LAG_STOPPED_SECONDS: Joi.number().integer().min(0).optional(),
+    // Clave global, sin datos de tenant, compartida por worker y API para el
+    // timestamp del último ciclo real del scanner.
+    OUTBOX_RELAY_SCAN_TIMESTAMP_KEY: Joi.string()
+      .trim()
+      .pattern(/^[a-z0-9:_-]+$/u)
+      .default('iwana:platform:execution-order-relay:last-scan-at'),
     // Clave AES-256-GCM: 64 hex + rechazo de entropía nula (SEC-02 / ADR-058).
     // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
     MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,

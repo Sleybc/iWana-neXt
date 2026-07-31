@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import Redis from 'ioredis';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { dataSourceOptions } from '@iwana/db';
@@ -26,7 +27,10 @@ import { SearchIndexWorkerService } from './search/search-index.worker.service';
 import { SearchNavigationCatalogService } from './search/search-navigation-catalog.service';
 import { SearchTypesenseClient } from './search/search-typesense.client';
 import { SchedulerService } from './services/scheduler.service';
-import { ExecutionOrderRelayService } from './services/execution-order-relay.service';
+import {
+  ExecutionOrderRelayService,
+  RELAY_SCAN_TIMESTAMP_REDIS,
+} from './services/execution-order-relay.service';
 import { ExecutionOrderEventsProcessor } from './processors/execution-order-events.processor';
 import { ExecutionOrderRelayProcessor } from './processors/execution-order-relay.processor';
 import { ExecutionOrderTombstoneProcessor } from './processors/execution-order-tombstone.processor';
@@ -212,6 +216,19 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
       provide: STORAGE_PORT,
       useFactory: createWorkerStorageAdapter,
       inject: [ConfigService],
+    },
+    {
+      provide: RELAY_SCAN_TIMESTAMP_REDIS,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): Redis =>
+        new Redis({
+          host: config.get<string>('REDIS_HOST', 'localhost'),
+          port: config.get<number>('REDIS_PORT', 6379),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          db: config.get<number>('REDIS_DB', 0),
+          connectionName: 'iwana-worker-relay-telemetry',
+          lazyConnect: false,
+        }),
     },
     TenantProvisioningProcessor,
     TenantSeedService,

@@ -1,7 +1,8 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import { Pool } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
 import {
@@ -45,6 +46,10 @@ interface RelayLagDistribution {
 
 const RELAY_POOL_MAX = 10;
 const RELAY_SCAN_CONCURRENCY = RELAY_POOL_MAX - 1;
+const DEFAULT_RELAY_SCAN_TIMESTAMP_KEY = 'iwana:platform:execution-order-relay:last-scan-at';
+
+/** Cliente Redis dedicado a la señal de estado compartida con la API. */
+export const RELAY_SCAN_TIMESTAMP_REDIS = 'RELAY_SCAN_TIMESTAMP_REDIS';
 
 /**
  * Scanner/relay durable para eventos del outbox de MOD11.
@@ -58,6 +63,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ExecutionOrderRelayService.name);
   private readonly pool: Pool;
   private readonly leaseSeconds = 60;
+  private readonly scanTimestampKey: string;
   private lastScanAt: Date | null = null;
   private lastScanCount = 0;
 
@@ -66,7 +72,13 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
     @InjectQueue(OPERATIONS_EXECUTION_RELAY_QUEUE) private readonly queue: Queue,
     @InjectQueue(OPERATIONS_EXECUTION_EVENTS_QUEUE)
     private readonly eventsQueue: Queue,
+    @Optional()
+    @Inject(RELAY_SCAN_TIMESTAMP_REDIS)
+    private readonly telemetryRedis?: Redis,
   ) {
+    this.scanTimestampKey =
+      config.get<string>('OUTBOX_RELAY_SCAN_TIMESTAMP_KEY', DEFAULT_RELAY_SCAN_TIMESTAMP_KEY) ??
+      DEFAULT_RELAY_SCAN_TIMESTAMP_KEY;
     this.pool = new Pool({
       host: config.get<string>('DB_HOST', 'localhost'),
       port: config.get<number>('DB_PORT', 5432),
@@ -141,7 +153,23 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
 
     this.lastScanAt = new Date();
     this.lastScanCount = totalRelayed;
+    await this.publishScanTimestamp(this.lastScanAt);
     return totalRelayed;
+  }
+
+  /**
+   * Publica el instante de un ciclo de escaneo real, no el instante de una
+   * publicación individual. Redis es solo transporte de telemetría: una
+   * falla aquí no puede deshacer un ciclo ya ejecutado del relay.
+   */
+  private async publishScanTimestamp(scanAt: Date): Promise<void> {
+    if (!this.telemetryRedis) return;
+
+    try {
+      await this.telemetryRedis.set(this.scanTimestampKey, scanAt.toISOString());
+    } catch {
+      this.logger.warn('Relay: no se pudo publicar el timestamp del escaneo en Redis');
+    }
   }
 
   /**

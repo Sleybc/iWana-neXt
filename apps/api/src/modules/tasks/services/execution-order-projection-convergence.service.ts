@@ -1,9 +1,13 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import Redis from 'ioredis';
 import { isValidSchemaName, runInTenantSchema, TenantContext } from '@iwana/db';
 import type { OperationalEventEnvelopeV1 } from '@iwana/shared';
+import { REDIS_CLIENT } from '../../redis/redis.module';
+
+const DEFAULT_RELAY_SCAN_TIMESTAMP_KEY = 'iwana:platform:execution-order-relay:last-scan-at';
 
 export interface RelayHealth {
   /** Número total de eventos pendientes de publicación en todos los tenants */
@@ -85,6 +89,7 @@ export class ExecutionOrderProjectionConvergenceService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @Optional() private readonly config?: ConfigService,
+    @Optional() @Inject(REDIS_CLIENT) private readonly redis?: Redis,
   ) {}
 
   /**
@@ -95,6 +100,7 @@ export class ExecutionOrderProjectionConvergenceService {
    */
   async getRelayHealth(): Promise<RelayHealth> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const lastScanAt = await this.readLastScanAt();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const pending = (await qr.query(
@@ -102,7 +108,6 @@ export class ExecutionOrderProjectionConvergenceService {
             COUNT(*) FILTER (WHERE published_at IS NULL)::int AS pending_count,
             EXTRACT(EPOCH FROM NOW() - MIN(occurred_at)
               FILTER (WHERE published_at IS NULL))::bigint AS oldest_age_seconds,
-            MAX(published_at) FILTER (WHERE published_at IS NOT NULL)::text AS last_published_at,
             COUNT(*) FILTER (WHERE last_error IS NOT NULL)::int AS dlq_size,
             COUNT(*) FILTER (WHERE published_at IS NULL)::int AS lag_count,
             MIN(EXTRACT(EPOCH FROM NOW() - occurred_at))
@@ -121,7 +126,6 @@ export class ExecutionOrderProjectionConvergenceService {
       )) as Array<{
         pending_count: string;
         oldest_age_seconds: string | null;
-        last_published_at: string | null;
         dlq_size: string;
         lag_count: string;
         lag_min_seconds: string | null;
@@ -143,7 +147,7 @@ export class ExecutionOrderProjectionConvergenceService {
       return {
         pendingEvents: pendingCount,
         oldestPendingAgeSeconds: oldestAge,
-        lastScanAt: row?.last_published_at ?? null,
+        lastScanAt,
         relayStatus,
         lagThresholds: {
           degradedSeconds: threshold.degradedSeconds,
@@ -183,7 +187,7 @@ export class ExecutionOrderProjectionConvergenceService {
       oldestPendingAgeSeconds: null,
       dlqSize: 0,
       reconciliationDiscrepancies: 0,
-      lastScanAt: null,
+      lastScanAt: await this.readLastScanAt(),
       lagDistributionSeconds: this.emptyLagDistribution(),
       ...this.thresholdContract(),
     };
@@ -199,7 +203,6 @@ export class ExecutionOrderProjectionConvergenceService {
                COUNT(*) FILTER (WHERE published_at IS NULL)::int AS pending_count,
                EXTRACT(EPOCH FROM NOW() - MIN(occurred_at)
                  FILTER (WHERE published_at IS NULL))::bigint AS oldest_age_seconds,
-               MAX(published_at) FILTER (WHERE published_at IS NOT NULL)::text AS last_published_at,
                COUNT(*) FILTER (WHERE last_error IS NOT NULL)::int AS dlq_size
              FROM execution_order_outbox_events
              WHERE tenant_id = $1`,
@@ -207,7 +210,6 @@ export class ExecutionOrderProjectionConvergenceService {
           )) as Array<{
             pending_count: string;
             oldest_age_seconds: string | null;
-            last_published_at: string | null;
             dlq_size: string;
           }>;
           const row = rows[0];
@@ -218,13 +220,6 @@ export class ExecutionOrderProjectionConvergenceService {
             total.oldestPendingAgeSeconds,
             row?.oldest_age_seconds ? Number.parseInt(row.oldest_age_seconds, 10) : null,
           );
-          if (
-            row?.last_published_at &&
-            (!total.lastScanAt || row.last_published_at > total.lastScanAt)
-          ) {
-            total.lastScanAt = row.last_published_at;
-          }
-
           const lagRows = (await qr.query(
             `SELECT EXTRACT(EPOCH FROM NOW() - occurred_at) AS lag_seconds
              FROM execution_order_outbox_events
@@ -250,6 +245,31 @@ export class ExecutionOrderProjectionConvergenceService {
 
     total.lagDistributionSeconds = this.summarizeLagSamples(lagSamples);
     return total;
+  }
+
+  /**
+   * Lee el timestamp durable del último ciclo del scanner worker. La señal es
+   * global de plataforma y no contiene tenantId/schemaName; las métricas que
+   * sí son tenant-scoped siguen leyéndose con SET LOCAL search_path.
+   */
+  private async readLastScanAt(): Promise<string | null> {
+    if (!this.redis) return null;
+
+    try {
+      const rawValue = await this.redis.get(
+        this.config?.get<string>(
+          'OUTBOX_RELAY_SCAN_TIMESTAMP_KEY',
+          DEFAULT_RELAY_SCAN_TIMESTAMP_KEY,
+        ) ?? DEFAULT_RELAY_SCAN_TIMESTAMP_KEY,
+      );
+      if (!rawValue) return null;
+
+      const parsed = new Date(rawValue);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+    } catch {
+      this.logger.warn('No se pudo leer el timestamp del escaneo del relay');
+      return null;
+    }
   }
 
   /**

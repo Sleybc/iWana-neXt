@@ -18,6 +18,7 @@ describe('ExecutionOrderRelayService', () => {
   let relayService: ExecutionOrderRelayService;
   let eventsQueue: { add: TestMock };
   let relayQueue: { add: TestMock };
+  let telemetryRedis: { set: TestMock };
   let poolClient: {
     query: TestMock;
     release: TestMock;
@@ -30,6 +31,9 @@ describe('ExecutionOrderRelayService', () => {
     relayQueue = {
       add: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(undefined),
     };
+    telemetryRedis = {
+      set: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue('OK'),
+    };
     poolClient = {
       query: jest.fn<(...args: never[]) => Promise<unknown>>(),
       release: jest.fn<(...args: never[]) => Promise<unknown>>(),
@@ -39,6 +43,7 @@ describe('ExecutionOrderRelayService', () => {
       mockConfig(),
       relayQueue as unknown as Queue,
       eventsQueue as unknown as Queue,
+      telemetryRedis as never,
     );
 
     (relayService as unknown as { pool: { connect: TestMock } }).pool = {
@@ -125,6 +130,26 @@ describe('ExecutionOrderRelayService', () => {
 
     const relayed = await relayService.scanAndRelay(100);
     expect(relayed).toBe(0);
+  });
+
+  it('registra el escaneo aunque el ciclo no publique eventos', async () => {
+    poolClient.query
+      .mockResolvedValueOnce({
+        rows: [{ id: 't1', schema_name: 'tenant_test001' }],
+      } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce(undefined) // SET LOCAL
+      .mockResolvedValueOnce({ rows: [] } as never) // sin publicaciones
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    expect(await relayService.scanAndRelay(100)).toBe(0);
+
+    expect(relayService.relayStatus.lastScanAt).toEqual(expect.any(Date));
+    expect(relayService.relayStatus.lastScanCount).toBe(0);
+    expect(telemetryRedis.set).toHaveBeenCalledWith(
+      'iwana:platform:execution-order-relay:last-scan-at',
+      expect.any(String),
+    );
   });
 
   it('devuelve métricas de eventos pendientes por tenant', async () => {

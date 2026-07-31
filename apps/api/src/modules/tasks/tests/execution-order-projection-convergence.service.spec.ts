@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { ExecutionOrderProjectionConvergenceService } from '../services/execution-order-projection-convergence.service';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 
 // Mock @iwana/db module-level para runInTenantSchema y TenantContext
 const mockRunInTenantSchema = jest.fn();
@@ -20,11 +21,13 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
   let queryRunner: { query: jest.Mock; manager: Record<string, unknown> };
   let config: { get: jest.Mock };
   let dataSource: { query: jest.Mock };
+  let redis: { get: jest.Mock };
 
   beforeEach(async () => {
     queryRunner = { query: jest.fn(), manager: {} };
     config = { get: jest.fn().mockReturnValue(undefined) };
     dataSource = { query: jest.fn() };
+    redis = { get: jest.fn().mockResolvedValue(null) };
 
     mockTenantContextGetOrThrow.mockReturnValue({
       tenantId: 't0000000-0000-4000-8000-000000000001',
@@ -46,6 +49,7 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
         ExecutionOrderProjectionConvergenceService,
         { provide: DataSource, useValue: queryRunnerDataSource },
         { provide: ConfigService, useValue: config },
+        { provide: REDIS_CLIENT, useValue: redis },
       ],
     }).compile();
 
@@ -62,7 +66,6 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           {
             pending_count: '2',
             oldest_age_seconds: '45',
-            last_published_at: '2026-07-30T12:00:00.000Z',
             dlq_size: '1',
           },
         ])
@@ -76,6 +79,7 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
             task_status: 'IN_PROGRESS',
           },
         ]);
+      redis.get.mockResolvedValueOnce('2026-07-30T12:00:00.000Z');
 
       const telemetry = await service.getPlatformRelayTelemetry();
 
@@ -83,6 +87,7 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
       expect(telemetry.oldestPendingAgeSeconds).toBe(45);
       expect(telemetry.dlqSize).toBe(1);
       expect(telemetry.reconciliationDiscrepancies).toBe(1);
+      expect(telemetry.lastScanAt).toBe('2026-07-30T12:00:00.000Z');
       expect(telemetry.lagDistributionSeconds).toMatchObject({
         count: 2,
         minSeconds: 5,
@@ -100,16 +105,17 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           {
             pending_count: '0',
             oldest_age_seconds: null,
-            last_published_at: null,
           },
         ])
         .mockResolvedValueOnce([]);
+      redis.get.mockResolvedValueOnce(null);
 
       const health = await service.getRelayHealth();
 
       expect(health.relayStatus).toBe('UNVERIFIED');
       expect(health.pendingEvents).toBe(0);
       expect(health.oldestPendingAgeSeconds).toBeNull();
+      expect(health.lastScanAt).toBeNull();
       expect(health.lagThresholdStatus).toBe('sin umbral aprobado');
     });
 
@@ -119,7 +125,6 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           {
             pending_count: '3',
             oldest_age_seconds: '180',
-            last_published_at: '2026-07-30T12:00:00.000Z',
             dlq_size: '1',
             lag_count: '3',
             lag_min_seconds: '10',
@@ -130,6 +135,7 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           },
         ])
         .mockResolvedValueOnce([]);
+      redis.get.mockResolvedValueOnce('2026-07-30T12:00:00.000Z');
 
       const health = await service.getRelayHealth();
 
@@ -151,10 +157,10 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           {
             pending_count: '10',
             oldest_age_seconds: '900',
-            last_published_at: null,
           },
         ])
         .mockResolvedValueOnce([]);
+      redis.get.mockResolvedValueOnce(null);
 
       const health = await service.getRelayHealth();
 
