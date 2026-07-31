@@ -692,6 +692,7 @@ export class VisitRequestsService {
           {
             visitRequestId: visitRequest.id,
             scheduleEventId: savedEvent.id,
+            organizationSiteId: savedEvent.organizationSiteId,
             assignedTechnicianId: validated.assignedUserId,
             originContext: visitRequest.originContext,
             originRefId: visitRequest.originRef,

@@ -52,6 +52,8 @@ import {
   ExecutionOrderActivityPageDto,
   ExecutionOrderItemUsagePageDto,
   FollowUpDto,
+  RedriveExecutionOrderEventDto,
+  RedriveExecutionOrderEventSchema,
   FollowUpSchema,
   StartExecutionOrderSchema,
   RegisterFieldWorkSchema,
@@ -448,6 +450,8 @@ export class ExecutionOrdersController {
   @HttpCode(HttpStatus.ACCEPTED)
   redrive(
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body(new ZodValidationPipe(RedriveExecutionOrderEventSchema))
+    dto: RedriveExecutionOrderEventDto,
     @CurrentUser() actor: JwtPayload,
     @Headers('idempotency-key') key?: string,
     @Headers('x-correlation-id') correlationId?: string,
@@ -460,6 +464,7 @@ export class ExecutionOrdersController {
     }
     return this.executionOrdersService.redriveEvent(
       eventId,
+      dto,
       actor,
       this.commandContext(undefined, key, correlationId, false),
     );

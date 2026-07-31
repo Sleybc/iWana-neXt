@@ -251,6 +251,7 @@ export class ScheduleEventsService {
           {
             visitRequestId: null,
             scheduleEventId: savedEvent.id,
+            organizationSiteId: savedEvent.organizationSiteId,
             assignedTechnicianId: validated.assignedUserId,
             originContext: WorkOrderSourceContext.MANUAL,
             originRefId: validated.ticketId ?? validated.expedienteId ?? null,
@@ -294,6 +295,7 @@ export class ScheduleEventsService {
           {
             visitRequestId: null,
             scheduleEventId: savedEvent.id,
+            organizationSiteId: savedEvent.organizationSiteId,
             assignedTechnicianId: validated.assignedUserId,
             originContext: validated.workOrder.sourceContext ?? WorkOrderSourceContext.MANUAL,
             originRefId: validated.workOrder.sourceRef ?? null,

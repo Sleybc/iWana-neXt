@@ -53,6 +53,7 @@ import {
   RegisterFieldWorkSchema,
   StartExecutionOrderInput,
   StartExecutionOrderSchema,
+  RedriveExecutionOrderEventInput,
 } from '../dto/execution-orders.dto';
 import { ExecutionOrderInventoryService } from './execution-order-inventory.service';
 import { ExecutionOrderTemplatesService } from './execution-order-templates.service';
@@ -72,6 +73,7 @@ import {
   type EvidenceUploadResult,
   type IEvidenceAssetPort,
 } from '../ports/evidence-asset.port';
+import { OrganizationOperationalAccessPort } from '../../organization/ports/organization-operational-access.port';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
@@ -79,6 +81,14 @@ const EXECUTION_ORDER_NUMBER_RETRY_LIMIT = 3;
 const EXECUTION_ORDER_UNIQUE_CONSTRAINTS = new Set([
   'uq_execution_orders_tenant_number',
   'uq_execution_orders_tenant_schedule_event',
+]);
+/** ADR-068 §Eventos mínimos: solo eventos cuyo owner es MOD11 son redriveables. */
+const REDRIVE_ALLOWED_EVENT_TYPES = new Set<OperationalEventTypeV1>([
+  'ExecutionOrderStartedV1',
+  'ExecutionOrderBlockedV1',
+  'InventoryConsumptionRequestedV1',
+  'ExecutionOrderClosedV1',
+  'ExecutionOrderFollowUpRequiredV1',
 ]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -152,6 +162,7 @@ function isExecutionOrderUniqueViolation(error: unknown): boolean {
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
   scheduleEventId: string;
+  organizationSiteId?: string | null;
   assignedTechnicianId?: string | null;
   assignedCrewId?: string | null;
   originContext: string;
@@ -193,6 +204,9 @@ export class ExecutionOrdersService {
     @Optional()
     @Inject(EVIDENCE_ASSET_PORT)
     private readonly evidenceAssetPort?: IEvidenceAssetPort,
+    @Optional()
+    @Inject(OrganizationOperationalAccessPort)
+    private readonly organizationOperationalAccessPort?: OrganizationOperationalAccessPort,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -269,6 +283,7 @@ export class ExecutionOrdersService {
     actor: JwtPayload,
     write: boolean,
     requiresTechnicalExecution = write,
+    requiresSupervisionScope = false,
   ): Promise<void> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -280,6 +295,10 @@ export class ExecutionOrdersService {
       const supervisor = [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT].includes(
         actor.role as UserRole,
       );
+      if (requiresSupervisionScope) {
+        await this.assertSupervisionScope(qr.manager, tenantId, order, actor);
+        return;
+      }
       // Supervisores pueden leer y ejecutar operaciones de coordinación, pero
       // nunca escribir sobre la ejecución técnica, aunque estén asignados.
       if (requiresTechnicalExecution) {
@@ -524,6 +543,7 @@ export class ExecutionOrdersService {
       executionOrderNumber,
       visitRequestId: input.visitRequestId ?? null,
       scheduleEventId: input.scheduleEventId,
+      organizationSiteId: input.organizationSiteId ?? null,
       assignedTechnicianId: input.assignedTechnicianId ?? null,
       assignedCrewId: input.assignedCrewId ?? null,
       originContext: input.originContext,
@@ -1442,6 +1462,7 @@ export class ExecutionOrdersService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
+      await this.assertSupervisionScope(qr.manager, tenantId, order, actor);
       const receipt = await this.beginCommand(
         qr.manager,
         tenantId,
@@ -1504,6 +1525,7 @@ export class ExecutionOrdersService {
 
   async redriveEvent(
     eventId: string,
+    input: RedriveExecutionOrderEventInput,
     actor: JwtPayload,
     context?: ExecutionOrderCommandContext,
   ): Promise<{ eventId: string; correlationId: string; status: 'QUEUED' }> {
@@ -1516,23 +1538,35 @@ export class ExecutionOrdersService {
         throw new NotFoundException('Evento operativo no encontrado');
       }
 
-      const receipt = await this.beginCommand(
-        qr.manager,
-        tenantId,
-        actor,
-        'execution_event.redrive',
-        { eventId },
-        context,
-      );
-      if (receipt?.replay) {
-        return { eventId, correlationId: event.correlationId, status: 'QUEUED' };
-      }
-
+      this.assertRedriveEventShape(event);
       if (!event.lastError) {
         throw new ConflictException({
           code: 'EVENT_NOT_IN_DLQ',
           message: 'El evento no está disponible en la cola de intervención.',
         });
+      }
+
+      const order = await this.requireOrder(qr.manager, tenantId, event.aggregateId);
+      if (!order.ticketId || order.ticketId !== input.ticketId) {
+        throw new NotFoundException('Evento operativo no encontrado');
+      }
+      await this.assertSupervisionScope(qr.manager, tenantId, order, actor);
+
+      const receipt = await this.beginCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_event.redrive',
+        {
+          eventId,
+          eventType: event.eventType,
+          causeCode: input.causeCode,
+          ticketId: input.ticketId,
+        },
+        context,
+      );
+      if (receipt?.replay) {
+        return { eventId, correlationId: event.correlationId, status: 'QUEUED' };
       }
 
       const result = await qr.manager
@@ -1586,6 +1620,23 @@ export class ExecutionOrdersService {
       );
 
       return { eventId, correlationId: event.correlationId, status: 'QUEUED' };
+    });
+  }
+
+  async assertActorCanRedrive(eventId: string, actor: JwtPayload): Promise<void> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const event = await qr.manager.findOne(ExecutionOrderOutboxEvent, {
+        where: { tenantId, eventId },
+      });
+      if (!event) throw new NotFoundException('Evento operativo no encontrado');
+
+      this.assertRedriveEventShape(event);
+      if (!event.lastError) {
+        throw new NotFoundException('Evento operativo no encontrado');
+      }
+      const order = await this.requireOrder(qr.manager, tenantId, event.aggregateId);
+      await this.assertSupervisionScope(qr.manager, tenantId, order, actor);
     });
   }
 
@@ -2100,6 +2151,44 @@ export class ExecutionOrdersService {
       throw new NotFoundException('OT de ejecución no encontrada');
     }
     return order;
+  }
+
+  /**
+   * Revalida el alcance server-owned dentro de la misma transacción que lee la
+   * OT. La ausencia de cualquiera de las fuentes canónicas es fail-closed.
+   */
+  private async assertSupervisionScope(
+    manager: EntityManager,
+    tenantId: string,
+    order: ExecutionOrder,
+    actor: JwtPayload,
+  ): Promise<void> {
+    if (!order.organizationSiteId || !this.organizationOperationalAccessPort) {
+      throw new NotFoundException('OT de ejecución no encontrada');
+    }
+
+    const allowed = await this.organizationOperationalAccessPort.canSuperviseExecutionOrder(
+      manager,
+      {
+        tenantId,
+        userId: actor.sub,
+        organizationSiteId: order.organizationSiteId,
+      },
+    );
+    if (!allowed) {
+      throw new NotFoundException('OT de ejecución no encontrada');
+    }
+  }
+
+  private assertRedriveEventShape(
+    event: ExecutionOrderOutboxEvent,
+  ): asserts event is ExecutionOrderOutboxEvent & { eventType: OperationalEventTypeV1 } {
+    if (!REDRIVE_ALLOWED_EVENT_TYPES.has(event.eventType as OperationalEventTypeV1)) {
+      throw new NotFoundException('Evento operativo no encontrado');
+    }
+    if (!isRecord(event.payload) || event.payload.executionOrderId !== event.aggregateId) {
+      throw new NotFoundException('Evento operativo no encontrado');
+    }
   }
 
   /**

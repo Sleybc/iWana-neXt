@@ -46,7 +46,7 @@ import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard
 @ApiTags('tasks')
 @ApiBearerAuth('access-token')
 @AuditEntity('OperationalTask')
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, TenantAwareThrottlerGuard)
+@UseGuards(JwtAuthGuard, TenantAwareThrottlerGuard, RolesGuard, PermissionsGuard)
 @Controller('tasks')
 export class TasksController {
   constructor(

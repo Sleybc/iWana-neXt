@@ -15,6 +15,8 @@ import { OrganizationController } from './organization.controller';
 import { OrganizationService } from './organization.service';
 import { OrganizationSiteReadAdapter } from './ports/organization-site-read.adapter';
 import { OrganizationSiteReadPort } from './ports/organization-site-read.port';
+import { OrganizationOperationalAccessAdapter } from './ports/organization-operational-access.adapter';
+import { OrganizationOperationalAccessPort } from './ports/organization-operational-access.port';
 
 @Module({
   imports: [
@@ -34,8 +36,13 @@ import { OrganizationSiteReadPort } from './ports/organization-site-read.port';
   providers: [
     OrganizationService,
     OrganizationSiteReadAdapter,
+    OrganizationOperationalAccessAdapter,
     { provide: OrganizationSiteReadPort, useExisting: OrganizationSiteReadAdapter },
+    {
+      provide: OrganizationOperationalAccessPort,
+      useExisting: OrganizationOperationalAccessAdapter,
+    },
   ],
-  exports: [OrganizationService, OrganizationSiteReadPort],
+  exports: [OrganizationService, OrganizationSiteReadPort, OrganizationOperationalAccessPort],
 })
 export class OrganizationModule {}

@@ -30,7 +30,7 @@ import {
 
 @ApiTags('tasks-execution-orders')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, TenantAwareThrottlerGuard)
+@UseGuards(JwtAuthGuard, TenantAwareThrottlerGuard, RolesGuard, PermissionsGuard)
 @UseInterceptors(ExecutionOrderResponseHeadersInterceptor)
 @Controller('tasks/execution-order-templates')
 export class ExecutionOrderTemplatesController {

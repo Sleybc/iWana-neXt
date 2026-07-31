@@ -543,3 +543,32 @@ export class FollowUpDto {
   @ApiProperty() @Allow() reasonCode!: string;
   @ApiPropertyOptional() @Allow() dueAt?: string;
 }
+
+/**
+ * El catálogo de causas vive en la operación de DLQ, no en el cliente. El
+ * boundary HTTP acota su forma para impedir valores arbitrarios o payloads
+ * extensibles; el servicio conserva el valor como metadata mínima.
+ */
+export const RedriveExecutionOrderEventSchema = z
+  .object({
+    causeCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Z0-9][A-Z0-9_.:-]*$/u),
+    ticketId: z.string().trim().min(1).max(160),
+  })
+  .strict();
+
+export type RedriveExecutionOrderEventInput = z.infer<typeof RedriveExecutionOrderEventSchema>;
+
+export class RedriveExecutionOrderEventDto {
+  @ApiProperty({ minLength: 1, maxLength: 64, pattern: '^[A-Z0-9][A-Z0-9_.:-]*$' })
+  @Allow()
+  causeCode!: string;
+
+  @ApiProperty({ minLength: 1, maxLength: 160 })
+  @Allow()
+  ticketId!: string;
+}

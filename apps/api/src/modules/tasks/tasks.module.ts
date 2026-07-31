@@ -21,6 +21,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { AssuranceModule } from '../assurance/assurance.module';
 import { UsersModule } from '../users/users.module';
 import { MediaModule } from '../media/media.module';
+import { OrganizationModule } from '../organization/organization.module';
 import { RedisModule } from '../redis/redis.module';
 import { ExecutionOrdersController } from './execution-orders.controller';
 import { ExecutionOrderTemplatesController } from './execution-order-templates.controller';
@@ -48,6 +49,7 @@ import { TasksService } from './services/tasks.service';
     UsersModule,
     AccessControlModule,
     MediaModule,
+    OrganizationModule,
     RedisModule,
     TypeOrmModule.forFeature([
       OperationalTask,
