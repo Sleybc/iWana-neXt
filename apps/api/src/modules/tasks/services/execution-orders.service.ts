@@ -176,7 +176,7 @@ export class ExecutionOrdersService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    @Optional() _inventoryService?: ExecutionOrderInventoryService,
+    @Optional() private readonly inventoryService?: ExecutionOrderInventoryService,
     @Optional() private readonly tasksService?: TasksService,
     @Optional()
     @Inject(ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT)
@@ -250,7 +250,7 @@ export class ExecutionOrdersService {
           evidenceType: evidence.evidenceType,
           requirementKey: evidence.requirementKey ?? '',
         })),
-        itemUsages: itemUsages.map((usage) => ({ itemId: usage.itemId })),
+        itemUsages: await this.buildMaterialEvaluationUsages(snapshot, itemUsages),
       });
       const total = evaluation.totalRequired;
       const completed = evaluation.satisfiedRequired;
@@ -856,9 +856,9 @@ export class ExecutionOrdersService {
             evidenceType: e.evidenceType,
             requirementKey: e.requirementKey ?? '',
           })),
-          // La categoría no se infiere desde itemId: si el recibo de MOD12 no
-          // la aporta, el requisito MATERIAL permanece insatisfecho.
-          itemUsages: itemUsages.map((u) => ({ itemId: u.itemId })),
+          // La categoría procede del catálogo real de Inventario. Si no puede
+          // resolverse, el evaluador falla cerrado y no infiere desde itemId.
+          itemUsages: await this.buildMaterialEvaluationUsages(snapshot, itemUsages),
           hasCustomerAcceptance: !!validated.customerAcceptance,
           closeCommand: { customerAcceptance: validated.customerAcceptance },
         });
@@ -2100,6 +2100,44 @@ export class ExecutionOrdersService {
       throw new NotFoundException('OT de ejecución no encontrada');
     }
     return order;
+  }
+
+  /**
+   * Enriquece el contexto MATERIAL con la categoría canónica del catálogo.
+   *
+   * El evaluador recibe solo datos autoritativos: el cliente no puede declarar
+   * la categoría y el servicio no la infiere desde el identificador del ítem.
+   * Si Inventario no puede entregar un recibo, se conserva el itemId sin
+   * categoría para que el gate permanezca fail-closed.
+   */
+  private async buildMaterialEvaluationUsages(
+    requirements: ExecutionOrderTemplateRequirement[],
+    usages: ExecutionOrderItemUsage[],
+  ): Promise<Array<{ itemId: string; itemCategory?: string }>> {
+    const hasMaterialRequirement = requirements.some(
+      (requirement) => requirement.kind === 'MATERIAL',
+    );
+    if (!hasMaterialRequirement) {
+      return usages.map((usage) => ({ itemId: usage.itemId }));
+    }
+
+    return Promise.all(
+      usages.map(async (usage) => {
+        if (!this.inventoryService) {
+          return { itemId: usage.itemId };
+        }
+
+        try {
+          const receipt = await this.inventoryService.getItemCategoryReceipt(usage.itemId);
+          const categoryCode = receipt.categoryCode.trim();
+          return categoryCode.length > 0
+            ? { itemId: usage.itemId, itemCategory: categoryCode }
+            : { itemId: usage.itemId };
+        } catch {
+          return { itemId: usage.itemId };
+        }
+      }),
+    );
   }
 
   private assertVersion(order: ExecutionOrder, ifMatch?: string): void {

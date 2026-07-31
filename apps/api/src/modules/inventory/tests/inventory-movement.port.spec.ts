@@ -27,7 +27,17 @@ describe('InventoryMovementPortAdapter', () => {
       }),
     };
 
-    const adapter = new InventoryMovementPortAdapter(stockLedgerService as never);
+    const inventoryItemService = {
+      getById: jest.fn().mockResolvedValue({
+        id: 'item-001',
+        categoryId: 'category-001',
+        categoryCode: 'CPE',
+      }),
+    };
+    const adapter = new InventoryMovementPortAdapter(
+      stockLedgerService as never,
+      inventoryItemService as never,
+    );
     const result = await adapter.consumeFromExecutionOrder(
       {
         executionOrderId: 'eo-001',
@@ -49,5 +59,27 @@ describe('InventoryMovementPortAdapter', () => {
       actor,
     );
     expect(result).toEqual({ stockMovementId: 'mov-001' });
+  });
+
+  it('returns the canonical category receipt from the real inventory item service', async () => {
+    const stockLedgerService = { recordExecutionOrderMovement: jest.fn() };
+    const inventoryItemService = {
+      getById: jest.fn().mockResolvedValue({
+        id: 'item-001',
+        categoryId: 'category-001',
+        categoryCode: 'ONT',
+      }),
+    };
+    const adapter = new InventoryMovementPortAdapter(
+      stockLedgerService as never,
+      inventoryItemService as never,
+    );
+
+    await expect(adapter.getItemCategoryReceipt('item-001')).resolves.toEqual({
+      itemId: 'item-001',
+      categoryId: 'category-001',
+      categoryCode: 'ONT',
+    });
+    expect(inventoryItemService.getById).toHaveBeenCalledWith('item-001');
   });
 });

@@ -33,6 +33,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  testPathIgnorePatterns: ['\\.postgres\\.integration\\.spec\\.ts$'],
   // R-14 — CAUSA RAÍZ (no subir testTimeout: eso trata el síntoma).
   // Jest ya es un runner paralelo. Ejecutarlo bajo otro planificador paralelo
   // (turbo) es doble planificación: ninguna capa conoce la demanda de la otra y

@@ -82,6 +82,22 @@ type TestCtx = {
 
 type RequestClient = APIRequestContext | Page;
 
+type InventoryCatalogItem = {
+  id: string;
+  categoryCode?: string;
+  category?: string;
+};
+
+type InventoryCatalogCategory = {
+  code: string;
+};
+
+type ExecutionOrderSummary = {
+  id: string;
+  number: string;
+  version: number;
+};
+
 function apiRequest(client: RequestClient): APIRequestContext {
   return 'request' in client ? client.request : client;
 }
@@ -221,6 +237,57 @@ async function authedPatch(
       ...extraHeaders,
     },
   });
+}
+
+async function createScheduledOrder(
+  page: Page,
+  token: string,
+  technicianId: string,
+  suffix: string,
+  startOffsetMinutes: number,
+): Promise<ExecutionOrderSummary> {
+  const createEventRes = await authedPost(
+    page,
+    '/wfm/events',
+    {
+      type: 'INSTALLATION',
+      title: `E2E R2.3 ${suffix}`,
+      description: 'Prueba de gate de materiales',
+      scheduledStartAt: nowIso(startOffsetMinutes),
+      scheduledEndAt: nowIso(startOffsetMinutes + 30),
+      assignedUserId: technicianId,
+      address: 'Calle de prueba 1',
+      municipality: 'Municipio de prueba',
+      sector: 'Sector de prueba',
+      workOrder: {
+        type: 'INSTALLATION',
+        priority: 'NORMAL',
+        sourceContext: 'MANUAL',
+        summary: `E2E R2.3 ${suffix}`,
+      },
+    },
+    token,
+  );
+  expect([200, 201]).toContain(createEventRes.status());
+  const eventBody = (await createEventRes.json()) as Record<string, unknown>;
+  const eventData = (eventBody.data ?? eventBody) as Record<string, unknown>;
+  let executionOrderId = String(eventData.executionOrderId ?? '');
+  if (!executionOrderId && typeof eventData.id === 'string') {
+    const eventDetailRes = await authedGet(page, `/wfm/events/${eventData.id}`, token);
+    expect(eventDetailRes.status()).toBe(200);
+    const eventDetail = (await eventDetailRes.json()) as Record<string, unknown>;
+    executionOrderId = String(eventDetail.executionOrderId ?? '');
+  }
+  expect(executionOrderId).toBeTruthy();
+
+  const orderRes = await authedGet(page, `/tasks/execution-orders/${executionOrderId}`, token);
+  expect(orderRes.status()).toBe(200);
+  const order = (await orderRes.json()) as Record<string, unknown>;
+  return {
+    id: executionOrderId,
+    number: String(order.number ?? ''),
+    version: Number(order.version),
+  };
 }
 
 // ─── Suite de pruebas operativas E2E ─────────────────────────────────────────
@@ -1161,6 +1228,252 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expectMutationHeaders(res, body.version);
       expect(['COMPLETED_WITH_OBSERVATIONS', 'COMPLETED']).toContain(body.status);
       expect(body.result).toBe('EXECUTED_WITH_OBSERVATIONS');
+    });
+  });
+
+  // ─── 8. R2.3 — material y carreras reales ─────────────────────────────────
+
+  test.describe('8. R2.3 — gate MATERIAL y concurrencia PostgreSQL', () => {
+    test('8a. cierra con material correcto y rechaza material de otra categoría', async ({
+      page,
+    }) => {
+      const itemsRes = await authedGet(page, '/inventory/items?limit=100', ctx.nocToken);
+      expect(itemsRes.status()).toBe(200);
+      const itemsBody = (await itemsRes.json()) as
+        | { data?: InventoryCatalogItem[] }
+        | InventoryCatalogItem[];
+      const catalogItems = Array.isArray(itemsBody) ? itemsBody : (itemsBody.data ?? []);
+      const categorizedItems = catalogItems.filter((item) =>
+        Boolean(item.id && (item.categoryCode ?? item.category)),
+      );
+      const correctItem = categorizedItems[0];
+      expect(correctItem).toBeDefined();
+      if (!correctItem) {
+        throw new Error('El tenant E2E no tiene un artículo categorizado.');
+      }
+
+      const correctCategory = correctItem.categoryCode ?? correctItem.category;
+      expect(correctCategory).toBeTruthy();
+      const categoriesRes = await authedGet(page, '/inventory/categories?limit=100', ctx.nocToken);
+      expect(categoriesRes.status()).toBe(200);
+      const categoriesBody = (await categoriesRes.json()) as
+        | { data?: InventoryCatalogCategory[] }
+        | InventoryCatalogCategory[];
+      const categories = Array.isArray(categoriesBody)
+        ? categoriesBody
+        : (categoriesBody.data ?? []);
+      const wrongCategory = categories.find((category) => category.code !== correctCategory)?.code;
+      expect(wrongCategory).toBeTruthy();
+      if (!correctCategory || !wrongCategory) {
+        throw new Error('El tenant E2E no tiene dos categorías canónicas distintas.');
+      }
+      expect(wrongCategory).not.toBe(correctCategory);
+
+      const templateKey = `E2E_R23_MATERIAL_${Date.now()}`;
+      const templateRes = await authedPost(
+        page,
+        '/tasks/execution-order-templates',
+        {
+          key: templateKey,
+          label: 'E2E gate de material',
+          workType: 'INSTALLATION',
+          requirements: [],
+        },
+        ctx.nocToken,
+      );
+      expect(templateRes.status()).toBe(201);
+      const template = (await templateRes.json()) as Record<string, unknown>;
+      const templateId = String(template.id ?? '');
+      expect(templateId).toBeTruthy();
+
+      const createVersion = async (itemCategory: string) => {
+        const response = await authedPost(
+          page,
+          `/tasks/execution-order-templates/${templateId}/versions`,
+          {
+            label: `E2E material ${itemCategory}`,
+            requirements: [
+              {
+                key: 'material-required',
+                label: 'Material requerido',
+                required: true,
+                kind: 'MATERIAL',
+                itemCategory,
+              },
+            ],
+          },
+          ctx.nocToken,
+        );
+        expect(response.status()).toBe(201);
+        return (await response.json()) as Record<string, unknown>;
+      };
+
+      const versionOne = await createVersion(String(correctCategory));
+      const versionOneId = String(versionOne.id ?? '');
+      expect(versionOneId).toBeTruthy();
+      const publishOne = await authedPost(
+        page,
+        `/tasks/execution-order-templates/versions/${versionOneId}/publish`,
+        {},
+        ctx.nocToken,
+      );
+      expect(publishOne.status()).toBe(200);
+
+      const correctOrder = await createScheduledOrder(
+        page,
+        ctx.nocToken,
+        ctx.techUserId,
+        'material-correcto',
+        240,
+      );
+      const startCorrect = await authedPost(
+        page,
+        `/tasks/execution-orders/${correctOrder.id}/start`,
+        { note: 'Inicio material correcto' },
+        ctx.techToken,
+        {
+          'If-Match': String(correctOrder.version),
+          'Idempotency-Key': `e2e-r23-start-correct-${correctOrder.id}`,
+        },
+      );
+      expect(startCorrect.status()).toBe(200);
+      const startedCorrect = (await startCorrect.json()) as { version: number };
+      const usageCorrect = await authedPost(
+        page,
+        `/tasks/execution-orders/${correctOrder.id}/item-usage`,
+        {
+          itemId: correctItem?.id,
+          quantity: 1,
+          technicianCustodyId: ctx.techUserId,
+          action: 'CONSUME',
+          finalDisposition: 'INTERNAL_CONSUMPTION',
+        },
+        ctx.techToken,
+        {
+          'If-Match': String(startedCorrect.version),
+          'Idempotency-Key': `e2e-r23-usage-correct-${correctOrder.id}`,
+        },
+      );
+      expect(usageCorrect.status()).toBe(202);
+
+      const closeCorrect = await authedPost(
+        page,
+        `/tasks/execution-orders/${correctOrder.id}/close`,
+        { result: 'EXECUTED', summary: 'Material canónico validado' },
+        ctx.techToken,
+        {
+          'If-Match': String(startedCorrect.version + 1),
+          'Idempotency-Key': `e2e-r23-close-correct-${correctOrder.id}`,
+        },
+      );
+      expect(closeCorrect.status()).toBe(200);
+
+      const versionTwo = await createVersion(String(wrongCategory));
+      const versionTwoId = String(versionTwo.id ?? '');
+      const publishTwo = await authedPost(
+        page,
+        `/tasks/execution-order-templates/versions/${versionTwoId}/publish`,
+        {},
+        ctx.nocToken,
+      );
+      expect(publishTwo.status()).toBe(200);
+
+      const incorrectOrder = await createScheduledOrder(
+        page,
+        ctx.nocToken,
+        ctx.techUserId,
+        'material-incorrecto',
+        300,
+      );
+      const startIncorrect = await authedPost(
+        page,
+        `/tasks/execution-orders/${incorrectOrder.id}/start`,
+        { note: 'Inicio material incorrecto' },
+        ctx.techToken,
+        {
+          'If-Match': String(incorrectOrder.version),
+          'Idempotency-Key': `e2e-r23-start-wrong-${incorrectOrder.id}`,
+        },
+      );
+      expect(startIncorrect.status()).toBe(200);
+      const startedIncorrect = (await startIncorrect.json()) as { version: number };
+      const usageIncorrect = await authedPost(
+        page,
+        `/tasks/execution-orders/${incorrectOrder.id}/item-usage`,
+        {
+          itemId: correctItem?.id,
+          quantity: 1,
+          technicianCustodyId: ctx.techUserId,
+          action: 'CONSUME',
+          finalDisposition: 'INTERNAL_CONSUMPTION',
+        },
+        ctx.techToken,
+        {
+          'If-Match': String(startedIncorrect.version),
+          'Idempotency-Key': `e2e-r23-usage-wrong-${incorrectOrder.id}`,
+        },
+      );
+      expect(usageIncorrect.status()).toBe(202);
+
+      const closeIncorrect = await authedPost(
+        page,
+        `/tasks/execution-orders/${incorrectOrder.id}/close`,
+        { result: 'EXECUTED', summary: 'Material de categoría incorrecta' },
+        ctx.techToken,
+        {
+          'If-Match': String(startedIncorrect.version + 1),
+          'Idempotency-Key': `e2e-r23-close-wrong-${incorrectOrder.id}`,
+        },
+      );
+      expect(closeIncorrect.status()).toBe(422);
+      const closeIncorrectBody = (await closeIncorrect.json()) as Record<string, unknown>;
+      const errorBody = closeIncorrectBody.error as { code?: unknown } | undefined;
+      expect(closeIncorrectBody.code ?? errorBody?.code).toBe('CLOSURE_GATE_INCOMPLETE');
+    });
+
+    test('8b. Promise.all versiona plantilla y consecutivos sin duplicar OT', async ({ page }) => {
+      const templateRes = await authedPost(
+        page,
+        '/tasks/execution-order-templates',
+        {
+          key: `E2E_R23_CONCURRENCY_${Date.now()}`,
+          label: 'E2E concurrencia de plantilla',
+          workType: 'INSTALLATION',
+          requirements: [],
+        },
+        ctx.nocToken,
+      );
+      expect(templateRes.status()).toBe(201);
+      const template = (await templateRes.json()) as { id: string };
+
+      const versionResponses = await Promise.all([
+        authedPost(
+          page,
+          `/tasks/execution-order-templates/${template.id}/versions`,
+          { label: 'Versión concurrente A', requirements: [] },
+          ctx.nocToken,
+        ),
+        authedPost(
+          page,
+          `/tasks/execution-order-templates/${template.id}/versions`,
+          { label: 'Versión concurrente B', requirements: [] },
+          ctx.nocToken,
+        ),
+      ]);
+      expect(versionResponses.map((response) => response.status())).toEqual([201, 201]);
+      const versions = await Promise.all(versionResponses.map((response) => response.json()));
+      expect(new Set(versions.map((version) => version.version))).toEqual(new Set([1, 2]));
+
+      const orders = await Promise.all([
+        createScheduledOrder(page, ctx.nocToken, ctx.techUserId, 'consecutivo-a', 360),
+        createScheduledOrder(page, ctx.nocToken, ctx.techUserId, 'consecutivo-b', 420),
+      ]);
+      const numbers = orders.map((order) => order.number);
+      expect(new Set(numbers).size).toBe(2);
+      const sequences = numbers
+        .map((number) => Number.parseInt(number.split('-').at(-1) ?? '', 10))
+        .sort((left, right) => left - right);
+      expect(sequences[1] - sequences[0]).toBe(1);
     });
   });
 });

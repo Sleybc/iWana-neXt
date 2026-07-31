@@ -12,6 +12,7 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ExecutionOrderInventoryService } from '../services/execution-order-inventory.service';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
+import { ClosureGateEvaluatorService } from '../services/closure-gate-evaluator.service';
 
 jest.mock('../services/tasks.service', () => ({
   TasksService: class TasksService {},
@@ -51,6 +52,11 @@ describe('ExecutionOrdersService', () => {
       consumeTechnicianCustody: jest.fn().mockResolvedValue({
         stockMovementId: 'mov-001',
         finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+      }),
+      getItemCategoryReceipt: jest.fn().mockResolvedValue({
+        itemId: 'item-001',
+        categoryId: 'category-001',
+        categoryCode: 'CPE',
       }),
     } as unknown as jest.Mocked<ExecutionOrderInventoryService>;
 
@@ -251,6 +257,94 @@ describe('ExecutionOrdersService', () => {
         code: 'CLOSURE_GATE_INCOMPLETE',
         missingRequirements: ['Instalación de fibra'],
       }),
+    });
+  });
+
+  describe('MATERIAL closure context', () => {
+    const materialSnapshot = [
+      {
+        key: 'material-ont',
+        label: 'ONT requerida',
+        required: true,
+        kind: 'MATERIAL' as const,
+        itemCategory: 'CPE',
+      },
+    ];
+
+    const closeOrderWithCategory = async (categoryCode: string) => {
+      inventoryService.getItemCategoryReceipt.mockResolvedValue({
+        itemId: 'item-001',
+        categoryId: 'category-001',
+        categoryCode,
+      });
+      service = new ExecutionOrdersService(
+        {} as DataSource,
+        inventoryService,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        new ClosureGateEvaluatorService(),
+      );
+
+      const usage = {
+        id: 'usage-001',
+        itemId: 'item-001',
+        tenantId: 'tenant-001',
+        finalDisposition: InventoryDisposition.INTERNAL_CONSUMPTION,
+      };
+      const queryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([usage])
+          .mockResolvedValueOnce([usage]),
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'eo-001',
+          tenantId: 'tenant-001',
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          version: 1,
+          result: null,
+          startedAt: null,
+          closedAt: null,
+          closeNotes: null,
+          taskId: null,
+          ticketId: null,
+          templateRequirementsSnapshot: materialSnapshot,
+        }),
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+
+      return service.close(
+        'eo-001',
+        { result: ExecutionOrderResult.EXECUTED, summary: 'Cierre material' },
+        actor,
+      );
+    };
+
+    it('satisface MATERIAL con la categoría canónica del recibo de Inventario', async () => {
+      const result = await closeOrderWithCategory('CPE');
+
+      expect(result.status).toBe(ExecutionOrderStatus.COMPLETED);
+      expect(inventoryService.getItemCategoryReceipt).toHaveBeenCalledWith('item-001');
+    });
+
+    it('rechaza MATERIAL cuando el recibo real tiene otra categoría', async () => {
+      await expect(closeOrderWithCategory('NETWORKING')).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'CLOSURE_GATE_INCOMPLETE' }),
+      });
     });
   });
 

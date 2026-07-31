@@ -5,6 +5,7 @@ import {
   INVENTORY_MOVEMENT_PORT,
   InventoryMovementPort,
 } from '../../inventory/ports/inventory-movement.port';
+import type { InventoryItemCategoryReceipt } from '../../inventory/ports/inventory-movement.port';
 
 export interface ConsumeTechnicianCustodyInput {
   executionOrderId: string;
@@ -65,5 +66,20 @@ export class ExecutionOrderInventoryService {
       code: 'INVENTORY_MOVEMENT_UNAVAILABLE',
       message: 'El movimiento de inventario no está disponible temporalmente.',
     });
+  }
+
+  /**
+   * Obtiene la clasificación desde Inventario; nunca se deriva del itemId ni
+   * se acepta una categoría declarada por el cliente.
+   */
+  async getItemCategoryReceipt(itemId: string): Promise<InventoryItemCategoryReceipt> {
+    if (!this.inventoryMovementPort) {
+      throw new ServiceUnavailableException({
+        code: 'INVENTORY_CATALOG_UNAVAILABLE',
+        message: 'La clasificación del artículo no está disponible temporalmente.',
+      });
+    }
+
+    return this.inventoryMovementPort.getItemCategoryReceipt(itemId);
   }
 }
