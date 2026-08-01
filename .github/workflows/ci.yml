@@ -445,6 +445,37 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      # ── Credenciales efímeras por corrida (masked) ────────────────────────
+      # El provisioner exige PLATFORM_SUPER_ADMIN_EMAIL/PASSWORD (fallback
+      # E2E_PLATFORM_*) y la API exige EXECUTION_ORDER_IDEMPOTENCY_SECRET
+      # (Joi min 32) y MFA_ENCRYPTION_KEY (64 hex, apps/api/src/app.config.ts).
+      # Sin ellas el job falla en un runner limpio. Se generan por corrida y se
+      # enmascaran con ::add-mask:: ANTES de escribirlas a $GITHUB_ENV. NUNCA se
+      # imprimen valores, credenciales, tokens, config Compose ni envs crudos:
+      # los valores viajan solo al archivo de entorno de GitHub Actions.
+      - name: Generate ephemeral E2E credentials (masked, run-scoped)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TS="$(date +%s)"
+          PLATFORM_EMAIL="ci-platform-admin-${TS}@example.invalid"
+          PLATFORM_PASSWORD="$(openssl rand -base64 24 | tr -d '\n')"
+          IDEMPOTENCY_SECRET="$(openssl rand -hex 24)"
+          MFA_KEY="$(openssl rand -hex 32)"
+
+          echo "::add-mask::${PLATFORM_EMAIL}"
+          echo "::add-mask::${PLATFORM_PASSWORD}"
+          echo "::add-mask::${IDEMPOTENCY_SECRET}"
+          echo "::add-mask::${MFA_KEY}"
+
+          echo "PLATFORM_SUPER_ADMIN_EMAIL=${PLATFORM_EMAIL}" >> "$GITHUB_ENV"
+          echo "PLATFORM_SUPER_ADMIN_PASSWORD=${PLATFORM_PASSWORD}" >> "$GITHUB_ENV"
+          echo "EXECUTION_ORDER_IDEMPOTENCY_SECRET=${IDEMPOTENCY_SECRET}" >> "$GITHUB_ENV"
+          echo "MFA_ENCRYPTION_KEY=${MFA_KEY}" >> "$GITHUB_ENV"
+
+          echo "✅ Credenciales E2E efímeras generadas y enmascaradas (sin valores en logs)"
+
       # ── Vertical E2E: provision script ────────────────────────────────────
       # `scripts/e2e-provision-operational.mjs` es el orquestador atómico:
       #   1. docker compose up -d --wait postgres, redis, minio, typesense
@@ -459,14 +490,67 @@ jobs:
       #
       # Las credenciales se generan aleatoriamente en memoria. Nunca se imprimen
       # ni se escriben en archivos versionados.
+      #
+      # La salida completa se tee a /tmp/e2e-provision.log: el paso de
+      # verificación de gates consume los marcadores no secretos que el
+      # provisioner publica por stdout (E2E_SETUP=OK, E2E_PLAYWRIGHT_*,
+      # E2E_CLEANUP=OK). pipefail conserva el exit code del provisioner como
+      # fallo del paso (el tee por sí solo devolvería 0 siempre).
       - name: Provision and execute R4.1 against real services
         id: e2e
-        run: node scripts/e2e-provision-operational.mjs
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/e2e-provision-operational.mjs 2>&1 | tee /tmp/e2e-provision.log
+
+      # ── Verificación explícita de gates E2E ───────────────────────────────
+      # El job FALLA si cualquiera de: E2E_SETUP=OK ausente, exit ≠ 0, tests
+      # fallidos > 0, skipped > 0, did-not-run > 0, passed < 26, resumen de
+      # Playwright sin parsear, o E2E_CLEANUP=OK ausente/FAILED/DISABLED.
+      # Condiciones explícitas sobre los marcadores publicados por el
+      # provisioner (log teeed en el paso e2e); no confía en exit codes solos.
+      # Ausencia de evidencia = fallo, nunca falso verde.
+      - name: Verify E2E R4.1 gates (markers, counts, cleanup)
+        id: verify-e2e
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="/tmp/e2e-provision.log"
+
+          fail() { echo "::error title=E2E gate::$1"; exit 1; }
+
+          [[ -s "$LOG" ]] || fail "El provisioner no dejó log (/tmp/e2e-provision.log ausente o vacío)."
+
+          grep -q '^E2E_SETUP=OK' "$LOG" || fail "E2E_SETUP=OK ausente (provisioning incompleto)."
+          grep -q '^E2E_PLAYWRIGHT_EXIT=0' "$LOG" || fail "E2E_PLAYWRIGHT_EXIT != 0 (tests o runner fallaron)."
+          grep -q '^E2E_PLAYWRIGHT_COUNTS=UNPARSED' "$LOG" && fail "El resumen de conteos de Playwright no se pudo parsear."
+          grep -q '^E2E_CLEANUP=OK' "$LOG" || fail "E2E_CLEANUP=OK ausente (cleanup no confirmado)."
+          grep -q '^E2E_CLEANUP=FAILED' "$LOG" && fail "E2E_CLEANUP=FAILED presente."
+          grep -q '^E2E_CLEANUP=DISABLED' "$LOG" && fail "E2E_CLEANUP=DISABLED (E2E_CLEANUP debe ser true en CI)."
+
+          # Defaults: marcador ausente = evidencia ausente = fallo.
+          PASSED=$(grep -oE '^E2E_PLAYWRIGHT_PASSED=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
+          FAILED=$(grep -oE '^E2E_PLAYWRIGHT_FAILED=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
+          SKIPPED=$(grep -oE '^E2E_PLAYWRIGHT_SKIPPED=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
+          NOT_RUN=$(grep -oE '^E2E_PLAYWRIGHT_DID_NOT_RUN=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
+          [[ -n "$PASSED" ]] || PASSED=0
+          [[ -n "$FAILED" ]] || FAILED=1
+          [[ -n "$SKIPPED" ]] || SKIPPED=1
+          [[ -n "$NOT_RUN" ]] || NOT_RUN=1
+
+          [[ "$FAILED" -eq 0 ]] || fail "Tests fallidos: $FAILED (debe ser 0)."
+          [[ "$SKIPPED" -eq 0 ]] || fail "Tests skipped: $SKIPPED (debe ser 0)."
+          [[ "$NOT_RUN" -eq 0 ]] || fail "Tests sin ejecutar: $NOT_RUN (debe ser 0)."
+          [[ "$PASSED" -ge 26 ]] || fail "Tests passed: $PASSED (mínimo 26)."
+
+          echo "✅ Gates E2E R4.1 OK: setup OK, exit 0, passed=$PASSED failed=$FAILED skipped=$SKIPPED, cleanup OK"
 
       # ── Diagnóstico en fallo ──────────────────────────────────────────────
       # Si el provision script o los tests fallan, se capturan las últimas
       # líneas de logs de los contenedores para diagnóstico. Sin secretos.
       - name: Docker logs on failure
+        id: docker-logs
         if: failure() && steps.e2e.outcome == 'failure'
         shell: bash
         run: |
@@ -483,15 +567,52 @@ jobs:
           docker logs iwana_minio_e2e --tail 30 2>&1 || echo "(contenedor no disponible)"
           echo "::endgroup::"
 
-      - name: Upload Playwright artifacts
+      # ── Artefacto resumen (sanitizado) ────────────────────────────────────
+      # Reemplaza la subida cruda de test-results/ y playwright-report/ (que
+      # podían contener tokens de sesión y credenciales efímeras). Se genera
+      # UN artefacto de texto con datos no sensibles: SHA del workflow, OS del
+      # runner, versiones de node/pnpm, estado de los jobs del run (incluye los
+      # builds Docker de production-images), conteos y duración, y estado de
+      # cleanup. Comandos puros del shell, sin volcar envs ni tokens.
+      - name: Generate E2E R4.1 summary (sanitized)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/e2e-summary
+          SUMMARY="/tmp/e2e-summary/e2e-r41-summary.txt"
+          {
+            echo "iWana neXt — E2E R4.1 summary (sanitized, sin tokens ni datos de sesión)"
+            echo "======================================================================="
+            echo "workflow: ${{ github.workflow }}"
+            echo "run_id: ${{ github.run_id }}  attempt: ${{ github.run_attempt }}"
+            echo "commit: ${{ github.sha }}  ref: ${{ github.ref }}  event: ${{ github.event_name }}"
+            echo "runner: ${{ runner.os }} (${{ runner.arch }})"
+            echo "node: $(node --version)   pnpm: $(pnpm --version)"
+            echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "estado de jobs del run (builds incluidos):"
+            gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" \
+              --jq '.jobs[] | "  \(.name): \(.conclusion // "in_progress")"' 2>/dev/null \
+              || echo "  (no disponible — fallback local, no bloquea)"
+            echo ""
+            echo "outcomes de pasos de este job:"
+            echo "  e2e provision: ${{ steps.e2e.outcome }}"
+            echo "  gates verify:  ${{ steps.verify-e2e.outcome }}"
+            echo "  docker logs:   ${{ steps.docker-logs.outcome }}"
+            echo ""
+            echo "marcadores E2E (no secretos):"
+            grep -E '^(E2E_SETUP=OK|E2E_PLAYWRIGHT_(EXIT|PASSED|FAILED|SKIPPED|DID_NOT_RUN|DURATION_MS)=|E2E_TOTAL_DURATION_MS=|E2E_CLEANUP=OK)' \
+              /tmp/e2e-provision.log 2>/dev/null || echo "  (sin marcadores en el log)"
+          } > "$SUMMARY"
+
+      - name: Upload E2E R4.1 summary artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-r41-playwright-artifacts
-          path: |
-            test-results/
-            playwright-report/
-          if-no-files-found: ignore
+          name: e2e-r41-summary
+          path: /tmp/e2e-summary/
+          if-no-files-found: error
 
       # ── Safety-net cleanup ───────────────────────────────────────────────
       # El provision script hace su propia limpieza en el bloque finally, pero

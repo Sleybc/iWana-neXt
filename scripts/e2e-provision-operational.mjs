@@ -1065,8 +1065,47 @@ async function provisionExecutionTemplate(
   return templateId;
 }
 
+// Publica marcadores de resumen NO secretos (conteos del run) que el job CI
+// consume para verificar gates (passed >= 26, failed == 0, skipped == 0).
+// Si la línea de resumen de Playwright no se puede parsear, publica conteos
+// que hacen FALLAR el gate: ausencia de evidencia = fallo, nunca falso verde.
+// Estos marcadores no contienen credenciales, tokens ni datos de sesión.
+function publishPlaywrightCounts(output) {
+  const summaryLine = String(output)
+    .split(/\r?\n/u)
+    .findLast(
+      (line) =>
+        /\([0-9]+[mhs]/u.test(line) && /\b(passed|failed|skipped|did not run)\b/u.test(line),
+    );
+
+  if (!summaryLine) {
+    console.error(
+      'E2E_PLAYWRIGHT_COUNTS=UNPARSED|No se encontró la línea de resumen de Playwright',
+    );
+    console.log('E2E_PLAYWRIGHT_PASSED=0');
+    console.log('E2E_PLAYWRIGHT_FAILED=1');
+    console.log('E2E_PLAYWRIGHT_SKIPPED=1');
+    console.log('E2E_PLAYWRIGHT_DID_NOT_RUN=1');
+    return;
+  }
+
+  const countOf = (pattern) => {
+    const match = summaryLine.match(pattern);
+    return match ? Number(match[1]) : 0;
+  };
+
+  console.log(`E2E_PLAYWRIGHT_PASSED=${countOf(/(\d+)\s+passed/u)}`);
+  console.log(`E2E_PLAYWRIGHT_FAILED=${countOf(/(\d+)\s+failed/u)}`);
+  console.log(`E2E_PLAYWRIGHT_SKIPPED=${countOf(/(\d+)\s+skipped/u)}`);
+  console.log(`E2E_PLAYWRIGHT_DID_NOT_RUN=${countOf(/(\d+)\s+did not run/u)}`);
+}
+
 function runPlaywright(env) {
   const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+  const startedAt = Date.now();
+  // Se captura la salida (pipe) para publicar los conteos del resumen; se
+  // reimprime al final para conservar la visibilidad que daba stdio inherit.
+  // El contrato de ejecución local no cambia: mismos comandos y mismo spec.
   const result = spawnSync(
     command,
     [
@@ -1078,8 +1117,23 @@ function runPlaywright(env) {
       'e2e/playwright.api.config.ts',
       '--reporter=list',
     ],
-    { cwd: process.cwd(), env, stdio: 'inherit', shell: process.platform === 'win32' },
+    {
+      cwd: process.cwd(),
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
+    },
   );
+
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+
+  publishPlaywrightCounts(`${result.stdout ?? ''}\n${result.stderr ?? ''}`);
 
   if (result.error) {
     console.error(`E2E_PLAYWRIGHT=FAILED|${result.error.message}`);
@@ -1087,6 +1141,7 @@ function runPlaywright(env) {
   }
 
   console.log(`E2E_PLAYWRIGHT_EXIT=${result.status ?? 1}`);
+  console.log(`E2E_PLAYWRIGHT_DURATION_MS=${Date.now() - startedAt}`);
 
   return result.status ?? 1;
 }
@@ -1132,6 +1187,7 @@ let testExitCode = 1;
 let platformToken = '';
 let createdTenants = false;
 let apiProcess = null;
+const runStartedAt = Date.now();
 
 try {
   await provisionInfrastructure();
@@ -1308,6 +1364,10 @@ try {
   stopProcess(apiProcess);
   stopWorker();
   stopInfrastructure();
+
+  // Marcador de resumen NO secreto: duración total del provisioner. Se publica
+  // siempre (finally), incluso en fallo, para el resumen sanitizado del job.
+  console.log(`E2E_TOTAL_DURATION_MS=${Date.now() - runStartedAt}`);
 }
 
 process.exit(testExitCode);
