@@ -1,0 +1,16 @@
+﻿FILTRO de api-e2e-r43.log — lineas de senal (ANSI removido). Original: %TEMP%\opencode\api-e2e-r43.log
+Total lineas original: 637 | lineas de senal: 13
+---
+[8:34:44 a. m.] Found 0 errors. Watching for file changes.
+[Nest] 29512  - 01/08/2026, 8:34:47 a. m.     LOG [RouterExplorer] Mapped {/api/v1/tenants/:id/retry-provisioning, PATCH} route +0ms
+[Nest] 29512  - 01/08/2026, 8:34:48 a. m.     LOG [NestApplication] Nest application successfully started +2ms
+[Nest] 29512  - 01/08/2026, 8:34:49 a. m.     LOG [TenantService] Tenant creado: id=bcba988b-b35a-497a-937d-dd42d950037b slug=e2e-r1-r41-msaett3t-5d2773
+[Nest] 29512  - 01/08/2026, 8:34:49 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-r1-r41-msaett3t-5d2773 (bcba988b-b35a-497a-937d-dd42d950037b)
+[Nest] 29512  - 01/08/2026, 8:34:49 a. m.     LOG [TenantService] Tenant creado: id=e910128b-4617-4d2e-befd-080b1744f048 slug=e2e-tenant-b-msaett3t-5d2773
+[Nest] 29512  - 01/08/2026, 8:34:49 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-tenant-b-msaett3t-5d2773 (e910128b-4617-4d2e-befd-080b1744f048)
+(node:29512) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nest] 29512  - 01/08/2026, 8:35:04 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=c01a0286-ffdd-4f60-9303-776c8a272eb0 tenant=tenant_e2e_r1_r41_msaett3t_5d2773 mime=image/jpeg bytes=516]
+[Nest] 29512  - 01/08/2026, 8:35:04 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=c01a0286-ffdd-4f60-9303-776c8a272eb0 claimRef=tenant_e2e_r1_r41_msaett3t_5d2773:14112007-b958-40d5-b610-d95dab0c26ea]
+[Nest] 29512  - 01/08/2026, 8:35:04 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=5063494a-9699-4ac6-937e-ea15dd083d25 tenant=tenant_e2e_r1_r41_msaett3t_5d2773 mime=image/jpeg bytes=516]
+[Nest] 29512  - 01/08/2026, 8:35:04 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=5063494a-9699-4ac6-937e-ea15dd083d25 claimRef=tenant_e2e_r1_r41_msaett3t_5d2773:14112007-b958-40d5-b610-d95dab0c26ea]

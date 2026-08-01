@@ -1,0 +1,1336 @@
+(node:29496) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ Network iwana-e2e-r41_default Creating 
+ Network iwana-e2e-r41_default Created 
+ Volume iwana_redis_data_e2e Creating 
+ Volume iwana_redis_data_e2e Created 
+ Volume iwana_typesense_data_e2e Creating 
+ Volume iwana_typesense_data_e2e Created 
+ Volume iwana_postgres_data_e2e Creating 
+ Volume iwana_postgres_data_e2e Created 
+ Volume iwana_minio_data_e2e Creating 
+ Volume iwana_minio_data_e2e Created 
+ Container iwana_typesense_e2e Creating 
+ Container iwana_postgres_e2e Creating 
+ Container iwana_minio_e2e Creating 
+ Container iwana_redis_e2e Creating 
+ Container iwana_typesense_e2e Created 
+ Container iwana_minio_e2e Created 
+ Container iwana_postgres_e2e Created 
+ Container iwana_redis_e2e Created 
+ Container iwana_postgres_e2e Starting 
+ Container iwana_redis_e2e Starting 
+ Container iwana_minio_e2e Starting 
+ Container iwana_typesense_e2e Starting 
+ Container iwana_minio_e2e Started 
+ Container iwana_typesense_e2e Started 
+ Container iwana_redis_e2e Started 
+ Container iwana_postgres_e2e Started 
+ Container iwana_redis_e2e Waiting 
+ Container iwana_typesense_e2e Waiting 
+ Container iwana_postgres_e2e Waiting 
+ Container iwana_minio_e2e Waiting 
+ Container iwana_typesense_e2e Healthy 
+ Container iwana_minio_e2e Healthy 
+ Container iwana_redis_e2e Healthy 
+ Container iwana_postgres_e2e Healthy 
+ Container iwana_minio_e2e Running 
+ Container iwana_minio_e2e Waiting 
+ Container iwana_minio_e2e Healthy 
+ Container iwana-e2e-r41-minio-init-run-abc2248963f0 Creating 
+ Container iwana-e2e-r41-minio-init-run-abc2248963f0 Created 
+Added `iwana-local` successfully.
+Bucket created successfully `iwana-local/iwana-media`.
+Access permission for `iwana-local/iwana-media` is set to `private`
+
+> @iwana/shared@0.1.0 build C:\appiw\packages\shared
+> tsc
+
+
+> @iwana/storage@0.1.0 build C:\appiw\packages\storage
+> node ../../scripts/clean-paths.mjs dist && tsc
+
+Removed dist
+
+> iwana-next@0.1.0 db:migrate:all C:\appiw
+> pnpm --filter @iwana/db build && pnpm --filter @iwana/db migration:run && pnpm --filter @iwana/db migration:tenant:run && pnpm db:apply-least-privilege
+
+
+> @iwana/db@0.1.0 build C:\appiw\packages\database
+> node ../../scripts/clean-paths.mjs dist && tsc
+
+Removed dist
+
+> @iwana/db@0.1.0 migration:run C:\appiw\packages\database
+> typeorm migration:run -d dist/data-source.js
+
+query: SELECT version()
+query: SELECT * FROM current_schema()
+query: CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
+query: SELECT * FROM "information_schema"."tables" WHERE "table_schema" = 'public' AND "table_name" = 'typeorm_migrations'
+query: CREATE TABLE "typeorm_migrations" ("id" SERIAL NOT NULL, "timestamp" bigint NOT NULL, "name" character varying NOT NULL, CONSTRAINT "PK_bb2f075707dd300ba86d0208923" PRIMARY KEY ("id"))
+query: SELECT * FROM "typeorm_migrations" "typeorm_migrations" ORDER BY "id" DESC
+0 migrations are already loaded in the database.
+20 migrations were found in the source code.
+20 migrations are new migrations must be executed.
+query: START TRANSACTION
+query: CREATE EXTENSION IF NOT EXISTS "pgcrypto"
+query: 
+      CREATE TABLE IF NOT EXISTS "public"."tenants" (
+        "id"             UUID        NOT NULL DEFAULT gen_random_uuid(),
+        "name"           VARCHAR(255) NOT NULL,
+        "slug"           VARCHAR(63)  NOT NULL,
+        "schema_name"    VARCHAR(63)  NOT NULL,
+        "status"         VARCHAR(30)  NOT NULL DEFAULT 'PROVISIONING',
+        "settings"       JSONB        NOT NULL DEFAULT '{}',
+        "contact_email"  VARCHAR(255) NOT NULL,
+        "max_subscribers" INTEGER     NOT NULL DEFAULT 0,
+        "created_at"     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        "updated_at"     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        CONSTRAINT "pk_tenants" PRIMARY KEY ("id"),
+        CONSTRAINT "uq_tenants_slug"        UNIQUE ("slug"),
+        CONSTRAINT "uq_tenants_schema_name" UNIQUE ("schema_name"),
+        CONSTRAINT "chk_tenants_status" CHECK (
+          "status" IN (
+            'PROVISIONING', 'ACTIVE', 'SUSPENDED',
+            'INACTIVE', 'PROVISIONING_FAILED'
+          )
+        )
+      )
+    
+query: CREATE INDEX "idx_tenants_slug"        ON "public"."tenants" ("slug")
+query: CREATE INDEX "idx_tenants_schema_name" ON "public"."tenants" ("schema_name")
+query: 
+      CREATE TABLE IF NOT EXISTS "public"."platform_users" (
+        "id"            UUID        NOT NULL DEFAULT gen_random_uuid(),
+        "email"         VARCHAR(512) NOT NULL,
+        "email_hash"    VARCHAR(64)  NOT NULL,
+        "password_hash" VARCHAR(60)  NOT NULL,
+        "role"          VARCHAR(20)  NOT NULL,
+        "status"        VARCHAR(30)  NOT NULL DEFAULT 'ACTIVE',
+        "mfa_enabled"   BOOLEAN      NOT NULL DEFAULT TRUE,
+        "mfa_secret"    VARCHAR(512),
+        "last_login_at" TIMESTAMPTZ,
+        "created_at"    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        "updated_at"    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        "deleted_at"    TIMESTAMPTZ,
+        CONSTRAINT "pk_platform_users" PRIMARY KEY ("id"),
+        CONSTRAINT "uq_platform_users_email_hash" UNIQUE ("email_hash"),
+        CONSTRAINT "chk_platform_users_role" CHECK (
+          "role" IN ('SYSTEM_ADMIN', 'IWANA_SUPPORT')
+        ),
+        CONSTRAINT "chk_platform_users_status" CHECK (
+          "status" IN ('PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'INACTIVE')
+        )
+      )
+    
+query: CREATE INDEX "idx_platform_users_email_hash" ON "public"."platform_users" ("email_hash")
+query: 
+      CREATE TABLE IF NOT EXISTS "public"."platform_audit_logs" (
+        "id"          UUID        NOT NULL DEFAULT gen_random_uuid(),
+        "user_id"     UUID,
+        "action"      VARCHAR(100) NOT NULL,
+        "entity_type" VARCHAR(100) NOT NULL,
+        "entity_id"   VARCHAR(100) NOT NULL,
+        "old_value"   JSONB,
+        "new_value"   JSONB,
+        "ip_address"  VARCHAR(45),
+        "user_agent"  VARCHAR(512),
+        "request_id"  VARCHAR(100),
+        "created_at"  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        CONSTRAINT "pk_platform_audit_logs" PRIMARY KEY ("id")
+        -- SIN updated_at — SIN deleted_at — APPEND-ONLY
+      )
+    
+query: CREATE INDEX "idx_pal_user_created"   ON "public"."platform_audit_logs" ("user_id", "created_at")
+query: CREATE INDEX "idx_pal_action_created" ON "public"."platform_audit_logs" ("action", "created_at")
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1741766400000,"CreatePublicSchema1741766400000"]
+Migration CreatePublicSchema1741766400000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."platform_users"
+      ADD COLUMN IF NOT EXISTS "display_name" VARCHAR(150)
+    
+query: 
+      ALTER TABLE "public"."platform_users"
+      ADD COLUMN IF NOT EXISTS "phone" VARCHAR(20)
+    
+query: 
+      ALTER TABLE "public"."platform_users"
+      ADD COLUMN IF NOT EXISTS "timezone" VARCHAR(50) NOT NULL DEFAULT 'America/Bogota'
+    
+query: 
+      ALTER TABLE "public"."platform_users"
+      ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) NOT NULL DEFAULT 'es-CO'
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1742100000000,"AddPlatformUserProfile1742100000000"]
+Migration AddPlatformUserProfile1742100000000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."tenants"
+        ADD COLUMN IF NOT EXISTS "legal_name"       VARCHAR(300),
+        ADD COLUMN IF NOT EXISTS "nit"              VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS "nit_dv"           CHAR(1),
+        ADD COLUMN IF NOT EXISTS "company_type"     VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS "address"          VARCHAR(500),
+        ADD COLUMN IF NOT EXISTS "city"             VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS "department"       VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS "country_code"     CHAR(2)      DEFAULT 'CO',
+        ADD COLUMN IF NOT EXISTS "postal_code"      VARCHAR(10),
+        ADD COLUMN IF NOT EXISTS "coordinates"      VARCHAR(50),
+        ADD COLUMN IF NOT EXISTS "phone"            VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS "website"          VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS "economic_sector"  VARCHAR(10)
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1742200000000,"AddTenantBusinessFields1742200000000"]
+Migration AddTenantBusinessFields1742200000000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."platform_users"
+      DROP COLUMN IF EXISTS "display_name"
+    
+query: 
+      ALTER TABLE "public"."platform_users"
+      ADD COLUMN IF NOT EXISTS "first_name" VARCHAR(100)
+    
+query: 
+      ALTER TABLE "public"."platform_users"
+      ADD COLUMN IF NOT EXISTS "last_name" VARCHAR(100)
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1742300000000,"ReplaceDisplayNameWithFirstLastName1742300000000"]
+Migration ReplaceDisplayNameWithFirstLastName1742300000000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD COLUMN IF NOT EXISTS "logo_light_url" VARCHAR(500) NULL
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD COLUMN IF NOT EXISTS "logo_dark_url" VARCHAR(500) NULL
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD COLUMN IF NOT EXISTS "seal_light_url" VARCHAR(500) NULL
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD COLUMN IF NOT EXISTS "seal_dark_url" VARCHAR(500) NULL
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD COLUMN IF NOT EXISTS "show_tenant_name" BOOLEAN NOT NULL DEFAULT TRUE
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1742350000000,"AddTenantBrandingColumns1742350000000"]
+Migration AddTenantBrandingColumns1742350000000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMPTZ
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ALTER COLUMN "phone" TYPE VARCHAR(50)
+    
+query: 
+      CREATE INDEX IF NOT EXISTS "idx_tenants_deleted_at"
+      ON "public"."tenants" ("deleted_at")
+      WHERE "deleted_at" IS NOT NULL
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1742400000000,"SoftDeleteTenantsAndPhoneLength1742400000000"]
+Migration SoftDeleteTenantsAndPhoneLength1742400000000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."tenants"
+      ALTER COLUMN "max_subscribers" DROP DEFAULT
+    
+query: 
+      UPDATE "public"."tenants"
+      SET "max_subscribers" = NULL
+      WHERE "max_subscribers" = 0
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ALTER COLUMN "max_subscribers" DROP NOT NULL
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      DROP CONSTRAINT IF EXISTS "chk_tenants_status"
+    
+query: 
+      ALTER TABLE "public"."tenants"
+      ADD CONSTRAINT "chk_tenants_status" CHECK (
+        "status" IN (
+          'PROVISIONING', 'ACTIVE', 'SUSPENDED', 'INACTIVE',
+          'MARKED_FOR_DELETION', 'PROVISIONING_FAILED'
+        )
+      )
+    
+query: 
+      CREATE INDEX IF NOT EXISTS "idx_tenants_deletion_window"
+      ON "public"."tenants" ("deleted_at")
+      WHERE "status" = 'MARKED_FOR_DELETION' AND "deleted_at" IS NOT NULL
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1742400001000,"TenantLifecyclePurgeAndNullableLimits1742400001000"]
+Migration TenantLifecyclePurgeAndNullableLimits1742400001000 has been executed successfully.
+query: 
+      CREATE TABLE IF NOT EXISTS "public"."media_assets" (
+        "id"                    uuid          NOT NULL DEFAULT gen_random_uuid(),
+        "tenant_schema"         varchar(63)   NOT NULL,
+        "usage"                 varchar(30)   NOT NULL DEFAULT 'general',
+        "theme_variant"         varchar(10)   NULL,
+        "original_filename"     varchar(255)  NOT NULL,
+        "mime_type"             varchar(100)  NOT NULL,
+        "ext"                   varchar(20)   NOT NULL,
+        "size_bytes"            integer       NOT NULL,
+        "object_key"            varchar(500)  NOT NULL,
+        "public_url"            varchar(1000) NULL,
+        "uploaded_by_user_id"   varchar(36)   NULL,
+        "created_at"            timestamptz   NOT NULL DEFAULT now(),
+        "updated_at"            timestamptz   NOT NULL DEFAULT now(),
+        "deleted_at"            timestamptz   NULL,
+        CONSTRAINT "pk_media_assets" PRIMARY KEY ("id"),
+        CONSTRAINT "uq_media_assets_object_key" UNIQUE ("object_key"),
+        CONSTRAINT "chk_media_assets_usage" CHECK (
+          "usage" IN ('logo', 'seal', 'favicon', 'login_background', 'general')
+        ),
+        CONSTRAINT "chk_media_assets_theme_variant" CHECK (
+          "theme_variant" IS NULL OR "theme_variant" IN ('light', 'dark')
+        ),
+        CONSTRAINT "chk_media_assets_size_positive" CHECK ("size_bytes" > 0)
+      )
+    
+query: 
+      CREATE INDEX IF NOT EXISTS "idx_media_assets_tenant_schema"
+      ON "public"."media_assets" ("tenant_schema")
+    
+query: 
+      CREATE INDEX IF NOT EXISTS "idx_media_assets_usage"
+      ON "public"."media_assets" ("usage")
+    
+query: 
+      CREATE INDEX IF NOT EXISTS "idx_media_assets_tenant_usage"
+      ON "public"."media_assets" ("tenant_schema", "usage")
+    
+query: 
+      CREATE INDEX IF NOT EXISTS "idx_media_assets_active"
+      ON "public"."media_assets" ("tenant_schema", "usage")
+      WHERE "deleted_at" IS NULL
+    
+query: 
+      CREATE OR REPLACE FUNCTION public.update_media_assets_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = now();
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    
+query: 
+      CREATE TRIGGER "trg_media_assets_updated_at"
+      BEFORE UPDATE ON "public"."media_assets"
+      FOR EACH ROW EXECUTE FUNCTION public.update_media_assets_updated_at()
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1746000001000,"CreateMediaAssetsTable1746000001000"]
+Migration CreateMediaAssetsTable1746000001000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."tenants"
+        ADD COLUMN IF NOT EXISTS "favicon_light_url" varchar(500),
+        ADD COLUMN IF NOT EXISTS "favicon_dark_url" varchar(500),
+        ADD COLUMN IF NOT EXISTS "login_background_light_url" varchar(500),
+        ADD COLUMN IF NOT EXISTS "login_background_dark_url" varchar(500),
+        ADD COLUMN IF NOT EXISTS "logo_light_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "logo_dark_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "seal_light_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "seal_dark_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "favicon_light_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "favicon_dark_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "login_background_light_asset_id" uuid,
+        ADD COLUMN IF NOT EXISTS "login_background_dark_asset_id" uuid
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_logo_light_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_logo_light_asset_id"
+            FOREIGN KEY ("logo_light_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_logo_dark_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_logo_dark_asset_id"
+            FOREIGN KEY ("logo_dark_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_seal_light_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_seal_light_asset_id"
+            FOREIGN KEY ("seal_light_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_seal_dark_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_seal_dark_asset_id"
+            FOREIGN KEY ("seal_dark_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_favicon_light_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_favicon_light_asset_id"
+            FOREIGN KEY ("favicon_light_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_favicon_dark_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_favicon_dark_asset_id"
+            FOREIGN KEY ("favicon_dark_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_login_background_light_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_login_background_light_asset_id"
+            FOREIGN KEY ("login_background_light_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: 
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'fk_tenants_login_background_dark_asset_id'
+        ) THEN
+          ALTER TABLE "public"."tenants"
+            ADD CONSTRAINT "fk_tenants_login_background_dark_asset_id"
+            FOREIGN KEY ("login_background_dark_asset_id")
+            REFERENCES "public"."media_assets"("id")
+            ON DELETE SET NULL;
+        END IF;
+      END $$
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1746164500000,"ExtendTenantBrandingV21746164500000"]
+Migration ExtendTenantBrandingV21746164500000 has been executed successfully.
+query: 
+      CREATE TABLE IF NOT EXISTS "public"."platform_branding_settings" (
+        "id" varchar(30) NOT NULL DEFAULT 'platform',
+        "product_name" varchar(120) NOT NULL,
+        "surface_name" varchar(120) NOT NULL,
+        "metadata_title" varchar(180) NOT NULL,
+        "metadata_description" varchar(300) NOT NULL,
+        "logo_url" varchar(500),
+        "logo_asset_id" uuid,
+        "favicon_url" varchar(500),
+        "favicon_asset_id" uuid,
+        "login_background_light_url" varchar(500),
+        "login_background_light_asset_id" uuid,
+        "login_background_dark_url" varchar(500),
+        "login_background_dark_asset_id" uuid,
+        "created_at" timestamptz NOT NULL DEFAULT now(),
+        "updated_at" timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT "pk_platform_branding_settings" PRIMARY KEY ("id"),
+        CONSTRAINT "chk_platform_branding_singleton" CHECK ("id" = 'platform')
+      )
+    
+query: 
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'fk_platform_branding_logo_asset_id'
+          ) THEN
+            ALTER TABLE "public"."platform_branding_settings"
+              ADD CONSTRAINT "fk_platform_branding_logo_asset_id"
+              FOREIGN KEY ("logo_asset_id")
+              REFERENCES "public"."media_assets"("id")
+              ON DELETE SET NULL;
+          END IF;
+        END $$
+      
+query: 
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'fk_platform_branding_favicon_asset_id'
+          ) THEN
+            ALTER TABLE "public"."platform_branding_settings"
+              ADD CONSTRAINT "fk_platform_branding_favicon_asset_id"
+              FOREIGN KEY ("favicon_asset_id")
+              REFERENCES "public"."media_assets"("id")
+              ON DELETE SET NULL;
+          END IF;
+        END $$
+      
+query: 
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'fk_platform_branding_login_bg_light_asset_id'
+          ) THEN
+            ALTER TABLE "public"."platform_branding_settings"
+              ADD CONSTRAINT "fk_platform_branding_login_bg_light_asset_id"
+              FOREIGN KEY ("login_background_light_asset_id")
+              REFERENCES "public"."media_assets"("id")
+              ON DELETE SET NULL;
+          END IF;
+        END $$
+      
+query: 
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'fk_platform_branding_login_bg_dark_asset_id'
+          ) THEN
+            ALTER TABLE "public"."platform_branding_settings"
+              ADD CONSTRAINT "fk_platform_branding_login_bg_dark_asset_id"
+              FOREIGN KEY ("login_background_dark_asset_id")
+              REFERENCES "public"."media_assets"("id")
+              ON DELETE SET NULL;
+          END IF;
+        END $$
+      
+query: 
+      CREATE OR REPLACE FUNCTION public.update_platform_branding_settings_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = now();
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    
+query: 
+      DROP TRIGGER IF EXISTS "trg_platform_branding_settings_updated_at"
+      ON "public"."platform_branding_settings"
+    
+query: 
+      CREATE TRIGGER "trg_platform_branding_settings_updated_at"
+      BEFORE UPDATE ON "public"."platform_branding_settings"
+      FOR EACH ROW EXECUTE FUNCTION public.update_platform_branding_settings_updated_at()
+    
+query: 
+      INSERT INTO "public"."platform_branding_settings" (
+        "id",
+        "product_name",
+        "surface_name",
+        "metadata_title",
+        "metadata_description",
+        "logo_url",
+        "favicon_url"
+      ) VALUES (
+        'platform',
+        'iWana neXt',
+        'Portal administrativo',
+        'iWana neXt — Portal Administrativo',
+        'Portal administrativo para operadores ISP iWana neXt',
+        '/brand/iwiso6.png',
+        '/brand/favicon-gecko.svg'
+      )
+      ON CONFLICT ("id") DO NOTHING
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1746164700000,"CreatePlatformBrandingSettings1746164700000"]
+Migration CreatePlatformBrandingSettings1746164700000 has been executed successfully.
+query: 
+      ALTER TABLE "public"."tenants"
+        ADD COLUMN IF NOT EXISTS "branding_product_name" varchar(120),
+        ADD COLUMN IF NOT EXISTS "branding_surface_name" varchar(120),
+        ADD COLUMN IF NOT EXISTS "branding_metadata_title" varchar(180),
+        ADD COLUMN IF NOT EXISTS "branding_metadata_description" varchar(300)
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1746164800000,"AddTenantBrandingMetadata1746164800000"]
+Migration AddTenantBrandingMetadata1746164800000 has been executed successfully.
+query: 
+      UPDATE public.platform_audit_logs
+      SET new_value = jsonb_set(new_value, '{temporaryPassword}', '"[REDACTADO]"'::jsonb)
+      WHERE new_value ? 'temporaryPassword'
+        AND new_value->>'temporaryPassword' <> '[REDACTADO]'
+    
+query: 
+      UPDATE public.platform_audit_logs
+      SET new_value = jsonb_set(
+        new_value,
+        '{data,temporaryPassword}',
+        '"[REDACTADO]"'::jsonb
+      )
+      WHERE new_value->'data' ? 'temporaryPassword'
+        AND new_value->'data'->>'temporaryPassword' <> '[REDACTADO]'
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419201000,"RedactLeakedTemporaryPasswords1784419201000"]
+Migration RedactLeakedTemporaryPasswords1784419201000 has been executed successfully.
+query: 
+      ALTER TABLE public.tenants
+      ADD COLUMN IF NOT EXISTS admin_email VARCHAR(255)
+    
+query: 
+      COMMENT ON COLUMN public.tenants.admin_email IS
+        'Email del ADMIN inicial indicado al crear la empresa. NULL en tenants anteriores al campo, sembrados con la constante admin@iwana.co.'
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419202000,"AddTenantAdminEmail1784419202000"]
+Migration AddTenantAdminEmail1784419202000 has been executed successfully.
+query: 
+      CREATE OR REPLACE FUNCTION public.reject_audit_mutation()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF coalesce(current_setting('iwana.audit_maintenance', true), '') = 'on' THEN
+          RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+        END IF;
+
+        RAISE EXCEPTION
+          'El registro de auditoria es de solo escritura: % sobre %.% esta prohibido. '
+          'Para una remediacion deliberada (por ejemplo redactar un secreto filtrado), '
+          'ejecutela desde una migracion con SET LOCAL iwana.audit_maintenance = ''on''.',
+          TG_OP, TG_TABLE_SCHEMA, TG_TABLE_NAME
+          USING ERRCODE = 'insufficient_privilege';
+      END;
+      $$ LANGUAGE plpgsql
+    
+query: DROP POLICY IF EXISTS "pal_insert_only" ON public.platform_audit_logs
+query: ALTER TABLE public.platform_audit_logs DISABLE ROW LEVEL SECURITY
+query: 
+      DROP TRIGGER IF EXISTS trg_platform_audit_logs_immutable ON public.platform_audit_logs
+    
+query: 
+      CREATE TRIGGER trg_platform_audit_logs_immutable
+        BEFORE UPDATE OR DELETE ON public.platform_audit_logs
+        FOR EACH ROW EXECUTE FUNCTION public.reject_audit_mutation()
+    
+query: 
+      COMMENT ON TABLE public.platform_audit_logs IS
+        'Registro de auditoria de plataforma. Solo escritura: un trigger rechaza UPDATE y DELETE con independencia del rol. Remediaciones deliberadas via SET LOCAL iwana.audit_maintenance = ''on'' desde una migracion.'
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419203000,"EnforcePlatformAuditImmutability1784419203000"]
+Migration EnforcePlatformAuditImmutability1784419203000 has been executed successfully.
+query: 
+      DO $body$
+      DECLARE
+        migrator text := 'iwana_migrator';
+        app text := 'iwana_app';
+        r record;
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = migrator) THEN
+          RAISE NOTICE
+            '015_audit_owner_least_privilege: rol % ausente — skip (crear roles via apply-least-privilege / init Docker)',
+            migrator;
+          RETURN;
+        END IF;
+
+        IF EXISTS (
+          SELECT 1
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public'
+            AND p.proname = 'reject_audit_mutation'
+        ) THEN
+          EXECUTE format(
+            'ALTER FUNCTION public.reject_audit_mutation() OWNER TO %I',
+            migrator
+          );
+        END IF;
+
+        IF to_regclass('public.platform_audit_logs') IS NOT NULL THEN
+          EXECUTE format(
+            'ALTER TABLE public.platform_audit_logs OWNER TO %I',
+            migrator
+          );
+          EXECUTE 'REVOKE ALL ON TABLE public.platform_audit_logs FROM PUBLIC';
+
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = app) THEN
+            EXECUTE format(
+              'REVOKE ALL ON TABLE public.platform_audit_logs FROM %I',
+              app
+            );
+            EXECUTE format(
+              'GRANT SELECT, INSERT ON TABLE public.platform_audit_logs TO %I',
+              app
+            );
+          END IF;
+        END IF;
+
+        FOR r IN
+          SELECT n.nspname AS schema_name
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relkind = 'r'
+            AND c.relname = 'audit_logs'
+            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        LOOP
+          EXECUTE format(
+            'ALTER TABLE %I.audit_logs OWNER TO %I',
+            r.schema_name,
+            migrator
+          );
+          EXECUTE format(
+            'REVOKE ALL ON TABLE %I.audit_logs FROM PUBLIC',
+            r.schema_name
+          );
+
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = app) THEN
+            EXECUTE format(
+              'REVOKE ALL ON TABLE %I.audit_logs FROM %I',
+              r.schema_name,
+              app
+            );
+            EXECUTE format(
+              'GRANT SELECT, INSERT ON TABLE %I.audit_logs TO %I',
+              r.schema_name,
+              app
+            );
+            EXECUTE format(
+              'GRANT USAGE ON SCHEMA %I TO %I',
+              r.schema_name,
+              app
+            );
+            EXECUTE format(
+              'GRANT USAGE ON SCHEMA %I TO %I',
+              r.schema_name,
+              migrator
+            );
+          END IF;
+        END LOOP;
+      END
+      $body$
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419204000,"AuditOwnerLeastPrivilege1784419204000"]
+Migration AuditOwnerLeastPrivilege1784419204000 has been executed successfully.
+query: SET LOCAL iwana.audit_maintenance = 'on'
+query: 
+      CREATE OR REPLACE FUNCTION public.iwana_is_sensitive_audit_key(key text)
+      RETURNS boolean
+      LANGUAGE sql
+      IMMUTABLE
+      AS $fn$
+        SELECT
+          lower(key) IN (
+            'email', 'value', 'whatsapp', 'nit', 'nitdv', 'nit_dv', 'fullname',
+            'businessname', 'business_name', 'razonsocial', 'razon_social',
+            'firstname', 'first_name', 'lastname', 'last_name',
+            'displayname', 'display_name', 'legalname', 'legal_name',
+            'address', 'birthdate', 'birth_date',
+            'contactphone', 'contact_phone', 'contactname', 'contact_name',
+            'altcontactphone', 'alt_contact_phone',
+            'adminemail', 'admin_email', 'contactemail', 'contact_email',
+            'emailprimary', 'email_primary', 'emailsecondary', 'email_secondary',
+            'documentnumber', 'document_number', 'nationalid', 'national_id',
+            'identification', 'identificacion', 'cedula', 'cédula',
+            'phone', 'mobile', 'telefono', 'teléfono', 'celular',
+            'phonenumber', 'phone_number', 'mobilenumber', 'mobile_number',
+            'sitecontactphone', 'site_contact_phone',
+            'phoneprimary', 'phone_primary', 'phonesecondary', 'phone_secondary',
+            'temporarypassword', 'ciphertext'
+          )
+          OR lower(key) ~ '(email|encrypted)$'
+          OR key ~* '(password|secret|token|credential|apikey|api.?key|private.?key|authorization|otp|qr|seed|recovery|backup|ciphertext)'
+      $fn$
+    
+query: 
+      CREATE OR REPLACE FUNCTION public.iwana_redact_sensitive_audit_jsonb(data jsonb)
+      RETURNS jsonb
+      LANGUAGE plpgsql
+      IMMUTABLE
+      AS $fn$
+      DECLARE
+        result jsonb := '{}'::jsonb;
+        arr jsonb := '[]'::jsonb;
+        k text;
+        v jsonb;
+        i int;
+        scalar text;
+      BEGIN
+        IF data IS NULL THEN
+          RETURN NULL;
+        END IF;
+
+        IF jsonb_typeof(data) = 'array' THEN
+          IF jsonb_array_length(data) IS NULL OR jsonb_array_length(data) = 0 THEN
+            RETURN arr;
+          END IF;
+          FOR i IN 0 .. jsonb_array_length(data) - 1 LOOP
+            arr := arr || jsonb_build_array(
+              public.iwana_redact_sensitive_audit_jsonb(data -> i)
+            );
+          END LOOP;
+          RETURN arr;
+        END IF;
+
+        IF jsonb_typeof(data) <> 'object' THEN
+          RETURN data;
+        END IF;
+
+        FOR k, v IN SELECT * FROM jsonb_each(data) LOOP
+          IF jsonb_typeof(v) = 'string' AND public.iwana_is_sensitive_audit_key(k) THEN
+            scalar := v #>> '{}';
+            IF scalar IS DISTINCT FROM '[REDACTADO]' THEN
+              result := result || jsonb_build_object(k, to_jsonb('[REDACTADO]'::text));
+            ELSE
+              result := result || jsonb_build_object(k, v);
+            END IF;
+          ELSIF jsonb_typeof(v) IN ('object', 'array') THEN
+            result := result || jsonb_build_object(
+              k,
+              public.iwana_redact_sensitive_audit_jsonb(v)
+            );
+          ELSE
+            result := result || jsonb_build_object(k, v);
+          END IF;
+        END LOOP;
+
+        RETURN result;
+      END;
+      $fn$
+    
+query: 
+      UPDATE public.platform_audit_logs
+      SET new_value = public.iwana_redact_sensitive_audit_jsonb(new_value)
+      WHERE new_value IS NOT NULL
+        AND new_value IS DISTINCT FROM public.iwana_redact_sensitive_audit_jsonb(new_value)
+    
+query: 
+      UPDATE public.platform_audit_logs
+      SET old_value = public.iwana_redact_sensitive_audit_jsonb(old_value)
+      WHERE old_value IS NOT NULL
+        AND old_value IS DISTINCT FROM public.iwana_redact_sensitive_audit_jsonb(old_value)
+    
+query: DROP FUNCTION IF EXISTS public.iwana_redact_sensitive_audit_jsonb(jsonb)
+query: DROP FUNCTION IF EXISTS public.iwana_is_sensitive_audit_key(text)
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419205000,"RedactResidualAuditPii1784419205000"]
+Migration RedactResidualAuditPii1784419205000 has been executed successfully.
+query: SET LOCAL iwana.audit_maintenance = 'on'
+query: 
+  CREATE OR REPLACE FUNCTION public.iwana_is_pii_audit_key_v2(key text)
+  RETURNS boolean
+  LANGUAGE sql
+  IMMUTABLE
+  AS $pred$
+    WITH norm AS (
+      SELECT lower(
+        regexp_replace(
+          regexp_replace(key, '([a-z0-9])([A-Z])', '\1_\2', 'g'),
+          '([A-Z]+)([A-Z][a-z])', '\1_\2', 'g'
+        )
+      ) AS k
+    )
+    SELECT
+      -- Exclusiones explícitas: ganan sobre cualquier otro criterio.
+      lower(key) NOT IN ('actorname', 'piiaaccess')
+      -- Direcciones tecnicas: identifican una maquina, no un domicilio.
+      AND (SELECT k FROM norm) !~ '(^|_)(ip|mac|remote)_address$'
+      AND (
+        (SELECT k FROM norm) ~ '(^|_)(email|encrypted|phone|document_number|nit|address|(contact|person|customer|holder|owner|subscriber|responsible|technician|uploaded_by|directed_to)_name)$'
+        OR lower(key) IN (
+          'email', 'value', 'whatsapp', 'nit', 'nitdv', 'nit_dv', 'fullname',
+          'businessname', 'business_name', 'razonsocial', 'razon_social',
+          'firstname', 'first_name', 'lastname', 'last_name',
+          'displayname', 'display_name', 'legalname', 'legal_name',
+          'address', 'birthdate', 'birth_date',
+          'contactphone', 'contact_phone', 'contactname', 'contact_name',
+          'altcontactphone', 'alt_contact_phone',
+          'adminemail', 'admin_email', 'contactemail', 'contact_email',
+          'emailprimary', 'email_primary', 'emailsecondary', 'email_secondary',
+          'documentnumber', 'document_number', 'nationalid', 'national_id',
+          'identification', 'identificacion', 'cedula', 'cédula',
+          'phone', 'mobile', 'telefono', 'teléfono', 'celular',
+          'phonenumber', 'phone_number', 'mobilenumber', 'mobile_number',
+          'sitecontactphone', 'site_contact_phone',
+          'phoneprimary', 'phone_primary', 'phonesecondary', 'phone_secondary',
+          'temporarypassword', 'ciphertext',
+          'customerdisplayname', 'customer_display_name',
+          'expedientefullname', 'expediente_full_name',
+          'fiscalname', 'fiscal_name',
+          'suggestedpartyname', 'suggested_party_name'
+        )
+        OR key ~* '(password|secret|token|credential|apikey|api.?key|private.?key|authorization|otp|qr|seed|recovery|backup|ciphertext)'
+      )
+  $pred$
+
+query: 
+  CREATE OR REPLACE FUNCTION public.iwana_redact_audit_jsonb_v2(data jsonb)
+  RETURNS jsonb
+  LANGUAGE plpgsql
+  IMMUTABLE
+  AS $redact$
+  DECLARE
+    result jsonb := '{}'::jsonb;
+    arr jsonb := '[]'::jsonb;
+    k text;
+    v jsonb;
+    i int;
+    scalar_value text;
+  BEGIN
+    IF data IS NULL THEN
+      RETURN NULL;
+    END IF;
+
+    IF jsonb_typeof(data) = 'array' THEN
+      IF jsonb_array_length(data) IS NULL OR jsonb_array_length(data) = 0 THEN
+        RETURN arr;
+      END IF;
+      FOR i IN 0 .. jsonb_array_length(data) - 1 LOOP
+        arr := arr || jsonb_build_array(public.iwana_redact_audit_jsonb_v2(data -> i));
+      END LOOP;
+      RETURN arr;
+    END IF;
+
+    IF jsonb_typeof(data) <> 'object' THEN
+      RETURN data;
+    END IF;
+
+    FOR k, v IN SELECT * FROM jsonb_each(data) LOOP
+      IF jsonb_typeof(v) = 'string' AND public.iwana_is_pii_audit_key_v2(k) THEN
+        scalar_value := v #>> '{}';
+        IF scalar_value IS DISTINCT FROM '[REDACTADO]' THEN
+          result := result || jsonb_build_object(k, to_jsonb('[REDACTADO]'::text));
+        ELSE
+          result := result || jsonb_build_object(k, v);
+        END IF;
+      ELSIF jsonb_typeof(v) IN ('object', 'array') THEN
+        result := result || jsonb_build_object(k, public.iwana_redact_audit_jsonb_v2(v));
+      ELSE
+        result := result || jsonb_build_object(k, v);
+      END IF;
+    END LOOP;
+
+    RETURN result;
+  END;
+  $redact$
+
+query: 
+    UPDATE public.platform_audit_logs
+    SET new_value = public.iwana_redact_audit_jsonb_v2(new_value)
+    WHERE new_value IS NOT NULL
+      AND new_value IS DISTINCT FROM public.iwana_redact_audit_jsonb_v2(new_value)
+  
+query: 
+    UPDATE public.platform_audit_logs
+    SET old_value = public.iwana_redact_audit_jsonb_v2(old_value)
+    WHERE old_value IS NOT NULL
+      AND old_value IS DISTINCT FROM public.iwana_redact_audit_jsonb_v2(old_value)
+  
+query: DROP FUNCTION IF EXISTS public.iwana_redact_audit_jsonb_v2(jsonb)
+query: DROP FUNCTION IF EXISTS public.iwana_is_pii_audit_key_v2(text)
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419206000,"RedactAuditPiiSuffixGap1784419206000"]
+Migration RedactAuditPiiSuffixGap1784419206000 has been executed successfully.
+query: 
+      ALTER TABLE public.tenants
+      ADD COLUMN IF NOT EXISTS principal_admin_user_id UUID
+    
+query: 
+      COMMENT ON COLUMN public.tenants.principal_admin_user_id IS
+        'Administrador principal del tenant (FK logica a <schema_name>.users.id). Designacion explicita y auditada — ADR-063. NULL mientras el tenant no tenga ADMIN activo.'
+    
+query: 
+      DO $$
+      DECLARE
+        tenant_row RECORD;
+        principal_id uuid;
+      BEGIN
+        FOR tenant_row IN
+          SELECT id, schema_name
+            FROM public.tenants
+           WHERE schema_name IS NOT NULL
+        LOOP
+          IF NOT EXISTS (
+            SELECT 1
+              FROM information_schema.tables
+             WHERE table_schema = tenant_row.schema_name
+               AND table_name = 'users'
+          ) THEN
+            CONTINUE;
+          END IF;
+
+          EXECUTE format(
+            'SELECT id FROM %I.users
+              WHERE role = ''ADMIN'' AND deleted_at IS NULL
+              ORDER BY created_at ASC
+              LIMIT 1',
+            tenant_row.schema_name
+          ) INTO principal_id;
+
+          IF principal_id IS NOT NULL THEN
+            UPDATE public.tenants
+               SET principal_admin_user_id = principal_id
+             WHERE id = tenant_row.id;
+          END IF;
+        END LOOP;
+      END
+      $$;
+    
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419207000,"AddTenantPrincipalAdmin1784419207000"]
+Migration AddTenantPrincipalAdmin1784419207000 has been executed successfully.
+query: CREATE EXTENSION IF NOT EXISTS pg_trgm
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419207000,"EnablePgTrgm1784419207000"]
+Migration EnablePgTrgm1784419207000 has been executed successfully.
+query: SELECT to_regclass('public.media_assets') IS NOT NULL AS present
+query: ALTER TABLE "public"."media_assets"
+       ADD COLUMN IF NOT EXISTS "asset_status" VARCHAR(32) NOT NULL DEFAULT 'AVAILABLE'
+query: ALTER TABLE "public"."media_assets"
+       ADD COLUMN IF NOT EXISTS "claim_ref" VARCHAR(500)
+query: ALTER TABLE "public"."media_assets"
+       ADD COLUMN IF NOT EXISTS "checksum_sha256" CHAR(64)
+query: SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = 'public.media_assets'::regclass
+         AND conname = $1 -- PARAMETERS: ["chk_media_assets_usage"]
+query: ALTER TABLE "public"."media_assets"
+       DROP CONSTRAINT IF EXISTS "chk_media_assets_usage"
+query: ALTER TABLE "public"."media_assets"
+       ADD CONSTRAINT "chk_media_assets_usage" CHECK (
+         "usage" IN (
+           'logo', 'seal', 'favicon', 'login_background', 'general',
+           'execution_evidence'
+         )
+       )
+query: SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = 'public.media_assets'::regclass
+         AND conname = $1 -- PARAMETERS: ["chk_media_assets_asset_status"]
+query: ALTER TABLE "public"."media_assets"
+       ADD CONSTRAINT "chk_media_assets_asset_status" CHECK (
+         "asset_status" IN ('QUARANTINED', 'AVAILABLE', 'REJECTED', 'EXPIRED', 'DELETED')
+       )
+query: CREATE INDEX IF NOT EXISTS "idx_media_assets_status_claim"
+       ON "public"."media_assets" ("asset_status", "claim_ref")
+       WHERE "deleted_at" IS NULL
+query: CREATE INDEX IF NOT EXISTS "idx_media_assets_checksum"
+       ON "public"."media_assets" ("checksum_sha256")
+       WHERE "checksum_sha256" IS NOT NULL
+query: DELETE FROM "public"."typeorm_migrations" WHERE "name" = $1 -- PARAMETERS: ["AddMediaAssetStatusAndClaim0200000000000"]
+query: INSERT INTO "typeorm_migrations"("timestamp", "name") VALUES ($1, $2) -- PARAMETERS: [1784419208000,"AddMediaAssetStatusAndClaim1784419208000"]
+Migration AddMediaAssetStatusAndClaim1784419208000 has been executed successfully.
+query: COMMIT
+
+> @iwana/db@0.1.0 migration:tenant:run C:\appiw\packages\database
+> node dist/cli/tenant-migrate.js
+
+[MIGRATOR] Global lock acquired
+[MIGRATOR] Starting migrations for 0 tenant(s)
+[MIGRATOR] Global lock released
+[MIGRATOR] All tenants migrated successfully
+
+> iwana-next@0.1.0 db:apply-least-privilege C:\appiw
+> node scripts/db/apply-least-privilege.mjs
+
+apply-least-privilege: modo docker (iwana_postgres_e2e)
+GRANT
+GRANT
+GRANT
+GRANT
+GRANT
+GRANT
+CREATE FUNCTION
+DROP EVENT TRIGGER
+CREATE EVENT TRIGGER
+DO
+DO
+DO
+DO
+SEC-04 apply-least-privilege: OK (revisar ownership con verify script)
+apply-least-privilege: OK
+ Image iwana-e2e-r41-worker-e2e Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 513B 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 3.29kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:25.8.2-bookworm
+#3 DONE 0.9s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 415B done
+#4 DONE 0.0s
+
+#5 [base 1/3] FROM docker.io/library/node:25.8.2-bookworm@sha256:ccfc02deb6abb1b70b6ef21d3d93b3f671c0de6f463ff331cf0ea0a28ad875c9
+#5 resolve docker.io/library/node:25.8.2-bookworm@sha256:ccfc02deb6abb1b70b6ef21d3d93b3f671c0de6f463ff331cf0ea0a28ad875c9 0.0s done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 210.53kB 0.3s done
+#6 DONE 0.4s
+
+#7 [builder 2/9] COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
+#7 CACHED
+
+#8 [builder 3/9] COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+#8 CACHED
+
+#9 [builder 5/9] COPY --from=deps /app/packages/storage/node_modules ./packages/storage/node_modules
+#9 CACHED
+
+#10 [deps 10/11] COPY packages/ui/package.json       packages/ui/
+#10 CACHED
+
+#11 [builder 4/9] COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+#11 CACHED
+
+#12 [deps  1/11] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+#12 CACHED
+
+#13 [deps  6/11] COPY packages/config/package.json   packages/config/
+#13 CACHED
+
+#14 [deps 11/11] RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+#14 CACHED
+
+#15 [builder 1/9] COPY --from=deps /app/node_modules ./node_modules
+#15 CACHED
+
+#16 [deps  4/11] COPY apps/web/package.json          apps/web/
+#16 CACHED
+
+#17 [deps  2/11] COPY apps/api/package.json          apps/api/
+#17 CACHED
+
+#18 [base 2/3] WORKDIR /app
+#18 CACHED
+
+#19 [deps  5/11] COPY apps/worker/package.json       apps/worker/
+#19 CACHED
+
+#20 [deps  8/11] COPY packages/shared/package.json   packages/shared/
+#20 CACHED
+
+#21 [base 3/3] RUN npm install -g pnpm@10.32.1
+#21 CACHED
+
+#22 [deps  9/11] COPY packages/storage/package.json  packages/storage/
+#22 CACHED
+
+#23 [deps  3/11] COPY apps/portal/package.json       apps/portal/
+#23 CACHED
+
+#24 [deps  7/11] COPY packages/database/package.json packages/database/
+#24 CACHED
+
+#25 [builder 6/9] COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
+#25 CACHED
+
+#26 [builder 7/9] COPY . .
+#26 DONE 1.6s
+
+#27 [builder 8/9] RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+#27 1.037 Scope: all 10 workspace projects
+#27 1.053 Fetching Node.js 24.13.1 ...
+#27 9.953 Recreating /app/node_modules
+#27 28.39 Lockfile is up to date, resolution step is skipped
+#27 28.50 Progress: resolved 1, reused 0, downloaded 0, added 0
+#27 28.72 Packages: +1167
+#27 28.72 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#27 29.50 Progress: resolved 1167, reused 0, downloaded 3, added 0
+#27 30.50 Progress: resolved 1167, reused 0, downloaded 125, added 81
+#27 31.50 Progress: resolved 1167, reused 0, downloaded 298, added 298
+#27 32.50 Progress: resolved 1167, reused 0, downloaded 437, added 435
+#27 33.50 Progress: resolved 1167, reused 0, downloaded 682, added 684
+#27 34.50 Progress: resolved 1167, reused 0, downloaded 759, added 764
+#27 35.51 Progress: resolved 1167, reused 0, downloaded 876, added 881
+#27 36.51 Progress: resolved 1167, reused 0, downloaded 949, added 950
+#27 37.51 Progress: resolved 1167, reused 0, downloaded 1114, added 1118
+#27 38.51 Progress: resolved 1167, reused 0, downloaded 1155, added 1160
+#27 39.51 Progress: resolved 1167, reused 0, downloaded 1158, added 1163
+#27 40.51 Progress: resolved 1167, reused 0, downloaded 1159, added 1164
+#27 44.51 Progress: resolved 1167, reused 0, downloaded 1160, added 1164
+#27 45.51 Progress: resolved 1167, reused 0, downloaded 1160, added 1165
+#27 46.68 Progress: resolved 1167, reused 0, downloaded 1161, added 1165
+#27 47.68 Progress: resolved 1167, reused 0, downloaded 1162, added 1166
+#27 48.15 Progress: resolved 1167, reused 0, downloaded 1162, added 1167, done
+#27 49.24 
+#27 49.24 dependencies:
+#27 49.24 + cross-env 10.1.0
+#27 49.24 
+#27 49.24 devDependencies:
+#27 49.24 + @axe-core/playwright 4.11.1
+#27 49.24 + @commitlint/cli 19.8.1
+#27 49.24 + @commitlint/config-conventional 19.8.1
+#27 49.24 + @playwright/test 1.58.2
+#27 49.24 + @typescript-eslint/eslint-plugin 8.57.0
+#27 49.24 + @typescript-eslint/parser 8.57.0
+#27 49.24 + eslint 9.39.4
+#27 49.24 + eslint-config-prettier 9.1.2
+#27 49.24 + husky 9.1.7
+#27 49.24 + lint-staged 15.5.2
+#27 49.24 + prettier 3.8.1
+#27 49.24 + turbo 2.10.8
+#27 49.24 + typescript 5.9.3
+#27 49.24 
+#27 49.30 Done in 48.8s using pnpm v10.32.1
+#27 DONE 51.2s
+
+#28 [builder 9/9] RUN pnpm exec tsc --project packages/shared/tsconfig.json &&     pnpm exec tsc --project packages/storage/tsconfig.json &&     pnpm exec tsc --project packages/database/tsconfig.json &&     pnpm exec tsc --project apps/worker/tsconfig.json
+#28 DONE 10.8s
+
+#29 [runner 1/9] WORKDIR /app
+#29 CACHED
+
+#30 [runner 2/9] RUN addgroup --system --gid 1001 nodejs &&     adduser --system --uid 1001 worker
+#30 CACHED
+
+#31 [runner 3/9] COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
+#31 DONE 21.2s
+
+#32 [runner 4/9] COPY --from=builder --chown=worker:nodejs /app/apps/worker ./apps/worker
+#32 DONE 0.9s
+
+#33 [runner 5/9] COPY --from=builder --chown=worker:nodejs /app/packages/shared ./packages/shared
+#33 DONE 0.3s
+
+#34 [runner 6/9] COPY --from=builder --chown=worker:nodejs /app/packages/database ./packages/database
+#34 DONE 0.3s
+
+#35 [runner 7/9] COPY --from=builder --chown=worker:nodejs /app/packages/storage ./packages/storage
+#35 DONE 0.1s
+
+#36 [runner 8/9] RUN rm -f /app/apps/worker/.env /app/apps/worker/.env.*
+#36 DONE 0.3s
+
+#37 [runner 9/9] WORKDIR /app/apps/worker
+#37 DONE 0.1s
+
+#38 exporting to image
+#38 exporting layers
+#38 exporting layers 28.8s done
+#38 exporting manifest sha256:853c96be09bffd12754d012781353f6bb17bdef6d981892e81793d11c52b070c 0.0s done
+#38 exporting config sha256:c10f9f3027da7c65fe238894252cf42a617e3202d1ee22483ea75d0e57833bf6 0.0s done
+#38 exporting attestation manifest sha256:cdaa79723844703a296a425121cb94504e65d58ed41c2c48246e0921df3191fb 0.0s done
+#38 exporting manifest list sha256:dbbcf3497d2539dc500aad76eb3a72268cb9bc83ff5544aa55f7450e9caafa82 0.0s done
+#38 naming to docker.io/library/iwana-e2e-r41-worker-e2e:latest
+#38 naming to docker.io/library/iwana-e2e-r41-worker-e2e:latest done
+#38 unpacking to docker.io/library/iwana-e2e-r41-worker-e2e:latest
+#38 unpacking to docker.io/library/iwana-e2e-r41-worker-e2e:latest 32.0s done
+#38 DONE 61.0s
+
+#39 resolving provenance for metadata file
+#39 DONE 0.0s
+ Image iwana-e2e-r41-worker-e2e Built 
+ Container iwana_postgres_e2e Running 
+ Container iwana_redis_e2e Running 
+ Container iwana_minio_e2e Running 
+ Container iwana_typesense_e2e Running 
+ Container iwana_worker_e2e Creating 
+ Container iwana_worker_e2e Created 
+ Container iwana_postgres_e2e Waiting 
+ Container iwana_redis_e2e Waiting 
+ Container iwana_minio_e2e Waiting 
+ Container iwana_typesense_e2e Waiting 
+ Container iwana_typesense_e2e Healthy 
+ Container iwana_redis_e2e Healthy 
+ Container iwana_postgres_e2e Healthy 
+ Container iwana_minio_e2e Healthy 
+ Container iwana_worker_e2e Starting 
+ Container iwana_worker_e2e Started 
+ Container iwana_typesense_e2e Waiting 
+ Container iwana_postgres_e2e Waiting 
+ Container iwana_worker_e2e Waiting 
+ Container iwana_redis_e2e Waiting 
+ Container iwana_minio_e2e Waiting 
+ Container iwana_redis_e2e Healthy 
+ Container iwana_minio_e2e Healthy 
+ Container iwana_typesense_e2e Healthy 
+ Container iwana_postgres_e2e Healthy 
+ Container iwana_worker_e2e Healthy 
+NAME               IMAGE                      COMMAND                  SERVICE      CREATED         STATUS                   PORTS
+iwana_worker_e2e   iwana-e2e-r41-worker-e2e   "docker-entrypoint.s…"   worker-e2e   8 seconds ago   Up 5 seconds (healthy)   
+E2E_API_LOG=C:\Users\SLEYB\AppData\Local\Temp\opencode\api-e2e-r43.log
+E2E_API_HEALTH=OK
+E2E_SUPERVISION_FIXTURE=role:NOC|sources:1|profilePermission:true|assignment:true|responsibility:true|permission:true
+E2E_OPERATIONAL_SITE=d5aef131-d258-4a0f-8d94-4bbe551007ac
+E2E_SUPERVISION_DB={"userRole" : "NOC", "userStatus" : "ACTIVE", "profilePermissionRows" : 1, "siteAssignmentRows" : 1, "siteResponsibilityRows" : 1}
+E2E_TEMPLATE_CREATED=44af33b1-6ad2-4188-90b0-41f0bc7c6842
+E2E_VERSION_CREATED=07695d06-14ba-4f22-b632-001b36fdc0dc
+E2E_VERSION_PUBLISHED=07695d06-14ba-4f22-b632-001b36fdc0dc
+E2E_TEMPLATE_CREATED=f07e71d4-2033-4511-9999-b08aee56f128
+E2E_VERSION_CREATED=86ca207c-c9db-4595-9851-fa5bf83d032b
+E2E_VERSION_PUBLISHED=86ca207c-c9db-4595-9851-fa5bf83d032b
+E2E_TEMPLATE=OK|happy_path_template_id=44af33b1-6ad2-4188-90b0-41f0bc7c6842
+E2E_SETUP=OK|tenants=e2e-r1-r41-msaett3t-5d2773,e2e-tenant-b-msaett3t-5d2773
+
+Running 26 tests using 1 worker
+
+  ok  1 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:615:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1a. Crear evento de agenda → OT asignada (289ms)
+  ok  2 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:690:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1b. Iniciar OT (start) (145ms)
+  ok  3 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:709:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1c. Registrar actividad de campo (154ms)
+  ok  4 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:748:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1d. Registrar consumo de ítem (176ms)
+  ok  5 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:815:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1e. Subir evidencia y registrar (725ms)
+  ok  6 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:909:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1e-bis. Registrar evidencia de firma del cliente (247ms)
+  ok  7 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:991:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1f. Cerrar OT exitosamente (146ms)
+  ok  8 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1027:5 › Execution Orders — flujo operativo E2E (P1-2) › 1. Happy path — ciclo completo de OT › 1g. Verificar estado final de la OT (117ms)
+  ok  9 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1048:5 › Execution Orders — flujo operativo E2E (P1-2) › 2. Inmutabilidad terminal › 2a. OT cerrada rechaza registro de actividad (107ms)
+  ok 10 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1078:5 › Execution Orders — flujo operativo E2E (P1-2) › 2. Inmutabilidad terminal › 2b. OT cerrada rechaza consumo de ítem (109ms)
+  ok 11 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1101:5 › Execution Orders — flujo operativo E2E (P1-2) › 2. Inmutabilidad terminal › 2c. OT cerrada rechaza evidencia (105ms)
+  ok 12 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1131:5 › Execution Orders — flujo operativo E2E (P1-2) › 3. Concurrencia e idempotencia › 3a. Setup: crear OT para test de concurrencia (228ms)
+  ok 13 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1204:5 › Execution Orders — flujo operativo E2E (P1-2) › 3. Concurrencia e idempotencia › 3b. Cierre concurrente con misma idempotency-key → solo uno succeede (178ms)
+  ok 14 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1281:5 › Execution Orders — flujo operativo E2E (P1-2) › 4. Rate limiting › 4a. Ráfaga de requests → 429 después del límite (1.2s)
+  ok 15 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1323:5 › Execution Orders — flujo operativo E2E (P1-2) › 4. Rate limiting › 4b. Headers X-RateLimit-Remaining presentes en respuestas exitosas (128ms)
+  ok 16 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1341:5 › Execution Orders — flujo operativo E2E (P1-2) › 5. Permisos y autorización › 5a. Sin token → 401 (70ms)
+  ok 17 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1348:5 › Execution Orders — flujo operativo E2E (P1-2) › 5. Permisos y autorización › 5b. Coordinador sin execute → 403 en comandos (82ms)
+  ok 18 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1363:5 › Execution Orders — flujo operativo E2E (P1-2) › 5. Permisos y autorización › 5c. Coordinador sin execute → 403 también en close (87ms)
+  ok 19 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1378:5 › Execution Orders — flujo operativo E2E (P1-2) › 5. Permisos y autorización › 5d. Coordinador con supervise puede asignar (260ms)
+  ok 20 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1447:5 › Execution Orders — flujo operativo E2E (P1-2) › 6. BOLA — aislamiento multi-inquilino › 6a. Inquilino A no puede acceder OT de inquilino B → 404 (452ms)
+  ok 21 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1482:5 › Execution Orders — flujo operativo E2E (P1-2) › 7. Ciclo de vida de evidencia › 7a. Setup: crear y empezar OT para evidencia (233ms)
+  ok 22 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1551:5 › Execution Orders — flujo operativo E2E (P1-2) › 7. Ciclo de vida de evidencia › 7b. Verificar relay health endpoint (112ms)
+  ok 23 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1562:5 › Execution Orders — flujo operativo E2E (P1-2) › 7. Ciclo de vida de evidencia › 7c. Verificar reconciliation endpoint (84ms)
+  ok 24 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1573:5 › Execution Orders — flujo operativo E2E (P1-2) › 7. Ciclo de vida de evidencia › 7d. Cerrar OT de evidencia con follow-up (119ms)
+  ok 25 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1604:5 › Execution Orders — flujo operativo E2E (P1-2) › 8. R2.3 — gate MATERIAL y concurrencia PostgreSQL › 8a. cierra con material correcto y rechaza material de otra categoría (943ms)
+  ok 26 [api-chromium] › e2e\tests\api\execution-orders-operational.spec.ts:1836:5 › Execution Orders — flujo operativo E2E (P1-2) › 8. R2.3 — gate MATERIAL y concurrencia PostgreSQL › 8b. Promise.all versiona plantilla y consecutivos sin duplicar OT (324ms)
+
+  26 passed (10.4s)
+E2E_PLAYWRIGHT_EXIT=0
+E2E_CLEANUP=DISABLED|slugs=e2e-r1-r41-msaett3t-5d2773,e2e-tenant-b-msaett3t-5d2773

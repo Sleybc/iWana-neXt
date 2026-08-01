@@ -1,0 +1,18 @@
+﻿FILTRO de api-e2e-r44.log — lineas de senal (ANSI removido). Original: %TEMP%\opencode\api-e2e-r44.log
+Total lineas original: 639 | lineas de senal: 15
+---
+[8:37:06 a. m.] Found 0 errors. Watching for file changes.
+[Nest] 13400  - 01/08/2026, 8:37:09 a. m.     LOG [RouterExplorer] Mapped {/api/v1/tenants/:id/retry-provisioning, PATCH} route +0ms
+[Nest] 13400  - 01/08/2026, 8:37:10 a. m.     LOG [NestApplication] Nest application successfully started +2ms
+[Nest] 13400  - 01/08/2026, 8:37:10 a. m.     LOG [TenantService] Tenant creado: id=4be718d2-faa6-4f6f-957b-a39c3c1fcf9a slug=e2e-r1-r41-msaf080b-4f9521
+[Nest] 13400  - 01/08/2026, 8:37:10 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-r1-r41-msaf080b-4f9521 (4be718d2-faa6-4f6f-957b-a39c3c1fcf9a)
+[Nest] 13400  - 01/08/2026, 8:37:10 a. m.     LOG [TenantService] Tenant creado: id=3cc61dc7-d2de-4c54-a832-4e87526d7ac1 slug=e2e-tenant-b-msaf080b-4f9521
+[Nest] 13400  - 01/08/2026, 8:37:10 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-tenant-b-msaf080b-4f9521 (3cc61dc7-d2de-4c54-a832-4e87526d7ac1)
+(node:13400) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nest] 13400  - 01/08/2026, 8:37:25 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=347da9d8-4981-4243-b786-8a34228a8ea5 tenant=tenant_e2e_r1_r41_msaf080b_4f9521 mime=image/jpeg bytes=516]
+[Nest] 13400  - 01/08/2026, 8:37:25 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=347da9d8-4981-4243-b786-8a34228a8ea5 claimRef=tenant_e2e_r1_r41_msaf080b_4f9521:7fb20ea3-379e-450a-b581-a9479ed57499]
+[Nest] 13400  - 01/08/2026, 8:37:26 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=dce1a98c-6b59-43ee-8161-831e27c15bc8 tenant=tenant_e2e_r1_r41_msaf080b_4f9521 mime=image/jpeg bytes=516]
+[Nest] 13400  - 01/08/2026, 8:37:26 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=dce1a98c-6b59-43ee-8161-831e27c15bc8 claimRef=tenant_e2e_r1_r41_msaf080b_4f9521:7fb20ea3-379e-450a-b581-a9479ed57499]
+[Nest] 13400  - 01/08/2026, 8:37:31 a. m.     LOG [TenantService] Tenant marcado para eliminacion: id=4be718d2-faa6-4f6f-957b-a39c3c1fcf9a schema=tenant_e2e_r1_r41_msaf080b_4f9521
+[Nest] 13400  - 01/08/2026, 8:37:31 a. m.     LOG [TenantService] Tenant marcado para eliminacion: id=3cc61dc7-d2de-4c54-a832-4e87526d7ac1 schema=tenant_e2e_tenant_b_msaf080b_4f9521

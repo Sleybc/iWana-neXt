@@ -1,0 +1,30 @@
+﻿FILTRO de api-e2e-r42.log — lineas de senal (ANSI removido). Original: %TEMP%\opencode\api-e2e-r42.log
+Total lineas original: 748 | lineas de senal: 27
+---
+[8:15:22 a. m.] Found 0 errors. Watching for file changes.
+[Nest] 25320  - 01/08/2026, 8:15:25 a. m.     LOG [RouterExplorer] Mapped {/api/v1/tenants/:id/retry-provisioning, PATCH} route +0ms
+[Nest] 25320  - 01/08/2026, 8:15:26 a. m.     LOG [NestApplication] Nest application successfully started +1ms
+[Nest] 25320  - 01/08/2026, 8:15:27 a. m.     LOG [TenantService] Tenant creado: id=4054656c-d2bf-426c-a14d-2b2def5e77ec slug=e2e-r1-r41-msae4v8y-6f4703
+[Nest] 25320  - 01/08/2026, 8:15:27 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-r1-r41-msae4v8y-6f4703 (4054656c-d2bf-426c-a14d-2b2def5e77ec)
+[Nest] 25320  - 01/08/2026, 8:15:27 a. m.     LOG [TenantService] Tenant creado: id=ad67c103-cba2-4f8d-8035-a38ea3fa35df slug=e2e-tenant-b-msae4v8y-6f4703
+[Nest] 25320  - 01/08/2026, 8:15:27 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-tenant-b-msae4v8y-6f4703 (ad67c103-cba2-4f8d-8035-a38ea3fa35df)
+(node:25320) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nest] 25320  - 01/08/2026, 8:15:43 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=28deeb84-bdcb-4c10-baad-ddf35ee0014d tenant=tenant_e2e_r1_r41_msae4v8y_6f4703 mime=image/jpeg bytes=516]
+[Nest] 25320  - 01/08/2026, 8:15:43 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=28deeb84-bdcb-4c10-baad-ddf35ee0014d claimRef=tenant_e2e_r1_r41_msae4v8y_6f4703:a7603313-f589-4a68-bdd4-6c1906a42295]
+[Nest] 25320  - 01/08/2026, 8:15:43 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=f870da2b-b0d8-440f-9c36-686335e36f94 tenant=tenant_e2e_r1_r41_msae4v8y_6f4703 mime=image/jpeg bytes=516]
+[Nest] 25320  - 01/08/2026, 8:15:43 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=f870da2b-b0d8-440f-9c36-686335e36f94 claimRef=tenant_e2e_r1_r41_msae4v8y_6f4703:a7603313-f589-4a68-bdd4-6c1906a42295]
+query failed: INSERT INTO "work_orders"("id", "tenant_id", "code", "type", "status", "priority", "assigned_user_id", "scheduled_event_id", "source_context", "source_ref", "summary", "notes", "created_by", "closed_by", "closed_at", "created_at", "updated_at", "deleted_at") VALUES (DEFAULT, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "priority", "created_at", "updated_at", "deleted_at" -- PARAMETERS: ["4054656c-d2bf-426c-a14d-2b2def5e77ec","WO-20260801-007","INSTALLATION","OPEN","NORMAL","0a876a11-98ce-4034-82c6-dc3d8eee218f","322c077d-cbbc-4aa5-9aea-0adf87c66238","MANUAL",null,"E2E R2.3 consecutivo-a",null,"11a5c1f0-b977-46aa-9f24-df65e5004edb"]
+error: error: duplicate key value violates unique constraint "uq_work_orders_tenant_code"
+query failed: SELECT COUNT(*) AS "count" FROM "work_orders" "wo" WHERE ( "wo"."code" LIKE $1 AND "wo"."tenant_id" = $2 ) AND ( "wo"."deleted_at" IS NULL ) -- PARAMETERS: ["WO-20260801-%","4054656c-d2bf-426c-a14d-2b2def5e77ec"]
+error: error: current transaction is aborted, commands ignored until end of transaction block
+QueryFailedError: current transaction is aborted, commands ignored until end of transaction block
+[Nest] 25320  - 01/08/2026, 8:15:53 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=71c4c1c3-e8b5-434c-96ea-fa0abc5ac3f9 tenant=tenant_e2e_r1_r41_msae4v8y_6f4703 mime=image/jpeg bytes=516]
+[Nest] 25320  - 01/08/2026, 8:15:53 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=71c4c1c3-e8b5-434c-96ea-fa0abc5ac3f9 claimRef=tenant_e2e_r1_r41_msae4v8y_6f4703:bf1d8d58-9e34-4f20-8a95-ed42d0ded630]
+[Nest] 25320  - 01/08/2026, 8:16:54 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=c30683b6-a25b-42e1-a310-98f6afd04d2a tenant=tenant_e2e_r1_r41_msae4v8y_6f4703 mime=image/jpeg bytes=516]
+[Nest] 25320  - 01/08/2026, 8:16:54 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=c30683b6-a25b-42e1-a310-98f6afd04d2a claimRef=tenant_e2e_r1_r41_msae4v8y_6f4703:bf1d8d58-9e34-4f20-8a95-ed42d0ded630]
+query failed: INSERT INTO "work_orders"("id", "tenant_id", "code", "type", "status", "priority", "assigned_user_id", "scheduled_event_id", "source_context", "source_ref", "summary", "notes", "created_by", "closed_by", "closed_at", "created_at", "updated_at", "deleted_at") VALUES (DEFAULT, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT) RETURNING "id", "status", "priority", "created_at", "updated_at", "deleted_at" -- PARAMETERS: ["4054656c-d2bf-426c-a14d-2b2def5e77ec","WO-20260801-014","INSTALLATION","OPEN","NORMAL","0a876a11-98ce-4034-82c6-dc3d8eee218f","4a59871e-862b-4c93-9aab-fb7ff0ec9dbb","MANUAL",null,"E2E R2.3 consecutivo-b",null,"11a5c1f0-b977-46aa-9f24-df65e5004edb"]
+error: error: duplicate key value violates unique constraint "uq_work_orders_tenant_code"
+query failed: SELECT COUNT(*) AS "count" FROM "work_orders" "wo" WHERE ( "wo"."code" LIKE $1 AND "wo"."tenant_id" = $2 ) AND ( "wo"."deleted_at" IS NULL ) -- PARAMETERS: ["WO-20260801-%","4054656c-d2bf-426c-a14d-2b2def5e77ec"]
+error: error: current transaction is aborted, commands ignored until end of transaction block
+QueryFailedError: current transaction is aborted, commands ignored until end of transaction block

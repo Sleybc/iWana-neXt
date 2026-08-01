@@ -1,0 +1,54 @@
+﻿FILTRO de api-e2e-r41.log — lineas de senal (ANSI removido). Original: %TEMP%\opencode\api-e2e-r41.log
+Total lineas original: 2092 | lineas de senal: 51
+---
+[7:15:17 a. m.] Found 0 errors. Watching for file changes.
+[Nest] 13756  - 01/08/2026, 7:15:21 a. m.     LOG [RouterExplorer] Mapped {/api/v1/tenants/:id/retry-provisioning, PATCH} route +0ms
+[Nest] 13756  - 01/08/2026, 7:15:22 a. m.     LOG [NestApplication] Nest application successfully started +2ms
+[Nest] 13756  - 01/08/2026, 7:15:23 a. m.     LOG [TenantService] Tenant creado: id=87113806-af3b-4083-9b94-5b1b3584d959 slug=e2e-r1-r41-msac2y5f-0f6cc3
+[Nest] 13756  - 01/08/2026, 7:15:23 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-r1-r41-msac2y5f-0f6cc3 (87113806-af3b-4083-9b94-5b1b3584d959)
+[Nest] 13756  - 01/08/2026, 7:15:23 a. m.     LOG [TenantService] Tenant creado: id=5e4c5838-6624-4c38-bfb0-977b85b2e6cf slug=e2e-tenant-b-msac2y5f-0f6cc3
+[Nest] 13756  - 01/08/2026, 7:15:23 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-tenant-b-msac2y5f-0f6cc3 (5e4c5838-6624-4c38-bfb0-977b85b2e6cf)
+(node:13756) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nest] 13756  - 01/08/2026, 7:15:38 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=df1709ba-c8bd-4c50-b636-8cfb985669bd tenant=tenant_e2e_r1_r41_msac2y5f_0f6cc3 mime=image/jpeg bytes=516]
+[Nest] 13756  - 01/08/2026, 7:15:38 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=df1709ba-c8bd-4c50-b636-8cfb985669bd claimRef=tenant_e2e_r1_r41_msac2y5f_0f6cc3:94b8ec67-17c8-4ac3-b932-f4d843ff607e]
+[Nest] 13756  - 01/08/2026, 7:15:38 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=0227be88-6e7d-45ff-979e-29b963cf656c tenant=tenant_e2e_r1_r41_msac2y5f_0f6cc3 mime=image/jpeg bytes=516]
+[Nest] 13756  - 01/08/2026, 7:15:39 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=0227be88-6e7d-45ff-979e-29b963cf656c claimRef=tenant_e2e_r1_r41_msac2y5f_0f6cc3:94b8ec67-17c8-4ac3-b932-f4d843ff607e]
+[Nest] 13756  - 01/08/2026, 7:15:47 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=119696bc-3786-4410-a81e-a1a2e4701e33 tenant=tenant_e2e_r1_r41_msac2y5f_0f6cc3 mime=image/jpeg bytes=516]
+[Nest] 13756  - 01/08/2026, 7:15:47 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=119696bc-3786-4410-a81e-a1a2e4701e33 claimRef=tenant_e2e_r1_r41_msac2y5f_0f6cc3:84b75e77-e107-4801-83bc-2d542a1218e4]
+[Nest] 13756  - 01/08/2026, 7:16:50 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=78a057f7-9f20-4205-8201-a656c88ba6c8 tenant=tenant_e2e_r1_r41_msac2y5f_0f6cc3 mime=image/jpeg bytes=516]
+[Nest] 13756  - 01/08/2026, 7:16:50 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=78a057f7-9f20-4205-8201-a656c88ba6c8 claimRef=tenant_e2e_r1_r41_msac2y5f_0f6cc3:84b75e77-e107-4801-83bc-2d542a1218e4]
+[7:29:34 a. m.] Found 0 errors. Watching for file changes.
+[Nest] 18732  - 01/08/2026, 7:29:37 a. m.     LOG [RouterExplorer] Mapped {/api/v1/tenants/:id/retry-provisioning, PATCH} route +0ms
+[Nest] 18732  - 01/08/2026, 7:29:38 a. m.     LOG [NestApplication] Nest application successfully started +2ms
+[Nest] 18732  - 01/08/2026, 7:29:39 a. m.     LOG [TenantService] Tenant creado: id=705dad7c-261e-431d-831a-c6267877c3fd slug=e2e-r1-r41-msaci44f-5c9308
+[Nest] 18732  - 01/08/2026, 7:29:39 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-r1-r41-msaci44f-5c9308 (705dad7c-261e-431d-831a-c6267877c3fd)
+[Nest] 18732  - 01/08/2026, 7:29:39 a. m.     LOG [TenantService] Tenant creado: id=15d24e8c-f712-4d38-b7ed-9497f47a7a12 slug=e2e-tenant-b-msaci44f-5c9308
+[Nest] 18732  - 01/08/2026, 7:29:39 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-tenant-b-msaci44f-5c9308 (15d24e8c-f712-4d38-b7ed-9497f47a7a12)
+(node:18732) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nest] 18732  - 01/08/2026, 7:29:54 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=8e5f9957-a1e2-415b-b231-95247ba303e0 tenant=tenant_e2e_r1_r41_msaci44f_5c9308 mime=image/jpeg bytes=516]
+[Nest] 18732  - 01/08/2026, 7:29:55 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=8e5f9957-a1e2-415b-b231-95247ba303e0 claimRef=tenant_e2e_r1_r41_msaci44f_5c9308:0fc6f41b-cab1-46c4-8dce-8d3174bc07f5]
+[Nest] 18732  - 01/08/2026, 7:29:55 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=f7b93557-70a0-49cd-948d-b20c5ed24c79 tenant=tenant_e2e_r1_r41_msaci44f_5c9308 mime=image/jpeg bytes=516]
+[Nest] 18732  - 01/08/2026, 7:29:55 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=f7b93557-70a0-49cd-948d-b20c5ed24c79 claimRef=tenant_e2e_r1_r41_msaci44f_5c9308:0fc6f41b-cab1-46c4-8dce-8d3174bc07f5]
+[Nest] 18732  - 01/08/2026, 7:30:03 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=bcdf78a7-7e87-4e64-8bfd-48af76dc3060 tenant=tenant_e2e_r1_r41_msaci44f_5c9308 mime=image/jpeg bytes=516]
+[Nest] 18732  - 01/08/2026, 7:30:03 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=bcdf78a7-7e87-4e64-8bfd-48af76dc3060 claimRef=tenant_e2e_r1_r41_msaci44f_5c9308:8dc50e49-29d5-4c73-be2b-084608843e53]
+[Nest] 18732  - 01/08/2026, 7:31:06 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=50d7f671-3995-4600-954f-1810120085f9 tenant=tenant_e2e_r1_r41_msaci44f_5c9308 mime=image/jpeg bytes=516]
+[Nest] 18732  - 01/08/2026, 7:31:06 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=50d7f671-3995-4600-954f-1810120085f9 claimRef=tenant_e2e_r1_r41_msaci44f_5c9308:8dc50e49-29d5-4c73-be2b-084608843e53]
+[7:36:07 a. m.] Found 0 errors. Watching for file changes.
+[Nest] 4668  - 01/08/2026, 7:36:10 a. m.     LOG [RouterExplorer] Mapped {/api/v1/tenants/:id/retry-provisioning, PATCH} route +0ms
+[Nest] 4668  - 01/08/2026, 7:36:10 a. m.     LOG [NestApplication] Nest application successfully started +2ms
+[Nest] 4668  - 01/08/2026, 7:36:11 a. m.     LOG [TenantService] Tenant creado: id=1c9feeba-c038-42b4-ac35-cc833bd61a89 slug=e2e-r1-r41-msacqk7y-0a2ce6
+[Nest] 4668  - 01/08/2026, 7:36:11 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-r1-r41-msacqk7y-0a2ce6 (1c9feeba-c038-42b4-ac35-cc833bd61a89)
+[Nest] 4668  - 01/08/2026, 7:36:11 a. m.     LOG [TenantService] Tenant creado: id=aa22ff91-5eeb-4c23-8548-6f56ce2c977f slug=e2e-tenant-b-msacqk7y-0a2ce6
+[Nest] 4668  - 01/08/2026, 7:36:11 a. m.     LOG [TenantProvisioningService] Job de provisioning encolado para tenant e2e-tenant-b-msacqk7y-0a2ce6 (aa22ff91-5eeb-4c23-8548-6f56ce2c977f)
+(node:4668) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[Nest] 4668  - 01/08/2026, 7:36:26 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=f6ff4cdc-f811-4561-9ca1-0602b7dae66d tenant=tenant_e2e_r1_r41_msacqk7y_0a2ce6 mime=image/jpeg bytes=516]
+[Nest] 4668  - 01/08/2026, 7:36:26 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=f6ff4cdc-f811-4561-9ca1-0602b7dae66d claimRef=tenant_e2e_r1_r41_msacqk7y_0a2ce6:b93df834-a2a2-484f-b92b-71604faf7859]
+[Nest] 4668  - 01/08/2026, 7:36:27 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=78463169-b80e-4f76-a0d2-d46bf73a8b82 tenant=tenant_e2e_r1_r41_msacqk7y_0a2ce6 mime=image/jpeg bytes=516]
+[Nest] 4668  - 01/08/2026, 7:36:27 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=78463169-b80e-4f76-a0d2-d46bf73a8b82 claimRef=tenant_e2e_r1_r41_msacqk7y_0a2ce6:b93df834-a2a2-484f-b92b-71604faf7859]
+[Nest] 4668  - 01/08/2026, 7:36:36 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=5fd2b4a7-2a38-4173-a3d9-6964d6163efa tenant=tenant_e2e_r1_r41_msacqk7y_0a2ce6 mime=image/jpeg bytes=516]
+[Nest] 4668  - 01/08/2026, 7:36:36 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=5fd2b4a7-2a38-4173-a3d9-6964d6163efa claimRef=tenant_e2e_r1_r41_msacqk7y_0a2ce6:7195fada-6002-4fa8-8752-5dd2fec8c822]
+[Nest] 4668  - 01/08/2026, 7:37:38 a. m.     LOG [EvidenceAssetProvider] Asset de evidencia creado [id=9dca0fdb-b831-4740-8804-36c9db832468 tenant=tenant_e2e_r1_r41_msacqk7y_0a2ce6 mime=image/jpeg bytes=516]
+[Nest] 4668  - 01/08/2026, 7:37:39 a. m.     LOG [EvidenceAssetProvider] Asset reclamado [id=9dca0fdb-b831-4740-8804-36c9db832468 claimRef=tenant_e2e_r1_r41_msacqk7y_0a2ce6:7195fada-6002-4fa8-8752-5dd2fec8c822]

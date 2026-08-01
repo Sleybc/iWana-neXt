@@ -1,0 +1,34 @@
+# Evidencia — Remediación G6/G7 MOD09–MOD11 (R4.1 vertical + cobertura R4.2)
+
+Salidas **reales** capturadas el 2026-08-01 (runs R4.1 vertical) y cobertura regenerada por la corrida previa (`--coverage`). No son afirmaciones: son la salida de los comandos y los artefactos de medición.
+
+| Archivo | Comando | Resultado |
+| --- | --- | --- |
+| `provision-run5.txt` | `node scripts/e2e-provision-operational.mjs` (R4.1 vertical run5, RunId `msaett3t`) | **26/26 passed · exit 0** (`ok 1..26`, cero `not ok`); `E2E_CLEANUP=DISABLED` (entorno retenido para inspección) |
+| `provision-run6.txt` | `node scripts/e2e-provision-operational.mjs` (R4.1 vertical run6, RunId `msaf080b`) | **26/26 passed · exit 0** (`ok 1..26`, cero `not ok`); `E2E_CLEANUP=OK` (cleanup completo) |
+| `api-e2e-r41.filtered.txt` | log de API `%TEMP%\opencode\api-e2e-r41.log` (filtrato, ANSI removido) | Corridas previas de iteración R4.1 (RunIds `msac2y5f`, `msaci44f`, `msacqk7y`, horas 7:15–7:37): API arranca 3 veces sin errores de compilación; sin `QueryFailedError` |
+| `api-e2e-r42.filtered.txt` | log de API `%TEMP%\opencode\api-e2e-r42.log` (filtrato, ANSI removido) | **Corrida run4 (RunId `msae4v8y`, 8:15): 25/26** — contiene la firma del defecto 8b (`duplicate key` en `uq_work_orders_tenant_code` + `transaction aborted` ×2, casos `consecutivo-a`/`consecutivo-b`). Es el "antes" del fix de carrera; no es corrida de referencia |
+| `api-e2e-r43.filtered.txt` | log de API `%TEMP%\opencode\api-e2e-r43.log` (filtrato, ANSI removido) | **Corrida run5 (RunId `msaett3t`, 8:34–8:35): 26/26** — API arranca sin errores, sin `QueryFailedError`; evidencia de assets creada/reclamada |
+| `api-e2e-r44.filtered.txt` | log de API `%TEMP%\opencode\api-e2e-r44.log` (filtrato, ANSI removido) | **Corrida run6 (RunId `msaf080b`, 8:36–8:37): 26/26** — API arranca sin errores, sin `QueryFailedError`; tenants marcados para eliminación (`E2E_CLEANUP=OK`) |
+| `lcov.info` | `pnpm --filter @iwana/api test --coverage` (override Babel acotado `<8.0.0`), corrida previa 2026-08-01 | **API global 79.66% stmts / 80.49% lines**; core `src/modules/tasks/services` **83.18% stmts / 83.6% lines** (230 suites / 2849 tests) |
+| `coverage-final.json` | ídem (formato JSON de Istanbul) | Mismas métricas; 3.5 MB, no el `{}` vacío de `docs/quality/r5-exec-orders-coverage/` (carpeta eliminada, superada por esta evidencia) |
+
+El reporte HTML navegable (`lcov-report/`, 672 archivos) es **regenerable** y no se archiva en el repo (patrón de evidencia lean, igual que `evidence-fase-05b/`); se regenera con `pnpm --filter @iwana/api test --coverage` desde cualquier checkout.
+
+## Notas de verificación (cómo reproducir)
+
+- **R4.1 vertical:** `node scripts/e2e-provision-operational.mjs` desde la raíz del repo con Postgres + Redis + worker BullMQ provisionados. Produce `provision-run{N}.txt` con el TAP de `execution-orders-operational.spec.ts`. Los RunIds `msaett3t`/`msaf080b` son los slugs de tenant de cada corrida (ver `E2E_SETUP=OK|tenants=e2e-r1-r41-msaett3t-5d2773,...` y `...-msaf080b-4f9521` en cada archivo).
+- **Cobertura:** `pnpm --filter @iwana/api test --coverage`. Requiere el override de Babel acotado a `>=7.29.6 <8.0.0` en `pnpm-workspace.yaml` (sin techo, la suite aborta con 31 errores). Los artefactos se regeneran en `apps/api/coverage/` (gitignored); esta carpeta es la copia archivada.
+- **Cifras verificadas sobre los artefactos:** total lines `16165/20083 = 80.49%` (lcov.info); core `tasks/services` 10 archivos → stmts 83.18%, lines 83.60% (coverage-final.json). Coinciden con `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.3/§15.5 y CHECKLIST §6.
+- **Logs de API:** los originales viven en `%TEMP%\opencode\` (`api-e2e-r4*.log`); se archivó versión filtrada (líneas de señal, ANSI removido) con referencia al original porque el log completo es ruido de boot de NestJS. Ningún log contiene credenciales ni tokens (`eyJ`/Bearer ausentes).
+
+## Filtro de PII
+
+- Escaneados por emails, `password`/`passwd` literales, tokens `eyJ*`/Bearer, connection strings y claves: **sin coincidencias** en los seis archivos fuente.
+- Las únicas ocurrencias tipo "email" son la constante documental `admin@iwana.co` (semántica de una columna en texto de migración, no dato personal) y referencias DDL a columnas `password_hash`/`mfa_secret` (esquema, no valores).
+- No se requirió redacción; si en el futuro se re-generan estos archivos con logs de aplicación real, aplicar el mismo escaneo antes de archivar.
+
+## Agente y fecha
+
+- **Agente:** AI-SR-QA (Sr. Dev QA/Testing) · **Fecha de archivo:** 2026-08-01.
+- Evidencia soporta: QA-36 (E2E vertical 26/26 ×2), QA-41 (E2E 8b en verde), QA-23/R0 (migraciones), cobertura R4.2 (gate "Tests ≥80% core modules" — core 83.18% stmts). Ver `CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` §7.5 e `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.9/§15.11.1.
