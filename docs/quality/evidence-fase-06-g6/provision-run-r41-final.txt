@@ -1,0 +1,19 @@
+# R4.1 E2E operativo — evidencia sanitizada
+
+Fecha: 2026-08-01
+Plataforma: Windows local, Node 24, Playwright 1.58.2
+Infraestructura: API compilada, PostgreSQL, Redis, MinIO, Typesense y worker BullMQ reales
+Retries Playwright: 0
+
+E2E_SETUP=OK
+E2E_PLAYWRIGHT_PASSED=29
+E2E_PLAYWRIGHT_FAILED=0
+E2E_PLAYWRIGHT_SKIPPED=0
+E2E_PLAYWRIGHT_DID_NOT_RUN=0
+E2E_PLAYWRIGHT_FLAKY=0
+E2E_PLAYWRIGHT_EXIT=0
+E2E_PLAYWRIGHT_DURATION_MS=70034
+E2E_CLEANUP=OK
+E2E_TOTAL_DURATION_MS=237953
+
+No se archivan tokens, cookies, credenciales, payloads ni reportes brutos.

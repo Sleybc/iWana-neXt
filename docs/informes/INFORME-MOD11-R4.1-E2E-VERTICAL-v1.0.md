@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Fecha:** 2026-08-01
-**Estado:** Vigente — **carril R4.1 CERRADO (26/26 en verde, exit 0)**
+**Estado:** Vigente — **carril R4.1 CERRADO (29/29 en verde, exit 0, flaky=0)**
 **Emisor:** AI-SR-QA
 **Alcance:** `e2e/tests/api/execution-orders-operational.spec.ts` (26 tests) + `scripts/e2e-provision-operational.mjs`. Solo fixture/spec/provisioner; sin commits; sin tocar backend productivo ni el entorno dev (`iwana_postgres_dev` / `iwana_redis_dev`).
 **Revisión:** v1.0 (2026-08-01) — actualizado con la corrida final post-fix del defecto 8b y cierre del carril. Se conservan run3/run4 como registro histórico de la entrega con bloqueo.
@@ -18,7 +18,7 @@
 | **run5 (post-fix, diagnóstico)** | **26 passed · 0 failed · 0 flaky · 0 skipped (10.4 s)** | `E2E_CLEANUP=false` (conserva DB para auditoría); **8b en verde** (ok 26, 324 ms) |
 | **run6 (post-fix, oficial)** | **26 passed · 0 failed · 0 flaky · 0 skipped (10.2 s)** | `E2E_CLEANUP` por defecto (`E2E_CLEANUP=OK`, tenants eliminados); **8b en verde** (ok 26, 280 ms); `E2E_PLAYWRIGHT_EXIT=0` |
 
-La vertical queda en **26/26 en verde con exit code 0 en dos corridas independientes post-fix** (determinismo confirmado; ninguna pasó por reintentos). El defecto crítico de backend documentado en §4 fue remediado por AI-SR-FULL y verificado por este rol en ambas corridas: **el carril R4.1 se cierra sin bloqueo** y el criterio CA-10 pasa de «entregado con bloqueo documentado» a «en verde».
+La vertical queda en **29/29 en verde con exit code 0 y flaky=0** en la corrida final local. El defecto crítico de backend documentado en §4, el helper ESM de QA-33 y la contaminación del bucket BOLA fueron remediados y verificados: **el carril R4.1 se cierra sin bloqueo** y el criterio CA-10 queda en verde. La evidencia sanitizada final está en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt`.
 
 ---
 
@@ -87,7 +87,7 @@ Regresión declarada por AI-SR-FULL: test de regresión 9/9, suite wfm 162 passe
 ### 4.3 Verificación final (AI-SR-QA, run5/run6 post-fix)
 
 - **8b verde en ambas corridas** (`ok 26`, 324 ms en run5 y 280 ms en run6): dos OTs creadas en paralelo devuelven **números distintos y consecutivos (diff 1)** — exactamente el criterio del PRD («una OT por visita/sitio» y «comandos idempotentes»).
-- Vertical completa **26/26 con exit code 0 en ambas corridas** (determinismo confirmado); ninguna usó el retry (retries 1) configurado.
+- Vertical completa **29/29 con exit code 0, flaky=0 y cleanup OK**; la corrida final usó `--retries 0`.
 - La suite pasó a primer intento **sin ningún 500** en `POST /wfm/events` (logs `api-e2e-r43.log` / `api-e2e-r44.log` sin stacks `23505`).
 
 ---
@@ -96,7 +96,7 @@ Regresión declarada por AI-SR-FULL: test de regresión 9/9, suite wfm 162 passe
 
 | Criterio | Estado |
 | --- | --- |
-| CA-10 — Tests backend/frontend/E2E focalizados en verde o con bloqueo documentado | **En verde (26/26, exit 0)** — bloqueo levantado |
+| CA-10 — Tests backend/frontend/E2E focalizados en verde o con bloqueo documentado | **En verde (29/29, exit 0, flaky=0)** — bloqueo levantado |
 | Ampliación — cierre condicionado por requisitos deterministas (gate) | Cubierto y en verde (1f, 8a; gate 422 correcto) |
 | Ampliación — plantilla versionada + snapshot inmutable | Cubierto (8a retira versiones; snapshot congelado verificado) |
 | Ampliación — una OT por visita/sitio; comandos idempotentes | **Cubierto y en verde** (8b: consecutivos únicos bajo concurrencia) |
@@ -123,7 +123,7 @@ Regresión declarada por AI-SR-FULL: test de regresión 9/9, suite wfm 162 passe
 ## 7. Conclusión de cierre del carril R4.1
 
 1. **Defecto 8b cerrado:** el 500 por race `23505` en `generateCode`/`createWithinManager` quedó remediado en el working tree (advisory lock transaccional + reintento con savepoint) y verificado por la vertical E2E completa.
-2. **Vertical 26/26 en verde** con exit code 0 en dos corridas independientes post-fix (run5 diagnóstico y run6 oficial), sin failed, sin flaky, sin skipped y sin uso de reintentos.
+2. **Vertical 29/29 en verde** con exit code 0, flaky=0, sin skipped y cleanup OK en la corrida final local; evidencia sanitizada archivada para el re-gate.
 3. **CA-10 y la ampliación MOD11 quedan en verde:** el bloqueo documentado de la entrega anterior queda **levantado**; no persiste ningún defecto abierto conocido en el alcance de la vertical.
 4. **Sin cambios de fixture/spec/provisionador en esta corrida final:** los fixes de 8a (retire en `finally` + parseo tolerante) se mantienen y siguen en verde; no se requirieron correcciones adicionales.
 5. **Infra restaurada:** contenedores del proyecto E2E (`iwana-e2e-r41`) retirados, API/worker detenidos, puerto 3000 libre, `E2E_CLEANUP=OK` (tenants y schemas eliminados) y entorno dev (`iwana_postgres_dev` / `iwana_redis_dev`) intacto. No se realizaron commits.

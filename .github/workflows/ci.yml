@@ -445,6 +445,11 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      # Prueba local del parser/gate: 29/0/0/0/0 pasa; 28 o flaky > 0 falla.
+      # No necesita servicios ni produce reportes.
+      - name: Validate E2E marker gate logic
+        run: node scripts/e2e-provision-operational.mjs --validate-playwright-markers
+
       # ── Credenciales efímeras por corrida (masked) ────────────────────────
       # El provisioner exige PLATFORM_SUPER_ADMIN_EMAIL/PASSWORD (fallback
       # E2E_PLATFORM_*) y la API exige EXECUTION_ORDER_IDEMPOTENCY_SECRET
@@ -505,8 +510,9 @@ jobs:
 
       # ── Verificación explícita de gates E2E ───────────────────────────────
       # El job FALLA si cualquiera de: E2E_SETUP=OK ausente, exit ≠ 0, tests
-      # fallidos > 0, skipped > 0, did-not-run > 0, passed < 26, resumen de
-      # Playwright sin parsear, o E2E_CLEANUP=OK ausente/FAILED/DISABLED.
+      # fallidos > 0, skipped > 0, did-not-run > 0, flaky/retried > 0,
+      # passed < 29 (REQUIRED_OPERATIONAL_E2E_PASSED en el provisioner),
+      # resumen de Playwright sin parsear, o E2E_CLEANUP=OK ausente/FAILED/DISABLED.
       # Condiciones explícitas sobre los marcadores publicados por el
       # provisioner (log teeed en el paso e2e); no confía en exit codes solos.
       # Ausencia de evidencia = fallo, nunca falso verde.
@@ -518,33 +524,8 @@ jobs:
           set -euo pipefail
           LOG="/tmp/e2e-provision.log"
 
-          fail() { echo "::error title=E2E gate::$1"; exit 1; }
-
-          [[ -s "$LOG" ]] || fail "El provisioner no dejó log (/tmp/e2e-provision.log ausente o vacío)."
-
-          grep -q '^E2E_SETUP=OK' "$LOG" || fail "E2E_SETUP=OK ausente (provisioning incompleto)."
-          grep -q '^E2E_PLAYWRIGHT_EXIT=0' "$LOG" || fail "E2E_PLAYWRIGHT_EXIT != 0 (tests o runner fallaron)."
-          grep -q '^E2E_PLAYWRIGHT_COUNTS=UNPARSED' "$LOG" && fail "El resumen de conteos de Playwright no se pudo parsear."
-          grep -q '^E2E_CLEANUP=OK' "$LOG" || fail "E2E_CLEANUP=OK ausente (cleanup no confirmado)."
-          grep -q '^E2E_CLEANUP=FAILED' "$LOG" && fail "E2E_CLEANUP=FAILED presente."
-          grep -q '^E2E_CLEANUP=DISABLED' "$LOG" && fail "E2E_CLEANUP=DISABLED (E2E_CLEANUP debe ser true en CI)."
-
-          # Defaults: marcador ausente = evidencia ausente = fallo.
-          PASSED=$(grep -oE '^E2E_PLAYWRIGHT_PASSED=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
-          FAILED=$(grep -oE '^E2E_PLAYWRIGHT_FAILED=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
-          SKIPPED=$(grep -oE '^E2E_PLAYWRIGHT_SKIPPED=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
-          NOT_RUN=$(grep -oE '^E2E_PLAYWRIGHT_DID_NOT_RUN=[0-9]+' "$LOG" | tail -1 | cut -d= -f2 || true)
-          [[ -n "$PASSED" ]] || PASSED=0
-          [[ -n "$FAILED" ]] || FAILED=1
-          [[ -n "$SKIPPED" ]] || SKIPPED=1
-          [[ -n "$NOT_RUN" ]] || NOT_RUN=1
-
-          [[ "$FAILED" -eq 0 ]] || fail "Tests fallidos: $FAILED (debe ser 0)."
-          [[ "$SKIPPED" -eq 0 ]] || fail "Tests skipped: $SKIPPED (debe ser 0)."
-          [[ "$NOT_RUN" -eq 0 ]] || fail "Tests sin ejecutar: $NOT_RUN (debe ser 0)."
-          [[ "$PASSED" -ge 26 ]] || fail "Tests passed: $PASSED (mínimo 26)."
-
-          echo "✅ Gates E2E R4.1 OK: setup OK, exit 0, passed=$PASSED failed=$FAILED skipped=$SKIPPED, cleanup OK"
+          [[ -s "$LOG" ]] || { echo "::error title=E2E gate::El provisioner no dejó log (/tmp/e2e-provision.log ausente o vacío)."; exit 1; }
+          node scripts/e2e-provision-operational.mjs --verify-playwright-markers "$LOG"
 
       # ── Diagnóstico en fallo ──────────────────────────────────────────────
       # Si el provision script o los tests fallan, se capturan las últimas
@@ -602,7 +583,7 @@ jobs:
             echo "  docker logs:   ${{ steps.docker-logs.outcome }}"
             echo ""
             echo "marcadores E2E (no secretos):"
-            grep -E '^(E2E_SETUP=OK|E2E_PLAYWRIGHT_(EXIT|PASSED|FAILED|SKIPPED|DID_NOT_RUN|DURATION_MS)=|E2E_TOTAL_DURATION_MS=|E2E_CLEANUP=OK)' \
+            grep -E '^(E2E_SETUP=OK|E2E_PLAYWRIGHT_(EXIT|PASSED|FAILED|SKIPPED|DID_NOT_RUN|FLAKY|DURATION_MS)=|E2E_TOTAL_DURATION_MS=|E2E_CLEANUP=OK)' \
               /tmp/e2e-provision.log 2>/dev/null || echo "  (sin marcadores en el log)"
           } > "$SUMMARY"
 

@@ -459,11 +459,11 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | Carril | Veredicto (auditoría 2026-07-31) | Estado 2026-08-01 tras remediación verificada |
 | --- | --- | --- |
 | **R0 — Desbloqueo** | **NO-GO** | **REMEDIADO Y VERIFICADO**: migración **099** aplicada en los 44 schemas; CHECK acepta `PENDING`; INSERT/UPDATE de intent con `PENDING` probado contra PostgreSQL real (ROLLBACK); integración postgres **2/2**; swagger **4/4**; typecheck 0 errores. El literal `status: 'PENDING'` de `execution-orders.service.ts:1292` ya es válido. |
-| **R1 — Ciclo funcional** | **GO con reservas** | Reserva cerrada: la afirmación de §15.4/§15.9 sobre flujo completo ahora está respaldada por la vertical real R4.1 **26/26, exit 0** (run5/run6). |
+| **R1 — Ciclo funcional** | **GO con reservas** | Reserva cerrada: la afirmación de §15.4/§15.9 sobre flujo completo está respaldada por la vertical real R4.1 **29/29, exit 0, flaky=0** (corrida final, evidencia sanitizada en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt`). |
 | **R2 — Recuperabilidad** | **GO** | P0-SEC-01 `nodemailer` 9.0.3, P0-SEC-02 con test 15/15, QA-33 5/5 + E2E 4a–4e, QA-49 115/115 y AppSec v1.1. |
 | **R3 — Plataforma** | **NO-GO** | **Migrations reversible** con evidencia ejecutable R3.4 (public 20/20 revert; tenant 95/95 + revert de la 099 con datos; runbook corregido). Fuera de este gate: ensayo rollback por componente/imagen y restores global/tenant. CI `execution-orders-e2e` sigue sin pushear (garantía de regresión, no sustituto de corrida). |
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
-| **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 26/26 ×2**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
+| **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
 
 **Nota:** esta tabla registra el estado de remediación y su verificación cruzada; el **veredicto formal de G6/G7 lo emite AI-EM-ARCH** sobre este expediente y no se auto-otorga en este documento.
 
@@ -606,8 +606,8 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 | Condición §14.6 | Estado | Evidencia |
 | --- | --- | --- |
 | R0 como bloqueante absoluto | **CERRADO** | QA independiente verificó PostgreSQL real. Cadena tenant aplicada, POST de OT operativo, outbox drena, typecheck verde. |
-| Flujo completo contra API, PostgreSQL y Redis reales | **CERRADO** | Corrida real **R4.1 run6** 2026-08-01: **26/26 passed, exit 0**, dos corridas independientes (run5/run6) sin reintentos ni flaky. Provisionado por `scripts/e2e-provision-operational.mjs` con migraciones + worker BullMQ real. `INFORME-MOD11-R4.1-E2E-VERTICAL-v1.0.md`. El job `execution-orders-e2e` queda como garantía de regresión, no como sustituto de corrida. |
-| Salida archivada con conteo explícito de passed | **CERRADO** | `provision-run5.txt`/`provision-run6.txt` (RunIds `msaett3t`, `msaf080b`): `ok 1..26`, cero `not ok`, `E2E_CLEANUP=OK`. El job de CI conserva artefactos (trace, screenshot, video) para regresión. |
+| Flujo completo contra API, PostgreSQL y Redis reales | **CERRADO** | Corrida final **R4.1** 2026-08-01: **29/29 passed, exit 0, flaky=0, cleanup OK**. Provisionado por `scripts/e2e-provision-operational.mjs` con migraciones + worker BullMQ real; evidencia sanitizada en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt`. El job `execution-orders-e2e` queda como garantía de regresión y G6.5 aún exige su ejecución Linux. |
+| Salida archivada con conteo explícito de passed | **CERRADO** | Corrida final local: **29/29**, `E2E_PLAYWRIGHT_EXIT=0`, `E2E_PLAYWRIGHT_FLAKY=0`, `E2E_CLEANUP=OK`; evidencia sanitizada en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt`. El job de CI conserva artefactos para regresión. |
 | Boundary real restablecido (Media owner del puerto) | **CERRADO** | `TasksModule` ya no registra `MediaAsset`. Provider en `media/`. Verificado en §14.5. |
 | Upload-intent persistido y compensación implementada | **CERRADO** | R1 backend: `16e26506`, `5cfb86df`, `51e0bf1f`. Idempotencia con fingerprint SHA-256, replay con clave+fingerprint idénticos, compensación de claims. |
 | Migraciones aplicables/reversibles con datos | **CERRADO** | R2.4: 59 unit + 23 integration PostgreSQL real. Downs con datos probados. |
@@ -617,7 +617,7 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 
 | Estado | Cantidad | Detalle |
 | --- | --- | --- |
-| **PASS** | 43 | QA-01–10, QA-12–17, QA-18, QA-19, QA-21, QA-22, QA-23, QA-25–33, QA-35, QA-36, QA-38–48 |
+| **PASS** | 45 | QA-01–10, QA-12–17, QA-18, QA-19, QA-21, QA-22, QA-23, QA-25–33, QA-35, QA-36, QA-38–50 |
 | **PARTIAL** | 4 | QA-11 (custodia cross-module), QA-20 (responsive), QA-24 (reconciliador — sin fault injection), QA-37 (lag métrica — telemetría completa, umbral sin aprobar) |
 | **FAIL** | **0** | Sin bloqueantes P0 ni P1 activos |
 | **Diferido CTO** | 1 | QA-34 (TLS/ingress) — autorizado por CTO 2026-07-31; requisito de G7 |
@@ -665,6 +665,7 @@ como parte del re-registro de gate.
 | Dependencia | Estado | Responsable |
 | --- | --- | --- |
 | QA-34: certificado TLS de CA reconocida | Diferido por CTO hasta definición de dominio productivo | AI-PLAT-OPS (cuando dominio definido) |
+| `EVIDENCE_UPLOAD_EXPIRED` en contrato público | Residual menor preexistente: los códigos `EVIDENCE_UPLOAD_*` no están publicados en OpenAPI ni en `@iwana/shared`; el portal conserva el mensaje genérico. No bloquea el gate congelado actual. | AI-SR-FULL + AI-FE-PLATFORM, siguiente revisión de contrato |
 | Derecho de supresión ARCO | Dependencia con Legal antes del cierre del módulo | CTO + Legal |
 | QA-37: umbral de lag formal | Instrumentado (R3.3), sin umbral aprobado — se fija sobre datos reales | AI-PLAT-OPS post-release |
 | Ensayo de rollback reproducible | Documentado en runbook, no ejecutado | AI-PLAT-OPS |
@@ -674,7 +675,7 @@ como parte del re-registro de gate.
 
 **G6 GO para merge; G6.5 pendiente de CI Linux; G7 NO-GO para producción — estado 2026-08-01.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron remediadas y verificadas:
 
-1. R4.1 vertical completa: **26/26, exit 0, ×2 corridas independientes**.
+1. R4.1 vertical completa: **29/29, exit 0, flaky=0, cleanup OK** en la corrida final local; CI Linux sigue pendiente para G6.5.
 2. R0 resuelto contra PostgreSQL real: CHECK de la 099 acepta `PENDING` en los 44 schemas; integración postgres 2/2; swagger 1.1.0 4/4.
 3. Cobertura **medida** (core `tasks/services` 83.18% stmts; API 79.66% stmts / 80.49% lines).
 4. Migraciones reversibles con evidencia ejecutable (R3.4); OpenAPI 1.1.0 con changelog.
@@ -687,7 +688,7 @@ El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6
 | Gate | Estado | Evidencia / pendiente |
 |---|---|---|
 | G6 Quality acceptance | **GO** | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas. |
-| G6.5 Merge readiness | **PENDIENTE** | `.github/workflows/ci.yml` ya exige variables efímeras, 26 tests, cero skips y cleanup. Falta ejecutar ambos jobs en Linux y archivar SHA/URL del run. |
+| G6.5 Merge readiness | **PENDIENTE** | `.github/workflows/ci.yml` ya exige variables efímeras, 29 tests, cero fallos/skips/did-not-run y flaky=0. La corrida local está archivada; falta ejecutar ambos jobs en Linux y archivar SHA/URL del run. |
 | G7 Production authorization | **NO-GO** | TLS/QA-34, rollback de componentes, restore global/tenant y aprobación CTO pendientes. |
 
 ### 15.10 Trazabilidad de artefactos de cierre
@@ -695,12 +696,12 @@ El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6
 | Artefacto | Ruta | Estado |
 | --- | --- | --- |
 | Informe vivo (este documento) | `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md` | v2.0 consolidado |
-| Checklist de calidad | `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` | v1.0 NO-GO con remediación verificada (43 PASS, 6 PARTIAL, 0 FAIL + QA-34 diferido CTO — §7.3/§7.5) |
+| Checklist de calidad | `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` | v1.0 NO-GO con remediación verificada (45 PASS, 4 PARTIAL, 0 FAIL + QA-34 diferido CTO — §7.3/§7.5) |
 | Plan de remediación | `docs/plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md` | R0–R4 ejecutados |
 | Runbook release/rollback | `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md` | v1.0 creado |
 | Runbook E2E R4.1 | `docs/runbooks/RUNBOOK-E2E-R41-OPERATIONS-v1.0.md` | v1.0 creado |
 | ADR-068 | `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` | Aprobado (G1) |
-| CI pipeline | `.github/workflows/ci.yml` | Job `execution-orders-e2e` línea 282 (rama local, no presente en `origin/main`) — garantía de regresión; la corrida de referencia para el gate es la vertical real run6 (26/26) |
+| CI pipeline | `.github/workflows/ci.yml` | Job `execution-orders-e2e` (rama local, no presente en `origin/main`) — garantía de regresión; la corrida local de referencia es 29/29 con flaky=0; G6.5 aún requiere SHA/URL de ambos jobs Linux |
 
 ### 15.11 Seis P0 que invalidaron el GO anterior — foto histórica
 
@@ -722,7 +723,7 @@ El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6
 
 | P0 | Remedio | Verificación ejecutada | Estado |
 | --- | --- | --- | --- |
-| 1. R4.1 vertical nunca completado | Fix fixture 8a (retire de versiones de material + parseo tolerante del 422) + fix backend 8b (advisory lock en `generateCode` + reintento con savepoint en `createWithinManager`) | R4.1 **26/26, exit 0, ×2** (run5/run6); defecto 8b repro determinista 2/2 → verde | **CERRADO** |
+| 1. R4.1 vertical nunca completado | Fix fixture 8a (retire de versiones de material + parseo tolerante del 422) + fix backend 8b (advisory lock en `generateCode` + reintento con savepoint en `createWithinManager`) + correcciones QA-33/BOLA | R4.1 **29/29, exit 0, flaky=0, cleanup OK**; 4e Redis real y 6a BOLA verificados en corrida final | **CERRADO** |
 | 2. §15 sustituyó corrida por cableado CI | Corrida real ejecutada y archivada | `provision-run5/6.txt` (`ok 1..26`, cero `not ok`, `E2E_CLEANUP=OK`) | **CERRADO** |
 | 3. HEAD roto (`PENDING` vs CHECK 095) | Migración **099** + unión de tipos en entidad | CHECK 099 en 44 schemas; INSERT/UPDATE `PENDING` contra PostgreSQL real con ROLLBACK; integración postgres 2/2 | **CERRADO** |
 | 4. Contratos G4 violados | OpenAPI **1.1.0** + changelog breaking en `info.description` | `tasks.swagger.spec.ts` **4/4** tras bump (verificado por AI-SR-FULL); descongelación/recongelación en §15.7 | **CERRADO** (aprobación formal AI-EM-ARCH pendiente) |

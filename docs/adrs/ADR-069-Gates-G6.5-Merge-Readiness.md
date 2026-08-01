@@ -1,8 +1,8 @@
 # ADR-069: Gate G6.5 de merge readiness
 
 **Version:** 1.0  
-**Estado:** Aprobado  
-**Aprobado por:** AI-EM-ARCH, 2026-08-01  
+**Estado:** Propuesto
+**Propuesto por:** AI-EM-ARCH, 2026-08-01
 **Fecha:** 2026-08-01  
 **Modulos:** MOD09 Programacion / MOD11 Ejecucion Operativa / Plataforma transversal / Seguridad transversal
 
