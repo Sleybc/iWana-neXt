@@ -8,7 +8,9 @@
  * - Happy path E2E: programación → inicio → actividad → consumo → evidencia → cierre
  * - Inmutabilidad terminal: OT cerrada rechaza más comandos
  * - Concurrencia: cierre concurrente con idempotencia
- * - Rate limiting: ráfagas de requests → 429 + headers
+ * - Rate limiting: ráfagas de requests → 429 + headers, aislamiento por actor
+ *   y por tenant, y fail-closed cuando el Redis real del stack E2E se detiene
+ *   (scripts/e2e-redis-fault.mjs, QA-33)
  * - Permisos: coordinador sin execute → 403, no auth → 401
  * - BOLA: inquilino A no accede a OT de inquilino B → 404
  * - Evidencia: upload → poll receipt → register → signed URL
@@ -35,7 +37,9 @@
 
 import { expect, request, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import { resolve } from 'node:path';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -404,6 +408,52 @@ async function waitForReadRateLimitReset(ctx: TestCtx, retry: number): Promise<v
       message: 'El bucket de lecturas del coordinador no alcanzó su reset contractual.',
     })
     .toBeGreaterThanOrEqual(ctx.readRateLimitResetAt);
+}
+
+/**
+ * Invoca el script de fallo de Redis del stack E2E (QA-33). El script deriva
+ * el stack de docker-compose.yml + docker-compose.e2e.yml (proyecto
+ * iwana-e2e-r41) y no acepta credenciales. Lanza con la salida del script si
+ * el subcomando termina con código != 0 (p. ej. Redis no está corriendo).
+ */
+function redisFault(subcommand: 'pause' | 'resume' | 'status'): void {
+  const scriptPath = resolve(__dirname, '../../../scripts/e2e-redis-fault.mjs');
+  try {
+    execFileSync(process.execPath, [scriptPath, subcommand], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 60_000,
+    });
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr ?? '';
+    throw new Error(
+      `El script de Redis del stack E2E falló en '${subcommand}': ` +
+        `${stderr || (error instanceof Error ? error.message : String(error))}`,
+    );
+  }
+}
+
+/**
+ * Sondea un endpoint autenticado con timeout acotado. Devuelve el status HTTP
+ * o 'ERROR' si la request no responde (con Redis real detenido, la pila JWT
+ * bloquea la request antes de llegar al throttler, así que la señal observable
+ * es "sin 2xx").
+ */
+async function probeWithTimeout(
+  page: Page,
+  path: string,
+  token: string,
+  timeoutMs: number,
+): Promise<number | 'ERROR'> {
+  try {
+    const res = await apiRequest(page).get(`${API_PREFIX}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: timeoutMs,
+    });
+    return res.status();
+  } catch {
+    return 'ERROR';
+  }
 }
 
 async function createScheduledOrder(
@@ -1332,6 +1382,150 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expect(remaining).toBeDefined();
       expect(limit).toBe('120');
       expect(Number(remaining)).toBeGreaterThanOrEqual(0);
+    });
+
+    // La clave de rate limiter incluye actorId y tenantId: el bucket de un
+    // actor debe ser independiente del de otro actor del mismo tenant.
+    test('4c. Aislamiento por actor: agotar al coordinador no afecta al técnico', async ({
+      page,
+    }, testInfo) => {
+      await waitForReadRateLimitReset(ctx, testInfo.retry);
+      const responses = [];
+      for (let offset = 0; offset < RAPID_COUNT; offset += BURST_SIZE) {
+        const batch = await Promise.all(
+          Array.from({ length: Math.min(BURST_SIZE, RAPID_COUNT - offset) }, () =>
+            authedGet(
+              page,
+              `/tasks/execution-orders/${ctx.executionOrderId}`,
+              ctx.coordinatorReadonlyToken,
+            ),
+          ),
+        );
+        responses.push(...batch);
+        for (const response of batch) rememberReadRateLimitReset(ctx, response);
+      }
+      expect(
+        responses.some((response) => response.status() === 429),
+        'El bucket del coordinador debe agotarse con 429 en la ráfaga.',
+      ).toBe(true);
+
+      // El bucket del técnico es independiente (clave distinta por actorId):
+      // su lectura sigue siendo 200 con cuota disponible en la misma ventana
+      // en que el coordinador recibe 429.
+      const techRes = await authedGet(
+        page,
+        `/tasks/execution-orders/${ctx.executionOrderId}`,
+        ctx.techToken,
+      );
+      expect(techRes.status()).toBe(200);
+      expect(Number(techRes.headers()['x-ratelimit-remaining'])).toBeGreaterThan(0);
+    });
+
+    // El bucket también incluye tenantId: una ráfaga del inquilino B no puede
+    // agotar el bucket del inquilino A. Se usa el contrato E2E_OTHER_TENANT_*
+    // que ya provisiona scripts/e2e-provision-operational.mjs (igual que 6a).
+    test('4d. Aislamiento por tenant: ráfaga del inquilino B no toca el bucket de A', async ({
+      page,
+    }, testInfo) => {
+      await waitForReadRateLimitReset(ctx, testInfo.retry);
+
+      const otherSlug = process.env.E2E_OTHER_TENANT_SLUG || 'e2e-tenant-b';
+      const otherEmail = process.env.E2E_OTHER_TENANT_EMAIL || `admin@${otherSlug}.local`;
+      const otherPassword = process.env.E2E_OTHER_TENANT_PASSWORD || 'Password123!';
+
+      let otherToken = '';
+      try {
+        const otherLogin = await tenantLogin(page, otherEmail, otherPassword, otherSlug);
+        otherToken = otherLogin.token;
+      } catch (err) {
+        throw new Error(
+          `Tenant '${otherSlug}' no disponible. Configure E2E_OTHER_TENANT_* para probar aislamiento por tenant. ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      // Lectura de referencia del inquilino A antes de la ráfaga del B.
+      const beforeRes = await authedGet(
+        page,
+        `/tasks/execution-orders/${ctx.executionOrderId}`,
+        ctx.techToken,
+      );
+      expect(beforeRes.status()).toBe(200);
+      const beforeRemaining = Number(beforeRes.headers()['x-ratelimit-remaining']);
+
+      // 120 lecturas del inquilino B sobre un recurso de A: todas 404 (BOLA),
+      // ninguna 429, porque el bucket de B es independiente (tenantId propio).
+      const otherResponses = [];
+      for (let offset = 0; offset < RAPID_COUNT - 1; offset += BURST_SIZE) {
+        const batch = await Promise.all(
+          Array.from({ length: Math.min(BURST_SIZE, RAPID_COUNT - 1 - offset) }, () =>
+            authedGet(page, `/tasks/execution-orders/${ctx.executionOrderId}`, otherToken),
+          ),
+        );
+        otherResponses.push(...batch);
+      }
+      const otherStatuses = otherResponses.map((response) => response.status());
+      expect(
+        otherStatuses.every((status) => status === 404),
+        `El bucket del inquilino B debe estar intacto (120×404, 0×429): ${JSON.stringify(otherStatuses)}`,
+      ).toBe(true);
+
+      // El bucket de A no se consumió por la ráfaga de B: la cuota del técnico
+      // solo puede bajar por su propia lectura de referencia (1 request).
+      const afterRes = await authedGet(
+        page,
+        `/tasks/execution-orders/${ctx.executionOrderId}`,
+        ctx.techToken,
+      );
+      expect(afterRes.status()).toBe(200);
+      const afterRemaining = Number(afterRes.headers()['x-ratelimit-remaining']);
+      expect(afterRemaining).toBeLessThanOrEqual(beforeRemaining);
+      expect(afterRemaining).toBeGreaterThanOrEqual(beforeRemaining - 1);
+    });
+
+    // Fail-closed con el Redis REAL del stack E2E: scripts/e2e-redis-fault.mjs
+    // detiene el contenedor del servicio redis de docker-compose.e2e.yml.
+    // Mientras está caído, la pila JWT (GET de la blacklist de jti sin command
+    // timeout) bloquea la request antes de llegar al throttler, así que la
+    // evidencia E2E es "ninguna respuesta 2xx"; el 503 RATE_LIMIT_STORE_
+    // UNAVAILABLE del guard se cubre en su unit spec con un mock de Redis.
+    test('4e. Fail-closed: con Redis real caído no hay 2xx; al restaurarlo, 200 + headers', async ({
+      page,
+    }) => {
+      // Precondición: el Redis del stack E2E debe estar corriendo para poder
+      // detenerlo. Si no, el script falla con un mensaje claro (igual que el
+      // test 6a con E2E_OTHER_TENANT_*).
+      redisFault('status');
+
+      const orderPath = `/tasks/execution-orders/${ctx.executionOrderId}`;
+      try {
+        redisFault('pause');
+
+        // Con Redis detenido, ninguna request autenticada responde 2xx.
+        await expect
+          .poll(async () => probeWithTimeout(page, orderPath, ctx.techToken, 12_000), {
+            timeout: 60_000,
+            intervals: [1_000, 5_000],
+            message: 'Con Redis real caído la API no debe responder 2xx (fail-closed).',
+          })
+          .not.toBe(200);
+      } finally {
+        // Restauración incondicional: el stack debe quedar como se encontró.
+        redisFault('resume');
+      }
+
+      // Con Redis restaurado, la misma request vuelve a responder 200 y el
+      // rate limiter vuelve a emitir sus headers contractuales.
+      await expect
+        .poll(async () => probeWithTimeout(page, orderPath, ctx.techToken, 15_000), {
+          timeout: 45_000,
+          intervals: [1_000, 2_000],
+          message: 'Tras restaurar Redis la API debe volver a responder 200.',
+        })
+        .toBe(200);
+      const recovered = await authedGet(page, orderPath, ctx.techToken);
+      expect(recovered.status()).toBe(200);
+      expect(recovered.headers()['x-ratelimit-limit']).toBe('120');
+      expect(Number(recovered.headers()['x-ratelimit-remaining'])).toBeGreaterThanOrEqual(0);
     });
   });
 

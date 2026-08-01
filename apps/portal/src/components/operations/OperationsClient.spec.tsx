@@ -544,4 +544,31 @@ describe('OperationsClient', () => {
       );
     });
   });
+
+  it('QA-49: no persiste OT en el almacenamiento del navegador al operar la consola', async () => {
+    const setItem = jest.spyOn(Storage.prototype, 'setItem');
+    const removeItem = jest.spyOn(Storage.prototype, 'removeItem');
+    const clear = jest.spyOn(Storage.prototype, 'clear');
+    // jsdom no implementa IndexedDB: si el entorno no la expone, no existe
+    // superficie de escritura que vigilar.
+    const open = typeof indexedDB === 'undefined' ? null : jest.spyOn(indexedDB, 'open');
+    const user = userEvent.setup();
+
+    render(<OperationsClient />);
+    await screen.findByText('Tarea operativa 1');
+
+    // Cambio de filtro: dispara la recarga de la lista sin tocar storage.
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }));
+    await user.click(await screen.findByRole('option', { name: 'En progreso' }));
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    if (open) expect(open).not.toHaveBeenCalled();
+
+    setItem.mockRestore();
+    removeItem.mockRestore();
+    clear.mockRestore();
+    open?.mockRestore();
+  });
 });

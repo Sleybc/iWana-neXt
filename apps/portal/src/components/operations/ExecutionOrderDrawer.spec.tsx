@@ -1196,4 +1196,83 @@ describe('ExecutionOrderDrawer', () => {
       expect(aside?.className).toContain('md:max-w-[48rem]');
     });
   });
+
+  // ----------------------------------------------------
+  // QA-49 — cero persistencia de OT en el navegador
+  // ----------------------------------------------------
+  describe('QA-49: cero persistencia de OT en el navegador', () => {
+    function spyBrowserStorage() {
+      return {
+        setItem: jest.spyOn(Storage.prototype, 'setItem'),
+        removeItem: jest.spyOn(Storage.prototype, 'removeItem'),
+        clear: jest.spyOn(Storage.prototype, 'clear'),
+        // jsdom no implementa IndexedDB: si el entorno no la expone, no existe
+        // superficie de escritura que vigilar.
+        open: typeof indexedDB === 'undefined' ? null : jest.spyOn(indexedDB, 'open'),
+      };
+    }
+
+    function expectZeroStorageWrites(spies: {
+      setItem: jest.SpyInstance;
+      removeItem: jest.SpyInstance;
+      clear: jest.SpyInstance;
+      open: jest.SpyInstance | null;
+    }) {
+      expect(spies.setItem).not.toHaveBeenCalled();
+      expect(spies.removeItem).not.toHaveBeenCalled();
+      expect(spies.clear).not.toHaveBeenCalled();
+      if (spies.open) expect(spies.open).not.toHaveBeenCalled();
+      spies.setItem.mockRestore();
+      spies.removeItem.mockRestore();
+      spies.clear.mockRestore();
+      spies.open?.mockRestore();
+    }
+
+    it('no escribe OT en storage al renderizar detalle con evidencia, actividades y materiales', () => {
+      const spies = spyBrowserStorage();
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          allowedActions: ['START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'CLOSE'],
+        }),
+        activities: activitiesFactory(),
+        itemUsage: itemUsageFactory(),
+        evidence: [...evidenceFactory(), ...customerSignatureEvidenceFactory()],
+        template: customerAcceptanceTemplateFactory(),
+      });
+
+      // El detalle se muestra completo (contenido sensible en memoria).
+      expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+      expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
+      expect(screen.getByText(/Firma · Evidencia asociada/u)).toBeInTheDocument();
+
+      expectZeroStorageWrites(spies);
+    });
+
+    it('no persiste la selección de evidencia ni la firma del cliente al operar el cierre', async () => {
+      const spies = spyBrowserStorage();
+      const user = userEvent.setup();
+      const onCloseOrder = jest.fn().mockResolvedValue(undefined);
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          allowedActions: ['REGISTER_ACTIVITY', 'REGISTER_EVIDENCE', 'CLOSE'],
+        }),
+        evidence: customerSignatureEvidenceFactory(),
+        template: customerAcceptanceTemplateFactory(),
+        onCloseOrder,
+      });
+
+      await user.type(
+        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
+        'Trabajo completado y firmado',
+      );
+      await user.click(screen.getByRole('combobox', { name: 'Referencia de evidencia' }));
+      await user.click(screen.getByRole('option', { name: /Firma del cliente/ }));
+      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      await user.click(screen.getByRole('option', { name: 'Firma' }));
+
+      expectZeroStorageWrites(spies);
+    });
+  });
 });
