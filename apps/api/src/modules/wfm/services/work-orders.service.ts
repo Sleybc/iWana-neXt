@@ -57,15 +57,27 @@ export class WorkOrdersService {
 
   /**
    * Genera un codigo unico para la Work Order en formato WO-YYYYMMDD-NNN.
-   * Cuenta cuantas WO existen en el tenant para la fecha actual y asigna el siguiente numero.
+   *
+   * Concurrencia (defecto 8b): el consecutivo se calcula bajo un advisory lock
+   * transaccional `pg_advisory_xact_lock` con clave derivada de (tenantId, fecha).
+   * Serializa el COUNT+1 de creaciones concurrentes del mismo tenant y dia dentro
+   * de la transaccion del llamador, eliminando la race sobre
+   * `uq_work_orders_tenant_code`. El lock se libera al commit/rollback de la
+   * transaccion, por lo que es compatible con pgBouncer transaction pooling.
    */
   async generateCode(
-    manager: Pick<EntityManager, 'createQueryBuilder'>,
+    manager: Pick<EntityManager, 'createQueryBuilder' | 'query'>,
     tenantId: string,
   ): Promise<string> {
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `WO-${datePart}-`;
+
+    // Advisory lock transaccional por (tenant, dia) — serializa COUNT+1 + INSERT.
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [
+      tenantId,
+      datePart,
+    ]);
 
     const { count } = await manager
       .createQueryBuilder()
@@ -104,6 +116,12 @@ export class WorkOrdersService {
     createdBy: string,
     scheduledEventId?: string,
   ): Promise<WorkOrder> {
+    // Defecto 8b: el 23505 aborta la transaccion PostgreSQL; reintentar sobre el
+    // mismo EntityManager muere con "current transaction is aborted". Se usa un
+    // savepoint por intento (patron MOD12 M2, supplier-profile.service.ts) para
+    // restaurar un estado valido antes del siguiente consecutivo.
+    const canSavepoint = typeof manager.query === 'function';
+
     for (let attempt = 0; attempt < WORK_ORDER_CODE_RETRY_LIMIT; attempt += 1) {
       const code = await this.generateCode(manager, tenantId);
 
@@ -122,6 +140,10 @@ export class WorkOrdersService {
         createdBy,
       });
 
+      if (canSavepoint) {
+        await manager.query('SAVEPOINT work_order_code_attempt');
+      }
+
       try {
         const saved = await manager.save(WorkOrder, wo);
 
@@ -133,21 +155,30 @@ export class WorkOrdersService {
         });
         await manager.save(WorkOrderTask, task);
 
+        if (canSavepoint) {
+          await manager.query('RELEASE SAVEPOINT work_order_code_attempt');
+        }
+
         return saved;
       } catch (error) {
         // Si dos transacciones compiten por el mismo consecutivo, reintentar con el siguiente.
-        if (!isWorkOrderCodeUniqueViolation(error) || attempt === WORK_ORDER_CODE_RETRY_LIMIT - 1) {
-          if (
-            attempt === WORK_ORDER_CODE_RETRY_LIMIT - 1 &&
-            isWorkOrderCodeUniqueViolation(error)
-          ) {
+        if (isWorkOrderCodeUniqueViolation(error)) {
+          // Restaurar la transaccion del llamador antes de reintentar (solo 23505
+          // por colision de consecutivo; el resto se propaga intacto).
+          if (canSavepoint) {
+            await manager.query('ROLLBACK TO SAVEPOINT work_order_code_attempt');
+          }
+
+          if (attempt === WORK_ORDER_CODE_RETRY_LIMIT - 1) {
             throw new ConflictException(
               'No fue posible generar un consecutivo unico para la Work Order',
             );
           }
 
-          throw error;
+          continue;
         }
+
+        throw error;
       }
     }
 

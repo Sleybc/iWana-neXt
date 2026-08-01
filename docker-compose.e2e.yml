@@ -1,0 +1,94 @@
+# Overlay exclusivo del E2E R4.1. Nunca se carga con el perfil production.
+# Las credenciales llegan por el entorno efímero del provisionador; no se
+# almacenan valores sensibles en este archivo.
+services:
+  postgres:
+    container_name: iwana_postgres_e2e
+    ports:
+      - '127.0.0.1:${E2E_DB_PORT:-15433}:5432'
+    volumes:
+      - iwana_postgres_data_e2e:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    container_name: iwana_redis_e2e
+    ports:
+      - '127.0.0.1:${E2E_REDIS_PORT:-16380}:6379'
+    volumes:
+      - iwana_redis_data_e2e:/data
+
+  minio:
+    container_name: iwana_minio_e2e
+    ports:
+      - '127.0.0.1:${E2E_MINIO_API_PORT:-19002}:9000'
+      - '127.0.0.1:${E2E_MINIO_CONSOLE_PORT:-19003}:9001'
+    volumes:
+      - iwana_minio_data_e2e:/data
+
+  minio-init:
+    container_name: iwana_minio_init_e2e
+
+  typesense:
+    container_name: iwana_typesense_e2e
+    ports:
+      - '127.0.0.1:${E2E_TYPESENSE_PORT:-18108}:8108'
+    volumes:
+      - iwana_typesense_data_e2e:/data
+
+  worker-e2e:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: iwana_worker_e2e
+    profiles:
+      - e2e
+    environment:
+      NODE_ENV: test
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_APP_USER:?DB_APP_USER is required}
+      DB_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?DB_MIGRATOR_USER is required}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-dbiw}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD-}
+      REDIS_DB: ${REDIS_DB:-0}
+      STORAGE_DRIVER: minio
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      S3_BUCKET: ${S3_BUCKET:-iwana-media}
+      S3_FORCE_PATH_STYLE: 'true'
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: 8108
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      typesense:
+        condition: service_healthy
+    healthcheck:
+      # El worker BullMQ no expone HTTP: el proceso vivo es el healthcheck
+      # operativo aprobado para este consumidor sin puerto de administración.
+      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  iwana_postgres_data_e2e:
+    name: iwana_postgres_data_e2e
+  iwana_redis_data_e2e:
+    name: iwana_redis_data_e2e
+  iwana_minio_data_e2e:
+    name: iwana_minio_data_e2e
+  iwana_typesense_data_e2e:
+    name: iwana_typesense_data_e2e

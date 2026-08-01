@@ -7,6 +7,30 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 const rootCwd = process.cwd();
+// Archivos Compose del perfil de desarrollo. La publicación de puertos vive en
+// el overlay `docker-compose.dev.yml` y está ligada a 127.0.0.1.
+export const devComposeFiles = ['docker-compose.yml', 'docker-compose.dev.yml'];
+const composeFileArgs = devComposeFiles.flatMap((file) => ['-f', file]);
+// Variables sin default que `docker-compose.yml` exige (`${VAR:?}`). Compose
+// interpola el documento completo antes de elegir servicios, así que faltar una
+// sola aborta el arranque con un error crudo de interpolación. El preflight las
+// valida antes para dar un mensaje accionable.
+export const requiredDevEnvVars = [
+  'DB_BOOTSTRAP_USER',
+  'DB_PASSWORD',
+  'DB_APP_USER',
+  'DB_APP_PASSWORD',
+  'DB_MIGRATOR_USER',
+  'DB_MIGRATOR_PASSWORD',
+  'MINIO_ROOT_USER',
+  'MINIO_ROOT_PASSWORD',
+  'TYPESENSE_API_KEY',
+  'PGBOUNCER_IMAGE',
+  'MINIO_IMAGE',
+  'MINIO_MC_IMAGE',
+  'NGINX_IMAGE',
+  'ADMINER_IMAGE',
+];
 const isWindows = process.platform === 'win32';
 const hasScriptCommand =
   !isWindows && spawnSync('script', ['-qc', 'true', '/dev/null'], { stdio: 'ignore' }).status === 0;
@@ -132,6 +156,92 @@ export function resolveSpawnTarget(command, args) {
 
   const resolvedCommand = resolveCommand(command);
   return buildSpawnTarget(resolvedCommand, args);
+}
+
+export function parseEnvFile(contents) {
+  const values = new Map();
+
+  for (const rawLine of String(contents).split(/\r?\n/)) {
+    const line = rawLine.trim();
+
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf('=');
+
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = line
+      .slice(0, separatorIndex)
+      .replace(/^export\s+/, '')
+      .trim();
+    let value = line.slice(separatorIndex + 1).trim();
+
+    if (
+      (value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length > 1)
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    values.set(key, value);
+  }
+
+  return values;
+}
+
+function readEnvFile(path) {
+  try {
+    return parseEnvFile(readFileSync(path, 'utf8'));
+  } catch {
+    // Ausencia de .env no es un fallo distinto: el preflight reporta las
+    // variables faltantes con el mismo mensaje accionable.
+    return new Map();
+  }
+}
+
+// Compose da precedencia al entorno del shell sobre `.env`, y `${VAR:?}` también
+// falla con valor vacío: se replica esa semántica exacta.
+export function findMissingDevEnvVars(fileValues, shellEnv = {}, names = requiredDevEnvVars) {
+  return names.filter((name) => {
+    const shellValue = shellEnv[name];
+
+    if (typeof shellValue === 'string' && shellValue.trim() !== '') {
+      return false;
+    }
+
+    const fileValue = fileValues instanceof Map ? fileValues.get(name) : fileValues?.[name];
+
+    return typeof fileValue !== 'string' || fileValue.trim() === '';
+  });
+}
+
+export function buildMissingDevEnvMessage(missing, envPath = '.env') {
+  const detalle = missing.map((name) => `  - ${name}`).join('\n');
+
+  return [
+    `Faltan ${missing.length} variable(s) obligatoria(s) del perfil de desarrollo en ${envPath}:`,
+    detalle,
+    '',
+    `Docker Compose interpola todo ${devComposeFiles[0]} antes de elegir servicios, así que`,
+    'cualquiera de estas variables ausente o vacía impide levantar la infraestructura.',
+    `Agrégalas a ${envPath} (archivo local, no versionado) tomando el contrato y los`,
+    'valores de referencia de .env.example. No copies secretos reales a archivos versionados.',
+  ].join('\n');
+}
+
+function assertDevEnv() {
+  const envPath = join(rootCwd, '.env');
+  const missing = findMissingDevEnvVars(readEnvFile(envPath), process.env);
+
+  if (missing.length === 0) {
+    return;
+  }
+
+  throw new Error(buildMissingDevEnvMessage(missing, '.env'));
 }
 
 function stripAnsi(text) {
@@ -884,6 +994,10 @@ function spawnObservedProcess(section, command, args, dashboard, options = {}) {
 }
 
 async function main() {
+  // Preflight antes de crear el dashboard: si falta una variable, el mensaje
+  // accionable debe verse en la terminal normal y no dentro del buffer alterno.
+  assertDevEnv();
+
   const dashboard = createDashboard();
   const managedChildren = [];
   let shutdownRequested = false;
@@ -919,8 +1033,7 @@ async function main() {
     'docker',
     [
       'compose',
-      '-f',
-      'docker-compose.yml',
+      ...composeFileArgs,
       'up',
       '-d',
       'postgres',
@@ -933,10 +1046,15 @@ async function main() {
     { dashboard, section: 'docker' },
   );
 
-  await runStep('Estado de la infraestructura Docker', 'docker', ['compose', 'ps'], {
-    dashboard,
-    section: 'docker',
-  });
+  await runStep(
+    'Estado de la infraestructura Docker',
+    'docker',
+    ['compose', ...composeFileArgs, 'ps'],
+    {
+      dashboard,
+      section: 'docker',
+    },
+  );
 
   await runStep('Compilando @iwana/shared', 'pnpm', ['--filter', '@iwana/shared', 'build'], {
     dashboard,

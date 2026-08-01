@@ -98,6 +98,54 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
     });
   });
 
+  describe('countTenantDiscrepancies — compatibilidad de tipos del join', () => {
+    it('castea explícitamente el UUID de operational_tasks al VARCHAR de execution_orders.task_id', async () => {
+      // `operational_tasks.id` es UUID y `execution_orders.task_id` es
+      // VARCHAR(160) (migraciones tenant 045 y 056). Sin cast, PostgreSQL
+      // aborta con "operator does not exist: uuid = character varying" y la
+      // telemetría del relay queda degradada a WARN y nunca se recolecta.
+      dataSource.query.mockResolvedValueOnce([
+        { id: 't0000000-0000-4000-8000-000000000001', schema_name: 'tenant_test001' },
+      ]);
+      queryRunner.query
+        .mockResolvedValueOnce([{ pending_count: '0', oldest_age_seconds: null, dlq_size: '0' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      await service.getPlatformRelayTelemetry();
+
+      const reconciliationSql = queryRunner.query.mock.calls
+        .map(([sql]: [string]) => sql)
+        .find((sql: string) => sql.includes('LEFT JOIN operational_tasks task'));
+
+      expect(reconciliationSql).toBeDefined();
+      expect(reconciliationSql).toMatch(/ON\s+task\.id::text\s*=\s*eo\.task_id/);
+      expect(reconciliationSql).not.toMatch(/ON\s+task\.id\s*=\s*eo\.task_id/);
+    });
+
+    it('no aborta la telemetría del tenant cuando la reconciliación devuelve filas', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 't0000000-0000-4000-8000-000000000001', schema_name: 'tenant_test001' },
+      ]);
+      queryRunner.query
+        .mockResolvedValueOnce([{ pending_count: '0', oldest_age_seconds: null, dlq_size: '0' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            execution_order_status: 'COMPLETED',
+            execution_order_result: 'EXECUTED',
+            schedule_status: 'COMPLETED',
+            visit_status: 'CLOSED',
+            task_status: 'RESOLVED',
+          },
+        ]);
+
+      const telemetry = await service.getPlatformRelayTelemetry();
+
+      expect(telemetry.reconciliationDiscrepancies).toBe(0);
+    });
+  });
+
   describe('getRelayHealth', () => {
     it('reporta medición sin veredicto cuando no hay umbral aprobado', async () => {
       queryRunner.query

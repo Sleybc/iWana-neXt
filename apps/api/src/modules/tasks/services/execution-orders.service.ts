@@ -1319,12 +1319,26 @@ export class ExecutionOrdersService {
     try {
       uploadResult = await port.createUploadIntent(schemaName, file, actor.sub);
     } catch (err: unknown) {
-      await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-        await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.intent.id, {
-          status: 'FAILED',
-          mediaAssetId: null,
+      // Compensación best-effort: marcar el intent como FAILED no puede
+      // sustituir al error real de la subida. Si el UPDATE falla, el
+      // diagnóstico que importa es el de Media, no el de la compensación, así
+      // que este catch anidado lo aísla y siempre se relanza `err`.
+      try {
+        await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+          await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.intent.id, {
+            status: 'FAILED',
+            mediaAssetId: null,
+          });
         });
-      });
+      } catch (compensationError: unknown) {
+        // Sin `message`: los QueryFailedError de TypeORM incluyen el volcado de
+        // parámetros de la sentencia y eso no puede acabar en un log.
+        this.logger.warn(
+          `No se pudo marcar el intent de evidencia ${intent.intent.id} como FAILED ` +
+            `(${compensationError instanceof Error ? compensationError.name : 'unknown'}); ` +
+            `queda para reconciliación por expiración.`,
+        );
+      }
       throw err;
     }
 

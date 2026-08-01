@@ -33,7 +33,10 @@ export class ExecutionOrderAccessGuard implements CanActivate {
       await this.executionOrdersService.assertActorCanRedrive(request.params.eventId, actor);
       return true;
     }
-    if (!id) return false;
+    // Endpoints tenant-scoped sin un recurso de OT (p. ej. health del relay)
+    // ya quedaron protegidos por JWT/RBAC/PermissionsGuard; no requieren una
+    // comprobación ABAC sobre una OT inexistente en los params.
+    if (!id) return true;
     const write = request.method !== 'GET';
     const requiresTechnicalExecution = requiredPermissions
       ? requiredPermissions.includes(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)

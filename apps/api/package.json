@@ -44,7 +44,7 @@
     "joi": "^18.2.1",
     "jszip": "^3.10.1",
     "multer": "^2.2.0",
-    "nodemailer": "^8.0.9",
+    "nodemailer": "^9.0.1",
     "otplib": "^13.3.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

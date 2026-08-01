@@ -72,6 +72,50 @@ if (bootstrapUser === appUser || bootstrapUser === migratorUser) {
 
 const sql = readFileSync(sqlPath, 'utf8');
 
+/**
+ * Evita el fallo silencioso de aplicar los GRANT en una base distinta a la que
+ * acaba de migrarse. El default de POSTGRES_CONTAINER es el contenedor de
+ * desarrollo: si otro perfil (E2E, staging local) migra contra otro puerto y no
+ * lo sobrescribe, este script "termina OK" habiendo tocado la base equivocada, y
+ * la base real queda con `iwana_app` sin privilegios sobre las tablas migradas.
+ */
+function assertContainerMatchesTarget() {
+  const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0']);
+
+  // Solo es comparable cuando las migraciones salieron por un puerto publicado
+  // en el host. Con DB_HOST apuntando a un servicio de red, `docker port` no
+  // dice nada útil y no se bloquea.
+  if (!loopbackHosts.has(dbHost)) {
+    return;
+  }
+
+  const published = spawnSync('docker', ['port', container, '5432/tcp'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  if (published.status !== 0 || !published.stdout.trim()) {
+    return;
+  }
+
+  const hostPorts = published.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(':').pop())
+    .filter(Boolean);
+
+  if (hostPorts.includes(dbPort)) {
+    return;
+  }
+
+  console.error(
+    `apply-least-privilege: FALLO DURO — el contenedor ${container} publica 5432 en ` +
+      `${hostPorts.join(', ')}, pero las migraciones corrieron contra ${dbHost}:${dbPort}. ` +
+      'Define POSTGRES_CONTAINER con el contenedor de esa misma base (o usa ' +
+      'LEAST_PRIVILEGE_MODE=host) antes de repetir `pnpm db:migrate:all`.',
+  );
+  process.exit(1);
+}
+
 function runPsqlDocker() {
   const inspect = spawnSync('docker', ['ps', '--format', '{{.Names}}'], {
     encoding: 'utf8',
@@ -90,6 +134,8 @@ function runPsqlDocker() {
     );
     process.exit(1);
   }
+
+  assertContainerMatchesTarget();
 
   console.log(`apply-least-privilege: modo docker (${container})`);
 

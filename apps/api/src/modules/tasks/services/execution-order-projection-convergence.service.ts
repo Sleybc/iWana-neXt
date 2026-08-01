@@ -474,6 +474,17 @@ export class ExecutionOrderProjectionConvergenceService {
     return Math.max(current, candidate);
   }
 
+  /**
+   * Cuenta discrepancias de proyección de todas las OT de un tenant.
+   *
+   * `operational_tasks.id` es UUID (migración tenant 045) mientras que
+   * `execution_orders.task_id` es VARCHAR(160) — la migración 056 lo declaró
+   * como referencia lógica, no como FK. PostgreSQL no tiene operador de
+   * igualdad entre `uuid` y `character varying`, así que el join necesita un
+   * cast explícito. Se castea el UUID a texto y no al revés: `task_id` admite
+   * referencias que no son UUID y `::uuid` reventaría con "invalid input
+   * syntax" en cuanto apareciera una.
+   */
   private async countTenantDiscrepancies(
     qr: { query: (query: string, parameters?: unknown[]) => Promise<unknown> },
     tenantId: string,
@@ -496,7 +507,7 @@ export class ExecutionOrderProjectionConvergenceService {
          ORDER BY created_at DESC LIMIT 1
        ) visit ON TRUE
        LEFT JOIN operational_tasks task
-         ON task.id = eo.task_id AND task.tenant_id = eo.tenant_id
+         ON task.id::text = eo.task_id AND task.tenant_id = eo.tenant_id
        WHERE eo.tenant_id = $1`,
       [tenantId],
     )) as Array<{

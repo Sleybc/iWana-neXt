@@ -2,7 +2,16 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 
-import { resolvePnpmTarget, waitForApiHealth, waitForCompilation } from './dev.mjs';
+import {
+  buildMissingDevEnvMessage,
+  devComposeFiles,
+  findMissingDevEnvVars,
+  parseEnvFile,
+  requiredDevEnvVars,
+  resolvePnpmTarget,
+  waitForApiHealth,
+  waitForCompilation,
+} from './dev.mjs';
 
 function withNpmExecPath(npmExecPath, callback) {
   const original = process.env.npm_execpath;
@@ -89,6 +98,69 @@ test('waitForApiHealth reports the last connection failure after its deadline', 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('devComposeFiles carga el overlay de desarrollo despues del archivo base', () => {
+  assert.deepEqual(devComposeFiles, ['docker-compose.yml', 'docker-compose.dev.yml']);
+});
+
+test('parseEnvFile ignora comentarios y desenvuelve valores entrecomillados', () => {
+  const values = parseEnvFile(
+    [
+      '# comentario',
+      '',
+      'NGINX_IMAGE=nginx:1.31.2-alpine',
+      "DB_APP_USER='iwana_app'",
+      'SIN_IGUAL',
+    ].join('\n'),
+  );
+
+  assert.equal(values.get('NGINX_IMAGE'), 'nginx:1.31.2-alpine');
+  assert.equal(values.get('DB_APP_USER'), 'iwana_app');
+  assert.equal(values.has('SIN_IGUAL'), false);
+});
+
+test('findMissingDevEnvVars trata el valor vacio como ausente, igual que ${VAR:?}', () => {
+  const missing = findMissingDevEnvVars(new Map([['NGINX_IMAGE', '   ']]), {}, ['NGINX_IMAGE']);
+
+  assert.deepEqual(missing, ['NGINX_IMAGE']);
+});
+
+test('findMissingDevEnvVars da precedencia al entorno del shell sobre .env', () => {
+  const missing = findMissingDevEnvVars(new Map(), { NGINX_IMAGE: 'nginx:1.31.2-alpine' }, [
+    'NGINX_IMAGE',
+  ]);
+
+  assert.deepEqual(missing, []);
+});
+
+test('requiredDevEnvVars cubre las variables sin default de docker-compose.yml', () => {
+  for (const name of [
+    'DB_BOOTSTRAP_USER',
+    'DB_PASSWORD',
+    'DB_APP_USER',
+    'DB_APP_PASSWORD',
+    'DB_MIGRATOR_USER',
+    'DB_MIGRATOR_PASSWORD',
+    'MINIO_ROOT_USER',
+    'MINIO_ROOT_PASSWORD',
+    'TYPESENSE_API_KEY',
+    'PGBOUNCER_IMAGE',
+    'MINIO_IMAGE',
+    'MINIO_MC_IMAGE',
+    'NGINX_IMAGE',
+    'ADMINER_IMAGE',
+  ]) {
+    assert.ok(requiredDevEnvVars.includes(name), `falta ${name} en requiredDevEnvVars`);
+  }
+});
+
+test('buildMissingDevEnvMessage nombra la variable, el archivo y la referencia', () => {
+  const message = buildMissingDevEnvMessage(['DB_BOOTSTRAP_USER'], '.env');
+
+  assert.match(message, /DB_BOOTSTRAP_USER/);
+  assert.match(message, /\.env/);
+  assert.match(message, /\.env\.example/);
 });
 
 test('waitForApiHealth starts its deadline after compilation completes', async () => {

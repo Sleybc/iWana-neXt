@@ -10,8 +10,9 @@ import { MailOptions } from './interfaces/mail-options.interface';
  * - Sin SMTP_HOST configurado → modo dev: imprime en consola via Logger.debug.
  * - Con SMTP_HOST configurado → modo produccion: envia via Nodemailer Transporter.
  *
- * SEGURIDAD: En modo dev SOLO se loguea el asunto y el texto plano.
- * NUNCA se loguea `to` (PII) ni `html`. En produccion no se loguea nada del email.
+ * SEGURIDAD: En modo dev SOLO se loguea el asunto.
+ * NUNCA se loguea `to` (PII), `html` ni `text`, porque pueden contener tokens.
+ * En produccion no se loguea nada del email.
  *
  * Variables de entorno usadas (todas opcionales — no rompen el arranque si faltan):
  * - SMTP_HOST: servidor SMTP; ausente = modo dev
@@ -61,19 +62,16 @@ export class MailerService {
   /**
    * Envia un correo electronico.
    *
-   * En modo dev: imprime el asunto y texto plano en consola para depuracion local.
+   * En modo dev: imprime solo el asunto en consola para depuracion local.
    * En modo produccion: envia via Nodemailer al servidor SMTP configurado.
    *
    * SEGURIDAD: Nunca loguear options.to (PII) ni options.html en ningun modo.
    */
   async sendMail(options: MailOptions): Promise<void> {
     if (this.devMode) {
-      // En desarrollo: loguear el email en consola para depuracion local
-      // NUNCA loguear 'to' ni 'html' — solo asunto y texto plano
+      // En desarrollo: no exponer destinatarios ni contenido, que puede incluir
+      // enlaces de recuperación o tokens de un solo uso.
       this.logger.debug(`[EMAIL DEV] Asunto: ${options.subject}`);
-      if (options.text) {
-        this.logger.debug(`[EMAIL DEV] Contenido:\n${options.text}`);
-      }
       return;
     }
 

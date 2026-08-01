@@ -46,6 +46,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'CreateExecutionOrderEvidenceUploadIntents0950000000000',
   'ExecutionOrderServerScope0980000000000',
   'AddExecutionOrderEvidenceCapturedAt0960000000000',
+  'ExtendEvidenceUploadIntentStatus0990000000000',
 ];
 
 export interface TenantRevertStep {

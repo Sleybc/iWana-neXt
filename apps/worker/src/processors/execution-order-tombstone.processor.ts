@@ -46,6 +46,9 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
             SET resource_ref = NULL, result_code = NULL, result_status = 'EXPIRED', tombstoned_at = NOW()
             WHERE expires_at <= NOW() AND tombstoned_at IS NULL
               AND result_status IN ('COMPLETED', 'FAILED', 'REJECTED', 'EXPIRED')`);
+          // El tombstone conserva el registro mínimo para no reejecutar a ciegas;
+          // la purga por lotes elimina después los registros ya fuera de retención.
+          await client.query('SELECT * FROM purge_execution_order_retention_batch($1)', [500]);
           await client.query('COMMIT');
         } catch (error) {
           await client.query('ROLLBACK');

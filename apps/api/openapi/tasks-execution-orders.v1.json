@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "iWana Operations Execution Orders API",
-    "description": "Contrato congelado v1 para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md.",
-    "version": "1.0.0"
+    "description": "Contrato v1.1.0 para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md. Changelog breaking v1.0.0 → v1.1.0 (2026-07-31): (1) RegisterItemUsageCommand: serial renombrado a serialNumber; custodySelection reemplazado por technicianCustodyId (autorizado R1.4 como excepción de custodia). (2) RegisterEvidenceCommand: expiresAt pasa a ser obligatorio. (3) ExecutionOrderDetail.template pasa de no-nullable a nullable. (4) ExecutionOrderEvidence.capturedAt pasa de opcional a obligatorio nullable. Adiciones no-breaking: ExecutionOrderEvidence.assetStatus opcional, ExecutionOrderCompletionView.completed/total opcionales, RedriveExecutionOrderEventCommand (autorizado redrive).",
+    "version": "1.1.0"
   },
   "servers": [{ "url": "/api/v1" }],
   "tags": [{ "name": "tasks-execution-orders" }],

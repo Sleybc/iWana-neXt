@@ -64,8 +64,10 @@ describe('WorkOrdersService', () => {
 
   describe('generateCode', () => {
     it('should generate WO-YYYYMMDD-001 when no WOs exist today', async () => {
+      const queryMock = jest.fn().mockResolvedValue(undefined);
       const mockQr = {
         manager: {
+          query: queryMock,
           createQueryBuilder: () => ({
             select: jest.fn().mockReturnThis(),
             from: jest.fn().mockReturnThis(),
@@ -80,11 +82,19 @@ describe('WorkOrdersService', () => {
 
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       expect(code).toBe(`WO-${today}-001`);
+      // Regresion defecto 8b: el consecutivo se serializa con advisory lock
+      // transaccional por (tenant, fecha) antes del COUNT+1.
+      expect(queryMock).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+        ['tenant-001', today],
+      );
     });
 
     it('should generate WO-YYYYMMDD-002 when one WO already exists today', async () => {
+      const queryMock = jest.fn().mockResolvedValue(undefined);
       const mockQr = {
         manager: {
+          query: queryMock,
           createQueryBuilder: () => ({
             select: jest.fn().mockReturnThis(),
             from: jest.fn().mockReturnThis(),
@@ -98,6 +108,10 @@ describe('WorkOrdersService', () => {
       const code = await service.generateCode(mockQr.manager as any, 'tenant-001');
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       expect(code).toBe(`WO-${today}-002`);
+      expect(queryMock).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+        ['tenant-001', today],
+      );
     });
   });
 
@@ -238,6 +252,68 @@ describe('WorkOrdersService', () => {
 
       expect(service.generateCode).toHaveBeenCalledTimes(2);
       expect(result.code).toBe(generatedCodes[1]);
+    });
+
+    it('should recover from a 23505 collision with the real generateCode on the second attempt', async () => {
+      // Regresion defecto 8b: el path real (generateCode sin mock) debe regenerar
+      // un consecutivo distinto tras la colision y completar la creacion en el
+      // segundo intento. El COUNT simula que la transaccion concurrente inserto
+      // el -001 entre el primer y el segundo intento.
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const countMock = jest
+        .fn()
+        .mockResolvedValueOnce({ count: '0' })
+        .mockResolvedValueOnce({ count: '1' });
+      const queryMock = jest.fn().mockResolvedValue(undefined);
+
+      const uniqueViolation = new QueryFailedError(
+        'INSERT INTO work_orders',
+        [],
+        Object.assign(new Error('duplicate key'), {
+          code: '23505',
+          constraint: 'uq_work_orders_tenant_code',
+        }),
+      );
+
+      const saveMock = jest
+        .fn()
+        .mockRejectedValueOnce(uniqueViolation) // WO-<today>-001 colisiona
+        .mockResolvedValueOnce({ id: 'wo-002', code: `WO-${today}-002` }) // WO-<today>-002 OK
+        .mockResolvedValueOnce({ id: 'task-001' }); // WorkOrderTask OK
+
+      const manager = {
+        create: jest.fn().mockImplementation((_entity, data) => data),
+        save: saveMock,
+        query: queryMock,
+        createQueryBuilder: () => ({
+          select: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getRawOne: countMock,
+        }),
+      };
+
+      const result = await service.createWithinManager(
+        manager as any,
+        'tenant-001',
+        {
+          summary: 'Visita tecnica',
+          priority: WorkOrderPriority.NORMAL,
+          sourceContext: WorkOrderSourceContext.MANUAL,
+        },
+        'user-001',
+        'actor-001',
+      );
+
+      expect(result.code).toBe(`WO-${today}-002`);
+      expect(countMock).toHaveBeenCalledTimes(2); // dos intentos de generacion
+      expect(saveMock).toHaveBeenCalledTimes(3); // WO fallida + WO exitosa + tarea
+      // Advisory lock emitido en cada intento (serializa COUNT+1 por tenant/dia)
+      expect(queryMock).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+        ['tenant-001', today],
+      );
     });
 
     it('should fail explicitly after exhausting code retries', async () => {

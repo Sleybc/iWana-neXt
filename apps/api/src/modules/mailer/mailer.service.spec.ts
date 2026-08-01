@@ -8,7 +8,7 @@
  *
  * SEGURIDAD:
  * - Ningun dato PII real en los tests — solo datos ficticios de prueba.
- * - Se verifica que el Logger.debug NUNCA loguee 'to' ni 'html'.
+ * - Se verifica que el Logger.debug NUNCA loguee 'to', 'html' ni 'text'.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -127,6 +127,21 @@ describe('MailerService', () => {
       const debugCalls = loggerDebugSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       const exponeHtml = debugCalls.some((msg) => msg.includes(htmlSensible));
       expect(exponeHtml).toBe(false);
+    });
+
+    it('NUNCA loguea el contenido de texto en modo dev', async () => {
+      const textoSensible = 'https://app.prueba.co/reset?token=token-ficticio-12345';
+
+      await service.sendMail({
+        to: 'cualquiera@prueba.co',
+        subject: 'Test texto sensible',
+        html: '<p>HTML</p>',
+        text: textoSensible,
+      });
+
+      const debugCalls = loggerDebugSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      const exponeTexto = debugCalls.some((msg) => msg.includes(textoSensible));
+      expect(exponeTexto).toBe(false);
     });
 
     it('sendMail funciona sin campo text (texto plano opcional)', async () => {
