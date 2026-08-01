@@ -1,7 +1,7 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
 import { OPERATIONS_EXECUTION_TOMBSTONE_QUEUE } from '@iwana/shared';
 import { isValidSchemaName } from '@iwana/db';
@@ -9,7 +9,9 @@ import { isValidSchemaName } from '@iwana/db';
 @Injectable()
 @Processor(OPERATIONS_EXECUTION_TOMBSTONE_QUEUE)
 export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnApplicationBootstrap {
+  private readonly logger = new Logger(ExecutionOrderTombstoneProcessor.name);
   private readonly pool: Pool;
+
   constructor(
     config: ConfigService,
     @InjectQueue(OPERATIONS_EXECUTION_TOMBSTONE_QUEUE) private readonly queue: Queue,
@@ -24,6 +26,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
       max: 2,
     });
   }
+
   async onApplicationBootstrap(): Promise<void> {
     await this.queue.add(
       'compact-execution-tombstones',
@@ -31,32 +34,53 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
       { repeat: { pattern: '0 4 * * *' }, jobId: 'execution-tombstone-daily' },
     );
   }
+
   async process(_job: Job): Promise<void> {
     const client = await this.pool.connect();
     try {
+      // Solo tenants ACTIVE: son los únicos cuyo schema pasó por el runner de
+      // migraciones tenant (getActiveTenants), que crea las tablas del módulo y
+      // la función purge_execution_order_retention_batch. Estados intermedios
+      // (PROVISIONING, SUSPENDED, INACTIVE, ...) pueden tener schema sin migrar.
       const tenants = await client.query<{ schema_name: string }>(
-        `SELECT schema_name FROM public.tenants WHERE deleted_at IS NULL AND status <> 'MARKED_FOR_DELETION'`,
+        `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name`,
       );
+
       for (const tenant of tenants.rows) {
-        if (!isValidSchemaName(tenant.schema_name)) continue;
-        await client.query('BEGIN');
-        try {
-          await client.query(`SET LOCAL search_path TO "${tenant.schema_name}"`);
-          await client.query(`UPDATE execution_order_idempotency_records
-            SET resource_ref = NULL, result_code = NULL, result_status = 'EXPIRED', tombstoned_at = NOW()
-            WHERE expires_at <= NOW() AND tombstoned_at IS NULL
-              AND result_status IN ('COMPLETED', 'FAILED', 'REJECTED', 'EXPIRED')`);
-          // El tombstone conserva el registro mínimo para no reejecutar a ciegas;
-          // la purga por lotes elimina después los registros ya fuera de retención.
-          await client.query('SELECT * FROM purge_execution_order_retention_batch($1)', [500]);
-          await client.query('COMMIT');
-        } catch (error) {
-          await client.query('ROLLBACK');
-          throw error;
+        if (!isValidSchemaName(tenant.schema_name)) {
+          this.logger.warn(
+            `[execution-tombstone] Schema inválido omitido: "${tenant.schema_name}"`,
+          );
+          continue;
         }
+        await this.processTenant(client, tenant.schema_name);
       }
     } finally {
       client.release();
+    }
+  }
+
+  private async processTenant(client: PoolClient, schemaName: string): Promise<void> {
+    await client.query('BEGIN');
+    try {
+      await client.query(`SET LOCAL search_path TO "${schemaName}"`);
+      await client.query(`UPDATE execution_order_idempotency_records
+        SET resource_ref = NULL, result_code = NULL, result_status = 'EXPIRED', tombstoned_at = NOW()
+        WHERE expires_at <= NOW() AND tombstoned_at IS NULL
+          AND result_status IN ('COMPLETED', 'FAILED', 'REJECTED', 'EXPIRED')`);
+      // El tombstone conserva el registro mínimo para no reejecutar a ciegas;
+      // la purga por lotes elimina después los registros ya fuera de retención.
+      // La función se califica con el schema para no depender solo del search_path.
+      await client.query(
+        `SELECT * FROM "${schemaName}".purge_execution_order_retention_batch($1)`,
+        [500],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      const reason = error instanceof Error ? error.message : 'unknown error';
+      // Sin PII: solo schema_name y el mensaje del error (códigos 42883/42P01).
+      this.logger.error(`[execution-tombstone] Fallo procesando schema=${schemaName}: ${reason}`);
     }
   }
 }
