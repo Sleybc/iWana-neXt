@@ -671,16 +671,22 @@ describe('ExecutionOrderDrawer', () => {
         template: customerAcceptanceTemplateFactory(),
       });
 
-      await user.type(
-        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
-        'Trabajo completado',
-      );
-      await user.click(screen.getByRole('combobox', { name: 'Referencia de evidencia' }));
+      const closeSummary = screen.getByRole('textbox', { name: 'Resumen de cierre' });
+      await user.clear(closeSummary);
+      await user.type(closeSummary, 'Trabajo completado');
+      await waitFor(() => expect(closeSummary).toHaveValue('Trabajo completado'));
+      const artifactSelect = screen.getByRole('combobox', { name: 'Referencia de evidencia' });
+      await user.click(artifactSelect);
       await user.click(screen.getByRole('option', { name: /Firma del cliente/ }));
-      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      await waitFor(() => expect(artifactSelect).toHaveTextContent('Firma del cliente'));
+      const methodSelect = screen.getByRole('combobox', { name: 'Forma de aceptación' });
+      await user.click(methodSelect);
       await user.click(screen.getByRole('option', { name: 'Firma' }));
-      await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
-      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+      await waitFor(() => expect(methodSelect).toHaveTextContent('Firma'));
+      const closeButton = screen.getByRole('button', { name: 'Cerrar OT' });
+      await waitFor(() => expect(closeButton).not.toBeDisabled());
+      await user.click(closeButton);
+      await user.click(await screen.findByRole('button', { name: 'Confirmar cierre' }));
 
       expect(onCloseOrder).toHaveBeenCalledWith({
         result: ExecutionOrderResult.EXECUTED,
@@ -699,22 +705,28 @@ describe('ExecutionOrderDrawer', () => {
         onCloseOrder,
       });
 
-      await user.type(
-        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
-        'Trabajo completado',
-      );
-      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
-      await user.click(screen.getByRole('combobox', { name: 'Referencia de evidencia' }));
+      const closeSummary = screen.getByRole('textbox', { name: 'Resumen de cierre' });
+      await user.clear(closeSummary);
+      await user.type(closeSummary, 'Trabajo completado');
+      await waitFor(() => expect(closeSummary).toHaveValue('Trabajo completado'));
+      const closeButton = screen.getByRole('button', { name: 'Cerrar OT' });
+      await waitFor(() => expect(closeButton).toBeDisabled());
+      const artifactSelect = screen.getByRole('combobox', { name: 'Referencia de evidencia' });
+      await user.click(artifactSelect);
       await user.click(screen.getByRole('option', { name: /Firma del cliente/ }));
-      await user.click(screen.getByRole('combobox', { name: 'Forma de aceptación' }));
+      await waitFor(() => expect(artifactSelect).toHaveTextContent('Firma del cliente'));
+      const methodSelect = screen.getByRole('combobox', { name: 'Forma de aceptación' });
+      await user.click(methodSelect);
       expect(screen.getByRole('option', { name: 'Firma' })).toBeInTheDocument();
       expect(
         screen.queryByRole('option', { name: 'Código de verificación' }),
       ).not.toBeInTheDocument();
       expect(screen.queryByRole('option', { name: 'Otra forma' })).not.toBeInTheDocument();
       await user.click(screen.getByRole('option', { name: 'Firma' }));
-      await user.click(screen.getByRole('button', { name: 'Cerrar OT' }));
-      await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+      await waitFor(() => expect(methodSelect).toHaveTextContent('Firma'));
+      await waitFor(() => expect(closeButton).not.toBeDisabled());
+      await user.click(closeButton);
+      await user.click(await screen.findByRole('button', { name: 'Confirmar cierre' }));
 
       expect(onCloseOrder).toHaveBeenCalledWith({
         result: ExecutionOrderResult.EXECUTED,
@@ -727,11 +739,13 @@ describe('ExecutionOrderDrawer', () => {
       const user = userEvent.setup();
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
 
-      await user.type(
-        screen.getByRole('textbox', { name: 'Resumen de cierre' }),
-        'Trabajo completado',
+      const closeSummary = screen.getByRole('textbox', { name: 'Resumen de cierre' });
+      await user.clear(closeSummary);
+      await user.type(closeSummary, 'Trabajo completado');
+      await waitFor(() => expect(closeSummary).toHaveValue('Trabajo completado'));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Cerrar OT' })).not.toBeDisabled(),
       );
-      expect(screen.getByRole('button', { name: 'Cerrar OT' })).not.toBeDisabled();
       expect(screen.getByRole('combobox', { name: 'Referencia de evidencia' })).toBeDisabled();
     });
 
@@ -1047,7 +1061,7 @@ describe('ExecutionOrderDrawer', () => {
 
       // Wait for the button to be enabled
       const closeBtn = await screen.findByRole('button', { name: 'Cerrar OT' });
-      expect(closeBtn).not.toBeDisabled();
+      await waitFor(() => expect(closeBtn).not.toBeDisabled());
 
       // Click the close button to open confirmation
       await user.click(closeBtn);

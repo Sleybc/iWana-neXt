@@ -6,6 +6,7 @@ import { QueryRunner } from 'typeorm';
 import {
   DESTRUCTIVE_DOWN_ENV_VAR,
   MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG,
+  orderTenantRevertExecutionSteps,
   planTenantRevert,
 } from '../../../../../packages/database/src/migrations/tenant/revert';
 import { TENANT_MIGRATIONS } from '../../../../../packages/database/src/migrations/tenant/runner';
@@ -134,6 +135,40 @@ describe('Revert de migraciones tenant — planTenantRevert', () => {
 
     const flagged = plan.steps.filter((s) => s.requiresDestructiveFlag).map((s) => s.name);
     expect(flagged).toEqual(['InitialTenantSchema1700000000000']);
+  });
+
+  it('el plan anuncia que 101 exige el flag destructivo', async () => {
+    const fake = createFakeQueryRunner([
+      { id: 101, name: 'AlignExecutionOrderEvidenceIntentRetention1010000000000' },
+    ]);
+
+    const plan = await planTenantRevert(fake.runner, 'tenant_demo');
+
+    expect(plan.steps).toEqual([
+      {
+        name: 'AlignExecutionOrderEvidenceIntentRetention1010000000000',
+        registryId: 101,
+        requiresDestructiveFlag: true,
+      },
+    ]);
+  });
+
+  it('revierte 100 antes de 101 cuando el runner coordina ambos pasos', () => {
+    const retentionStep = {
+      name: 'AlignExecutionOrderEvidenceIntentRetention1010000000000',
+      registryId: 101,
+      requiresDestructiveFlag: true,
+    };
+    const idempotencyStep = {
+      name: 'LinkExecutionOrderEvidenceIdempotency1000000000000',
+      registryId: 100,
+      requiresDestructiveFlag: true,
+    };
+
+    expect(orderTenantRevertExecutionSteps([retentionStep, idempotencyStep])).toEqual([
+      idempotencyStep,
+      retentionStep,
+    ]);
   });
 
   it('el plan no ejecuta ningún down(): solo consulta el registro', async () => {

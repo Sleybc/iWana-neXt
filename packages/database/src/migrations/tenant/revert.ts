@@ -48,7 +48,11 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'AddExecutionOrderEvidenceCapturedAt0960000000000',
   'ExtendEvidenceUploadIntentStatus0990000000000',
   'LinkExecutionOrderEvidenceIdempotency1000000000000',
+  'AlignExecutionOrderEvidenceIntentRetention1010000000000',
 ];
+
+const EVIDENCE_RETENTION_MIGRATION = 'AlignExecutionOrderEvidenceIntentRetention1010000000000';
+const EVIDENCE_IDEMPOTENCY_MIGRATION = 'LinkExecutionOrderEvidenceIdempotency1000000000000';
 
 export interface TenantRevertStep {
   /** Nombre registrado en `typeorm_migrations`. */
@@ -61,7 +65,7 @@ export interface TenantRevertStep {
 
 export interface TenantRevertPlan {
   schemaName: string;
-  /** Pasos en el orden en que se ejecutarán: del más reciente hacia atrás. */
+  /** Pasos seleccionados en el registro: del más reciente hacia atrás. */
   steps: TenantRevertStep[];
   /** Total de migraciones aplicadas en el schema antes de revertir. */
   appliedCount: number;
@@ -74,6 +78,34 @@ export interface TenantRevertOptions {
   dryRun?: boolean;
   /** Sumidero de trazas; inyectable para test. */
   logger?: Pick<Console, 'log' | 'warn'>;
+}
+
+/**
+ * El 101 restaura el cuerpo legacy que la 100 vuelve incompatible con su FK.
+ * Cuando ambas migraciones se revierten juntas, la 100 debe bajar primero para
+ * que el 101 nunca deje instalada la combinación FK-100 + purga legacy.
+ */
+export function orderTenantRevertExecutionSteps(
+  steps: readonly TenantRevertStep[],
+): TenantRevertStep[] {
+  const ordered = [...steps];
+
+  for (let index = 0; index < ordered.length - 1; index += 1) {
+    if (
+      ordered[index]?.name === EVIDENCE_RETENTION_MIGRATION &&
+      ordered[index + 1]?.name === EVIDENCE_IDEMPOTENCY_MIGRATION
+    ) {
+      const retentionStep = ordered[index];
+      const idempotencyStep = ordered[index + 1];
+      if (!retentionStep || !idempotencyStep) continue;
+
+      ordered[index] = idempotencyStep;
+      ordered[index + 1] = retentionStep;
+      index += 1;
+    }
+  }
+
+  return ordered;
 }
 
 interface AppliedRow {
@@ -185,19 +217,58 @@ export async function revertTenantMigrations(
         return plan;
       }
 
-      for (const step of plan.steps) {
+      const executionSteps = orderTenantRevertExecutionSteps(plan.steps);
+      if (
+        !dryRun &&
+        executionSteps.some((step) => step.name === EVIDENCE_RETENTION_MIGRATION) &&
+        process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true'
+      ) {
+        throw new Error(
+          `El revert de ${EVIDENCE_RETENTION_MIGRATION} exige ` +
+            `${DESTRUCTIVE_DOWN_ENV_VAR}=true antes de ejecutar cualquier paso; ` +
+            `la operación fue abortada sin modificar el schema.`,
+        );
+      }
+
+      for (let index = 0; index < executionSteps.length; ) {
+        const step = executionSteps[index];
+        if (!step) {
+          index += 1;
+          continue;
+        }
+
+        const coordinatedSteps = executionSteps.slice(index, index + 2);
+        const coordinatesEvidencePair =
+          coordinatedSteps.length === 2 &&
+          coordinatedSteps[0]?.name === EVIDENCE_IDEMPOTENCY_MIGRATION &&
+          coordinatedSteps[1]?.name === EVIDENCE_RETENTION_MIGRATION;
         const flagNote = step.requiresDestructiveFlag
-          ? ` (exige ${DESTRUCTIVE_DOWN_ENV_VAR}=true si el schema tiene datos)`
+          ? ` (exige ${DESTRUCTIVE_DOWN_ENV_VAR}=true)`
           : '';
 
         if (dryRun) {
           logger.log(`[REVERT] [dry-run] revertiría ${schemaName} <- ${step.name}${flagNote}`);
+          index += 1;
+          continue;
+        }
+
+        if (coordinatesEvidencePair) {
+          const retentionStep = coordinatedSteps[1];
+          logger.log(
+            `[REVERT] ${schemaName} <- ${step.name} + ${retentionStep?.name ?? EVIDENCE_RETENTION_MIGRATION}${flagNote}`,
+          );
+          await revertTenantMigrationStepsAtomically(queryRunner, coordinatedSteps);
+          logger.log(
+            `[REVERT] ${schemaName} <- ${step.name} + ${retentionStep?.name ?? EVIDENCE_RETENTION_MIGRATION}: revertidas`,
+          );
+          index += 2;
           continue;
         }
 
         logger.log(`[REVERT] ${schemaName} <- ${step.name}${flagNote}`);
         await revertSingleStep(queryRunner, step);
         logger.log(`[REVERT] ${schemaName} <- ${step.name}: revertida`);
+        index += 1;
       }
 
       return plan;
@@ -263,6 +334,32 @@ export async function revertTenantMigrationStep(
   } catch (error) {
     await queryRunner.rollbackTransaction();
     throw wrapNonTransactionalRevertFailure(migrationName, error);
+  }
+}
+
+/** Revierte 100 y 101 en una sola TX, en el orden seguro 100 -> 101. */
+async function revertTenantMigrationStepsAtomically(
+  queryRunner: QueryRunner,
+  steps: readonly TenantRevertStep[],
+): Promise<void> {
+  await queryRunner.startTransaction();
+  try {
+    for (const step of steps) {
+      const MigrationClass = migrationClassByName(step.name);
+      if (!MigrationClass) {
+        throw new Error(`Migración "${step.name}" no resoluble en este build.`);
+      }
+
+      const migration = new MigrationClass() as TenantMigrationLike;
+      await migration.down(queryRunner);
+      await queryRunner.query(`DELETE FROM "typeorm_migrations" WHERE "id" = $1`, [
+        step.registryId,
+      ]);
+    }
+    await queryRunner.commitTransaction();
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw error;
   }
 }
 

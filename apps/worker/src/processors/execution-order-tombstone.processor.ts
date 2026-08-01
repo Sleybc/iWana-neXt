@@ -46,6 +46,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
         `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' AND deleted_at IS NULL ORDER BY schema_name`,
       );
 
+      const tenantErrors: Error[] = [];
       for (const tenant of tenants.rows) {
         if (!isValidSchemaName(tenant.schema_name)) {
           this.logger.warn(
@@ -53,7 +54,19 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
           );
           continue;
         }
-        await this.processTenant(client, tenant.schema_name);
+        try {
+          await this.processTenant(client, tenant.schema_name);
+        } catch (error: unknown) {
+          const reason = error instanceof Error ? error.message : 'unknown error';
+          tenantErrors.push(new Error(`schema=${tenant.schema_name}: ${reason}`));
+        }
+      }
+
+      if (tenantErrors.length > 0) {
+        throw new AggregateError(
+          tenantErrors,
+          `Fallaron ${tenantErrors.length} tenant(s) durante el tombstone de órdenes de ejecución`,
+        );
       }
     } finally {
       client.release();
@@ -81,6 +94,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
       const reason = error instanceof Error ? error.message : 'unknown error';
       // Sin PII: solo schema_name y el mensaje del error (códigos 42883/42P01).
       this.logger.error(`[execution-tombstone] Fallo procesando schema=${schemaName}: ${reason}`);
+      throw error;
     }
   }
 }

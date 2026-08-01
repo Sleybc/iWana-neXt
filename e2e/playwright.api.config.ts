@@ -15,7 +15,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 1,
-  reporter: [['list']],
+  reporter: process.env.E2E_MARKER_REPORTER_PATH
+    ? [['list'], [process.env.E2E_MARKER_REPORTER_PATH]]
+    : [['list']],
   use: {
     baseURL: process.env.API_BASE_URL || 'http://127.0.0.1:3000',
     trace: 'on-first-retry',

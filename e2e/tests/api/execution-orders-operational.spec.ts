@@ -39,7 +39,7 @@ import { expect, request, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -398,8 +398,12 @@ async function waitForEvidenceRateLimitReset(ctx: TestCtx, retry: number): Promi
     .toBeGreaterThanOrEqual(ctx.evidenceRateLimitResetAt);
 }
 
-async function waitForReadRateLimitReset(ctx: TestCtx, retry: number): Promise<void> {
-  if (retry === 0 || !ctx.readRateLimitResetAt) return;
+async function waitForReadRateLimitReset(
+  ctx: TestCtx,
+  retry: number,
+  force = false,
+): Promise<void> {
+  if ((!force && retry === 0) || !ctx.readRateLimitResetAt) return;
 
   await expect
     .poll(() => Date.now(), {
@@ -417,7 +421,9 @@ async function waitForReadRateLimitReset(ctx: TestCtx, retry: number): Promise<v
  * el subcomando termina con código != 0 (p. ej. Redis no está corriendo).
  */
 function redisFault(subcommand: 'pause' | 'resume' | 'status'): void {
-  const scriptPath = resolve(__dirname, '../../../scripts/e2e-redis-fault.mjs');
+  const scriptPath = fileURLToPath(
+    new URL('../../../scripts/e2e-redis-fault.mjs', import.meta.url),
+  );
   try {
     execFileSync(process.execPath, [scriptPath, subcommand], {
       encoding: 'utf8',
@@ -1638,7 +1644,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
   // ─── 6. BOLA (Broken Object Level Authorization) ───────────────────────────
 
   test.describe('6. BOLA — aislamiento multi-inquilino', () => {
-    test('6a. Inquilino A no puede acceder OT de inquilino B → 404', async ({ page }) => {
+    test('6a. Inquilino A no puede acceder OT de inquilino B → 404', async ({ page }, testInfo) => {
       expect(ctx.executionOrderId).toBeTruthy();
 
       // Login como usuario de otro inquilino (debe existir)
@@ -1655,6 +1661,10 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           `Tenant '${otherSlug}' no disponible. Configure E2E_OTHER_TENANT_* para probar BOLA. ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+
+      // 4d agota deliberadamente el bucket del usuario B para probar el
+      // aislamiento por tenant; BOLA debe ejecutarse cuando esa ventana expire.
+      await waitForReadRateLimitReset(ctx, testInfo.retry, true);
 
       // Intentar acceder a la OT del tenant A desde tenant B
       const res = await authedGet(

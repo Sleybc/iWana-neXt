@@ -1289,6 +1289,12 @@ export class ExecutionOrdersService {
             message: 'La carga original de evidencia venció antes de completarse.',
           });
         }
+        if (replayIntent.expiresAt !== null && replayIntent.expiresAt.getTime() <= Date.now()) {
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_EXPIRED',
+            message: 'La carga original de evidencia venció antes de completarse.',
+          });
+        }
         if (!replayIntent.mediaAssetId) {
           // Único caso legítimo de "en proceso": intent PENDING con la subida
           // realmente en curso. Todo estado terminal ya se resolvió arriba.

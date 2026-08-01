@@ -1,5 +1,22 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
+const EVIDENCE_INTENT_DEPENDENCY_CHECK_SQL = `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'execution_order_idempotency_records'
+          AND column_name = 'evidence_upload_intent_id'
+      ) AS column_present,
+      EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_execution_order_idempotency_evidence_intent'
+          AND connamespace = current_schema()::regnamespace
+      ) AS foreign_key_present`;
+
 /**
  * SQL literal de la función creada por la migración 095. Se conserva como
  * constante para que `down()` la restaure EXACTA (misma firma, mismo cuerpo):
@@ -244,8 +261,35 @@ export class AlignExecutionOrderEvidenceIntentRetention1010000000000 implements 
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Restaura el literal exacto de la 095: el schema vuelve al estado
-    // histórico, incluida la purga sin consciencia de idempotencia.
+    if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
+      throw new Error(
+        `Rollback de AlignExecutionOrderEvidenceIntentRetention bloqueado: ` +
+          `restaurar la función legacy puede reactivar una purga incompatible con la ` +
+          `relación de idempotencia. Para continuar de forma destructiva, ` +
+          `exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true de forma explícita.`,
+      );
+    }
+
+    const dependencies = ((await queryRunner.query(EVIDENCE_INTENT_DEPENDENCY_CHECK_SQL)) ??
+      []) as Array<{
+      column_present: boolean;
+      foreign_key_present: boolean;
+    }>;
+    const columnPresent = dependencies[0]?.column_present === true;
+    const foreignKeyPresent = dependencies[0]?.foreign_key_present === true;
+
+    if (columnPresent || foreignKeyPresent) {
+      throw new Error(
+        `Rollback de AlignExecutionOrderEvidenceIntentRetention bloqueado: ` +
+          `la migración 100 sigue aplicada (evidence_upload_intent_id=${columnPresent}, ` +
+          `FK=${foreignKeyPresent}). No se restauró la función legacy insegura. ` +
+          `Revierta primero la 100 mediante el flujo coordinado del runner ` +
+          `(101+100, con el flag destructivo explícito).`,
+      );
+    }
+
+    // Restaura el literal exacto de la 095 solo después de retirar la relación
+    // de la 100; así nunca queda instalada la combinación FK-100 + purga legacy.
     await queryRunner.query(LEGACY_PURGE_FUNCTION_SQL);
   }
 }

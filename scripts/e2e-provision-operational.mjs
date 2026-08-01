@@ -7,10 +7,181 @@
  * cuando E2E_CLEANUP no se desactiva explícitamente.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { openSync, readFileSync } from 'node:fs';
+import { mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import process from 'node:process';
 import crypto from 'node:crypto';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+// Fuente única del piso del vertical R4.1 (tests 4a/4b/4c/4d/4e).
+const REQUIRED_OPERATIONAL_E2E_PASSED = 29;
+
+function collectOperationalMarkers(logContents) {
+  const markers = new Map();
+
+  for (const line of String(logContents).split(/\r?\n/u)) {
+    const match = line.match(/^(E2E_(?:SETUP|CLEANUP|PLAYWRIGHT_[A-Z_]+))=(.*)$/u);
+    if (!match) {
+      continue;
+    }
+
+    const [, name, value] = match;
+    const values = markers.get(name) ?? [];
+    values.push(value);
+    markers.set(name, values);
+  }
+
+  return markers;
+}
+
+function readSingleMarker(markers, name) {
+  const values = markers.get(name);
+  if (!values || values.length === 0) {
+    throw new Error(`${name} ausente`);
+  }
+  if (values.length !== 1) {
+    throw new Error(`${name} duplicado`);
+  }
+  return values[0];
+}
+
+function readMarkerCount(markers, name) {
+  const value = readSingleMarker(markers, name);
+  if (!/^(0|[1-9]\d*)$/u.test(value)) {
+    throw new Error(`${name} no es un entero no negativo`);
+  }
+
+  const count = Number(value);
+  if (!Number.isSafeInteger(count)) {
+    throw new Error(`${name} excede el rango seguro`);
+  }
+  return count;
+}
+
+function verifyOperationalMarkers(logContents) {
+  if (!String(logContents).trim()) {
+    throw new Error('log ausente o vacío');
+  }
+
+  const markers = collectOperationalMarkers(logContents);
+  const setup = readSingleMarker(markers, 'E2E_SETUP');
+  if (!(setup === 'OK' || setup.startsWith('OK|'))) {
+    throw new Error(`E2E_SETUP no está OK (${setup})`);
+  }
+
+  if (readSingleMarker(markers, 'E2E_PLAYWRIGHT_EXIT') !== '0') {
+    throw new Error('E2E_PLAYWRIGHT_EXIT distinto de 0');
+  }
+  if (markers.get('E2E_PLAYWRIGHT_COUNTS')?.includes('UNPARSED')) {
+    throw new Error('resumen de conteos Playwright no parseado');
+  }
+  if (readSingleMarker(markers, 'E2E_CLEANUP') !== 'OK') {
+    throw new Error('E2E_CLEANUP no está OK');
+  }
+
+  const counts = {
+    passed: readMarkerCount(markers, 'E2E_PLAYWRIGHT_PASSED'),
+    failed: readMarkerCount(markers, 'E2E_PLAYWRIGHT_FAILED'),
+    skipped: readMarkerCount(markers, 'E2E_PLAYWRIGHT_SKIPPED'),
+    didNotRun: readMarkerCount(markers, 'E2E_PLAYWRIGHT_DID_NOT_RUN'),
+    flaky: readMarkerCount(markers, 'E2E_PLAYWRIGHT_FLAKY'),
+  };
+
+  if (counts.failed !== 0) {
+    throw new Error(`Tests fallidos: ${counts.failed}`);
+  }
+  if (counts.skipped !== 0) {
+    throw new Error(`Tests skipped: ${counts.skipped}`);
+  }
+  if (counts.didNotRun !== 0) {
+    throw new Error(`Tests sin ejecutar: ${counts.didNotRun}`);
+  }
+  if (counts.flaky !== 0) {
+    throw new Error(`Tests flaky/retried: ${counts.flaky}`);
+  }
+  if (counts.passed < REQUIRED_OPERATIONAL_E2E_PASSED) {
+    throw new Error(`Tests passed: ${counts.passed} (mínimo ${REQUIRED_OPERATIONAL_E2E_PASSED})`);
+  }
+
+  return counts;
+}
+
+function markerFixture(overrides = {}) {
+  const counts = {
+    passed: REQUIRED_OPERATIONAL_E2E_PASSED,
+    failed: 0,
+    skipped: 0,
+    didNotRun: 0,
+    flaky: 0,
+    ...overrides,
+  };
+
+  return [
+    'E2E_SETUP=OK|fixture',
+    'E2E_PLAYWRIGHT_EXIT=0',
+    `E2E_PLAYWRIGHT_PASSED=${counts.passed}`,
+    `E2E_PLAYWRIGHT_FAILED=${counts.failed}`,
+    `E2E_PLAYWRIGHT_SKIPPED=${counts.skipped}`,
+    `E2E_PLAYWRIGHT_DID_NOT_RUN=${counts.didNotRun}`,
+    `E2E_PLAYWRIGHT_FLAKY=${counts.flaky}`,
+    'E2E_CLEANUP=OK',
+  ].join('\n');
+}
+
+function expectMarkerGateFailure(logContents, caseName) {
+  try {
+    verifyOperationalMarkers(logContents);
+  } catch {
+    return;
+  }
+  throw new Error(`Caso ${caseName} debía fallar el gate`);
+}
+
+function validateOperationalMarkerLogic() {
+  const pass = verifyOperationalMarkers(markerFixture());
+  if (pass.passed !== REQUIRED_OPERATIONAL_E2E_PASSED || pass.flaky !== 0) {
+    throw new Error('Caso PASS no conservó passed=29 y flaky=0');
+  }
+
+  expectMarkerGateFailure(markerFixture({ passed: 28 }), 'passed=28');
+  expectMarkerGateFailure(markerFixture({ flaky: 1 }), 'flaky=1');
+}
+
+const verifyMarkersArgumentIndex = process.argv.indexOf('--verify-playwright-markers');
+if (verifyMarkersArgumentIndex !== -1) {
+  const logPath = process.argv[verifyMarkersArgumentIndex + 1];
+  if (!logPath) {
+    console.error('Falta la ruta del log de marcadores E2E.');
+    process.exit(1);
+  }
+
+  try {
+    const counts = verifyOperationalMarkers(readFileSync(logPath, 'utf8'));
+    console.log(
+      `✅ Gates E2E R4.1 OK: passed=${counts.passed} failed=${counts.failed} skipped=${counts.skipped} did-not-run=${counts.didNotRun} flaky=${counts.flaky}`,
+    );
+    process.exit(0);
+  } catch (error) {
+    console.error(
+      `::error title=E2E gate::${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+}
+
+if (process.argv.includes('--validate-playwright-markers')) {
+  try {
+    validateOperationalMarkerLogic();
+    console.log('✅ Parser E2E validado: 29/0/0/0/0 PASS; 28 y flaky>0 FAIL.');
+    process.exit(0);
+  } catch (error) {
+    console.error(
+      `❌ Validación del parser E2E falló: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+}
 
 const suffix = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
 
@@ -377,6 +548,7 @@ const API_LOG_TAIL_LIMIT = 8_000;
 const apiLogFile = process.env.E2E_API_LOG?.trim();
 let apiLogFd = null;
 let apiLogTail = '';
+let apiProcess = null;
 
 function appendApiLog(chunk) {
   apiLogTail = `${apiLogTail}${chunk}`.slice(-API_LOG_TAIL_LIMIT);
@@ -444,13 +616,17 @@ async function waitForApiHealth(apiProcess) {
 async function startApi() {
   await assertApiPortFree();
 
-  const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+  runCommand('Compilación de @iwana/api', 'pnpm', ['--filter', '@iwana/api', 'build']);
   const logFd = openApiLogFd();
-  const apiProcess = spawn(command, ['--filter', '@iwana/api', 'dev'], {
+  apiProcess = spawn(process.execPath, [join(process.cwd(), 'apps/api/dist/main.js')], {
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      PLATFORM_SUPER_ADMIN_EMAIL: platformEmail,
+      PLATFORM_SUPER_ADMIN_PASSWORD: platformPassword,
+    },
     stdio: logFd === null ? ['ignore', 'pipe', 'pipe'] : ['ignore', logFd, logFd],
-    shell: process.platform === 'win32',
+    shell: false,
   });
 
   apiLogTail = '';
@@ -478,6 +654,9 @@ function stopProcess(child) {
       stdio: 'ignore',
       windowsHide: true,
     });
+    if (!child.killed) {
+      child.kill('SIGKILL');
+    }
     return;
   }
 
@@ -523,6 +702,25 @@ function idempotencyKey() {
 }
 
 async function platformLogin() {
+  const bootstrap = await api(
+    '/platform-users/bootstrap',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: platformEmail,
+        password: platformPassword,
+        confirmPassword: platformPassword,
+      }),
+    },
+    [201, 409],
+  );
+  const bootstrapToken =
+    bootstrap.data && typeof bootstrap.data === 'object' ? bootstrap.data.accessToken : undefined;
+  if (typeof bootstrapToken === 'string' && bootstrapToken) {
+    return bootstrapToken;
+  }
+
   const body = await api(
     '/auth/platform/login',
     {
@@ -1065,66 +1263,96 @@ async function provisionExecutionTemplate(
   return templateId;
 }
 
-// Publica marcadores de resumen NO secretos (conteos del run) que el job CI
-// consume para verificar gates (passed >= 26, failed == 0, skipped == 0).
-// Si la línea de resumen de Playwright no se puede parsear, publica conteos
-// que hacen FALLAR el gate: ausencia de evidencia = fallo, nunca falso verde.
-// Estos marcadores no contienen credenciales, tokens ni datos de sesión.
-function publishPlaywrightCounts(output) {
-  const summaryLine = String(output)
-    .split(/\r?\n/u)
-    .findLast(
-      (line) =>
-        /\([0-9]+[mhs]/u.test(line) && /\b(passed|failed|skipped|did not run)\b/u.test(line),
-    );
-
-  if (!summaryLine) {
-    console.error(
-      'E2E_PLAYWRIGHT_COUNTS=UNPARSED|No se encontró la línea de resumen de Playwright',
-    );
-    console.log('E2E_PLAYWRIGHT_PASSED=0');
-    console.log('E2E_PLAYWRIGHT_FAILED=1');
-    console.log('E2E_PLAYWRIGHT_SKIPPED=1');
-    console.log('E2E_PLAYWRIGHT_DID_NOT_RUN=1');
-    return;
+// El reporter de marcadores solo publica conteos agregados no secretos. No
+// escribe JSON, traces, screenshots ni stdout de cada test a un artefacto.
+function createPlaywrightMarkerReporter() {
+  const reporterDirectory = mkdtempSync(join(tmpdir(), 'iwana-e2e-marker-reporter-'));
+  const reporterPath = join(reporterDirectory, 'reporter.mjs');
+  const source = String.raw`
+class OperationalMarkerReporter {
+  constructor() {
+    this.totalTests = 0;
+    this.resultsByTest = new Map();
+    this.retriedTests = new Set();
   }
 
-  const countOf = (pattern) => {
-    const match = summaryLine.match(pattern);
-    return match ? Number(match[1]) : 0;
-  };
+  onBegin(_config, suite) {
+    this.totalTests = suite.allTests().length;
+  }
 
-  console.log(`E2E_PLAYWRIGHT_PASSED=${countOf(/(\d+)\s+passed/u)}`);
-  console.log(`E2E_PLAYWRIGHT_FAILED=${countOf(/(\d+)\s+failed/u)}`);
-  console.log(`E2E_PLAYWRIGHT_SKIPPED=${countOf(/(\d+)\s+skipped/u)}`);
-  console.log(`E2E_PLAYWRIGHT_DID_NOT_RUN=${countOf(/(\d+)\s+did not run/u)}`);
+  onTestEnd(test, result) {
+    const testKey = typeof test.id === 'string'
+      ? test.id
+      : 'title:' + test.titlePath().join('\\u001f');
+    this.resultsByTest.set(testKey, result);
+    if (Number.isInteger(result.retry) && result.retry > 0) {
+      this.retriedTests.add(testKey);
+    }
+  }
+
+  onEnd() {
+    let passed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const result of this.resultsByTest.values()) {
+      if (result.status === 'passed') {
+        passed += 1;
+      } else if (result.status === 'skipped') {
+        skipped += 1;
+      } else {
+        // timedOut/interrupted también son fallos del gate, no falsos verdes.
+        failed += 1;
+      }
+    }
+
+    const didNotRun = Math.max(0, this.totalTests - this.resultsByTest.size);
+    process.stdout.write('E2E_PLAYWRIGHT_PASSED=' + passed + '\n');
+    process.stdout.write('E2E_PLAYWRIGHT_FAILED=' + failed + '\n');
+    process.stdout.write('E2E_PLAYWRIGHT_SKIPPED=' + skipped + '\n');
+    process.stdout.write('E2E_PLAYWRIGHT_DID_NOT_RUN=' + didNotRun + '\n');
+    process.stdout.write('E2E_PLAYWRIGHT_FLAKY=' + this.retriedTests.size + '\n');
+  }
+}
+
+export default OperationalMarkerReporter;
+`;
+
+  writeFileSync(reporterPath, source, { encoding: 'utf8', mode: 0o600 });
+  return { reporterDirectory, reporterPath };
 }
 
 function runPlaywright(env) {
   const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
   const startedAt = Date.now();
-  // Se captura la salida (pipe) para publicar los conteos del resumen; se
-  // reimprime al final para conservar la visibilidad que daba stdio inherit.
-  // El contrato de ejecución local no cambia: mismos comandos y mismo spec.
-  const result = spawnSync(
-    command,
-    [
-      'exec',
-      'playwright',
-      'test',
-      'e2e/tests/api/execution-orders-operational.spec.ts',
-      '--config',
-      'e2e/playwright.api.config.ts',
-      '--reporter=list',
-    ],
-    {
-      cwd: process.cwd(),
-      env,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
-    },
-  );
+  // El config activa el reporter temporal mediante una variable de entorno.
+  // Playwright 1.58 no soporta --add-reporter en la CLI.
+  const { reporterDirectory, reporterPath } = createPlaywrightMarkerReporter();
+  let result;
+  try {
+    result = spawnSync(
+      command,
+      [
+        'exec',
+        'playwright',
+        'test',
+        'e2e/tests/api/execution-orders-operational.spec.ts',
+        '--config',
+        'e2e/playwright.api.config.ts',
+        '--retries',
+        '0',
+      ],
+      {
+        cwd: process.cwd(),
+        env: { ...env, E2E_MARKER_REPORTER_PATH: reporterPath },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: process.platform === 'win32',
+      },
+    );
+  } finally {
+    rmSync(reporterDirectory, { recursive: true, force: true });
+  }
 
   if (result.stdout) {
     process.stdout.write(result.stdout);
@@ -1132,8 +1360,6 @@ function runPlaywright(env) {
   if (result.stderr) {
     process.stderr.write(result.stderr);
   }
-
-  publishPlaywrightCounts(`${result.stdout ?? ''}\n${result.stderr ?? ''}`);
 
   if (result.error) {
     console.error(`E2E_PLAYWRIGHT=FAILED|${result.error.message}`);
@@ -1186,7 +1412,6 @@ function cleanupWithDocker() {
 let testExitCode = 1;
 let platformToken = '';
 let createdTenants = false;
-let apiProcess = null;
 const runStartedAt = Date.now();
 
 try {

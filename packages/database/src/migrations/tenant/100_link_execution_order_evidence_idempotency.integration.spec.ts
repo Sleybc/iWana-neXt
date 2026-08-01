@@ -481,12 +481,20 @@ describeWithDb('100-101 retención durable de evidencia de OT — PostgreSQL rea
     expect(await intentExists(isolation, otherTenantIntent)).toBe(false);
   });
 
-  it('101 down restaura la función legacy de la 095 (con su bug de retención)', async () => {
+  it('101 down aislado aborta sin restaurar la función legacy mientras 100 siga aplicada', async () => {
     const retention = runners.get('retention');
     if (!retention) throw new Error('Expected retention query runner');
     const migration = new AlignExecutionOrderEvidenceIntentRetention1010000000000();
 
-    await migration.down(retention);
+    await expect(migration.down(retention)).rejects.toThrow(
+      /IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true/,
+    );
+
+    await withDestructiveFlag(async () => {
+      await expect(migration.down(retention)).rejects.toThrow(
+        /No se restauró la función legacy insegura/,
+      );
+    });
 
     const body = (await retention.query(
       `SELECT prosrc FROM pg_proc
@@ -494,23 +502,8 @@ describeWithDb('100-101 retención durable de evidencia de OT — PostgreSQL rea
        WHERE pg_namespace.nspname = current_schema()
          AND pg_proc.proname = 'purge_execution_order_retention_batch'`,
     )) as Array<{ prosrc: string }>;
-    expect(body[0]?.prosrc).not.toContain('evidence_upload_intent_id');
-    expect(body[0]?.prosrc).not.toContain('NOT EXISTS');
-
-    // El bug legacy queda restaurado: la función intenta borrar un intent
-    // referenciado por idempotencia viva y la FK RESTRICT lo rechaza (23001).
-    const victimIntent = '10000000-0000-4000-8000-00000000000e';
-    const victimRecord = '10000000-0000-4000-8000-00000000000f';
-    await insertIntent(retention, victimIntent, `NOW() - INTERVAL '2 hours'`);
-    await insertRecord(retention, {
-      id: victimRecord,
-      evidenceIntentId: victimIntent,
-      expiresAtExpr: `NOW() + INTERVAL '1 day'`,
-    });
-    await expect(runPurge(retention)).rejects.toMatchObject({ code: '23001' });
-    // La llamada fallida se revierte completa: nada se borró.
-    expect(await intentExists(retention, victimIntent)).toBe(true);
-    expect(await recordExists(retention, victimRecord)).toBe(true);
+    expect(body[0]?.prosrc).toContain('evidence_upload_intent_id');
+    expect(body[0]?.prosrc).toContain('NOT EXISTS');
   });
 
   it('100 down exige flag con vínculos y con flag elimina columna, FK e índice', async () => {
@@ -547,5 +540,19 @@ describeWithDb('100-101 retención durable de evidencia de OT — PostgreSQL rea
       `SELECT to_regclass(current_schema() || '.idx_execution_order_idempotency_evidence_intent') AS index_name`,
     )) as Array<{ index_name: string | null }>;
     expect(index[0]?.index_name).toBeNull();
+
+    // Una vez retirada 100, la 101 puede completar el rollback coordinado y
+    // restaurar el literal histórico de 095 sin dejar la FK incompatible.
+    await withDestructiveFlag(() =>
+      new AlignExecutionOrderEvidenceIntentRetention1010000000000().down(retention),
+    );
+    const restoredBody = (await retention.query(
+      `SELECT prosrc FROM pg_proc
+       JOIN pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+       WHERE pg_namespace.nspname = current_schema()
+         AND pg_proc.proname = 'purge_execution_order_retention_batch'`,
+    )) as Array<{ prosrc: string }>;
+    expect(restoredBody[0]?.prosrc).not.toContain('evidence_upload_intent_id');
+    expect(restoredBody[0]?.prosrc).not.toContain('NOT EXISTS');
   });
 });

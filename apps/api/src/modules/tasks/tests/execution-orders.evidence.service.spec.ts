@@ -419,19 +419,17 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('reproduce el recibo original sin validar If-Match ni crear otro asset', async () => {
       const createdAt = new Date('2026-07-30T12:00:00.000Z');
+      const expiresAt = new Date(Date.now() + 60_000);
       const manager = {
-        findOne: jest
-          .fn()
-          .mockResolvedValueOnce(mockOrder())
-          .mockResolvedValueOnce({
-            id: 'intent-first-001',
-            executionOrderId: ORDER_UUID,
-            tenantId: 'tenant-001',
-            mediaAssetId: ASSET_UUID,
-            status: 'PENDING_ANALYSIS',
-            expiresAt: new Date('2026-07-31T12:00:00.000Z'),
-            createdAt,
-          }),
+        findOne: jest.fn().mockResolvedValueOnce(mockOrder()).mockResolvedValueOnce({
+          id: 'intent-first-001',
+          executionOrderId: ORDER_UUID,
+          tenantId: 'tenant-001',
+          mediaAssetId: ASSET_UUID,
+          status: 'PENDING_ANALYSIS',
+          expiresAt,
+          createdAt,
+        }),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
         fn({ manager } as never),
@@ -457,7 +455,7 @@ describe('ExecutionOrdersService — Evidence', () => {
         mediaAssetId: ASSET_UUID,
         status: 'PENDING_ANALYSIS',
         uploadedAt: createdAt.toISOString(),
-        expiresAt: '2026-07-31T12:00:00.000Z',
+        expiresAt: expiresAt.toISOString(),
       });
       expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
       expect(reliabilityService.completeIdempotency).not.toHaveBeenCalled();
@@ -501,6 +499,87 @@ describe('ExecutionOrdersService — Evidence', () => {
       expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
     });
 
+    it('replay con intent PENDING vencido devuelve EVIDENCE_UPLOAD_EXPIRED sin mutar datos', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce({
+            id: 'intent-expired-pending-001',
+            executionOrderId: ORDER_UUID,
+            tenantId: 'tenant-001',
+            mediaAssetId: null,
+            status: 'PENDING',
+            expiresAt: new Date(Date.now() - 1),
+          }),
+        update: jest.fn(),
+        save: jest.fn(),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+      reliabilityService.beginIdempotent.mockResolvedValue({
+        intentId: 'idempotency-intent-expired-pending-001',
+        replay: true,
+        resourceRef: 'intent-expired-pending-001',
+        evidenceUploadIntentId: 'intent-expired-pending-001',
+        resultStatus: 'PENDING',
+        resourceVersion: 1,
+      });
+
+      await expect(
+        service.createEvidenceAssetReceipt(ORDER_UUID, mockFile(), actor, {
+          idempotencyKey: 'evidence-upload-key-expired-pending-001',
+          ifMatch: '1',
+          requireIdempotency: true,
+          requireIfMatch: true,
+          correlationId: '00000000-0000-4000-8000-000000000001',
+        }),
+      ).rejects.toMatchObject({ response: { code: 'EVIDENCE_UPLOAD_EXPIRED' } });
+
+      expect(manager.update).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
+    });
+
+    it('replay con intent PENDING futuro permanece en EVIDENCE_UPLOAD_IN_PROGRESS', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(mockOrder())
+          .mockResolvedValueOnce({
+            id: 'intent-pending-future-001',
+            executionOrderId: ORDER_UUID,
+            tenantId: 'tenant-001',
+            mediaAssetId: null,
+            status: 'PENDING',
+            expiresAt: new Date(Date.now() + 60_000),
+          }),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+        fn({ manager } as never),
+      );
+      reliabilityService.beginIdempotent.mockResolvedValue({
+        intentId: 'idempotency-intent-pending-future-001',
+        replay: true,
+        resourceRef: 'intent-pending-future-001',
+        evidenceUploadIntentId: 'intent-pending-future-001',
+        resultStatus: 'PENDING',
+        resourceVersion: 1,
+      });
+
+      await expect(
+        service.createEvidenceAssetReceipt(ORDER_UUID, mockFile(), actor, {
+          idempotencyKey: 'evidence-upload-key-pending-future-001',
+          ifMatch: '1',
+          requireIdempotency: true,
+          requireIfMatch: true,
+          correlationId: '00000000-0000-4000-8000-000000000001',
+        }),
+      ).rejects.toMatchObject({ response: { code: 'EVIDENCE_UPLOAD_IN_PROGRESS' } });
+      expect(evidenceAssetPort.createUploadIntent).not.toHaveBeenCalled();
+    });
+
     it('replay con intent purgado y registro vivo devuelve resultado terminal, no EVIDENCE_UPLOAD_IN_PROGRESS', async () => {
       const manager = {
         findOne: jest
@@ -534,6 +613,7 @@ describe('ExecutionOrdersService — Evidence', () => {
 
     it('replay legacy con evidenceUploadIntentId null cae al fallback resourceRef', async () => {
       const createdAt = new Date('2026-07-30T12:00:00.000Z');
+      const expiresAt = new Date(Date.now() + 60_000);
       const manager = {
         findOne: jest
           .fn()
@@ -544,7 +624,7 @@ describe('ExecutionOrdersService — Evidence', () => {
             tenantId: 'tenant-001',
             mediaAssetId: ASSET_UUID,
             status: 'PENDING_ANALYSIS',
-            expiresAt: new Date('2026-07-31T12:00:00.000Z'),
+            expiresAt,
             createdAt,
           }),
       };

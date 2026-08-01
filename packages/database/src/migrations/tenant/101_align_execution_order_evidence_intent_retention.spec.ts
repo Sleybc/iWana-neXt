@@ -1,22 +1,42 @@
 import { CreateExecutionOrderEvidenceUploadIntents0950000000000 } from './095_create_execution_order_evidence_upload_intents';
 import { AlignExecutionOrderEvidenceIntentRetention1010000000000 } from './101_align_execution_order_evidence_intent_retention';
 
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
 /** Normaliza SQL para comparar literales independientemente del formato. */
 function normalize(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim();
 }
 
 /** Ejecuta una migración contra un queryRunner mock y devuelve los SQL emitidos. */
-async function captureSql(run: (queryRunner: never) => Promise<void>): Promise<string[]> {
+async function captureSql(
+  run: (queryRunner: never) => Promise<void>,
+  dependencyResult: { column_present: boolean; foreign_key_present: boolean } = {
+    column_present: false,
+    foreign_key_present: false,
+  },
+): Promise<string[]> {
   const queries: string[] = [];
   const queryRunner = {
     query: jest.fn(async (sql: string) => {
       queries.push(sql);
+      if (sql.includes('information_schema.columns')) return [dependencyResult];
       return [];
     }),
   } as never;
   await run(queryRunner);
   return queries;
+}
+
+async function withDestructiveFlag<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = process.env[DESTRUCTIVE_DOWN_ENV_VAR];
+  process.env[DESTRUCTIVE_DOWN_ENV_VAR] = 'true';
+  try {
+    return await operation();
+  } finally {
+    if (previous === undefined) delete process.env[DESTRUCTIVE_DOWN_ENV_VAR];
+    else process.env[DESTRUCTIVE_DOWN_ENV_VAR] = previous;
+  }
 }
 
 function extractCreateOrReplace(queries: string[]): string {
@@ -62,14 +82,63 @@ describe('AlignExecutionOrderEvidenceIntentRetention101', () => {
     expect(all).not.toContain('DROP CONSTRAINT');
   });
 
-  it('down restaura EXACTAMENTE la función legacy emitida por la 095', async () => {
+  it('down exige el flag antes de emitir cualquier función legacy', async () => {
+    const previous = process.env[DESTRUCTIVE_DOWN_ENV_VAR];
+    delete process.env[DESTRUCTIVE_DOWN_ENV_VAR];
+    const queries: string[] = [];
+    const query = jest.fn(async (sql: string) => {
+      queries.push(sql);
+      return [];
+    });
+
+    try {
+      await expect(
+        new AlignExecutionOrderEvidenceIntentRetention1010000000000().down({ query } as never),
+      ).rejects.toThrow(/IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true/);
+      expect(queries.join(' ')).not.toContain('CREATE OR REPLACE FUNCTION');
+    } finally {
+      if (previous === undefined) delete process.env[DESTRUCTIVE_DOWN_ENV_VAR];
+      else process.env[DESTRUCTIVE_DOWN_ENV_VAR] = previous;
+    }
+  });
+
+  it.each([
+    { dependency: 'la columna 100', column_present: true, foreign_key_present: false },
+    { dependency: 'la FK 100', column_present: false, foreign_key_present: true },
+  ])('down bloquea si sigue presente $dependency sin emitir la función legacy', async (state) => {
+    const queries: string[] = [];
+    const query = jest.fn(async (sql: string) => {
+      queries.push(sql);
+      if (sql.includes('information_schema.columns')) {
+        return [
+          {
+            column_present: state.column_present,
+            foreign_key_present: state.foreign_key_present,
+          },
+        ];
+      }
+      return [];
+    });
+
+    await withDestructiveFlag(async () => {
+      await expect(
+        new AlignExecutionOrderEvidenceIntentRetention1010000000000().down({ query } as never),
+      ).rejects.toThrow(/No se restauró la función legacy insegura/);
+    });
+
+    expect(queries.join(' ')).not.toContain('CREATE OR REPLACE FUNCTION');
+  });
+
+  it('down restaura EXACTAMENTE la función legacy emitida por la 095 cuando 100 ya no está presente', async () => {
     const legacyQueries = await captureSql((queryRunner) =>
       new CreateExecutionOrderEvidenceUploadIntents0950000000000().up(queryRunner),
     );
     const legacyFunction = normalize(extractCreateOrReplace(legacyQueries));
 
-    const downQueries = await captureSql((queryRunner) =>
-      new AlignExecutionOrderEvidenceIntentRetention1010000000000().down(queryRunner),
+    const downQueries = await withDestructiveFlag(() =>
+      captureSql((queryRunner) =>
+        new AlignExecutionOrderEvidenceIntentRetention1010000000000().down(queryRunner),
+      ),
     );
     const restoredFunction = normalize(extractCreateOrReplace(downQueries));
 
