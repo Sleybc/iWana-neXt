@@ -4,6 +4,12 @@
 **Responsable:** AI-PLAT-OPS
 **Estado:** PASS estructural de Compose
 
+> **Nota de vigencia (2026-07-30).** Tras esta evidencia, el perfil `production`
+> se separó a `docker-compose.prod.yml`. El comando citado más abajo se conserva
+> tal como se ejecutó y **no se reescribe**; la invocación vigente añade
+> `-f docker-compose.prod.yml` junto a `-f docker-compose.yml`. Ver
+> [INFORME-PLAT-OPS-REPRODUCIBILIDAD-PRODUCTION-v1.0.md](./INFORME-PLAT-OPS-REPRODUCIBILIDAD-PRODUCTION-v1.0.md).
+
 ## Corrección
 
 `.env.production.example` ahora contiene placeholders no secretos y no vacíos

@@ -5,7 +5,7 @@
 **Versión:** 1.0
 **Fecha:** 2026-07-30
 **Autor:** AI-PLAT-OPS
-**Estado:** Documentado; **no autoriza producción**. El ensayo de rollback y las pruebas de restore siguen pendientes.
+**Estado:** Documentado; **no autoriza producción**. Desde 2026-08-01 existe evidencia ejecutada de **reversibilidad de migraciones** (revert public 020 y revert tenant 099 con re-aplicación, ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md)). El ensayo de rollback por componente/imagen y las pruebas de restore global/tenant siguen pendientes.
 **R3:** R3.4
 **Referencias:** [Plan de remediación G6, R3.1–R3.5](../plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md) · [Protocolo de colaboración §2, §4 y §6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) · [Stack tecnológico](../prds/Stack_Tecnologico.md) · [Migraciones DB](RUNBOOK-DB-MIGRATIONS-v1.1.md) · [Least privilege](RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)
 
@@ -56,7 +56,7 @@ Estos puntos no se resuelven en este commit y deben permanecer visibles en el re
 1. `.env.production.example` contiene referencias `approval-required`; sirve para validar la forma de Compose, no para desplegar.
 2. `secrets/` contiene únicamente `.gitkeep`; no hay certificado de producción disponible en el repositorio ni debe haberlo.
 3. Las referencias exactas de algunas imágenes de producción y el dominio/proveedor TLS requieren aprobación o provisión externa según R3.1/R3.5.
-4. No existe en esta entrega evidencia de restore global, restore tenant, rollback ensayado, emisión, renovación o handshake TLS de producción.
+4. No existe en esta entrega evidencia de restore global, restore tenant, rollback ensayado por componente/imagen, emisión, renovación o handshake TLS de producción. La **reversibilidad de migraciones sí está ensayada** desde 2026-08-01 en base aislada: revert de la migración public `020` (sin datos de evidencia) y revert de la tenant `099` (`ExtendEvidenceUploadIntentStatus`) con y sin el flag destructivo, ambos con re-aplicación posterior. Ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md).
 
 Mientras cualquiera de estos bloqueos afecte al entorno objetivo, el paso operativo es detenerse y escalar, no sustituirlo por un supuesto.
 
@@ -81,14 +81,14 @@ Ejecutar con el archivo de entorno real, local y no versionado. `config` debe us
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml config --quiet
+  -f docker-compose.yml -f docker-compose.prod.yml config --quiet
 ```
 
 Comprobar además:
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml ps
+  -f docker-compose.yml -f docker-compose.prod.yml ps
 
 git rev-parse HEAD
 ```
@@ -123,14 +123,14 @@ Ejecutar los pasos en orden. No arrancar API, web, portal ni worker antes de ter
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml up -d postgres redis minio typesense
+  -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis minio typesense
 ```
 
 Esperar los healthchecks de PostgreSQL, Redis, MinIO y Typesense. Después arrancar pgBouncer:
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml up -d pgbouncer
+  -f docker-compose.yml -f docker-compose.prod.yml up -d pgbouncer
 ```
 
 No cambiar el supuesto de tenancy: pgBouncer usa `POOL_MODE=transaction` y no conserva `search_path`; cada transacción debe aplicar `SET LOCAL search_path` mediante el código aprobado.
@@ -149,7 +149,7 @@ En el perfil de producción, usar el servicio `migrator-prod` únicamente cuando
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml up --abort-on-container-exit \
+  -f docker-compose.yml -f docker-compose.prod.yml up --abort-on-container-exit \
   --exit-code-from migrator-prod migrator-prod
 ```
 
@@ -173,14 +173,14 @@ ORDER BY id DESC;
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml up -d api-prod web-prod portal-prod worker-prod
+  -f docker-compose.yml -f docker-compose.prod.yml up -d api-prod web-prod portal-prod worker-prod
 ```
 
 Esperar `api-prod` healthy antes de publicar Nginx. Validar el endpoint sin mostrar headers ni tokens:
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml exec -T api-prod \
+  -f docker-compose.yml -f docker-compose.prod.yml exec -T api-prod \
   wget -qO- http://127.0.0.1:3000/api/v1/health
 ```
 
@@ -188,10 +188,10 @@ docker compose --profile production --env-file .env.production \
 
 ```bash
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml up -d nginx-prod
+  -f docker-compose.yml -f docker-compose.prod.yml up -d nginx-prod
 
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml exec -T nginx-prod nginx -t
+  -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -t
 ```
 
 Validar externamente el dominio aprobado:
@@ -245,9 +245,9 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
    ```bash
    docker compose --profile production --env-file .env.production \
-     -f docker-compose.yml exec -T nginx-prod nginx -t
+     -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -t
    docker compose --profile production --env-file .env.production \
-     -f docker-compose.yml exec -T nginx-prod nginx -s reload
+     -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -s reload
    ```
 
 4. Confirmar `/health` y el handshake TLS. Si no existe certificado válido anterior, dejar producción en NO-GO; no degradar a HTTP ni a autofirmado.
@@ -260,7 +260,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
    ```bash
    docker compose --profile production --env-file .env.production \
-     -f docker-compose.yml up -d --no-deps web-prod portal-prod
+     -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps web-prod portal-prod
    ```
 
 4. Verificar carga por Nginx y smoke de QA. No borrar volúmenes.
@@ -273,7 +273,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
    ```bash
    docker compose --profile production --env-file .env.production \
-     -f docker-compose.yml up -d api-prod
+     -f docker-compose.yml -f docker-compose.prod.yml up -d api-prod
    ```
 
 4. Si la migración cambió el contrato o eliminó datos, no forzar una imagen anterior: usar restore global o tenant según §6 con autorización CTO.
@@ -284,7 +284,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
    ```bash
    docker compose --profile production --env-file .env.production \
-     -f docker-compose.yml stop worker-prod
+     -f docker-compose.yml -f docker-compose.prod.yml stop worker-prod
    ```
 
 2. Arrancar el digest anterior y verificar que los jobs pendientes sean compatibles.
@@ -293,8 +293,24 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 ### 5.5 Migrator y base de datos
 
 - Si el migrator falla antes de aplicar cambios, detenerlo, revisar la causa y corregir el artefacto.
-- Si una migración pública transaccional falló, revertir solo la última migración mediante el comando revisado y aprobado.
-- Para tenant, operar únicamente sobre el schema afectado y solo si existe un `down()` revisado y una evidencia de ensayo. El runner global tenant no se convierte en un revert global por conveniencia.
+- Si una migración pública transaccional falló, revertir solo la última migración mediante el comando revisado y aprobado:
+
+  ```bash
+  pnpm --filter @iwana/db migration:revert   # revierte UNA migración public (la última del registro)
+  pnpm --filter @iwana/db migration:run      # re-aplica
+  ```
+
+  Antes de revertir conviene inspeccionar el plan con `pnpm --filter @iwana/db migration:show`. La ruta canónica de diagnóstico completa está en [RUNBOOK-DB-MIGRATIONS-v1.1.md](RUNBOOK-DB-MIGRATIONS-v1.1.md).
+- Para tenant, operar únicamente sobre el schema afectado y solo si existe un `down()` revisado y una evidencia de ensayo. El revert tenant es **asimétrico por diseño**: nunca itera tenants; el schema es un argumento obligatorio:
+
+  ```bash
+  pnpm --filter @iwana/db migration:tenant:revert --schema=<tenant_schema> --dry-run   # plan sin tocar nada
+  pnpm --filter @iwana/db migration:tenant:revert --schema=<tenant_schema> --yes      # revierte UNA migración
+  ```
+
+  > **Nota de invocación (2026-08-01).** La ayuda del CLI documenta el separador `pnpm ... migration:tenant:revert -- --schema=...`, pero en pnpm 10 / Windows el `--` no es consumido por pnpm y `parseArgs` del CLI lo rechaza. La forma operativa verificada es **sin** el separador (`--schema=...` directo). Mantener esta nota hasta alinear la ayuda del CLI.
+
+  Algunos `down()` de tenant exigen declarar intención destructiva con `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true` cuando el schema contiene filas de negocio (p. ej. `095`, `099`, `000`). El flag se exporta **acotado a la sesión** que ejecuta el revert; el CLI no lo fija y no ofrece opción para hacerlo. Sin el flag, el `down()` aborta sin tocar nada; con el flag, elimina únicamente filas transitorias (`PENDING`/`FAILED` con `media_asset_id IS NULL` en el caso de `099`) y cualquier fila que sobreviva y viole el CHECK previo aborta la transacción completa — el revert nunca deja el schema a medias.
 - Si hay DDL no reversible, datos transformados o múltiples tenants afectados, usar restore desde el backup verificado. No declarar éxito por que la API arranque: comprobar migraciones, tenants y smoke.
 
 ### 5.6 PostgreSQL, Redis, MinIO y Typesense
@@ -429,7 +445,7 @@ El ensayo debe ser aislado, repetible y ejecutarse con el mismo commit, manifies
 
 El ensayo cuenta únicamente con evidencia que muestre comandos completos, códigos de salida, commit/digests, destino aislado y resultados de health/smoke. Un procedimiento escrito, un dump no restaurado o un log de arranque no son evidencia de rollback.
 
-**Estado de esta versión:** el ensayo reproducible está definido, pero no consta ejecutado en este cambio. Queda como **PENDIENTE R3.4** y bloquea declarar R3.4 cerrado.
+**Estado de esta versión:** la **reversibilidad de migraciones** (public y tenant, incluyendo la migración con CHECK `chk_execution_order_evidence_upload_intents_status` 099 y sus guardas) quedó **ensayada el 2026-08-01** en un PostgreSQL aislado y desechable, con datos sintéticos y dos schemas tenant; ver [INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md). El **ensayo reproducible completo de §7.2** (fallo inyectado en una superficie por componente + rollback de imagen y/o restore global/tenant con el mismo commit y manifiestos) sigue **PENDIENTE** y bloquea declarar R3.4 cerrado en su totalidad.
 
 ---
 
@@ -468,7 +484,7 @@ openssl x509 -in /secure-certificates/fullchain.pem \
   -noout -issuer -subject -dates
 
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml exec -T nginx-prod nginx -t
+  -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -t
 ```
 
 La evidencia R3.5 completa requiere handshake real contra el dominio público, cadena validada, emisor, expiración y renovación forzada/ensayada. Ninguno de esos hechos se afirma en este documento.
@@ -481,10 +497,10 @@ Renovar antes del vencimiento mediante el scheduler/servicio ACME aprobado. Una 
 certbot renew --dry-run
 
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml exec -T nginx-prod nginx -t
+  -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -t
 
 docker compose --profile production --env-file .env.production \
-  -f docker-compose.yml exec -T nginx-prod nginx -s reload
+  -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -s reload
 
 openssl s_client -connect <dominio-aprobado>:443 \
   -servername <dominio-aprobado> -verify_return_error </dev/null
@@ -508,6 +524,41 @@ El `dry-run` solo es evidencia de la ruta de renovación del cliente ACME; no pr
 ### 8.5 Estado R3.5
 
 En esta entrega: **PENDIENTE** dominio/proveedor, emisión, renovación ensayada, reload evidenciado y handshake público. La presencia de un archivo autofirmado local, si existiera, no satisface R3.5.
+
+### 8.6 [ESCALACIÓN AL CTO] Decisión humana pendiente
+
+**Estado:** **BLOQUEADO — STOP/NO-GO**. Esta escalación no emite certificados, no modifica Nginx y no ejecuta un release. El CTO debe decidir el dominio productivo, la CA/proveedor y autorizar la ventana operativa; AI-PLAT-OPS implementará únicamente la opción aprobada, con revisión de AI-SEC-ENG.
+
+> **Decisión del CTO — 2026-07-31:** El CTO autoriza diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. Esta decisión **no es bloqueante para G6 ni G7**: el certificado de CA reconocida sigue siendo un requisito de producción (§8.5), pero su ausencia actual no impide que los gates G6 y G7 evalúen el resto de criterios de calidad y release. La emisión efectiva del certificado se retoma cuando el dominio esté definido y provisionado (requisitos de entrada más abajo). QA-34 en el checklist de calidad pasa de FAIL a `APROBADO CTO — diferido hasta definición de dominio`.
+
+#### Opciones para decisión
+
+| Opción | Alcance y requisitos principales | Evaluación |
+|---|---|---|
+| **1. Let's Encrypt ACME HTTP-01** | Un FQDN productivo único; DNS A/AAAA bajo control del equipo; puerto 80 público hasta Nginx; webroot/volumen compartido para `/.well-known/acme-challenge/`; cliente ACME, renovación automática y recarga controlada. | **Recomendada**: CA reconocida, automatizable y coherente con el baseline Compose/Nginx sin introducir topología nueva. |
+| **2. CA comercial reconocida vía ACME HTTP-01** | Los mismos requisitos de HTTP-01, más cuenta/provisión y condiciones comerciales del proveedor elegido. | Alternativa si el CTO exige una CA comercial, soporte o política de emisión distinta. |
+| **3. CA reconocida vía ACME DNS-01** | Control operativo del proveedor DNS y credencial API restringida, guardada fuera de Git en el secret store; automatización segura de TXT; aplica si se necesitan wildcards o no se puede exponer HTTP-01. | Alternativa condicionada; aumenta el alcance de secretos y la coordinación con DNS. |
+
+**Recomendación de AI-PLAT-OPS:** aprobar **Opción 1 — Let's Encrypt ACME HTTP-01** para el primer FQDN productivo, salvo que el CTO requiera wildcard, no pueda habilitar puerto 80 o exista una restricción contractual que fuerce otra CA. No se recomienda DNS-01 solo por conveniencia.
+
+#### Requisitos de entrada antes de cualquier emisión
+
+1. CTO registra el FQDN productivo, la CA/proveedor elegido, el responsable de renovación y la ventana; DNS queda bajo control explícito del responsable autorizado.
+2. DNS público resuelve el FQDN al endpoint correcto. Para HTTP-01, el puerto 80 debe ser alcanzable y `/.well-known/acme-challenge/` debe servirse antes del redirect HTTP→HTTPS.
+3. El cliente ACME y el webroot se ejecutan con volumen protegido; la clave privada se guarda únicamente en el secret store o volumen externo con permisos mínimos. Nunca se copia a Git, imágenes, Compose, workflows, tickets o logs.
+4. AI-SEC-ENG revisa TLS, permisos, exposición del challenge, gestión de secretos y renovación; AI-PLAT-OPS prepara `nginx -t`, reload controlado y rollback al certificado anterior.
+5. La evidencia de aceptación debe incluir emisor, cadena, fechas, handshake público con verificación, `/api/v1/health`, renovación ensayada (`dry-run` cuando aplique) y recarga efectiva de Nginx, sin registrar claves, tokens ni datos de backup.
+
+#### Impacto HSTS
+
+El HSTS de un año solo puede habilitarse después de validar el dominio y una cadena de CA reconocida. Una vez recibido por el navegador, fuerza HTTPS y elimina el fallback operativo a HTTP; por tanto, un DNS incorrecto, certificado inválido o renovación fallida se convierte en un error duro para clientes previamente sujetos a HSTS. La presencia de HSTS no sustituye el certificado ni autoriza usar autofirmado. No se habilita ni se modifica HSTS como parte de esta escalación.
+
+#### Criterio de decisión stop/go
+
+| Estado | Criterio |
+|---|---|
+| **STOP/NO-GO** | Falta decisión CTO sobre dominio/CA/proveedor; DNS o puerto requerido no están bajo control; el challenge no es públicamente validable; no hay almacenamiento seguro de la clave; `nginx -t` falla; la cadena no es reconocida; no existe handshake público verificable; renovación/reload o rollback no están ensayados; o falta el go de G7/CTO. Nunca degradar a HTTP ni sustituir por autofirmado. |
+| **GO técnico para proponer a G7/CTO** | Opción aprobada y documentada; requisitos de DNS/CA/secretos revisados por SEC-ENG; certificado válido servido por Nginx; `nginx -t`, reload, handshake público y `/api/v1/health` PASS; renovación y rollback con evidencia localizable; ventana y plan de incidente aprobados. El GO final sigue siendo de G7/CTO. |
 
 ---
 
@@ -533,6 +584,7 @@ Escalar inmediatamente a AI-EM-ARCH y, si toca seguridad, a AI-SEC-ENG cuando ha
 - [ ] `docker compose ... config --quiet` PASS con el entorno real.
 - [ ] Dependencias healthy.
 - [ ] Migraciones public y tenant ejecutadas por migrator, con código de salida real.
+- [x] Reversibilidad de migraciones public y tenant ensayada en base aislada (2026-08-01; revert public `020` y tenant `099` con re-aplicación; ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md)).
 - [ ] Backup global con checksum y restore verificado.
 - [ ] Backup tenant requerido con checksum y restore verificado.
 - [ ] Healthcheck `/api/v1/health` y smoke QA PASS.

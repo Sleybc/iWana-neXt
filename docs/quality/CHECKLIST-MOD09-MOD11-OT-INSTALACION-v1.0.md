@@ -1,11 +1,12 @@
 # Checklist de calidad — OT de instalacion MOD09–MOD11
 
 **Version:** 1.0  
-**Estado:** En revision  
-**Fecha:** 2026-07-27  
+**Estado:** NO-GO  
+**Fecha:** 2026-07-31  
+**Última actualización:** 2026-08-01 — remediación de los seis P0 verificada por rol distinto; re-registro de G6/G7 pendiente de AI-EM-ARCH.  
 **Owner:** AI-SR-QA  
 **Auditor de seguridad:** AI-SEC-ENG  
-**Plan:** `docs/plans/2026-07-27-mod09-mod11-ot-instalacion-redesign.md`
+**Plan:** `docs/plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md`
 
 ---
 
@@ -40,8 +41,8 @@ Cada fila se cierra con test/comando, resultado, fecha, agente y referencia de c
 | QA-19 | Foco, teclado, contraste y lector | P1 | `portal-ui.spec.tsx:39-91` (aria-live/atomic/alert), `ExecutionOrderDrawer.spec.tsx:590-612` (a11y section), `select-placeholder-contrast.spec.tsx` (WCAG 2.2 contraste), `ui-primitives-a11y.spec.tsx` (focus trap, aria metadata) | [x] PASS |
 | QA-20 | Responsive móvil y desktop | P1 | `BusinessHoursWeekEditor.spec.tsx:94-113` (desktop/mobile variants), `portal-pager-a11y.spec.ts` (E2E responsive) | [~] PARTIAL |
 | QA-21 | Logs sin PII, payloads, firmas ni URLs secretas | P0 | `execution-orders.task3.spec.ts:941` (no PII/stacktrace en respuestas error), `execution-orders.evidence.service.spec.ts:302` (no objectKey en respuestas/URLs) | [x] PASS |
-| QA-22 | OpenAPI coincide con HTTP real | P1 | `execution-orders.task3.spec.ts:1045-1058` (OpenAPI compliance, Idempotency-Key en redrive), `tasks.swagger.spec.ts` (endpoints documentados) — swagger spec test **falla G6 por DI faltante** (P1) | [~] PARTIAL |
-| QA-23 | Migraciones tenant son reversibles | P0 | No hay test automatizado de reversibilidad de migración OT. Las migraciones existen en `packages/database/src/migrations/` pero la prueba `run/revert en dos schemas` no se ejecutó en este gate. | [ ] FAIL |
+| QA-22 | OpenAPI coincide con HTTP real | P1 | **R5**: `tasks.swagger.spec.ts`: 4/4 tests pasan. Swagger specs en 5 módulos. | [x] PASS |
+| QA-23 | Migraciones tenant son reversibles | P0 | **R5 + R2.4 + R3.4**: 13 suites DB, 65 tests unitarios, 23 tests integración real PostgreSQL con cadena 089-099. Downs con datos en `r2_4_down.integration.spec.ts` (091, 093, 094, 096). **R3.4 (2026-08-01, entorno aislado `postgres:18.3-alpine`):** public 20/20 apply + revert; tenant 95/95 (000→099) por schema + revert de la 099 con datos (bloqueo sin flag destructivo, aborto atómico ante evidencia enlazada, revert destructivo restaura CHECK previo). Ver `INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md`. | [x] PASS |
 | QA-24 | Reconciliador detecta divergencia | P1 | `execution-order-projection-convergence.service.spec.ts` (IN_SYNC/PENDING/FAILED/DIVERGED states), `execution-orders.task3.spec.ts:1003-1040` (syncState computation) — sin fault injection directa | [~] PARTIAL |
 | QA-25 | Corrección crea seguimiento y no reabre | P1 | `execution-orders.controller.http.spec.ts:773` (follow-up 403), `execution-orders.task3.spec.ts:209-461` (CREATE_FOLLOW_UP disponible en todos los estados, terminal incluido) | [x] PASS |
 | QA-26 | Dos confirmaciones concurrentes crean una sola OT | P0 | `execution-orders.service.spec.ts:651-725` (dos cierres concurrentes → uno falla con VERSION_CONFLICT), `execution-orders.task3.spec.ts:701` (race condition) | [x] PASS |
@@ -51,15 +52,15 @@ Cada fila se cierra con test/comando, resultado, fecha, agente y referencia de c
 | QA-30 | DTOs y auditoria minimizan/redactan PII/textos libres | P0 | `execution-orders.controller.http.spec.ts:402-442` (protección PII en campos de texto), `execution-orders.task3.spec.ts:941` (respuestas de error sin PII/stacktrace) | [x] PASS |
 | QA-31 | Mass assignment de campos server-owned se rechaza | P0 | `execution-orders.controller.http.spec.ts:336-378` (unknownField reject, Zod strict() en DTOs) | [x] PASS |
 | QA-32 | Cuadrilla/custodia valida tipo, responsable, membresia y vigencia | P0 | `execution-orders.task8.spec.ts:291-459` (4 tests: técnico no asignado, crew sin assignedCrewId, serial fuera de custodia, custodia aceptada), `execution-orders.service.spec.ts:110-157` (custody match assignment) | [x] PASS |
-| QA-33 | Rate limit efectivo por actor/tenant | P1 | `TenantAwareThrottlerGuard` importado pero sin test de integración que verifique 429. Sin end-to-end test de ráfaga controlada. | [ ] FAIL |
-| QA-34 | Ingress efectivo protege TLS | P0 | Responsabilidad de AI-PLAT-OPS (G3 condition PLAT-P0-02). No se ejecutó evidencia de TLS en este gate. | [ ] FAIL |
+| QA-33 | Rate limit efectivo por actor/tenant | P1 | `tenant-aware-throttler.guard.spec.ts`: 2 tests pasan (rechaza sin Redis, 503 en mutación). Sin test E2E de 429. | [~] PARTIAL |
+| QA-34 | Ingress efectivo protege TLS | P0 | **Decisión CTO 2026-07-31:** diferido hasta definición formal de dominio productivo. No bloquea G6/G7. AI-PLAT-OPS implementará cuando el dominio esté definido y provisionado (ver RUNBOOK-RELEASE-ROLLBACK §8.6). | [~] APROBADO CTO — diferido hasta definición de dominio |
 | QA-35 | Errores 403/404/409/422 usan body tipado y no enumeran | P1 | `execution-orders.task3.spec.ts:906` (409 VERSION_CONFLICT incluye code), `execution-orders.controller.http.spec.ts:309-378` (403/404 con mensajes tipados) | [x] PASS |
-| QA-36 | Existe E2E vertical con API y PostgreSQL reales | P0 | `portal-field-flow-ticket-ot-inventory.spec.ts` (flujo ticket→OT→inventario con mocks API), `portal-inventory-scm.spec.ts:3404` (OT loan flow). No existe E2E dedicado execution-orders con API real. | [~] PARTIAL |
-| QA-37 | Lag de reconciliación no se declara aprobado sin umbral | P1 | Sin métrica visible. Umbral no definido. G3 condition PLAT-P1-04 (métricas observabilidad). | [ ] FAIL |
+| QA-36 | Existe E2E vertical con API y PostgreSQL reales | P0 | **R4.1 (2026-08-01):** vertical `execution-orders-operational.spec.ts` **26/26 passed · exit 0**, en dos corridas independientes (run5/run6, RunIds `msaett3t`/`msaf080b`) contra API + PostgreSQL + worker BullMQ reales provisionados por `scripts/e2e-provision-operational.mjs`. Defecto 8b remediado y verificado. CA-10 y ampliación MOD11 en verde. Ver `INFORME-MOD11-R4.1-E2E-VERTICAL-v1.0.md`. | [x] PASS |
+| QA-37 | Lag de reconciliación no se declara aprobado sin umbral | P1 | **R3.3**: `PlatformRelayTelemetry` en health endpoint expone outboxDepth, oldestPendingAgeSeconds, dlqSize, reconciliationDiscrepancies, lastScanAt real, lagDistributionSeconds (p50/p95/p99). `execution-order-projection-convergence.service.ts:101-170` consulta SQL con `percentile_cont`. Umbral formal no aprobado (`lagThresholdStatus: 'sin umbral aprobado'`). `health.controller.spec.ts:1-56` valida contrato. | [~] PARTIAL |
 | QA-38 | Crash-window outbox no pierde ni duplica efecto | P0 | `execution-orders.task8.spec.ts:735-768` (crash recovery: beginIdempotent PENDING → replay), `execution-order-events.processor.spec.ts:76-127` (inbox dedup DO NOTHING) | [x] PASS |
 | QA-39 | DLQ y re-drive preservan tenant/evento y son auditados | P1 | `execution-order-dlq.processor.spec.ts:24-72` (outbox last_error registrado, inbox INSERT con DLQ msg), `execution-orders.controller.http.spec.ts:785-811` (redrive 403/202) | [x] PASS |
-| QA-40 | Catálogo/perfiles de permisos conserva compatibilidad sin sobreprivilegio | P0 | La migración `MOD00_ACCESS_V1` declara 6 canónicos + 1 alias deprecado. Sin test de migración que verifique compatibilidad. Los tests ABAC verifican permisos actuales pero no validan la migración de catálogo. | [ ] FAIL |
-| QA-41 | Carrera del consecutivo no duplica número OT | P0 | No se encontró test específico de carrera de consecutivo (dos creaciones concurrentes con constraint). Los tests de race cubren cierre, no creación. | [ ] FAIL |
+| QA-40 | Catálogo/perfiles de permisos conserva compatibilidad sin sobreprivilegio | P0 | **R5**: `092_seed_execution_order_permissions.spec.ts`: reversible, 7 entradas (6 canónicas + 1 alias), equivalencia MOD00. `092_seed_execution_order_permissions.integration.spec.ts`: idempotente, down no borra claves runtime ajenas. | [x] PASS |
+| QA-41 | Carrera del consecutivo no duplica número OT | P0 | **PASS (2026-08-01).** (1) `execution-orders.postgres.integration.spec.ts` ejecutado vía `jest.integration.config.js`: 2/2 PASS contra PostgreSQL real (`Promise.all` deja una sola OT; versiones 1/2 consecutivas sin colisión). (2) E2E 8b en verde (`ok 26`): dos OTs en paralelo con números distintos y consecutivos (diff 1), en run5 y run6. Defecto `work-orders.service.ts` remediado (advisory lock + savepoint). | [x] PASS |
 | QA-42 | Idempotencia, mutación, outbox y audit-intent son atómicos | P0 | `execution-orders.task8.spec.ts:728-827` (crash-window atomicity, completeIdempotency persistente), `execution-order-reliability.service.spec.ts:71` (audit-intent rollback) | [x] PASS |
 | QA-43 | Retención y expiración de idempotencia no reejecutan a ciegas | P0 | `execution-orders.task8.spec.ts:770-826` (completeIdempotency persistencia, HMAC payload, tombstone), `execution-orders.task3.spec.ts:564` (registro expirado → 409 IDEMPOTENCY_EXPIRED) | [x] PASS |
 | QA-44 | Fallo de audit-intent impide CUD y fallo de entrega no pierde rastro | P0 | `execution-order-reliability.service.spec.ts:71` (propaga fallo audit-intent y fuerza rollback), `execution-order-dlq.processor.spec.ts:24-72` (DLQ registra evento fallido) | [x] PASS |
@@ -67,8 +68,8 @@ Cada fila se cierra con test/comando, resultado, fecha, agente y referencia de c
 | QA-46 | Evidencia valida contenido y tiempo confiable | P0 | `execution-orders.evidence.service.spec.ts:177-276` (polling PENDING_ANALYSIS/AVAILABLE/REJECTED, 404 anti-enumeración), `execution-orders.evidence.service.spec.ts:130-138` (upload con PENDING_ANALYSIS, intentId, expiresAt) | [x] PASS |
 | QA-47 | Matriz endpoint×permiso×ABAC es exhaustiva | P0 | `execution-orders.controller.http.spec.ts:309-862` (BOLA HTTP, mass assignment, PII, headers, follow-up 403, redrive 403/202, contratista no asignado 403), permission matrix con `OPERATIONS_EXECUTION_ORDERS_EXECUTE` y `OPERATIONS_EXECUTION_EVENTS_REDRIVE` | [x] PASS |
 | QA-48 | Acceso directo a media reautoriza y no filtra storage | P0 | `execution-orders.evidence.service.spec.ts:291-318` (signed URL sin objectKey/bucket/secret, tenant+OT verification antes de generar URL) | [x] PASS |
-| QA-49 | Offline no persiste PII, firma ni evidencia | P0 | Sin test de service worker, storage offline o cache inspection. Sin evidencia de que el portal no persiste PII en modo offline. | [ ] FAIL |
-| QA-50 | Threat model y ASVS L2 tienen trazabilidad ejecutable | P1 | STRIDE y ASVS L2 no mapeados a pruebas G6. Sin trazabilidad ejecutable. | [ ] FAIL |
+| QA-49 | Offline no persiste PII, firma ni evidencia | P0 | **R1 + R2.1**: `ExecutionOrderDrawer.spec.tsx:1137-1151` (offline banner + botones bloqueados). Components/operations sin localStorage/sessionStorage/IndexedDB (grep confirmado). Portal solo persiste tokens de sesión. `INFORME-MOD11-FLOW-CABLEADO-v1.0.md:310,418` — "ausencia de persistencia local en el portal" verificado como cerrado. Falta test automatizado explícito que verifique ausencia de PII en storage. | [~] PARTIAL |
+| QA-50 | Threat model y ASVS L2 tienen trazabilidad ejecutable | P1 | **R2.1 + AI-SEC-ENG**: `INFORME-MOD11-EJECUCION-OPERATIVA-DEFINICION-v1.0.md:203-234` — STRIDE con 6 vectores mapeados a QA items + ASVS L2 con 7 familias de control mapeadas. `INFORME-MOD11-R2-SEC-ENG-VEREDICTO-v1.0.md` emite veredicto formal **NO-GO** y mantiene controles pendientes. | [~] PARTIAL |
 
 ## 3. Casos end-to-end obligatorios
 
@@ -143,10 +144,10 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 - [~] G6 QA parcial: AI-SR-QA emitió evidencia el 2026-07-27. 34 PASS, 8 PARTIAL, 8 FAIL. Ver §7.
 - [ ] G7 AI-EM-ARCH recomienda y CTO aprueba producción.
 - [ ] Informe vivo actualizado con comandos/resultados.
-- [~] Cobertura del core no inferior a 80%. (Verificada por ejecución de tests; coverage report no emitido por `--coverage` flag mal pasado).
+- [~] Cobertura del core no inferior a 80%. (MEASURED 2026-08-01: API 79.66% stmts / 80.49% lines; core `tasks/services` 83.18% stmts / 83.6% lines. Artefactos en `apps/api/coverage/lcov.info` y `coverage-final.json`.)
 - [x] No hay boundary violations ni PII en logs. (Verificado: boundary enforcement test en task8.spec.ts:831-917, PII tests en task3:941 y controller:402-442)
 
-**Veredicto actual:** NO-GO — G6 QA ejecutado el 2026-07-27 por AI-SR-QA. Ver §7 Matriz de evidencia G6.
+**Veredicto actual:** NO-GO — G6 QA revierte a NO-GO el 2026-07-31 por constatación de P0 activos. Ver §7.4 y `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.
 
 ---
 
@@ -177,43 +178,72 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 | Templates | QA-13 a QA-14 | 2 | 0 | 0 | **GO** |
 | Agenda/UX | QA-15 a QA-20 | 4 | 0 | 2 (QA-18, QA-20) | **GO** (cond.) |
 | PII + OpenAPI | QA-21 a QA-22 | 1 | 0 | 1 (QA-22) | **GO** (cond.) |
-| Migrations | QA-23 | 0 | 1 | 0 | **NO-GO** |
+| Migrations | QA-23 | 0 | 0 | 1 | **GO** (cond.) |
 | Reconciliation | QA-24 a QA-28 | 3 | 0 | 1 (QA-24) | **GO** (cond.) |
 | Idempotency / Atomicity | QA-29, QA-42 a QA-44 | 4 | 0 | 0 | **GO** |
 | DTO / Mass Assignment | QA-30 a QA-31 | 2 | 0 | 0 | **GO** |
 | Custody / Crew | QA-32 | 1 | 0 | 0 | **GO** |
-| Rate Limit / TLS | QA-33 a QA-34 | 0 | 2 | 0 | **NO-GO** |
+| Rate Limit / TLS | QA-33 a QA-34 | 0 | 0 | 2 (QA-33, QA-34) | **GO** (cond. — QA-34 diferido CTO 2026-07-31, QA-33 pendiente E2E 429) |
 | Error Bodies | QA-35 | 1 | 0 | 0 | **GO** |
-| E2E Vertical | QA-36 | 0 | 0 | 1 | **GO** (cond.) |
-| Lag Metric | QA-37 | 0 | 1 | 0 | **NO-GO** (P1) |
+| E2E Vertical | QA-36 | 0 | 0 | 1 | **NO-GO** (cond.) — existe spec, pero flujo vertical no completa (1f en 422, 19/26 casos sin ejecutar) |
+| Lag Metric | QA-37 | 0 | 0 | 1 | **GO** (cond. — umbral pendiente) |
 | Crash / DLQ / Redrive | QA-38 a QA-39 | 2 | 0 | 0 | **GO** |
-| Permission Catalog | QA-40 | 0 | 1 | 0 | **NO-GO** |
-| OT Number Race | QA-41 | 0 | 1 | 0 | **NO-GO** |
+| Permission Catalog | QA-40 | 1 | 0 | 0 | **GO** |
+| OT Number Race | QA-41 | 0 | 1 | 0 | **NO-GO** — test de integración excluido de todos los runners; E2E 8b nunca ejecutado |
 | Evidence / Media | QA-45 a QA-48 | 4 | 0 | 0 | **GO** |
-| Offline PII | QA-49 | 0 | 1 | 0 | **NO-GO** |
-| Threat Model | QA-50 | 0 | 1 | 0 | **NO-GO** (P1) |
+| Offline PII | QA-49 | 0 | 0 | 1 | **GO** (cond.) |
+| Threat Model | QA-50 | 0 | 0 | 1 | **GO** (cond. — SEC-ENG pendiente) |
 
 ### 7.3 Tally final
 
 | | Count |
 | --- | --- |
-| **PASS** | 34 |
+| **PASS** | 41 |
 | **PARTIAL** | 8 |
-| **FAIL** | 8 |
-| **P0 abiertos (FAIL)** | 5 (QA-23, QA-34, QA-40, QA-41, QA-49) |
-| **P1 abiertos (FAIL)** | 3 (QA-33, QA-37, QA-50) |
+| **FAIL** | 0 |
+| **P0 abiertos (FAIL)** | 0 |
+| **P1 abiertos (FAIL)** | 0 |
 
-### 7.4 Veredicto G6 integral: **NO-GO**
+> **Actualización 2026-07-31 (AI-EM-ARCH audit):** QA-41 revierte a FAIL: su evidencia (`execution-orders.postgres.integration.spec.ts`) está excluida de todos los runners y el E2E 8b nunca se completó. QA-36, QA-49, QA-50 permanecen PARTIAL sin evidencia ejecutada. La cobertura de core se declara NO MEDIBLE por override de Babel que rompe 31 suites bajo `--coverage`. Los gates "Migrations reversible" y "OpenAPI/contract frozen" se re-clasifican como PARTIAL/SIN_EVIDENCIA en `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.3. Ver §15.11 P0.
 
-**Bloqueantes P0:**
-1. **QA-23:** Migraciones tenant sin test de reversibilidad run/revert en dos schemas
-2. **QA-34:** Sin evidencia TLS/ingress en producción (PLAT-OPS, G3 PLAT-P0-02)
-3. **QA-40:** Catálogo de permisos sin test de compatibilidad de migración `MOD00_ACCESS_V1`
-4. **QA-41:** Sin test de carrera de consecutivo OT (dos creaciones concurrentes)
-5. **QA-49:** Sin evidencia de que offline no persiste PII
+> **Actualización 2026-08-01 (remediación verificada):** QA-23, QA-36 y QA-41 pasan a **PASS** con evidencia ejecutada (R3.4 rollback real; R4.1 vertical 26/26 ×2; integración postgres 2/2 + E2E 8b verde). Cobertura **MEASURED** (API 79.66% stmts / 80.49% lines; core tasks/services 83.18% stmts). OpenAPI 1.1.0 con changelog y swagger 4/4 tras bump. R0 resuelto contra PostgreSQL real (CHECK 099 acepta `PENDING` en 44 schemas). `nodemailer` P0-SEC-01 resuelto (9.0.3). Ver `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1.
 
-**Typecheck FAIL (P0):** `pending-visits-ui.ts` missing `IN_EXECUTION`, `CLOSED`, `REQUIRES_RESCHEDULE` — G3 DATA-P0-1 no resuelta.
+### 7.4 Veredicto G6 integral: **NO-GO** (revertido)
 
-**Swagger DI FAIL (P1):** `tasks.swagger.spec.ts` no provee `ExecutionOrderProjectionConvergenceService` en TestingModule.
+**Bloqueantes P0 activos:**
+1. **QA-41:** Carrera OT — evidencia excluida de runners, E2E 8b sin ejecutar.
+2. **R0 HEAD roto:** `execution-orders.service.ts:1292` escribe `status: 'PENDING'` inválido contra CHECK de 095; corrección sin commitear.
+3. **R4.1 E2E vertical incompleto:** 1f en 422, 19 de 26 casos sin ejecutar, cero salidas archivadas con conteo de passed.
+4. **Cobertura no medible:** override de Babel sin techo, 31 suites abortan, artefactos vacíos.
+5. **Contrato G4 violado:** cambios breaking en `packages/shared/.../execution-orders.ts` sin OpenAPI 1.1.0 ni changelog.
+6. **Seguridad sin veredicto formal:** AI-SEC-ENG no había emitido veredicto hasta esta sesión; `nodemailer@8.0.11` vulnerable en runtime y rate limit sin ráfaga Redis real.
 
-**Categorías GO (evidencia sólida):** BOLA/tenant isolation, terminal immutability + concurrency, templates, idempotency/atomicity, DTO/mass assignment, custody/crew, crash/DLQ/redrive, evidence/media — todas con tests exhaustivos y evidencia trazable.
+**QA-34** sigue **APROBADO CTO — diferido** hasta definición de dominio; no bloquea G6/G7.
+
+**P0 resueltos a PARTIAL desde auditoría 2026-07-27 (requieren re-verificación):**
+- QA-23: Migraciones OT — solo 091/093/094/096/098 con downs reales.
+- QA-40: Catálogo de permisos — verificar con migración 099 corregida.
+- QA-49: Offline PII — falta test automatizado explícito.
+
+**P1 resueltos a PARTIAL:**
+- QA-33: Rate limit — guard test existe; falta E2E de 429.
+- QA-37: Lag métrica — telemetría R3.3 completa; umbral sin aprobar.
+- QA-50: Threat model — STRIDE/ASVS documentados; confirmación SEC-ENG pendiente.
+
+**Typecheck:** Resuelto — `pending-visits-ui.ts` cubre los 10 estados VisitRequestStatus.
+**Swagger:** Parcial — `tasks.swagger.spec.ts` pasa 4/4, pero OpenAPI sigue en 1.0.0 con contrato G4 violado.
+
+### 7.5 Actualización 2026-08-01 — remediación de los seis P0 verificada
+
+Estado de cada P0 de la auditoría AI-EM-ARCH tras remediación y verificación por rol distinto (evidencia ejecutada, no por deducción):
+
+| P0 | Remedio | Verificación cruzada | Estado |
+| --- | --- | --- | --- |
+| 1. R4.1 vertical nunca completado | Fix fixture 8a (retire + parseo 422) + fix backend 8b | **R4.1 26/26 ×2, exit 0** (`INFORME-MOD11-R4.1-E2E-VERTICAL-v1.0.md`) | **CERRADO** |
+| 2. §15 sustituyó corrida por CI | Corrida real ejecutada y archivada | run5/run6 (`provision-run5/6.txt`, `ok 1..26`) | **CERRADO** |
+| 3. HEAD roto (`status:'PENDING'` vs CHECK 095) | Migración 099 + unión de tipos | CHECK 099 en 44 schemas; INSERT/UPDATE PENDING contra Postgres real OK; integración postgres 2/2 | **CERRADO** |
+| 4. Contratos G4 violados | OpenAPI **1.1.0** + changelog breaking | `tasks.swagger.spec.ts` 4/4 tras bump; descongelación/recongelación §15.7 | **CERRADO (aprobación formal pendiente AI-EM-ARCH)** |
+| 5. Cobertura no medible | Override Babel acotado `<8.0.0` | `--coverage` 230 suites / 2849 tests; core tasks 83.18% stmts | **CERRADO** |
+| 6. SEC sin veredicto formal | Veredicto AI-SEC-ENG NO-GO + fix nodemailer/log | `pnpm audit --prod` 0 critical; nodemailer 9.0.3; test no-exposición `text` 15/15 | **CERRADO (re-verificación AI-SEC-ENG pendiente)** |
+
+**Re-registro:** el registro de gate en `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15 refleja el estado real; la reconsideración formal de G6/G7 es prerrogativa de AI-EM-ARCH y no se auto-otorga.
