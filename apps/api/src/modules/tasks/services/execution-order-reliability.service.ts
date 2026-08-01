@@ -21,9 +21,26 @@ export interface IdempotencyReceipt {
   intentId: string;
   replay: boolean;
   resourceRef: string | null;
+  /** Relación autoritativa con el intent de subida de evidencia (FK RESTRICT). */
+  evidenceUploadIntentId: string | null;
   resultStatus: string;
   resourceVersion: number | null;
 }
+
+/**
+ * Forma forward-compatible del registro de idempotencia: la columna
+ * `evidence_upload_intent_id` la añade el paquete de base de datos (migración
+ * 100, escrita en paralelo). El intersection cast preserva el tipado estricto
+ * aunque el tipo de la entidad no exponga aún la columna, y `?? null` cubre los
+ * registros previos a la migración (la columna nace nullable).
+ */
+type IdempotencyRecordWithEvidenceIntent = ExecutionOrderIdempotencyRecord & {
+  evidenceUploadIntentId?: string | null;
+};
+
+const withEvidenceIntent = (
+  record: ExecutionOrderIdempotencyRecord,
+): IdempotencyRecordWithEvidenceIntent => record as IdempotencyRecordWithEvidenceIntent;
 
 export interface OutboxEventInput {
   eventId?: string;
@@ -86,6 +103,7 @@ export class ExecutionOrderReliabilityService {
               intentId: existing.intentId,
               replay: true,
               resourceRef: existing.resourceRef,
+              evidenceUploadIntentId: withEvidenceIntent(existing).evidenceUploadIntentId ?? null,
               resultStatus: existing.resultStatus,
               resourceVersion: existing.resourceVersion,
             };
@@ -104,6 +122,7 @@ export class ExecutionOrderReliabilityService {
             expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
             tombstonedAt: null,
           });
+          withEvidenceIntent(record).evidenceUploadIntentId = null;
           let saved: ExecutionOrderIdempotencyRecord;
           try {
             saved = await manager.save(ExecutionOrderIdempotencyRecord, record);
@@ -121,6 +140,7 @@ export class ExecutionOrderReliabilityService {
               intentId: winner.intentId,
               replay: true,
               resourceRef: winner.resourceRef,
+              evidenceUploadIntentId: withEvidenceIntent(winner).evidenceUploadIntentId ?? null,
               resultStatus: winner.resultStatus,
               resourceVersion: winner.resourceVersion,
             };
@@ -129,6 +149,7 @@ export class ExecutionOrderReliabilityService {
             intentId: saved.intentId,
             replay: false,
             resourceRef: saved.resourceRef,
+            evidenceUploadIntentId: null,
             resultStatus: saved.resultStatus,
             resourceVersion: saved.resourceVersion,
           };
@@ -144,11 +165,17 @@ export class ExecutionOrderReliabilityService {
       resultCode: string;
       resultStatus: string;
       resourceVersion: number;
+      /** Relación autoritativa con el intent de subida de evidencia; solo se
+       *  escribe cuando la operación la declara (el resto no la toca). */
+      evidenceUploadIntentId?: string | null;
     },
   ): Promise<void> {
     const record = await manager.findOne(ExecutionOrderIdempotencyRecord, { where: { intentId } });
     if (!record) throw new Error('IDEMPOTENCY_RECORD_MISSING');
     record.resourceRef = result.resourceRef;
+    if (result.evidenceUploadIntentId !== undefined) {
+      withEvidenceIntent(record).evidenceUploadIntentId = result.evidenceUploadIntentId ?? null;
+    }
     record.resultCode = result.resultCode;
     record.resultStatus = result.resultStatus;
     record.resourceVersion = result.resourceVersion;

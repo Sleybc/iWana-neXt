@@ -1243,30 +1243,58 @@ export class ExecutionOrdersService {
       );
 
       if (receipt?.replay) {
-        if (!receipt.resourceRef) {
+        // La relación tipada evidenceUploadIntentId es la fuente autoritativa;
+        // resourceRef es el fallback de compatibilidad para registros
+        // anteriores a la migración (columna null).
+        const intentId = receipt.evidenceUploadIntentId ?? receipt.resourceRef;
+        if (!intentId) {
           throw new ConflictException({
-            code: 'EVIDENCE_UPLOAD_IN_PROGRESS',
-            message: 'La carga de evidencia todavía está en proceso.',
+            code: 'EVIDENCE_UPLOAD_INTENT_PURGED',
+            message:
+              'La carga original de evidencia no puede reanudarse (no existe un intento de carga asociado). Usa una clave de idempotencia nueva.',
           });
         }
 
         const replayIntent = await qr.manager.findOne(ExecutionOrderEvidenceUploadIntent, {
           where: {
-            id: receipt.resourceRef,
+            id: intentId,
             executionOrderId: id,
             tenantId,
           },
         });
-        if (!replayIntent || !replayIntent.mediaAssetId) {
+        if (!replayIntent) {
+          // Intent purgado (o referencia legacy caducada) con registro vivo:
+          // desenlace terminal, no un EVIDENCE_UPLOAD_IN_PROGRESS permanente.
           throw new ConflictException({
-            code: 'EVIDENCE_UPLOAD_IN_PROGRESS',
-            message: 'La carga de evidencia todavía está en proceso.',
+            code: 'EVIDENCE_UPLOAD_INTENT_PURGED',
+            message:
+              'La carga original de evidencia no puede reanudarse (intento purgado o expirado). Usa una clave de idempotencia nueva.',
           });
         }
         if (replayIntent.status === 'FAILED') {
           throw new ConflictException({
             code: 'EVIDENCE_UPLOAD_FAILED',
             message: 'La carga original de evidencia no pudo completarse.',
+          });
+        }
+        if (replayIntent.status === 'REJECTED') {
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_REJECTED',
+            message: 'La carga original de evidencia fue rechazada por el análisis.',
+          });
+        }
+        if (replayIntent.status === 'EXPIRED') {
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_EXPIRED',
+            message: 'La carga original de evidencia venció antes de completarse.',
+          });
+        }
+        if (!replayIntent.mediaAssetId) {
+          // Único caso legítimo de "en proceso": intent PENDING con la subida
+          // realmente en curso. Todo estado terminal ya se resolvió arriba.
+          throw new ConflictException({
+            code: 'EVIDENCE_UPLOAD_IN_PROGRESS',
+            message: 'La carga de evidencia todavía está en proceso.',
           });
         }
 
@@ -1297,10 +1325,13 @@ export class ExecutionOrdersService {
 
       // Vincular la reserva al intent antes de salir de la transacción evita
       // que un retry concurrente pueda reservar un segundo intent mientras
-      // Media procesa el binario.
+      // Media procesa el binario. La relación tipada evidenceUploadIntentId es
+      // la fuente autoritativa del replay; resourceRef se conserva como
+      // referencia genérica de compatibilidad con registros legacy.
       if (receipt && this.reliabilityService) {
         await this.reliabilityService.completeIdempotency(qr.manager, receipt.intentId, {
           resourceRef: createdIntent.id,
+          evidenceUploadIntentId: createdIntent.id,
           resultCode: 'UPLOAD_INTENT_CREATED',
           resultStatus: 'PENDING',
           resourceVersion: order.version ?? 1,
@@ -1347,6 +1378,10 @@ export class ExecutionOrdersService {
       await qr.manager.update(ExecutionOrderEvidenceUploadIntent, intent.intent.id, {
         mediaAssetId: uploadResult.mediaAssetId,
         status: 'PENDING_ANALYSIS',
+        // El asset quedó vinculado al intent: la reserva de 24h deja de
+        // gobernar la retención. A partir de aquí manda el horizonte del
+        // registro de idempotencia (90 días), no la reserva original.
+        expiresAt: null,
       });
 
       if (intent.receipt) {
@@ -1879,6 +1914,13 @@ export class ExecutionOrdersService {
         code: 'EVIDENCE_UPLOAD_INTENT_NOT_ALLOWED',
         message: 'El intento de carga no está en un estado permitido para esta operación.',
       });
+    }
+
+    // Un intent ya vinculado a un asset (media_asset_id asignado) con la
+    // reserva limpia (expires_at null tras completar el enlace) no depende del
+    // reloj de 24h: su retención la gobierna el registro de idempotencia.
+    if (intent.mediaAssetId && intent.expiresAt === null) {
+      return;
     }
 
     const expiresAt = intent.expiresAt;

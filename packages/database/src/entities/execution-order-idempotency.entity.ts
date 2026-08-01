@@ -13,6 +13,12 @@ export class ExecutionOrderIdempotencyRecord {
   @Column({ name: 'resource_ref', type: 'varchar', length: 160, nullable: true }) resourceRef:
     | string
     | null;
+  /** Relación autoritativa con el intent de evidencia (FK ON DELETE RESTRICT, migración 100). */
+  @Index('idx_execution_order_idempotency_evidence_intent', ['evidenceUploadIntentId'], {
+    where: 'evidence_upload_intent_id IS NOT NULL',
+  })
+  @Column({ name: 'evidence_upload_intent_id', type: 'uuid', nullable: true })
+  evidenceUploadIntentId: string | null;
   @Column({ name: 'result_code', type: 'varchar', length: 64, nullable: true }) resultCode:
     | string
     | null;

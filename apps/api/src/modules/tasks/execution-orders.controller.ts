@@ -65,6 +65,7 @@ import { ExecutionOrdersService } from './services/execution-orders.service';
 import { ExecutionOrderInventoryReconciliationService } from './services/execution-order-inventory-reconciliation.service';
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
+import { ExecutionOrderTenantScoped } from './guards/execution-order-tenant-scoped.decorator';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
 
@@ -472,6 +473,7 @@ export class ExecutionOrdersController {
 
   /** PLAT-P1-04: Health del relay de eventos outbox. */
   @Get('health/relay')
+  @ExecutionOrderTenantScoped()
   @Roles(UserRole.ADMIN, UserRole.NOC)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
   @ApiOperation({ summary: 'Estado del relay de eventos outbox' })

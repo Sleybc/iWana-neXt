@@ -1393,3 +1393,98 @@ describe('ExecutionOrdersController HTTP — permisos por capacidad', () => {
     });
   });
 });
+
+// ─── Health relay: fail-closed ABAC con metadata tenant-scoped ────────────
+
+describe('ExecutionOrdersController HTTP — health/relay (fail-closed)', () => {
+  let app: INestApplication;
+
+  const buildServiceMock = () => ({
+    assertActorAccess: jest.fn().mockResolvedValue(undefined),
+    assertActorCanRedrive: jest.fn().mockResolvedValue(undefined),
+  });
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [ExecutionOrdersController],
+      providers: [
+        {
+          provide: ExecutionOrdersService,
+          useFactory: buildServiceMock,
+        },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ]),
+          },
+        },
+        PermissionsGuard,
+        // Guard ABAC real: la ruta sin recurso solo pasa por la metadata
+        // @ExecutionOrderTenantScoped(); rol y permiso los validan RolesGuard
+        // y PermissionsGuard antes.
+        ExecutionOrderAccessGuard,
+        TenantAwareThrottlerGuard,
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
+        JwtAuthGuard,
+        RolesGuard,
+        ExecutionOrderResponseHeadersInterceptor,
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: {
+            getRelayHealth: jest.fn().mockResolvedValue({
+              status: 'HEALTHY',
+              pendingCount: 0,
+              oldestAgeSeconds: null,
+              lastScanAt: '2026-07-27T10:00:00.000Z',
+              relayActive: true,
+            }),
+            verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }),
+          },
+        },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.use(createVerifiedTenantContextMiddleware());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('devuelve 200 para NOC con permiso read (metadata tenant-scoped)', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders/health/relay')
+      .set('Authorization', 'Bearer coordinator-token')
+      .expect(200);
+
+    expect(response.body).toEqual(
+      expect.objectContaining({ status: 'HEALTHY', relayActive: true }),
+    );
+  });
+
+  it('no consulta un recurso de OT en la ruta tenant-scoped', async () => {
+    const service = app.get(ExecutionOrdersService) as {
+      assertActorAccess: jest.Mock;
+      assertActorCanRedrive: jest.Mock;
+    };
+
+    await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders/health/relay')
+      .set('Authorization', 'Bearer coordinator-token')
+      .expect(200);
+
+    expect(service.assertActorAccess).not.toHaveBeenCalled();
+    expect(service.assertActorCanRedrive).not.toHaveBeenCalled();
+  });
+
+  it('retorna 401 sin token', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders/health/relay')
+      .expect(401);
+  });
+});

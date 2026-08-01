@@ -17,7 +17,8 @@
     "migration:show": "typeorm migration:show -d dist/data-source.js",
     "migration:tenant:run": "node dist/cli/tenant-migrate.js",
     "migration:tenant:revert": "node dist/cli/tenant-revert.js",
-    "reconcile:visit-request-statuses": "node dist/cli/reconcile-visit-request-statuses.js"
+    "reconcile:visit-request-statuses": "node dist/cli/reconcile-visit-request-statuses.js",
+    "reconcile:evidence-upload": "node dist/cli/reconcile-evidence-upload-idempotency.js"
   },
   "dependencies": {
     "pg": "^8.16.0",

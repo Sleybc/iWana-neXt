@@ -1,9 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AccessPermissionKey } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PERMISSIONS_KEY } from '../../access-control/decorators/permissions.decorator';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
+import { EXECUTION_ORDER_TENANT_SCOPED_KEY } from './execution-order-tenant-scoped.decorator';
 
 /** ABAC resource-aware: RBAC/PermissionsGuard ya verificó capacidad. */
 @Injectable()
@@ -33,10 +34,21 @@ export class ExecutionOrderAccessGuard implements CanActivate {
       await this.executionOrdersService.assertActorCanRedrive(request.params.eventId, actor);
       return true;
     }
-    // Endpoints tenant-scoped sin un recurso de OT (p. ej. health del relay)
-    // ya quedaron protegidos por JWT/RBAC/PermissionsGuard; no requieren una
-    // comprobación ABAC sobre una OT inexistente en los params.
-    if (!id) return true;
+    // Endpoints tenant-scoped sin un recurso de OT en los params: deny-by-default.
+    // Solo las rutas marcadas con @ExecutionOrderTenantScoped() (p. ej. health
+    // del relay) pasan sin comprobación ABAC; las demás se rechazan con 403
+    // aunque JWT/RBAC/PermissionsGuard hayan autorizado rol y permiso.
+    if (!id) {
+      const tenantScoped = this.reflector.getAllAndOverride<boolean>(
+        EXECUTION_ORDER_TENANT_SCOPED_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (tenantScoped) return true;
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
+    }
     const write = request.method !== 'GET';
     const requiresTechnicalExecution = requiredPermissions
       ? requiredPermissions.includes(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
