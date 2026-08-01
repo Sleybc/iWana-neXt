@@ -31,4 +31,4 @@ El reporte HTML navegable (`lcov-report/`, 672 archivos) es **regenerable** y no
 ## Agente y fecha
 
 - **Agente:** AI-SR-QA (Sr. Dev QA/Testing) · **Fecha de archivo:** 2026-08-01.
-- Evidencia soporta: QA-36 (E2E vertical 26/26 ×2), QA-41 (E2E 8b en verde), QA-33 (ráfaga 429 real `ok 14` en la vertical), QA-23/R0 (migraciones), cobertura R4.2 (gate "Tests ≥80% core modules" — core 83.18% stmts). Ver `CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` §7.5 e `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.9/§15.11.1.
+- Evidencia soporta: QA-36 (E2E vertical 26/26 ×2), QA-41 (E2E 8b en verde), QA-33 (429 real y casos 4c/4d/4e en el spec), QA-49 (115/115 sin writes de storage), QA-50 (AppSec v1.1), QA-23/R0 (migraciones), cobertura R4.2 (core 83.18% stmts). La corrida Linux de G6.5 queda pendiente de registrar con SHA/URL; no se afirma como ejecutada aquí. Ver checklist §7.5 y `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.13.

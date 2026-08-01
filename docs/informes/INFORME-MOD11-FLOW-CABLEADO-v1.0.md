@@ -1,11 +1,11 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
 **Versión:** 2.0  
-**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Veredicto formal G6/G7 vigente: **NO-GO para merge** hasta re-registro por AI-EM-ARCH y aprobación CTO (dominio productivo + TLS). Ver §15.9.  
+**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Veredicto vigente: **G6 GO**, **G6.5 pendiente de CI Linux**, **G7 NO-GO para producción**. Ver §15.13.
 **Fecha:** 2026-07-31  
 **Fecha de cierre de remediación:** 2026-07-31  
-**Aprobado por:** CTO (G1, escalaciones §14.7, QA-34 diferido), AI-EM-ARCH (G2–G4; re-registro formal G6/G7 **pendiente**), AI-SR-QA (G6 re-gate; veredicto formal no auto-otorgado, §15.9), AI-SEC-ENG (veredicto R2 **NO-GO** emitido; re-verificación pendiente, §15.11.1 P0-6), AI-DATA-ENG (aprobación de datos), AI-SR-FULL (aprobación backend), AI-PLAT-OPS (plataforma)  
-**Modo activo:** Re-registro — G6/G7 pendientes de AI-EM-ARCH (veredicto formal) y de CTO (aprobación producción con dominio definido + TLS); NO-GO vigente (§15.9)  
+**Aprobado por:** CTO (G1, escalaciones §14.7, QA-34 diferido), AI-EM-ARCH (G2–G6; G6.5 pendiente de CI Linux), AI-SR-QA (G6 re-gate), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (aprobación de datos), AI-SR-FULL (aprobación backend), AI-PLAT-OPS (plataforma)
+**Modo activo:** Espera de G6.5 — G6 aprobado por AI-EM-ARCH; G6.5 requiere corrida Linux de ambos jobs; G7 NO-GO hasta dominio, TLS, rollback, restores y CTO.
 **Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate; v1.9 — auditoría multiagente; v2.0 — consolidación final), AI-SR-QA (v1.5 — G6 QA audit; v2.0 — coautor consolidación R5)  
 **Clasificación:** Uso interno
 
@@ -68,7 +68,7 @@ Cerrar el cableado end-to-end:
 
 ### 10.3 Matriz QA-01 a QA-50
 
-> **Foto histórica 2026-07-27** (primer gate G6, previo a remediación). Superada por §15.5/§15.9 tras R0–R4: tally vigente **43 PASS / 6 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
+> **Foto histórica 2026-07-27** (primer gate G6, previo a remediación). Superada por §15.5/§15.13 tras R0–R4: tally histórico **43 PASS / 6 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
 
 | Estado | Cantidad | Items |
 | --- | --- | --- |
@@ -460,10 +460,10 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | --- | --- | --- |
 | **R0 — Desbloqueo** | **NO-GO** | **REMEDIADO Y VERIFICADO**: migración **099** aplicada en los 44 schemas; CHECK acepta `PENDING`; INSERT/UPDATE de intent con `PENDING` probado contra PostgreSQL real (ROLLBACK); integración postgres **2/2**; swagger **4/4**; typecheck 0 errores. El literal `status: 'PENDING'` de `execution-orders.service.ts:1292` ya es válido. |
 | **R1 — Ciclo funcional** | **GO con reservas** | Reserva cerrada: la afirmación de §15.4/§15.9 sobre flujo completo ahora está respaldada por la vertical real R4.1 **26/26, exit 0** (run5/run6). |
-| **R2 — Recuperabilidad** | **GO con reservas / SEC NO-GO** | P0-SEC-01 `nodemailer` resuelto (**9.0.3**) y P0-SEC-02 (token en `options.text`) corregido con test 15/15. Pendiente re-verificación formal de AI-SEC-ENG; P1s (ráfaga Redis real, QA-49/QA-50) abiertos. |
+| **R2 — Recuperabilidad** | **GO** | P0-SEC-01 `nodemailer` 9.0.3, P0-SEC-02 con test 15/15, QA-33 5/5 + E2E 4a–4e, QA-49 115/115 y AppSec v1.1. |
 | **R3 — Plataforma** | **NO-GO** | **Migrations reversible** con evidencia ejecutable R3.4 (public 20/20 revert; tenant 95/95 + revert de la 099 con datos; runbook corregido). Fuera de este gate: ensayo rollback por componente/imagen y restores global/tenant. CI `execution-orders-e2e` sigue sin pushear (garantía de regresión, no sustituto de corrida). |
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
-| **R5 — G6 Re-gate** | **NO-GO** | Vertical R4.1 **CERRADA 26/26 ×2**; checklist 43 PASS / 6 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). QA-23, QA-33, QA-36, QA-41 a PASS con evidencia ejecutada. |
+| **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 26/26 ×2**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
 
 **Nota:** esta tabla registra el estado de remediación y su verificación cruzada; el **veredicto formal de G6/G7 lo emite AI-EM-ARCH** sobre este expediente y no se auto-otorga en este documento.
 
@@ -618,9 +618,9 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 | Estado | Cantidad | Detalle |
 | --- | --- | --- |
 | **PASS** | 43 | QA-01–10, QA-12–17, QA-18, QA-19, QA-21, QA-22, QA-23, QA-25–33, QA-35, QA-36, QA-38–48 |
-| **PARTIAL** | 6 | QA-11 (custodia cross-module), QA-20 (responsive), QA-24 (reconciliador — sin fault injection), QA-37 (lag métrica — telemetría completa, umbral sin aprobar), QA-49 (offline PII — evidencia de diseño, falta test automatizado), QA-50 (threat model — STRIDE/ASVS documentados, veredicto AI-SEC-ENG NO-GO en seguimiento) |
+| **PARTIAL** | 4 | QA-11 (custodia cross-module), QA-20 (responsive), QA-24 (reconciliador — sin fault injection), QA-37 (lag métrica — telemetría completa, umbral sin aprobar) |
 | **FAIL** | **0** | Sin bloqueantes P0 ni P1 activos |
-| **Diferido CTO** | 1 | QA-34 (TLS/ingress) — autorizado por CTO 2026-07-31 |
+| **Diferido CTO** | 1 | QA-34 (TLS/ingress) — autorizado por CTO 2026-07-31; requisito de G7 |
 
 ### 15.6 CVE y dependencias
 
@@ -629,7 +629,7 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 | CVE críticas | **0** (`pnpm audit --prod` 2026-08-01) |
 | High / moderate | **2 high** (`brace-expansion` vía `typeorm>glob>minimatch`, GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg) / **4 moderate** (`file-type` vía `@nestjs/common`, GHSA-5v7r-6r5c-r473 / GHSA-j47w-4g3g-c36v; `brace-expansion` GHSA-f886-m6hf-6m8v / GHSA-jxxr-4gwj-5jf2) |
 | P0-SEC-01 nodemailer | **Resuelto**: `^9.0.1` en `apps/api/package.json`, resuelve **9.0.3** en lockfile; test de no-exposición del contenido de `text` 15/15 PASS |
-| Auditoría | `codebase-cleanup-deps-audit` ejecutada (histórica `c5642b2b`); re-verificación AI-SEC-ENG pendiente tras los fixes |
+| Auditoría | AppSec v1.1 emitido; `pnpm audit --prod` registra 0 críticos, 2 high y 4 moderate transitivos no críticos |
 
 ### 15.7 Descongelación y recongelación de contratos G4 — pendiente de gate
 
@@ -672,7 +672,7 @@ como parte del re-registro de gate.
 
 ### 15.9 Recomendación G7
 
-**NO-GO para merge — estado 2026-08-01 tras remediación verificada.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron **remediadas y verificadas por rol distinto**:
+**G6 GO para merge; G6.5 pendiente de CI Linux; G7 NO-GO para producción — estado 2026-08-01.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron remediadas y verificadas:
 
 1. R4.1 vertical completa: **26/26, exit 0, ×2 corridas independientes**.
 2. R0 resuelto contra PostgreSQL real: CHECK de la 099 acepta `PENDING` en los 44 schemas; integración postgres 2/2; swagger 1.1.0 4/4.
@@ -680,7 +680,15 @@ como parte del re-registro de gate.
 4. Migraciones reversibles con evidencia ejecutable (R3.4); OpenAPI 1.1.0 con changelog.
 5. Seguridad: `nodemailer` 9.0.3, sin exposición del token en logs, `pnpm audit --prod` 0 critical.
 
-Sin embargo, el **registro de gate no se auto-emite**: la reconsideración formal de G6/G7 es prerrogativa de AI-EM-ARCH, y la aprobación de producción corresponde al CTO con dominio productivo definido, certificado TLS emitido y restore/rollback por componente ensayados (pendientes fuera de este gate). Este §15 queda listo para re-registro sin mezclar remediación y veredicto en el mismo commit.
+El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6.5 espera la primera corrida Linux real de los dos jobs; G7 requiere CTO, dominio productivo, TLS, rollback por componente y restores ensayados.
+
+### 15.13 Registro vigente G6/G6.5/G7 — 2026-08-01
+
+| Gate | Estado | Evidencia / pendiente |
+|---|---|---|
+| G6 Quality acceptance | **GO** | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas. |
+| G6.5 Merge readiness | **PENDIENTE** | `.github/workflows/ci.yml` ya exige variables efímeras, 26 tests, cero skips y cleanup. Falta ejecutar ambos jobs en Linux y archivar SHA/URL del run. |
+| G7 Production authorization | **NO-GO** | TLS/QA-34, rollback de componentes, restore global/tenant y aprobación CTO pendientes. |
 
 ### 15.10 Trazabilidad de artefactos de cierre
 
@@ -694,7 +702,7 @@ Sin embargo, el **registro de gate no se auto-emite**: la reconsideración forma
 | ADR-068 | `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` | Aprobado (G1) |
 | CI pipeline | `.github/workflows/ci.yml` | Job `execution-orders-e2e` línea 282 (rama local, no presente en `origin/main`) — garantía de regresión; la corrida de referencia para el gate es la vertical real run6 (26/26) |
 
-### 15.11 Seis P0 que invalidan el GO anterior
+### 15.11 Seis P0 que invalidaron el GO anterior — foto histórica
 
 **Fecha de constatación:** 2026-07-31. **Rol constatador:** AI-EM-ARCH (auditoría de gobernanza, no productor de los carriles).
 
@@ -719,14 +727,14 @@ Sin embargo, el **registro de gate no se auto-emite**: la reconsideración forma
 | 3. HEAD roto (`PENDING` vs CHECK 095) | Migración **099** + unión de tipos en entidad | CHECK 099 en 44 schemas; INSERT/UPDATE `PENDING` contra PostgreSQL real con ROLLBACK; integración postgres 2/2 | **CERRADO** |
 | 4. Contratos G4 violados | OpenAPI **1.1.0** + changelog breaking en `info.description` | `tasks.swagger.spec.ts` **4/4** tras bump (verificado por AI-SR-FULL); descongelación/recongelación en §15.7 | **CERRADO** (aprobación formal AI-EM-ARCH pendiente) |
 | 5. Cobertura no medible | Override Babel acotado `<8.0.0` | `--coverage`: 230 suites / 2849 tests; core `tasks/services` 83.18% stmts; API 79.66% stmts / 80.49% lines | **CERRADO** |
-| 6. Sin veredicto formal SEC | Veredicto NO-GO emitido + fix `nodemailer`/logging | `pnpm audit --prod` 0 critical; `nodemailer@9.0.3`; mailer 15/15 incl. no-exposición de `text` | **CERRADO** (re-verificación AI-SEC-ENG pendiente) |
+| 6. Sin veredicto formal SEC | Veredicto AppSec v1.1 + fix `nodemailer`/logging | `pnpm audit --prod` 0 critical; `nodemailer@9.0.3`; mailer 15/15 incl. no-exposición de `text` | **CERRADO** |
 
-**Nota de gobernanza:** los seis P0 están remediados y verificados, pero la reconsideración de G6/G7 la emite AI-EM-ARCH sobre este expediente; no se auto-otorga aquí.
+**Nota histórica:** los seis P0 están remediados. El registro vigente y separado de gates está en §15.13.
 
 ### 15.12 Orden de reingreso requerido
 
-1. Remediar los P0 técnicos (R0, R4.1, cobertura, contratos) en commits separados del registro de gate. — **HECHO (working tree; pendiente de commit separado)**
-2. Verificar cada reparación con un rol distinto al productor (AI-SR-QA verifica AI-SR-FULL; AI-SEC-ENG verifica R2; AI-PLAT-OPS verifica R3). — **HECHO** (R0/swagger por AI-SR-FULL verificado contra real; R4.1 por AI-SR-QA; R3.4 por AI-PLAT-OPS; SEC pendiente de re-verificación formal tras fixes)
-3. Actualizar el checklist QA con estados reales y evidencia ejecutada, no por deducción. — **HECHO** (43 PASS / 6 PARTIAL / 0 FAIL + QA-34 diferido CTO, §7.3/§7.5)
-4. Emitir un nuevo registro de gate (§15) que no mezcle remediación y veredicto en el mismo commit. — **EN CURSO** (este §15.11.1 registra remediación; el veredicto formal es de AI-EM-ARCH)
+1. Remediar los P0 técnicos (R0, R4.1, cobertura, contratos) en commits separados del registro de gate. — **HECHO**
+2. Verificar cada reparación con un rol distinto al productor. — **HECHO** (R0/swagger, R4.1, R3.4 y AppSec v1.1 con evidencia cruzada)
+3. Actualizar el checklist QA con estados reales y evidencia ejecutada, no por deducción. — **HECHO** (45 PASS / 4 PARTIAL / 0 FAIL + QA-34 diferido CTO)
+4. Emitir un nuevo registro de gate (§15) que no mezcle remediación y veredicto en el mismo commit. — **HECHO** (§15.13 registra G6/G6.5/G7)
 5. Reconsiderar G7 solo cuando el expediente tenga cero P0 activos y las salidas archivadas lo sustenten. — **PRERROGATIVA AI-EM-ARCH/CTO**

@@ -52,7 +52,7 @@ Cada fila se cierra con test/comando, resultado, fecha, agente y referencia de c
 | QA-30 | DTOs y auditoria minimizan/redactan PII/textos libres | P0 | `execution-orders.controller.http.spec.ts:402-442` (protección PII en campos de texto), `execution-orders.task3.spec.ts:941` (respuestas de error sin PII/stacktrace) | [x] PASS |
 | QA-31 | Mass assignment de campos server-owned se rechaza | P0 | `execution-orders.controller.http.spec.ts:336-378` (unknownField reject, Zod strict() en DTOs) | [x] PASS |
 | QA-32 | Cuadrilla/custodia valida tipo, responsable, membresia y vigencia | P0 | `execution-orders.task8.spec.ts:291-459` (4 tests: técnico no asignado, crew sin assignedCrewId, serial fuera de custodia, custodia aceptada), `execution-orders.service.spec.ts:110-157` (custody match assignment) | [x] PASS |
-| QA-33 | Rate limit efectivo por actor/tenant | P1 | **PASS (2026-08-01):** `tenant-aware-throttler.guard.spec.ts` (2 tests: rechaza sin Redis, 503 en mutación) **+ E2E 429 real en la vertical R4.1**: `ok 14` — "4a. Ráfaga de requests → 429 después del límite (1.2s)" en run5 y run6 (RunIds `msaett3t`/`msaf080b`). | [x] PASS |
+| QA-33 | Rate limit efectivo por actor/tenant | P1 | **PASS (2026-08-01):** guard `tenant-aware-throttler.guard.spec.ts` 5/5 (actor, tenant, fail-closed 503) + HTTP 503 en `execution-orders.controller.http.spec.ts:806/825` + E2E real 4a/4b (429) y 4c/4d/4e (aislamiento actor/tenant y recuperación Redis) en `execution-orders-operational.spec.ts`. | [x] PASS |
 | QA-34 | Ingress efectivo protege TLS | P0 | **Decisión CTO 2026-07-31:** diferido hasta definición formal de dominio productivo. No bloquea G6/G7. AI-PLAT-OPS implementará cuando el dominio esté definido y provisionado (ver RUNBOOK-RELEASE-ROLLBACK §8.6). | [~] APROBADO CTO — diferido hasta definición de dominio |
 | QA-35 | Errores 403/404/409/422 usan body tipado y no enumeran | P1 | `execution-orders.task3.spec.ts:906` (409 VERSION_CONFLICT incluye code), `execution-orders.controller.http.spec.ts:309-378` (403/404 con mensajes tipados) | [x] PASS |
 | QA-36 | Existe E2E vertical con API y PostgreSQL reales | P0 | **R4.1 (2026-08-01):** vertical `execution-orders-operational.spec.ts` **26/26 passed · exit 0**, en dos corridas independientes (run5/run6, RunIds `msaett3t`/`msaf080b`) contra API + PostgreSQL + worker BullMQ reales provisionados por `scripts/e2e-provision-operational.mjs`. Defecto 8b remediado y verificado. CA-10 y ampliación MOD11 en verde. Ver `INFORME-MOD11-R4.1-E2E-VERTICAL-v1.0.md`. | [x] PASS |
@@ -68,8 +68,8 @@ Cada fila se cierra con test/comando, resultado, fecha, agente y referencia de c
 | QA-46 | Evidencia valida contenido y tiempo confiable | P0 | `execution-orders.evidence.service.spec.ts:177-276` (polling PENDING_ANALYSIS/AVAILABLE/REJECTED, 404 anti-enumeración), `execution-orders.evidence.service.spec.ts:130-138` (upload con PENDING_ANALYSIS, intentId, expiresAt) | [x] PASS |
 | QA-47 | Matriz endpoint×permiso×ABAC es exhaustiva | P0 | `execution-orders.controller.http.spec.ts:309-862` (BOLA HTTP, mass assignment, PII, headers, follow-up 403, redrive 403/202, contratista no asignado 403), permission matrix con `OPERATIONS_EXECUTION_ORDERS_EXECUTE` y `OPERATIONS_EXECUTION_EVENTS_REDRIVE` | [x] PASS |
 | QA-48 | Acceso directo a media reautoriza y no filtra storage | P0 | `execution-orders.evidence.service.spec.ts:291-318` (signed URL sin objectKey/bucket/secret, tenant+OT verification antes de generar URL) | [x] PASS |
-| QA-49 | Offline no persiste PII, firma ni evidencia | P0 | **R1 + R2.1**: `ExecutionOrderDrawer.spec.tsx:1137-1151` (offline banner + botones bloqueados). Components/operations sin localStorage/sessionStorage/IndexedDB (grep confirmado). Portal solo persiste tokens de sesión. `INFORME-MOD11-FLOW-CABLEADO-v1.0.md:310,418` — "ausencia de persistencia local en el portal" verificado como cerrado. Falta test automatizado explícito que verifique ausencia de PII en storage. | [~] PARTIAL |
-| QA-50 | Threat model y ASVS L2 tienen trazabilidad ejecutable | P1 | **R2.1 + AI-SEC-ENG**: `INFORME-MOD11-EJECUCION-OPERATIVA-DEFINICION-v1.0.md:203-234` — STRIDE con 6 vectores mapeados a QA items + ASVS L2 con 7 familias de control mapeadas. `INFORME-MOD11-R2-SEC-ENG-VEREDICTO-v1.0.md` emite veredicto formal **NO-GO** y mantiene controles pendientes. | [~] PARTIAL |
+| QA-49 | Offline no persiste PII, firma ni evidencia | P0 | **PASS (2026-08-01):** `ExecutionOrderDrawer.spec.tsx` y `OperationsClient.spec.tsx` verifican cero escrituras en `localStorage`, `sessionStorage` e IndexedDB; 115/115 tests del alcance focalizado. Los tokens de sesión quedan fuera del alcance QA-49. | [x] PASS |
+| QA-50 | Threat model y ASVS L2 tienen trazabilidad ejecutable | P1 | **PASS (2026-08-01):** `INFORME-MOD11-R2-SEC-ENG-VEREDICTO-v1.1.md` supersede la foto v1.0; ABAC fail-closed, aislamiento tenant/actor, rate limit fail-closed, FK de retención y CLI de schema validado tienen evidencia ejecutable. | [x] PASS |
 
 ## 3. Casos end-to-end obligatorios
 
@@ -140,14 +140,15 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 - [ ] G3 backend/frontend y consultores emiten factibilidad; AppSec no deja omisiones de contrato.
 - [ ] G4 AI-EM-ARCH emite prompts que declaran contratos DS/API congelados con artefactos reales.
 - [ ] G5 implementación supera gates técnicos, migración, observabilidad, reconciliación y rollback.
-- [ ] G6 PROD-UX/DS-OWNER/SR-QA/SEC-ENG completan review con QA-01 a QA-50.
-- [~] G6 QA parcial (foto histórica 2026-07-27, superada por §7.3/§7.5): AI-SR-QA emitió evidencia con 34 PASS, 8 PARTIAL, 8 FAIL. Tally vigente: **43 PASS / 6 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
+- [x] G6 PROD-UX/DS-OWNER/SR-QA/SEC-ENG completan review con QA-01 a QA-50; veredicto AppSec v1.1 emitido.
+- [~] G6 QA histórica: la foto 2026-07-27 queda superada. Tally vigente: **45 PASS / 4 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
+- [ ] G6.5 Merge readiness: faltan corridas Linux verdes de `production-images` y `execution-orders-e2e` identificadas por SHA.
 - [ ] G7 AI-EM-ARCH recomienda y CTO aprueba producción.
 - [ ] Informe vivo actualizado con comandos/resultados.
 - [~] Cobertura del core no inferior a 80%. (MEASURED 2026-08-01: API 79.66% stmts / 80.49% lines; core `tasks/services` 83.18% stmts / 83.6% lines. Artefactos en `apps/api/coverage/lcov.info` y `coverage-final.json`.)
 - [x] No hay boundary violations ni PII en logs. (Verificado: boundary enforcement test en task8.spec.ts:831-917, PII tests en task3:941 y controller:402-442)
 
-**Veredicto actual:** NO-GO — los seis P0 constatados el 2026-07-31 (§15.11) están **remediados y verificados por rol distinto** (§7.5 y `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1). El NO-GO formal de G6/G7 permanece vigente hasta re-registro por AI-EM-ARCH y aprobación CTO (ver informe §15.9).
+**Veredicto actual:** G6 **GO**; G6.5 **PENDIENTE** de CI Linux real; G7 **NO-GO** para producción. Los seis P0 históricos están remediados y registrados en §7.5. TLS, rollback, restores y aprobación CTO siguen siendo requisitos de G7.
 
 ---
 
@@ -193,23 +194,23 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 | Permission Catalog | QA-40 | 1 | 0 | 0 | **GO** |
 | OT Number Race | QA-41 | 1 | 0 | 0 | **GO** — integración postgres 2/2 + E2E 8b verde (ok 26, run5/run6) |
 | Evidence / Media | QA-45 a QA-48 | 4 | 0 | 0 | **GO** |
-| Offline PII | QA-49 | 0 | 0 | 1 | **GO** (cond.) |
-| Threat Model | QA-50 | 0 | 0 | 1 | **GO** (cond. — SEC-ENG pendiente) |
+| Offline PII | QA-49 | 1 | 0 | 0 | **GO** |
+| Threat Model | QA-50 | 1 | 0 | 0 | **GO** |
 
 ### 7.3 Tally final
 
 | | Count |
 | --- | --- |
-| **PASS** | 43 |
-| **PARTIAL** | 6 |
+| **PASS** | 45 |
+| **PARTIAL** | 4 |
 | **FAIL** | 0 |
-| **Diferido CTO** | 1 (QA-34 — TLS/ingress, no bloquea G6/G7) |
+| **Diferido CTO** | 1 (QA-34 — TLS/ingress, requisito de G7) |
 | **P0 abiertos (FAIL)** | 0 |
 | **P1 abiertos (FAIL)** | 0 |
 
 > **Actualización 2026-07-31 (AI-EM-ARCH audit):** QA-41 revierte a FAIL: su evidencia (`execution-orders.postgres.integration.spec.ts`) está excluida de todos los runners y el E2E 8b nunca se completó. QA-36, QA-49, QA-50 permanecen PARTIAL sin evidencia ejecutada. La cobertura de core se declara NO MEDIBLE por override de Babel que rompe 31 suites bajo `--coverage`. Los gates "Migrations reversible" y "OpenAPI/contract frozen" se re-clasifican como PARTIAL/SIN_EVIDENCIA en `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.3. Ver §15.11 P0.
 
-> **Actualización 2026-08-01 (remediación verificada):** QA-23, QA-33, QA-36 y QA-41 pasan a **PASS** con evidencia ejecutada (R3.4 rollback real; E2E 429 real `ok 14` en la vertical; R4.1 vertical 26/26 ×2; integración postgres 2/2 + E2E 8b verde). Cobertura **MEASURED** (API 79.66% stmts / 80.49% lines; core tasks/services 83.18% stmts). OpenAPI 1.1.0 con changelog y swagger 4/4 tras bump. R0 resuelto contra PostgreSQL real (CHECK 099 acepta `PENDING` en 44 schemas). `nodemailer` P0-SEC-01 resuelto (9.0.3). Ver `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1.
+> **Actualización 2026-08-01 (remediación verificada):** QA-23, QA-33, QA-36, QA-41, QA-49 y QA-50 están en **PASS** con evidencia ejecutada. Tally vigente: **45 PASS / 4 PARTIAL / 0 FAIL** + QA-34 diferido CTO. Cobertura **MEASURED**; OpenAPI 1.1.0 con changelog y swagger 4/4; `nodemailer` 9.0.3; AppSec v1.1. Ver `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.13.
 
 ### 7.4 Veredicto G6 integral: **NO-GO** (revertido)
 
@@ -249,6 +250,6 @@ Estado de cada P0 de la auditoría AI-EM-ARCH tras remediación y verificación 
 | 3. HEAD roto (`status:'PENDING'` vs CHECK 095) | Migración 099 + unión de tipos | CHECK 099 en 44 schemas; INSERT/UPDATE PENDING contra Postgres real OK; integración postgres 2/2 | **CERRADO** |
 | 4. Contratos G4 violados | OpenAPI **1.1.0** + changelog breaking | `tasks.swagger.spec.ts` 4/4 tras bump; descongelación/recongelación §15.7 | **CERRADO (aprobación formal pendiente AI-EM-ARCH)** |
 | 5. Cobertura no medible | Override Babel acotado `<8.0.0` | `--coverage` 230 suites / 2849 tests; core tasks 83.18% stmts | **CERRADO** |
-| 6. SEC sin veredicto formal | Veredicto AI-SEC-ENG NO-GO + fix nodemailer/log | `pnpm audit --prod` 0 critical; nodemailer 9.0.3; test no-exposición `text` 15/15 | **CERRADO (re-verificación AI-SEC-ENG pendiente)** |
+| 6. SEC sin veredicto formal | Veredicto AppSec v1.1 + fix nodemailer/log | `pnpm audit --prod` 0 critical; nodemailer 9.0.3; test no-exposición `text` 15/15 | **CERRADO** |
 
 **Re-registro:** el registro de gate en `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15 refleja el estado real; la reconsideración formal de G6/G7 es prerrogativa de AI-EM-ARCH y no se auto-otorga.
