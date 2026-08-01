@@ -52,7 +52,7 @@ Cada fila se cierra con test/comando, resultado, fecha, agente y referencia de c
 | QA-30 | DTOs y auditoria minimizan/redactan PII/textos libres | P0 | `execution-orders.controller.http.spec.ts:402-442` (protección PII en campos de texto), `execution-orders.task3.spec.ts:941` (respuestas de error sin PII/stacktrace) | [x] PASS |
 | QA-31 | Mass assignment de campos server-owned se rechaza | P0 | `execution-orders.controller.http.spec.ts:336-378` (unknownField reject, Zod strict() en DTOs) | [x] PASS |
 | QA-32 | Cuadrilla/custodia valida tipo, responsable, membresia y vigencia | P0 | `execution-orders.task8.spec.ts:291-459` (4 tests: técnico no asignado, crew sin assignedCrewId, serial fuera de custodia, custodia aceptada), `execution-orders.service.spec.ts:110-157` (custody match assignment) | [x] PASS |
-| QA-33 | Rate limit efectivo por actor/tenant | P1 | `tenant-aware-throttler.guard.spec.ts`: 2 tests pasan (rechaza sin Redis, 503 en mutación). Sin test E2E de 429. | [~] PARTIAL |
+| QA-33 | Rate limit efectivo por actor/tenant | P1 | **PASS (2026-08-01):** `tenant-aware-throttler.guard.spec.ts` (2 tests: rechaza sin Redis, 503 en mutación) **+ E2E 429 real en la vertical R4.1**: `ok 14` — "4a. Ráfaga de requests → 429 después del límite (1.2s)" en run5 y run6 (RunIds `msaett3t`/`msaf080b`). | [x] PASS |
 | QA-34 | Ingress efectivo protege TLS | P0 | **Decisión CTO 2026-07-31:** diferido hasta definición formal de dominio productivo. No bloquea G6/G7. AI-PLAT-OPS implementará cuando el dominio esté definido y provisionado (ver RUNBOOK-RELEASE-ROLLBACK §8.6). | [~] APROBADO CTO — diferido hasta definición de dominio |
 | QA-35 | Errores 403/404/409/422 usan body tipado y no enumeran | P1 | `execution-orders.task3.spec.ts:906` (409 VERSION_CONFLICT incluye code), `execution-orders.controller.http.spec.ts:309-378` (403/404 con mensajes tipados) | [x] PASS |
 | QA-36 | Existe E2E vertical con API y PostgreSQL reales | P0 | **R4.1 (2026-08-01):** vertical `execution-orders-operational.spec.ts` **26/26 passed · exit 0**, en dos corridas independientes (run5/run6, RunIds `msaett3t`/`msaf080b`) contra API + PostgreSQL + worker BullMQ reales provisionados por `scripts/e2e-provision-operational.mjs`. Defecto 8b remediado y verificado. CA-10 y ampliación MOD11 en verde. Ver `INFORME-MOD11-R4.1-E2E-VERTICAL-v1.0.md`. | [x] PASS |
@@ -141,7 +141,7 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 - [ ] G4 AI-EM-ARCH emite prompts que declaran contratos DS/API congelados con artefactos reales.
 - [ ] G5 implementación supera gates técnicos, migración, observabilidad, reconciliación y rollback.
 - [ ] G6 PROD-UX/DS-OWNER/SR-QA/SEC-ENG completan review con QA-01 a QA-50.
-- [~] G6 QA parcial (foto histórica 2026-07-27, superada por §7.3/§7.5): AI-SR-QA emitió evidencia con 34 PASS, 8 PARTIAL, 8 FAIL. Tally vigente: 42 PASS / 7 PARTIAL / 0 FAIL + QA-34 diferido CTO.
+- [~] G6 QA parcial (foto histórica 2026-07-27, superada por §7.3/§7.5): AI-SR-QA emitió evidencia con 34 PASS, 8 PARTIAL, 8 FAIL. Tally vigente: **43 PASS / 6 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
 - [ ] G7 AI-EM-ARCH recomienda y CTO aprueba producción.
 - [ ] Informe vivo actualizado con comandos/resultados.
 - [~] Cobertura del core no inferior a 80%. (MEASURED 2026-08-01: API 79.66% stmts / 80.49% lines; core `tasks/services` 83.18% stmts / 83.6% lines. Artefactos en `apps/api/coverage/lcov.info` y `coverage-final.json`.)
@@ -170,7 +170,7 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 
 ### 7.2 Veredicto por categoría
 
-> **Foto histórica 2026-07-27/07-31** (primer gate G6 y auditoría AI-EM-ARCH). Superada por §7.3 (tally) y §7.5 (remediación de los seis P0 verificada).
+> **Estado vigente 2026-08-01** (reconciliado con §7.3/§7.5 y las filas QA del §2). La foto histórica 2026-07-27/07-31 queda documentada en §7.4; esta tabla ya no conserva justificaciones superadas (QA-33→PASS, QA-36→PASS, QA-41→PASS, QA-18/QA-22/QA-23/QA-25–28 ya PASS).
 
 | Categoría | Items | PASS | FAIL | PARTIAL | Veredicto |
 | --- | --- | --- | --- | --- | --- |
@@ -178,20 +178,20 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 | Terminal Immutability + Concurrency | QA-05 a QA-08 | 4 | 0 | 0 | **GO** |
 | Inventory Boundary | QA-09 a QA-12 | 3 | 0 | 1 (QA-11) | **GO** (cond.) |
 | Templates | QA-13 a QA-14 | 2 | 0 | 0 | **GO** |
-| Agenda/UX | QA-15 a QA-20 | 4 | 0 | 2 (QA-18, QA-20) | **GO** (cond.) |
-| PII + OpenAPI | QA-21 a QA-22 | 1 | 0 | 1 (QA-22) | **GO** (cond.) |
-| Migrations | QA-23 | 0 | 0 | 1 | **GO** (cond.) |
-| Reconciliation | QA-24 a QA-28 | 3 | 0 | 1 (QA-24) | **GO** (cond.) |
+| Agenda/UX | QA-15 a QA-20 | 5 | 0 | 1 (QA-20) | **GO** (cond.) |
+| PII + OpenAPI | QA-21 a QA-22 | 2 | 0 | 0 | **GO** |
+| Migrations | QA-23 | 1 | 0 | 0 | **GO** |
+| Reconciliation | QA-24 a QA-28 | 4 | 0 | 1 (QA-24) | **GO** (cond.) |
 | Idempotency / Atomicity | QA-29, QA-42 a QA-44 | 4 | 0 | 0 | **GO** |
 | DTO / Mass Assignment | QA-30 a QA-31 | 2 | 0 | 0 | **GO** |
 | Custody / Crew | QA-32 | 1 | 0 | 0 | **GO** |
-| Rate Limit / TLS | QA-33 a QA-34 | 0 | 0 | 2 (QA-33, QA-34) | **GO** (cond. — QA-34 diferido CTO 2026-07-31, QA-33 pendiente E2E 429) |
+| Rate Limit / TLS | QA-33 a QA-34 | 1 | 0 | 0 | **GO** (QA-33 PASS con E2E 429 real; QA-34 diferido CTO 2026-07-31) |
 | Error Bodies | QA-35 | 1 | 0 | 0 | **GO** |
-| E2E Vertical | QA-36 | 0 | 0 | 1 | **NO-GO** (cond.) — existe spec, pero flujo vertical no completa (1f en 422, 19/26 casos sin ejecutar) |
+| E2E Vertical | QA-36 | 1 | 0 | 0 | **GO** — vertical R4.1 26/26 ×2 (run5/run6) |
 | Lag Metric | QA-37 | 0 | 0 | 1 | **GO** (cond. — umbral pendiente) |
 | Crash / DLQ / Redrive | QA-38 a QA-39 | 2 | 0 | 0 | **GO** |
 | Permission Catalog | QA-40 | 1 | 0 | 0 | **GO** |
-| OT Number Race | QA-41 | 0 | 1 | 0 | **NO-GO** — test de integración excluido de todos los runners; E2E 8b nunca ejecutado |
+| OT Number Race | QA-41 | 1 | 0 | 0 | **GO** — integración postgres 2/2 + E2E 8b verde (ok 26, run5/run6) |
 | Evidence / Media | QA-45 a QA-48 | 4 | 0 | 0 | **GO** |
 | Offline PII | QA-49 | 0 | 0 | 1 | **GO** (cond.) |
 | Threat Model | QA-50 | 0 | 0 | 1 | **GO** (cond. — SEC-ENG pendiente) |
@@ -200,8 +200,8 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 
 | | Count |
 | --- | --- |
-| **PASS** | 42 |
-| **PARTIAL** | 7 |
+| **PASS** | 43 |
+| **PARTIAL** | 6 |
 | **FAIL** | 0 |
 | **Diferido CTO** | 1 (QA-34 — TLS/ingress, no bloquea G6/G7) |
 | **P0 abiertos (FAIL)** | 0 |
@@ -209,7 +209,7 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 
 > **Actualización 2026-07-31 (AI-EM-ARCH audit):** QA-41 revierte a FAIL: su evidencia (`execution-orders.postgres.integration.spec.ts`) está excluida de todos los runners y el E2E 8b nunca se completó. QA-36, QA-49, QA-50 permanecen PARTIAL sin evidencia ejecutada. La cobertura de core se declara NO MEDIBLE por override de Babel que rompe 31 suites bajo `--coverage`. Los gates "Migrations reversible" y "OpenAPI/contract frozen" se re-clasifican como PARTIAL/SIN_EVIDENCIA en `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.3. Ver §15.11 P0.
 
-> **Actualización 2026-08-01 (remediación verificada):** QA-23, QA-36 y QA-41 pasan a **PASS** con evidencia ejecutada (R3.4 rollback real; R4.1 vertical 26/26 ×2; integración postgres 2/2 + E2E 8b verde). Cobertura **MEASURED** (API 79.66% stmts / 80.49% lines; core tasks/services 83.18% stmts). OpenAPI 1.1.0 con changelog y swagger 4/4 tras bump. R0 resuelto contra PostgreSQL real (CHECK 099 acepta `PENDING` en 44 schemas). `nodemailer` P0-SEC-01 resuelto (9.0.3). Ver `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1.
+> **Actualización 2026-08-01 (remediación verificada):** QA-23, QA-33, QA-36 y QA-41 pasan a **PASS** con evidencia ejecutada (R3.4 rollback real; E2E 429 real `ok 14` en la vertical; R4.1 vertical 26/26 ×2; integración postgres 2/2 + E2E 8b verde). Cobertura **MEASURED** (API 79.66% stmts / 80.49% lines; core tasks/services 83.18% stmts). OpenAPI 1.1.0 con changelog y swagger 4/4 tras bump. R0 resuelto contra PostgreSQL real (CHECK 099 acepta `PENDING` en 44 schemas). `nodemailer` P0-SEC-01 resuelto (9.0.3). Ver `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1.
 
 ### 7.4 Veredicto G6 integral: **NO-GO** (revertido)
 

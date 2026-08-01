@@ -68,7 +68,7 @@ Cerrar el cableado end-to-end:
 
 ### 10.3 Matriz QA-01 a QA-50
 
-> **Foto histórica 2026-07-27** (primer gate G6, previo a remediación). Superada por §15.5/§15.9 tras R0–R4: tally vigente **42 PASS / 7 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
+> **Foto histórica 2026-07-27** (primer gate G6, previo a remediación). Superada por §15.5/§15.9 tras R0–R4: tally vigente **43 PASS / 6 PARTIAL / 0 FAIL** + QA-34 diferido CTO.
 
 | Estado | Cantidad | Items |
 | --- | --- | --- |
@@ -463,7 +463,7 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | **R2 — Recuperabilidad** | **GO con reservas / SEC NO-GO** | P0-SEC-01 `nodemailer` resuelto (**9.0.3**) y P0-SEC-02 (token en `options.text`) corregido con test 15/15. Pendiente re-verificación formal de AI-SEC-ENG; P1s (ráfaga Redis real, QA-49/QA-50) abiertos. |
 | **R3 — Plataforma** | **NO-GO** | **Migrations reversible** con evidencia ejecutable R3.4 (public 20/20 revert; tenant 95/95 + revert de la 099 con datos; runbook corregido). Fuera de este gate: ensayo rollback por componente/imagen y restores global/tenant. CI `execution-orders-e2e` sigue sin pushear (garantía de regresión, no sustituto de corrida). |
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
-| **R5 — G6 Re-gate** | **NO-GO** | Vertical R4.1 **CERRADA 26/26 ×2**; checklist 42 PASS / 7 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). QA-41, QA-23, QA-36 a PASS con evidencia ejecutada. |
+| **R5 — G6 Re-gate** | **NO-GO** | Vertical R4.1 **CERRADA 26/26 ×2**; checklist 43 PASS / 6 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). QA-23, QA-33, QA-36, QA-41 a PASS con evidencia ejecutada. |
 
 **Nota:** esta tabla registra el estado de remediación y su verificación cruzada; el **veredicto formal de G6/G7 lo emite AI-EM-ARCH** sobre este expediente y no se auto-otorga en este documento.
 
@@ -617,8 +617,8 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 
 | Estado | Cantidad | Detalle |
 | --- | --- | --- |
-| **PASS** | 42 | QA-01–10, QA-12–17, QA-18, QA-19, QA-21, QA-22, QA-23, QA-25–32, QA-35, QA-36, QA-38–48 |
-| **PARTIAL** | 7 | QA-11 (custodia cross-module), QA-20 (responsive), QA-24 (reconciliador — sin fault injection), QA-33 (rate limit — guard test existe, sin E2E 429), QA-37 (lag métrica — telemetría completa, umbral sin aprobar), QA-49 (offline PII — evidencia de diseño, falta test automatizado), QA-50 (threat model — STRIDE/ASVS documentados, veredicto AI-SEC-ENG NO-GO en seguimiento) |
+| **PASS** | 43 | QA-01–10, QA-12–17, QA-18, QA-19, QA-21, QA-22, QA-23, QA-25–33, QA-35, QA-36, QA-38–48 |
+| **PARTIAL** | 6 | QA-11 (custodia cross-module), QA-20 (responsive), QA-24 (reconciliador — sin fault injection), QA-37 (lag métrica — telemetría completa, umbral sin aprobar), QA-49 (offline PII — evidencia de diseño, falta test automatizado), QA-50 (threat model — STRIDE/ASVS documentados, veredicto AI-SEC-ENG NO-GO en seguimiento) |
 | **FAIL** | **0** | Sin bloqueantes P0 ni P1 activos |
 | **Diferido CTO** | 1 | QA-34 (TLS/ingress) — autorizado por CTO 2026-07-31 |
 
@@ -687,7 +687,7 @@ Sin embargo, el **registro de gate no se auto-emite**: la reconsideración forma
 | Artefacto | Ruta | Estado |
 | --- | --- | --- |
 | Informe vivo (este documento) | `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md` | v2.0 consolidado |
-| Checklist de calidad | `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` | v1.0 NO-GO con remediación verificada (42 PASS, 7 PARTIAL, 0 FAIL + QA-34 diferido CTO — §7.3/§7.5) |
+| Checklist de calidad | `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md` | v1.0 NO-GO con remediación verificada (43 PASS, 6 PARTIAL, 0 FAIL + QA-34 diferido CTO — §7.3/§7.5) |
 | Plan de remediación | `docs/plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md` | R0–R4 ejecutados |
 | Runbook release/rollback | `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md` | v1.0 creado |
 | Runbook E2E R4.1 | `docs/runbooks/RUNBOOK-E2E-R41-OPERATIONS-v1.0.md` | v1.0 creado |
@@ -727,6 +727,6 @@ Sin embargo, el **registro de gate no se auto-emite**: la reconsideración forma
 
 1. Remediar los P0 técnicos (R0, R4.1, cobertura, contratos) en commits separados del registro de gate. — **HECHO (working tree; pendiente de commit separado)**
 2. Verificar cada reparación con un rol distinto al productor (AI-SR-QA verifica AI-SR-FULL; AI-SEC-ENG verifica R2; AI-PLAT-OPS verifica R3). — **HECHO** (R0/swagger por AI-SR-FULL verificado contra real; R4.1 por AI-SR-QA; R3.4 por AI-PLAT-OPS; SEC pendiente de re-verificación formal tras fixes)
-3. Actualizar el checklist QA con estados reales y evidencia ejecutada, no por deducción. — **HECHO** (42 PASS / 7 PARTIAL / 0 FAIL + QA-34 diferido CTO, §7.3/§7.5)
+3. Actualizar el checklist QA con estados reales y evidencia ejecutada, no por deducción. — **HECHO** (43 PASS / 6 PARTIAL / 0 FAIL + QA-34 diferido CTO, §7.3/§7.5)
 4. Emitir un nuevo registro de gate (§15) que no mezcle remediación y veredicto en el mismo commit. — **EN CURSO** (este §15.11.1 registra remediación; el veredicto formal es de AI-EM-ARCH)
 5. Reconsiderar G7 solo cuando el expediente tenga cero P0 activos y las salidas archivadas lo sustenten. — **PRERROGATIVA AI-EM-ARCH/CTO**
