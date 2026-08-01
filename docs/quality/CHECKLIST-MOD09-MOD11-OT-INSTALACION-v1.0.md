@@ -141,13 +141,13 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 - [ ] G4 AI-EM-ARCH emite prompts que declaran contratos DS/API congelados con artefactos reales.
 - [ ] G5 implementación supera gates técnicos, migración, observabilidad, reconciliación y rollback.
 - [ ] G6 PROD-UX/DS-OWNER/SR-QA/SEC-ENG completan review con QA-01 a QA-50.
-- [~] G6 QA parcial: AI-SR-QA emitió evidencia el 2026-07-27. 34 PASS, 8 PARTIAL, 8 FAIL. Ver §7.
+- [~] G6 QA parcial (foto histórica 2026-07-27, superada por §7.3/§7.5): AI-SR-QA emitió evidencia con 34 PASS, 8 PARTIAL, 8 FAIL. Tally vigente: 42 PASS / 7 PARTIAL / 0 FAIL + QA-34 diferido CTO.
 - [ ] G7 AI-EM-ARCH recomienda y CTO aprueba producción.
 - [ ] Informe vivo actualizado con comandos/resultados.
 - [~] Cobertura del core no inferior a 80%. (MEASURED 2026-08-01: API 79.66% stmts / 80.49% lines; core `tasks/services` 83.18% stmts / 83.6% lines. Artefactos en `apps/api/coverage/lcov.info` y `coverage-final.json`.)
 - [x] No hay boundary violations ni PII en logs. (Verificado: boundary enforcement test en task8.spec.ts:831-917, PII tests en task3:941 y controller:402-442)
 
-**Veredicto actual:** NO-GO — G6 QA revierte a NO-GO el 2026-07-31 por constatación de P0 activos. Ver §7.4 y `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.
+**Veredicto actual:** NO-GO — los seis P0 constatados el 2026-07-31 (§15.11) están **remediados y verificados por rol distinto** (§7.5 y `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1). El NO-GO formal de G6/G7 permanece vigente hasta re-registro por AI-EM-ARCH y aprobación CTO (ver informe §15.9).
 
 ---
 
@@ -169,6 +169,8 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 | PII in logs/responses | 0 (verified by task3.spec.ts:941, controller.http:402-442, evidence:302) |
 
 ### 7.2 Veredicto por categoría
+
+> **Foto histórica 2026-07-27/07-31** (primer gate G6 y auditoría AI-EM-ARCH). Superada por §7.3 (tally) y §7.5 (remediación de los seis P0 verificada).
 
 | Categoría | Items | PASS | FAIL | PARTIAL | Veredicto |
 | --- | --- | --- | --- | --- | --- |
@@ -198,9 +200,10 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 
 | | Count |
 | --- | --- |
-| **PASS** | 41 |
-| **PARTIAL** | 8 |
+| **PASS** | 42 |
+| **PARTIAL** | 7 |
 | **FAIL** | 0 |
+| **Diferido CTO** | 1 (QA-34 — TLS/ingress, no bloquea G6/G7) |
 | **P0 abiertos (FAIL)** | 0 |
 | **P1 abiertos (FAIL)** | 0 |
 
@@ -209,6 +212,8 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 > **Actualización 2026-08-01 (remediación verificada):** QA-23, QA-36 y QA-41 pasan a **PASS** con evidencia ejecutada (R3.4 rollback real; R4.1 vertical 26/26 ×2; integración postgres 2/2 + E2E 8b verde). Cobertura **MEASURED** (API 79.66% stmts / 80.49% lines; core tasks/services 83.18% stmts). OpenAPI 1.1.0 con changelog y swagger 4/4 tras bump. R0 resuelto contra PostgreSQL real (CHECK 099 acepta `PENDING` en 44 schemas). `nodemailer` P0-SEC-01 resuelto (9.0.3). Ver `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.11.1.
 
 ### 7.4 Veredicto G6 integral: **NO-GO** (revertido)
+
+> **Foto histórica 2026-07-31** — auditoría AI-EM-ARCH con los seis P0 activos. **Superada por §7.5 (2026-08-01):** los seis P0 están CERRADOS con verificación por rol distinto; el NO-GO formal de G6/G7 permanece hasta re-registro por AI-EM-ARCH (ver informe §15.9).
 
 **Bloqueantes P0 activos:**
 1. **QA-41:** Carrera OT — evidencia excluida de runners, E2E 8b sin ejecutar.
