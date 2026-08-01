@@ -4,7 +4,7 @@
 **Versión:** 1.0
 **Fecha:** 2026-07-30
 **Responsable:** AI-PLAT-OPS
-**Estado:** Evidencia parcial; **reversibilidad de migraciones ensayada (2026-08-01)**; R3.4 no cerrado en su totalidad
+**Estado:** Evidencia parcial; **reversibilidad de migraciones ensayada (2026-08-01)**; **re-ejecución reproducible sobre árbol limpio (2026-08-01, corrección de defecto de método P0 — ver §4.1/4.6)**; R3.4 no cerrado en su totalidad
 **Artefacto:** [RUNBOOK-RELEASE-ROLLBACK-v1.0.md](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md)
 
 ## 1. Alcance de esta evidencia
@@ -26,7 +26,7 @@ Este informe registra únicamente verificaciones ejecutadas durante la creación
 
 | Evidencia requerida | Estado | Responsable / decisión |
 |---|---|---|
-| Reversibilidad de migraciones public y tenant (gate "Migrations reversible") | **EJECUTADO 2026-08-01** — ver §4 | AI-PLAT-OPS; base aislada, datos sintéticos, sin PII. |
+| Reversibilidad de migraciones public y tenant (gate "Migrations reversible") | **EJECUTADO 2026-08-01 (reproducible, árbol limpio)** — ver §4.1/4.6 | AI-PLAT-OPS; worktree limpio en `11d6e4cc`, base aislada, datos sintéticos, sin PII. |
 | Ensayo reproducible de rollback por componente y completo | **PENDIENTE** | AI-PLAT-OPS, con QA; registrar commit/digests y códigos de salida. |
 | Restore global PostgreSQL verificado | **PENDIENTE** | AI-PLAT-OPS + DATA-ENG; datos protegidos y destino aislado. |
 | Restore por schema tenant verificado | **PENDIENTE** | AI-PLAT-OPS + DATA-ENG; seleccionar tenant autorizado y no registrar PII. |
@@ -36,7 +36,16 @@ Este informe registra únicamente verificaciones ejecutadas durante la creación
 
 ## 4. Evidencia ejecutable — reversibilidad de migraciones (2026-08-01)
 
-### 5.1 Entorno aislado
+> **Corrección de defecto de método (P0, auditoría posterior).** La primera
+> corrida (§4.1–4.5) estampó el commit `31aef714` (`fix(e2e): provision execution
+> template via SQL seed`), pero la migración tenant `099` (`ExtendEvidenceUploadIntentStatus`)
+> **nació en el commit hijo `846c268a`**: el árbol sobre el que se ensayó contenía
+> 099 y NO era el commit citado (árbol sucio / no reproducible). El ensayo fue
+> re-ejecutado de forma reproducible en un worktree limpio (§4.6) y esa
+> re-ejecución es la evidencia vigente; las tablas §4.2–4.5 se conservan como
+> histórico de la primera corrida, no como fuente de reproducibilidad.
+
+### 4.1 Entorno aislado
 
 Se ejecutó sobre un PostgreSQL **aislado y desechable**, sin tocar la infraestructura compartida de desarrollo (`iwana_postgres_dev` quedó intacto, en uso por otros carriles):
 
@@ -58,7 +67,7 @@ $env:DB_MIGRATOR_USER='iwana_migrator'; $env:DB_MIGRATOR_PASSWORD='<lab>'
 $env:DB_USER='iwana'; $env:DB_PASSWORD='<lab>'
 ```
 
-### 5.2 Migraciones hacia adelante (up)
+### 4.2 Migraciones hacia adelante (up)
 
 | Comando | Resultado |
 |---|---|
@@ -76,7 +85,7 @@ SELECT name FROM tenant_r34_a.typeorm_migrations ORDER BY id DESC LIMIT 1; -- Ex
 -- CHECK (status IN ('PENDING','PENDING_ANALYSIS','AVAILABLE','REJECTED','EXPIRED','FAILED'))  ← 099 aplicada
 ```
 
-### 5.3 Revert public (migración 020, `AddMediaAssetStatusAndClaim`)
+### 4.3 Revert public (migración 020, `AddMediaAssetStatusAndClaim`)
 
 | Paso | Comando | Resultado |
 |---|---|---|
@@ -85,7 +94,7 @@ SELECT name FROM tenant_r34_a.typeorm_migrations ORDER BY id DESC LIMIT 1; -- Ex
 | Verificación | `information_schema.columns` + `pg_constraint` | 0 columnas de lifecycle; `chk_media_assets_usage` de vuelta a 5 valores (sin `execution_evidence`); `chk_media_assets_asset_status` eliminado; registro en `EnablePgTrgm` (019) |
 | Re-aplicar | `pnpm --filter @iwana/db migration:run` | PASS — 020 re-ejecutada; columnas y CHECKs restaurados; registro en 020 |
 
-### 5.4 Revert tenant (migración 099, `ExtendEvidenceUploadIntentStatus`)
+### 4.4 Revert tenant (migración 099, `ExtendEvidenceUploadIntentStatus`)
 
 Datos sintéticos insertados en `tenant_r34_a.execution_order_evidence_upload_intents` (sin PII): 2 filas transitorias (`PENDING`, `FAILED` con `media_asset_id IS NULL`), 1 fila `AVAILABLE`, 1 fila `PENDING` **con** `media_asset_id` (caso "evidencia enlazada").
 
@@ -98,14 +107,60 @@ Datos sintéticos insertados en `tenant_r34_a.execution_order_evidence_upload_in
 | Revert destructivo (flag) | `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true pnpm --filter @iwana/db migration:tenant:revert --schema=tenant_r34_a --yes` | **PASS** `EXIT=0` — CHECK vuelve a 4 estados (`PENDING_ANALYSIS','AVAILABLE','REJECTED','EXPIRED'`), **sin `PENDING`/`FAILED`**; filas transitorias eliminadas; fila `AVAILABLE` sobrevive; registro en `ExecutionOrderServerScope0980000000000` (098) |
 | Re-aplicar | `pnpm --filter @iwana/db migration:tenant:run` | PASS — runner aplica solo la 099 pendiente; CHECK de vuelta a 6 estados; registro en 099; fila `AVAILABLE` intacta |
 
-### 5.5 Desviaciones detectadas y corregidas en el runbook
+### 4.5 Desviaciones detectadas y corregidas en el runbook
 
 1. **Invocación del revert tenant.** La ayuda del CLI documenta el separador `--` (`migration:tenant:revert -- --schema=...`), pero en pnpm 10 / Windows el `--` no es consumido y `parseArgs` lo rechaza (`Argumento no reconocido: "--"`). La forma operativa verificada es sin el separador. El runbook §5.5 ahora cita los comandos exactos y deja la nota; la alineación de la ayuda del CLI queda para el carril de ingeniería.
 2. **Requisito del flag destructivo.** §5.5 ahora documenta `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true` acotado a la sesión, con qué borra (solo transitorias con `media_asset_id IS NULL` en 099) y qué hace si una fila sobrevive (aborta la transacción completa).
 3. **Prerequisito del runner tenant.** El runner asume schema existente + grants (lo crea el provisioning). El runbook ya indicaba migrar con `DB_MIGRATOR_USER`; la evidencia confirma el fallo sin grants.
 
+### 4.6 Re-ejecución reproducible sobre árbol limpio (corrección P0, 2026-08-01)
+
+| Propiedad | Valor |
+|---|---|
+| Commit del árbol ensayado | `11d6e4cc4b316e9e0e6878a03c0eb51831d3160c` (`main`, HEAD en la corrida) |
+| Verificación de contenido | `git diff 846c268a..HEAD -- packages/database/src/migrations/tenant/099_extend_evidence_upload_intent_status.ts packages/database/src/migrations/tenant/revert.ts` → **vacío** (099 y el código de revert idénticos al commit donde nació la migración) |
+| Árbol de trabajo | Worktree limpio en `C:\Users\SLEYB\AppData\Local\Temp\opencode\r34-worktree` (detached HEAD en el commit real); `git status --short` → **vacío** |
+| Base de datos | Aislada y desechable: contenedor `postgres:18.3-alpine` (`iwana_postgres_r34`) en red `iwana_r34_net`, `127.0.0.1:15434`, DB `dbiw`; infra dev intacta |
+| Provisioning | Roles `iwana_app`/`iwana_migrator` + grants (patrón `scripts/db/apply-least-privilege.sql`); schemas `tenant_r34_a` y `tenant_r34_b`; tenants `r34-a`/`r34-b` ACTIVE (emails `.invalid`, sin PII) |
+| Build | `pnpm --filter @iwana/shared build` EXIT=0; `pnpm --filter @iwana/db build` EXIT=0 (node_modules frescos del worktree) |
+| Migraciones public | `pnpm --filter @iwana/db migration:run` EXIT=0 — 20/20, última `AddMediaAssetStatusAndClaim1784419208000` |
+| Migraciones tenant | `pnpm --filter @iwana/db migration:tenant:run` EXIT=0 — 95 por schema, última `099` (`ExtendEvidenceUploadIntentStatus0990000000000`), CHECK de 6 estados activo |
+| Datos sintéticos | 4 filas en `execution_order_evidence_upload_intents` (tenant_r34_a): `PENDING` (referencia `execution_order`), `FAILED`, `AVAILABLE` (sin `media_asset_id`) y `PENDING` con `media_asset_id` enlazada (caso de protección) |
+
+Resultados reproducidos (los mismos de §4.2–4.4, ahora sobre el árbol correcto):
+
+| Paso | Comando | Resultado |
+|---|---|---|
+| 1. Dry-run | `pnpm --filter @iwana/db migration:tenant:revert --schema=tenant_r34_a --dry-run` | PASS EXIT=0 — anuncia el revert de 099 y el requisito del flag |
+| 2. Guarda (sin flag) | `pnpm --filter @iwana/db migration:tenant:revert --schema=tenant_r34_a --yes` | **BLOQUEADO** EXIT=1 — "3 intent(s) siguen en PENDING o FAILED y el CHECK anterior los rechaza"; schema intacto |
+| 3. Invariante + atomicidad (flag, evidencia enlazada) | `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true pnpm --filter @iwana/db migration:tenant:revert --schema=tenant_r34_a --yes` | **FALLA CONTROLADA** EXIT=1 — `check constraint ... is violated by some row`; la transacción revierte todo (CHECK 6 estados, 4 filas, registro 099 intactos) |
+| 4. Limpieza del dato enlazado | `DELETE FROM tenant_r34_a.execution_order_evidence_upload_intents WHERE status='PENDING' AND media_asset_id IS NOT NULL` | DELETE 1 (dato de laboratorio) |
+| 5. Revert destructivo (flag) | `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true pnpm --filter @iwana/db migration:tenant:revert --schema=tenant_r34_a --yes` | **PASS** EXIT=0 — CHECK de 4 estados (`PENDING_ANALYSIS`,`AVAILABLE`,`REJECTED`,`EXPIRED`), sin `PENDING`/`FAILED`; `AVAILABLE` sobrevive; registro en 098 |
+| 6. Re-aplicar | `pnpm --filter @iwana/db migration:tenant:run` | PASS EXIT=0 — 099 re-aplicada, CHECK 6 estados, `AVAILABLE` intacta |
+| 7. Public | revert 020 + re-aplicar (`migration:revert` + `migration:run`) | PASS EXIT=0 en ambos sentidos |
+
+**Receta de reproducibilidad** (válida en Windows / PowerShell; en Linux adaptar el wrapper de pnpm):
+
+```powershell
+git worktree add "C:\Users\SLEYB\AppData\Local\Temp\opencode\r34-worktree" 11d6e4cc4b316e9e0e6878a03c0eb51831d3160c
+docker network create iwana_r34_net
+docker run -d --name iwana_postgres_r34 --network iwana_r34_net -p 127.0.0.1:15434:5432 `
+  -e POSTGRES_USER=iwana -e POSTGRES_PASSWORD=r34-lab-bootstrap -e POSTGRES_DB=dbiw postgres:18.3-alpine
+# roles/grants/schemas/tenants segun scripts/db/apply-least-privilege.sql + seeds sinteticos
+# desde el worktree:
+pnpm install --offline  # lockfile sincronizado
+pnpm --filter @iwana/shared build; pnpm --filter @iwana/db build
+$env:DB_PORT='15434'; $env:DB_NAME='dbiw'; $env:DB_MIGRATOR_USER='iwana_migrator'; $env:DB_MIGRATOR_PASSWORD='r34-lab-migrator'
+pnpm --filter @iwana/db migration:run; pnpm --filter @iwana/db migration:tenant:run
+# pasos 1–7 de la tabla anterior
+docker rm -f iwana_postgres_r34; docker network rm iwana_r34_net
+```
+
+**Limpieza.** El worktree se eliminó tras la corrida (la remoción por `git worktree remove` choca con "Filename too long" en Windows; se usó mirror-vacío + `git worktree prune`). El contenedor quedó disponible para re-ensayos locales y se elimina al cerrar el lab.
+
 ## 5. Dictamen
 
+- **Defecto de método P0 corregido.** La primera corrida estampó un commit que no contenía la migración ensayada (`31aef714` vs 099 nacida en `846c268a`). La re-ejecución (§4.6) se hizo sobre **árbol limpio verificado** en el commit real `11d6e4cc` (que contiene 099 y el código de revert correcto, idéntico al de `846c268a`), con `git status --short` vacío y entorno aislado desechable. La evidencia vigente de reversibilidad es la de §4.6.
 - **Gate "Migrations reversible": GO técnico con evidencia.** Las migraciones public (001–020) y tenant (000–099) se aplicaron en base aislada con código de salida real; la migración public `020` se revirtió y re-aplicó; la tenant `099` (CHECK `chk_execution_order_evidence_upload_intents_status`) se revirtió con guardas verificadas (bloqueo sin flag, aborto atómico ante evidencia enlazada, revert destructivo controlado que devuelve el CHECK a 4 estados **sin `PENDING`/`FAILED`**) y se re-aplicó. La reversibilidad de las migraciones del release queda **ensayada**.
 - **R3.4 no está cerrado en su totalidad.** Siguen **PENDIENTES**: el ensayo reproducible de rollback por componente/imagen (§7.2 del runbook), el restore global PostgreSQL verificado y el restore por schema tenant verificado.
 - **No se autoriza release de producción.** El go final de G7/CTO es requisito ineludible, y los pendientes de restore y ensayo por componente bloquean el cierre completo de R3.4.
