@@ -1419,6 +1419,9 @@ try {
   runCommand('Compilación de @iwana/shared', 'pnpm', ['--filter', '@iwana/shared', 'build']);
   runCommand('Compilación de @iwana/storage', 'pnpm', ['--filter', '@iwana/storage', 'build']);
   runCommand('Migraciones public y tenant E2E', 'pnpm', ['db:migrate:all']);
+  // Compose usa DB_PASSWORD para el superusuario de bootstrap; la API host usa
+  // DB_USER como rol de aplicación y debe cambiar al password de iwana_app.
+  process.env.DB_PASSWORD = process.env.DB_APP_PASSWORD;
   startWorker();
   apiProcess = await startApi();
 
