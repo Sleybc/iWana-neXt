@@ -79,6 +79,8 @@ git commit -m "docs(operations): defer ADR-069 approval to CTO"
 
 - Modify: `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md:56, 151, 227`
 - Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:437, 614, 667, 692`
+- Modify: `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md:532`
+- Modify: `docs/quality/evidence-fase-06-g6/README.md`
 
 - [ ] **Step 1: Identificar los textos vigentes, excluyendo secciones históricas**
 
