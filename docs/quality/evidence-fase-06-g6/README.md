@@ -4,7 +4,7 @@ Salidas **reales** capturadas el 2026-08-01 (runs R4.1 vertical) y cobertura reg
 
 > **Estado de evidencia:** `provision-run5.txt`, `provision-run6.txt` y sus artefactos de 26 tests son snapshots históricos. La evidencia local sanitizada vigente es `provision-run-r41-final.txt` con 29/29, flaky=0 y cleanup OK; no sustituye la corrida Linux de G6.5.
 >
-> **Fuente de verdad:** §15.13 de `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` es el registro vigente de estado. ADR-069 permanece `Propuesto` y define la compuerta propuesta; este README y el checklist son evidencia de apoyo, no una autorización de gate.
+> **Fuente de verdad:** §15.13 de `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` es el registro vigente de estado. ADR-069 (propuesto) permanece `Propuesto` y define la compuerta propuesta; este README y el checklist son evidencia de apoyo, no una autorización de gate.
 
 | Archivo                                    | Comando                                                                                                 | Resultado                                                                                                                                                                                                                                                              |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

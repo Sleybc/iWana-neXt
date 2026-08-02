@@ -4,7 +4,7 @@
 **Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad registrado tras verificación QA/SEC/DS/PROD-UX**, **G6.5 pendiente de CI Linux**, **G7 NO-GO para producción**. AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. Ver §15.13.
 **Fecha:** 2026-07-31  
 **Fecha de cierre de remediación:** 2026-07-31  
-**Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. ADR-069 permanece `Propuesto`, con aprobación final CTO pendiente.
+**Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. ADR-069 (propuesto) permanece `Propuesto`, con aprobación final CTO pendiente.
 **Modo activo:** Espera de G6.5 — G6 calidad registrada tras verificación QA/SEC/DS/PROD-UX y consolidación de AI-EM-ARCH; G6.5 solo tiene criterios registrados y requiere corrida Linux de ambos jobs; G7 NO-GO, AI-EM-ARCH recomienda y CTO aprueba finalmente.
 **Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate; v1.9 — auditoría multiagente; v2.0 — consolidación final), AI-SR-QA (v1.5 — G6 QA audit; v2.0 — coautor consolidación R5)  
 **Clasificación:** Uso interno
@@ -469,7 +469,7 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
 | **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
 
-**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y, tras verificarla, puede registrar y recomendar el estado de aceptación de calidad de G6**. G6.5 no está autorizado ni cerrado mientras ADR-069 permanezca `Propuesto` y la CI Linux esté pendiente; este informe solo registra sus criterios. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate se auto-otorga en este informe.
+**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y, tras verificarla, puede registrar y recomendar el estado de aceptación de calidad de G6**. G6.5 no está autorizado ni cerrado mientras ADR-069 (propuesto) permanezca `Propuesto` y la CI Linux esté pendiente; este informe solo registra sus criterios. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate se auto-otorga en este informe.
 
 ### 15.2 Tabla de commits por carril
 
