@@ -760,18 +760,18 @@ describe('ExecutionOrdersController HTTP', () => {
       const app = await buildRateLimitApp(redis);
       try {
         // La prueba aísla el guard: el parser multipart no forma parte de este contrato
-        // y añadirlo a 11 requests concurrentes vuelve el socket frágil en CI Linux.
-        const responses = await Promise.all(
-          Array.from({ length: 11 }, (_, index) =>
-            request(app.getHttpServer())
-              .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
-              .set('Authorization', 'Bearer tech-token')
-              .send({ marker: `evidence-${index}` }),
-          ),
-        );
+        // y 11 requests consecutivos ejercitan el bucket sin presión de sockets.
+        const statuses: number[] = [];
+        for (let index = 0; index < 11; index += 1) {
+          const response = await request(app.getHttpServer())
+            .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+            .set('Authorization', 'Bearer tech-token')
+            .send({ marker: `evidence-${index}` });
+          statuses.push(response.status);
+        }
 
-        expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
-        expect(responses.filter((response) => response.status !== 429)).toHaveLength(10);
+        expect(statuses.filter((status) => status === 429)).toHaveLength(1);
+        expect(statuses.filter((status) => status !== 429)).toHaveLength(10);
       } finally {
         await app.close();
       }
@@ -782,15 +782,15 @@ describe('ExecutionOrdersController HTTP', () => {
       const app = await buildRateLimitApp(redis);
       try {
         const burst = async (token: string): Promise<number[]> => {
-          const responses = await Promise.all(
-            Array.from({ length: 11 }, () =>
-              request(app.getHttpServer())
-                .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
-                .set('Authorization', `Bearer ${token}`)
-                .send({ marker: 'evidence' }),
-            ),
-          );
-          return responses.map((response) => response.status);
+          const statuses: number[] = [];
+          for (let index = 0; index < 11; index += 1) {
+            const response = await request(app.getHttpServer())
+              .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
+              .set('Authorization', `Bearer ${token}`)
+              .send({ marker: `evidence-${index}` });
+            statuses.push(response.status);
+          }
+          return statuses;
         };
 
         const sameActorTenantA = await burst('tech-token');
