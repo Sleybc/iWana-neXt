@@ -1,11 +1,11 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
 **Versión:** 2.0  
-**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Veredicto vigente: **G6 GO**, **G6.5 pendiente de CI Linux**, **G7 NO-GO para producción**. Ver §15.13.
+**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad registrado tras verificación QA/SEC/DS/PROD-UX**, **G6.5 pendiente de CI Linux**, **G7 NO-GO para producción**. AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. Ver §15.13.
 **Fecha:** 2026-07-31  
 **Fecha de cierre de remediación:** 2026-07-31  
-**Aprobado por:** CTO (G1, escalaciones §14.7, QA-34 diferido), AI-EM-ARCH (G2–G6; G6.5 pendiente de CI Linux), AI-SR-QA (G6 re-gate), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (aprobación de datos), AI-SR-FULL (aprobación backend), AI-PLAT-OPS (plataforma)
-**Modo activo:** Espera de G6.5 — G6 aprobado por AI-EM-ARCH; G6.5 requiere corrida Linux de ambos jobs; G7 NO-GO hasta dominio, TLS, rollback, restores y CTO.
+**Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. ADR-069 permanece `Propuesto`, con aprobación final CTO pendiente.
+**Modo activo:** Espera de G6.5 — G6 calidad registrada tras verificación QA/SEC/DS/PROD-UX y consolidación de AI-EM-ARCH; G6.5 solo tiene criterios registrados y requiere corrida Linux de ambos jobs; G7 NO-GO, AI-EM-ARCH recomienda y CTO aprueba finalmente.
 **Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate; v1.9 — auditoría multiagente; v2.0 — consolidación final), AI-SR-QA (v1.5 — G6 QA audit; v2.0 — coautor consolidación R5)  
 **Clasificación:** Uso interno
 
@@ -116,7 +116,9 @@ Completar los 8 items FAIL (5 P0 + 3 P1) antes de re-ejecutar G6. Las categoría
 
 ---
 
-## 11. Decisión G7 y Task 10 — 2026-07-27
+## 11. Decisión G7 y Task 10 — 2026-07-27 — HISTÓRICA / SUPERADA
+
+> **Sección histórica/superada:** este registro conserva la fotografía de decisión del 2026-07-27 y no representa el estado vigente. La referencia actual de G6, G6.5 y G7 es §15.13.
 
 **Modo:** EM + Architect + Orchestrator  
 **Decisión:** **NO-GO** para producción y para retirar la compatibilidad ligera de `WorkOrder` o el alias `wfm.work_orders.execute`.  
@@ -465,7 +467,7 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
 | **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
 
-**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la evidencia y, tras verificarla, puede registrar y recomendar el estado de calidad de G6**. G6.5 no está autorizado ni cerrado mientras ADR-069 permanezca `Propuesto` y la CI Linux esté pendiente; este informe solo registra sus criterios. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate se auto-otorga en este informe.
+**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y, tras verificarla, puede registrar y recomendar el estado de aceptación de calidad de G6**. G6.5 no está autorizado ni cerrado mientras ADR-069 permanezca `Propuesto` y la CI Linux esté pendiente; este informe solo registra sus criterios. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate se auto-otorga en este informe.
 
 ### 15.2 Tabla de commits por carril
 
@@ -673,7 +675,7 @@ como parte del re-registro de gate.
 
 ### 15.9 Recomendación G7
 
-**G6 GO para merge; G6.5 pendiente de CI Linux; G7 NO-GO para producción — estado 2026-08-01.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron remediadas y verificadas:
+**G6 GO de calidad; merge pendiente de G6.5; G7 NO-GO para producción — estado 2026-08-01.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron remediadas y verificadas:
 
 1. R4.1 vertical completa: **29/29, exit 0, flaky=0, cleanup OK** en la corrida final local; CI Linux sigue pendiente para G6.5.
 2. R0 resuelto contra PostgreSQL real: CHECK de la 099 acepta `PENDING` en los 44 schemas; integración postgres 2/2; swagger 1.1.0 4/4.
@@ -681,15 +683,7 @@ como parte del re-registro de gate.
 4. Migraciones reversibles con evidencia ejecutable (R3.4); OpenAPI 1.1.0 con changelog.
 5. Seguridad: `nodemailer` 9.0.3, sin exposición del token en logs, `pnpm audit --prod` 0 critical.
 
-El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6.5 espera la primera corrida Linux real de los dos jobs; para G7, AI-EM-ARCH recomienda y CTO aprueba tras verificar dominio productivo, TLS, rollback por componente y restores ensayados.
-
-### 15.13 Registro vigente G6/G6.5/G7 — 2026-08-01
-
-| Gate                        | Estado        | Evidencia / pendiente                                                                                                                    |
-| --------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| G6 Quality acceptance       | **GO**        | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas.                                             |
-| G6.5 Merge readiness        | **PENDIENTE** | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
-| G7 Production authorization | **NO-GO**     | AI-EM-ARCH recomienda; CTO aprueba; requiere dominio, TLS efectivo, rollback por componente y restore global/tenant.                     |
+El registro formal queda separado por gate: G6 queda registrado como GO de calidad tras la verificación QA/SEC/DS/PROD-UX consolidada por AI-EM-ARCH; G6.5 espera la primera corrida Linux real de los dos jobs y no autoriza el merge mientras siga pendiente; para G7, AI-EM-ARCH recomienda y CTO aprueba tras verificar dominio productivo, TLS, rollback por componente y restores ensayados.
 
 ### 15.10 Trazabilidad de artefactos de cierre
 
@@ -724,7 +718,7 @@ El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6
 | P0 | Remedio | Verificación ejecutada | Estado |
 | --- | --- | --- | --- |
 | 1. R4.1 vertical nunca completado | Fix fixture 8a (retire de versiones de material + parseo tolerante del 422) + fix backend 8b (advisory lock en `generateCode` + reintento con savepoint en `createWithinManager`) + correcciones QA-33/BOLA | R4.1 **29/29, exit 0, flaky=0, cleanup OK**; 4e Redis real y 6a BOLA verificados en corrida final | **CERRADO** |
-| 2. §15 sustituyó corrida por cableado CI | Corrida real ejecutada y archivada | `provision-run5/6.txt` (`ok 1..26`, cero `not ok`, `E2E_CLEANUP=OK`) | **CERRADO** |
+| 2. §15 sustituyó corrida por cableado CI | Corrida final R4.1 ejecutada y archivada | `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt` (29/29 passed, exit 0, flaky=0, cleanup OK) | **CERRADO** |
 | 3. HEAD roto (`PENDING` vs CHECK 095) | Migración **099** + unión de tipos en entidad | CHECK 099 en 44 schemas; INSERT/UPDATE `PENDING` contra PostgreSQL real con ROLLBACK; integración postgres 2/2 | **CERRADO** |
 | 4. Contratos G4 violados | OpenAPI **1.1.0** + changelog breaking en `info.description` | `tasks.swagger.spec.ts` **4/4** tras bump (verificado por AI-SR-FULL); descongelación/recongelación en §15.7 | **CERRADO** (aprobación formal AI-EM-ARCH pendiente) |
 | 5. Cobertura no medible | Override Babel acotado `<8.0.0` | `--coverage`: 230 suites / 2849 tests; core `tasks/services` 83.18% stmts; API 79.66% stmts / 80.49% lines | **CERRADO** |
@@ -739,3 +733,11 @@ El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6
 3. Actualizar el checklist QA con estados reales y evidencia ejecutada, no por deducción. — **HECHO** (45 PASS / 4 PARTIAL / 0 FAIL + QA-34 diferido CTO)
 4. Emitir un nuevo registro de gate (§15) que no mezcle remediación y veredicto en el mismo commit. — **HECHO** (§15.13 registra G6/G6.5/G7)
 5. Reconsiderar G7 solo cuando el expediente tenga cero P0 activos y las salidas archivadas lo sustenten. — **PRERROGATIVA AI-EM-ARCH/CTO**
+
+### 15.13 Registro vigente G6/G6.5/G7 — 2026-08-01
+
+| Gate                        | Estado        | Evidencia / pendiente                                                                                                                    |
+| --------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| G6 Quality acceptance       | **GO**        | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas.                                             |
+| G6.5 Merge readiness        | **PENDIENTE** | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
+| G7 Production authorization | **NO-GO**     | AI-EM-ARCH recomienda; CTO aprueba; requiere dominio, TLS efectivo, rollback por componente y restore global/tenant.                     |
