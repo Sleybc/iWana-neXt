@@ -224,7 +224,7 @@ El backend tiene controles estructurales verificados, pero el gate sigue abierto
 5. **Contrato G4 violado:** cambios breaking en `packages/shared/.../execution-orders.ts` sin OpenAPI 1.1.0 ni changelog.
 6. **Seguridad sin veredicto formal:** AI-SEC-ENG no había emitido veredicto hasta esta sesión; `nodemailer@8.0.11` vulnerable en runtime y rate limit sin ráfaga Redis real.
 
-**QA-34** sigue **APROBADO CTO — diferido** hasta definición de dominio; no bloquea G6/G7.
+**Registro histórico de QA-34:** en la foto de 2026-07-31 figuraba **APROBADO CTO — diferido** hasta definición de dominio y no bloqueaba G6/G7. Ese criterio está **superado por §7.5 y la matriz vigente**: QA-34 no bloquea G6/G6.5, pero bloquea G7 hasta evidencia TLS productiva.
 
 **P0 resueltos a PARTIAL desde auditoría 2026-07-27 (requieren re-verificación):**
 - QA-23: Migraciones OT — solo 091/093/094/096/098 con downs reales.

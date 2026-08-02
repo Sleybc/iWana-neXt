@@ -438,7 +438,7 @@ Las tres se elevaron y el CTO decidió el mismo día. Quedan cerradas como escal
 | 1 | Umbral de lag del relay | **Aprueba la recomendación:** instrumentar primero, fijar el umbral después sobre datos reales. Hasta entonces se reporta "sin umbral aprobado" y no se deriva de él ningún criterio de abort | R3.3 |
 | 2 | Certificado TLS de producción | **Certificado de CA reconocida.** El autofirmado queda restringido a desarrollo y staging cerrado; el HSTS de un año solo se habilita con cadena válida verificada | R3.5 |
 | 3 | Datos personales y retención | **Amparados por Ley 1581, pero el sistema no oculta datos; la responsabilidad del buen uso recae en el usuario** | R2.4 |
-| 4 | QA-34 (TLS/ingress) como bloqueante de G6/G7 | **2026-07-31: El CTO autoriza diferir CA/TLS hasta definición formal del dominio productivo. No es bloqueante para G6 ni G7.** El checklist QA-34 pasa de FAIL a `APROBADO CTO — diferido hasta definición de dominio`. La emisión efectiva se retoma cuando el dominio esté definido y provisionado. Ver RUNBOOK-RELEASE-ROLLBACK §8.6. | AI-PLAT-OPS (cuando dominio definido) |
+| 4 | QA-34 (TLS/ingress) como bloqueante de G6/G7 | **Registro histórico del 2026-07-31:** el CTO autorizó diferir CA/TLS hasta definición formal del dominio productivo y, bajo esa decisión histórica, no bloqueaba G6 ni G7. El criterio vigente está superado por G6.5: QA-34 no bloquea G6/G6.5, pero sí bloquea G7 hasta evidencia de certificado CA, terminación TLS y redirección HTTPS sobre el dominio aprobado. Ver RUNBOOK-RELEASE-ROLLBACK §8.6. | AI-PLAT-OPS (cuando dominio definido) |
 
 ### 14.8 Alcance derivado de la decisión 3
 

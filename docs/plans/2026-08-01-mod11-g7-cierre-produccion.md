@@ -211,21 +211,36 @@ Run:
 
 ```text
 if (-not $env:PRODUCTION_FQDN) { throw 'PRODUCTION_FQDN debe estar definido por la decisión de dominio.' }
-$httpHeaders = curl.exe --silent --show-error --head --max-redirs 0 --dump-header - --output NUL "http://$env:PRODUCTION_FQDN"
+$fqdnPattern = [regex]::Escape($env:PRODUCTION_FQDN)
+$httpHeaders = @(curl.exe --silent --show-error --max-redirs 0 --dump-header - --output NUL "http://$env:PRODUCTION_FQDN")
 if ($LASTEXITCODE -ne 0) { throw 'La respuesta HTTP no pudo obtenerse.' }
-if ([string]::Join("`n", @($httpHeaders)) -notmatch '(?im)^Location:\s*https://[^\s]+') { throw 'Falta una cabecera Location: https:// explícita.' }
-curl.exe --fail --silent --show-error "https://$env:PRODUCTION_FQDN/api/v1/health" --output NUL
-if ($LASTEXITCODE -ne 0) { throw 'El health HTTPS no respondió satisfactoriamente.' }
-$handshake = "Q" | openssl s_client -connect "$env:PRODUCTION_FQDN`:443" -servername $env:PRODUCTION_FQDN -verify_hostname $env:PRODUCTION_FQDN -verify_return_error
-$handshakeText = [string]::Join("`n", @($handshake))
-if ($LASTEXITCODE -ne 0 -or $handshakeText -notmatch 'Verify return code: 0 \(ok\)') { throw 'El handshake no validó certificado, hostname y cadena de CA.' }
+$httpText = [string]::Join("`n", $httpHeaders)
+if ($httpText -notmatch '(?im)^HTTP/\S+\s+3\d\d\b') { throw 'La respuesta HTTP no es un redirect 3xx.' }
+if ($httpText -notmatch "(?im)^Location:\s*https://$fqdnPattern(?::443)?(?:/|$)") { throw 'El redirect no apunta al FQDN productivo por HTTPS.' }
+$healthHeaders = @(curl.exe --silent --show-error --max-redirs 0 --dump-header - --output NUL "https://$env:PRODUCTION_FQDN/api/v1/health")
+if ($LASTEXITCODE -ne 0) { throw 'El health HTTPS no pudo obtenerse.' }
+$healthText = [string]::Join("`n", $healthHeaders)
+if ($healthText -notmatch '(?im)^HTTP/\S+\s+200\b') { throw 'El health HTTPS no respondió con HTTP 200 sin redirect.' }
+if (-not (Get-Command openssl -ErrorAction SilentlyContinue)) { throw 'OpenSSL no está disponible; registrar versión antes de ejecutar la prueba.' }
+$opensslVersion = (& openssl version 2>&1 | Out-String).Trim()
+if ($opensslVersion -notmatch '^OpenSSL (?:1\.1\.1|[3-9]\.)') { throw "Se requiere OpenSSL 1.1.1 o posterior con -verify_hostname. Detectado: $opensslVersion" }
+$handshake = "Q" | & openssl s_client -connect "$env:PRODUCTION_FQDN`:443" -servername $env:PRODUCTION_FQDN -verify_hostname $env:PRODUCTION_FQDN -verify_return_error 2>&1 | Out-String
+$handshakeExitCode = $LASTEXITCODE
+if ($handshakeExitCode -ne 0 -or $handshake -notmatch 'Verify return code: 0 \(ok\)') { throw "El handshake no validó certificado, hostname y cadena de CA. OpenSSL: $opensslVersion" }
 ```
 
-Expected: la respuesta HTTP no se sigue y contiene una cabecera explícita `Location: https://...`; el health HTTPS responde satisfactoriamente; el handshake público valida el certificado, el hostname y la cadena de CA reconocida. HSTS no se evalúa, habilita ni modifica en este paso; queda para una decisión controlada posterior.
+Expected: la respuesta HTTP es 3xx, no se sigue y contiene `Location: https://PRODUCTION_FQDN`; el health HTTPS responde HTTP 200 sin redirect; el handshake público valida certificado, hostname y cadena de CA reconocida. Registrar versión de OpenSSL. HSTS no se evalúa, habilita ni modifica en este paso; queda para una decisión controlada posterior.
 
 - [ ] **Step 3: Ensayar rollback por componente en entorno equivalente a producción**
 
 Para API, worker, web, portal y Nginx: desplegar una versión candidata, volver a la imagen anterior identificada por digest y comprobar healthcheck, consumo BullMQ y compatibilidad de la base migrada. Registrar digest origen/destino, ventana y resultado, sin secretos.
+
+Para el componente TLS: conservar de forma segura el material actualmente servido, instalar el certificado candidato, ejecutar `nginx -t`, recargar Nginx con `nginx -s reload`, repetir el handshake público y volver al certificado anterior por digest/versión si cualquier comprobación falla. Registrar ambos resultados sin copiar claves privadas.
+
+- Ejecutar `certbot renew --dry-run` o el comando equivalente del cliente ACME aprobado y archivar su salida.
+- Ejecutar `docker compose --profile production --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml exec -T nginx-prod nginx -t` antes de cada recarga.
+- Ejecutar la recarga controlada y repetir el handshake; archivar el resultado previo y posterior.
+- Comprobar que la clave privada existe únicamente en el secret store o volumen protegido aprobado, fuera de Git, imágenes, workflows y logs.
 
 - [ ] **Step 4: Ensayar restores global y por tenant**
 
