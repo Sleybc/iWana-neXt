@@ -1,0 +1,246 @@
+# MOD11 G7 Production Readiness Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Cerrar G6.5 con evidencia Linux del HEAD a mergear y mantener G7 en NO-GO hasta que dominio, TLS, rollback por componente, restores y aprobacion CTO tengan evidencia ejecutable.
+
+**Architecture:** G6, G6.5 y G7 son gates independientes: G6 acepta calidad, G6.5 permite merge con CI Linux y G7 autoriza produccion. La evidencia local 29/29 queda como diagnostico; solo los jobs Linux identificados por SHA certifican el HEAD que se mergea. TLS diferido no bloquea G6 ni G6.5, pero sigue bloqueando G7 cuando exista dominio productivo.
+
+**Tech Stack:** GitHub Actions, Docker Compose/Nginx, NestJS, Next.js, PostgreSQL por schema, Redis/BullMQ, pnpm, Playwright.
+
+---
+
+## Contexto y decisión recomendada
+
+**Opcion recomendada: aprobar ADR-069 y normalizar QA-34 como "diferido para merge, bloqueante para produccion".**
+
+Motivo: ADR-069 ya expresa la separacion necesaria entre calidad, merge y release. Mantenerlo en `Propuesto` deja ambigua la autoridad de G6.5; afirmar que QA-34 no bloquea G7 contradice el gate de produccion y permitiria interpretar un diferimiento de dominio como aprobacion de TLS. La opcion recomendada permite merge solo tras CI Linux, mientras conserva G7 como NO-GO sin dominio, certificado, ensayos de rollback/restores y CTO.
+
+No se reescriben los commits `a1245ee0` y `b7adcdac`. La configuracion CI viajo con el registro de gate porque formaliza la compuerta; se conserva esa trazabilidad. En cambios futuros, cualquier cambio funcional de `.github/workflows/ci.yml` que altere los checks del codigo debe viajar con el commit de codigo, y el registro de gate debe limitarse a la evidencia obtenida.
+
+## Archivos y responsabilidades
+
+- Modificar: `docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md`.
+  - Aprobar la taxonomia de gates sin autorizar G7.
+- Modificar: `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md`.
+  - Corregir QA-34 para que no bloquee G6/G6.5 y si bloquee G7.
+- Modificar: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md`.
+  - Mantener el registro vivo de G6/G6.5/G7, incluir URLs/SHA del CI y conservar el residual contractual de evidencia.
+- Modificar: `.github/workflows/ci.yml` solo si el job no expone un resumen sanitizado con SHA, conteos, flaky y cleanup para ambos jobs.
+  - No cambiar piso de 29 ni aceptar retries/flaky.
+- Modificar: `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md`.
+  - Añadir pasos reproducibles de rollback por componente y restauracion global/tenant, con criterios de aceptacion antes de ejecutarlos.
+- Crear: `docs/informes/INFORME-MOD11-G7-EVIDENCIA-PRODUCCION-v1.0.md` solo cuando exista una ejecucion real de los prerequisitos G7.
+  - No crear este informe antes de tener dominio, TLS y ensayos reales.
+
+### Task 1: Aprobar la separación de gates
+
+**Files:**
+
+- Modify: `docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md:3-5`
+- Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:685-692`
+
+- [ ] **Step 1: Cambiar ADR-069 de `Propuesto` a `Aprobado`**
+
+Reemplazar la cabecera por:
+
+```markdown
+**Version:** 1.0
+**Estado:** Aprobado
+**Aprobado por:** AI-EM-ARCH, 2026-08-01
+```
+
+- [ ] **Step 2: Registrar el efecto limitado de la aprobación**
+
+En el registro vigente, conservar exactamente estas condiciones:
+
+```markdown
+| G6.5 Merge readiness | PENDIENTE | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
+| G7 Production authorization | NO-GO | Requiere dominio, TLS efectivo, rollback por componente, restore global/tenant y aprobación CTO. |
+```
+
+- [ ] **Step 3: Verificar el diff documental**
+
+Run: `git diff --check`
+
+Expected: exit code 0.
+
+- [ ] **Step 4: Commit de decisión de gobierno**
+
+```text
+git add docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md
+git commit -m "docs(operations): approve G6.5 gate taxonomy"
+```
+
+### Task 2: Corregir la semántica de QA-34/TLS
+
+**Files:**
+
+- Modify: `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md:56, 151, 227`
+- Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:437, 614, 667, 692`
+
+- [ ] **Step 1: Identificar los textos vigentes, excluyendo secciones históricas**
+
+Run: `rg -n "No bloquea G6/G7|no bloquea G7|QA-34|TLS" docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md`
+
+Expected: las fotos históricas permanecen intactas; solo se corrigen la fila QA-34, el veredicto vigente y la matriz de dependencias.
+
+- [ ] **Step 2: Aplicar la redacción canónica**
+
+Usar esta frase en los registros vigentes:
+
+```markdown
+QA-34/TLS está diferido por CTO hasta que exista un dominio productivo definido y provisionado. No bloquea G6 ni G6.5; bloquea G7 hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado.
+```
+
+- [ ] **Step 3: Verificar consistencia entre ADR, checklist e informe vivo**
+
+Run: `rg -n "No bloquea G6/G7|no bloquea G7" docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md`
+
+Expected: no coincidencias en registros vigentes; las fotos históricas pueden conservar su contexto fechado.
+
+- [ ] **Step 4: Commit de corrección documental**
+
+```text
+git add docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md
+git commit -m "docs(operations): clarify TLS as G7 prerequisite"
+```
+
+### Task 3: Certificar G6.5 contra el HEAD a mergear
+
+**Files:**
+
+- Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:685-704`
+- Modify: `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md:145-151`
+- Modify: `.github/workflows/ci.yml` only if the summary artifact is missing required markers.
+
+- [ ] **Step 1: Publicar los commits de código, compuerta y gobierno en la rama a evaluar**
+
+Run:
+
+```text
+git status --short
+git log --oneline -5
+$branch = git branch --show-current
+git push origin $branch
+```
+
+Expected: árbol limpio; el SHA remoto contiene `a1245ee0`, `b7adcdac` y los commits documentales posteriores.
+
+- [ ] **Step 2: Ejecutar los dos jobs Linux sobre el mismo SHA**
+
+Run:
+
+```text
+$branch = git branch --show-current
+$runId = gh run list --branch $branch --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run watch $runId --exit-status
+```
+
+Expected: `production-images` y `execution-orders-e2e` finalizan `success` en el mismo run/SHA.
+
+- [ ] **Step 3: Validar el resumen sanitizado del E2E**
+
+Obtener el artefacto o log del job y comprobar literalmente:
+
+```text
+E2E_SETUP=OK
+E2E_PLAYWRIGHT_PASSED=29
+E2E_PLAYWRIGHT_FAILED=0
+E2E_PLAYWRIGHT_SKIPPED=0
+E2E_PLAYWRIGHT_DID_NOT_RUN=0
+E2E_PLAYWRIGHT_FLAKY=0
+E2E_PLAYWRIGHT_EXIT=0
+E2E_CLEANUP=OK
+```
+
+Expected: los nueve marcadores aparecen una sola vez, sin credenciales, tokens, cookies ni payloads.
+
+- [ ] **Step 4: Registrar evidencia de CI sin convertirla en autorización productiva**
+
+Actualizar el informe vivo y checklist con SHA, URL del run, nombres de jobs y los conteos sanitizados. Cambiar G6.5 a `GO` solo si ambos jobs son verdes para el mismo SHA.
+
+- [ ] **Step 5: Commit de evidencia de G6.5**
+
+```text
+git add docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md
+git commit -m "docs(operations): record Linux G6.5 evidence"
+```
+
+### Task 4: Mantener la laguna de errores de evidencia fuera de este cierre
+
+**Files:**
+
+- Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:663-672`
+- Future modify, not in this plan: `apps/api/openapi/tasks-execution-orders.v1.json`
+- Future modify, not in this plan: `packages/shared/src/contracts/operations/execution-orders.ts`
+- Future modify, not in this plan: cliente del portal que traduce errores de OT.
+
+- [ ] **Step 1: Conservar el residual ya registrado**
+
+Confirmar que el informe vivo dice que `EVIDENCE_UPLOAD_EXPIRED` y los demás `EVIDENCE_UPLOAD_*` no se publican aún en OpenAPI ni en `@iwana/shared`, y que el portal usa mensaje genérico.
+
+- [ ] **Step 2: No modificar contrato ni UI en este cierre**
+
+Run: `git diff -- apps/api/openapi packages/shared apps/portal`
+
+Expected: no cambios destinados a materializar códigos de evidencia durante este plan.
+
+- [ ] **Step 3: Abrirlo como alcance de la próxima descongelación de contrato**
+
+La próxima fase debe incluir en una única unidad: enum tipado compartido, schemas OpenAPI, mapeo visible en español del portal y pruebas HTTP/UI. No se parchea un único código para evitar un contrato parcialmente tipado.
+
+### Task 5: Ejecutar G7 solo con prerequisitos productivos disponibles
+
+**Files:**
+
+- Modify: `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md`
+- Create: `docs/informes/INFORME-MOD11-G7-EVIDENCIA-PRODUCCION-v1.0.md`
+- Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:685-692`
+
+- [ ] **Step 1: Obtener decisiones e insumos de producción**
+
+Requerir antes de ejecutar: FQDN productivo aprobado, propietario DNS, método de emisión de certificado CA, ventana de mantenimiento, responsable de operación y objetivos RPO/RTO aprobados. Si falta cualquiera, mantener G7 `NO-GO` y no crear evidencia ficticia.
+
+- [ ] **Step 2: Verificar TLS sobre el dominio real**
+
+Run:
+
+```text
+if (-not $env:PRODUCTION_FQDN) { throw 'PRODUCTION_FQDN debe estar definido por la decisión de dominio.' }
+curl.exe --fail --location --head "http://$env:PRODUCTION_FQDN"
+curl.exe --fail --head "https://$env:PRODUCTION_FQDN/api/v1/health"
+openssl s_client -connect "$env:PRODUCTION_FQDN`:443" -servername $env:PRODUCTION_FQDN -verify_return_error
+```
+
+Expected: HTTP redirige a HTTPS; health responde por HTTPS; cadena de CA valida, nombre del certificado coincide y HSTS se activa solo sobre la cadena valida.
+
+- [ ] **Step 3: Ensayar rollback por componente en entorno equivalente a producción**
+
+Para API, worker, web, portal y Nginx: desplegar una versión candidata, volver a la imagen anterior identificada por digest y comprobar healthcheck, consumo BullMQ y compatibilidad de la base migrada. Registrar digest origen/destino, ventana y resultado, sin secretos.
+
+- [ ] **Step 4: Ensayar restores global y por tenant**
+
+Restaurar un backup global en entorno aislado y comprobar `public.tenants`, roles y migraciones. Restaurar un schema tenant en un entorno aislado, ejecutar migraciones requeridas y verificar acceso solo para ese tenant. Comparar el resultado con RPO/RTO aprobados; si no existen objetivos aprobados, G7 sigue NO-GO.
+
+- [ ] **Step 5: Solicitar la decisión CTO con evidencia completa**
+
+El informe G7 debe contener: SHA/release, dominio, evidencia TLS, resultados de rollback y restores, responsables, RPO/RTO, riesgos residuales y veredicto recomendado. Solo el CTO cambia G7 de `NO-GO` a `GO`.
+
+## Verificación final
+
+- [ ] `git status --short` no muestra cambios no intencionales.
+- [ ] `git diff --check` termina en 0.
+- [ ] ADR-069 está `Aprobado` antes de registrar G6.5 como GO.
+- [ ] La evidencia Linux corresponde al SHA que se mergea y confirma 29/0/0/0/0, exit 0 y cleanup OK.
+- [ ] QA-34 no bloquea G6/G6.5 y sí bloquea G7.
+- [ ] G7 permanece `NO-GO` hasta completar Task 5 y obtener aprobación CTO.
+
+## Cobertura del plan
+
+- Separación código/compuerta/registro: Tasks 1 y 3.
+- Evidencia local no atribuida al HEAD a mergear: Task 3.
+- Laguna `EVIDENCE_UPLOAD_EXPIRED`: Task 4.
+- ADR-069 pendiente de decisión: Task 1.
+- QA-34/TLS como prerequisito productivo: Tasks 2 y 5.
+- No autorización implícita de G7: Tasks 3 y 5.

@@ -688,8 +688,8 @@ El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6
 | Gate | Estado | Evidencia / pendiente |
 |---|---|---|
 | G6 Quality acceptance | **GO** | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas. |
-| G6.5 Merge readiness | **PENDIENTE** | `.github/workflows/ci.yml` ya exige variables efímeras, 29 tests, cero fallos/skips/did-not-run y flaky=0. La corrida local está archivada; falta ejecutar ambos jobs en Linux y archivar SHA/URL del run. |
-| G7 Production authorization | **NO-GO** | TLS/QA-34, rollback de componentes, restore global/tenant y aprobación CTO pendientes. |
+| G6.5 Merge readiness | **PENDIENTE** | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
+| G7 Production authorization | **NO-GO** | Requiere dominio, TLS efectivo, rollback por componente, restore global/tenant y aprobación CTO. |
 
 ### 15.10 Trazabilidad de artefactos de cierre
 
