@@ -465,7 +465,7 @@ jobs:
 
           TS="$(date +%s)"
           PLATFORM_EMAIL="ci-platform-admin-${TS}@example.invalid"
-          PLATFORM_PASSWORD="$(openssl rand -base64 24 | tr -d '\n')"
+          PLATFORM_PASSWORD="E2eA1!$(openssl rand -hex 18)"
           IDEMPOTENCY_SECRET="$(openssl rand -hex 24)"
           MFA_KEY="$(openssl rand -hex 32)"
 
