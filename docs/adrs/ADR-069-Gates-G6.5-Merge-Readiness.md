@@ -1,8 +1,9 @@
 # ADR-069: Gate G6.5 de merge readiness
 
 **Version:** 1.0  
-**Estado:** Aprobado
-**Aprobado por:** AI-EM-ARCH, 2026-08-01
+**Estado:** Propuesto
+**Propuesto por:** AI-EM-ARCH, 2026-08-01
+**Aprobación final CTO:** pendiente
 **Fecha:** 2026-08-01  
 **Modulos:** MOD09 Programacion / MOD11 Ejecucion Operativa / Plataforma transversal / Seguridad transversal
 
@@ -25,8 +26,8 @@ Se establece la siguiente taxonomia durable:
    verde para `production-images` y `execution-orders-e2e`, identificada por
    SHA y con artefacto resumen sanitizado. El job E2E debe demostrar setup,
    conteo minimo de pruebas, cero fallos, cero skips y cleanup confirmado.
-3. **G7 — Production authorization:** autorizacion separada de AI-EM-ARCH y
-   CTO, con dominio productivo, TLS, rollback por componente, restore global y
+3. **G7 — Production authorization:** AI-EM-ARCH recomienda y el CTO aprueba,
+   con dominio productivo, TLS, rollback por componente, restore global y
    restore por tenant verificados. G7 no se obtiene por cumplir G6.5.
 
 G6.5 autoriza el merge de la remediacion; nunca autoriza despliegue productivo.

@@ -681,15 +681,15 @@ como parte del re-registro de gate.
 4. Migraciones reversibles con evidencia ejecutable (R3.4); OpenAPI 1.1.0 con changelog.
 5. Seguridad: `nodemailer` 9.0.3, sin exposición del token en logs, `pnpm audit --prod` 0 critical.
 
-El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6.5 espera la primera corrida Linux real de los dos jobs; G7 requiere CTO, dominio productivo, TLS, rollback por componente y restores ensayados.
+El registro formal queda separado por gate: G6 está aprobado por AI-EM-ARCH; G6.5 espera la primera corrida Linux real de los dos jobs; para G7, AI-EM-ARCH recomienda y CTO aprueba tras verificar dominio productivo, TLS, rollback por componente y restores ensayados.
 
 ### 15.13 Registro vigente G6/G6.5/G7 — 2026-08-01
 
-| Gate | Estado | Evidencia / pendiente |
-|---|---|---|
-| G6 Quality acceptance | **GO** | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas. |
-| G6.5 Merge readiness | **PENDIENTE** | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
-| G7 Production authorization | **NO-GO** | Requiere dominio, TLS efectivo, rollback por componente, restore global/tenant y aprobación CTO. |
+| Gate                        | Estado        | Evidencia / pendiente                                                                                                                    |
+| --------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| G6 Quality acceptance       | **GO**        | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas.                                             |
+| G6.5 Merge readiness        | **PENDIENTE** | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
+| G7 Production authorization | **NO-GO**     | AI-EM-ARCH recomienda; CTO aprueba; requiere dominio, TLS efectivo, rollback por componente y restore global/tenant.                     |
 
 ### 15.10 Trazabilidad de artefactos de cierre
 

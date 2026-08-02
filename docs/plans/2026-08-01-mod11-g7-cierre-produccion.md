@@ -12,16 +12,16 @@
 
 ## Contexto y decisión recomendada
 
-**Opcion recomendada: aprobar ADR-069 y normalizar QA-34 como "diferido para merge, bloqueante para produccion".**
+**Opcion recomendada: preparar y someter ADR-069 a aprobación final del CTO, y normalizar QA-34 como "diferido para merge, bloqueante para produccion".**
 
-Motivo: ADR-069 ya expresa la separacion necesaria entre calidad, merge y release. Mantenerlo en `Propuesto` deja ambigua la autoridad de G6.5; afirmar que QA-34 no bloquea G7 contradice el gate de produccion y permitiria interpretar un diferimiento de dominio como aprobacion de TLS. La opcion recomendada permite merge solo tras CI Linux, mientras conserva G7 como NO-GO sin dominio, certificado, ensayos de rollback/restores y CTO.
+Motivo: ADR-069 ya expresa la separacion necesaria entre calidad, merge y release. AI-EM-ARCH puede emitir la recomendación y custodiar la trazabilidad, pero la aprobación final del ADR está reservada al CTO. Afirmar que QA-34 no bloquea G7 contradice el gate de produccion y permitiria interpretar un diferimiento de dominio como aprobacion de TLS. La opcion recomendada permite merge solo tras CI Linux, mientras conserva G7 como NO-GO sin dominio, certificado, ensayos de rollback/restores, recomendación de AI-EM-ARCH y aprobación CTO.
 
 No se reescriben los commits `a1245ee0` y `b7adcdac`. La configuracion CI viajo con el registro de gate porque formaliza la compuerta; se conserva esa trazabilidad. En cambios futuros, cualquier cambio funcional de `.github/workflows/ci.yml` que altere los checks del codigo debe viajar con el commit de codigo, y el registro de gate debe limitarse a la evidencia obtenida.
 
 ## Archivos y responsabilidades
 
 - Modificar: `docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md`.
-  - Aprobar la taxonomia de gates sin autorizar G7.
+  - Preparar la taxonomia de gates para aprobación final del CTO, sin autorizar G7.
 - Modificar: `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md`.
   - Corregir QA-34 para que no bloquee G6/G6.5 y si bloquee G7.
 - Modificar: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md`.
@@ -33,30 +33,31 @@ No se reescriben los commits `a1245ee0` y `b7adcdac`. La configuracion CI viajo 
 - Crear: `docs/informes/INFORME-MOD11-G7-EVIDENCIA-PRODUCCION-v1.0.md` solo cuando exista una ejecucion real de los prerequisitos G7.
   - No crear este informe antes de tener dominio, TLS y ensayos reales.
 
-### Task 1: Aprobar la separación de gates
+### Task 1: Preparar la separación de gates para aprobación CTO
 
 **Files:**
 
 - Modify: `docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md:3-5`
 - Modify: `docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md:685-692`
 
-- [ ] **Step 1: Cambiar ADR-069 de `Propuesto` a `Aprobado`**
+- [ ] **Step 1: Mantener ADR-069 en `Propuesto` y registrar la ruta de aprobación CTO**
 
-Reemplazar la cabecera por:
+Conservar la cabecera con:
 
 ```markdown
 **Version:** 1.0
-**Estado:** Aprobado
-**Aprobado por:** AI-EM-ARCH, 2026-08-01
+**Estado:** Propuesto
+**Propuesto por:** AI-EM-ARCH, 2026-08-01
+**Aprobación final CTO:** pendiente
 ```
 
-- [ ] **Step 2: Registrar el efecto limitado de la aprobación**
+- [ ] **Step 2: Registrar el efecto limitado de la recomendación**
 
 En el registro vigente, conservar exactamente estas condiciones:
 
 ```markdown
 | G6.5 Merge readiness | PENDIENTE | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
-| G7 Production authorization | NO-GO | Requiere dominio, TLS efectivo, rollback por componente, restore global/tenant y aprobación CTO. |
+| G7 Production authorization | NO-GO | AI-EM-ARCH recomienda; CTO aprueba; requiere dominio, TLS efectivo, rollback por componente y restore global/tenant. |
 ```
 
 - [ ] **Step 3: Verificar el diff documental**
@@ -68,8 +69,8 @@ Expected: exit code 0.
 - [ ] **Step 4: Commit de decisión de gobierno**
 
 ```text
-git add docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md
-git commit -m "docs(operations): approve G6.5 gate taxonomy"
+git add docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md docs/plans/2026-08-01-mod11-g7-cierre-produccion.md
+git commit -m "docs(operations): defer ADR-069 approval to CTO"
 ```
 
 ### Task 2: Corregir la semántica de QA-34/TLS
@@ -231,16 +232,16 @@ El informe G7 debe contener: SHA/release, dominio, evidencia TLS, resultados de 
 
 - [ ] `git status --short` no muestra cambios no intencionales.
 - [ ] `git diff --check` termina en 0.
-- [ ] ADR-069 está `Aprobado` antes de registrar G6.5 como GO.
+- [ ] ADR-069 permanece `Propuesto`, con recomendación de AI-EM-ARCH y aprobación final CTO pendiente.
 - [ ] La evidencia Linux corresponde al SHA que se mergea y confirma 29/0/0/0/0, exit 0 y cleanup OK.
 - [ ] QA-34 no bloquea G6/G6.5 y sí bloquea G7.
-- [ ] G7 permanece `NO-GO` hasta completar Task 5 y obtener aprobación CTO.
+- [ ] G7 permanece `NO-GO` hasta completar Task 5, emitir recomendación AI-EM-ARCH y obtener aprobación CTO.
 
 ## Cobertura del plan
 
 - Separación código/compuerta/registro: Tasks 1 y 3.
 - Evidencia local no atribuida al HEAD a mergear: Task 3.
 - Laguna `EVIDENCE_UPLOAD_EXPIRED`: Task 4.
-- ADR-069 pendiente de decisión: Task 1.
+- ADR-069 pendiente de aprobación CTO: Task 1.
 - QA-34/TLS como prerequisito productivo: Tasks 2 y 5.
 - No autorización implícita de G7: Tasks 3 y 5.
