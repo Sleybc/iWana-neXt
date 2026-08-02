@@ -1,14 +1,14 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.2
+**Versión:** 1.4
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18)
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7)
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
 
 - [docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md](../roles/Perfil_IA_EM_Architect_Unificado_v2.md)
 - [docs/roles/Perfil_IA_Sr_Dev_Fullstack_v2.md](../roles/Perfil_IA_Sr_Dev_Fullstack_v2.md)
-- [docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v2.md](../roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v2.md)
+- `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v2.md` — archivado en el historial de git (commit `6770730c^`); la carpeta no se restaura, ver §5.3
 - [docs/roles/Protocolo_Colaboracion_Multiagente_v1.md](../roles/Protocolo_Colaboracion_Multiagente_v1.md)
 
 ~~Todos en estado Propuesto — pendiente aprobación CTO.~~ **Aprobados por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md) (CTO, 2026-07-10)** — esta línea quedó desactualizada en v1.0/v1.1 y contradecía el estado declarado en el protocolo y los perfiles; corregida en v1.2 (ver §5.2.3). Los v1 permanecen como referencia histórica en el historial de git (ver §5.3).
@@ -116,7 +116,7 @@ El borrado accidental de `_historico/` demostró que mantener perfiles superados
 
 - **Hueco cubierto — operaciones de plataforma:** existían `.github/workflows/`, `docker-compose.yml`, `nginx.dev/prod.conf` sin dueño (QA y SEC-ENG lo excluían explícitamente; EM-ARCH no implementa). Se crea **[AI-PLAT-OPS](../roles/Perfil_IA_Platform_Ops_Engineer_v1.md)** (Platform/DevOps Engineer, on-demand, patrón DATA-ENG v3): CI/CD, infra Docker/Nginx, backups/DR multi-tenant, observabilidad de plataforma y **ejecución** de releases (el go sigue siendo de G7). Incorporado a estructura, RACI, matriz de consulta y cadencia del protocolo v1.3. No requiere ADR (no mueve autoridad del CTO; registro aquí conforme al §9).
 - **Rol humano externo formalizado:** Legal/regulatorio declarado en la estructura §1 (vía CTO). Deliberadamente **no** es un agente IA — la regla anti-alucinación de regulación es correcta.
-- **No se divide EM-ARCH** (Accountable en casi toda la RACI por diseño; válvulas existentes: carril rápido + ADR-016). Disparador de división: módulos en paralelo → sharding por dominio vía ADR (ya previsto en §3.5). Señal a instrumentar: latencia de gates y cola de desempates en el informe de sprint.
+- **No se divide EM-ARCH** (Accountable en casi toda la RACI por diseño; válvulas existentes: carril rápido + regla de completitud de [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)). Disparador de división: módulos en paralelo → sharding por dominio vía ADR (ya previsto en §3.5). Señal a instrumentar: latencia de gates y cola de desempates en el informe de fase. *(Corrección v1.3: la cita original decía "ADR-016" — la autoridad de la regla es ADR-022; y la señal se instrumenta por fase, no por sprint. Ver §6.)*
 - **No se divide FE-PLATFORM** (la consolidación DRY se beneficia de un dueño único). Disparador: `@iwana/ui` estable + volumen de pantallas → DS Engineer vs Feature FE.
 - **No se añaden** PM, tech writer, BI ni agente legal: cubiertos por diseño (EM-ARCH/CTO), por skills del catálogo, o vetados por las reglas anti-alucinación.
 
@@ -128,3 +128,71 @@ El borrado accidental de `_historico/` demostró que mantener perfiles superados
 4. ~~Añadir `pnpm sync:agents:check` a CI~~ — **ejecutado (2026-07-18)**: paso "Check agentes multi-IDE sincronizados" en `.github/workflows/ci.yml`, antes de lint; falla el pipeline si `.opencode/agents/` o `.codex/agents/` derivan de `.claude/agents/`.
 
 **Sin pendientes abiertos.** Próxima revisión de este informe: al cierre del siguiente módulo o cuando cambie la estructura de roles (protocolo §9).
+
+## 6. Actualización 2026-08-02 — Auditoría del perfil AI-EM-ARCH (v2.2)
+
+Auditoría a solicitud del CTO sobre [`Perfil_IA_EM_Architect_Unificado_v2.md`](../roles/Perfil_IA_EM_Architect_Unificado_v2.md) en su v2.1. Informe completo: [INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md](INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md). Registro aquí conforme al protocolo §9.
+
+**Resultado:** 3 bloqueantes, 7 altos, 6 medios, 4 bajos. Perfil emitido en **v2.2**. No mueve autoridad hacia ni desde el CTO → no requiere ADR.
+
+### 6.1 Causa raíz — un alcance de remediación mal delimitado
+
+El plan de ejecución de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) (acción 5) ordenó alinear el §6 de **DS-OWNER, PROD-UX, FE-PLATFORM y SR-QA** a la cadena canónica nueva y a la definición de Estrella Polar de tres dominios. **EM-ARCH quedó fuera de ese alcance.** Durante seis semanas, el perfil que *aprueba* las especificaciones UX/UI operó contra la definición de dos dominios de ADR-049 que él mismo había declarado superada, y con una cadena de precedencia distinta de la de sus cuatro revisores.
+
+> **Regla derivada, aplicable a toda enmienda normativa futura:** cuando un ADR ordena alinear perfiles a una definición, el alcance se determina por **quién cita la definición**, no por quién pertenece a la capa que la origina. El aprobador de un artefacto cita siempre la norma contra la que aprueba.
+
+### 6.2 Correcciones aplicadas al perfil (v2.1 → v2.2)
+
+| Área | Cambio |
+| --- | --- |
+| **Base normativa** | §5 aprueba UX/UI contra los tres dominios de ADR-056 §3; §6 adopta la cadena de 8 niveles con casilla de *fuentes de diseño*; la regla de completitud se reancla a **ADR-022** (ADR-016 es el cierre de MOD01) |
+| **Ejecución paralela** | Nueva §3.5 *Delegación paralela (contract-first)*: los dos contratos congelables, cómo se declara la congelación en el prompt de fase y qué evento fuerza re-sync (protocolo §3bis). El **carril rápido de UI** delegado en DS-OWNER queda registrado en la matriz §5 |
+| **Bloqueos** | Nueva §8 con SLA en unidades de sesión, artefacto de salida y destino de registro para `[BLOQUEO]`, `[CONSULTA]`, `[DESEMPATE]` y `[ESCALACIÓN AL CTO]`. Era el único perfil sin contrato para esto, siendo el destinatario único de todo el ecosistema |
+| **Instrumentación** | §7 y §11 pasan del informe de sprint al **informe de fase + informe de cierre de módulo**. Motivo: el repo tiene 2 informes de sprint frente a 30 de cierre — los 7 KPIs reportaban "sin instrumentar" de forma permanente |
+| **Gates y consulta** | §3.4 añade el mecanismo de review cruzado de G1 (el perfil es el productor del PRD/HLD) y a **AI-SR-QA** a la red de consulta |
+| **Trazabilidad** | `Fecha` sincronizada, campos `Gobernanza` y `Modo de sesión`, versión del protocolo declarada (v1.3), y changelog de las dos ediciones post-v2.1 que se habían aplicado sin bump (`7cd44be4`, `9ea24f99`) |
+| **Checklist** | Tres verificaciones nuevas: cita abierta y verificada con estado `Aprobado`, artefacto previo contradictorio marcado como superado, y `pnpm audit:adr-citations` en verde |
+
+### 6.3 Colaterales
+
+- `.cursor/rules/ai-em-arch.mdc` apuntaba a `.github/prompts/activar-ai-em-arch.prompt.md` — carpeta suprimida el 2026-07-27. **La activación del modo Orquestador en Cursor estaba rota.** Repuntado a `docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md`. **Corrección local:** `.cursor/` está en `.gitignore:44`, así que no se propaga ni la valida CI — decisión pendiente en §6.4.
+- Corregidas en este informe la atribución `ADR-016 → ADR-022` de §5.4 y el enlace a `_historico/` de la cabecera (la carpeta no existe desde `6770730c`).
+
+### 6.4 Pendientes abiertos tras esta auditoría
+
+1. **ADR-069 (propuesto)** — *Gate G6.5 de merge readiness*, taxonomía G6 / G6.5 / G7. Al aprobarse, EM-ARCH requiere **v2.3** (§7 y §11). No se anticipa: citar un ADR no aprobado como norma es la infracción que ADR-056 §5 persigue.
+2. ~~**Protocolo → v1.4**~~ — **cerrado el 2026-08-02** por la auditoría del protocolo, ver §7.
+3. **Normalización estructural de los 9 documentos** — coexisten tres convenciones de Parte I/II/III y cinco formatos de sección de handoff. Decisión de ecosistema, no de perfil.
+4. **`.cursor/` sin versionar** (`.gitignore:44`). `AGENTS.md` lo trata como superficie de paridad multi-IDE, pero a diferencia de `.claude/agents/` y `.opencode/` —versionados y con `pnpm sync:agents:check` en CI— no es auditable. Así sobrevivió cinco semanas un enlace roto en la activación del rol. Recomendación: **versionarlo**, o retirarlo y activar Cursor por el prompt de `docs/prompts/` como los demás clientes.
+
+## 7. Actualización 2026-08-02 — Auditoría del protocolo (v1.4)
+
+Segunda auditoría del mismo día, sobre [`Protocolo_Colaboracion_Multiagente_v1.md`](../roles/Protocolo_Colaboracion_Multiagente_v1.md) en su v1.3. Informe completo: [INFORME-ROLES-AUDITORIA-PROTOCOLO-v1.0.md](INFORME-ROLES-AUDITORIA-PROTOCOLO-v1.0.md). Registro conforme al §9 del propio protocolo.
+
+**Resultado:** 2 bloqueantes, 6 altos, 7 medios, 3 bajos. Protocolo emitido en **v1.4**. Toca gates y notación de RACI → requiere aprobación de EM-ARCH y registro (hecho); no mueve autoridad del CTO → no requiere ADR.
+
+### 7.1 Causa raíz — la norma era buena, la instrumentación no cerraba
+
+Al contrario que en la auditoría del perfil (§6), aquí no se encontró **ningún error de diseño**: la RACI, el workflow de 7 etapas y el modelo paralelo §3bis son correctos. Los defectos están todos en la **interfaz entre el protocolo y el repo que gobierna**: listas declaradas cerradas que el árbol real desmiente, gates llamados "verificables" sin decir con qué comando, y un vocabulario de marcadores que el ecosistema usa más de 100 veces y que el protocolo definía en una cuarta parte.
+
+> **Regla derivada:** toda afirmación del protocolo sobre el estado del repo —carpetas, comandos, conteos, marcadores— es una **cita verificable** y le aplica §7.4 igual que a una cita de ADR. Una lista "cerrada" que nadie contrastó contra `ls` es del mismo género que un ADR citado sin abrir.
+
+### 7.2 Correcciones aplicadas (v1.3 → v1.4)
+
+| Área | Cambio |
+| --- | --- |
+| **Handoff (§3)** | La enumeración "cerrada" omitía `docs/hlds/` y `docs/adrs/` — los dos artefactos que su propia etapa 1 produce, y que el gate `audit-doc-locations` **exige** ahí. Sustituida por tabla artefacto → carpeta → etapa → gate |
+| **Gates (§4)** | Faltaban **lint y typecheck**, que `AGENTS.md` (precedencia 1) sí exige. Reescrita como superconjunto declarado, con los 13 gates mapeados a su comando verificable y la regla de precedencia explícita |
+| **Caché de Turbo** | Nota operativa nueva: un `pnpm test` verde puede no haber ejecutado nada. El gate de cobertura exige el resumen con `Cached: 0` o la corrida `--force`; sin eso se reporta *no verificada* |
+| **Marcadores (§6.3, nueva)** | Fuente única de `[BLOQUEO]`, `[CONSULTA]`, `[DESEMPATE]` y `[ESCALACION AL CTO]`: emisor, disparador, SLA, registro y formato. Prohibidas las variantes (`[BLOQUEO TÉCNICO]`, `[ESCALACIÓN]` a secas) que son invisibles a la búsqueda que las recupera |
+| **Cadencia (§8)** | Reordenada a fase (primaria) → módulo (corte de gobierno) → sprint (agregado). Cierra el conflicto con EM-ARCH v2.2, que por §9 el protocolo debía resolver |
+| **Completitud** | Regla reanclada a **ADR-022**; el protocolo era el origen de la atribución a ADR-016 que los perfiles copiaron |
+| **Estrella Polar** | La fila de la RACI decía dos dominios mientras §5.4 ya traía los tres de ADR-056 §3. Alineada — la lee SR-QA, que audita fidelidad |
+| **Otros** | `A*` declarado como autoridad de excepción, nunca segundo Accountable; "cuatro tracks" → cinco; procedimiento de versionado y notificación de un cambio de contrato (§3bis.1); salida del punto muerto de §6.2 cuando el consultado es EM-ARCH; capa de subagentes declarada; §9 exige bump por cambio y define cómo se añade un perfil nuevo |
+
+### 7.3 Pendientes abiertos
+
+1. **ADR-069 (propuesto)** — al aprobarse, el workflow pasa de 7 a 8 gates: protocolo **v1.5** y perfil EM-ARCH **v2.3**.
+2. **Tres filas de RACI faltantes** — documentación, deuda técnica y observabilidad de aplicación. Asignar Responsible es decisión de estructura, no corrección de defecto; requiere aprobación de EM-ARCH y registro (§9), no ADR.
+3. **Definition of ready por etapa** — las 7 etapas tienen gate de salida y ninguna condición de entrada. Alto valor, bajo costo, pero es diseño nuevo.
+4. **`.cursor/` sin versionar** — sigue abierto, ver §6.4.

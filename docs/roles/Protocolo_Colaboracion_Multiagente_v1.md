@@ -1,13 +1,15 @@
 # Protocolo de Colaboración Multiagente — iWana neXt Platform
 
-**Versión:** 1.3
-**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; v1.2 aprobada por CTO, 2026-07-12; v1.3 aprobada por CTO, 2026-07-18)
-**Fecha:** 2026-07-18
+**Versión:** 1.4
+**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; v1.2 aprobada por CTO, 2026-07-12; v1.3 aprobada por CTO, 2026-07-18; **v1.4, 2026-08-02** — auditoría del protocolo, ver [informe](../informes/INFORME-ROLES-AUDITORIA-PROTOCOLO-v1.0.md))
+**Fecha:** 2026-08-02
+**Nombre de archivo:** el sufijo `_v1` es histórico y **no indica la versión del contenido**; la versión vigente es la de esta cabecera. No se renombra para no romper ~40 enlaces entrantes.
 **Cambio v1.0 → v1.1:** integra el split del Design Layer aprobado — `AI-SR-UI-SYS` se divide en `AI-PROD-UX` (experiencia) + `AI-DS-OWNER` (contrato del design system), y el frontend de `AI-SR-FULL` se extrae a `AI-FE-PLATFORM`. Añade el **modelo de ejecución paralela** (§3bis) y el **carril rápido de UI**. Optimizado para: reducir solapamiento, aumentar autonomía por rol y maximizar ejecución en paralelo.
 **Cambio v1.1 → v1.2:** elimina las referencias residuales a `UI-SYS` (workflow §3, conflictos §5, matriz de consulta §6.1 — reescrita con los roles vigentes, cadencia §8) e incorpora la **dirección visual "Firma iWana"** ([spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) como entrada obligatoria de la cadena de UI.
 **Cambio v1.2 → v1.3 (auditoría integral):** incorpora **AI-PLAT-OPS** (Platform/DevOps, on-demand) y los roles humanos externos (Legal/regulatorio) a la estructura; añade la doctrina *gobernanza vs modo de sesión*; cierra la auto-aprobación de G1 (review cruzado); suma FE-PLATFORM (y PLAT-OPS si aplica) a la etapa 3; define el **artefacto y el evento de congelación** de los contratos del §3bis; aclara el desempate con Responsible múltiple; reexpresa los SLAs en unidades de sesión; añade los reportes de QA/SEC-ENG a la cadencia §8; y corrige la RACI de datos (DATA-ENG R on-demand en modelo/migraciones de su dominio).
+**Cambio v1.3 → v1.4 (auditoría del protocolo):** regulariza la modificación del 2026-07-27 aplicada sin bump (§3bis regla 4); corrige la enumeración de handoff de §3, que declaraba cerrada una lista sin `docs/hlds/` ni `docs/adrs/` — artefactos de su propia etapa 1; reancla la regla de completitud a **ADR-022**; alinea §4 con los *Gates Before Merge* de `AGENTS.md` (faltaban lint y typecheck) y mapea cada gate a su **comando verificable**; unifica la Estrella Polar en los tres dominios de ADR-056 §3 también en la RACI; añade **§6.3 Vocabulario de marcadores** como fuente única de `[BLOQUEO]` / `[CONSULTA]` / `[DESEMPATE]` / `[ESCALACION AL CTO]`; corrige la cadencia §8 a la unidad **fase/módulo**; declara la capa de subagentes; y corrige "cuatro tracks" (§3bis lista cinco).
 **Clasificación:** Estratégico — Confidencial
-**Alcance:** Define la matriz RACI, el workflow de colaboración, los artefactos de handoff y los gates de aprobación entre los agentes IA del proyecto. Es la **fuente única** de estas definiciones: los perfiles individuales la referencian y no la duplican.
+**Alcance:** Define la matriz RACI, el workflow de colaboración, los artefactos de handoff, el **vocabulario de marcadores** y los gates de aprobación entre los agentes IA del proyecto. Es la **fuente única** de estas definiciones: los perfiles individuales la referencian y no la duplican.
 
 **Perfiles cubiertos:**
 
@@ -26,6 +28,8 @@
 > **Sucesión:** `AI-SR-UI-SYS` (Perfil v2) queda como referencia histórica al aprobarse este split; sus responsabilidades se reparten entre `AI-PROD-UX` (experiencia) y `AI-DS-OWNER` (contrato). `AI-SR-FULL` v2 conserva el backend y cede el frontend a `AI-FE-PLATFORM`.
 
 **Precedencia:** este protocolo se subordina a `AGENTS.md`, al CTO humano, a los ADRs aprobados y al PRD vigente. Complementa (no reemplaza) la precedencia documental declarada en cada perfil.
+
+**Operacionalización:** los perfiles definen el rol; su ejecución concreta vive en `.claude/agents/*.md` — **8 subagentes**, uno por perfil ejecutor. AI-EM-ARCH **no es subagente**: es el modo Orquestador del agente padre, activable con [PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md). `.opencode/agents/` y `.codex/agents/` son **generados** por `pnpm sync:agents` y verificados en CI por `pnpm sync:agents:check`; no se editan a mano (`AGENTS.md` → Superficies activas).
 
 ---
 
@@ -64,7 +68,9 @@ Reglas estructurales:
 
 ## 2. Matriz RACI
 
-R = Responsible (ejecuta) · A = Accountable (responde por el resultado, máximo uno) · C = Consulted · I = Informed.
+R = Responsible (ejecuta) · A = Accountable (responde por el resultado, **máximo uno por fila**) · C = Consulted · I = Informed.
+
+**`A*` no es un segundo Accountable.** Denota *autoridad de excepción*: el CTO decide sobre el cambio estratégico del área (aprobar el ADR, la excepción de seguridad, los tokens de marca, los targets RPO/RTO), pero **no responde por la operación diaria**, que tiene su propio `A`. En una fila con `A*` y `A`, el Accountable operativo es el `A` sin asterisco. La lectura opuesta —dos dueños del resultado— es la que esta notación descarta.
 
 | Área | CTO | EM-ARCH | SR-FULL | FE-PLAT | PROD-UX | DS-OWNER | SR-QA | SEC-ENG | DATA-ENG | PLAT-OPS |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -80,12 +86,12 @@ R = Responsible (ejecuta) · A = Accountable (responde por el resultado, máximo
 | Testing (E2E, regresión visual y a11y) | I | A | C | C | C | C | R | I | I | C |
 | Performance (backend y frontend) | I | A | R | R | C | C | C | I | C | C |
 | Accesibilidad WCAG 2.2 AA | I | A | I | R** | R** | R** | C | I | I | I |
-| Fidelidad a la Estrella Polar (prototipo ADR-023 + [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) | I | A | I | C | C | C | R | I | I | I |
+| Fidelidad a la Estrella Polar — **tres dominios de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3**: código real · [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) · identidad y prototipo (ADR-023) | I | A | I | C | C | C | R | I | I | I |
 | Infraestructura, CI/CD, backups/DR y observabilidad de plataforma | A* | A | C | C | I | I | C | C | I | R |
 | Releases a producción (gobierno: informe de cierre, go/no-go) | A | R | C | C | I | I | C | C | I | C |
 | Releases a producción (ejecución: despliegue, migraciones, rollback) | A | C | C | I | I | I | I | C | I | R |
 
-\* El CTO es Accountable solo en el nivel de excepción o cambio estratégico (aprobar ADR, excepción de seguridad, cambio de tokens de marca, targets RPO/RTO); la operación diaria del área es Accountable de EM-ARCH.
+\* Autoridad de excepción del CTO (aprobar ADR, excepción de seguridad, cambio de tokens de marca, targets RPO/RTO). No es el Accountable operativo del área — ver la nota sobre `A*` arriba. En la fila de infraestructura, el Accountable operativo es **EM-ARCH** y el Responsible es **PLAT-OPS**.
 \** Accesibilidad tiene triple Responsible con frontera clara: **PROD-UX** define los criterios de flujo, **DS-OWNER** garantiza contraste y estados en el contrato de componente, **FE-PLAT** los implementa; SR-QA verifica. Estándar único **WCAG 2.2 AA** (resuelve la contradicción 2.1/2.2 de los perfiles v1).
 \*** DATA-ENG es Responsible del **diseño** del modelo y las migraciones de su dominio (RADIUS, OLT, CDR, ETL, métricas) cuando está activado on-demand; SR-FULL es Responsible de la **implementación** dentro del Modulith y de todo lo demás. (Corrige la contradicción v1.2, donde DATA-ENG era solo C pero su perfil le exigía entregar modelos y migraciones.)
 
@@ -110,15 +116,27 @@ Siete etapas con gates. Ningún gate se auto-aprueba: el aprobador es siempre di
 
 Reglas del workflow:
 
-- **Handoff explícito:** cada etapa termina con un artefacto nombrado y localizado en `docs/` — `docs/prds/`, `docs/specs/`, `docs/plans/`, `docs/informes/` y **`docs/prompts/`** (etapa 4: el prompt de ejecución); un handoff verbal o implícito no cuenta. La enumeración es **cerrada**: no hay artefacto de etapa fuera de `docs/`.
+- **Handoff explícito:** cada etapa termina con un artefacto nombrado y localizado **bajo `docs/`, en la carpeta que le corresponde por tipo**; un handoff verbal o implícito no cuenta. Lo cerrado es **`docs/`**, no la lista de subcarpetas:
+
+  | Artefacto | Carpeta canónica | Etapa | Gate automático |
+  | --- | --- | --- | --- |
+  | `PRD-*` | `docs/prds/` | 1 | `pnpm audit:doc-locations` (aviso) |
+  | `HLD-*` | `docs/hlds/` | 1 | `pnpm audit:doc-locations` (aviso) |
+  | `ADR-*` | `docs/adrs/` | 1 | `pnpm audit:doc-locations` (aviso) |
+  | UX spec, contrato de componente | `docs/specs/` | 2 | — |
+  | Plan de fase | `docs/plans/` | 1–4 | — |
+  | `PROMPT-*` | `docs/prompts/` | 4 | `pnpm audit:doc-locations` (**bloqueante**) |
+  | `INFORME-*` (fase, calidad, cierre) | `docs/informes/` | 5–7 | `pnpm audit:doc-locations` (aviso) |
+
+  *(Corrección v1.4: la v1.3 declaraba «cerrada» una enumeración de cinco carpetas que omitía `docs/hlds/` y `docs/adrs/` — los dos artefactos que la propia etapa 1 de la tabla de arriba produce. Leída literalmente, la regla prohibía depositar el HLD donde el gate de CI lo exige.)*
 - **Iteración corta permitida:** las etapas 2–3 pueden iterar entre sí sin pasar por EM-ARCH mientras no cambien alcance, contrato ni boundary.
 - **Bloqueos (SLA en unidades de sesión):** un agente que no puede resolver un bloqueo dentro de su sesión actual con la información disponible emite `[BLOQUEO]` a EM-ARCH **antes de cerrar la sesión** — nunca asume para "seguir avanzando". Los bloqueos silenciosos son un anti-patrón de todo el sistema. (Los SLAs en horas de versiones anteriores eran una metáfora humana sin significado operativo para agentes que trabajan por sesiones.)
 - **Cambios tardíos:** un cambio de alcance descubierto en etapas 5–7 regresa a la etapa 1 ó 2 según su naturaleza; no se "parchea" en implementación.
-- **Regla de completitud (ADR-016):** no se inicia el módulo N+1 sin cierre del módulo N.
+- **Regla de completitud ([ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)):** no se inicia el módulo N+1 sin cierre del módulo N. *(Corrección v1.4: la v1.3 la atribuía a ADR-016, que es el cierre de MOD01; la desambiguación está en su propia cabecera.)*
 
 ## 3bis. Modelo de ejecución paralela (contract-first)
 
-El workflow de 7 etapas es la secuencia de *gobierno*. Dentro de una fase de implementación, la ejecución **no es secuencial**: se paraleliza en cuatro tracks que corren contra **contratos congelados**, no contra trabajo terminado. Esto es lo que reduce el tiempo de entrega sin sacrificar boundaries.
+El workflow de 7 etapas es la secuencia de *gobierno*. Dentro de una fase de implementación, la ejecución **no es secuencial**: se paraleliza en **cinco tracks** que corren contra **contratos congelados**, no contra trabajo terminado. Esto es lo que reduce el tiempo de entrega sin sacrificar boundaries.
 
 **Los dos contratos que desbloquean el paralelismo (artefacto + congelación definidos):**
 
@@ -143,24 +161,37 @@ Ambos se **congelan temprano** (al inicio de la fase). Un contrato sin artefacto
 
 **Reglas del modelo paralelo:**
 
-1. **El contrato es la interfaz estable.** Un track solo se bloquea si el contrato del que depende cambia. Un cambio de contrato es el **único** evento que fuerza re-sync y se coordina vía EM-ARCH (se versiona y notifica; no se parchea en silencio).
+1. **El contrato es la interfaz estable.** Un track solo se bloquea si el contrato del que depende cambia. Un cambio de contrato es el **único** evento que fuerza re-sync y se coordina vía EM-ARCH; no se parchea en silencio. **Cómo se versiona y notifica un cambio de contrato:**
+   - El artefacto del contrato sube de versión en su propio nombre o cabecera (`v{N}` → `v{N+1}`); la versión anterior queda marcada como superada en el mismo acto.
+   - EM-ARCH emite un `[DESEMPATE]` o una adenda al prompt de ejecución de la fase citando **ruta y versión nueva**, y nombra los tracks afectados.
+   - Un track no afectado no se detiene. Un contrato cuya versión cambió sin esa adenda **no está congelado**: los tracks siguen contra la versión declarada en el prompt vigente.
 2. **Autonomía dentro del track.** Cada agente decide y ejecuta sin gate mientras respete su contrato y no toque alcance, boundary, tokens de marca ni dependencias nuevas (ver la sección "Autonomía" de cada perfil).
 3. **Carril rápido de UI.** Los cambios de componente/token/estado que **no** alteran alcance, contrato de datos, boundary ni tokens de marca los aprueba **AI-DS-OWNER** por delegación de EM-ARCH, sin gate de las 7 etapas. EM-ARCH solo interviene cuando sí se alteran. Esto quita el cuello de botella de serialización en trabajo de UI de bajo riesgo.
 4. **Handoff por artefacto.** Cada contrato y cada spec es un artefacto localizable **en `docs/`**, en la carpeta que le corresponde por tipo (`AGENTS.md` → Documentation Rules); un contrato verbal no cuenta. *(El inciso "o en el repo" de v1.3 se suprime el 2026-07-27: la disyunción anulaba la restricción de carpeta y fue una de las vías por las que 30 prompts de ejecución acabaron fuera de `docs/prompts/`.)*
 
 ## 4. Gates técnicos comunes (merge / producción)
 
-Verificables por cualquier agente; su cumplimiento es condición de G5–G7:
+Condición de G5–G7. **Superconjunto de los *Gates Before Merge* de `AGENTS.md`** — que tiene precedencia 1: si los dos divergen, manda `AGENTS.md` y se corrige esta tabla. Cada gate declara **cómo se verifica**; un gate sin evidencia ejecutada no está cumplido, y una afirmación de cumplimiento sin comando corrido es supuesto, no evidencia.
 
-- Sin vulnerabilidades críticas conocidas.
-- Sin violaciones de boundary del Modulith ni imports circulares.
-- Cobertura de tests ≥ 80% en módulos core.
-- OpenAPI actualizada si hubo endpoints nuevos o modificados.
-- Migraciones reversibles y revisadas.
-- Logs, código y fixtures sin PII real ni credenciales.
-- Multi-tenancy respetada (tenant desde JWT, nunca desde input; `SET LOCAL search_path` por transacción).
-- Accesibilidad WCAG 2.2 AA en flujos afectados, con evidencia.
-- Texto visible en español, sentence case, sin enums crudos.
+| # | Gate | Verificación |
+| --- | --- | --- |
+| 1 | Sin vulnerabilidades críticas conocidas | Revisión de dependencias + dictamen de SEC-ENG si la fase tocó seguridad |
+| 2 | Sin violaciones de boundary del Modulith ni imports circulares | `pnpm lint` + `docs/prompts/PROMPT-OPERATIVO-REVISAR-BOUNDARY-MODULITH-v1.0.md` |
+| 3 | **Lint y typecheck en verde** | `pnpm lint` · `pnpm typecheck` |
+| 4 | Cobertura de tests ≥ 80% en módulos core | `pnpm test` — **ver la nota de caché abajo** |
+| 5 | OpenAPI actualizada si hubo endpoints nuevos o modificados | Diff de la OpenAPI comprometida |
+| 6 | Migraciones reversibles y revisadas | `down()` ejercitado; sin `throw` incondicional (ADR-056 §Cierre derivado) |
+| 7 | Logs, código y fixtures sin PII real ni credenciales | Revisión + dictamen de SEC-ENG |
+| 8 | Multi-tenancy respetada (tenant desde JWT, nunca desde input; `SET LOCAL search_path` por transacción) | Revisión de segunda capa de EM-ARCH |
+| 9 | Accesibilidad WCAG 2.2 AA en flujos afectados, con evidencia | Evidencia a11y de SR-QA (G6) |
+| 10 | Texto visible en español, sentence case, sin enums crudos | Skill `system-vocabulary-review` |
+| 11 | Citas normativas verificadas y ADRs no aprobados con marcador | `pnpm audit:adr-citations` — **bloqueante en CI** |
+| 12 | Artefactos de fase en su carpeta canónica de `docs/` | `pnpm audit:doc-locations` — **bloqueante** para `PROMPT-*` |
+| 13 | Subagentes multi-IDE sincronizados | `pnpm sync:agents:check` |
+
+> **Un `pnpm test` verde no prueba que los tests corrieron.** Turborepo cachea: una suite restaurada de caché reporta éxito sin ejecutar nada. Para que el gate 4 cuente como evidencia, el reporte de fase adjunta la línea de resumen de Turbo con **`Cached: 0`** (o la corrida con `--force`). Una cifra de cobertura sin esa prueba se reporta como *no verificada*, no como cumplida. Esta es la forma que toma en la cadena de build el mismo defecto que §7.4 persigue en la documentación: una afirmación con forma de evidencia que no la respalda.
+
+*(Corrección v1.4: la v1.3 omitía **lint y typecheck**, que `AGENTS.md` sí exige, y no mapeaba ningún gate a un comando pese a declararlos "verificables por cualquier agente". Un agente que leyera solo el protocolo podía dar por cumplido G5 sin correr nada.)*
 
 ## 5. Resolución de conflictos entre agentes
 
@@ -214,6 +245,38 @@ Reglas:
 3. **Si el consultado no responde a tiempo o la consulta escala a desacuerdo**, deja de ser consulta y entra a la sección 5 (resolución de conflictos) vía EM-ARCH.
 4. **Auto-consulta al catálogo de skills primero:** para el *cómo* dentro del repo (patrón NestJS, App Router, migración, a11y), el agente consulta la skill correspondiente de `.agents/skills/` antes de molestar a otro agente. Los perfiles resuelven el *quién*; las skills, el *cómo*.
 5. **La consulta se registra** en el artefacto de la fase cuando cambia una decisión; una consulta que no altera nada no necesita registro.
+6. **Si el consultado es EM-ARCH y no responde**, la vía no es la §5 (que lo tiene a él como árbitro): el agente registra el supuesto, marca el entregable como *condicionado a confirmación de alcance* y el asunto entra en el informe de fase como decisión pendiente del CTO. Nunca se resuelve por silencio administrativo.
+
+### 6.3 Vocabulario de marcadores (fuente única)
+
+Estos cuatro marcadores son el **canal formal** entre agentes. Se escriben **exactamente así**, en mayúsculas y entre corchetes, para que sean localizables con `grep` en `docs/`. Los perfiles individuales los usan; no los redefinen.
+
+| Marcador | Emisor → destino | Cuándo | SLA (unidades de sesión) | Dónde se registra |
+| --- | --- | --- | --- | --- |
+| `[BLOQUEO]` | Cualquier agente → EM-ARCH | No puede resolver algo dentro de su sesión con la información disponible. Se emite **antes de cerrar la sesión**; nunca se asume para "seguir avanzando" | Siguiente sesión activa de EM-ARCH, con prioridad | Informe de fase del módulo |
+| `[CONSULTA]` | Cualquier agente → cualquier agente | Necesita criterio de otro dominio sin que sea conflicto ni cambio de etapa (§6.1). Formato en §6.2 | Bloqueante: siguiente sesión activa · asíncrona: dentro de la fase | Artefacto de la fase, solo si cambia una decisión |
+| `[DESEMPATE]` | EM-ARCH → los agentes en disputa | Dos agentes con R/C discrepan y la §5 lo remite a EM-ARCH | Antes de que el track afectado cierre la sesión | Artefacto de la fase; el artefacto invalidado se marca superado en el mismo acto |
+| `[ESCALACION AL CTO]` | EM-ARCH → CTO | Stack, presupuesto, seguridad, cumplimiento, identidad de marca global, o deuda crítica abierta al cierre de módulo | Antes de la decisión que la requiere | Informe de fase o de cierre |
+
+Formatos mínimos:
+
+```text
+[BLOQUEO] De: {AI-XXX} | Fase/módulo: {…}
+Qué intenté: {…} | Qué falta para desbloquear: {decisión concreta}
+Impacto si no se resuelve: {…}
+
+[DESEMPATE] Área RACI: | Posiciones: | Decisión: | Justificación: | Registro en:
+
+[ESCALACION AL CTO] Prioridad: | Contexto: | Opciones (máx. 3): |
+Recomendación: | Decisión requerida antes de:
+```
+
+Reglas de escritura:
+
+1. **Sin variantes.** No existen `[BLOQUEO TÉCNICO]`, `[BLOQUEO PENDIENTE DE ENTORNO]` ni `[ESCALACIÓN]` a secas: el matiz va en el cuerpo, no en el marcador. Un marcador variante es invisible a la búsqueda que lo recupera.
+2. **`[ESCALACION AL CTO]` se escribe sin tilde**, por consistencia con los 41 usos vigentes en `docs/` y `.claude/agents/`. Es una decisión de grep, no de ortografía.
+3. **`[ESCALACIÓN DE SEGURIDAD]`** es un marcador propio de SEC-ENG, definido en su perfil, y **no sustituye** a `[ESCALACION AL CTO]`: una excepción de seguridad requiere ambos — el hallazgo y la decisión del CTO.
+4. Un marcador emitido y no atendido **no caduca: escala**. Si `[BLOQUEO]` no se resuelve en la sesión siguiente, sube como `[ESCALACION AL CTO]` con la opción recomendada.
 
 ## 7. Reglas anti-alucinación del ecosistema
 
@@ -237,12 +300,16 @@ Aplican a todos los agentes, en todo artefacto:
 
 ## 8. Cadencia de sincronización
 
-- **Por fase:** reporte de fase de SR-FULL y FE-PLATFORM → EM-ARCH (formato del perfil); reporte de calidad de SR-QA → EM-ARCH (formato del perfil QA §9.2); informe de postura de SEC-ENG → EM-ARCH cuando la fase tocó seguridad, PII o integraciones.
-- **Por sprint:** informe de sprint de EM-ARCH → CTO según la [plantilla instrumentada](../informes/PLANTILLA-INFORME-SPRINT-v1.0.md) (entregables, cobertura, deuda, blockers, decisiones que requieren CTO, tabla de KPIs del protocolo y señales de división de EM-ARCH — cada KPI con dato del sprint y fuente, o marcado "sin instrumentar"; no se estima).
-- **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue; si hubo release, informe de ejecución de PLAT-OPS.
+**La unidad de cadencia es la fase, y el corte de gobierno es el módulo.** El sprint es un agregado opcional, no la unidad por defecto.
+
+- **Por fase (unidad primaria):** reporte de fase de SR-FULL y FE-PLATFORM → EM-ARCH (formato del perfil); reporte de calidad de SR-QA → EM-ARCH (formato del perfil QA §9.2); informe de postura de SEC-ENG → EM-ARCH cuando la fase tocó seguridad, PII o integraciones. EM-ARCH consolida en `docs/informes/INFORME-{MODULO}-{FASE}-v{VERSION}.md`, que es **la fuente de dato de los KPIs**: entregables, cobertura con evidencia de caché, deuda por severidad, blockers, latencia de gates y cola de desempates. Un KPI sin dato se marca **"sin instrumentar"**; no se estima.
+- **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue; si hubo release, informe de ejecución de PLAT-OPS. Decisión go/no-go y deuda registrada.
+- **Por sprint (agregado, a solicitud del CTO):** [plantilla instrumentada](../informes/PLANTILLA-INFORME-SPRINT-v1.0.md) — consolida varias fases con la tabla de KPIs y las señales de división de EM-ARCH. *(Corrección v1.4: la v1.3 hacía del informe de sprint la fuente primaria de los KPIs. El programa produce informes por fase y por módulo — 2 informes de sprint frente a 30 de cierre —, así que los KPIs quedaban permanentemente sin fuente de dato.)*
 - **Continuo:** hallazgos bloqueantes de PROD-UX, DS-OWNER, SR-QA, SEC-ENG o PLAT-OPS (pipeline de CI roto) se comunican al detectarse, no al final de la etapa.
 
 ## 9. Mantenimiento de este protocolo
 
-- Cambios a la RACI, a los gates o a la estructura de capas requieren aprobación de EM-ARCH y registro en el informe vivo de roles; cambios que muevan autoridad hacia o desde el CTO requieren ADR.
+- Cambios a la RACI, a los gates o a la estructura de capas requieren aprobación de EM-ARCH y registro en el [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md); cambios que muevan autoridad hacia o desde el CTO requieren ADR.
 - Si un perfil v2+ entra en conflicto con este protocolo, prevalece este protocolo y se corrige el perfil.
+- **Todo cambio de contenido lleva bump de versión y entrada de changelog en la cabecera**, aunque sea una línea. Una edición sin bump deja dos lecturas vigentes del mismo documento y es el defecto que la v1.4 tuvo que regularizar (§3bis regla 4, modificada el 2026-07-27 bajo cabecera v1.3).
+- **Añadir un perfil nuevo** exige, en un solo acto: fila en *Perfiles cubiertos*, nodo en la estructura §1, columna **y** fila en la RACI §2, fila y columna en la matriz de consulta §6.1, entrada en la cadencia §8, y su subagente en `.claude/agents/` con `pnpm sync:agents`. Un perfil presente en unas superficies y ausente en otras es un destino de escalación a medias.
