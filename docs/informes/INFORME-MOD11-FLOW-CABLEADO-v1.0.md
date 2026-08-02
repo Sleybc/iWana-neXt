@@ -9,6 +9,8 @@
 **Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate; v1.9 — auditoría multiagente; v2.0 — consolidación final), AI-SR-QA (v1.5 — G6 QA audit; v2.0 — coautor consolidación R5)  
 **Clasificación:** Uso interno
 
+> **Autoridad vigente:** Este informe conserva snapshots históricos en §10, §11, §12, §13 y §14. Sus veredictos y redacciones de contexto no representan el estado actual. La única autoridad vigente para G6, G6.5 y G7 es §15.13 y su tabla de gates actual.
+
 ---
 
 ## 1. Objetivo
@@ -47,7 +49,7 @@ Cerrar el cableado end-to-end:
 
 ---
 
-## 10. G6 QA Gate — 2026-07-27 (AI-SR-QA)
+## 10. G6 QA Gate — 2026-07-27 (AI-SR-QA) — HISTÓRICA / SUPERADA
 
 ### 10.1 Ejecución de tests
 
@@ -317,7 +319,7 @@ Los dictamenes de factibilidad G3 (SEC-ENG, DATA-ENG, PLAT-OPS) emitieron veredi
 
 ---
 
-## 12. Auditoría independiente G6/G7 — 2026-07-28
+## 12. Auditoría independiente G6/G7 — 2026-07-28 — HISTÓRICA / SUPERADA
 
 **Modo:** Architect + EM + Orchestrator  
 **Veredicto:** **NO-GO** para merge, producción y Task 10. No se solicita aprobación al CTO.
@@ -343,7 +345,7 @@ Esta auditoría no autoriza implementación. Los hallazgos se asignan a AI-SR-FU
 
 ---
 
-## 13. Re-gate de remediaciones — 2026-07-28
+## 13. Re-gate de remediaciones — 2026-07-28 — HISTÓRICA / SUPERADA
 
 **Modo:** Architect + EM + Orchestrator  
 **Veredicto:** **NO-GO** para merge, producción y Task 10. Los commits `d847cbd6`, `e9b9dee9` y `be596061` no cierran los bloqueantes de raíz.
@@ -364,7 +366,7 @@ Requiere una remediación contract-first que mueva el adaptador a Media, persist
 
 ---
 
-## 14. Auditoría multiagente y consolidación G6/G7 — 2026-07-28
+## 14. Auditoría multiagente y consolidación G6/G7 — 2026-07-28 — HISTÓRICA / SUPERADA
 
 **Modo:** EM + Architect + Orchestrator
 **Autor:** AI-EM-ARCH
@@ -613,7 +615,7 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 | Boundary real restablecido (Media owner del puerto) | **CERRADO** | `TasksModule` ya no registra `MediaAsset`. Provider en `media/`. Verificado en §14.5. |
 | Upload-intent persistido y compensación implementada | **CERRADO** | R1 backend: `16e26506`, `5cfb86df`, `51e0bf1f`. Idempotencia con fingerprint SHA-256, replay con clave+fingerprint idénticos, compensación de claims. |
 | Migraciones aplicables/reversibles con datos | **CERRADO** | R2.4: 59 unit + 23 integration PostgreSQL real. Downs con datos probados. |
-| TLS efectivo / worker desplegable / telemetría / release / rollback | **CERRADO (con diferimiento)** | TLS diferido por CTO hasta definición de dominio (QA-34). Compose productivo validado, worker healthcheck en perfil prod, telemetría relay instrumentada (R3.3), runbook de release/rollback creado (RUNBOOK-RELEASE-ROLLBACK). Restore y ensayo de rollback pendientes según R3.4 — no bloquean merge. |
+| TLS / worker desplegable / telemetría / release / rollback | **EVIDENCIA TÉCNICA G6/G6.5; PRERREQUISITOS G7 PENDIENTES** | Compose productivo validado, worker healthcheck en perfil prod, telemetría relay instrumentada (R3.3) y runbook documentado. QA-34/TLS está diferido para G6/G6.5 y bloquea G7 hasta verificación productiva; rollback por componente y restore global/tenant siguen pendientes y son prerrequisitos de G7. |
 
 ### 15.5 Estados QA consolidados — G6 final
 
@@ -622,7 +624,7 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 | **PASS** | 45 | QA-01–10, QA-12–17, QA-18, QA-19, QA-21, QA-22, QA-23, QA-25–33, QA-35, QA-36, QA-38–50 |
 | **PARTIAL** | 4 | QA-11 (custodia cross-module), QA-20 (responsive), QA-24 (reconciliador — sin fault injection), QA-37 (lag métrica — telemetría completa, umbral sin aprobar) |
 | **FAIL** | **0** | Sin bloqueantes P0 ni P1 activos |
-| **Diferido CTO** | 1 | QA-34 (TLS/ingress) — autorizado por CTO 2026-07-31; requisito de G7 |
+| **Diferido CTO** | 1 | QA-34/TLS está diferido para G6/G6.5 y bloquea G7 hasta verificación productiva |
 
 ### 15.6 CVE y dependencias
 
@@ -662,11 +664,11 @@ schema ni diffs (verificado en el carril R0). Queda pendiente únicamente la
 aprobación formal de la descongelación/recongelación por parte de AI-EM-ARCH
 como parte del re-registro de gate.
 
-### 15.8 Dependencias abiertas (no bloquean merge)
+### 15.8 Dependencias abiertas (no bloquean G6/G6.5; algunas bloquean G7)
 
 | Dependencia | Estado | Responsable |
 | --- | --- | --- |
-| QA-34: certificado TLS de CA reconocida | Diferido por CTO hasta definición de dominio productivo | AI-PLAT-OPS (cuando dominio definido) |
+| QA-34: certificado TLS de CA reconocida | Diferido para G6/G6.5; bloquea G7 hasta definición de dominio y verificación productiva | AI-PLAT-OPS (cuando dominio definido) |
 | `EVIDENCE_UPLOAD_EXPIRED` en contrato público | Residual menor preexistente: los códigos `EVIDENCE_UPLOAD_*` no están publicados en OpenAPI ni en `@iwana/shared`; el portal conserva el mensaje genérico. No bloquea el gate congelado actual. | AI-SR-FULL + AI-FE-PLATFORM, siguiente revisión de contrato |
 | Derecho de supresión ARCO | Dependencia con Legal antes del cierre del módulo | CTO + Legal |
 | QA-37: umbral de lag formal | Instrumentado (R3.3), sin umbral aprobado — se fija sobre datos reales | AI-PLAT-OPS post-release |
