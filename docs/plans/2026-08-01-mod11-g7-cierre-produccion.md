@@ -211,12 +211,17 @@ Run:
 
 ```text
 if (-not $env:PRODUCTION_FQDN) { throw 'PRODUCTION_FQDN debe estar definido por la decisión de dominio.' }
-curl.exe --fail --location --head "http://$env:PRODUCTION_FQDN"
-curl.exe --fail --head "https://$env:PRODUCTION_FQDN/api/v1/health"
-openssl s_client -connect "$env:PRODUCTION_FQDN`:443" -servername $env:PRODUCTION_FQDN -verify_return_error
+$httpHeaders = curl.exe --silent --show-error --head --max-redirs 0 --dump-header - --output NUL "http://$env:PRODUCTION_FQDN"
+if ($LASTEXITCODE -ne 0) { throw 'La respuesta HTTP no pudo obtenerse.' }
+if ([string]::Join("`n", @($httpHeaders)) -notmatch '(?im)^Location:\s*https://[^\s]+') { throw 'Falta una cabecera Location: https:// explícita.' }
+curl.exe --fail --silent --show-error "https://$env:PRODUCTION_FQDN/api/v1/health" --output NUL
+if ($LASTEXITCODE -ne 0) { throw 'El health HTTPS no respondió satisfactoriamente.' }
+$handshake = "Q" | openssl s_client -connect "$env:PRODUCTION_FQDN`:443" -servername $env:PRODUCTION_FQDN -verify_hostname $env:PRODUCTION_FQDN -verify_return_error
+$handshakeText = [string]::Join("`n", @($handshake))
+if ($LASTEXITCODE -ne 0 -or $handshakeText -notmatch 'Verify return code: 0 \(ok\)') { throw 'El handshake no validó certificado, hostname y cadena de CA.' }
 ```
 
-Expected: HTTP redirige a HTTPS; health responde por HTTPS; cadena de CA valida, nombre del certificado coincide y HSTS se activa solo sobre la cadena valida.
+Expected: la respuesta HTTP no se sigue y contiene una cabecera explícita `Location: https://...`; el health HTTPS responde satisfactoriamente; el handshake público valida el certificado, el hostname y la cadena de CA reconocida. HSTS no se evalúa, habilita ni modifica en este paso; queda para una decisión controlada posterior.
 
 - [ ] **Step 3: Ensayar rollback por componente en entorno equivalente a producción**
 
