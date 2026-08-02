@@ -759,12 +759,14 @@ describe('ExecutionOrdersController HTTP', () => {
       const redis = new SharedRedisRateLimitDouble();
       const app = await buildRateLimitApp(redis);
       try {
+        // La prueba aísla el guard: el parser multipart no forma parte de este contrato
+        // y añadirlo a 11 requests concurrentes vuelve el socket frágil en CI Linux.
         const responses = await Promise.all(
           Array.from({ length: 11 }, (_, index) =>
             request(app.getHttpServer())
               .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
               .set('Authorization', 'Bearer tech-token')
-              .attach('file', Buffer.from(`evidence-${index}`), 'evidence.txt'),
+              .send({ marker: `evidence-${index}` }),
           ),
         );
 
@@ -785,7 +787,7 @@ describe('ExecutionOrdersController HTTP', () => {
               request(app.getHttpServer())
                 .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/evidence-assets`)
                 .set('Authorization', `Bearer ${token}`)
-                .attach('file', Buffer.from('evidence'), 'evidence.txt'),
+                .send({ marker: 'evidence' }),
             ),
           );
           return responses.map((response) => response.status);
