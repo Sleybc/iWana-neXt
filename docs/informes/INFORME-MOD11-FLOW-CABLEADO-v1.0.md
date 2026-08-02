@@ -465,7 +465,7 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
 | **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
 
-**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; el **veredicto formal de G6/G7 lo emite AI-EM-ARCH** sobre este expediente y no se auto-otorga en este documento.
+**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH emite la recomendación técnica y la recomendación de gate** para G6, G6.5 y G7. G6 se mantiene como GO según la verificación registrada, G6.5 permanece pendiente de CI Linux y el CTO es el aprobador final de G7; ningún gate se auto-otorga en este documento.
 
 ### 15.2 Tabla de commits por carril
 
