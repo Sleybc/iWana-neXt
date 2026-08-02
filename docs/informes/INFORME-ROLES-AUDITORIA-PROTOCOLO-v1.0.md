@@ -71,10 +71,14 @@ Es el mismo defecto corregido en el perfil AI-EM-ARCH, y **el protocolo es su or
 
 ## 6. Residuales y decisiones para el CTO
 
-1. **ADR-069 (propuesto) — gate G6.5.** No se incorpora a §3 mientras no esté `Aprobado`: sería la infracción de §7.4 que este protocolo define. Al aprobarse, el workflow pasa de 7 a 8 gates y requieren actualización §3, §4 y §8 del protocolo, más §7 y §11 del perfil EM-ARCH (**v1.5** y **v2.3** respectivamente).
-2. **Filas de RACI faltantes** (X-01). Recomiendo añadir tres: *Documentación y trazabilidad* (A: EM-ARCH · R: el productor del artefacto de cada etapa), *Deuda técnica* (A: EM-ARCH · R: el R del área que la genera) y *Observabilidad de aplicación* (A: EM-ARCH · R: SR-FULL/FE-PLAT por superficie). Es un cambio de RACI → por §9 requiere aprobación de EM-ARCH y registro, no ADR. No lo apliqué porque asignar Responsible es decisión de estructura, no corrección de defecto.
-3. **Definition of ready por etapa** (X-02). El equivalente de entrada a los gates de salida: qué debe existir para que una etapa pueda arrancar. Alto valor y bajo costo, pero es diseño nuevo, no remediación.
-4. **`.cursor/` sin versionar** — heredado de la auditoría hermana (§6.4 punto 4 del informe vivo), sigue abierto.
+**Los cuatro quedaron resueltos por el CTO el 2026-08-02**, el mismo día. Detalle en el [informe vivo §8](INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md); resumen:
+
+1. ~~**ADR-069 — gate G6.5.**~~ **Aprobado sin cambios de contenido.** No era una decisión pendiente: el gate ya operaba con G6.5 GO registrado sobre CI #112. Protocolo → **v1.5** (§3 con la tabla de los tres gates de cierre, §4 con la distinción local/CI, §8 con registro separado); perfil → **v2.3**.
+2. ~~**Filas de RACI faltantes** (X-01).~~ **Solo una de las tres.** *Documentación y trazabilidad* añadida con Responsible distribuido y EM-ARCH Accountable — única con fallo demostrado. *Deuda técnica* rechazada por duplicar el §3.3 del perfil. *Observabilidad de aplicación* diferida a G7, porque su frontera depende de la topología productiva aún indefinida.
+3. ~~**Definition of ready** (X-02).~~ **Implementada y acotada** a las entradas de etapa 2 y etapa 5 (§3.1) — las dos transiciones donde nace el retrabajo que el KPI *"Fases sin regresar a etapa 1–2"* mide. No siete DoR.
+4. ~~**`.cursor/` sin versionar.**~~ **Retirado, no versionado**: `AGENTS.md` no declara a Cursor entre los cuatro asistentes activos.
+
+~~**Sigue abierto y no es de gobernanza:** la definición del dominio productivo (QA-34/TLS), que mantiene G7 en NO-GO.~~ **Cerrado el mismo día por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)**: diferimiento formal con disparador de reactivación. G7 sigue NO-GO, ahora **por diseño y con causa declarada**, no como pendiente esperando decisión. Ver [informe vivo §9](INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md).
 
 ## 7. Verificación de la remediación
 

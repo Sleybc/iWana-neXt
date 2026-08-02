@@ -1,8 +1,9 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.4
+**Versión:** 1.6
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7)
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070: 2026-08-02**, ver §9)
+**Sin pendientes de gobernanza abiertos.** El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
 
@@ -160,10 +161,10 @@ El plan de ejecución de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Dis
 
 ### 6.4 Pendientes abiertos tras esta auditoría
 
-1. **ADR-069 (propuesto)** — *Gate G6.5 de merge readiness*, taxonomía G6 / G6.5 / G7. Al aprobarse, EM-ARCH requiere **v2.3** (§7 y §11). No se anticipa: citar un ADR no aprobado como norma es la infracción que ADR-056 §5 persigue.
+1. ~~**ADR-069 (propuesto)**~~ — **cerrado el 2026-08-02**: aprobado por el CTO; perfil en **v2.3** y protocolo en **v1.5**. Ver §8.
 2. ~~**Protocolo → v1.4**~~ — **cerrado el 2026-08-02** por la auditoría del protocolo, ver §7.
-3. **Normalización estructural de los 9 documentos** — coexisten tres convenciones de Parte I/II/III y cinco formatos de sección de handoff. Decisión de ecosistema, no de perfil.
-4. **`.cursor/` sin versionar** (`.gitignore:44`). `AGENTS.md` lo trata como superficie de paridad multi-IDE, pero a diferencia de `.claude/agents/` y `.opencode/` —versionados y con `pnpm sync:agents:check` en CI— no es auditable. Así sobrevivió cinco semanas un enlace roto en la activación del rol. Recomendación: **versionarlo**, o retirarlo y activar Cursor por el prompt de `docs/prompts/` como los demás clientes.
+3. **Normalización estructural de los 9 documentos** — coexisten tres convenciones de Parte I/II/III y cinco formatos de sección de handoff. **Decisión del CTO 2026-08-02: no se aborda como proyecto.** No hay defecto funcional —cada perfil es coherente por dentro y su subagente maneja la diferencia correctamente— y tocar nueve documentos por consistencia es donde ADR-056 documentó que aparece la "corrección parcial que aparenta estar cerrada". Se normaliza **de forma oportunista**: cada perfil adopta la forma objetivo cuando se le toque por un motivo sustantivo.
+4. ~~**`.cursor/` sin versionar**~~ — **cerrado el 2026-08-02: retirado, no versionado.** Ver §8.
 
 ## 7. Actualización 2026-08-02 — Auditoría del protocolo (v1.4)
 
@@ -192,7 +193,98 @@ Al contrario que en la auditoría del perfil (§6), aquí no se encontró **ning
 
 ### 7.3 Pendientes abiertos
 
-1. **ADR-069 (propuesto)** — al aprobarse, el workflow pasa de 7 a 8 gates: protocolo **v1.5** y perfil EM-ARCH **v2.3**.
-2. **Tres filas de RACI faltantes** — documentación, deuda técnica y observabilidad de aplicación. Asignar Responsible es decisión de estructura, no corrección de defecto; requiere aprobación de EM-ARCH y registro (§9), no ADR.
-3. **Definition of ready por etapa** — las 7 etapas tienen gate de salida y ninguna condición de entrada. Alto valor, bajo costo, pero es diseño nuevo.
-4. **`.cursor/` sin versionar** — sigue abierto, ver §6.4.
+**Los cuatro quedaron resueltos por decisión del CTO el 2026-08-02 — ver §8.**
+
+## 8. Decisiones del CTO 2026-08-02 — cierre de los pendientes de ambas auditorías
+
+Las auditorías del perfil (§6) y del protocolo (§7) dejaron cuatro pendientes. El CTO los resolvió el mismo día, en un solo acto. Documentos emitidos: **ADR-069 Aprobado**, **protocolo v1.5**, **perfil AI-EM-ARCH v2.3**.
+
+### 8.1 ADR-069 aprobado — el gate ya operaba
+
+**Decisión: aprobar sin cambios de contenido.**
+
+No era una decisión de diseño pendiente: G6.5 estaba operando. `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.13 registraba **G6.5 GO** con evidencia de CI #112 sobre `1343d6b8`, y los dos últimos commits del repo eran `record G6.5 Linux evidence` y `point G6.5 evidence to latest CI` — mientras el ADR que crea el gate seguía `Propuesto`. La autorización de merge de MOD09/MOD11 descansaba sobre autoridad provisional.
+
+Precedente aplicado: ADR-056 §Ampliación resolvió lo mismo con **ADR-022** (*"Propuesto con 91 citas — gobierna la cadencia de fases de todo el programa"* → Aprobado sin cambios), y con ADR-025 y ADR-042.
+
+Valor del gate, y motivo para no plegarlo en G6 ni en G7: **G6.5 es lo que permite que QA-34/TLS no bloquee el merge mientras sigue bloqueando G7.** Sin esa separación, o se mergea afirmando una readiness productiva que no existe, o se congelan dos módulos por una decisión de dominio pendiente.
+
+Propagación aplicada: protocolo §3 (workflow de 7 etapas y **8 gates**, con la tabla de los tres gates de cierre), §4 (correr los gates en local satisface G6, no G6.5) y §8 (registro separado); perfil §7 (*Consolidación de G6.5* como entregable). Citas prospectivas de *"ADR-069 (propuesto)"* actualizadas en el informe de MOD11, el README de evidencia y los dos planes; las del plan del 2026-08-01 se conservan como **registro cronológico** con nota de resolución, conforme al corolario de ADR-056.
+
+### 8.2 `.cursor/` retirado — no versionado
+
+**Decisión: retirar el adaptador, no versionarlo.** Corrige la recomendación inicial de §6.4, que proponía versionarlo.
+
+Al verificarlo: `AGENTS.md` → *AI Workflow Activo* declara **cuatro** asistentes activos —Copilot, OpenCode, Codex y Claude Code—; **Cursor no está entre ellos**. Y `.cursor/` contenía exactamente **un archivo**: el adaptador del modo Orquestador.
+
+Versionarlo habría significado mantener una quinta superficie de activación, con obligación de sincronía, para un cliente que la gobernanza no declara activo. Retirarlo no pierde capacidad: Cursor lee `.claude/agents/` nativamente (`AGENTS.md` → Superficies activas) y el modo Orquestador se activa por `docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md` igual que en los otros cuatro.
+
+`.gitignore` conserva la entrada `.cursor/` —config local de IDE, se ignora como `.vscode/` y `.idea/`— con un comentario que registra la decisión en el punto de tentación: no se deposita gobernanza del repo ahí. **Si en el futuro Cursor debe ser superficie activa, primero se declara en `AGENTS.md` y después se versiona**; no al revés.
+
+### 8.3 Definition of ready — acotada a dos transiciones
+
+**Decisión: implementarla, solo en las entradas a etapa 2 y etapa 5** (protocolo §3.1).
+
+No siete DoR. Esas dos son las transiciones donde nace el retrabajo tardío que la regla *Cambios tardíos* obliga a devolver a etapa 1 ó 2 — y que el KPI *"Fases con scope completado sin regresar a etapa 1–2"*, instrumentado en la v2.2 del perfil, ya mide. El DoR es el control **preventivo** de un KPI que hasta hoy solo registraba el fallo.
+
+Regla clave: **quien recibe el handoff verifica su propio DoR**, no quien lo emite; si falta algo emite `[BLOQUEO]` antes de empezar, no "mientras se aclara".
+
+### 8.4 RACI — una fila de las tres propuestas
+
+**Decisión: añadir solo *Documentación y trazabilidad*.**
+
+- **Documentación: sí.** Única de las tres con fallo demostrado — más de 500 artefactos en `docs/`, dos gates bloqueantes en CI y dos auditorías el mismo día encontrando defectos documentales que ninguna fila de la matriz reclamaba. Modelo: **Responsible distribuido** (cada agente responde por el artefacto que produce: ubicación canónica, citas verificadas, versión), **Accountable EM-ARCH** de la coherencia del corpus. No se crea un rol "escribano": documentar es parte de entregar.
+- **Deuda técnica: no.** El §3.3 del perfil EM-ARCH ya la gobierna con regla de escalación propia, y desde la v2.2 está instrumentada en el informe de fase. Una fila nueva duplicaría sin añadir dueño.
+- **Observabilidad de aplicación: diferida a G7.** El sistema no está en producción y la frontera PLAT-OPS/SR-FULL depende de la topología productiva, bloqueada en la misma definición de dominio que QA-34. Asignarla ahora sería adivinar.
+
+### 8.5 El dominio productivo — resuelto por diferimiento formal
+
+Al cerrar §8 quedaba señalado un último asunto, ajeno a estas auditorías: `INFORME-MOD11-FLOW-CABLEADO` §15.8 registraba **QA-34/TLS bloqueando G7**, con AI-PLAT-OPS como responsable *"cuando dominio definido"* — un input del CTO, no trabajo de ingeniería.
+
+**Resuelto el mismo día por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** (Aprobado, CTO 2026-08-02): se difiere formalmente la definición del dominio productivo hasta que se cumpla un disparador de reactivación. Ver §9.
+
+## 9. Decisión del CTO 2026-08-02 — diferimiento del dominio productivo (ADR-070)
+
+Documento emitido: **[ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)**, Aprobado. Registro aquí conforme al protocolo §9.
+
+### 9.1 Por qué hacía falta una decisión y no bastaba con posponerlo
+
+El diferimiento **ya existía de facto** desde el 2026-07-31, pero estaba registrado como *bloqueo*, no como *decisión*. `RUNBOOK-RELEASE-ROLLBACK` §8.6 decía literalmente `BLOQUEADO — STOP/NO-GO` —un estado de emergencia operativa— y otros cinco documentos lo listaban como `PENDIENTE / ESCALADO — CTO`. Cualquier lector, o cualquier agente que abriera un informe de gate, concluía que había trabajo detenido esperando una decisión inminente.
+
+> **Un pendiente sin dueño ni horizonte se relee indefinidamente. Una decisión con disparador se lee una vez.**
+
+Esa es la diferencia que aporta el ADR: convierte seis lecturas ambiguas en una norma verificable, y evita que cada sesión vuelva a evaluar un asunto ya resuelto.
+
+### 9.2 Contenido de la decisión
+
+**Se difiere** la definición del dominio productivo y, con ella, el hosting, la CA y método ACME, la ventana operativa y los targets RPO/RTO. El programa está en construcción modular y no va a producción; el foco se mantiene en los módulos faltantes conforme a ADR-022.
+
+**G7 permanece NO-GO por diseño, no por defecto.** ADR-069, aprobado horas antes, es lo que permite decirlo sin ambigüedad: G6.5 GO autoriza el merge y nunca el despliegue. El estado **G6 GO · G6.5 GO · G7 NO-GO** de MOD09/MOD11 es el estado correcto y deliberado del programa.
+
+**No se produce evidencia ficticia:** no se elige dominio, no se registra nada, no se emite certificado, no se cablea certbot. Los placeholders `REPLACE_ME_PRODUCTION_DOMAIN` y `approval-required` se conservan intactos y el gate R3.5 de CI mantiene su lógica.
+
+**También se difieren los prerrequisitos que no dependen del dominio** —restore global, restore por tenant, rollback por digest— y esto merece explicación, porque eran ejecutables hoy. Son ensayos de un release que no se va a planificar: la evidencia caducaría antes de usarse y al reactivar habría que repetirlos sobre una superficie mayor. Cumplir un gate dos veces no lo cumple mejor.
+
+### 9.3 Disparador de reactivación
+
+Se reabre ante **cualquiera** de tres condiciones, sin necesidad de que concurran:
+
+1. El último módulo del roadmap queda cerrado conforme a ADR-022 *(planificada)*.
+2. Se necesita un entorno accesible fuera de la red de desarrollo — demo, piloto, UAT externo *(oportunista)*.
+3. **Se procesa PII de personas reales, aunque el entorno no se llame "producción" *(no negociable)*.**
+
+El tercero es el que convierte el diferimiento en algo seguro. La Ley 1581 no distingue entre "producción" y "piloto": lo que importa es si hay datos de personas reales. En el momento en que un tenant real cargue suscriptores, contratos o documentos de identidad, TLS deja de ser un prerrequisito de release y pasa a ser una obligación regulatoria — aunque el roadmap no haya terminado y aunque nadie llame producción a ese entorno. Sin ese disparador, este ADR sería una forma elegante de aplazar un riesgo regulatorio.
+
+### 9.4 Lo que queda conservado para la reactivación
+
+El ADR registra los insumos para no rehacer análisis: el CTO **dispone de un dominio de marca ya en uso para marketing**, así que la opción por defecto es un subdominio (`app.…`, `portal.…`) y **no hay paso de compra**; el hosting queda como primera pregunta al reactivar, porque determina la viabilidad de ACME HTTP-01; el análisis de tres opciones ACME de PLAT-OPS se conserva íntegro; y se verificó contra el código que bastan **dos FQDN** —la resolución de tenant va por JWT y `X-Tenant-Slug`, nunca por hostname—, con la dependencia anotada de que adoptar subdominio por tenant obligaría a migrar a DNS-01 con wildcard.
+
+Registra además **seis riesgos congelados**, de los cuales dos son defectos latentes de configuración que no dependen del dominio y existirían con cualquier FQDN: `FRONTEND_URL` es `Joi.optional()` y no figura en `.env.production.example` —los correos de reset y verificación saldrían a `localhost:3001` sin fallo visible al arrancar—, y `CORS_ORIGIN` está ausente con default de Joi a localhost. Quedan registrados como trabajo de una fase futura; corregirlos estaba fuera del alcance de este cierre, que no toca código.
+
+### 9.5 Documentos reencuadrados
+
+Ocho superficies pasan de *bloqueado/pendiente* a *diferido por ADR-070*, sin borrar un solo análisis: `RUNBOOK-RELEASE-ROLLBACK` → **v1.1** (§1.2, §8.5, §8.6 y §10), `CHECKLIST-MOD09-MOD11-OT-INSTALACION` (QA-34 y su tally), `INFORME-MOD11-FLOW-CABLEADO` (§15.8 reclasificada en *diferidos por decisión* vs *deuda viva*, y §15.13), `INFORME-PLAT-OPS-R3.4-EVIDENCIA` (seis filas), el plan `2026-08-01-mod11-g7-cierre-produccion` (**suspendido, no descartado** — sus Tasks 2–5 se retoman tal cual), `INFORME-ROLES-AUDITORIA-PROTOCOLO` y este informe, más el comentario del gate R3.5 en `ci.yml`, cuya lógica **no cambia**.
+
+### 9.6 Estado del ecosistema
+
+**Sin pendientes de gobernanza abiertos.** Los cuatro que dejaron las auditorías se cerraron en §8; el quinto, que no era de gobernanza, queda cerrado aquí. Lo que sigue vivo es deuda técnica ordinaria con dueño y curso normal: `EVIDENCE_UPLOAD_EXPIRED` en el contrato público, el derecho de supresión ARCO con Legal, y el umbral de lag QA-37 que se fija sobre datos reales post-release.

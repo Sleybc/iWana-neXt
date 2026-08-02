@@ -2,10 +2,13 @@
 
 **Tipo:** Runbook operativo
 **Módulo:** TRANSVERSAL — Plataforma / release / recuperación
-**Versión:** 1.0
-**Fecha:** 2026-07-30
+**Versión:** 1.1
+**Fecha:** 2026-08-02 (v1.0: 2026-07-30)
 **Autor:** AI-PLAT-OPS
 **Estado:** Documentado; **no autoriza producción**. Desde 2026-08-01 existe evidencia ejecutada de **reversibilidad de migraciones** (revert public 020 y revert tenant 099 con re-aplicación, ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md)). El ensayo de rollback por componente/imagen y las pruebas de restore global/tenant siguen pendientes.
+**Cambio v1.0 → v1.1 (2026-08-02):** reencuadre por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md). El expediente de dominio productivo y TLS pasa de **`BLOQUEADO — STOP/NO-GO`** a **`DIFERIDO — sin trabajo en curso`**: no hay decisión detenida esperando al CTO, hay una decisión tomada de no abordarlo hasta que se cumpla el disparador de reactivación. **Ningún procedimiento cambia** — §5, §6 y §8 se conservan íntegros como insumo de la reactivación.
+
+> **Cómo leer este runbook hoy.** Todos sus procedimientos son correctos y ejecutables, pero **ninguno está planificado**: el programa está en construcción modular y no va a producción ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)). Lo que aquí figura como "pendiente" es **condición de un release futuro**, no trabajo atrasado. Se reactiva con el disparador de ADR-070 — en particular, y sin excepción, si se procesa PII de personas reales aunque el entorno no se llame producción.
 **R3:** R3.4
 **Referencias:** [Plan de remediación G6, R3.1–R3.5](../plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md) · [Protocolo de colaboración §2, §4 y §6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) · [Stack tecnológico](../prds/Stack_Tecnologico.md) · [Migraciones DB](RUNBOOK-DB-MIGRATIONS-v1.1.md) · [Least privilege](RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)
 
@@ -49,7 +52,9 @@ No cambia topología, código de aplicación, contratos ni política de segurida
 
 Un release sin go de G7, sin rollback declarado o sin backup/restore verificable es **NO-GO**.
 
-### 1.2 Bloqueos conocidos al redactar
+### 1.2 Condiciones pendientes de un release aún no planificado
+
+> **Reencuadre v1.1 ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)):** estos cuatro puntos se listaban como *"bloqueos conocidos"*. No bloquean nada hoy — son **condiciones de entrada de un release que no está planificado**. Permanecen visibles porque deben cumplirse antes del primer despliegue, no porque haya trabajo detenido.
 
 Estos puntos no se resuelven en este commit y deben permanecer visibles en el registro de release:
 
@@ -523,15 +528,19 @@ El `dry-run` solo es evidencia de la ruta de renovación del cliente ACME; no pr
 
 ### 8.5 Estado R3.5
 
-En esta entrega: **PENDIENTE** dominio/proveedor, emisión, renovación ensayada, reload evidenciado y handshake público. La presencia de un archivo autofirmado local, si existiera, no satisface R3.5.
+**DIFERIDO** por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado, CTO 2026-08-02). Siguen sin cubrir dominio/proveedor, emisión, renovación ensayada, reload evidenciado y handshake público — y así deben permanecer hasta la reactivación. La presencia de un archivo autofirmado local, si existiera, no satisface R3.5 en ningún caso.
 
-### 8.6 [ESCALACIÓN AL CTO] Decisión humana pendiente
+### 8.6 Expediente TLS — diferido, con insumos conservados
 
-**Estado:** **BLOQUEADO — STOP/NO-GO**. Esta escalación no emite certificados, no modifica Nginx y no ejecuta un release. El CTO debe decidir el dominio productivo, la CA/proveedor y autorizar la ventana operativa; AI-PLAT-OPS implementará únicamente la opción aprobada, con revisión de AI-SEC-ENG.
+**Estado:** **DIFERIDO POR [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) — sin trabajo en curso.**
 
-> **Decisión del CTO — 2026-07-31:** El CTO autoriza diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. QA-34/TLS está diferido por CTO hasta que exista un dominio productivo definido y provisionado. No bloquea G6 ni G6.5; bloquea G7 hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado. G7 permanece **NO-GO** hasta que se verifiquen el dominio aprobado, un certificado válido de CA reconocida, la terminación HTTPS efectiva con redirección HTTP→HTTPS y el handshake público. La emisión efectiva del certificado se retoma cuando el dominio esté definido y provisionado (requisitos de entrada más abajo). QA-34 en el checklist de calidad queda como `DIFERIDO CTO — requisito de G7 pendiente`.
+> **Reencuadre v1.1 (2026-08-02).** Esta sección estaba marcada `BLOQUEADO — STOP/NO-GO`, un estado de emergencia operativa que se leía como trabajo detenido esperando al CTO. **No lo hay.** El CTO decidió el 2026-08-02 no abordar la definición del dominio productivo hasta que se cumpla el disparador de reactivación de ADR-070: cierre del roadmap modular, necesidad de un entorno externo, o —sin excepción— procesamiento de PII de personas reales. Todo el análisis de abajo se **conserva íntegro** como insumo de esa reactivación; nada de esto caduca.
 
-#### Opciones para decisión
+**Al reactivar, la primera pregunta es el hosting**, no el dominio: ACME HTTP-01 exige el puerto 80 alcanzable desde Internet, y esa condición determina cuál de las tres opciones es viable. El CTO ya declaró disponer de un dominio de marca en uso para marketing, así que la opción por defecto es un subdominio de ese dominio (`app.…`, `portal.…`) y no hay paso de registro.
+
+> **Registro histórico — decisión del CTO del 2026-07-31** *(superada en su forma por ADR-070, vigente en su contenido técnico)*: el CTO autorizó diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. QA-34/TLS no bloquea G6 ni G6.5; **bloquea G7** hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado. QA-34 queda en el checklist de calidad como `DIFERIDO`.
+
+#### Opciones evaluadas (insumo de reactivación)
 
 | Opción | Alcance y requisitos principales | Evaluación |
 |---|---|---|
@@ -578,6 +587,8 @@ Escalar inmediatamente a AI-EM-ARCH y, si toca seguridad, a AI-SEC-ENG cuando ha
 ---
 
 ## 10. Checklist de go/no-go
+
+> **No aplica hasta la reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md).** Las casillas sin marcar no son deuda atrasada: son las condiciones de un release que aún no se planifica. La única marcada —reversibilidad de migraciones, 2026-08-01— se conserva como evidencia válida. Cuando se reactive, este checklist se recorre entero desde cero.
 
 - [ ] G7: recomendación de AI-EM-ARCH y aprobación CTO registradas.
 - [ ] SHA/digests y rollback por componente registrados.

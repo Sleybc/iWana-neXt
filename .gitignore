@@ -41,6 +41,12 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+# Config local de IDE. Cursor NO es superficie activa del repo (AGENTS.md ->
+# AI Workflow Activo declara cuatro: Copilot, OpenCode, Codex y Claude Code).
+# El adaptador .cursor/rules/ai-em-arch.mdc se retiro el 2026-08-02: duplicaba
+# la activacion del modo Orquestador para un cliente no declarado, y al estar
+# ignorado no era auditable ni sincronizable. No deposites aqui gobernanza del
+# repo: vive en AGENTS.md, docs/roles/ y docs/prompts/.
 .cursor/
 
 # Tests

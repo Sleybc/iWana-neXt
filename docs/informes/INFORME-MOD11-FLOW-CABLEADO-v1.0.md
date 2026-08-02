@@ -1,10 +1,10 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
 **Versión:** 2.1
-**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad**, **G6.5 GO de merge readiness verificado en CI Linux sobre `1343d6b8`**, **G7 NO-GO para producción**. AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. Ver §15.13.
+**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad**, **G6.5 GO de merge readiness verificado en CI Linux sobre `1343d6b8`**, **G7 NO-GO para producción — diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** (CTO 2026-08-02), no pendiente de resolución. Ver §15.8 y §15.13.
 **Fecha:** 2026-07-31  
 **Fecha de cierre de remediación:** 2026-07-31  
-**Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. ADR-069 (propuesto) permanece `Propuesto`, con aprobación final CTO pendiente.
+**Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) fue **aprobado por el CTO el 2026-08-02**, sin cambios de contenido: la taxonomía G6 / G6.5 / G7 es norma vigente.
 **Modo activo:** G6.5 cerrado — G6 calidad y G6.5 merge readiness registrados tras CI Linux; G7 sigue NO-GO, AI-EM-ARCH recomienda y CTO aprueba finalmente.
 **Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate; v1.9 — auditoría multiagente; v2.0 — consolidación final), AI-SR-QA (v1.5 — G6 QA audit; v2.0 — coautor consolidación R5)  
 **Clasificación:** Uso interno
@@ -469,7 +469,7 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
 | **R5 — G6 Re-gate** | **G6 GO / G6.5 GO** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). CI #112 sobre `1343d6b8` certificó `production-images` y `execution-orders-e2e` en Linux. |
 
-**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y registra G6.5 como GO tras la corrida CI #112 sobre `1343d6b8`**. ADR-069 (propuesto) conserva su aprobación final CTO pendiente y no autoriza G7. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate productivo se auto-otorga en este informe.
+**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y registra G6.5 como GO tras la corrida CI #112 sobre `1343d6b8`**. [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) quedó **Aprobado el 2026-08-02**; G6.5 autoriza el merge y **nunca autoriza despliegue productivo**. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate productivo se auto-otorga en este informe.
 
 ### 15.2 Tabla de commits por carril
 
@@ -664,16 +664,26 @@ schema ni diffs (verificado en el carril R0). Queda pendiente únicamente la
 aprobación formal de la descongelación/recongelación por parte de AI-EM-ARCH
 como parte del re-registro de gate.
 
-### 15.8 Dependencias abiertas (no bloquean G6/G6.5; algunas bloquean G7)
+### 15.8 Dependencias abiertas (no bloquean G6/G6.5)
+
+Se clasifican en dos grupos que no deben leerse igual. Los del grupo A **no son trabajo atrasado**: son prerrequisitos de un release que no está planificado y que quedó diferido por decisión aprobada. Los del grupo B sí son deuda viva.
+
+**Grupo A — diferidos por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado, CTO 2026-08-02).** Prerrequisitos de G7. Se reactivan con el disparador del ADR —cierre del roadmap modular, necesidad de un entorno externo, o procesamiento de PII real— y no antes. Ejecutarlos ahora produciría evidencia que caduca antes de usarse.
+
+| Dependencia | Estado | Responsable al reactivar |
+| --- | --- | --- |
+| QA-34: certificado TLS de CA reconocida | Diferido. El dominio productivo no se define hasta la reactivación; la primera pregunta entonces es el hosting, que determina la viabilidad de ACME HTTP-01 | AI-PLAT-OPS (+ AI-SEC-ENG) |
+| Ensayo de rollback reproducible por componente | Documentado en runbook §5, no ejecutado | AI-PLAT-OPS |
+| Restore global/tenant verificado | Documentado en runbook §6, no ejecutado | AI-PLAT-OPS + AI-DATA-ENG |
+| Targets RPO/RTO aprobados | No existen. AI-PLAT-OPS propone, el CTO aprueba | AI-PLAT-OPS → CTO |
+
+**Grupo B — deuda técnica viva.** No depende de ninguna decisión diferida y sigue su curso normal.
 
 | Dependencia | Estado | Responsable |
 | --- | --- | --- |
-| QA-34: certificado TLS de CA reconocida | Diferido para G6/G6.5; bloquea G7 hasta definición de dominio y verificación productiva | AI-PLAT-OPS (cuando dominio definido) |
 | `EVIDENCE_UPLOAD_EXPIRED` en contrato público | Residual menor preexistente: los códigos `EVIDENCE_UPLOAD_*` no están publicados en OpenAPI ni en `@iwana/shared`; el portal conserva el mensaje genérico. No bloquea el gate congelado actual. | AI-SR-FULL + AI-FE-PLATFORM, siguiente revisión de contrato |
 | Derecho de supresión ARCO | Dependencia con Legal antes del cierre del módulo | CTO + Legal |
 | QA-37: umbral de lag formal | Instrumentado (R3.3), sin umbral aprobado — se fija sobre datos reales | AI-PLAT-OPS post-release |
-| Ensayo de rollback reproducible | Documentado en runbook, no ejecutado | AI-PLAT-OPS |
-| Restore global/tenant verificado | Documentado en runbook, no ejecutado | AI-PLAT-OPS + AI-DATA-ENG |
 
 ### 15.9 Recomendación G7
 
@@ -742,4 +752,4 @@ El registro formal queda separado por gate: G6 queda registrado como GO de calid
 | --------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | G6 Quality acceptance       | **GO**        | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas.                                             |
 | G6.5 Merge readiness        | **GO**        | CI #112, [run Linux sobre `1343d6b8`](https://github.com/SleyiW/iWana-neXt/actions/runs/30752126012): `production-images` y `execution-orders-e2e` verdes; R4.1 `29/0/0/0/0`, exit 0, flaky 0 y cleanup OK. |
-| G7 Production authorization | **NO-GO**     | AI-EM-ARCH recomienda; CTO aprueba; requiere dominio, TLS efectivo, rollback por componente y restore global/tenant.                     |
+| G7 Production authorization | **NO-GO por diseño** | **Diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** (Aprobado, CTO 2026-08-02): el programa está en construcción modular y no va a producción, así que sus prerrequisitos —dominio, TLS efectivo, rollback por componente, restore global/tenant y targets RPO/RTO— no se abordan hasta el disparador de reactivación. **No es un fallo ni trabajo detenido: es el estado correcto.** Al reactivar, AI-EM-ARCH recomienda y el CTO aprueba. |

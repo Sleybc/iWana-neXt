@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-08-01  
 **Estado:** Ejecutado parcialmente; cierre pendiente de CI Linux  
-**Contrato:** documento de gates G6.5 ADR-069 (propuesto)
+**Contrato:** documento de gates G6.5 [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) — Aprobado 2026-08-02
 
 ## Objetivo
 

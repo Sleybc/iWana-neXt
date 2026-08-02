@@ -27,12 +27,14 @@ Este informe registra únicamente verificaciones ejecutadas durante la creación
 | Evidencia requerida | Estado | Responsable / decisión |
 |---|---|---|
 | Reversibilidad de migraciones public y tenant (gate "Migrations reversible") | **EJECUTADO 2026-08-01 (reproducible, árbol limpio)** — ver §4.1/4.6 | AI-PLAT-OPS; worktree limpio en `11d6e4cc`, base aislada, datos sintéticos, sin PII. |
-| Ensayo reproducible de rollback por componente y completo | **PENDIENTE** | AI-PLAT-OPS, con QA; registrar commit/digests y códigos de salida. |
-| Restore global PostgreSQL verificado | **PENDIENTE** | AI-PLAT-OPS + DATA-ENG; datos protegidos y destino aislado. |
-| Restore por schema tenant verificado | **PENDIENTE** | AI-PLAT-OPS + DATA-ENG; seleccionar tenant autorizado y no registrar PII. |
-| Dominio y proveedor de CA para producción | **PENDIENTE / ESCALADO** | **CTO**. La decisión registrada exige CA reconocida; ver [escalación R3.5 §8.6](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md#86-escalación-al-cto-decisión-humana-pendiente). |
-| Emisión, renovación, recarga Nginx y handshake público | **PENDIENTE** | AI-PLAT-OPS; requiere provisión R3.5 y revisión SEC-ENG. |
-| Referencias operativas de imágenes de producción | **PENDIENTE según R3.1** | Aprobación del release / CTO según corresponda. |
+| Ensayo reproducible de rollback por componente y completo | **DIFERIDO (ADR-070)** | AI-PLAT-OPS, con QA; registrar commit/digests y códigos de salida. |
+| Restore global PostgreSQL verificado | **DIFERIDO (ADR-070)** | AI-PLAT-OPS + DATA-ENG; datos protegidos y destino aislado. |
+| Restore por schema tenant verificado | **DIFERIDO (ADR-070)** | AI-PLAT-OPS + DATA-ENG; seleccionar tenant autorizado y no registrar PII. |
+| Dominio y proveedor de CA para producción | **DIFERIDO (ADR-070)** | Decisión del CTO 2026-08-02: no se aborda hasta el disparador de reactivación. Insumos conservados en [runbook §8.6](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md). |
+| Emisión, renovación, recarga Nginx y handshake público | **DIFERIDO (ADR-070)** | AI-PLAT-OPS; requiere provisión R3.5 y revisión SEC-ENG. |
+| Referencias operativas de imágenes de producción | **DIFERIDO (ADR-070)** — origen R3.1 | Aprobación del release / CTO según corresponda. |
+
+> **Reencuadre 2026-08-02.** Las seis filas de arriba figuraban como `PENDIENTE` / `PENDIENTE / ESCALADO`, lo que se leía como trabajo atrasado esperando al CTO. **No lo es:** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado) difiere el expediente completo de release hasta que se cumpla su disparador de reactivación. Son condiciones de un despliegue que no está planificado, no deuda. **R3.4 sigue sin cerrar y así debe reportarse** — el diferimiento no lo cierra, lo pone en pausa con fecha de reapertura condicionada.
 
 ## 4. Evidencia ejecutable — reversibilidad de migraciones (2026-08-01)
 

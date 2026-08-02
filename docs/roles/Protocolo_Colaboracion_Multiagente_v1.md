@@ -1,13 +1,14 @@
 # Protocolo de Colaboración Multiagente — iWana neXt Platform
 
-**Versión:** 1.4
-**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; v1.2 aprobada por CTO, 2026-07-12; v1.3 aprobada por CTO, 2026-07-18; **v1.4, 2026-08-02** — auditoría del protocolo, ver [informe](../informes/INFORME-ROLES-AUDITORIA-PROTOCOLO-v1.0.md))
+**Versión:** 1.5
+**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; v1.2 aprobada por CTO, 2026-07-12; v1.3 aprobada por CTO, 2026-07-18; v1.4, 2026-08-02 — auditoría del protocolo, ver [informe](../informes/INFORME-ROLES-AUDITORIA-PROTOCOLO-v1.0.md); **v1.5, 2026-08-02** — incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día)
 **Fecha:** 2026-08-02
 **Nombre de archivo:** el sufijo `_v1` es histórico y **no indica la versión del contenido**; la versión vigente es la de esta cabecera. No se renombra para no romper ~40 enlaces entrantes.
 **Cambio v1.0 → v1.1:** integra el split del Design Layer aprobado — `AI-SR-UI-SYS` se divide en `AI-PROD-UX` (experiencia) + `AI-DS-OWNER` (contrato del design system), y el frontend de `AI-SR-FULL` se extrae a `AI-FE-PLATFORM`. Añade el **modelo de ejecución paralela** (§3bis) y el **carril rápido de UI**. Optimizado para: reducir solapamiento, aumentar autonomía por rol y maximizar ejecución en paralelo.
 **Cambio v1.1 → v1.2:** elimina las referencias residuales a `UI-SYS` (workflow §3, conflictos §5, matriz de consulta §6.1 — reescrita con los roles vigentes, cadencia §8) e incorpora la **dirección visual "Firma iWana"** ([spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) como entrada obligatoria de la cadena de UI.
 **Cambio v1.2 → v1.3 (auditoría integral):** incorpora **AI-PLAT-OPS** (Platform/DevOps, on-demand) y los roles humanos externos (Legal/regulatorio) a la estructura; añade la doctrina *gobernanza vs modo de sesión*; cierra la auto-aprobación de G1 (review cruzado); suma FE-PLATFORM (y PLAT-OPS si aplica) a la etapa 3; define el **artefacto y el evento de congelación** de los contratos del §3bis; aclara el desempate con Responsible múltiple; reexpresa los SLAs en unidades de sesión; añade los reportes de QA/SEC-ENG a la cadencia §8; y corrige la RACI de datos (DATA-ENG R on-demand en modelo/migraciones de su dominio).
 **Cambio v1.3 → v1.4 (auditoría del protocolo):** regulariza la modificación del 2026-07-27 aplicada sin bump (§3bis regla 4); corrige la enumeración de handoff de §3, que declaraba cerrada una lista sin `docs/hlds/` ni `docs/adrs/` — artefactos de su propia etapa 1; reancla la regla de completitud a **ADR-022**; alinea §4 con los *Gates Before Merge* de `AGENTS.md` (faltaban lint y typecheck) y mapea cada gate a su **comando verificable**; unifica la Estrella Polar en los tres dominios de ADR-056 §3 también en la RACI; añade **§6.3 Vocabulario de marcadores** como fuente única de `[BLOQUEO]` / `[CONSULTA]` / `[DESEMPATE]` / `[ESCALACION AL CTO]`; corrige la cadencia §8 a la unidad **fase/módulo**; declara la capa de subagentes; y corrige "cuatro tracks" (§3bis lista cinco).
+**Cambio v1.4 → v1.5:** incorpora **G6.5 — merge readiness** ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), Aprobado 2026-08-02) al workflow §3, que pasa de 7 a **8 gates** sin cambiar sus 7 etapas; añade la **definition of ready** de las dos entradas donde nace el retrabajo tardío (etapas 2 y 5); y suma la fila *Documentación y trazabilidad* a la RACI §2.
 **Clasificación:** Estratégico — Confidencial
 **Alcance:** Define la matriz RACI, el workflow de colaboración, los artefactos de handoff, el **vocabulario de marcadores** y los gates de aprobación entre los agentes IA del proyecto. Es la **fuente única** de estas definiciones: los perfiles individuales la referencian y no la duplican.
 
@@ -88,11 +89,14 @@ R = Responsible (ejecuta) · A = Accountable (responde por el resultado, **máxi
 | Accesibilidad WCAG 2.2 AA | I | A | I | R** | R** | R** | C | I | I | I |
 | Fidelidad a la Estrella Polar — **tres dominios de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3**: código real · [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) · identidad y prototipo (ADR-023) | I | A | I | C | C | C | R | I | I | I |
 | Infraestructura, CI/CD, backups/DR y observabilidad de plataforma | A* | A | C | C | I | I | C | C | I | R |
+| Documentación y trazabilidad (artefactos de `docs/`, citas normativas, ubicación canónica) | I | A | R° | R° | R° | R° | R° | R° | R° | R° |
 | Releases a producción (gobierno: informe de cierre, go/no-go) | A | R | C | C | I | I | C | C | I | C |
 | Releases a producción (ejecución: despliegue, migraciones, rollback) | A | C | C | I | I | I | I | C | I | R |
 
 \* Autoridad de excepción del CTO (aprobar ADR, excepción de seguridad, cambio de tokens de marca, targets RPO/RTO). No es el Accountable operativo del área — ver la nota sobre `A*` arriba. En la fila de infraestructura, el Accountable operativo es **EM-ARCH** y el Responsible es **PLAT-OPS**.
 \** Accesibilidad tiene triple Responsible con frontera clara: **PROD-UX** define los criterios de flujo, **DS-OWNER** garantiza contraste y estados en el contrato de componente, **FE-PLAT** los implementa; SR-QA verifica. Estándar único **WCAG 2.2 AA** (resuelve la contradicción 2.1/2.2 de los perfiles v1).
+° Documentación tiene **Responsible distribuido**: cada agente responde por el artefacto que produce — su ubicación canónica (§3), sus citas normativas verificadas (§7.4) y su versión. No existe un rol "escribano": documentar es parte de entregar. EM-ARCH es Accountable de que el corpus sea coherente y de que los gates 11 y 12 de §4 estén en verde. Origen: dos auditorías del 2026-08-02 encontraron defectos documentales que ninguna fila de esta matriz reclamaba.
+
 \*** DATA-ENG es Responsible del **diseño** del modelo y las migraciones de su dominio (RADIUS, OLT, CDR, ETL, métricas) cuando está activado on-demand; SR-FULL es Responsible de la **implementación** dentro del Modulith y de todo lo demás. (Corrige la contradicción v1.2, donde DATA-ENG era solo C pero su perfil le exigía entregar modelos y migraciones.)
 
 Reglas de desempate:
@@ -102,7 +106,17 @@ Reglas de desempate:
 
 ## 3. Workflow por módulo o feature
 
-Siete etapas con gates. Ningún gate se auto-aprueba: el aprobador es siempre distinto del productor del artefacto.
+Siete etapas y **ocho gates** — G6.5 se intercala entre G6 y G7 sin ser una etapa propia. Ningún gate se auto-aprueba: el aprobador es siempre distinto del productor del artefacto.
+
+**Los tres gates de cierre no son grados de lo mismo** ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), Aprobado 2026-08-02). Cada uno responde una pregunta distinta y **ninguno se obtiene por cumplir el anterior**:
+
+| Gate | Pregunta | Condición | Autoriza |
+| --- | --- | --- | --- |
+| **G6** | ¿La calidad es aceptable? | Criterios de aceptación, lint, typecheck, pruebas del módulo, migraciones reversibles y re-verificación AppSec | Nada por sí solo |
+| **G6.5** | ¿Se puede mergear? | G6 cumplido **y** una corrida Linux de GitHub Actions verde, identificada por **SHA**, con artefacto resumen sanitizado: setup, conteo mínimo de pruebas, cero fallos, cero skips y cleanup confirmado | **Merge** — nunca despliegue |
+| **G7** | ¿Se puede desplegar? | AI-EM-ARCH recomienda y el **CTO aprueba**, con dominio productivo, TLS, rollback por componente, restore global y restore por tenant verificados | **Producción** |
+
+Un G6 GO con G6.5 pendiente se registra como *calidad aceptada, merge pendiente de la corrida Linux*. No se usa un push futuro como evidencia de una corrida que aún no ocurrió, ni una imagen Docker construida como prueba de G7. Los informes registran G6, G6.5 y G7 **por separado**; las credenciales de CI son efímeras y la evidencia archivada contiene solo conteos, SHA, plataforma, duración y cleanup — nunca tokens, cookies, reportes brutos ni payloads.
 
 | # | Etapa | Ejecuta | Entradas | Salidas (artefacto + formato) | Gate de salida (aprueba) |
 | --- | --- | --- | --- | --- | --- |
@@ -112,7 +126,8 @@ Siete etapas con gates. Ningún gate se auto-aprueba: el aprobador es siempre di
 | 4 | Aprobación de diseño | EM-ARCH | Especificación ajustada + dictamen | Prompt de ejecución por fase (alcance exacto, restricciones, stop/go) | **G4:** EM-ARCH emite; sin prompt de ejecución no hay implementación |
 | 5 | Implementación | SR-FULL (backend) + FE-PLATFORM (frontend) | Prompt de ejecución, PRD, HLD, ADRs, UX spec + contrato de componente | Código + tests (≥80% core) + migraciones reversibles + OpenAPI + reporte de fase | **G5:** gates técnicos (sección 4) + review de segunda capa por EM-ARCH |
 | 6 | Review de experiencia y calidad | PROD-UX + DS-OWNER + SR-QA + SEC-ENG (si aplica) | Entrega implementada, UX spec, contrato de componente, criterios de aceptación, skill `iwana-identity-ui-review` | Informe de hallazgos (bloqueante / importante / deuda aceptada), evidencia E2E, evidencia a11y | **G6:** PROD-UX puede bloquear por ruptura crítica de flujo/a11y; DS-OWNER por violación de contrato o identidad (Firma iWana); QA por criterios de aceptación |
-| 7 | Validación final y cierre | EM-ARCH | Evidencias de G5/G6, informe de fase | Informe de cierre de módulo, decisión go/no-go, deuda registrada | **G7:** EM-ARCH recomienda; CTO aprueba producción |
+| — | *(Merge readiness)* | PLAT-OPS ejecuta la corrida; EM-ARCH consolida | G6 cumplido + HEAD a mergear | Evidencia de CI Linux por SHA + artefacto resumen sanitizado | **G6.5:** corrida Linux verde de `production-images` y `execution-orders-e2e`; autoriza **merge**, nunca despliegue |
+| 7 | Validación final y cierre | EM-ARCH | Evidencias de G5/G6/G6.5, informe de fase | Informe de cierre de módulo, decisión go/no-go, deuda registrada | **G7:** EM-ARCH recomienda; CTO aprueba producción |
 
 Reglas del workflow:
 
@@ -133,6 +148,17 @@ Reglas del workflow:
 - **Bloqueos (SLA en unidades de sesión):** un agente que no puede resolver un bloqueo dentro de su sesión actual con la información disponible emite `[BLOQUEO]` a EM-ARCH **antes de cerrar la sesión** — nunca asume para "seguir avanzando". Los bloqueos silenciosos son un anti-patrón de todo el sistema. (Los SLAs en horas de versiones anteriores eran una metáfora humana sin significado operativo para agentes que trabajan por sesiones.)
 - **Cambios tardíos:** un cambio de alcance descubierto en etapas 5–7 regresa a la etapa 1 ó 2 según su naturaleza; no se "parchea" en implementación.
 - **Regla de completitud ([ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)):** no se inicia el módulo N+1 sin cierre del módulo N. *(Corrección v1.4: la v1.3 la atribuía a ADR-016, que es el cierre de MOD01; la desambiguación está en su propia cabecera.)*
+
+### 3.1 Definition of ready (condición de entrada)
+
+Toda etapa tiene gate de **salida**; estas dos tienen además condición de **entrada**. Son las transiciones donde nace el retrabajo tardío que la regla *Cambios tardíos* obliga a devolver a etapa 1 ó 2 — y que el KPI *"Fases con scope completado sin regresar a etapa 1–2"* mide. Un DoR incumplido **no se negocia dentro de la etapa**: se devuelve.
+
+| Entrada a | No arranca sin | Verifica |
+| --- | --- | --- |
+| **Etapa 2** (Solución UX/UI) | PRD con criterios de aceptación **medibles** (no "la pantalla debe ser usable"); personas y casos de uso nombrados; RNF con cifra o remisión a su fuente; boundary del módulo declarado — qué queda explícitamente fuera | PROD-UX y DS-OWNER, al recibir el handoff |
+| **Etapa 5** (Implementación) | Prompt de ejecución emitido (G4) **con los contratos congelados citados por ruta y versión** (§3bis); UX spec y contrato de componente localizables en `docs/specs/`; dictamen de factibilidad de G3 resuelto, no pendiente | SR-FULL y FE-PLATFORM, antes de escribir código |
+
+Quien **recibe** el handoff verifica su propio DoR — no quien lo emite. Si falta algo, emite `[BLOQUEO]` a EM-ARCH (§6.3) **antes de empezar**; no arranca "mientras se aclara". Arrancar contra una entrada incompleta es cómo un defecto de definición se convierte en retrabajo de implementación, que cuesta un orden de magnitud más.
 
 ## 3bis. Modelo de ejecución paralela (contract-first)
 
@@ -171,7 +197,7 @@ Ambos se **congelan temprano** (al inicio de la fase). Un contrato sin artefacto
 
 ## 4. Gates técnicos comunes (merge / producción)
 
-Condición de G5–G7. **Superconjunto de los *Gates Before Merge* de `AGENTS.md`** — que tiene precedencia 1: si los dos divergen, manda `AGENTS.md` y se corrige esta tabla. Cada gate declara **cómo se verifica**; un gate sin evidencia ejecutada no está cumplido, y una afirmación de cumplimiento sin comando corrido es supuesto, no evidencia.
+Condición de G5–G7. Los gates 1–13 son de **calidad (G6)**; **G6.5 añade uno solo**: que esa misma evidencia se haya producido en una corrida Linux de GitHub Actions identificada por SHA (§3). Correr los gates en local satisface G6; **no satisface G6.5**. **Superconjunto de los *Gates Before Merge* de `AGENTS.md`** — que tiene precedencia 1: si los dos divergen, manda `AGENTS.md` y se corrige esta tabla. Cada gate declara **cómo se verifica**; un gate sin evidencia ejecutada no está cumplido, y una afirmación de cumplimiento sin comando corrido es supuesto, no evidencia.
 
 | # | Gate | Verificación |
 | --- | --- | --- |
@@ -303,7 +329,7 @@ Aplican a todos los agentes, en todo artefacto:
 **La unidad de cadencia es la fase, y el corte de gobierno es el módulo.** El sprint es un agregado opcional, no la unidad por defecto.
 
 - **Por fase (unidad primaria):** reporte de fase de SR-FULL y FE-PLATFORM → EM-ARCH (formato del perfil); reporte de calidad de SR-QA → EM-ARCH (formato del perfil QA §9.2); informe de postura de SEC-ENG → EM-ARCH cuando la fase tocó seguridad, PII o integraciones. EM-ARCH consolida en `docs/informes/INFORME-{MODULO}-{FASE}-v{VERSION}.md`, que es **la fuente de dato de los KPIs**: entregables, cobertura con evidencia de caché, deuda por severidad, blockers, latencia de gates y cola de desempates. Un KPI sin dato se marca **"sin instrumentar"**; no se estima.
-- **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue; si hubo release, informe de ejecución de PLAT-OPS. Decisión go/no-go y deuda registrada.
+- **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue; si hubo release, informe de ejecución de PLAT-OPS. Decisión go/no-go y deuda registrada. **G6, G6.5 y G7 se registran por separado**, cada uno con su evidencia — un GO de G6.5 no se reporta como avance hacia G7 (ADR-069).
 - **Por sprint (agregado, a solicitud del CTO):** [plantilla instrumentada](../informes/PLANTILLA-INFORME-SPRINT-v1.0.md) — consolida varias fases con la tabla de KPIs y las señales de división de EM-ARCH. *(Corrección v1.4: la v1.3 hacía del informe de sprint la fuente primaria de los KPIs. El programa produce informes por fase y por módulo — 2 informes de sprint frente a 30 de cierre —, así que los KPIs quedaban permanentemente sin fuente de dato.)*
 - **Continuo:** hallazgos bloqueantes de PROD-UX, DS-OWNER, SR-QA, SEC-ENG o PLAT-OPS (pipeline de CI roto) se comunican al detectarse, no al final de la etapa.
 

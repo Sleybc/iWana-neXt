@@ -1,10 +1,10 @@
 # ADR-069: Gate G6.5 de merge readiness
 
 **Version:** 1.0  
-**Estado:** Propuesto
+**Estado:** Aprobado
 **Propuesto por:** AI-EM-ARCH, 2026-08-01
-**Aprobación final CTO:** pendiente
-**Fecha:** 2026-08-01  
+**Aprobado por:** CTO Humano — 2026-08-02, **sin cambios de contenido**. Regulariza un gate que ya operaba: `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.13 registra **G6.5 GO** con evidencia de CI #112 sobre `1343d6b8`. Mismo criterio con que ADR-056 §Ampliación regularizó ADR-022, ADR-025 y ADR-042.
+**Fecha:** 2026-08-01 (aprobación: 2026-08-02)  
 **Modulos:** MOD09 Programacion / MOD11 Ejecucion Operativa / Plataforma transversal / Seguridad transversal
 
 ## Contexto

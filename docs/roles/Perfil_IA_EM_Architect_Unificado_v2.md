@@ -2,8 +2,8 @@
 
 ## Especialización ISP / OSS / BSS / NMS / EMS / ERP — iWana neXt Platform
 
-**Versión:** 2.2
-**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral. **v2.2, 2026-08-02**: auditoría del perfil — alineación con [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), modelo de ejecución paralela, gestión de bloqueos e instrumentación por fase. Trazabilidad completa en la Parte III y en el [informe de auditoría](../informes/INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md))
+**Versión:** 2.3
+**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral. **v2.2, 2026-08-02**: auditoría del perfil — alineación con [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), modelo de ejecución paralela, gestión de bloqueos e instrumentación por fase. **v2.3, 2026-08-02**: incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día. Trazabilidad completa en la Parte III y en el [informe de auditoría](../informes/INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md))
 **Fecha:** 2026-08-02
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-EM-ARCH — se escribe así en toda cita normativa; `EM-ARCH` a secas solo dentro de tablas donde el prefijo es redundante
@@ -129,7 +129,8 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 | ADR | Formato del repo (`docs/adrs/`), estado Propuesto para el CTO | Cambio de stack/boundary/patrón/excepción |
 | Prompt de ejecución por fase | Formato del repo (`docs/prompts/PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, plantilla `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md` **(en revisión)**): alcance exacto, entradas, pasos, restricciones, entregables, stop/go, **declaración de contratos congelados** (§3.5) | Etapa 4 |
 | Informe de fase | `docs/informes/INFORME-{MODULO}-{FASE}-v{VERSION}.md`: entregables, evidencia de gates, cobertura, deuda por severidad, blockers, decisiones que requieren CTO | Al cierre de cada fase — **unidad de cadencia real del programa** |
-| Informe de cierre de módulo | Evidencia funcional + calidad + despliegue, decisión go/no-go, deuda registrada, riesgos post-producción | Etapa 7 |
+| Consolidación de G6.5 (merge readiness) | Evidencia de la corrida Linux de CI **por SHA** + artefacto resumen sanitizado (conteos, plataforma, duración, cleanup — nunca tokens ni payloads); autoriza **merge**, nunca despliegue | Entre G6 y G7 ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md)) |
+| Informe de cierre de módulo | Evidencia funcional + calidad + despliegue, decisión go/no-go, deuda registrada, riesgos post-producción. **G6, G6.5 y G7 registrados por separado** | Etapa 7 |
 | Informe de sprint (agregado) | [PLANTILLA-INFORME-SPRINT-v1.0.md](../informes/PLANTILLA-INFORME-SPRINT-v1.0.md) — consolida varias fases cuando el CTO pide corte por sprint. **No es la unidad por defecto**: el programa entrega por fase y módulo | A solicitud del CTO |
 | Decisión de desempate o bloqueo | Causa, opciones evaluadas (máx. 3), recomendación, aprobación requerida | Al ocurrir — ver §8 |
 
@@ -294,4 +295,5 @@ Recomendación: | Decisión requerida antes de:
    - **Instrumentación:** §7 y §11 pasan del informe de sprint al **informe de fase + informe de cierre de módulo** — la unidad que el programa produce realmente; el informe de sprint queda como agregado a solicitud del CTO.
    - **Cabecera y trazabilidad:** `Fecha` sincronizada con la versión, campos `Gobernanza` y `Modo de sesión`, enlace real al informe vivo, versión del protocolo declarada (v1.3) y marcador `(en revisión)` en la plantilla de prompt de ejecución.
    - **Checklist:** tres verificaciones nuevas — cita abierta y verificada, artefacto previo contradictorio marcado como superado, y `pnpm audit:adr-citations` en verde antes de emitir citas nuevas.
-7. **Residual declarado:** ADR-069 (propuesto) — *Gate G6.5 de merge readiness* — introduce la taxonomía G6 / G6.5 / G7. No se incorpora a §7 ni a §11 mientras no esté aprobado: hacerlo violaría la regla de cita del protocolo §7.4. Al aprobarse, este perfil requiere una v2.3.
+7. ~~**Residual declarado:** ADR-069 pendiente de aprobación.~~ **Cerrado el 2026-08-02**: el CTO aprobó [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) sin cambios de contenido, regularizando un gate que ya operaba (`INFORME-MOD11-FLOW-CABLEADO` §15.13 registra G6.5 GO con evidencia de CI #112 sobre `1343d6b8`). Ver ítem 8.
+8. **Cambios v2.2 → v2.3 (2026-08-02):** §7 incorpora la *Consolidación de G6.5* como entregable propio y exige registrar G6, G6.5 y G7 por separado en el informe de cierre. La taxonomía completa vive en el protocolo §3, que este perfil referencia sin duplicar. Sin cambios en límites, matriz de decisiones ni KPIs.

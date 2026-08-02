@@ -90,10 +90,11 @@ jobs:
       # local `.env.production` (gitignored, nunca presente en CI). Gatear la
       # plantilla convertía este job en ROJO determinista en cada push/PR, sin
       # señal útil: el bloqueo real de producción es la decisión de dominio y CA,
-      # ya escalada al CTO (runbook RELEASE-ROLLBACK §8.5/8.6, decisión 2026-07-31:
-      # diferida, no bloqueante para G6/G7). `nginx.prod.conf` conserva
-      # `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN` como placeholder
-      # deliberado del mismo pendiente, documentado en su cabecera.
+      # DIFERIDA por ADR-070 (Aprobado, CTO 2026-08-02) hasta su disparador de
+      # reactivación. QA-34/TLS no bloquea G6 ni G6.5; SÍ bloquea G7 (ADR-069).
+      # `nginx.prod.conf` conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`
+      # como placeholder deliberado del mismo diferimiento, documentado en su
+      # cabecera. Ver runbook RELEASE-ROLLBACK §8.5/8.6.
       #
       # El gate solo aplica donde existe un `.env.production` REAL (host de deploy
       # o preparación de release): ahí cualquier marcador residual bloquea. En CI
@@ -105,7 +106,7 @@ jobs:
           set -euo pipefail
 
           if [[ ! -f ".env.production" ]]; then
-            echo "::notice title=R3.5 preflight::No existe .env.production en CI (la plantilla con placeholders es por diseño). Dominio y CA pendientes del CTO (runbook §8.6) — no es un defecto de este job."
+            echo "::notice title=R3.5 preflight::No existe .env.production en CI (la plantilla con placeholders es por diseño). Dominio y CA diferidos por ADR-070 hasta su disparador de reactivacion — no es un defecto de este job."
             exit 0
           fi
 
