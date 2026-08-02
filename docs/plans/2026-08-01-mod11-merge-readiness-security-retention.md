@@ -38,5 +38,5 @@ productiva G7.
 - Migraciones database: 72/72 unit y 32/32 integración PostgreSQL.
 - Mailer: 15/15; throttler: 5/5; evidencia: 56/56; reliability: 61/61.
 - `pnpm install --frozen-lockfile`: exit 0.
-- Pendiente: primera corrida Linux real de `production-images` y
-  `execution-orders-e2e`; hasta entonces G6.5 queda pendiente.
+- CI #111 sobre `5eb93842`: `production-images` y `execution-orders-e2e` verdes en
+  Linux; R4.1 29/0/0/0/0, exit 0, flaky=0 y cleanup OK. G6.5 queda cerrado.

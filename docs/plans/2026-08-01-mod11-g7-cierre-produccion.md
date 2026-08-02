@@ -117,7 +117,7 @@ git commit -m "docs(operations): clarify TLS as G7 prerequisite"
 - Modify: `docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md:145-151`
 - Modify: `.github/workflows/ci.yml` only if the summary artifact is missing required markers.
 
-- [ ] **Step 1: Publicar los commits de código, compuerta y gobierno en la rama a evaluar**
+- [x] **Step 1: Publicar los commits de código, compuerta y gobierno en la rama a evaluar**
 
 Run:
 
@@ -130,7 +130,7 @@ git push origin $branch
 
 Expected: árbol limpio; el SHA remoto contiene `a1245ee0`, `b7adcdac` y los commits documentales posteriores.
 
-- [ ] **Step 2: Ejecutar los dos jobs Linux sobre el mismo SHA**
+- [x] **Step 2: Ejecutar los dos jobs Linux sobre el mismo SHA**
 
 Run:
 
@@ -142,7 +142,7 @@ gh run watch $runId --exit-status
 
 Expected: `production-images` y `execution-orders-e2e` finalizan `success` en el mismo run/SHA.
 
-- [ ] **Step 3: Validar el resumen sanitizado del E2E**
+- [x] **Step 3: Validar el resumen sanitizado del E2E**
 
 Obtener el artefacto o log del job y comprobar literalmente:
 
@@ -159,11 +159,11 @@ E2E_CLEANUP=OK
 
 Expected: los nueve marcadores aparecen una sola vez, sin credenciales, tokens, cookies ni payloads.
 
-- [ ] **Step 4: Registrar evidencia de CI sin convertirla en autorización productiva**
+- [x] **Step 4: Registrar evidencia de CI sin convertirla en autorización productiva**
 
 Actualizar el informe vivo y checklist con SHA, URL del run, nombres de jobs y los conteos sanitizados. Cambiar G6.5 a `GO` solo si ambos jobs son verdes para el mismo SHA.
 
-- [ ] **Step 5: Commit de evidencia de G6.5**
+- [x] **Step 5: Commit de evidencia de G6.5**
 
 ```text
 git add docs/informes/INFORME-MOD11-FLOW-CABLEADO-v1.0.md docs/quality/CHECKLIST-MOD09-MOD11-OT-INSTALACION-v1.0.md

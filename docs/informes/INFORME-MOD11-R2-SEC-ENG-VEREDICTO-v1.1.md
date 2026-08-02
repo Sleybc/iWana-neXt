@@ -113,11 +113,11 @@ El intento de provisión está adicionalmente bloqueado por:
 - Los bloqueos históricos del reporter, bootstrap y proceso externo del API fueron corregidos en el provisioner.
 - El caso BOLA se aisló del bucket agotado deliberadamente por 4d esperando su reset, sin relajar la aserción 404.
 
-**Acción requerida:** conservar la evidencia de QA-33 y ejecutar los jobs Linux de G6.5. Security no convierte esa corrida local en autorización productiva.
+**Acción completada para G6.5:** conservar la evidencia de QA-33 y registrar CI #111 sobre `5eb93842`, con `production-images` y `execution-orders-e2e` verdes. Security no convierte esa corrida en autorización productiva.
 
 ### G6.5 CI — fuera del veredicto de seguridad
 
-El gate está parametrizado con piso **29** y rechazo de flaky > 0 (scripts/e2e-provision-operational.mjs:17-18, :91-105; workflow ci.yml:448-451, :511-529). Esta lectura confirma el contrato del gate, no su cumplimiento en una corrida actual. **G6.5 queda fuera del veredicto de seguridad** y debe cerrarse con CI Linux real.
+El gate está parametrizado con piso **29** y rechazo de flaky > 0 (scripts/e2e-provision-operational.mjs:17-18, :91-105; workflow ci.yml:448-451, :511-529). CI #111 sobre `5eb93842` confirmó el cumplimiento Linux; **G6.5 queda fuera del veredicto de seguridad** y no autoriza G7.
 
 ---
 
@@ -135,7 +135,7 @@ Cualquier requisito regulatorio no confirmado permanece como **requiere verifica
 |---|---|---|---|---|---|
 | SEC-ENG-01 | Media | Condicional | Falta reejecución dinámica de la cadena completa y evidencia de TLS/entorno objetivo. | AI-PLAT-OPS + AI-SR-QA | Antes de G7/producción |
 | QA-33-E2E | Evidencia dinámica, fuera de seguridad | Cerrado en QA | Corrida final 29/0/0/0/0, flaky=0, exit 0 y cleanup OK; evidencia sanitizada archivada. | AI-SR-QA + AI-PLAT-OPS | Mantener en CI |
-| G6.5-CI | Gate de CI, fuera de seguridad | Pendiente | No existe en esta sesión una corrida Linux que demuestre 29/0/0/0/0 y flaky=0. | AI-PLAT-OPS | Antes de G6.5 |
+| G6.5-CI | Gate de CI, fuera de seguridad | Cerrado | CI #111 sobre `5eb93842`: `production-images` y `execution-orders-e2e` verdes; R4.1 29/0/0/0/0, exit 0, flaky=0 y cleanup OK. | AI-PLAT-OPS | Mantener en CI |
 | CVE-PLAT-OPS | Según snapshot PLAT-OPS | En seguimiento | Se conserva el inventario de dependencias del informe CVE; no se re-clasifica por inferencia ni se re-ejecuta pnpm audit aquí. | AI-PLAT-OPS | Según informe CVE |
 
 No se confirma P0/P1 crítico nuevo en este alcance. No se aprueba ninguna excepción de seguridad.
@@ -147,7 +147,7 @@ No se confirma P0/P1 crítico nuevo en este alcance. No se aprueba ninguna excep
 **[SEC-REVIEW] Veredicto:** **SECURITY GO CONDICIONAL** para los controles revisados y el merge, sujeto a que el cierre de plataforma mantenga TLS, despliegue seguro y la evidencia de CI requerida.
 
 - **QA-33 E2E:** PASS en evidencia dinámica posterior; no implica autorización productiva.
-- **G6.5 CI:** pendiente y explícitamente fuera del veredicto de seguridad.
+- **G6.5 CI:** cerrado en CI #111 y explícitamente fuera del veredicto de seguridad.
 - **G7 producción:** NO-GO hasta completar sus gates y la autorización humana correspondiente.
 - No hay base para una **[ESCALACIÓN DE SEGURIDAD]** por vulnerabilidad crítica confirmada en esta reemisión.
 

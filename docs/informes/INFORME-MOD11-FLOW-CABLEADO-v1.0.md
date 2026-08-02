@@ -1,11 +1,11 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
-**Versión:** 2.0  
-**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad registrado tras verificación QA/SEC/DS/PROD-UX**, **G6.5 pendiente de CI Linux**, **G7 NO-GO para producción**. AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. Ver §15.13.
+**Versión:** 2.1
+**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad**, **G6.5 GO de merge readiness verificado en CI Linux sobre `5eb93842`**, **G7 NO-GO para producción**. AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. Ver §15.13.
 **Fecha:** 2026-07-31  
 **Fecha de cierre de remediación:** 2026-07-31  
 **Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. ADR-069 (propuesto) permanece `Propuesto`, con aprobación final CTO pendiente.
-**Modo activo:** Espera de G6.5 — G6 calidad registrada tras verificación QA/SEC/DS/PROD-UX y consolidación de AI-EM-ARCH; G6.5 solo tiene criterios registrados y requiere corrida Linux de ambos jobs; G7 NO-GO, AI-EM-ARCH recomienda y CTO aprueba finalmente.
+**Modo activo:** G6.5 cerrado — G6 calidad y G6.5 merge readiness registrados tras CI Linux; G7 sigue NO-GO, AI-EM-ARCH recomienda y CTO aprueba finalmente.
 **Autor:** AI-SR-FULL (v1.0–v1.3), AI-EM-ARCH (v1.4 — registro G4; v1.6 — decisión G7; v1.7 — auditoría independiente; v1.8 — re-gate; v1.9 — auditoría multiagente; v2.0 — consolidación final), AI-SR-QA (v1.5 — G6 QA audit; v2.0 — coautor consolidación R5)  
 **Clasificación:** Uso interno
 
@@ -467,9 +467,9 @@ La decisión responde a **visibilidad**. La escalación original era de **retenc
 | **R2 — Recuperabilidad** | **GO** | P0-SEC-01 `nodemailer` 9.0.3, P0-SEC-02 con test 15/15, QA-33 5/5 + E2E 4a–4e, QA-49 115/115 y AppSec v1.1. |
 | **R3 — Plataforma** | **NO-GO** | **Migrations reversible** con evidencia ejecutable R3.4 (public 20/20 revert; tenant 95/95 + revert de la 099 con datos; runbook corregido). Fuera de este gate: ensayo rollback por componente/imagen y restores global/tenant. CI `execution-orders-e2e` sigue sin pushear (garantía de regresión, no sustituto de corrida). |
 | **R4.2 — Cobertura** | **NO-GO** | **MEASURED**: override Babel acotado `<8.0.0`; `--coverage` 230 suites / 2849 tests; core `tasks/services` **83.18% stmts**; API 79.66% stmts / 80.49% lines. Artefactos reales en `apps/api/coverage/`. |
-| **R5 — G6 Re-gate** | **G6 GO / G6.5 PENDIENTE** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). Falta la corrida Linux real de `production-images` y `execution-orders-e2e`. |
+| **R5 — G6 Re-gate** | **G6 GO / G6.5 GO** | Vertical R4.1 **CERRADA 29/29, flaky=0**; checklist 45 PASS / 4 PARTIAL / 0 FAIL (+ QA-34 diferido CTO). CI #111 sobre `5eb93842` certificó `production-images` y `execution-orders-e2e` en Linux. |
 
-**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y, tras verificarla, puede registrar y recomendar el estado de aceptación de calidad de G6**. G6.5 no está autorizado ni cerrado mientras ADR-069 (propuesto) permanezca `Propuesto` y la CI Linux esté pendiente; este informe solo registra sus criterios. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate se auto-otorga en este informe.
+**Nota:** esta tabla registra el estado de remediación y su verificación cruzada; **AI-EM-ARCH consolida la verificación QA/SEC/DS/PROD-UX y registra G6.5 como GO tras la corrida CI #111 sobre `5eb93842`**. ADR-069 (propuesto) conserva su aprobación final CTO pendiente y no autoriza G7. **AI-EM-ARCH recomienda G7 y el CTO es su aprobador final**; ningún gate productivo se auto-otorga en este informe.
 
 ### 15.2 Tabla de commits por carril
 
@@ -610,8 +610,8 @@ Cada gate del bloque «Gates Before Merge» de `AGENTS.md` fue verificado contra
 | Condición §14.6 | Estado | Evidencia |
 | --- | --- | --- |
 | R0 como bloqueante absoluto | **CERRADO** | QA independiente verificó PostgreSQL real. Cadena tenant aplicada, POST de OT operativo, outbox drena, typecheck verde. |
-| Flujo completo contra API, PostgreSQL y Redis reales | **CERRADO** | Corrida final **R4.1** 2026-08-01: **29/29 passed, exit 0, flaky=0, cleanup OK**. Provisionado por `scripts/e2e-provision-operational.mjs` con migraciones + worker BullMQ real; evidencia sanitizada en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt`. El job `execution-orders-e2e` queda como garantía de regresión y G6.5 aún exige su ejecución Linux. |
-| Salida archivada con conteo explícito de passed | **CERRADO** | Corrida final local: **29/29**, `E2E_PLAYWRIGHT_EXIT=0`, `E2E_PLAYWRIGHT_FLAKY=0`, `E2E_CLEANUP=OK`; evidencia sanitizada en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt`. El job de CI conserva artefactos para regresión. |
+| Flujo completo contra API, PostgreSQL y Redis reales | **CERRADO** | Corrida R4.1 local y CI #111 del 2026-08-02: **29/29 passed, exit 0, flaky=0, cleanup OK**. Provisionado por `scripts/e2e-provision-operational.mjs` con migraciones + worker BullMQ real; evidencia sanitizada en `docs/quality/evidence-fase-06-g6/provision-run-r41-final.txt` y artefacto del run Linux. |
+| Salida archivada con conteo explícito de passed | **CERRADO** | CI #111 sobre `5eb93842`: **29/29**, `E2E_PLAYWRIGHT_EXIT=0`, `E2E_PLAYWRIGHT_FLAKY=0`, `E2E_CLEANUP=OK`; evidencia sanitizada y artefacto del run `https://github.com/SleyiW/iWana-neXt/actions/runs/30751489481`. |
 | Boundary real restablecido (Media owner del puerto) | **CERRADO** | `TasksModule` ya no registra `MediaAsset`. Provider en `media/`. Verificado en §14.5. |
 | Upload-intent persistido y compensación implementada | **CERRADO** | R1 backend: `16e26506`, `5cfb86df`, `51e0bf1f`. Idempotencia con fingerprint SHA-256, replay con clave+fingerprint idénticos, compensación de claims. |
 | Migraciones aplicables/reversibles con datos | **CERRADO** | R2.4: 59 unit + 23 integration PostgreSQL real. Downs con datos probados. |
@@ -677,15 +677,15 @@ como parte del re-registro de gate.
 
 ### 15.9 Recomendación G7
 
-**G6 GO de calidad; merge pendiente de G6.5; G7 NO-GO para producción — estado 2026-08-01.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron remediadas y verificadas:
+**G6 GO de calidad; G6.5 GO de merge readiness; G7 NO-GO para producción — estado 2026-08-02.** La consolidación original se emitió sobre precondiciones incumplidas (seis P0, §15.11). Esas precondiciones quedaron remediadas y verificadas:
 
-1. R4.1 vertical completa: **29/29, exit 0, flaky=0, cleanup OK** en la corrida final local; CI Linux sigue pendiente para G6.5.
+1. R4.1 vertical completa: **29/29, exit 0, flaky=0, cleanup OK** en CI #111 sobre `5eb93842`.
 2. R0 resuelto contra PostgreSQL real: CHECK de la 099 acepta `PENDING` en los 44 schemas; integración postgres 2/2; swagger 1.1.0 4/4.
 3. Cobertura **medida** (core `tasks/services` 83.18% stmts; API 79.66% stmts / 80.49% lines).
 4. Migraciones reversibles con evidencia ejecutable (R3.4); OpenAPI 1.1.0 con changelog.
 5. Seguridad: `nodemailer` 9.0.3, sin exposición del token en logs, `pnpm audit --prod` 0 critical.
 
-El registro formal queda separado por gate: G6 queda registrado como GO de calidad tras la verificación QA/SEC/DS/PROD-UX consolidada por AI-EM-ARCH; G6.5 espera la primera corrida Linux real de los dos jobs y no autoriza el merge mientras siga pendiente; para G7, AI-EM-ARCH recomienda y CTO aprueba tras verificar dominio productivo, TLS, rollback por componente y restores ensayados.
+El registro formal queda separado por gate: G6 queda registrado como GO de calidad tras la verificación QA/SEC/DS/PROD-UX consolidada por AI-EM-ARCH; G6.5 queda GO tras CI #111, run `https://github.com/SleyiW/iWana-neXt/actions/runs/30751489481`, sobre `5eb93842`, con `production-images` y `execution-orders-e2e` verdes. Para G7, AI-EM-ARCH recomienda y CTO aprueba tras verificar dominio productivo, TLS, rollback por componente y restores ensayados.
 
 ### 15.10 Trazabilidad de artefactos de cierre
 
@@ -697,7 +697,7 @@ El registro formal queda separado por gate: G6 queda registrado como GO de calid
 | Runbook release/rollback | `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md` | v1.0 creado |
 | Runbook E2E R4.1 | `docs/runbooks/RUNBOOK-E2E-R41-OPERATIONS-v1.0.md` | v1.0 creado |
 | ADR-068 | `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` | Aprobado (G1) |
-| CI pipeline | `.github/workflows/ci.yml` | Job `execution-orders-e2e` (rama local, no presente en `origin/main`) — garantía de regresión; la corrida local de referencia es 29/29 con flaky=0; G6.5 aún requiere SHA/URL de ambos jobs Linux |
+| CI pipeline | `.github/workflows/ci.yml` | CI #111, `https://github.com/SleyiW/iWana-neXt/actions/runs/30751489481`, SHA `5eb93842`; `production-images` y `execution-orders-e2e` verdes; R4.1 `29/0/0/0/0`, exit 0 y cleanup OK |
 
 ### 15.11 Seis P0 que invalidaron el GO anterior — foto histórica
 
@@ -741,5 +741,5 @@ El registro formal queda separado por gate: G6 queda registrado como GO de calid
 | Gate                        | Estado        | Evidencia / pendiente                                                                                                                    |
 | --------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | G6 Quality acceptance       | **GO**        | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas.                                             |
-| G6.5 Merge readiness        | **PENDIENTE** | Requiere `production-images` y `execution-orders-e2e` verdes en Linux, identificados por SHA; la evidencia local no sustituye esos jobs. |
+| G6.5 Merge readiness        | **GO**        | CI #111, [run Linux sobre `5eb93842`](https://github.com/SleyiW/iWana-neXt/actions/runs/30751489481): `production-images` y `execution-orders-e2e` verdes; R4.1 `29/0/0/0/0`, exit 0, flaky 0 y cleanup OK. |
 | G7 Production authorization | **NO-GO**     | AI-EM-ARCH recomienda; CTO aprueba; requiere dominio, TLS efectivo, rollback por componente y restore global/tenant.                     |
