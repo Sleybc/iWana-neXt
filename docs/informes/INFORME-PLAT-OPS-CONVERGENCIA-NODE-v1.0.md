@@ -3,7 +3,7 @@
 **Módulo:** PLAT-OPS  
 **Fase:** CONVERGENCIA-NODE  
 **Versión:** 1.0  
-**Estado:** Ejecutado — gates locales completados; CA-12 cerrado con decisión documentada; G6.5/CA-03 pendiente de corrida remota (evidencia en actualización posterior)
+**Estado:** Ejecutado — gates locales completados; CA-12 cerrado con decisión documentada; **G6.5/CA-03 GO** con corrida remota de GitHub Actions sobre SHA identificable (run `30835001419`, PR #2, merge-sha `1a95415a`)
 **Fecha:** 2026-08-03  
 **Modo:** Architect + Orchestrator  
 **Fuente:** [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md) (Aprobado) y [prompt de fase](../prompts/PROMPT-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md)
@@ -91,7 +91,7 @@ decir, trabajo de AI-PLAT-OPS. La escalación se emitió sin haber leído el err
 | CA-10 | Compose dev, prod y E2E con `config --quiet` | Salida 0 en los tres |
 | CA-11 | `pnpm dev`, health API/web/portal, worker y bucket | API/web/portal 200; worker iniciado; bucket creado |
 | CA-12 | Builds CA-12 con `docker image inspect` | API 11,5 s/105,3 MB; worker 9,1 s/90,4 MB; web 23,5 s/57,7 MB; portal 29,8 s/58,8 MB; migrator 28,7 s/133,8 MB |
-| CA-03 / G6.5 | CI remoto sobre SHA identificable | **Pendiente:** los workflows están cableados, pero no existe una corrida GitHub Actions identificable en esta ejecución |
+| CA-03 / G6.5 | CI remoto sobre SHA identificable | **GO:** run `30835001419` (PR #2, event `pull_request`, ref `refs/pull/2/merge`, merge-sha `1a95415a`), Linux, Node `v24.13.1`, pnpm `10.32.1`; jobs `production-images`, `execution-orders-e2e`, `lint/typecheck/build/unit` e `Integridad de citas ADR` en **success**; E2E `29/0/0`, `E2E_PLAYWRIGHT_EXIT=0`, `E2E_CLEANUP=OK`; artefacto `e2e-r41-summary` descargado |
 | CA-14 | `audit:doc-locations` y `audit:adr-citations` | `BLOQUEANTE: 0`; avisos preexistentes documentados |
 | CA-15 | Eliminación de 12 `iwana-verify/*` y purge de caché | Baseline restaurado: 8 imágenes/2,215 GB; caché 0 B; volúmenes preservados |
 
@@ -99,13 +99,59 @@ La evidencia histórica no contiene tiempos/tamaños individuales antes de la fa
 
 ## Verificación de G6.5 y disponibilidad del baseline
 
-Se intentó obtener una corrida remota de GitHub Actions para un SHA
-identificable. La integración disponible devolvió `404 Not Found` para el
-repositorio privado `SleyiW/iWana-neXt`; `git ls-remote` confirmó que la rama
-`codex/plat-ops-convergencia-node` aún no existe en `origin`, y `gh` no está
-instalado en el entorno. Por tanto no se atribuye un run remoto ni un SHA que
-no puedan ser auditados. G6.5/CA-03 permanece pendiente hasta que un runner con
-acceso publique esa evidencia.
+### Corrida remota G6.5 — GO
+
+La integración con el repositorio `SleyiW/iWana-neXt` quedó disponible (GCM + REST
+API; `gh` no está instalado). Se obtuvo la corrida remota de GitHub Actions sobre
+un SHA identificable:
+
+| Campo | Valor |
+| --- | --- |
+| Workflow | `CI` |
+| Run | `30835001419` (attempt 1) |
+| Evento | `pull_request` sobre `refs/pull/2/merge` |
+| Merge-sha validado | `1a95415a967e684c5d047cb2af5a46a8a9d7cfcb` |
+| Runner | Linux (X64) |
+| Runtime | Node `v24.13.1`, pnpm `10.32.1` |
+| Jobs | `production-images` SUCCESS · `execution-orders-e2e` SUCCESS · `Lint + Typecheck + Build + Unit tests` SUCCESS · `Integridad de citas ADR` SUCCESS |
+| E2E R4.1 | `E2E_PLAYWRIGHT_PASSED=29` · `FAILED=0` · `SKIPPED=0` · `DID_NOT_RUN=0` · `FLAKY=0` · `EXIT=0` · `E2E_SETUP=OK` · `E2E_CLEANUP=OK` |
+| Artefacto | `e2e-r41-summary` (id `8864630503`) descargado y verificado localmente |
+
+### Hallazgo y corrección durante la obtención de G6.5
+
+La primera corrida del PR falló en el job `execution-orders-e2e`, test **8b
+"Promise.all versiona plantilla y consecutivos sin duplicar OT"** (spec:2040),
+con `POST /wfm/events` → **400** en `createScheduledOrder` (spec:494). Falló dos
+veces consecutivas en `2c2778d1` y había pasado en `b1e6a7de`, mismo código de
+aplicación.
+
+**Causa raíz — defecto preexistente del test, dependiente de la hora del día,
+no de la fase.** El test agendaba eventos `INSTALLATION` con `nowIso(offset)`
+fijo desde `now`. La guarda operativa de instalación
+(`assertInstallationScheduleWindow` + `isScheduleRangeWithinOperatingWindow`)
+exige que `start` y `end` caigan en el **mismo día local** (ventana
+`00:00-23:59`). Con el tenant en `America/Bogota` (UTC-5), un evento a
+`now + 720 min` empieza ~23:37 local y termina a las 00:07 del día siguiente
+cuando CI corre después de las ~16:30 UTC: cruza la medianoche local →
+`isSameLocalDay = false` → 400. El run de `b1e6a7de` (16:14 UTC) quedaba dentro
+del día local y pasaba; los runs de `2c2778d1` (16:37-16:50 UTC) cruzaban.
+
+**Corrección aplicada — fix de prueba, no de código de aplicación.** Se añadió el
+helper `anchorScheduleIso` en `e2e/tests/api/execution-orders-operational.spec.ts`,
+que ancla la ventana al mediodía UTC del próximo día UTC (mapea a 00:00-02:00
+local en cualquier huso y, con los offsets máximos de la suite < 16 h, el evento
+nunca cruza la medianoche local). Se aplicó a `createScheduledOrder` (cubre 8a y
+8b) y al happy path 1a; los eventos `SUPPORT` y los timestamps de evidencia siguen
+usando `nowIso`. Commit `dd4b9d02`. Corrida verificada en CI: **29/29** en verde.
+
+### Deuda preexistente — smoke web
+
+El workflow `E2E Web Admin Smoke` falla en `admin-bootstrap.spec.ts:412` de forma
+**preexistente en `main`** (verificado en múltiples SHAs de main con CI verde), por
+lo que no se atribuye a esta fase. Queda registrado como deuda ajena pendiente de
+otro dueño.
+
+### Disponibilidad del baseline
 
 Para CA-12, el baseline histórico recuperable contiene únicamente el agregado
 de `8` imágenes y `2,215 GB` de tamaño virtual. No hay tiempos ni tamaños
@@ -156,7 +202,9 @@ no reduciría ninguna divergencia runtime.
 la resolución del 2026-08-03:** el bloqueo está cerrado y AI-SR-FULL no
 interviene.
 
-La fase queda técnicamente verificada en local. El cierre requiere una corrida
-G6.5 de GitHub Actions asociada a un SHA y una decisión documentada sobre la
-ausencia de baseline individual histórico para CA-12; no se inventa ninguna de
-las dos evidencias.
+La fase queda técnicamente verificada en local y **G6.5/CA-03 quedó certificado
+con la corrida remota de GitHub Actions sobre el merge-sha `1a95415a` del PR #2**
+(run `30835001419`, 29/29 E2E, `production-images` verde, artefacto resumen
+descargado). CA-12 se cerró con las mediciones actuales como nuevo baseline. La
+corrección del test 8b (`anchorScheduleIso`) quedó documentada en la sección de
+verificación G6.5; el smoke web en rojo es deuda preexistente de `main`.
