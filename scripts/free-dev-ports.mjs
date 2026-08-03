@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { posix as posixPath } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -154,8 +155,27 @@ export function getProtectedPids(entries, currentPid = process.pid, parentPid = 
 }
 
 export function normalizeForMatching(value, platform = process.platform) {
-  const normalized = String(value).replace(/\\/g, '/');
+  const valueString = String(value);
+  if (!valueString) return '';
+
+  const normalized = posixPath.normalize(valueString.replace(/\\/g, '/'));
   return platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function pathOwnsMarker(candidatePath, markerPath, platform) {
+  const normalizedCandidatePath = normalizeForMatching(candidatePath, platform);
+  const normalizedMarkerPath = normalizeForMatching(markerPath, platform);
+
+  if (!normalizedCandidatePath || !normalizedMarkerPath) return false;
+
+  const markerPrefix = normalizedMarkerPath.endsWith('/')
+    ? normalizedMarkerPath
+    : `${normalizedMarkerPath}/`;
+
+  return (
+    normalizedCandidatePath === normalizedMarkerPath ||
+    normalizedCandidatePath.startsWith(markerPrefix)
+  );
 }
 
 function getCommandTokens(command) {
@@ -230,9 +250,7 @@ export function findRepoWatcherPids(
       markers.some((marker) => {
         const { tokens: commandTokens, complete } = getCommandTokens(entry.command);
         const { tokens: markerTokens, complete: markerComplete } = getCommandTokens(marker.command);
-        const normalizedMarkerPath = normalizeForMatching(marker.path ?? '', platform);
-
-        if (!complete || !markerComplete || !normalizedMarkerPath || markerTokens.length === 0) {
+        if (!complete || !markerComplete || !marker.path || markerTokens.length === 0) {
           return false;
         }
 
@@ -244,7 +262,7 @@ export function findRepoWatcherPids(
         const commandIdentity = normalizeForMatching(getTokenBasename(identityToken), platform);
         const identityOwnsMarker =
           Boolean(identityToken) &&
-          normalizeForMatching(identityToken, platform).includes(normalizedMarkerPath);
+          pathOwnsMarker(identityToken, marker.path, platform);
 
         // La ruta solo puede pertenecer al ejecutable o al script inmediatamente posterior a Node.
         // Verla después de opciones o argumentos no prueba ownership.
@@ -305,11 +323,33 @@ const SENSITIVE_LONG_OPTIONS = new Set([
   'cookie',
   'auth',
   'auth-token',
+  'access-token',
+  'bearer-token',
+  'secret-key',
+  'pass',
+  'key',
   'user',
 ]);
 
+const SENSITIVE_OPTION_HINT_PATTERN =
+  /(?:^|[-_])(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)(?:$|[-_])/;
+
 function normalizeSensitiveOptionName(name) {
   return String(name ?? '').replace(/_/g, '-').toLowerCase();
+}
+
+function looksLikeSensitiveOptionName(name) {
+  const normalizedName = normalizeSensitiveOptionName(name);
+  return (
+    SENSITIVE_LONG_OPTIONS.has(normalizedName) ||
+    SENSITIVE_OPTION_HINT_PATTERN.test(normalizedName) ||
+    [...SENSITIVE_LONG_OPTIONS].some(
+      (alias) =>
+        normalizedName.startsWith(`${alias}:`) ||
+        normalizedName.startsWith(`${alias}.`) ||
+        normalizedName.startsWith(`${alias}/`),
+    )
+  );
 }
 
 function parseSensitiveOption(token) {
@@ -350,10 +390,26 @@ function parseSensitiveOption(token) {
   }
 
   const longOption = value.match(/^(--?)([^=]+)(?:=(.*))?$/);
-  if (!longOption) return null;
+  if (!longOption) {
+    return looksLikeSensitiveOptionName(value.replace(/^-+/, ''))
+      ? { malformed: true }
+      : null;
+  }
 
   const optionName = normalizeSensitiveOptionName(longOption[2]);
-  if (!SENSITIVE_LONG_OPTIONS.has(optionName)) return null;
+  if (!looksLikeSensitiveOptionName(optionName)) return null;
+
+  if (!SENSITIVE_LONG_OPTIONS.has(optionName) && SENSITIVE_OPTION_HINT_PATTERN.test(optionName)) {
+    return {
+      name: `${longOption[1]}${longOption[2]}`,
+      attachedValue: longOption[3] ?? null,
+      header: false,
+    };
+  }
+
+  if (!SENSITIVE_LONG_OPTIONS.has(optionName)) {
+    return { malformed: true };
+  }
 
   return {
     name: `${longOption[1]}${longOption[2]}`,
@@ -439,6 +495,7 @@ function sanitizeProcessCommand(command) {
       sanitizedTokens.push(redactConnectionString(token));
       continue;
     }
+    if (sensitiveOption.malformed) return REDACTED_COMMAND;
 
     let consumedValue = sensitiveOption.attachedValue;
     let nextIndex = index + 1;

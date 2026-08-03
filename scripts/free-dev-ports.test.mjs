@@ -169,6 +169,52 @@ test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', (
   );
 });
 
+test('findRepoWatcherPids canonicaliza rutas y rechaza traversal o prefijos embebidos', () => {
+  const unixMarker = { path: '/home/sley/appiw/apps/api/', command: 'nest.js start --watch' };
+  const windowsMarker = { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' };
+  const entries = [
+    {
+      pid: 111,
+      ppid: 1,
+      command: '/home/sley/appiw/apps/api/../other/nest.js start --watch',
+    },
+    {
+      pid: 112,
+      ppid: 1,
+      command: '/tmp/home/sley/appiw/apps/api/nest.js start --watch',
+    },
+    {
+      pid: 113,
+      ppid: 1,
+      command: 'C:\\appiw\\apps\\api\\..\\other\\nest.js start --watch',
+    },
+    {
+      pid: 114,
+      ppid: 1,
+      command: 'C:\\tmp\\C:\\appiw\\apps\\api\\nest.js start --watch',
+    },
+    {
+      pid: 115,
+      ppid: 1,
+      command: '/home/sley/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch',
+    },
+    {
+      pid: 116,
+      ppid: 1,
+      command: 'C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch',
+    },
+  ];
+
+  assert.deepEqual(
+    findRepoWatcherPids(entries, new Set(), [unixMarker], 'linux'),
+    [115],
+  );
+  assert.deepEqual(
+    findRepoWatcherPids(entries, new Set(), [windowsMarker], 'win32'),
+    [116],
+  );
+});
+
 test('classifyDevPids separates external listeners from workspace watchers', () => {
   assert.deepEqual(
     classifyDevPids([101, 202, 303, 303], [202, 404, 404]),
@@ -309,6 +355,40 @@ test('formatPidDiagnostic redacts attached options and sensitive aliases without
     formatted,
     /database-secret|auth-secret|token-secret|api-secret|secret-value|user:password/i,
   );
+});
+
+test('formatPidDiagnostic redacts additional secret option aliases in attached and separated forms', () => {
+  const aliases = ['access-token', 'bearer-token', 'secret-key', 'pass', 'key'];
+
+  for (const alias of aliases) {
+    for (const [option, value] of [
+      [`--${alias}=`, `${alias}-attached-leak`],
+      [`--${alias}`, `${alias}-separated-leak`],
+      [`--${alias.replace(/-/g, '_')}`, `${alias}-underscore-leak`],
+    ]) {
+      const command = option.endsWith('=') ? `${option}${value}` : `${option} ${value}`;
+      const formatted = formatPidDiagnostic(329, [{ pid: 329, command }]);
+
+      assert.ok(formatted.includes(`${option.replace(/=$/, '')}=[REDACTED]`), formatted);
+      assert.doesNotMatch(formatted, new RegExp(value));
+    }
+  }
+});
+
+test('formatPidDiagnostic fails closed for malformed sensitive aliases', () => {
+  const commands = [
+    'tool --key:LEAK',
+    'tool --secret-key.LEAK',
+    'tool --access-token/LEAK',
+    'tool --key=',
+    'tool --bearer-token --next',
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(330, [{ pid: 330, command }]);
+    assert.equal(formatted, 'PID 330 ([REDACTED COMMAND])', command);
+    assert.doesNotMatch(formatted, /LEAK/);
+  }
 });
 
 test('formatPidDiagnostic fails closed when a sensitive option has no confidently parsed value', () => {
