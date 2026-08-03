@@ -316,12 +316,25 @@ function parseSensitiveOption(token) {
   const value = String(token ?? '');
   if (!value.startsWith('-') || value === '-') return null;
 
-  const isHeader = value === '-H' || value === '--header' || value === '--headers';
-  if (isHeader || /^--?headers?(?:=|$)/i.test(value)) {
+  const isHeader =
+    value === '-H' ||
+    value === '--header' ||
+    value === '--headers' ||
+    /^--?headers?(?:=|$)/i.test(value);
+  if (isHeader) {
     const separator = value.indexOf('=');
     return {
       name: separator >= 0 ? value.slice(0, separator) : value,
       attachedValue: separator >= 0 ? value.slice(separator + 1) : null,
+      header: true,
+    };
+  }
+
+  const shortHeader = value.match(/^-h(?:=(.*)|(.+))$/i);
+  if (shortHeader) {
+    return {
+      name: value.slice(0, 2),
+      attachedValue: shortHeader[1] ?? shortHeader[2] ?? null,
       header: true,
     };
   }
@@ -370,11 +383,30 @@ function getHeaderValueEnd(tokens, startIndex, attachedValue) {
 
   const separator = headerValue.indexOf(':');
   if (separator < 1) return null;
-  if (headerValue.slice(separator + 1).trim()) return valueIndex;
 
   const headerName = headerValue.slice(0, separator).toLowerCase();
-  const additionalTokens =
-    headerName === 'authorization' || headerName === 'proxy-authorization' ? 2 : 1;
+  const headerContent = headerValue.slice(separator + 1).trim();
+  const isAuthorizationHeader =
+    headerName === 'authorization' || headerName === 'proxy-authorization';
+
+  if (headerContent) {
+    if (isAuthorizationHeader && /^(?:bearer|basic)$/i.test(headerContent)) {
+      const endIndex = valueIndex + 1;
+      if (
+        endIndex > tokens.length ||
+        !tokens[valueIndex] ||
+        isOptionToken(tokens[valueIndex])
+      ) {
+        return null;
+      }
+
+      return endIndex;
+    }
+
+    return valueIndex;
+  }
+
+  const additionalTokens = isAuthorizationHeader ? 2 : 1;
   const endIndex = valueIndex + additionalTokens;
   if (
     endIndex > tokens.length ||

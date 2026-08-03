@@ -267,6 +267,31 @@ test('formatPidDiagnostic redacts the complete unquoted Authorization header val
   assert.doesNotMatch(formatted, /secret|header-secret/);
 });
 
+test('formatPidDiagnostic redacts attached short header forms without leaking their values', () => {
+  const formatted = formatPidDiagnostic(327, [
+    {
+      pid: 327,
+      command: 'curl -H=X-Api-Key:equals-secret -HX-Api-Key:attached-secret',
+    },
+  ]);
+
+  assert.equal(formatted, 'PID 327 (curl -H=[REDACTED] -H=[REDACTED])');
+  assert.doesNotMatch(formatted, /equals-secret|attached-secret/);
+});
+
+test('formatPidDiagnostic redacts unquoted Bearer and Basic headers without leaking tokens', () => {
+  const formatted = formatPidDiagnostic(328, [
+    {
+      pid: 328,
+      command:
+        'curl --header Authorization:Bearer bearer-secret --header Authorization:Basic basic-secret',
+    },
+  ]);
+
+  assert.equal(formatted, 'PID 328 (curl --header=[REDACTED] --header=[REDACTED])');
+  assert.doesNotMatch(formatted, /bearer-secret|basic-secret/);
+});
+
 test('formatPidDiagnostic redacts attached options and sensitive aliases without leaking values', () => {
   const formatted = formatPidDiagnostic(325, [
     {
