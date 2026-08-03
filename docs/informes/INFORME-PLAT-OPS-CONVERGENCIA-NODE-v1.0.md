@@ -3,7 +3,7 @@
 **Módulo:** PLAT-OPS  
 **Fase:** CONVERGENCIA-NODE  
 **Versión:** 1.0  
-**Estado:** Ejecutado — gates locales completados; CA-12 cerrado con decisión documentada; **G6.5/CA-03 GO** con corrida remota de GitHub Actions sobre SHA identificable (run `30835001419`, PR #2, merge-sha `1a95415a`)
+**Estado:** Ejecutado — gates locales completados; CA-12 cerrado con decisión documentada; **G6.5/CA-03 GO** con corrida remota de GitHub Actions sobre SHA identificable (run `30835001419`, PR #2) y **PR #2 integrado en `main`** (merge-sha `4455f87c`); CI de `main` verde (run `30837539671`, E2E 29/0/0/0/0)
 **Fecha:** 2026-08-03  
 **Modo:** Architect + Orchestrator  
 **Fuente:** [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md) (Aprobado) y [prompt de fase](../prompts/PROMPT-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md)
@@ -205,6 +205,11 @@ interviene.
 La fase queda técnicamente verificada en local y **G6.5/CA-03 quedó certificado
 con la corrida remota de GitHub Actions sobre el merge-sha `1a95415a` del PR #2**
 (run `30835001419`, 29/29 E2E, `production-images` verde, artefacto resumen
-descargado). CA-12 se cerró con las mediciones actuales como nuevo baseline. La
-corrección del test 8b (`anchorScheduleIso`) quedó documentada en la sección de
-verificación G6.5; el smoke web en rojo es deuda preexistente de `main`.
+descargado). El PR #2 quedó **integrado en `main`** (merge-sha `4455f87c`, commit
+`chore(operations): fase PLAT-OPS/CONVERGENCIA-NODE — G6.5 GO y cierre de fase
+(#2)`), y el CI de `push` a `main` confirmó el estado final en verde: run
+`30837539671`, E2E `29/0/0/0/0`, `Lint + Typecheck + Build + Unit`, `production-images`
+e `Integridad de citas ADR` todos `success`. CA-12 se cerró con las mediciones
+actuales como nuevo baseline. La corrección del test 8b (`anchorScheduleIso`)
+quedó documentada en la sección de verificación G6.5; el smoke web en rojo es
+deuda preexistente de `main`.
