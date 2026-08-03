@@ -178,13 +178,37 @@ function pathOwnsMarker(candidatePath, markerPath, platform) {
   );
 }
 
-function getCommandTokens(command) {
+function getCommandTokens(command, { shellEscapes = false } = {}) {
   const tokens = [];
   let token = '';
   let quote = '';
   let tokenStarted = false;
+  let ambiguous = false;
 
-  for (const character of String(command ?? '')) {
+  const commandString = String(command ?? '');
+  for (let index = 0; index < commandString.length; index += 1) {
+    const character = commandString[index];
+
+    if (shellEscapes && character === '\\') {
+      const escapedCharacter = commandString[index + 1];
+      if (escapedCharacter === undefined) {
+        ambiguous = true;
+        token += character;
+        tokenStarted = true;
+        continue;
+      }
+
+      // A second backslash can mean either a literal backslash or the start of
+      // another escape depending on the shell. Fail closed rather than risk
+      // leaving the continuation of a sensitive value in diagnostics.
+      if (escapedCharacter === '\\') ambiguous = true;
+
+      token += escapedCharacter;
+      tokenStarted = true;
+      index += 1;
+      continue;
+    }
+
     if (quote) {
       if (character === quote) {
         quote = '';
@@ -216,7 +240,7 @@ function getCommandTokens(command) {
 
   if (tokenStarted) tokens.push(token);
 
-  return { tokens, complete: quote === '' };
+  return { tokens, complete: quote === '' && !ambiguous, ambiguous };
 }
 
 function getTokenBasename(value) {
@@ -297,12 +321,10 @@ export function planDevPortCleanup(portPids, repoWatcherPids) {
   };
 }
 
-const CONNECTION_STRING_PATTERN = /\b(?:https?|postgres(?:ql)?|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?|amqps?):\/\/[^\s'"`]+/gi;
+const URI_PATTERN = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"`]+/g;
 const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
 const REDACTED_COMMAND = '[REDACTED COMMAND]';
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.+$/;
-const POWERSHELL_ENV_ASSIGNMENT_PATTERN = /^\$env:[A-Za-z_][A-Za-z0-9_]*=.+$/i;
-const POWERSHELL_ENV_NAME_PATTERN = /^\$env:(?<name>[A-Za-z_][A-Za-z0-9_]*)$/i;
 const SENSITIVE_POWERSHELL_ENV_NAME_PATTERN =
   /(?:^|_)(?:TOKEN|PASSWORD|PASS|SECRET|API_KEY|PRIVATE_KEY|CREDENTIAL)(?:$|_)/i;
 const SENSITIVE_LONG_OPTIONS = new Set([
@@ -421,8 +443,8 @@ function parseSensitiveOption(token) {
   };
 }
 
-function redactConnectionString(token) {
-  return String(token).replace(CONNECTION_STRING_PATTERN, '<connection-redacted>');
+function redactUri(token) {
+  return String(token).replace(URI_PATTERN, '[URL REDACTED]');
 }
 
 function isOptionToken(token) {
@@ -477,42 +499,70 @@ function getHeaderValueEnd(tokens, startIndex, attachedValue) {
   return endIndex;
 }
 
-function isSensitivePowershellEnvName(token) {
-  const match = String(token ?? '').match(POWERSHELL_ENV_NAME_PATTERN);
-  return Boolean(
-    match?.groups?.name && SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(match.groups.name),
-  );
+function parsePowershellEnvAssignment(tokens, index) {
+  const token = String(tokens[index] ?? '');
+  const match = token.match(/^\$env:(?<name>[A-Za-z_][A-Za-z0-9_]*)(?<suffix>.*)$/i);
+  if (!match) return null;
+
+  const name = match.groups.name;
+  const suffix = match.groups.suffix;
+  let value = null;
+  let valueIndex = index + 1;
+
+  if (suffix === '') {
+    const separator = String(tokens[valueIndex] ?? '');
+    if (!separator.startsWith('=')) return null;
+    value = separator.slice(1);
+    valueIndex += 1;
+  } else if (suffix.startsWith('=')) {
+    value = suffix.slice(1);
+  } else {
+    return null;
+  }
+
+  if (!value) {
+    value = tokens[valueIndex] ?? null;
+    valueIndex += 1;
+  }
+
+  return {
+    name: `$env:${name}`,
+    sensitive: SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(name),
+    value,
+    nextIndex: valueIndex,
+  };
 }
 
 function sanitizeProcessCommand(command) {
   const normalizedCommand = String(command ?? '').trim().replace(/\s+/g, ' ');
   if (!normalizedCommand) return '';
 
-  const tokenized = getCommandTokens(normalizedCommand);
-  if (!tokenized.complete) {
+  const tokenized = getCommandTokens(normalizedCommand, { shellEscapes: true });
+  if (!tokenized.complete || tokenized.ambiguous) {
     return REDACTED_COMMAND;
   }
 
   const sanitizedTokens = [];
   for (let index = 0; index < tokenized.tokens.length; index += 1) {
     const token = tokenized.tokens[index];
-    if (ENV_ASSIGNMENT_PATTERN.test(token) || POWERSHELL_ENV_ASSIGNMENT_PATTERN.test(token)) {
+
+    const powershellAssignment = parsePowershellEnvAssignment(tokenized.tokens, index);
+    if (powershellAssignment) {
+      if (!powershellAssignment.value) return REDACTED_COMMAND;
+      if (powershellAssignment.sensitive) {
+        sanitizedTokens.push(`${powershellAssignment.name}=[REDACTED]`);
+      }
+      index = powershellAssignment.nextIndex - 1;
       continue;
     }
 
-    if (
-      isSensitivePowershellEnvName(token) &&
-      tokenized.tokens[index + 1] === '=' &&
-      tokenized.tokens[index + 2]
-    ) {
-      sanitizedTokens.push(`${token}=[REDACTED]`);
-      index += 2;
+    if (ENV_ASSIGNMENT_PATTERN.test(token)) {
       continue;
     }
 
     const sensitiveOption = parseSensitiveOption(token);
     if (!sensitiveOption) {
-      sanitizedTokens.push(redactConnectionString(token));
+      sanitizedTokens.push(redactUri(token));
       continue;
     }
     if (sensitiveOption.malformed) return REDACTED_COMMAND;
@@ -546,6 +596,18 @@ export function formatPidDiagnostic(pid, entries = []) {
   const command = sanitizeProcessCommand(entry?.command);
 
   return command ? `PID ${pid} (${command})` : `PID ${pid}`;
+}
+
+export function isSafeRepoWatcherPid(
+  pid,
+  entries,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  currentPid = process.pid,
+  parentPid = process.ppid,
+) {
+  const protectedPids = getProtectedPids(entries, currentPid, parentPid);
+  return findRepoWatcherPids(entries, protectedPids, markers, platform).includes(pid);
 }
 
 function formatPidDiagnostics(pids, entries) {
@@ -616,7 +678,7 @@ function killPid(pid) {
   if (pid === process.pid) return;
 
   if (process.platform === 'win32') {
-    execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore' });
+    execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
     return;
   }
 
@@ -655,6 +717,12 @@ async function main() {
 
     for (const pid of pidsToKill) {
       try {
+        const latestProcessSnapshot = getRepoProcessSnapshot();
+        if (!isSafeRepoWatcherPid(pid, latestProcessSnapshot.entries)) {
+          console.warn(`Se omite PID ${pid}: ya no es un watcher seguro del repositorio.`);
+          continue;
+        }
+
         killPid(pid);
         console.log(`PID ${pid} detenido.`);
       } catch {

@@ -5,6 +5,7 @@ import {
   findRepoWatcherPids,
   formatPidDiagnostic,
   getProtectedPids,
+  isSafeRepoWatcherPid,
   normalizeForMatching,
   planDevPortCleanup,
 } from './free-dev-ports.mjs';
@@ -215,6 +216,23 @@ test('findRepoWatcherPids canonicaliza rutas y rechaza traversal o prefijos embe
   );
 });
 
+test('isSafeRepoWatcherPid revalida ownership, protección y matcher antes de matar', () => {
+  const marker = { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' };
+  const entries = [
+    {
+      pid: 501,
+      ppid: 1,
+      command: 'C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch',
+    },
+    { pid: 502, ppid: 1, command: 'C:\\appiw\\apps\\api\\unrelated.js --watch' },
+    { pid: 503, ppid: 502, command: 'C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch' },
+  ];
+
+  assert.equal(isSafeRepoWatcherPid(501, entries, [marker], 'win32', 900, 1), true);
+  assert.equal(isSafeRepoWatcherPid(502, entries, [marker], 'win32', 900, 1), false);
+  assert.equal(isSafeRepoWatcherPid(503, entries, [marker], 'win32', 900, 503), false);
+});
+
 test('classifyDevPids separates external listeners from workspace watchers', () => {
   assert.deepEqual(
     classifyDevPids([101, 202, 303, 303], [202, 404, 404]),
@@ -257,9 +275,22 @@ test('formatPidDiagnostic includes a sanitized command and falls back without on
   assert.match(formatted, /^PID 123 \(node scripts\/dev\.mjs/);
   assert.doesNotMatch(formatted, /API_KEY/);
   assert.match(formatted, /--password=\[REDACTED\]/);
-  assert.match(formatted, /<connection-redacted>/);
+  assert.match(formatted, /\[URL REDACTED\]/);
   assert.doesNotMatch(formatted, /redact-me/);
   assert.equal(formatPidDiagnostic(404, []), 'PID 404');
+});
+
+test('formatPidDiagnostic redacts credentials and query values for every URI scheme', () => {
+  const formatted = formatPidDiagnostic(333, [
+    {
+      pid: 333,
+      command:
+        'tool ws://user:ws-secret@host/socket?token=ws-query ftp://user:ftp-secret@host/file?password=ftp-query --mode safe',
+    },
+  ]);
+
+  assert.match(formatted, /\[URL REDACTED\]/g);
+  assert.doesNotMatch(formatted, /ws-secret|ws-query|ftp-secret|ftp-query|user:/);
 });
 
 test('formatPidDiagnostic redacts short options and unquoted sensitive headers', () => {
@@ -292,7 +323,7 @@ test('formatPidDiagnostic redacts short options and unquoted sensitive headers',
   assert.match(formatted, /--password=\[REDACTED\]/);
   assert.match(formatted, /--api-key=\[REDACTED\]/);
   assert.match(formatted, /--secret=\[REDACTED\]/);
-  assert.match(formatted, /<connection-redacted>/);
+  assert.match(formatted, /\[URL REDACTED\]/);
   assert.doesNotMatch(
     `${shortOptions} ${headers} ${formatted}`,
     /header-secret|long-header-secret|token-secret|password-secret|api-secret|secret-value|url-secret|query-secret|user:password/,
@@ -387,14 +418,41 @@ test('formatPidDiagnostic redacts spaced PowerShell sensitive environment assign
   ];
 
   for (const name of sensitiveNames) {
-    for (const assignment of [`$env:${name}=secret`, `$env:${name} = secret`]) {
+    for (const assignment of [
+      `$env:${name}=secret`,
+      `$env:${name}= secret`,
+      `$env:${name} =secret`,
+      `$env:${name} = secret`,
+      `$env:${name}="secret value"`,
+      String.raw`$env:${name}=secret\ value`,
+    ]) {
       const formatted = formatPidDiagnostic(331, [
         { pid: 331, command: `tool ${assignment} --mode safe` },
       ]);
 
-      assert.match(formatted, /tool/);
-      assert.doesNotMatch(formatted, /secret/);
+      assert.equal(formatted, `PID 331 (tool $env:${name}=[REDACTED] --mode safe)`);
+      assert.doesNotMatch(formatted, /secret|value/);
     }
+  }
+});
+
+test('formatPidDiagnostic redacts an entire escaped or quoted multi-word sensitive value', () => {
+  const commands = [
+    String.raw`tool --token=secret\ value --mode safe`,
+    String.raw`tool --token=secret\\ value --mode safe`,
+    'tool --token="secret value" --mode safe',
+    String.raw`tool --token secret\ value --mode safe`,
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(332, [{ pid: 332, command }]);
+
+    assert.ok(
+      formatted === 'PID 332 (tool --token=[REDACTED] --mode safe)' ||
+        formatted === 'PID 332 ([REDACTED COMMAND])',
+      formatted,
+    );
+    assert.doesNotMatch(formatted, /secret|value/);
   }
 });
 
