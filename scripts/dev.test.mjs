@@ -161,13 +161,22 @@ test('resolvePnpmTarget keeps Windows pnpm.cmd launches on the shell path', () =
   withNpmExecPath('C:\\Users\\SLEYB\\AppData\\Roaming\\npm\\pnpm.cmd', () => {
     const target = resolvePnpmTarget(['dev:free-ports']);
 
-    assert.equal(target.command, process.env.ComSpec ?? 'cmd.exe');
-    assert.deepEqual(target.args, [
-      '/d',
-      '/s',
-      '/c',
-      'C:\\Users\\SLEYB\\AppData\\Roaming\\npm\\pnpm.cmd dev:free-ports',
-    ]);
+    if (process.platform === 'win32') {
+      // En Windows, un `.cmd` se lanza a través del shell (ComSpec) porque no
+      // es ejecutable directo con spawn.
+      assert.equal(target.command, process.env.ComSpec ?? 'cmd.exe');
+      assert.deepEqual(target.args, [
+        '/d',
+        '/s',
+        '/c',
+        'C:\\Users\\SLEYB\\AppData\\Roaming\\npm\\pnpm.cmd dev:free-ports',
+      ]);
+    } else {
+      // En el resto de plataformas no existe ComSpec; el comando se pasa tal
+      // cual (escenario de prueba que simula un npm_execpath de Windows).
+      assert.equal(target.command, 'C:\\Users\\SLEYB\\AppData\\Roaming\\npm\\pnpm.cmd');
+      assert.deepEqual(target.args, ['dev:free-ports']);
+    }
   });
 });
 
