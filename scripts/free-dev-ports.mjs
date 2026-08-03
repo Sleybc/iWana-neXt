@@ -111,7 +111,7 @@ export function parsePsEntries(stdout) {
     .filter((entry) => entry && Number.isFinite(entry.pid) && entry.pid > 0);
 }
 
-function parseWindowsProcessEntries(raw) {
+export function parseWindowsProcessEntries(raw) {
   const text = raw.trim();
   if (!text) return [];
 

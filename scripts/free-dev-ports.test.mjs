@@ -9,6 +9,7 @@ import {
   parsePsEntries,
   planRepoWatcherTermination,
   normalizeForMatching,
+  parseWindowsProcessEntries,
   planDevPortCleanup,
 } from './free-dev-ports.mjs';
 
@@ -319,6 +320,44 @@ test('parsePsEntries captura la identidad Unix y permite revalidarla sin matar p
       1,
     ),
     [506],
+  );
+});
+
+test('parseWindowsProcessEntries captura CreationDate y conserva la identidad para revalidar', () => {
+  const marker = { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' };
+  const windowsFixture = JSON.stringify([
+    {
+      ProcessId: 507,
+      ParentProcessId: 1,
+      CreationDate: '20260803100000.000000-420',
+      CommandLine:
+        'C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch',
+    },
+  ]);
+  const discoveryEntries = parseWindowsProcessEntries(windowsFixture);
+  const revalidatedEntries = parseWindowsProcessEntries(windowsFixture);
+
+  assert.deepEqual(discoveryEntries, [
+    {
+      pid: 507,
+      ppid: 1,
+      startIdentity: '20260803100000.000000-420',
+      command:
+        'C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch',
+    },
+  ]);
+  assert.equal(revalidatedEntries[0]?.startIdentity, discoveryEntries[0]?.startIdentity);
+  assert.deepEqual(
+    planRepoWatcherTermination(
+      [507],
+      discoveryEntries,
+      revalidatedEntries,
+      [marker],
+      'win32',
+      900,
+      1,
+    ),
+    [507],
   );
 });
 
