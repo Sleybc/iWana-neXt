@@ -181,6 +181,15 @@ export function findRepoWatcherPids(entries, protectedPids, markers = DEV_PROCES
     .map((entry) => entry.pid);
 }
 
+export function classifyDevPids(portPids, repoWatcherPids) {
+  const uniquePortPids = [...new Set(portPids)];
+  const safePids = [...new Set(repoWatcherPids)];
+  const safeSet = new Set(safePids);
+  const externalPids = uniquePortPids.filter((pid) => !safeSet.has(pid));
+
+  return { safePids, externalPids };
+}
+
 function getRepoWatcherPids() {
   try {
     const entries = process.platform === 'win32' ? getWindowsProcessTable() : getUnixProcessTable();
@@ -253,10 +262,21 @@ async function main() {
   let foundAnyPid = false;
 
   for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
-    const pids = [...new Set([...getPidsUsingPorts(DEV_PORTS), ...getRepoWatcherPids()])];
+    const portPids = getPidsUsingPorts(DEV_PORTS);
+    const repoWatcherPids = getRepoWatcherPids();
+    const { safePids, externalPids } = classifyDevPids(portPids, repoWatcherPids);
 
-    if (pids.length === 0) {
-      if (!foundAnyPid) {
+    if (externalPids.length > 0) {
+      console.warn(
+        `No se detienen procesos externos en puertos de desarrollo: ${externalPids.join(', ')}.`,
+      );
+    }
+
+    if (safePids.length === 0) {
+      if (externalPids.length > 0) {
+        process.exitCode = 1;
+      }
+      if (!foundAnyPid && externalPids.length === 0) {
         console.log('No hay procesos ocupando puertos de desarrollo (3000, 3001, 3002).');
       }
       return;
@@ -264,10 +284,10 @@ async function main() {
 
     foundAnyPid = true;
     console.log(
-      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs detectados: ${pids.join(', ')}`,
+      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs de watchers: ${safePids.join(', ')}`,
     );
 
-    for (const pid of pids) {
+    for (const pid of safePids) {
       try {
         killPid(pid);
         console.log(`PID ${pid} detenido.`);
@@ -279,11 +299,25 @@ async function main() {
     await delay(SWEEP_DELAY_MS);
   }
 
-  const remainingPids = [...new Set([...getPidsUsingPorts(DEV_PORTS), ...getRepoWatcherPids()])];
+  const remainingPortPids = getPidsUsingPorts(DEV_PORTS);
+  const remainingRepoWatcherPids = getRepoWatcherPids();
+  const {
+    safePids: remainingSafePids,
+    externalPids: remainingExternalPids,
+  } = classifyDevPids(remainingPortPids, remainingRepoWatcherPids);
 
-  if (remainingPids.length > 0) {
+  if (remainingExternalPids.length > 0) {
     console.warn(
-      `Persisten procesos en puertos de desarrollo tras ${MAX_SWEEPS} barridos: ${remainingPids.join(', ')}`,
+      `No se detienen procesos externos en puertos de desarrollo: ${remainingExternalPids.join(', ')}.`,
+    );
+  }
+
+  if (remainingSafePids.length > 0 || remainingExternalPids.length > 0) {
+    console.warn(
+      `Persisten procesos en puertos de desarrollo tras ${MAX_SWEEPS} barridos: ${[
+        ...remainingSafePids,
+        ...remainingExternalPids,
+      ].join(', ')}`,
     );
     process.exitCode = 1;
   }

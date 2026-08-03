@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findRepoWatcherPids, getProtectedPids } from './free-dev-ports.mjs';
+import { classifyDevPids, findRepoWatcherPids, getProtectedPids } from './free-dev-ports.mjs';
 
 test('getProtectedPids protege el proceso actual y toda su cadena de ancestros', () => {
   const entries = [
@@ -78,4 +78,18 @@ test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', (
     detectedPids.sort((left, right) => left - right),
     [90, 91],
   );
+});
+
+test('classifyDevPids separates external listeners from workspace watchers', () => {
+  assert.deepEqual(
+    classifyDevPids([101, 202, 303, 303], [202, 404, 404]),
+    { safePids: [202, 404], externalPids: [101, 303] },
+  );
+});
+
+test('classifyDevPids permits cleaning a stale watcher without a listening socket', () => {
+  assert.deepEqual(classifyDevPids([], [404]), {
+    safePids: [404],
+    externalPids: [],
+  });
 });
