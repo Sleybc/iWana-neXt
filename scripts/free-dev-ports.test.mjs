@@ -46,7 +46,7 @@ test('findRepoWatcherPids conserva watchers residuales fuera del arbol protegido
   const protectedPids = new Set([20, 30]);
   const markers = [
     { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' },
-    { path: '/home/sley/Documentos/appiw/', command: '--filter @iwana/api dev' },
+    { path: '/home/sley/Documentos/appiw/', command: 'pnpm --filter @iwana/api dev' },
   ];
 
   const detectedPids = findRepoWatcherPids(entries, protectedPids, markers);
@@ -116,6 +116,22 @@ test('findRepoWatcherPids detecta invocaciones de Node Unix y Windows con el scr
   assert.deepEqual(findRepoWatcherPids(entries, new Set(), [markers[1]], 'win32'), [105]);
 });
 
+test('findRepoWatcherPids no confunde nombres de ejecutables o scripts maliciosos', () => {
+  const repoRoot = 'C:/appiw';
+  const entries = [
+    { pid: 106, ppid: 1, command: `${repoRoot}/apps/api/evil-nest.js start --watch` },
+    { pid: 107, ppid: 1, command: `node ${repoRoot}/apps/api/evil-nest.js start --watch` },
+    { pid: 108, ppid: 1, command: `${repoRoot}/apps/web/evil-next dev --port 3001` },
+    { pid: 109, ppid: 1, command: `node ${repoRoot}/apps/web/evil-next dev --port 3001` },
+  ];
+  const markers = [
+    { path: `${repoRoot}/apps/api/`, command: 'nest.js start --watch' },
+    { path: `${repoRoot}/apps/web/`, command: 'next dev --port 3001' },
+  ];
+
+  assert.deepEqual(findRepoWatcherPids(entries, new Set(), markers, 'win32'), []);
+});
+
 test('normalizeForMatching conserva mayúsculas en Unix y normaliza Windows', () => {
   assert.notEqual(
     normalizeForMatching('/home/user/Appiw', 'linux'),
@@ -142,7 +158,7 @@ test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', (
   const protectedPids = new Set();
   const markers = [
     { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' },
-    { path: 'C:/appiw/', command: '--filter @iwana/web dev' },
+    { path: 'C:/appiw/', command: 'pnpm.CMD --filter @iwana/web dev' },
   ];
 
   const detectedPids = findRepoWatcherPids(entries, protectedPids, markers);
@@ -249,4 +265,29 @@ test('formatPidDiagnostic redacts the complete unquoted Authorization header val
   assert.match(formatted, /--header=\[REDACTED\]/);
   assert.equal((formatted.match(/\[REDACTED\]/g) ?? []).length, 3);
   assert.doesNotMatch(formatted, /secret|header-secret/);
+});
+
+test('formatPidDiagnostic redacts attached options and sensitive aliases without leaking values', () => {
+  const formatted = formatPidDiagnostic(325, [
+    {
+      pid: 325,
+      command:
+        'tool -psecret -p secret -uuser:password -u user:password --pwd=secret --db-password=database-secret --auth-token=auth-secret --token token-secret --api-key api-secret --secret secret-value',
+    },
+  ]);
+
+  assert.match(formatted, /-p=\[REDACTED\]/);
+  assert.match(formatted, /-u=\[REDACTED\]/);
+  assert.match(formatted, /--db-password=\[REDACTED\]/);
+  assert.match(formatted, /--auth-token=\[REDACTED\]/);
+  assert.doesNotMatch(
+    formatted,
+    /database-secret|auth-secret|token-secret|api-secret|secret-value|user:password/i,
+  );
+});
+
+test('formatPidDiagnostic fails closed when a sensitive option has no confidently parsed value', () => {
+  const formatted = formatPidDiagnostic(326, [{ pid: 326, command: 'node --token' }]);
+
+  assert.equal(formatted, 'PID 326 ([REDACTED COMMAND])');
 });

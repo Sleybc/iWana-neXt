@@ -158,29 +158,55 @@ export function normalizeForMatching(value, platform = process.platform) {
   return platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-function getFirstCommandToken(command) {
-  const match = String(command ?? '')
-    .trim()
-    .match(/^(?:"([^"]*)"|'([^']*)'|(\S+))/);
-
-  return match?.[1] ?? match?.[2] ?? match?.[3] ?? '';
-}
-
 function getCommandTokens(command) {
   const tokens = [];
-  const tokenPattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let match;
+  let token = '';
+  let quote = '';
+  let tokenStarted = false;
 
-  while ((match = tokenPattern.exec(String(command ?? ''))) !== null) {
-    tokens.push(match[1] ?? match[2] ?? match[3]);
+  for (const character of String(command ?? '')) {
+    if (quote) {
+      if (character === quote) {
+        quote = '';
+      } else {
+        token += character;
+      }
+      tokenStarted = true;
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (/\s/.test(character)) {
+      if (tokenStarted) {
+        tokens.push(token);
+        token = '';
+        tokenStarted = false;
+      }
+      continue;
+    }
+
+    token += character;
+    tokenStarted = true;
   }
 
-  return tokens;
+  if (tokenStarted) tokens.push(token);
+
+  return { tokens, complete: quote === '' };
+}
+
+function getTokenBasename(value) {
+  const normalized = String(value ?? '').replace(/\\/g, '/');
+  return normalized.slice(normalized.lastIndexOf('/') + 1);
 }
 
 function isNodeExecutable(executable, platform) {
   const normalizedExecutable = normalizeForMatching(executable, platform);
-  const executableName = normalizedExecutable.slice(normalizedExecutable.lastIndexOf('/') + 1);
+  const executableName = getTokenBasename(normalizedExecutable);
 
   if (executableName !== 'node' && executableName !== 'node.exe') return false;
 
@@ -202,27 +228,33 @@ export function findRepoWatcherPids(
     .filter((entry) => !protectedPids.has(entry.pid))
     .filter((entry) =>
       markers.some((marker) => {
-        const commandTokens = getCommandTokens(entry.command);
-        const normalizedCommand = normalizeForMatching(entry.command, platform);
-        const normalizedExecutable = normalizeForMatching(
-          getFirstCommandToken(entry.command),
-          platform,
-        );
+        const { tokens: commandTokens, complete } = getCommandTokens(entry.command);
+        const { tokens: markerTokens, complete: markerComplete } = getCommandTokens(marker.command);
         const normalizedMarkerPath = normalizeForMatching(marker.path ?? '', platform);
-        const normalizedMarkerCommand = normalizeForMatching(marker.command ?? '', platform);
 
-        if (!normalizedMarkerPath || !normalizedMarkerCommand) return false;
+        if (!complete || !markerComplete || !normalizedMarkerPath || markerTokens.length === 0) {
+          return false;
+        }
 
-        const executableOwnsMarker = normalizedExecutable.includes(normalizedMarkerPath);
-        const nodeScriptOwnsMarker =
-          isNodeExecutable(commandTokens[0] ?? '', platform) &&
-          normalizeForMatching(commandTokens[1] ?? '', platform).includes(normalizedMarkerPath);
+        const commandIsNodeInvocation = isNodeExecutable(commandTokens[0] ?? '', platform);
+        const markerIsNodeInvocation = isNodeExecutable(markerTokens[0] ?? '', platform);
+        const identityIndex = commandIsNodeInvocation && !markerIsNodeInvocation ? 1 : 0;
+        const identityToken = commandTokens[identityIndex] ?? '';
+        const markerIdentity = normalizeForMatching(getTokenBasename(markerTokens[0]), platform);
+        const commandIdentity = normalizeForMatching(getTokenBasename(identityToken), platform);
+        const identityOwnsMarker =
+          Boolean(identityToken) &&
+          normalizeForMatching(identityToken, platform).includes(normalizedMarkerPath);
 
-        // La ruta debe pertenecer al ejecutable o al script inmediatamente posterior a Node;
-        // verla solo después de opciones no prueba ownership.
-        if (!executableOwnsMarker && !nodeScriptOwnsMarker) return false;
+        // La ruta solo puede pertenecer al ejecutable o al script inmediatamente posterior a Node.
+        // Verla después de opciones o argumentos no prueba ownership.
+        if (!identityOwnsMarker || commandIdentity !== markerIdentity) return false;
 
-        return normalizedCommand.includes(normalizedMarkerCommand);
+        return markerTokens.slice(1).every(
+          (markerToken, index) =>
+            normalizeForMatching(commandTokens[identityIndex + index + 1] ?? '', platform) ===
+            normalizeForMatching(markerToken, platform),
+        );
       }),
     )
     .map((entry) => entry.pid);
@@ -247,23 +279,155 @@ export function planDevPortCleanup(portPids, repoWatcherPids) {
   };
 }
 
-const ENV_ASSIGNMENT_PATTERN = /(^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/g;
-const POWERSHELL_ENV_PATTERN = /((?:\$env:|set\s+)[A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/gi;
 const CONNECTION_STRING_PATTERN = /\b(?:https?|postgres(?:ql)?|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?|amqps?):\/\/[^\s'"`]+/gi;
-const SENSITIVE_OPTION_PATTERN = /(^|\s)(-u|-p|--?(?:pwd|token|password|passwd|secret|api[-_]?key|authorization|credential|connection[-_]?string|database[-_]?url|dsn|client[-_]?secret|private[-_]?key|access[-_]?key|refresh[-_]?token|signing[-_]?key|cookie|auth|user))(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
-const SENSITIVE_HEADER_PATTERN = /(^|\s)(-H|--headers?)(?:=|\s+)(?:"[^"]*"|'[^']*'|.*?(?=\s+--?\S+|$))/gi;
 const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
+const REDACTED_COMMAND = '[REDACTED COMMAND]';
+const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.+$/;
+const POWERSHELL_ENV_ASSIGNMENT_PATTERN = /^\$env:[A-Za-z_][A-Za-z0-9_]*=.+$/i;
+const SENSITIVE_LONG_OPTIONS = new Set([
+  'pwd',
+  'token',
+  'password',
+  'passwd',
+  'secret',
+  'api-key',
+  'authorization',
+  'credential',
+  'connection-string',
+  'database-url',
+  'db-password',
+  'dsn',
+  'client-secret',
+  'private-key',
+  'access-key',
+  'refresh-token',
+  'signing-key',
+  'cookie',
+  'auth',
+  'auth-token',
+  'user',
+]);
+
+function normalizeSensitiveOptionName(name) {
+  return String(name ?? '').replace(/_/g, '-').toLowerCase();
+}
+
+function parseSensitiveOption(token) {
+  const value = String(token ?? '');
+  if (!value.startsWith('-') || value === '-') return null;
+
+  const isHeader = value === '-H' || value === '--header' || value === '--headers';
+  if (isHeader || /^--?headers?(?:=|$)/i.test(value)) {
+    const separator = value.indexOf('=');
+    return {
+      name: separator >= 0 ? value.slice(0, separator) : value,
+      attachedValue: separator >= 0 ? value.slice(separator + 1) : null,
+      header: true,
+    };
+  }
+
+  const shortOption = value.match(/^-([pu])(?<attached>.*)$/i);
+  if (shortOption) {
+    const attachedValue = shortOption.groups.attached || null;
+    return {
+      name: `-${shortOption[1]}`,
+      attachedValue: attachedValue?.startsWith('=') ? attachedValue.slice(1) : attachedValue,
+      header: false,
+    };
+  }
+
+  const longOption = value.match(/^(--?)([^=]+)(?:=(.*))?$/);
+  if (!longOption) return null;
+
+  const optionName = normalizeSensitiveOptionName(longOption[2]);
+  if (!SENSITIVE_LONG_OPTIONS.has(optionName)) return null;
+
+  return {
+    name: `${longOption[1]}${longOption[2]}`,
+    attachedValue: longOption[3] ?? null,
+    header: false,
+  };
+}
+
+function redactConnectionString(token) {
+  return String(token).replace(CONNECTION_STRING_PATTERN, '<connection-redacted>');
+}
+
+function isOptionToken(token) {
+  return String(token ?? '').startsWith('-');
+}
+
+function getHeaderValueEnd(tokens, startIndex, attachedValue) {
+  let headerValue = attachedValue;
+  let valueIndex = startIndex;
+
+  if (headerValue === null) {
+    headerValue = tokens[valueIndex] ?? null;
+    valueIndex += 1;
+  }
+
+  if (!headerValue || isOptionToken(headerValue)) return null;
+
+  const separator = headerValue.indexOf(':');
+  if (separator < 1) return null;
+  if (headerValue.slice(separator + 1).trim()) return valueIndex;
+
+  const headerName = headerValue.slice(0, separator).toLowerCase();
+  const additionalTokens =
+    headerName === 'authorization' || headerName === 'proxy-authorization' ? 2 : 1;
+  const endIndex = valueIndex + additionalTokens;
+  if (
+    endIndex > tokens.length ||
+    tokens.slice(valueIndex, endIndex).some((token) => !token || isOptionToken(token))
+  ) {
+    return null;
+  }
+
+  return endIndex;
+}
 
 function sanitizeProcessCommand(command) {
   const normalizedCommand = String(command ?? '').trim().replace(/\s+/g, ' ');
   if (!normalizedCommand) return '';
 
-  return normalizedCommand
-    .replace(CONNECTION_STRING_PATTERN, '<connection-redacted>')
-    .replace(ENV_ASSIGNMENT_PATTERN, '$1')
-    .replace(POWERSHELL_ENV_PATTERN, '')
-    .replace(SENSITIVE_HEADER_PATTERN, '$1$2=[REDACTED]')
-    .replace(SENSITIVE_OPTION_PATTERN, '$1$2=[REDACTED]')
+  const tokenized = getCommandTokens(normalizedCommand);
+  if (!tokenized.complete) {
+    return REDACTED_COMMAND;
+  }
+
+  const sanitizedTokens = [];
+  for (let index = 0; index < tokenized.tokens.length; index += 1) {
+    const token = tokenized.tokens[index];
+    if (ENV_ASSIGNMENT_PATTERN.test(token) || POWERSHELL_ENV_ASSIGNMENT_PATTERN.test(token)) {
+      continue;
+    }
+
+    const sensitiveOption = parseSensitiveOption(token);
+    if (!sensitiveOption) {
+      sanitizedTokens.push(redactConnectionString(token));
+      continue;
+    }
+
+    let consumedValue = sensitiveOption.attachedValue;
+    let nextIndex = index + 1;
+
+    if (sensitiveOption.header) {
+      nextIndex = getHeaderValueEnd(tokenized.tokens, nextIndex, consumedValue);
+      if (nextIndex === null) return REDACTED_COMMAND;
+    } else if (consumedValue === null) {
+      consumedValue = tokenized.tokens[nextIndex] ?? null;
+      nextIndex += 1;
+      if (!consumedValue || isOptionToken(consumedValue)) return REDACTED_COMMAND;
+    } else if (!consumedValue) {
+      return REDACTED_COMMAND;
+    }
+
+    sanitizedTokens.push(`${sensitiveOption.name}=[REDACTED]`);
+    index = nextIndex - 1;
+  }
+
+  return sanitizedTokens
+    .join(' ')
     .replace(AUTH_HEADER_PATTERN, '$1[REDACTED]')
     .slice(0, 160);
 }
