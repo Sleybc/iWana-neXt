@@ -30,10 +30,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24.x'
+          node-version: ${{ steps.node-version.outputs.version }}
 
       - name: Auditar citas ADR
         run: node scripts/audit-adr-citations.mjs
@@ -49,29 +58,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       # No se publican imágenes ni se inyectan secretos: este job solo valida que
       # las cinco imágenes construyan en un runner limpio. El valor público es
       # un endpoint sintético no operativo requerido por el build de Next.js.
       - name: Build API image
-        run: docker build --file apps/api/Dockerfile --tag "iwana-ci/api:${GITHUB_SHA}" .
+        run: docker build --file apps/api/Dockerfile --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }} --tag "iwana-ci/api:${GITHUB_SHA}" .
 
       - name: Build web image
         run: >-
           docker build --file apps/web/Dockerfile
+          --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }}
           --build-arg NEXT_PUBLIC_API_URL=https://ci.invalid/api/v1
           --tag "iwana-ci/web:${GITHUB_SHA}" .
 
       - name: Build portal image
         run: >-
           docker build --file apps/portal/Dockerfile
+          --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }}
           --build-arg NEXT_PUBLIC_API_URL=https://ci.invalid/api/v1
           --tag "iwana-ci/portal:${GITHUB_SHA}" .
 
       - name: Build worker image
-        run: docker build --file apps/worker/Dockerfile --tag "iwana-ci/worker:${GITHUB_SHA}" .
+        run: docker build --file apps/worker/Dockerfile --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }} --tag "iwana-ci/worker:${GITHUB_SHA}" .
 
       - name: Build migrator image
-        run: docker build --file packages/database/Dockerfile.migrator --tag "iwana-ci/migrator:${GITHUB_SHA}" .
+        run: docker build --file packages/database/Dockerfile.migrator --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }} --tag "iwana-ci/migrator:${GITHUB_SHA}" .
 
       # El perfil production vive en docker-compose.prod.yml: sus `${VAR:?}` no
       # deben bloquear la interpolación del archivo base de desarrollo.
@@ -156,10 +176,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24.x'
+          node-version: ${{ steps.node-version.outputs.version }}
 
       - name: Setup pnpm 10
         uses: pnpm/action-setup@v3
@@ -181,6 +210,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate development tooling
+        run: pnpm test:tooling
 
       - name: Check agentes multi-IDE sincronizados
         run: pnpm sync:agents:check
@@ -374,10 +406,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24.x'
+          node-version: ${{ steps.node-version.outputs.version }}
 
       - name: Setup pnpm 10
         uses: pnpm/action-setup@v3

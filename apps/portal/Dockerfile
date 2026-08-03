@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1.7
 # apps/portal/Dockerfile — Build multi-stage para Next.js App Router (@iwana/portal)
 # output: 'standalone' configurado en apps/portal/next.config.ts
 
-FROM node:25.8.2-bookworm AS base
+ARG NODE_VERSION=24.13.1
+FROM node:${NODE_VERSION}-bookworm AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
 
@@ -18,7 +20,8 @@ COPY packages/database/package.json packages/database/
 COPY packages/shared/package.json   packages/shared/
 COPY packages/ui/package.json       packages/ui/
 
-RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --prod=false --ignore-scripts
 
 # ── builder ───────────────────────────────────────────────────────────────
 FROM base AS builder
@@ -34,13 +37,15 @@ COPY --from=deps /app/apps/portal/node_modules       ./apps/portal/node_modules
 
 COPY . .
 
-RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+# Los node_modules de deps incluyen los enlaces de todos los workspaces. Tras
+# COPY . . se conservan porque .dockerignore excluye los node_modules del contexto.
+# Este builder se valida sin una segunda instalación para evitar trabajo duplicado.
 RUN pnpm exec tsc --project packages/shared/tsconfig.json
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @iwana/portal build
 
 # ── runner ────────────────────────────────────────────────────────────────
-FROM node:25.8.2-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production

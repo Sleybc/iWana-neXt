@@ -1,6 +1,18 @@
 # Overlay exclusivo del E2E R4.1. Nunca se carga con el perfil production.
 # Las credenciales llegan por el entorno efímero del provisionador; no se
 # almacenan valores sensibles en este archivo.
+#
+# Los anclas YAML no cruzan archivos: `worker-e2e` necesita las suyas. Los
+# servicios de datos heredan las del archivo base.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+x-security-opt: &default-security-opt
+  - no-new-privileges:true
+
 services:
   postgres:
     container_name: iwana_postgres_e2e
@@ -77,11 +89,15 @@ services:
     healthcheck:
       # El worker BullMQ no expone HTTP: el proceso vivo es el healthcheck
       # operativo aprobado para este consumidor sin puerto de administración.
+      # Misma deuda conocida que `worker-prod`: el probe no distingue un worker
+      # sano de uno con el loop colgado. Ver el comentario en docker-compose.prod.yml.
       test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
+    logging: *default-logging
+    security_opt: *default-security-opt
 
 volumes:
   iwana_postgres_data_e2e:

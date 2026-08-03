@@ -1,8 +1,21 @@
 # Informe de arranque local de plataforma
 
 **Version:** 1.0  
-**Estado:** Aprobado  
+**Estado:** Aprobado — parcialmente superado, ver nota de vigencia  
 **Fecha:** 2026-06-13
+
+> **Nota de vigencia (2026-08-03).** Este informe describe el arranque tal como
+> quedó el 2026-06-13. Dos cifras de la sección "Hallazgos" y de "Evidencia"
+> quedaron superadas por cambios posteriores en `scripts/dev.mjs`:
+>
+> - el healthcheck ya no usa "un deadline total de 60 segundos": son 90 s de
+>   compilación más 90 s de readiness, en dos fases encadenadas;
+> - `pnpm test:tooling` ya no ejecuta 7 pruebas.
+>
+> El estado vigente del arranque está en
+> [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md).
+> El resto del informe —en particular el mount del volumen de PostgreSQL en
+> `/var/lib/postgresql`, exigido por el layout de PostgreSQL 18— sigue vigente.
 
 ## Objetivo
 
