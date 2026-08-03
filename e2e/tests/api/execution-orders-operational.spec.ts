@@ -255,6 +255,24 @@ function nowIso(offsetMinutes = 0): string {
   return new Date(Date.now() + offsetMinutes * 60_000).toISOString();
 }
 
+/**
+ * ISO de agenda anclado al mediodía UTC del próximo día UTC más un offset.
+ * La guarda de ventana de instalación exige que start y end caigan en el mismo
+ * día local (la ventana operativa del tenant es 00:00-23:59). Anclar al mediodía
+ * UTC mapea a 00:00-02:00 local en cualquier huso y, con los offsets máximos de
+ * la suite (< 16h), el evento nunca cruza la medianoche local. Reemplaza a
+ * nowIso() en ventanas de instalación, que fallaba de forma intermitente con
+ * 400 según la hora del día en que corría CI (QA E2E execution-orders 8b).
+ */
+function anchorScheduleIso(offsetMinutes = 0): string {
+  const now = new Date();
+  const nextNoonUtc = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0),
+  );
+  nextNoonUtc.setUTCDate(nextNoonUtc.getUTCDate() + 1);
+  return new Date(nextNoonUtc.getTime() + offsetMinutes * 60_000).toISOString();
+}
+
 function expectMutationHeaders(
   response: { headers(): Record<string, string> },
   expectedVersion?: number,
@@ -476,8 +494,8 @@ async function createScheduledOrder(
       type: 'INSTALLATION',
       title: `E2E R2.3 ${suffix}`,
       description: 'Prueba de gate de materiales',
-      scheduledStartAt: nowIso(startOffsetMinutes),
-      scheduledEndAt: nowIso(startOffsetMinutes + 30),
+      scheduledStartAt: anchorScheduleIso(startOffsetMinutes),
+      scheduledEndAt: anchorScheduleIso(startOffsetMinutes + 30),
       assignedUserId: technicianId,
       address: 'Calle de prueba 1',
       municipality: 'Municipio de prueba',
@@ -681,8 +699,8 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
           type: 'INSTALLATION',
           title: 'E2E Instalación fibra óptica',
           description: 'OT generada por prueba E2E operativa',
-          scheduledStartAt: nowIso(60 + windowShift),
-          scheduledEndAt: nowIso(180 + windowShift),
+          scheduledStartAt: anchorScheduleIso(60 + windowShift),
+          scheduledEndAt: anchorScheduleIso(180 + windowShift),
           assignedUserId: ctx.techUserId,
           address: 'Cra 10 # 10-10',
           municipality: 'Bogotá',

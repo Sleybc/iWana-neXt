@@ -85,7 +85,7 @@ Scoped / single-target:
 
 There is **no `migration:generate` script** — migrations are written by hand under `packages/database/src/migrations/` (public) and `packages/database/src/migrations/tenant/` (numbered, e.g. `057_create_stock_issues.ts`).
 
-`pnpm dev` is an orchestrator (`scripts/dev.mjs`): it frees dev ports, brings up Docker infra (postgres, redis, pgbouncer, minio, nginx, adminer), builds `@iwana/shared` + `@iwana/storage`, runs all migrations, then starts the API in watch mode and waits for its healthcheck (`GET http://127.0.0.1:3000/api/v1/health`) **before** starting web/portal/worker. In a TTY it renders an interactive dashboard (`↑↓` select, `a` all, `e` errors, `q` quit). The db package must be **built** before migrations run — migrations execute against compiled `dist/` (`migration:run -d dist/data-source.js`).
+`pnpm dev` is an orchestrator (`scripts/dev.mjs`): it frees dev ports, brings up Docker infra with `up --wait` (postgres, redis, pgbouncer, minio, typesense and nginx), runs the `minio-init` one-shot that creates the `S3_BUCKET` bucket, builds `@iwana/shared` + `@iwana/storage`, runs all migrations, then starts the API in watch mode and waits for its healthcheck (`GET http://127.0.0.1:3000/api/v1/health`) **before** starting web/portal/worker. Adminer is opt-in: use `docker compose --profile development --profile adminer --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d adminer` only when needed. In a TTY it renders an interactive dashboard (`↑↓` select, `a` all, `e` errors, `q` quit). The db package must be **built** before migrations run — migrations execute against compiled `dist/` (`migration:run -d dist/data-source.js`).
 
 ## Architecture
 

@@ -11,6 +11,21 @@ const rootCwd = process.cwd();
 // el overlay `docker-compose.dev.yml` y está ligada a 127.0.0.1.
 export const devComposeFiles = ['docker-compose.yml', 'docker-compose.dev.yml'];
 const composeFileArgs = devComposeFiles.flatMap((file) => ['-f', file]);
+// Servicios de larga duración del perfil `development`. Se nombran explícitamente
+// en lugar de usar `--profile development` porque `adminer` es opt-in (perfil
+// propio) y no debe arrancar con `pnpm dev`.
+//
+// `typesense` estuvo ausente de esta lista pese a declarar `profiles: development`:
+// el módulo de búsqueda arrancaba contra un servicio inexistente. `minio-init` no
+// va aquí porque es un one-shot: `up --wait` lo trataría como un servicio caído.
+export const devInfraServices = ['postgres', 'redis', 'pgbouncer', 'minio', 'typesense', 'nginx'];
+// One-shots del arranque, ejecutados con `run --rm` tras `up --wait`. Mismo patrón
+// que `scripts/e2e-provision-operational.mjs`. `minio-init` crea el bucket
+// `S3_BUCKET`: sin él, el módulo de medios falla con `NoSuchBucket`.
+export const devInfraOneShots = ['minio-init'];
+// Cota superior del `up --wait`. El healthcheck más lento es el de MinIO; sin
+// tope, un servicio que nunca converge cuelga `pnpm dev` de forma indefinida.
+export const devInfraWaitTimeoutSeconds = 180;
 // Variables sin default que `docker-compose.yml` exige (`${VAR:?}`). Compose
 // interpola el documento completo antes de elegir servicios, así que faltar una
 // sola aborta el arranque con un error crudo de interpolación. El preflight las
@@ -29,7 +44,6 @@ export const requiredDevEnvVars = [
   'MINIO_IMAGE',
   'MINIO_MC_IMAGE',
   'NGINX_IMAGE',
-  'ADMINER_IMAGE',
 ];
 const isWindows = process.platform === 'win32';
 const hasScriptCommand =
@@ -735,12 +749,23 @@ function waitForExit(child, label) {
 }
 
 async function runStep(label, command, args, options = {}) {
-  const { dashboard, section } = options;
+  const { dashboard, section, trackChild } = options;
+  // Los pasos secuenciales (docker compose, builds, migraciones) también deben
+  // ser alcanzables por el apagado: un Ctrl+C durante las migraciones dejaba el
+  // hijo huérfano porque solo se registraban los procesos de larga duración.
+  const track = typeof trackChild === 'function' ? trackChild : () => () => {};
 
   if (!dashboard) {
     console.log(`\n[iWana dev] ${label}`);
     const child = spawnCommand(command, args);
-    await waitForExit(child, label);
+    const untrack = track(child);
+
+    try {
+      await waitForExit(child, label);
+    } finally {
+      untrack();
+    }
+
     return;
   }
 
@@ -751,6 +776,7 @@ async function runStep(label, command, args, options = {}) {
   }
 
   const child = spawnPipedCommand(command, args);
+  const untrack = track(child);
 
   if (child.stdout) {
     child.stdout.on('data', (chunk) => {
@@ -764,7 +790,12 @@ async function runStep(label, command, args, options = {}) {
     });
   }
 
-  await waitForExit(child, label);
+  try {
+    await waitForExit(child, label);
+  } finally {
+    untrack();
+  }
+
   dashboard.flush(section ?? 'system');
 
   if (section) {
@@ -941,6 +972,36 @@ function terminate(child, signal = 'SIGTERM') {
   }
 }
 
+// Registro único de procesos hijos. Distingue los pasos secuenciales (docker
+// compose, builds, migraciones), que se desregistran al terminar, de los
+// procesos de larga duración. El apagado alcanza a ambos: antes solo alcanzaba
+// a los segundos, así que un Ctrl+C durante las migraciones dejaba huérfanos.
+export function createProcessRegistry(terminateImpl = terminate) {
+  const stepChildren = new Set();
+  const managedChildren = [];
+
+  return {
+    trackStep(child) {
+      stepChildren.add(child);
+      return () => {
+        stepChildren.delete(child);
+      };
+    },
+    trackManaged(...children) {
+      managedChildren.push(...children);
+    },
+    shutdownAll(signal = 'SIGTERM') {
+      for (const child of stepChildren) {
+        terminateImpl(child, signal);
+      }
+
+      for (const child of managedChildren) {
+        terminateImpl(child, signal);
+      }
+    },
+  };
+}
+
 function spawnObservedProcess(section, command, args, dashboard, options = {}) {
   const observedCommand = buildObservedCommand(command, args, options);
 
@@ -999,14 +1060,9 @@ async function main() {
   assertDevEnv();
 
   const dashboard = createDashboard();
-  const managedChildren = [];
+  const registry = createProcessRegistry();
+  const { shutdownAll, trackStep: trackChild } = registry;
   let shutdownRequested = false;
-
-  function shutdownAll(signal = 'SIGTERM') {
-    for (const child of managedChildren) {
-      terminate(child, signal);
-    }
-  }
 
   dashboard?.setQuitHandler(() => {
     if (shutdownRequested) {
@@ -1023,11 +1079,41 @@ async function main() {
     }, 800);
   });
 
+  // Las señales se registran ANTES del primer paso. Cuando se registraban junto
+  // al arranque de la API, un Ctrl+C durante la liberación de puertos, el
+  // `docker compose up`, los builds o las migraciones dejaba procesos huérfanos.
+  const shutdown = (signal) => {
+    shutdownAll(signal);
+  };
+
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+
   dashboard?.start();
+
+  // `start()` deja la terminal en raw mode, con buffer alterno y stdin resumido.
+  // Sin este `finally` global, cualquier fallo previo al arranque de las apps
+  // devolvía la terminal inutilizable y además mantenía vivo el event loop, así
+  // que el proceso no terminaba pese a `process.exitCode = 1`.
+  try {
+    await runStartupSequence({ dashboard, registry, trackChild });
+  } finally {
+    shutdownAll('SIGTERM');
+    dashboard?.stop();
+  }
+}
+
+async function runStartupSequence({ dashboard, registry, trackChild }) {
   dashboard?.logSystem('Inicializando entorno de desarrollo');
 
-  await runStep('Liberando puertos de desarrollo', 'pnpm', ['dev:free-ports'], { dashboard });
+  await runStep('Liberando puertos de desarrollo', 'pnpm', ['dev:free-ports'], {
+    dashboard,
+    trackChild,
+  });
 
+  // `--wait` bloquea hasta que cada servicio esté running/healthy. Sin él, las
+  // migraciones podían arrancar contra una infraestructura a medio levantar:
+  // el único `depends_on` que garantizaba algo era el de pgbouncer sobre postgres.
   await runStep(
     'Levantando infraestructura Docker local',
     'docker',
@@ -1036,15 +1122,22 @@ async function main() {
       ...composeFileArgs,
       'up',
       '-d',
-      'postgres',
-      'redis',
-      'pgbouncer',
-      'minio',
-      'nginx',
-      'adminer',
+      '--wait',
+      '--wait-timeout',
+      String(devInfraWaitTimeoutSeconds),
+      ...devInfraServices,
     ],
-    { dashboard, section: 'docker' },
+    { dashboard, section: 'docker', trackChild },
   );
+
+  for (const service of devInfraOneShots) {
+    await runStep(
+      `Ejecutando inicializador ${service}`,
+      'docker',
+      ['compose', ...composeFileArgs, 'run', '--rm', service],
+      { dashboard, section: 'docker', trackChild },
+    );
+  }
 
   await runStep(
     'Estado de la infraestructura Docker',
@@ -1053,18 +1146,21 @@ async function main() {
     {
       dashboard,
       section: 'docker',
+      trackChild,
     },
   );
 
   await runStep('Compilando @iwana/shared', 'pnpm', ['--filter', '@iwana/shared', 'build'], {
     dashboard,
+    trackChild,
   });
 
   await runStep('Compilando @iwana/storage', 'pnpm', ['--filter', '@iwana/storage', 'build'], {
     dashboard,
+    trackChild,
   });
 
-  await runStep('Ejecutando migraciones', 'pnpm', ['db:migrate:all'], { dashboard });
+  await runStep('Ejecutando migraciones', 'pnpm', ['db:migrate:all'], { dashboard, trackChild });
 
   dashboard?.logSystem('Iniciando API en modo watch');
   const apiChild = spawnObservedProcess(
@@ -1074,7 +1170,7 @@ async function main() {
     dashboard,
     { pseudoTty: true },
   );
-  managedChildren.push(apiChild);
+  registry.trackManaged(apiChild);
 
   dashboard?.setStatus('web', 'waiting_api');
   dashboard?.setStatus('portal', 'waiting_api');
@@ -1082,13 +1178,6 @@ async function main() {
   dashboard?.log('web', 'Pendiente hasta que la API responda healthcheck OK.');
   dashboard?.log('portal', 'Pendiente hasta que la API responda healthcheck OK.');
   dashboard?.log('worker', 'Pendiente hasta que la API responda healthcheck OK.');
-
-  const shutdown = (signal) => {
-    shutdownAll(signal);
-  };
-
-  process.once('SIGINT', () => shutdown('SIGINT'));
-  process.once('SIGTERM', () => shutdown('SIGTERM'));
 
   try {
     await waitForApiHealth(dashboard, apiChild);
@@ -1126,7 +1215,7 @@ async function main() {
     dashboard,
     { pseudoTty: true },
   );
-  managedChildren.push(webChild, portalChild, workerChild);
+  registry.trackManaged(webChild, portalChild, workerChild);
 
   const children = [
     ['api', apiChild],
@@ -1153,13 +1242,9 @@ async function main() {
     });
   }
 
-  try {
-    await Promise.race(children.map(([name, child]) => exitPromiseFor(name, child)));
-  } finally {
-    shutdownAll('SIGTERM');
-
-    dashboard?.stop();
-  }
+  // El apagado y el `dashboard.stop()` viven en el `finally` de `main()`, que
+  // cubre también los caminos de fallo previos a este punto.
+  await Promise.race(children.map(([name, child]) => exitPromiseFor(name, child)));
 }
 
 const invokedPath = process.argv[1];

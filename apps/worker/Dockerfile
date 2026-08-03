@@ -1,4 +1,6 @@
-FROM node:25.8.2-bookworm AS base
+# syntax=docker/dockerfile:1.7
+ARG NODE_VERSION=24.13.1
+FROM node:${NODE_VERSION}-bookworm AS base
 
 WORKDIR /app
 
@@ -20,7 +22,8 @@ COPY packages/storage/package.json  packages/storage/
 COPY packages/ui/package.json       packages/ui/
 
 # HUSKY=0 evita que el hook "prepare" falle por ausencia de .git
-RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --prod=false --ignore-scripts
 
 # ── builder: compilar el worker ─────────────────────────────────────────────
 FROM base AS builder
@@ -35,9 +38,9 @@ COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 # Se copia el repo completo para preservar los links/junctions de workspace que usa pnpm.
 COPY . .
 
-# Rehidrata el grafo del monorepo dentro del builder para evitar enlaces rotos
-# al copiar `node_modules` entre stages en Docker.
-RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+# Los node_modules de deps incluyen los enlaces de todos los workspaces. Tras
+# COPY . . se conservan porque .dockerignore excluye los node_modules del contexto.
+# Este builder se valida sin una segunda instalación para evitar trabajo duplicado.
 
 # El worker depende de artefactos compilados de @iwana/shared y @iwana/db.
 # `pnpm exec` resuelve el binario real dentro de `.pnpm` sin depender de rutas fijas.
@@ -46,8 +49,12 @@ RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json && \
     pnpm exec tsc --project apps/worker/tsconfig.json
 
+# `deploy --prod` materializa el worker y sus workspaces runtime sin
+# dependencias de desarrollo, después de producir los artefactos dist.
+RUN pnpm --filter @iwana/worker deploy --prod --legacy /output
+
 # ── runner: imagen mínima de producción ────────────────────────────────────
-FROM base AS runner
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 WORKDIR /app
 
@@ -56,17 +63,10 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 worker
 
-COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=worker:nodejs /app/apps/worker ./apps/worker
-COPY --from=builder --chown=worker:nodejs /app/packages/shared ./packages/shared
-COPY --from=builder --chown=worker:nodejs /app/packages/database ./packages/database
-COPY --from=builder --chown=worker:nodejs /app/packages/storage ./packages/storage
-
-# El runtime no debe heredar archivos .env del workspace local.
-RUN rm -f /app/apps/worker/.env /app/apps/worker/.env.*
+# `deploy --prod` deja fuera pnpm global, toolchain y devDependencies. La
+# configuración sigue llegando por variables de entorno, no desde el workspace.
+COPY --from=builder --chown=worker:nodejs /output ./
 
 USER worker
-
-WORKDIR /app/apps/worker
 
 CMD ["node", "dist/main.js"]

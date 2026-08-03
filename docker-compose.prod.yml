@@ -12,6 +12,18 @@
 #
 # Este archivo NUNCA se carga en desarrollo. Los `${VAR:?}` se conservan
 # íntegros: ninguna variable de producción pierde su requisito duro.
+
+# Los anclas YAML no cruzan archivos: los servicios propios de este overlay
+# necesitan su propia declaración. Los servicios de datos heredan las del base.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+x-security-opt: &default-security-opt
+  - no-new-privileges:true
+
 services:
   # Los servicios de datos comparten la definición base, pero producción usa
   # nombres de contenedor y volúmenes propios para no tocar el estado de dev.
@@ -58,10 +70,12 @@ services:
     depends_on:
       api-prod:
         condition: service_healthy
+      # `service_started` solo garantizaba que el contenedor se hubiera creado:
+      # nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto.
       web-prod:
-        condition: service_started
+        condition: service_healthy
       portal-prod:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- https://127.0.0.1/ --no-check-certificate || exit 1']
       interval: 15s
@@ -69,6 +83,8 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   api-prod:
     build:
@@ -115,6 +131,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # La API fija STORAGE_DRIVER=minio y TYPESENSE_API_KEY como obligatorios,
+      # pero no declaraba dependencia de ninguno de los dos servicios.
+      minio:
+        condition: service_healthy
+      typesense:
+        condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/api/v1/health || exit 1']
       interval: 15s
@@ -122,6 +144,9 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    init: true
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   web-prod:
     build:
@@ -139,7 +164,25 @@ services:
     depends_on:
       api-prod:
         condition: service_healthy
+    # Next.js no expone una ruta de salud propia. El probe comprueba que el
+    # servidor acepta la conexión y responde HTTP sin error de servidor:
+    # tolera redirecciones a /auth/login y solo falla ante 5xx o socket cerrado.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3001/',(r)=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
+    init: true
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   portal-prod:
     build:
@@ -157,7 +200,22 @@ services:
     depends_on:
       api-prod:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3002/',(r)=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     restart: unless-stopped
+    init: true
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   worker-prod:
     build:
@@ -186,8 +244,13 @@ services:
       # El worker comparte la misma prohibición de almacenamiento local.
       STORAGE_DRIVER: minio
     healthcheck:
-      # El worker es un consumidor BullMQ y no expone HTTP. Este probe verifica
-      # que su proceso PID 1 siga vivo sin abrir un puerto de administración.
+      # DEUDA CONOCIDA: este probe no verifica nada. `process.kill(1, 0)` solo
+      # comprueba que exista el PID 1 dentro del propio contenedor, lo cual es
+      # cierto mientras el contenedor viva: un worker con el loop de BullMQ
+      # colgado reporta `healthy`. Sustituirlo exige un heartbeat emitido por el
+      # proceso (código de aplicación), no una corrección de infraestructura.
+      # Por el mismo motivo este servicio NO lleva `init: true`: cambiaría el
+      # PID 1 a docker-init y volvería el probe todavía menos significativo.
       test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
       interval: 15s
       timeout: 5s
@@ -198,7 +261,12 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      # El worker también fija STORAGE_DRIVER=minio.
+      minio:
+        condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   migrator-prod:
     build:
@@ -218,6 +286,8 @@ services:
       postgres:
         condition: service_healthy
     restart: 'no'
+    logging: *default-logging
+    security_opt: *default-security-opt
 
 volumes:
   iwana_postgres_data_prod:

@@ -88,7 +88,7 @@ docker ps | grep minio
 pnpm dev
 ```
 
-`pnpm dev` ya levanta MinIO, PostgreSQL, Redis, pgBouncer, Typesense, nginx y Adminer, y además ejecuta el bootstrap del bucket vía el servicio `minio-init` del compose local.
+`pnpm dev` levanta MinIO, PostgreSQL, Redis, pgBouncer, Typesense y nginx con `up --wait` —es decir, espera a que cada healthcheck pase— y a continuación ejecuta el bootstrap del bucket con `run --rm minio-init`. Adminer no forma parte del arranque: tiene perfil opt-in propio (ver más abajo).
 
 ### Bootstrap aislado
 
@@ -134,7 +134,10 @@ Salidas esperadas:
 pnpm dev
 
 # Diagnóstico aislado de infraestructura (sin apps):
-docker compose --env-file .env -f docker-compose.yml up -d minio postgres redis pgbouncer typesense nginx adminer
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d minio postgres redis pgbouncer typesense nginx
+
+# Adminer es opcional y solo se publica en loopback:
+docker compose --profile development --profile adminer --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d adminer
 
 # Inicializar el bucket manualmente si no se usa pnpm dev:
 docker compose --env-file .env -f docker-compose.yml run --rm minio-init

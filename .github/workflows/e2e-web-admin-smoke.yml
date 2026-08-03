@@ -21,10 +21,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24.x'
+          node-version: ${{ steps.node-version.outputs.version }}
 
       - name: Setup pnpm 10
         uses: pnpm/action-setup@v3

@@ -1,6 +1,6 @@
 # Stack Tecnológico — iWana neXt Platform
 
-**Última actualización:** 2026-07-09 (anotaciones de adopción real: Pino y react-query no adoptados)
+**Última actualización:** 2026-08-03 (Node 24.13.1 convergido por ADR-071)
 **Fuente:** Documentación oficial de cada proyecto (verificado)
 
 > ⚠️ **IMPORTANTE — Dos capas de versiones:**
@@ -19,7 +19,7 @@
 
 | Tecnología    | Versión Latest (Abr 2026)        | Link oficial                                       |
 | ------------- | -------------------------------- | -------------------------------------------------- |
-| Node.js       | **25.8.2** (current; LTS: v24.x) | <https://nodejs.org/en/blog/>                      |
+| Node.js       | **24.13.1 LTS** (baseline implementable) | <https://nodejs.org/en/blog/>                      |
 | pnpm          | **10.32.1**                      | <https://github.com/pnpm/pnpm/releases>            |
 | TypeScript    | **5.9.3**                        | <https://www.typescriptlang.org/docs>              |
 | Turborepo     | **2.8.11**                       | <https://turbo.build/repo/docs>                    |
@@ -94,7 +94,7 @@ de que el Staff Engineer proponga actualizar el PROMPT-EXEC de un sprint:
 | **Zod**          | 3.24.x           | 4.0.1                        | API de métodos cambiada — migración requerida en todos los validators      |
 | **otplib**       | 7.11.x           | 13.3.x                       | API de autenticación TOTP cambiada (+6 versiones major)                    |
 | **bcryptjs**     | 2.4.x            | 3.0.x                        | Paquete en uso es `bcryptjs` (no `bcrypt`); revisar compatibilidad Node 24 |
-| **Node.js**      | 22.14.0 LTS      | 25.8.2 (current; LTS: v24.x) | Cambios en resolución de módulos, deprecaciones de APIs                    |
+| **Node.js**      | 22.14.0 LTS      | 24.13.1 LTS | Cambios en resolución de módulos, deprecaciones de APIs                    |
 | **pnpm**         | 9.15.x           | 10.x                         | Workspace protocol y lockfile format                                       |
 | **Next.js**      | 15.2.x           | 16.x                         | Revisar App Router, RSC y Server Actions                                   |
 
@@ -154,7 +154,7 @@ El proyecto adopta un **baseline moderno alineado con latest stable** para las c
 | **shadcn/ui 2.5+**              | Muy adecuado para velocidad de desarrollo y consistencia de UI | **Adoptar** como baseline                                               |
 | **PostgreSQL 18.3**             | Potente y alineado al crecimiento del proyecto                 | **Adoptar**, con validación reforzada de RLS, migraciones y performance |
 | **Redis 8.6**                   | Adecuado y consistente con BullMQ                              | **Adoptar** como baseline                                               |
-| **Node.js 25.8.2** (LTS: v24.x) | LTS vigente y deseado para el proyecto                         | **Adoptar** como baseline                                               |
+| **Node.js 24.13.1 LTS**        | Runtime validado por CI y las cinco imágenes mediante ADR-071    | **Adoptar** como baseline                                               |
 | **pnpm 10.32.x**                | Coherente con Node 24/25 y monorepo moderno                    | **Adoptar** como baseline                                               |
 | **Zod 4.0.1**                   | Adecuado para validación moderna del proyecto                  | **Adoptar** como baseline                                               |
 | **otplib 13.3.x**               | Adecuado para MFA/TOTP en baseline moderno                     | **Adoptar** como baseline                                               |
@@ -186,7 +186,7 @@ El baseline sugerido para el siguiente sprint, alineado con la decisión actual 
 
 | Capa            | Recomendación Sprint 2                                          |
 | --------------- | --------------------------------------------------------------- |
-| Runtime         | Node.js 25.8.2 (LTS: v24.x)                                     |
+| Runtime         | Node.js 24.13.1 LTS                                             |
 | Package manager | pnpm 10.32.x                                                    |
 | Backend         | NestJS 11.1.x + TypeORM 0.3.28 + BullMQ 5.71.x                  |
 | Frontend        | Next.js 16.1.x + React 19.2 + Tailwind CSS 4.x + shadcn/ui 2.5+ |

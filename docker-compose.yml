@@ -10,6 +10,21 @@
 #                 --profile production --env-file .env.production ...
 #
 # Este archivo solo declara `expose:`; no publica puertos de datos hacia el host.
+
+# Rotación de logs. Sin esto el driver json-file crece sin límite hasta llenar
+# el disco del host; en desarrollo el stack lleva semanas encendido.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+# Impide que un proceso del contenedor gane privilegios vía binarios setuid.
+# Los entrypoints de estas imágenes bajan privilegios con su-exec/gosu desde
+# root, que no requiere setuid y por tanto no se ve afectado.
+x-security-opt: &default-security-opt
+  - no-new-privileges:true
+
 services:
   # Postgres local. POSTGRES_USER es el superusuario de bootstrap del volumen y
   # sale de DB_BOOTSTRAP_USER (default 'iwana') — NUNCA de DB_USER.
@@ -55,6 +70,8 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   redis:
     image: ${REDIS_IMAGE:-redis:8.6-alpine}
@@ -74,6 +91,8 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   pgbouncer:
     image: ${PGBOUNCER_IMAGE:?PGBOUNCER_IMAGE is required}
@@ -97,6 +116,8 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   minio:
     image: ${MINIO_IMAGE:?MINIO_IMAGE is required}
@@ -115,11 +136,16 @@ services:
       - iwana_minio_data_dev:/data
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
-      interval: 30s
+      # 10s en vez de 30s: `pnpm dev` espera este healthcheck con `up --wait`.
+      # Con 30s el peor caso hasta declarar healthy era ~160s (start_period +
+      # 5 reintentos); con 10s baja a ~60s. Es el healthcheck más lento del stack.
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   minio-init:
     image: ${MINIO_MC_IMAGE:?MINIO_MC_IMAGE is required}
@@ -142,6 +168,8 @@ services:
       minio:
         condition: service_healthy
     restart: 'no'
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   typesense:
     image: ${TYPESENSE_IMAGE:-typesense/typesense:28.0}
@@ -149,10 +177,13 @@ services:
     profiles:
       - development
       - production
-    command: >
-      --data-dir /data
-      --api-key=${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
-      --enable-cors
+    # La configuración va por entorno, no por `command:`. Como argumento, la
+    # API key quedaba en la línea de comandos de un proceso de larga duración y
+    # era legible con cualquier listado de procesos dentro del contenedor.
+    environment:
+      TYPESENSE_DATA_DIR: /data
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
+      TYPESENSE_ENABLE_CORS: 'true'
     expose:
       - '8108'
     volumes:
@@ -164,6 +195,8 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   nginx:
     image: ${NGINX_IMAGE:?NGINX_IMAGE is required}
@@ -171,7 +204,7 @@ services:
     profiles:
       - development
     ports:
-      - '${DEV_PROXY_PORT:-8080}:80'
+      - '127.0.0.1:${DEV_PROXY_PORT:-8080}:80'
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     extra_hosts:
@@ -183,20 +216,24 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
   adminer:
-    image: ${ADMINER_IMAGE:?ADMINER_IMAGE is required}
+    image: ${ADMINER_IMAGE:-adminer:5.4.2}
     container_name: iwana_adminer_dev
     profiles:
-      - development
+      - adminer
     ports:
-      - '${ADMINER_PORT:-8081}:8080'
+      - '127.0.0.1:${ADMINER_PORT:-8081}:8080'
     environment:
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
+    security_opt: *default-security-opt
 
 volumes:
   iwana_postgres_data_dev:

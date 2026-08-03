@@ -10,6 +10,13 @@
 **Revisor obligatorio:** AI-SEC-ENG (cambia superficie de exposición de puertos y organización de secretos de Compose)
 **Plantilla base:** `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md`
 
+> **Nota de vigencia (2026-08-03).** Este prompt describe el estado del 2026-07-30.
+> La §3.1 enumera `adminer` entre los servicios de infraestructura compartida
+> "con sus `profiles` actuales": desde el 2026-08-02 Adminer tiene un perfil
+> `adminer` propio y opt-in, y no forma parte del arranque de `pnpm dev`
+> ([INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md)).
+> El resto del prompt sigue siendo el registro fiel de la ejecución.
+
 ---
 
 ## 0. Contexto y causa raíz (ya diagnosticada — no repetir el análisis)

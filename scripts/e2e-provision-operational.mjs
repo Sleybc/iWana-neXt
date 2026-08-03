@@ -246,7 +246,6 @@ setRuntimeDefault('PGBOUNCER_IMAGE', 'edoburu/pgbouncer:v1.24.1-p1');
 setRuntimeDefault('MINIO_IMAGE', 'minio/minio:RELEASE.2025-09-07T16-13-09Z');
 setRuntimeDefault('MINIO_MC_IMAGE', 'minio/mc:RELEASE.2025-08-13T08-35-41Z');
 setRuntimeDefault('NGINX_IMAGE', 'nginx:1.31.2-alpine');
-setRuntimeDefault('ADMINER_IMAGE', 'adminer:5.4.2');
 process.env.MINIO_API_PORT = process.env.E2E_MINIO_API_PORT;
 process.env.MINIO_CONSOLE_PORT = process.env.E2E_MINIO_CONSOLE_PORT;
 process.env.TYPESENSE_PORT = process.env.E2E_TYPESENSE_PORT;

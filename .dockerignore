@@ -21,6 +21,13 @@ test-results
 playwright-report
 blob-report
 
+# Nada de esto participa en el build de las imágenes, pero entra al contexto por
+# el `COPY . .` del stage builder: engorda la capa y ensancha la superficie.
+e2e
+.github
+.husky
+tmp
+
 **/node_modules
 **/.next
 **/dist

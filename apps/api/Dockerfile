@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1.7
 # apps/api/Dockerfile — Build multi-stage para NestJS API iWana neXt
 # Basado en el patrón de apps/worker/Dockerfile
 
-FROM node:25.8.2-bookworm AS base
+ARG NODE_VERSION=24.13.1
+FROM node:${NODE_VERSION}-bookworm AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
 
@@ -21,7 +23,8 @@ COPY packages/storage/package.json   packages/storage/
 COPY packages/ui/package.json       packages/ui/
 
 # HUSKY=0 evita que el hook "prepare" falle por ausencia de .git en Docker
-RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --prod=false --ignore-scripts
 
 # ── builder: compilar la API ─────────────────────────────────────────────────
 FROM base AS builder
@@ -36,8 +39,9 @@ COPY --from=deps /app/apps/api/node_modules          ./apps/api/node_modules
 # Copiar el repo completo para preservar los links/junctions de workspace pnpm
 COPY . .
 
-# Rehidrata el grafo del monorepo dentro del builder
-RUN CI=true HUSKY=0 pnpm install --frozen-lockfile --prod=false --ignore-scripts
+# Los node_modules de deps incluyen los enlaces de todos los workspaces. Tras
+# COPY . . se conservan porque .dockerignore excluye los node_modules del contexto.
+# Este builder se valida sin una segunda instalación para evitar trabajo duplicado.
 
 # Compilar dependencias en orden correcto antes de compilar la API
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
@@ -45,8 +49,12 @@ RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json && \
     pnpm exec tsc --project apps/api/tsconfig.json
 
+# `deploy --prod` materializa la API y sus workspaces runtime sin dependencias
+# de desarrollo. Se ejecuta después del build para incluir los artefactos dist.
+RUN pnpm --filter @iwana/api deploy --prod --legacy /output
+
 # ── runner: imagen mínima de producción ─────────────────────────────────────
-FROM base AS runner
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -54,23 +62,14 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nestjs
 
-# Copiar solo los artefactos necesarios para runtime
-COPY --from=builder --chown=nestjs:nodejs /app/node_modules      ./node_modules
-COPY --from=builder --chown=nestjs:nodejs /app/apps/api          ./apps/api
-COPY --from=builder --chown=nestjs:nodejs /app/packages/shared   ./packages/shared
-COPY --from=builder --chown=nestjs:nodejs /app/packages/database ./packages/database
-COPY --from=builder --chown=nestjs:nodejs /app/packages/storage  ./packages/storage
-
-# El runtime no debe depender de archivos .env copiados desde el workspace.
-# En contenedor la configuracion llega por variables de entorno inyectadas.
-RUN rm -f /app/apps/api/.env /app/apps/api/.env.*
+# `deploy --prod` deja fuera pnpm global, toolchain y devDependencies. La
+# configuración sigue llegando por variables de entorno, no desde el workspace.
+COPY --from=builder --chown=nestjs:nodejs /output ./
 
 USER nestjs
 
-WORKDIR /app/apps/api
-
 # Health check usando el endpoint GET /api/v1/health creado en HealthModule
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
-  CMD wget -qO- http://localhost:3000/api/v1/health || exit 1
+  CMD node -e "fetch('http://localhost:3000/api/v1/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["node", "dist/main.js"]

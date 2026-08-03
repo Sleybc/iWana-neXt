@@ -49,7 +49,10 @@ El tenant aparece con `status: PROVISIONING_FAILED` en `GET /api/v1/tenants/:id`
 pnpm dev
 
 # Diagnostico aislado: en una terminal levantar solo la infraestructura Docker:
-docker compose --env-file .env -f docker-compose.yml up -d postgres redis pgbouncer minio typesense nginx adminer
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis pgbouncer minio typesense nginx
+
+# Adminer es opcional y solo se publica en loopback:
+docker compose --profile development --profile adminer --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d adminer
 
 # Luego ejecutar el worker en otra terminal y observar su salida:
 pnpm --filter @iwana/worker dev
