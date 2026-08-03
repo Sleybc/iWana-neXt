@@ -17,7 +17,7 @@
     "dev:free-ports": "node scripts/free-dev-ports.mjs",
     "dev:verify-platform-login": "node scripts/dev-verify-platform-login.mjs",
     "dev:reset-platform-admin": "node scripts/dev-reset-platform-admin.mjs",
-    "test:tooling": "node --test scripts/dev.test.mjs scripts/free-dev-ports.test.mjs",
+    "test:tooling": "node --test scripts/dev.test.mjs scripts/free-dev-ports.test.mjs scripts/nginx-config.test.mjs",
     "dev": "node scripts/dev.mjs",
     "audit:adr-citations": "node scripts/audit-adr-citations.mjs",
     "audit:doc-locations": "node scripts/audit-doc-locations.mjs",
