@@ -6,6 +6,7 @@ import {
   formatPidDiagnostic,
   getProtectedPids,
   isSafeRepoWatcherPid,
+  parsePsEntries,
   planRepoWatcherTermination,
   normalizeForMatching,
   planDevPortCleanup,
@@ -266,6 +267,61 @@ test('planRepoWatcherTermination no propone matar si cambia la identidad de inic
   );
 });
 
+test('planRepoWatcherTermination omite candidatos Unix sin identidad de inicio', () => {
+  const marker = { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' };
+  const entriesWithoutIdentity = [
+    {
+      pid: 505,
+      ppid: 1,
+      command:
+        '/home/sley/Documentos/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch',
+    },
+  ];
+
+  assert.deepEqual(
+    planRepoWatcherTermination(
+      [505],
+      entriesWithoutIdentity,
+      entriesWithoutIdentity,
+      [marker],
+      'linux',
+      900,
+      1,
+    ),
+    [],
+  );
+});
+
+test('parsePsEntries captura la identidad Unix y permite revalidarla sin matar procesos', () => {
+  const marker = { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' };
+  const psFixture =
+    '  506  1 Mon Aug  3 10:00:00 2026 /home/sley/Documentos/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch\n';
+  const discoveryEntries = parsePsEntries(psFixture);
+  const revalidatedEntries = parsePsEntries(psFixture);
+
+  assert.deepEqual(discoveryEntries, [
+    {
+      pid: 506,
+      ppid: 1,
+      startIdentity: 'Mon Aug  3 10:00:00 2026',
+      command:
+        '/home/sley/Documentos/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch',
+    },
+  ]);
+  assert.deepEqual(
+    planRepoWatcherTermination(
+      [506],
+      discoveryEntries,
+      revalidatedEntries,
+      [marker],
+      'linux',
+      900,
+      1,
+    ),
+    [506],
+  );
+});
+
 test('classifyDevPids separates external listeners from workspace watchers', () => {
   assert.deepEqual(
     classifyDevPids([101, 202, 303, 303], [202, 404, 404]),
@@ -518,4 +574,14 @@ test('formatPidDiagnostic fails closed for unsupported shell syntax without leak
 
   assert.equal(formatted, 'PID 334 ([REDACTED COMMAND])');
   assert.doesNotMatch(formatted, /secret/);
+});
+
+test('formatPidDiagnostic fails closed for ampersand shell syntax without leaking either value', () => {
+  const formatted = formatPidDiagnostic(335, [
+    { pid: 335, command: 'tool --token secret & echo later-secret' },
+  ]);
+
+  assert.equal(formatted, 'PID 335 ([REDACTED COMMAND])');
+  assert.doesNotMatch(formatted, /secret/);
+  assert.doesNotMatch(formatted, /later-secret/);
 });

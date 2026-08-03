@@ -77,7 +77,7 @@ function commandExists(command) {
   }
 }
 
-function parsePsEntries(stdout) {
+export function parsePsEntries(stdout) {
   return stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -381,7 +381,7 @@ const SENSITIVE_LONG_OPTIONS = new Set([
 
 const SENSITIVE_OPTION_HINT_PATTERN =
   /(?:^|[-_])(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)(?:$|[-_])/;
-const UNSUPPORTED_SHELL_SYNTAX_PATTERN = /[;|<>\r\n`]|&&|\$\(/;
+const UNSUPPORTED_SHELL_SYNTAX_PATTERN = /[;&()|<>\r\n`^]|&&|\$\(/;
 
 function normalizeSensitiveOptionName(name) {
   return String(name ?? '').replace(/_/g, '-').toLowerCase();
