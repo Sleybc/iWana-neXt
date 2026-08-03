@@ -83,6 +83,19 @@ function parsePsEntries(stdout) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
+      const matchWithStartIdentity = line.match(
+        /^(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)(?:\s+(.*))$/,
+      );
+
+      if (matchWithStartIdentity) {
+        return {
+          pid: Number(matchWithStartIdentity[1]),
+          ppid: Number(matchWithStartIdentity[2]),
+          startIdentity: matchWithStartIdentity[3],
+          command: matchWithStartIdentity[4],
+        };
+      }
+
       const match = line.match(/^(\d+)\s+(\d+)\s+(.*)$/);
 
       if (!match) {
@@ -109,6 +122,7 @@ function parseWindowsProcessEntries(raw) {
     .map((row) => ({
       pid: Number(row?.pid ?? row?.ProcessId),
       ppid: Number(row?.ppid ?? row?.ParentProcessId),
+      startIdentity: String(row?.startIdentity ?? row?.CreationDate ?? '').trim(),
       command: String(row?.command ?? row?.CommandLine ?? '').trim(),
     }))
     .filter(
@@ -122,7 +136,7 @@ function parseWindowsProcessEntries(raw) {
 }
 
 function getUnixProcessTable() {
-  const output = execSync('ps -eo pid=,ppid=,args=', { encoding: 'utf8' });
+  const output = execSync('ps -eo pid=,ppid=,lstart=,args=', { encoding: 'utf8' });
   return parsePsEntries(output);
 }
 
@@ -132,7 +146,7 @@ function getWindowsProcessTable() {
     "$names = @('node.exe','cmd.exe','powershell.exe','pwsh.exe'); " +
     'Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ' +
     'Where-Object { $_.Name -in $names } | ' +
-    "Select-Object @{Name='pid';Expression={$_.ProcessId}},@{Name='ppid';Expression={$_.ParentProcessId}},@{Name='command';Expression={$_.CommandLine}} | " +
+    "Select-Object @{Name='pid';Expression={$_.ProcessId}},@{Name='ppid';Expression={$_.ParentProcessId}},@{Name='startIdentity';Expression={$_.CreationDate}},@{Name='command';Expression={$_.CommandLine}} | " +
     'ConvertTo-Json -Compress';
   const output = execSync(`powershell -NoProfile -Command "${psCommand}"`, {
     encoding: 'utf8',
@@ -262,6 +276,15 @@ function isNodeExecutable(executable, platform) {
   );
 }
 
+function getStartIdentity(entry) {
+  const identity = entry?.startIdentity;
+  return identity === undefined || identity === null ? '' : String(identity).trim();
+}
+
+function hasStableProcessIdentity(entry) {
+  return getStartIdentity(entry).length > 0;
+}
+
 export function findRepoWatcherPids(
   entries,
   protectedPids,
@@ -358,6 +381,7 @@ const SENSITIVE_LONG_OPTIONS = new Set([
 
 const SENSITIVE_OPTION_HINT_PATTERN =
   /(?:^|[-_])(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)(?:$|[-_])/;
+const UNSUPPORTED_SHELL_SYNTAX_PATTERN = /[;|<>\r\n`]|&&|\$\(/;
 
 function normalizeSensitiveOptionName(name) {
   return String(name ?? '').replace(/_/g, '-').toLowerCase();
@@ -534,7 +558,10 @@ function parsePowershellEnvAssignment(tokens, index) {
 }
 
 function sanitizeProcessCommand(command) {
-  const normalizedCommand = String(command ?? '').trim().replace(/\s+/g, ' ');
+  const commandString = String(command ?? '');
+  if (UNSUPPORTED_SHELL_SYNTAX_PATTERN.test(commandString)) return REDACTED_COMMAND;
+
+  const normalizedCommand = commandString.trim().replace(/\s+/g, ' ');
   if (!normalizedCommand) return '';
 
   const tokenized = getCommandTokens(normalizedCommand, { shellEscapes: true });
@@ -608,6 +635,67 @@ export function isSafeRepoWatcherPid(
 ) {
   const protectedPids = getProtectedPids(entries, currentPid, parentPid);
   return findRepoWatcherPids(entries, protectedPids, markers, platform).includes(pid);
+}
+
+export function isSafeRepoWatcherPidForTermination(
+  pid,
+  discoveryEntries,
+  revalidatedEntries,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  currentPid = process.pid,
+  parentPid = process.ppid,
+) {
+  const discoveryEntry = discoveryEntries.find((entry) => entry.pid === pid);
+  const revalidatedEntry = revalidatedEntries.find((entry) => entry.pid === pid);
+
+  if (
+    !discoveryEntry ||
+    !revalidatedEntry ||
+    discoveryEntry.pid !== revalidatedEntry.pid ||
+    !hasStableProcessIdentity(discoveryEntry) ||
+    !hasStableProcessIdentity(revalidatedEntry) ||
+    getStartIdentity(discoveryEntry) !== getStartIdentity(revalidatedEntry) ||
+    typeof discoveryEntry.command !== 'string' ||
+    discoveryEntry.command.length === 0 ||
+    discoveryEntry.command !== revalidatedEntry.command
+  ) {
+    return false;
+  }
+
+  return (
+    isSafeRepoWatcherPid(
+      pid,
+      discoveryEntries,
+      markers,
+      platform,
+      currentPid,
+      parentPid,
+    ) &&
+    isSafeRepoWatcherPid(pid, revalidatedEntries, markers, platform, currentPid, parentPid)
+  );
+}
+
+export function planRepoWatcherTermination(
+  candidatePids,
+  discoveryEntries,
+  revalidatedEntries,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  currentPid = process.pid,
+  parentPid = process.ppid,
+) {
+  return [...new Set(candidatePids)].filter((pid) =>
+    isSafeRepoWatcherPidForTermination(
+      pid,
+      discoveryEntries,
+      revalidatedEntries,
+      markers,
+      platform,
+      currentPid,
+      parentPid,
+    ),
+  );
 }
 
 function formatPidDiagnostics(pids, entries) {
@@ -718,7 +806,13 @@ async function main() {
     for (const pid of pidsToKill) {
       try {
         const latestProcessSnapshot = getRepoProcessSnapshot();
-        if (!isSafeRepoWatcherPid(pid, latestProcessSnapshot.entries)) {
+        if (
+          !planRepoWatcherTermination(
+            [pid],
+            processSnapshot.entries,
+            latestProcessSnapshot.entries,
+          ).includes(pid)
+        ) {
           console.warn(`Se omite PID ${pid}: ya no es un watcher seguro del repositorio.`);
           continue;
         }

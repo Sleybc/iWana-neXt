@@ -6,6 +6,7 @@ import {
   formatPidDiagnostic,
   getProtectedPids,
   isSafeRepoWatcherPid,
+  planRepoWatcherTermination,
   normalizeForMatching,
   planDevPortCleanup,
 } from './free-dev-ports.mjs';
@@ -231,6 +232,38 @@ test('isSafeRepoWatcherPid revalida ownership, protección y matcher antes de ma
   assert.equal(isSafeRepoWatcherPid(501, entries, [marker], 'win32', 900, 1), true);
   assert.equal(isSafeRepoWatcherPid(502, entries, [marker], 'win32', 900, 1), false);
   assert.equal(isSafeRepoWatcherPid(503, entries, [marker], 'win32', 900, 503), false);
+});
+
+test('planRepoWatcherTermination no propone matar si cambia la identidad de inicio', () => {
+  const marker = { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' };
+  const discoveryEntries = [
+    {
+      pid: 504,
+      ppid: 1,
+      startIdentity: '2026-08-03T10:00:00.000Z',
+      command:
+        'C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch',
+    },
+  ];
+  const revalidatedEntries = [
+    {
+      ...discoveryEntries[0],
+      startIdentity: '2026-08-03T10:00:01.000Z',
+    },
+  ];
+
+  assert.deepEqual(
+    planRepoWatcherTermination(
+      [504],
+      discoveryEntries,
+      revalidatedEntries,
+      [marker],
+      'win32',
+      900,
+      1,
+    ),
+    [],
+  );
 });
 
 test('classifyDevPids separates external listeners from workspace watchers', () => {
@@ -476,4 +509,13 @@ test('formatPidDiagnostic fails closed when a sensitive option has no confidentl
   const formatted = formatPidDiagnostic(326, [{ pid: 326, command: 'node --token' }]);
 
   assert.equal(formatted, 'PID 326 ([REDACTED COMMAND])');
+});
+
+test('formatPidDiagnostic fails closed for unsupported shell syntax without leaking secrets', () => {
+  const formatted = formatPidDiagnostic(334, [
+    { pid: 334, command: 'tool --token secret; echo secret' },
+  ]);
+
+  assert.equal(formatted, 'PID 334 ([REDACTED COMMAND])');
+  assert.doesNotMatch(formatted, /secret/);
 });
