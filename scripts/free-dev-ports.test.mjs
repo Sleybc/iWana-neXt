@@ -295,7 +295,7 @@ test('planRepoWatcherTermination omite candidatos Unix sin identidad de inicio',
   );
 });
 
-test('parsePsEntries captura la identidad Unix y permite revalidarla sin matar procesos', () => {
+test('parsePsEntries conserva lstart solo para diagnostico y no autoriza una terminacion Unix', () => {
   const marker = { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' };
   const psFixture =
     '  506  1 Mon Aug  3 10:00:00 2026 /home/sley/Documentos/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch\n';
@@ -321,7 +321,37 @@ test('parsePsEntries captura la identidad Unix y permite revalidarla sin matar p
       900,
       1,
     ),
-    [506],
+    [],
+  );
+});
+
+test('planRepoWatcherTermination acepta en Linux solo ticks de /proc como identidad', () => {
+  const marker = { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' };
+  const entries = [
+    {
+      pid: 508,
+      ppid: 1,
+      startIdentity: '987654321',
+      command:
+        '/home/sley/Documentos/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch',
+    },
+  ];
+
+  assert.deepEqual(
+    planRepoWatcherTermination([508], entries, entries, [marker], 'linux', 900, 1),
+    [508],
+  );
+  assert.deepEqual(
+    planRepoWatcherTermination(
+      [508],
+      entries,
+      entries,
+      [marker],
+      'darwin',
+      900,
+      1,
+    ),
+    [],
   );
 });
 
@@ -522,6 +552,21 @@ test('formatPidDiagnostic redacts attached options and sensitive aliases without
     formatted,
     /database-secret|auth-secret|token-secret|api-secret|secret-value|user:password/i,
   );
+});
+
+test('formatPidDiagnostic fails closed for camelCase sensitive long options', () => {
+  const commands = [
+    'tool --clientSecret=client-secret-leak --mode safe',
+    'tool --accessToken access-token-leak --mode safe',
+    'tool --apiKey=api-key-leak --mode safe',
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(337, [{ pid: 337, command }]);
+
+    assert.equal(formatted, 'PID 337 ([REDACTED COMMAND])', command);
+    assert.doesNotMatch(formatted, /client-secret-leak|access-token-leak|api-key-leak/);
+  }
 });
 
 test('formatPidDiagnostic redacts additional secret option aliases in attached and separated forms', () => {

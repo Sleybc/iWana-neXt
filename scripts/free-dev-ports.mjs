@@ -140,7 +140,11 @@ function getUnixProcessTable() {
   const output = execSync('ps -eo pid=,ppid=,lstart=,args=', { encoding: 'utf8' });
   const entries = parsePsEntries(output);
 
-  if (process.platform !== 'linux' || !existsSync('/proc')) return entries;
+  if (process.platform !== 'linux' || !existsSync('/proc')) {
+    // ps lstart solo sirve para diagnostico: su resolucion no es una
+    // identidad suficiente para autorizar una terminacion destructiva.
+    return entries.map((entry) => ({ ...entry, startIdentity: '' }));
+  }
 
   return entries.map((entry) => {
     try {
@@ -313,8 +317,15 @@ function getStartIdentity(entry) {
   return identity === undefined || identity === null ? '' : String(identity).trim();
 }
 
-function hasStableProcessIdentity(entry) {
-  return getStartIdentity(entry).length > 0;
+function hasStableProcessIdentity(entry, platform) {
+  const identity = getStartIdentity(entry);
+
+  if (platform === 'win32') return identity.length > 0;
+  if (platform !== 'linux') return false;
+
+  // En Linux, solo los ticks de inicio de /proc/<pid>/stat son una identidad
+  // valida. Nunca se acepta el texto de ps lstart ni otra identidad Unix.
+  return /^\d+$/.test(identity);
 }
 
 export function findRepoWatcherPids(
@@ -412,7 +423,7 @@ const SENSITIVE_LONG_OPTIONS = new Set([
 ]);
 
 const SENSITIVE_OPTION_HINT_PATTERN =
-  /(?:^|[^a-z0-9])(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)(?:$|[^a-z0-9])/;
+  /(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)/;
 const AMBIGUOUS_SENSITIVE_OPTION_DELIMITER_PATTERN = /[:./]/;
 const UNSUPPORTED_SHELL_SYNTAX_PATTERN = /[;&()|<>\r\n`^]|&&|\$\(/;
 
@@ -684,8 +695,8 @@ export function isSafeRepoWatcherPidForTermination(
     !discoveryEntry ||
     !revalidatedEntry ||
     discoveryEntry.pid !== revalidatedEntry.pid ||
-    !hasStableProcessIdentity(discoveryEntry) ||
-    !hasStableProcessIdentity(revalidatedEntry) ||
+    !hasStableProcessIdentity(discoveryEntry, platform) ||
+    !hasStableProcessIdentity(revalidatedEntry, platform) ||
     getStartIdentity(discoveryEntry) !== getStartIdentity(revalidatedEntry) ||
     typeof discoveryEntry.command !== 'string' ||
     discoveryEntry.command.length === 0 ||
