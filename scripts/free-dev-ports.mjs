@@ -11,12 +11,6 @@ const DEV_PROCESS_MARKERS = [
   { path: `${repoRoot}/apps/worker/`, command: 'nest.js start --watch' },
   { path: `${repoRoot}/apps/web/`, command: 'next dev --port 3001' },
   { path: `${repoRoot}/apps/portal/`, command: 'next dev --port 3002' },
-  { command: 'node scripts/dev.mjs' },
-  { command: 'sh -c node scripts/dev.mjs' },
-  { command: '--filter @iwana/api dev' },
-  { command: '--filter @iwana/worker dev' },
-  { command: '--filter @iwana/web dev' },
-  { command: '--filter @iwana/portal dev' },
 ];
 
 function parseWindowsPidsFromNetstat(stdout, ports) {
@@ -169,9 +163,15 @@ export function findRepoWatcherPids(entries, protectedPids, markers = DEV_PROCES
     .filter((entry) =>
       markers.some((marker) => {
         const normalizedCommand = normalizeForMatching(entry.command);
-        const normalizedMarkerCommand = normalizeForMatching(marker.command);
+        const normalizedMarkerPath = normalizeForMatching(marker.path ?? '');
+        const normalizedMarkerCommand = normalizeForMatching(marker.command ?? '');
 
-        if (marker.path && !normalizedCommand.includes(normalizeForMatching(marker.path))) {
+        // Sin una ruta del repositorio, el texto del comando no prueba ownership.
+        if (
+          !normalizedMarkerPath ||
+          !normalizedMarkerCommand ||
+          !normalizedCommand.includes(normalizedMarkerPath)
+        ) {
           return false;
         }
 
@@ -190,14 +190,59 @@ export function classifyDevPids(portPids, repoWatcherPids) {
   return { safePids, externalPids };
 }
 
-function getRepoWatcherPids() {
+export function planDevPortCleanup(portPids, repoWatcherPids) {
+  const { safePids, externalPids } = classifyDevPids(portPids, repoWatcherPids);
+
+  return {
+    pidsToKill: safePids,
+    externalPids,
+    exitCode: externalPids.length > 0 ? 1 : 0,
+  };
+}
+
+const ENV_ASSIGNMENT_PATTERN = /(^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/g;
+const POWERSHELL_ENV_PATTERN = /((?:\$env:|set\s+)[A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/gi;
+const CONNECTION_STRING_PATTERN = /\b(?:https?|postgres(?:ql)?|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?|amqps?):\/\/[^\s'"`]+/gi;
+const SENSITIVE_OPTION_PATTERN = /(--?(?:token|password|passwd|secret|api[-_]?key|authorization|credential|connection[-_]?string|database[-_]?url|dsn|client[-_]?secret|private[-_]?key|access[-_]?key|refresh[-_]?token|signing[-_]?key|cookie|auth|user))(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
+const SENSITIVE_HEADER_PATTERN = /(--?headers?)(?:=|\s+)(?:"[^"]*"|'[^']*'|.+$)/gi;
+const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
+
+function sanitizeProcessCommand(command) {
+  const normalizedCommand = String(command ?? '').trim().replace(/\s+/g, ' ');
+  if (!normalizedCommand) return '';
+
+  return normalizedCommand
+    .replace(CONNECTION_STRING_PATTERN, '<connection-redacted>')
+    .replace(ENV_ASSIGNMENT_PATTERN, '$1$2=<redacted>')
+    .replace(POWERSHELL_ENV_PATTERN, '$1=<redacted>')
+    .replace(SENSITIVE_HEADER_PATTERN, '$1=<redacted>')
+    .replace(SENSITIVE_OPTION_PATTERN, '$1=<redacted>')
+    .replace(AUTH_HEADER_PATTERN, '$1<redacted>')
+    .slice(0, 160);
+}
+
+export function formatPidDiagnostic(pid, entries = []) {
+  const entry = entries.find((candidate) => candidate.pid === pid);
+  const command = sanitizeProcessCommand(entry?.command);
+
+  return command ? `PID ${pid} (${command})` : `PID ${pid}`;
+}
+
+function formatPidDiagnostics(pids, entries) {
+  return pids.map((pid) => formatPidDiagnostic(pid, entries)).join(', ');
+}
+
+function getRepoProcessSnapshot() {
   try {
     const entries = process.platform === 'win32' ? getWindowsProcessTable() : getUnixProcessTable();
     const protectedPids = getProtectedPids(entries);
 
-    return findRepoWatcherPids(entries, protectedPids);
+    return {
+      entries,
+      repoWatcherPids: findRepoWatcherPids(entries, protectedPids),
+    };
   } catch {
-    return [];
+    return { entries: [], repoWatcherPids: [] };
   }
 }
 
@@ -263,20 +308,21 @@ async function main() {
 
   for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
     const portPids = getPidsUsingPorts(DEV_PORTS);
-    const repoWatcherPids = getRepoWatcherPids();
-    const { safePids, externalPids } = classifyDevPids(portPids, repoWatcherPids);
+    const processSnapshot = getRepoProcessSnapshot();
+    const { pidsToKill, externalPids, exitCode } = planDevPortCleanup(
+      portPids,
+      processSnapshot.repoWatcherPids,
+    );
 
-    if (externalPids.length > 0) {
+    if (exitCode !== 0) {
+      process.exitCode = exitCode;
       console.warn(
-        `No se detienen procesos externos en puertos de desarrollo: ${externalPids.join(', ')}.`,
+        `No se detienen procesos externos en puertos de desarrollo: ${formatPidDiagnostics(externalPids, processSnapshot.entries)}.`,
       );
     }
 
-    if (safePids.length === 0) {
-      if (externalPids.length > 0) {
-        process.exitCode = 1;
-      }
-      if (!foundAnyPid && externalPids.length === 0) {
+    if (pidsToKill.length === 0) {
+      if (!foundAnyPid && exitCode === 0) {
         console.log('No hay procesos ocupando puertos de desarrollo (3000, 3001, 3002).');
       }
       return;
@@ -284,10 +330,10 @@ async function main() {
 
     foundAnyPid = true;
     console.log(
-      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs de watchers: ${safePids.join(', ')}`,
+      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs de watchers: ${pidsToKill.join(', ')}`,
     );
 
-    for (const pid of safePids) {
+    for (const pid of pidsToKill) {
       try {
         killPid(pid);
         console.log(`PID ${pid} detenido.`);
@@ -300,15 +346,17 @@ async function main() {
   }
 
   const remainingPortPids = getPidsUsingPorts(DEV_PORTS);
-  const remainingRepoWatcherPids = getRepoWatcherPids();
+  const remainingProcessSnapshot = getRepoProcessSnapshot();
   const {
-    safePids: remainingSafePids,
+    pidsToKill: remainingSafePids,
     externalPids: remainingExternalPids,
-  } = classifyDevPids(remainingPortPids, remainingRepoWatcherPids);
+    exitCode,
+  } = planDevPortCleanup(remainingPortPids, remainingProcessSnapshot.repoWatcherPids);
 
-  if (remainingExternalPids.length > 0) {
+  if (exitCode !== 0) {
+    process.exitCode = exitCode;
     console.warn(
-      `No se detienen procesos externos en puertos de desarrollo: ${remainingExternalPids.join(', ')}.`,
+      `No se detienen procesos externos en puertos de desarrollo: ${formatPidDiagnostics(remainingExternalPids, remainingProcessSnapshot.entries)}.`,
     );
   }
 

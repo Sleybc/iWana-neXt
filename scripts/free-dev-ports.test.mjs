@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyDevPids, findRepoWatcherPids, getProtectedPids } from './free-dev-ports.mjs';
+import {
+  classifyDevPids,
+  findRepoWatcherPids,
+  formatPidDiagnostic,
+  getProtectedPids,
+  planDevPortCleanup,
+} from './free-dev-ports.mjs';
 
 test('getProtectedPids protege el proceso actual y toda su cadena de ancestros', () => {
   const entries = [
@@ -32,15 +38,14 @@ test('findRepoWatcherPids conserva watchers residuales fuera del arbol protegido
     {
       pid: 70,
       ppid: 1,
-      command: '/home/sley/.local/share/pnpm/pnpm --filter @iwana/api dev',
+      command: '/home/sley/Documentos/appiw/node_modules/.bin/pnpm --filter @iwana/api dev',
     },
     { pid: 80, ppid: 1, command: 'node unrelated-script.mjs' },
   ];
   const protectedPids = new Set([20, 30]);
   const markers = [
     { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' },
-    { command: 'node scripts/dev.mjs' },
-    { command: '--filter @iwana/api dev' },
+    { path: '/home/sley/Documentos/appiw/', command: '--filter @iwana/api dev' },
   ];
 
   const detectedPids = findRepoWatcherPids(entries, protectedPids, markers);
@@ -48,6 +53,23 @@ test('findRepoWatcherPids conserva watchers residuales fuera del arbol protegido
   assert.deepEqual(
     detectedPids.sort((left, right) => left - right),
     [60, 70],
+  );
+});
+
+test('findRepoWatcherPids ignora un comando coincidente sin ruta del repositorio', () => {
+  const repoRoot = '/home/sley/Documentos/appiw';
+  const entries = [
+    { pid: 100, ppid: 1, command: `${repoRoot}/node_modules/.bin/node scripts/dev.mjs` },
+    { pid: 101, ppid: 1, command: 'node scripts/dev.mjs' },
+    { pid: 102, ppid: 1, command: '/tmp/otro-proyecto/node scripts/dev.mjs' },
+  ];
+
+  assert.deepEqual(
+    findRepoWatcherPids(entries, new Set(), [
+      { path: `${repoRoot}/`, command: 'node scripts/dev.mjs' },
+      { command: 'node scripts/dev.mjs' },
+    ]),
+    [100],
   );
 });
 
@@ -62,14 +84,14 @@ test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', (
     {
       pid: 91,
       ppid: 1,
-      command: 'C:\\Users\\SLEYB\\AppData\\Roaming\\pnpm\\pnpm.CMD --filter @iwana/web dev',
+      command: 'C:\\appiw\\node_modules\\.bin\\pnpm.CMD --filter @iwana/web dev',
     },
     { pid: 92, ppid: 1, command: 'node unrelated-script.mjs' },
   ];
   const protectedPids = new Set();
   const markers = [
     { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' },
-    { command: '--filter @iwana/web dev' },
+    { path: 'C:/appiw/', command: '--filter @iwana/web dev' },
   ];
 
   const detectedPids = findRepoWatcherPids(entries, protectedPids, markers);
@@ -92,4 +114,37 @@ test('classifyDevPids permits cleaning a stale watcher without a listening socke
     safePids: [404],
     externalPids: [],
   });
+});
+
+test('planDevPortCleanup reports exit code 1 for external-only listeners', () => {
+  assert.deepEqual(planDevPortCleanup([101], []), {
+    pidsToKill: [],
+    externalPids: [101],
+    exitCode: 1,
+  });
+});
+
+test('planDevPortCleanup kills only safe watchers in mixed cases and reports exit code 1', () => {
+  assert.deepEqual(planDevPortCleanup([101, 202], [202]), {
+    pidsToKill: [202],
+    externalPids: [101],
+    exitCode: 1,
+  });
+});
+
+test('formatPidDiagnostic includes a sanitized command and falls back without one', () => {
+  const formatted = formatPidDiagnostic(123, [
+    {
+      pid: 123,
+      command:
+        'node scripts/dev.mjs API_KEY=redact-me --password=redact-me --header "Authorization: Bearer redact-me" postgres://user:redact-me@db.example/app',
+    },
+  ]);
+
+  assert.match(formatted, /^PID 123 \(node scripts\/dev\.mjs/);
+  assert.match(formatted, /API_KEY=<redacted>/);
+  assert.match(formatted, /--password=<redacted>/);
+  assert.match(formatted, /<connection-redacted>/);
+  assert.doesNotMatch(formatted, /redact-me/);
+  assert.equal(formatPidDiagnostic(404, []), 'PID 404');
 });
