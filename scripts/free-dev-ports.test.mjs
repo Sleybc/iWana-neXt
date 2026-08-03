@@ -92,6 +92,30 @@ test('findRepoWatcherPids exige la ruta del repositorio en el ejecutable', () =>
   );
 });
 
+test('findRepoWatcherPids detecta invocaciones de Node Unix y Windows con el script del watcher', () => {
+  const entries = [
+    {
+      pid: 104,
+      ppid: 1,
+      command:
+        '/usr/local/bin/node /home/sley/Documentos/appiw/apps/api/node_modules/.bin/../@nestjs/cli/bin/nest.js start --watch',
+    },
+    {
+      pid: 105,
+      ppid: 1,
+      command:
+        '"C:\\Program Files\\nodejs\\node.exe" C:\\appiw\\apps\\api\\node_modules\\.bin\\..\\@nestjs\\cli\\bin\\nest.js start --watch',
+    },
+  ];
+  const markers = [
+    { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' },
+    { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' },
+  ];
+
+  assert.deepEqual(findRepoWatcherPids(entries, new Set(), [markers[0]], 'linux'), [104]);
+  assert.deepEqual(findRepoWatcherPids(entries, new Set(), [markers[1]], 'win32'), [105]);
+});
+
 test('normalizeForMatching conserva mayúsculas en Unix y normaliza Windows', () => {
   assert.notEqual(
     normalizeForMatching('/home/user/Appiw', 'linux'),
@@ -169,31 +193,60 @@ test('formatPidDiagnostic includes a sanitized command and falls back without on
   ]);
 
   assert.match(formatted, /^PID 123 \(node scripts\/dev\.mjs/);
-  assert.match(formatted, /API_KEY=<redacted>/);
-  assert.match(formatted, /--password=<redacted>/);
+  assert.doesNotMatch(formatted, /API_KEY/);
+  assert.match(formatted, /--password=\[REDACTED\]/);
   assert.match(formatted, /<connection-redacted>/);
   assert.doesNotMatch(formatted, /redact-me/);
   assert.equal(formatPidDiagnostic(404, []), 'PID 404');
 });
 
-test('formatPidDiagnostic redacts short and long sensitive options and URL secrets', () => {
-  const formatted = formatPidDiagnostic(321, [
+test('formatPidDiagnostic redacts short options and unquoted sensitive headers', () => {
+  const shortOptions = formatPidDiagnostic(321, [
     {
       pid: 321,
+      command: 'node -p password -u user:password',
+    },
+  ]);
+  const headers = formatPidDiagnostic(322, [
+    {
+      pid: 322,
+      command: 'curl -H X-Api-Key:header-secret --header X-Api-Key:long-header-secret',
+    },
+  ]);
+  const formatted = formatPidDiagnostic(323, [
+    {
+      pid: 323,
       command:
-        'node scripts/dev.mjs -H X-Api-Key:header-secret --header X-Api-Key:long-header-secret --token token-secret --password password-secret --api-key api-secret --secret secret-value https://url-user:url-secret@example.test/path?token=query-secret',
+        'node --pwd secret --token token-secret --password password-secret --api-key api-secret --secret secret-value https://url-user:url-secret@example.test/path?token=query-secret',
     },
   ]);
 
-  assert.match(formatted, /-H=<redacted>/);
-  assert.match(formatted, /--header=<redacted>/);
-  assert.match(formatted, /--token=<redacted>/);
-  assert.match(formatted, /--password=<redacted>/);
-  assert.match(formatted, /--api-key=<redacted>/);
-  assert.match(formatted, /--secret=<redacted>/);
+  assert.match(shortOptions, /-p=\[REDACTED\]/);
+  assert.match(shortOptions, /-u=\[REDACTED\]/);
+  assert.match(headers, /-H=\[REDACTED\]/);
+  assert.match(headers, /--header=\[REDACTED\]/);
+  assert.match(formatted, /--pwd=\[REDACTED\]/);
+  assert.match(formatted, /--token=\[REDACTED\]/);
+  assert.match(formatted, /--password=\[REDACTED\]/);
+  assert.match(formatted, /--api-key=\[REDACTED\]/);
+  assert.match(formatted, /--secret=\[REDACTED\]/);
   assert.match(formatted, /<connection-redacted>/);
   assert.doesNotMatch(
-    formatted,
-    /header-secret|long-header-secret|token-secret|password-secret|api-secret|secret-value|url-secret|query-secret/,
+    `${shortOptions} ${headers} ${formatted}`,
+    /header-secret|long-header-secret|token-secret|password-secret|api-secret|secret-value|url-secret|query-secret|user:password/,
   );
+});
+
+test('formatPidDiagnostic redacts the complete unquoted Authorization header value', () => {
+  const formatted = formatPidDiagnostic(324, [
+    {
+      pid: 324,
+      command:
+        'curl --header=Authorization: Bearer secret --header X-Api-Key:header-secret -H X-Api-Key:header-secret',
+    },
+  ]);
+
+  assert.match(formatted, /--header=\[REDACTED\]/);
+  assert.equal((formatted.match(/\[REDACTED\]/g) ?? []).length, 3);
+  assert.doesNotMatch(formatted, /secret|header-secret/);
 });

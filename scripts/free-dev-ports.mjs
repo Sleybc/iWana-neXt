@@ -166,6 +166,32 @@ function getFirstCommandToken(command) {
   return match?.[1] ?? match?.[2] ?? match?.[3] ?? '';
 }
 
+function getCommandTokens(command) {
+  const tokens = [];
+  const tokenPattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match;
+
+  while ((match = tokenPattern.exec(String(command ?? ''))) !== null) {
+    tokens.push(match[1] ?? match[2] ?? match[3]);
+  }
+
+  return tokens;
+}
+
+function isNodeExecutable(executable, platform) {
+  const normalizedExecutable = normalizeForMatching(executable, platform);
+  const executableName = normalizedExecutable.slice(normalizedExecutable.lastIndexOf('/') + 1);
+
+  if (executableName !== 'node' && executableName !== 'node.exe') return false;
+
+  return (
+    normalizedExecutable === 'node' ||
+    normalizedExecutable === 'node.exe' ||
+    normalizedExecutable.startsWith('/') ||
+    /^[a-z]:\//i.test(normalizedExecutable)
+  );
+}
+
 export function findRepoWatcherPids(
   entries,
   protectedPids,
@@ -176,6 +202,7 @@ export function findRepoWatcherPids(
     .filter((entry) => !protectedPids.has(entry.pid))
     .filter((entry) =>
       markers.some((marker) => {
+        const commandTokens = getCommandTokens(entry.command);
         const normalizedCommand = normalizeForMatching(entry.command, platform);
         const normalizedExecutable = normalizeForMatching(
           getFirstCommandToken(entry.command),
@@ -184,14 +211,16 @@ export function findRepoWatcherPids(
         const normalizedMarkerPath = normalizeForMatching(marker.path ?? '', platform);
         const normalizedMarkerCommand = normalizeForMatching(marker.command ?? '', platform);
 
-        // La ruta debe pertenecer al ejecutable; verla solo en un argumento no prueba ownership.
-        if (
-          !normalizedMarkerPath ||
-          !normalizedMarkerCommand ||
-          !normalizedExecutable.includes(normalizedMarkerPath)
-        ) {
-          return false;
-        }
+        if (!normalizedMarkerPath || !normalizedMarkerCommand) return false;
+
+        const executableOwnsMarker = normalizedExecutable.includes(normalizedMarkerPath);
+        const nodeScriptOwnsMarker =
+          isNodeExecutable(commandTokens[0] ?? '', platform) &&
+          normalizeForMatching(commandTokens[1] ?? '', platform).includes(normalizedMarkerPath);
+
+        // La ruta debe pertenecer al ejecutable o al script inmediatamente posterior a Node;
+        // verla solo después de opciones no prueba ownership.
+        if (!executableOwnsMarker && !nodeScriptOwnsMarker) return false;
 
         return normalizedCommand.includes(normalizedMarkerCommand);
       }),
@@ -221,8 +250,8 @@ export function planDevPortCleanup(portPids, repoWatcherPids) {
 const ENV_ASSIGNMENT_PATTERN = /(^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/g;
 const POWERSHELL_ENV_PATTERN = /((?:\$env:|set\s+)[A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/gi;
 const CONNECTION_STRING_PATTERN = /\b(?:https?|postgres(?:ql)?|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?|amqps?):\/\/[^\s'"`]+/gi;
-const SENSITIVE_OPTION_PATTERN = /(--?(?:token|password|passwd|secret|api[-_]?key|authorization|credential|connection[-_]?string|database[-_]?url|dsn|client[-_]?secret|private[-_]?key|access[-_]?key|refresh[-_]?token|signing[-_]?key|cookie|auth|user))(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
-const SENSITIVE_HEADER_PATTERN = /(-H|--headers?)(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
+const SENSITIVE_OPTION_PATTERN = /(^|\s)(-u|-p|--?(?:pwd|token|password|passwd|secret|api[-_]?key|authorization|credential|connection[-_]?string|database[-_]?url|dsn|client[-_]?secret|private[-_]?key|access[-_]?key|refresh[-_]?token|signing[-_]?key|cookie|auth|user))(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
+const SENSITIVE_HEADER_PATTERN = /(^|\s)(-H|--headers?)(?:=|\s+)(?:"[^"]*"|'[^']*'|.*?(?=\s+--?\S+|$))/gi;
 const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
 
 function sanitizeProcessCommand(command) {
@@ -231,11 +260,11 @@ function sanitizeProcessCommand(command) {
 
   return normalizedCommand
     .replace(CONNECTION_STRING_PATTERN, '<connection-redacted>')
-    .replace(ENV_ASSIGNMENT_PATTERN, '$1$2=<redacted>')
-    .replace(POWERSHELL_ENV_PATTERN, '$1=<redacted>')
-    .replace(SENSITIVE_HEADER_PATTERN, '$1=<redacted>')
-    .replace(SENSITIVE_OPTION_PATTERN, '$1=<redacted>')
-    .replace(AUTH_HEADER_PATTERN, '$1<redacted>')
+    .replace(ENV_ASSIGNMENT_PATTERN, '$1')
+    .replace(POWERSHELL_ENV_PATTERN, '')
+    .replace(SENSITIVE_HEADER_PATTERN, '$1$2=[REDACTED]')
+    .replace(SENSITIVE_OPTION_PATTERN, '$1$2=[REDACTED]')
+    .replace(AUTH_HEADER_PATTERN, '$1[REDACTED]')
     .slice(0, 160);
 }
 
