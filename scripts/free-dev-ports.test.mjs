@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildWindowsKillCommand,
   classifyDevPids,
   findRepoWatcherPids,
   formatPidDiagnostic,
@@ -9,6 +10,7 @@ import {
   parsePsEntries,
   planRepoWatcherTermination,
   normalizeForMatching,
+  parseLinuxProcStatStarttime,
   parseWindowsProcessEntries,
   planDevPortCleanup,
 } from './free-dev-ports.mjs';
@@ -323,6 +325,12 @@ test('parsePsEntries captura la identidad Unix y permite revalidarla sin matar p
   );
 });
 
+test('parseLinuxProcStatStarttime extrae field 22 aunque comm contenga parentesis', () => {
+  const statLine = `12345 (node (watcher)) S ${Array.from({ length: 18 }, (_, index) => index + 1).join(' ')} 987654321 19 20`;
+
+  assert.equal(parseLinuxProcStatStarttime(statLine), '987654321');
+});
+
 test('parseWindowsProcessEntries captura CreationDate y conserva la identidad para revalidar', () => {
   const marker = { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' };
   const windowsFixture = JSON.stringify([
@@ -600,6 +608,22 @@ test('formatPidDiagnostic fails closed for malformed sensitive aliases', () => {
   }
 });
 
+test('formatPidDiagnostic fails closed for sensitive segments hidden in option delimiters', () => {
+  const commands = [
+    'tool --custom-token:SECRET=attached',
+    'tool --custom-token.SECRET=attached',
+    'tool --custom-token/SECRET=attached',
+    'tool --custom-token-SECRET=attached',
+    'tool --custom-credential=SECRET',
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(336, [{ pid: 336, command }]);
+    assert.equal(formatted, 'PID 336 ([REDACTED COMMAND])', command);
+    assert.doesNotMatch(formatted, /SECRET/);
+  }
+});
+
 test('formatPidDiagnostic fails closed when a sensitive option has no confidently parsed value', () => {
   const formatted = formatPidDiagnostic(326, [{ pid: 326, command: 'node --token' }]);
 
@@ -623,4 +647,11 @@ test('formatPidDiagnostic fails closed for ampersand shell syntax without leakin
   assert.equal(formatted, 'PID 335 ([REDACTED COMMAND])');
   assert.doesNotMatch(formatted, /secret/);
   assert.doesNotMatch(formatted, /later-secret/);
+});
+
+test('buildWindowsKillCommand construye taskkill sin arbol de procesos', () => {
+  const command = buildWindowsKillCommand(1234);
+
+  assert.equal(command, 'taskkill /PID 1234 /F');
+  assert.doesNotMatch(command, /\/T/);
 });

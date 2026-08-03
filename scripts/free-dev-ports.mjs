@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { posix as posixPath } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -137,7 +138,23 @@ export function parseWindowsProcessEntries(raw) {
 
 function getUnixProcessTable() {
   const output = execSync('ps -eo pid=,ppid=,lstart=,args=', { encoding: 'utf8' });
-  return parsePsEntries(output);
+  const entries = parsePsEntries(output);
+
+  if (process.platform !== 'linux' || !existsSync('/proc')) return entries;
+
+  return entries.map((entry) => {
+    try {
+      const startIdentity = parseLinuxProcStatStarttime(
+        readFileSync(`/proc/${entry.pid}/stat`, 'utf8'),
+      );
+
+      return { ...entry, startIdentity };
+    } catch {
+      // Si /proc existe pero no se puede leer este PID, no se reutiliza la
+      // identidad de menor resolucion de ps: la terminacion debe quedar cerrada.
+      return { ...entry, startIdentity: '' };
+    }
+  });
 }
 
 function getWindowsProcessTable() {
@@ -174,6 +191,21 @@ export function normalizeForMatching(value, platform = process.platform) {
 
   const normalized = posixPath.normalize(valueString.replace(/\\/g, '/'));
   return platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+export function parseLinuxProcStatStarttime(statLine) {
+  const line = String(statLine ?? '');
+  const pidMatch = line.match(/^(\d+)\s+\(/);
+  if (!pidMatch) return '';
+
+  // El nombre del proceso puede contener espacios y ')'; el ultimo ')' es el
+  // cierre del campo comm porque los campos posteriores no contienen parentesis.
+  const commEnd = line.lastIndexOf(')');
+  if (commEnd < pidMatch[0].length) return '';
+
+  const fieldsAfterComm = line.slice(commEnd + 1).trim().split(/\s+/);
+  const starttime = fieldsAfterComm[19];
+  return /^\d+$/.test(starttime ?? '') ? starttime : '';
 }
 
 function pathOwnsMarker(candidatePath, markerPath, platform) {
@@ -380,7 +412,8 @@ const SENSITIVE_LONG_OPTIONS = new Set([
 ]);
 
 const SENSITIVE_OPTION_HINT_PATTERN =
-  /(?:^|[-_])(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)(?:$|[-_])/;
+  /(?:^|[^a-z0-9])(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)(?:$|[^a-z0-9])/;
+const AMBIGUOUS_SENSITIVE_OPTION_DELIMITER_PATTERN = /[:./]/;
 const UNSUPPORTED_SHELL_SYNTAX_PATTERN = /[;&()|<>\r\n`^]|&&|\$\(/;
 
 function normalizeSensitiveOptionName(name) {
@@ -448,15 +481,13 @@ function parseSensitiveOption(token) {
   const optionName = normalizeSensitiveOptionName(longOption[2]);
   if (!looksLikeSensitiveOptionName(optionName)) return null;
 
-  if (!SENSITIVE_LONG_OPTIONS.has(optionName) && SENSITIVE_OPTION_HINT_PATTERN.test(optionName)) {
-    return {
-      name: `${longOption[1]}${longOption[2]}`,
-      attachedValue: longOption[3] ?? null,
-      header: false,
-    };
-  }
-
-  if (!SENSITIVE_LONG_OPTIONS.has(optionName)) {
+  // Unlisted aliases are ambiguous: el option name puede contener el secreto
+  // (por ejemplo, --custom-token:SECRET). No se conserva el nombre en el
+  // diagnostico; se redacciona el comando completo.
+  if (
+    !SENSITIVE_LONG_OPTIONS.has(optionName) ||
+    AMBIGUOUS_SENSITIVE_OPTION_DELIMITER_PATTERN.test(optionName)
+  ) {
     return { malformed: true };
   }
 
@@ -762,11 +793,15 @@ function getPidsUsingPorts(ports) {
   return [...pidSet];
 }
 
+export function buildWindowsKillCommand(pid) {
+  return `taskkill /PID ${pid} /F`;
+}
+
 function killPid(pid) {
   if (pid === process.pid) return;
 
   if (process.platform === 'win32') {
-    execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
+    execSync(buildWindowsKillCommand(pid), { stdio: 'ignore' });
     return;
   }
 
