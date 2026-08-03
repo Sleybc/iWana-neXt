@@ -153,24 +153,42 @@ export function getProtectedPids(entries, currentPid = process.pid, parentPid = 
   return protectedPids;
 }
 
-function normalizeForMatching(value) {
-  return String(value).replace(/\\/g, '/').toLowerCase();
+export function normalizeForMatching(value, platform = process.platform) {
+  const normalized = String(value).replace(/\\/g, '/');
+  return platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-export function findRepoWatcherPids(entries, protectedPids, markers = DEV_PROCESS_MARKERS) {
+function getFirstCommandToken(command) {
+  const match = String(command ?? '')
+    .trim()
+    .match(/^(?:"([^"]*)"|'([^']*)'|(\S+))/);
+
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? '';
+}
+
+export function findRepoWatcherPids(
+  entries,
+  protectedPids,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+) {
   return entries
     .filter((entry) => !protectedPids.has(entry.pid))
     .filter((entry) =>
       markers.some((marker) => {
-        const normalizedCommand = normalizeForMatching(entry.command);
-        const normalizedMarkerPath = normalizeForMatching(marker.path ?? '');
-        const normalizedMarkerCommand = normalizeForMatching(marker.command ?? '');
+        const normalizedCommand = normalizeForMatching(entry.command, platform);
+        const normalizedExecutable = normalizeForMatching(
+          getFirstCommandToken(entry.command),
+          platform,
+        );
+        const normalizedMarkerPath = normalizeForMatching(marker.path ?? '', platform);
+        const normalizedMarkerCommand = normalizeForMatching(marker.command ?? '', platform);
 
-        // Sin una ruta del repositorio, el texto del comando no prueba ownership.
+        // La ruta debe pertenecer al ejecutable; verla solo en un argumento no prueba ownership.
         if (
           !normalizedMarkerPath ||
           !normalizedMarkerCommand ||
-          !normalizedCommand.includes(normalizedMarkerPath)
+          !normalizedExecutable.includes(normalizedMarkerPath)
         ) {
           return false;
         }
@@ -204,7 +222,7 @@ const ENV_ASSIGNMENT_PATTERN = /(^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*
 const POWERSHELL_ENV_PATTERN = /((?:\$env:|set\s+)[A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|\S+)/gi;
 const CONNECTION_STRING_PATTERN = /\b(?:https?|postgres(?:ql)?|mysql|mariadb|redis|rediss|mongodb(?:\+srv)?|amqps?):\/\/[^\s'"`]+/gi;
 const SENSITIVE_OPTION_PATTERN = /(--?(?:token|password|passwd|secret|api[-_]?key|authorization|credential|connection[-_]?string|database[-_]?url|dsn|client[-_]?secret|private[-_]?key|access[-_]?key|refresh[-_]?token|signing[-_]?key|cookie|auth|user))(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
-const SENSITIVE_HEADER_PATTERN = /(--?headers?)(?:=|\s+)(?:"[^"]*"|'[^']*'|.+$)/gi;
+const SENSITIVE_HEADER_PATTERN = /(-H|--headers?)(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi;
 const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
 
 function sanitizeProcessCommand(command) {

@@ -5,6 +5,7 @@ import {
   findRepoWatcherPids,
   formatPidDiagnostic,
   getProtectedPids,
+  normalizeForMatching,
   planDevPortCleanup,
 } from './free-dev-ports.mjs';
 
@@ -71,6 +72,32 @@ test('findRepoWatcherPids ignora un comando coincidente sin ruta del repositorio
     ]),
     [100],
   );
+});
+
+test('findRepoWatcherPids exige la ruta del repositorio en el ejecutable', () => {
+  assert.deepEqual(
+    findRepoWatcherPids(
+      [
+        {
+          pid: 103,
+          ppid: 1,
+          command: 'node --fixture C:/appiw/apps/api/nest.js start --watch',
+        },
+      ],
+      new Set(),
+      [{ path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' }],
+      'win32',
+    ),
+    [],
+  );
+});
+
+test('normalizeForMatching conserva mayúsculas en Unix y normaliza Windows', () => {
+  assert.notEqual(
+    normalizeForMatching('/home/user/Appiw', 'linux'),
+    normalizeForMatching('/home/user/appiw', 'linux'),
+  );
+  assert.equal(normalizeForMatching('C:\\Appiw\\Apps', 'win32'), 'c:/appiw/apps');
 });
 
 test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', () => {
@@ -147,4 +174,26 @@ test('formatPidDiagnostic includes a sanitized command and falls back without on
   assert.match(formatted, /<connection-redacted>/);
   assert.doesNotMatch(formatted, /redact-me/);
   assert.equal(formatPidDiagnostic(404, []), 'PID 404');
+});
+
+test('formatPidDiagnostic redacts short and long sensitive options and URL secrets', () => {
+  const formatted = formatPidDiagnostic(321, [
+    {
+      pid: 321,
+      command:
+        'node scripts/dev.mjs -H X-Api-Key:header-secret --header X-Api-Key:long-header-secret --token token-secret --password password-secret --api-key api-secret --secret secret-value https://url-user:url-secret@example.test/path?token=query-secret',
+    },
+  ]);
+
+  assert.match(formatted, /-H=<redacted>/);
+  assert.match(formatted, /--header=<redacted>/);
+  assert.match(formatted, /--token=<redacted>/);
+  assert.match(formatted, /--password=<redacted>/);
+  assert.match(formatted, /--api-key=<redacted>/);
+  assert.match(formatted, /--secret=<redacted>/);
+  assert.match(formatted, /<connection-redacted>/);
+  assert.doesNotMatch(
+    formatted,
+    /header-secret|long-header-secret|token-secret|password-secret|api-secret|secret-value|url-secret|query-secret/,
+  );
 });
