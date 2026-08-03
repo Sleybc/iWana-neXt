@@ -302,6 +302,9 @@ const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bea
 const REDACTED_COMMAND = '[REDACTED COMMAND]';
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.+$/;
 const POWERSHELL_ENV_ASSIGNMENT_PATTERN = /^\$env:[A-Za-z_][A-Za-z0-9_]*=.+$/i;
+const POWERSHELL_ENV_NAME_PATTERN = /^\$env:(?<name>[A-Za-z_][A-Za-z0-9_]*)$/i;
+const SENSITIVE_POWERSHELL_ENV_NAME_PATTERN =
+  /(?:^|_)(?:TOKEN|PASSWORD|PASS|SECRET|API_KEY|PRIVATE_KEY|CREDENTIAL)(?:$|_)/i;
 const SENSITIVE_LONG_OPTIONS = new Set([
   'pwd',
   'token',
@@ -474,6 +477,13 @@ function getHeaderValueEnd(tokens, startIndex, attachedValue) {
   return endIndex;
 }
 
+function isSensitivePowershellEnvName(token) {
+  const match = String(token ?? '').match(POWERSHELL_ENV_NAME_PATTERN);
+  return Boolean(
+    match?.groups?.name && SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(match.groups.name),
+  );
+}
+
 function sanitizeProcessCommand(command) {
   const normalizedCommand = String(command ?? '').trim().replace(/\s+/g, ' ');
   if (!normalizedCommand) return '';
@@ -487,6 +497,16 @@ function sanitizeProcessCommand(command) {
   for (let index = 0; index < tokenized.tokens.length; index += 1) {
     const token = tokenized.tokens[index];
     if (ENV_ASSIGNMENT_PATTERN.test(token) || POWERSHELL_ENV_ASSIGNMENT_PATTERN.test(token)) {
+      continue;
+    }
+
+    if (
+      isSensitivePowershellEnvName(token) &&
+      tokenized.tokens[index + 1] === '=' &&
+      tokenized.tokens[index + 2]
+    ) {
+      sanitizedTokens.push(`${token}=[REDACTED]`);
+      index += 2;
       continue;
     }
 

@@ -375,6 +375,29 @@ test('formatPidDiagnostic redacts additional secret option aliases in attached a
   }
 });
 
+test('formatPidDiagnostic redacts spaced PowerShell sensitive environment assignments', () => {
+  const sensitiveNames = [
+    'TOKEN',
+    'PASSWORD',
+    'PASS',
+    'SECRET',
+    'API_KEY',
+    'PRIVATE_KEY',
+    'CREDENTIAL',
+  ];
+
+  for (const name of sensitiveNames) {
+    for (const assignment of [`$env:${name}=secret`, `$env:${name} = secret`]) {
+      const formatted = formatPidDiagnostic(331, [
+        { pid: 331, command: `tool ${assignment} --mode safe` },
+      ]);
+
+      assert.match(formatted, /tool/);
+      assert.doesNotMatch(formatted, /secret/);
+    }
+  }
+});
+
 test('formatPidDiagnostic fails closed for malformed sensitive aliases', () => {
   const commands = [
     'tool --key:LEAK',
