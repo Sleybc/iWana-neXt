@@ -8,7 +8,7 @@
 **Modulo principal:** MOD09 Programacion / WFM
 **Modulos implicados:** MOD10 Service Assurance, MOD11 Ejecucion Operativa, MOD05 CRM
 **Superficie:** `/dashboard/scheduling/pending-visits` (apps/portal)
-**ADR resultante:** docs/adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md
+**ADR resultante:** [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 **Spec resultante:** docs/specs/2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md
 
 ---
@@ -214,7 +214,7 @@ toma lock de fila), pero si **insercion duplicada de filas nuevas** en
 `schedule_events`, `work_orders` y `execution_orders`, que READ COMMITTED no puede
 prevenir por definicion: no existe predicado bloqueado sobre filas que aun no existen.
 
-Elevar a SERIALIZABLE se descarta (ver ADR-076 A4). La solucion correcta es un punto de
+Elevar a SERIALIZABLE se descarta (ver ADR-076 (propuesto) A4). La solucion correcta es un punto de
 serializacion explicito.
 
 ---
@@ -283,7 +283,7 @@ Ninguna de las tres tablas implicadas tiene restriccion que lo impida, y READ CO
 sin bloqueos no puede cerrar el caso concurrente.
 
 La decision arquitectonica resultante queda registrada en
-`docs/adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md`, y el contrato de
+[ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md), y el contrato de
 experiencia en `docs/specs/2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md`.
 
 ---
@@ -294,7 +294,7 @@ experiencia en `docs/specs/2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md`.
 - docs/adrs/ADR-039-Bandeja-Visitas-Pendientes-WFM.md
 - docs/adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md
 - docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md
-- docs/adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md
+- [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 - docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md
 - docs/specs/SPEC-WFM-PENDING-VISITS-ACTO-OPERATIVO-v1.0.md
 - docs/specs/2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md

@@ -9,7 +9,7 @@
 **Agentes destinatarios:** AI-SR-FULL (backend), AI-FE-PLATFORM (portal)
 **Revisor obligatorio:** AI-SR-QA
 **Consulta:** AI-PROD-UX (copy y estados), AI-DS-OWNER (solo si falta variante de chip)
-**ADR habilitante:** [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+**ADR habilitante:** [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 **Spec de experiencia:** [2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md](../specs/2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md)
 **Informe de origen:** [INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md](../informes/INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md)
 
@@ -31,7 +31,7 @@ Cuatro rutas verificadas desembocan en dos eventos + dos órdenes de trabajo + d
 quinta (V8) despacha visitas para casos ya resueltos por canal remoto.
 
 **El eje de unicidad correcto es la unidad de trabajo de origen** — expediente o
-ticket — **nunca el suscriptor ni el nodo** (ADR-076 D1). Un mismo suscriptor puede
+ticket — **nunca el suscriptor ni el nodo** (ADR-076 (propuesto) D1). Un mismo suscriptor puede
 tener legítimamente una instalación de segundo servicio y un ticket de soporte
 simultáneos; un mismo nodo, una falla de fibra y un mantenimiento programado.
 
@@ -61,21 +61,21 @@ en un estado sin salida que lo empuje a duplicar.
 
 ### Lo que NO entra en este corte
 
-- **Índice único sobre `schedule_events`** (ADR-076 D2.3). Está condicionado a que E1–E4
+- **Índice único sobre `schedule_events`** (ADR-076 (propuesto) D2.3). Está condicionado a que E1–E4
   estén en producción y exista migración de limpieza por tenant. Corte posterior.
 - Indicador derivado en el listado, chip de bandeja y filtro (spec §6 y §9, corte C-B):
   exigen ampliar el contrato de listado.
 - Retiro de solicitud por resolución remota (spec §10, corte C-C): exige ampliar
   `AssuranceFieldServicePort`.
 - Cualquier cambio en el eje de unicidad hacia `subscriber_id`, `contract_id` o
-  `subject_ref_id`. **Está prohibido por ADR-076 regla 1.**
+  `subject_ref_id`. **Está prohibido por ADR-076 (propuesto) regla 1.**
 - Reescribir la bandeja o el flujo de despacho. Este corte no rediseña nada.
 
 ---
 
 ## 2. Artefactos de entrada obligatorios
 
-- **ADR habilitante:** ADR-076 — reglas de implementación 1 a 10 son el contrato
+- **ADR habilitante:** ADR-076 (propuesto) — reglas de implementación 1 a 10 son el contrato
 - **Spec de experiencia:** §4 y §5 para E7/E8; §2 para la taxonomía de copy
 - **Informe:** vectores V1 a V8, con archivo:línea
 - **ADRs vigentes:** ADR-037 (boundaries WFM), ADR-039 (reglas 5-7), ADR-047 y ADR-068
@@ -113,7 +113,7 @@ en un estado sin salida que lo empuje a duplicar.
 
 1. **Boundaries.** La guarda de dominio consulta únicamente `schedule_events`, tabla de
    la que WFM es owner. Prohibida cualquier lectura de tablas de CRM, Assurance, Tasks o
-   Inventario (ADR-037 regla 2, ADR-076 regla 2).
+   Inventario (ADR-037 regla 2, ADR-076 (propuesto) regla 2).
 2. **La guarda vive en el servidor.** La verificación de cliente existente en
    `PendingVisitRequestsView.tsx:526-542` se conserva como mejora de experiencia, jamás
    como control. El `409` debe producirse aunque el cliente la omita.
@@ -146,7 +146,7 @@ en un estado sin salida que lo empuje a duplicar.
 - `execution_order_idempotency_records` cubre comandos de ejecución, **no** la creación
   desde agenda. No asumas cobertura que no existe.
 - `runInTenantSchema` abre transacción sin nivel explícito: es READ COMMITTED. No
-  intentes resolverlo elevando el aislamiento (ADR-076 A4).
+  intentes resolverlo elevando el aislamiento (ADR-076 (propuesto) A4).
 - El contenedor de "Advertencias operativas" de `ScheduleVisitRequestConfirmDialog.tsx:121-130`
   ya existe y duplica `PortalAlert` con clases `amber` locales. Consolídalo al implementar
   E8 en lugar de añadir un tercer patrón.
@@ -215,7 +215,7 @@ Detente y escala a AI-EM-ARCH si:
 
 - Concluyes que la guarda necesita leer tablas de otro bounded context.
 - Encuentras que el eje de unicidad por unidad de origen produce falsos positivos sobre
-  un caso operativo real no previsto en ADR-076.
+  un caso operativo real no previsto en ADR-076 (propuesto).
 - La corrección de E1 exige cambiar el contrato MOD09↔MOD11 más allá de la cancelación
   ya aprobada.
 - Detectas duplicados preexistentes en datos que impidan avanzar sin migración de
