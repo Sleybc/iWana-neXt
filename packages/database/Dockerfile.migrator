@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_VERSION=24.13.1
+# Manifest-list digests resolved with `docker buildx imagetools inspect` for
+# the exact Node patch and Debian variants used by this image.
+ARG NODE_BOOKWORM_DIGEST=sha256:00e9195ebd49985a6da8921f419978d85dfe354589755192dc090425ce4da2f7
+ARG NODE_BOOKWORM_SLIM_DIGEST=sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2
 
-FROM node:${NODE_VERSION}-bookworm AS base
+FROM node:${NODE_VERSION}-bookworm@${NODE_BOOKWORM_DIGEST} AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
 
@@ -27,9 +31,31 @@ COPY packages/config ./packages/config
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json
-RUN pnpm --filter @iwana/db deploy --prod --legacy /output
+RUN CI=true HUSKY=0 pnpm --filter @iwana/db deploy --prod --legacy --ignore-scripts /output
 
-FROM node:${NODE_VERSION}-bookworm-slim AS runner
+# `pnpm deploy` copies package files and can retain files from the shared
+# workspace lockfile. Keep only the runtime allowlist and fail the build if a
+# source, test, TypeScript, Jest, or unrelated root dependency leaks through.
+RUN set -eu; \
+    find /output -mindepth 1 -maxdepth 1 ! -name dist ! -name node_modules ! -name package.json -exec rm -rf -- {} +; \
+    find /output -type d \( -name src -o -name test -o -name tests \) -prune -exec rm -rf -- {} +; \
+    find /output -type d -iname '*jest*' -prune -exec rm -rf -- {} +; \
+    find /output \( -type f -o -type l \) -print | while read -r path; do \
+      case "$path" in \
+        *.ts|*.map|*.d.ts|*.spec.js|*.test.js|*/jest.config.*|*/jest.integration.config.*|*/tsconfig*.json) rm -f -- "$path" ;; \
+      esac; \
+    done; \
+    find /output/node_modules -depth -iname 'cross-env*' -exec rm -rf -- {} +; \
+    test -f /output/dist/data-source.js; \
+    test -f /output/dist/cli/tenant-migrate.js; \
+    test -f /output/node_modules/typeorm/cli.js; \
+    test "$(find /output -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = 'dist node_modules package.json '; \
+    ! find /output -type d \( -name src -o -name test -o -name tests \) -print -quit | grep -q .; \
+    ! find /output -iname '*jest*' -print -quit | grep -q .; \
+    ! find /output \( -type f -o -type l \) \( -name '*.ts' -o -name '*.map' -o -name '*.d.ts' -o -name 'tsconfig*.json' \) -print -quit | grep -q .; \
+    ! find /output/node_modules \( -type f -o -type l \) -iname 'cross-env*' -print -quit | grep -q .
+
+FROM node:${NODE_VERSION}-bookworm-slim@${NODE_BOOKWORM_SLIM_DIGEST} AS runner
 WORKDIR /app
 ENV NODE_ENV=production HOME=/home/node
 COPY --from=builder --chown=node:node /output ./

@@ -259,13 +259,20 @@ test('E7 mantiene Node derivado de useNodeVersion en imágenes y CI', () => {
   for (const dockerfile of dockerfiles) {
     const source = readFileSync(join(process.cwd(), dockerfile), 'utf8');
     const nodeFroms = [...source.matchAll(/^FROM\s+node:([^\s]+)(?:\s+AS\s+\S+)?\s*$/gim)];
+    const digestArgs = new Set(
+      [...source.matchAll(/^ARG\s+([A-Z][A-Z0-9_]*_DIGEST)=sha256:[0-9a-f]{64}$/gm)].map(
+        (match) => match[1],
+      ),
+    );
+    const nodeFromPattern =
+      /^\$\{NODE_VERSION\}(?:-[\w.-]+)?(?:@sha256:[0-9a-f]{64}|@\$\{([A-Z][A-Z0-9_]*_DIGEST)\})?$/;
 
     assert.match(source, new RegExp(`^ARG NODE_VERSION=${workspaceVersion}$`, 'm'));
     assert.ok(nodeFroms.length > 0, `${dockerfile} debe declarar una base Node`);
-    assert.ok(
-      nodeFroms.every((match) => /^\$\{NODE_VERSION\}(?:-[\w.-]+)?$/.test(match[1])),
-      `${dockerfile} debe derivar cada FROM node de NODE_VERSION`,
-    );
+    assert.ok(nodeFroms.every((match) => {
+      const nodeFrom = nodeFromPattern.exec(match[1]);
+      return nodeFrom !== null && (nodeFrom[1] === undefined || digestArgs.has(nodeFrom[1]));
+    }), `${dockerfile} debe derivar cada FROM node de NODE_VERSION`);
     assert.doesNotMatch(source, /node:25(?:$|[^.\d])/);
   }
 
