@@ -50,7 +50,7 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | # | Hallazgo | Evidencia | Estado |
 | --- | --- | --- | --- |
 | A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Abierto** — decisión del CTO vía ADR; consulta bloqueante a AI-DATA-ENG |
-| A2 | `migrator-prod` —actor dedicado de las migraciones de arranque para el esquema público y los tenants existentes, no el único actor de DDL del sistema— corría **como root**, era single-stage, mantenía el toolchain en la imagen final y usaba una base mutable por tag. Aunque ya declaraba `ARG NODE_VERSION=24.13.1`, la base no estaba fijada por digest. El worker de provisioning también ejecuta DDL y migraciones del schema de cada tenant nuevo. | `docker-compose.prod.yml:271-290`, `packages/database/Dockerfile.migrator:2,8-16` (baseline previo: `7354aa31^:packages/database/Dockerfile.migrator:2-3`), `apps/worker/src/processors/tenant-provisioning.processor.ts:61-78,160-175,296-315` | **Implementación local: corregida** por el rango inclusivo `7354aa31^..e8aae966` (imagen multi-stage, Node 24.13.1, digests guardados, salida `pnpm deploy --prod` podada, runner no-root uid 1000 y smoke posterior al prune). **Gate CI remoto de esta remediación: pendiente**; la verificación actual de la imagen final multi-stage no ejecutó migraciones reales contra una base de datos. El registro histórico/pre-remediación se conserva en §5. |
+| A2 | `migrator-prod` —actor dedicado de las migraciones de arranque para el esquema público y los tenants existentes, no el único actor de DDL del sistema— corría **como root**, era single-stage, mantenía el toolchain en la imagen final y usaba una base mutable por tag. Aunque ya declaraba `ARG NODE_VERSION=24.13.1`, la base no estaba fijada por digest. El worker de provisioning también ejecuta DDL y migraciones del schema de cada tenant nuevo. | `docker-compose.prod.yml:271-290`, `packages/database/Dockerfile.migrator:2,8-16` (baseline previo: `7354aa31^:packages/database/Dockerfile.migrator:2-3`), `apps/worker/src/processors/tenant-provisioning.processor.ts:61-78,160-175,296-315` | **Implementación local: corregida** por el rango inclusivo `7354aa31^..dd46de11` (imagen multi-stage, Node 24.13.1, digests guardados, salida `pnpm deploy --prod` podada, runner no-root uid 1000 y smoke posterior al prune). **Gate CI remoto de esta remediación: pendiente**; la verificación actual de la imagen final multi-stage no ejecutó migraciones reales contra una base de datos. El registro histórico/pre-remediación se conserva en §5. |
 | A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Abierto** — Typesense corregido; AI-SEC-ENG debe definir el mecanismo de secretos y AI-PLAT-OPS implementarlo para `minio-init` |
 | A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Abierto** — `security_opt`, `logging` e `init` aplicados; AI-PLAT-OPS requiere medición previa y decisión sobre recursos/redes |
 | A5 | `nginx-prod` dependía de `web-prod` y `portal-prod` con `service_started`, y ninguno declaraba healthcheck: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto. | `docker-compose.prod.yml:58-64`, `:126-160` | **Corregido** |
@@ -157,8 +157,8 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 
 ### 4.3 Imagen del migrator
 
-- El rango inclusivo `7354aa31^..e8aae966` implementa A2 con stages separados `base`,
-  `deps`, `builder` y `runner`; `e8aae966` es el extremo final de ese rango,
+- El rango inclusivo `7354aa31^..dd46de11` implementa A2 con stages separados `base`,
+  `deps`, `builder` y `runner`; `dd46de11` es el extremo final de la implementación,
   no el HEAD documental de este informe.
 - `NODE_VERSION=24.13.1` y los digests de las variantes `bookworm` y
   `bookworm-slim` tienen guards de versión y digest en el Dockerfile y en el
@@ -331,12 +331,12 @@ requieren decisión del CTO antes de ejecutarse.
 9. **Runner sobre `-slim`/`-alpine` sin pnpm global**, con `pnpm deploy --prod`
     para el árbol de runtime. **Ejecutado para API y worker**; el migrator
     también cuenta con la implementación en runner slim multi-stage del rango
-    `7354aa31^..e8aae966`, presente y verificada localmente; A2 queda
+    `7354aa31^..dd46de11`, presente y verificada localmente; A2 queda
     pendiente de confirmación de CI remoto.
 10. **`RUN --mount=type=cache` sobre el store de pnpm** y `cache-to/from
     type=gha` en CI. **Cache mounts ejecutados y verificados**; `cache-to/from`
     de GitHub Actions queda como mejora separada.
-11. **Multi-stage del migrator** — **Ejecutado en el rango inclusivo `7354aa31^..e8aae966`**: la imagen final
+11. **Multi-stage del migrator** — **Ejecutado en el rango inclusivo `7354aa31^..dd46de11`**: la imagen final
     usa runner slim no-root, salida de producción podada, guards de versión/digest
     y smoke de CLI/datasource/runner después del prune.
 12. **Unificar los cuatro Dockerfiles de apps** en uno parametrizado por
@@ -381,7 +381,7 @@ requieren decisión del CTO antes de ejecutarse.
 | Media | B4 — healthcheck del worker sin significado | **Abierto** | AI-SR-FULL (heartbeat) |
 | Media | A3 — secretos por `environment` y en argv de `minio-init` | **Abierto** | AI-SEC-ENG + AI-PLAT-OPS |
 | Media | A9 — Redis sin autenticación fuera de E2E | **Abierto** | AI-SEC-ENG |
-| Media | A2 (single-stage del migrator) — calidad y tamaño de la imagen | **Implementación local: corregida**; **Gate CI remoto de esta remediación: pendiente** — cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; G6.5 debe verificar el rango inclusivo `7354aa31^..e8aae966` |
+| Media | A2 (single-stage del migrator) — calidad y tamaño de la imagen | **Implementación local: corregida**; **Gate CI remoto de esta remediación: pendiente** — cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; G6.5 debe verificar el rango inclusivo `7354aa31^..dd46de11` |
 | Media | A4 — límites de recursos y segmentación de redes | **Abierto** | AI-PLAT-OPS, con medición previa |
 | Baja | D4 — `proxy_pass` divergente entre dev y prod | **Implementación local: corregida**; **Gate CI remoto de esta remediación: pendiente** — cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; confirmar `nginx-config.test.mjs` en G6.5 |
 | Baja | D6 — `free-dev-ports.mjs` mata procesos ajenos | **Implementación local: corregida**; **Gate CI remoto de esta remediación: pendiente** — cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; confirmar suite enfocada 47/47 en G6.5 |
@@ -401,7 +401,7 @@ Cierre explícito del bucle abierto por
 | --- | --- |
 | 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Implementación local/configuración: corregida**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071; G6.5 de la convergencia Node quedó certificado en la corrida previa `30835001419` / SHA `1a95415a`, que no valida A2, D4 ni D6 |
 | 2. Secretos por `environment`; Typesense con API key en argv | **Parcialmente cerrado**: Typesense corregido y verificado. `minio-init` y el mecanismo general de secretos siguen abiertos (propuesta 17) |
-| 3. Migrator single-stage y sin `USER` no-root | **Implementación local: corregida**; el rango inclusivo `7354aa31^..e8aae966` implementa multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. **Gate CI remoto de esta remediación: pendiente**. En la verificación actual de la imagen final multi-stage no se ejecutaron migraciones reales contra una base de datos; el cierre queda condicionado a la corrida autenticada del PR. |
+| 3. Migrator single-stage y sin `USER` no-root | **Implementación local: corregida**; el rango inclusivo `7354aa31^..dd46de11` implementa multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. **Gate CI remoto de esta remediación: pendiente**. En la verificación actual de la imagen final multi-stage no se ejecutaron migraciones reales contra una base de datos; el cierre queda condicionado a la corrida autenticada del PR. |
 | 4. TLS API/worker ↔ MinIO en producción | **Abierto**, sin cambio. Bloqueado por el diferimiento de G7 en ADR-070 |
 | 4b. D5 — CSP, HSTS, dominio productivo y `limit_req` | **Diferido por ADR-070 y G7**, sin implementación ni afirmación de cierre. Se reactiva con los disparadores de ADR-070; AI-PLAT-OPS implementa, AI-SEC-ENG define/audita, AI-EM-ARCH recomienda y el CTO decide en G7 |
 | 5. Sin escaneo CVE, SBOM, firma ni attestation | **Abierto**, sin cambio. Requiere ADR (propuesta 7) |
@@ -425,7 +425,7 @@ el CTO decide dominio, TLS y límites dentro de G7.
 | D4 | `scripts/nginx-config.test.mjs` cubre preservación de `/api/v1` y el health endpoint; `nginx -t` validó la configuración de desarrollo. **Implementación local: corregida. Gate CI remoto de esta remediación: pendiente** hasta la corrida autenticada del PR. |
 | D6 | `node --test scripts/free-dev-ports.test.mjs`: **47 passed, 0 failed** en la corrida final local; cubre ownership, revalidación, separación de PIDs externos, diagnóstico fail-closed y ausencia de `/T`. **Implementación local: corregida. Gate CI remoto de esta remediación: pendiente** hasta la corrida autenticada del PR. |
 | Tooling agregado | `pnpm.cmd test:tooling`: **67 passed, 0 failed** en la corrida final local; incluye `scripts/nginx-config.test.mjs`. |
-| A2 | El Dockerfile del rango inclusivo `7354aa31^..e8aae966` ejecuta smoke de CLI TypeORM, datasource y runner tenant después del prune. **Limitación deliberada de la verificación actual de la imagen final multi-stage:** no se ejecutaron migraciones reales contra una base de datos, por lo que este informe no reclama que `migration:run` ni `migration:tenant:run` hayan tenido éxito. **Implementación local: corregida. Gate CI remoto de esta remediación: pendiente**. |
+| A2 | El Dockerfile del rango inclusivo `7354aa31^..dd46de11` ejecuta smoke de CLI TypeORM, datasource y runner tenant después del prune. **Limitación deliberada de la verificación actual de la imagen final multi-stage:** no se ejecutaron migraciones reales contra una base de datos, por lo que este informe no reclama que `migration:run` ni `migration:tenant:run` hayan tenido éxito. **Implementación local: corregida. Gate CI remoto de esta remediación: pendiente**. |
 
 ## 9. Decisión de cierre
 
@@ -479,7 +479,7 @@ G6.5 de CI remoto y cierre de CA-12»**. Ese texto debe reconciliarse
 explícitamente con el [informe de convergencia Node](INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md), que registra el G6.5 histórico de la convergencia, y con la evidencia del PR actual, cuyo G6.5 para A2, D4 y D6 sigue pendiente. Esta tarea no reescribe ADR-071 ni usa su texto histórico para cerrar el PR actual.
 
 **Trazabilidad de commits:** la implementación de A2 corresponde al rango inclusivo
-`7354aa31^..e8aae966`; `e8aae966` es el extremo final de ese rango y no el HEAD
+`7354aa31^..dd46de11`; `dd46de11` es el extremo final de ese rango y no el HEAD
 documental. La corrección documental previa corresponde a `ac81ddb4`.
 
 **Registro posterior:** el ID de corrida, el SHA validado y las conclusiones de
