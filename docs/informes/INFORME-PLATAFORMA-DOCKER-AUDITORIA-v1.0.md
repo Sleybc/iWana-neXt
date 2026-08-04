@@ -43,21 +43,21 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | B1 | `pnpm dev` levantaba solo `postgres redis pgbouncer minio nginx`. **`typesense` y `minio-init` nunca arrancaban** pese a declarar `profiles: development`. El módulo de búsqueda quedaba sin servicio y el bucket de medios sin crear; `RUNBOOK-MEDIA-MINIO-v1.0.md` afirmaba lo contrario y proponía `pnpm dev` como remedio al error `NoSuchBucket` — un remedio que no podía funcionar. | `scripts/dev.mjs:1033-1043` frente a `docker-compose.yml:124-166` | **Corregido** |
 | B2 | El dashboard TTY **nunca se apagaba en los caminos de fallo**. `dashboard.stop()` solo se invocaba en el `finally` del bloque final; el catch global y el relanzamiento del fallo de healthcheck lo esquivaban. Como `start()` deja `setRawMode(true)`, buffer alterno y `stdin.resume()`, la terminal quedaba inutilizable y el event loop vivo: el proceso **no terminaba** pese a `process.exitCode = 1`. | `dev.mjs:651-657`, `:1102`, `:1156-1171` | **Corregido** |
 | B3 | Los handlers `SIGINT`/`SIGTERM` se registraban **después** de liberar puertos, `docker compose up`, dos builds y las migraciones. Además `managedChildren` solo contenía api/web/portal/worker: los hijos de `runStep` nunca se mataban. Un Ctrl+C temprano dejaba procesos huérfanos. | `dev.mjs:1028-1089`, `:1075` | **Corregido** |
-| B4 | El healthcheck del worker de producción **no verifica nada**: `node -e "process.kill(1, 0)"` comprueba que exista el PID 1 dentro del propio contenedor, lo cual es cierto mientras el contenedor viva. Un worker con el loop de BullMQ colgado reporta `healthy`. | `docker-compose.prod.yml:188-195`, `docker-compose.e2e.yml:77-84` | **Abierto** — exige código de aplicación |
+| B4 | El healthcheck del worker de producción **no verifica nada**: `node -e "process.kill(1, 0)"` comprueba que exista el PID 1 dentro del propio contenedor, lo cual es cierto mientras el contenedor viva. Un worker con el loop de BullMQ colgado reporta `healthy`. | `docker-compose.prod.yml:188-195`, `docker-compose.e2e.yml:77-84` | **Abierto** — AI-SR-FULL debe implementar heartbeat; AI-PLAT-OPS validará el healthcheck |
 
 ### 2.2 Riesgo arquitectónico y de seguridad
 
 | # | Hallazgo | Evidencia | Estado |
 | --- | --- | --- | --- |
-| A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Escalado** |
-| A2 | El migrator —único actor con DDL en producción— corría **como root**, era single-stage y usaba `node:24` sin fijar patch. | `packages/database/Dockerfile.migrator` | **Cerrado** en `e8aae966`: imagen multi-stage (`base`/`deps`/`builder`/`runner`), versión Node 24.13.1 y digests guardados, salida `pnpm deploy --prod` podada a producción, runner no-root (uid 1000) y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. No se ejecutaron migraciones reales contra una base de datos. |
-| A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Parcial**: Typesense corregido; `minio-init` sigue igual |
-| A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Parcial**: `security_opt`, `logging` e `init` aplicados; recursos y redes abiertos |
+| A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Abierto** — decisión del CTO vía ADR; consulta bloqueante a AI-DATA-ENG |
+| A2 | El migrator —único actor con DDL en producción— corría **como root**, era single-stage y usaba `node:24` sin fijar patch. | `packages/database/Dockerfile.migrator` | **Pendiente de CI remoto**: la implementación local corresponde al rango `4f9756f4^..e8aae966` (imagen multi-stage, Node 24.13.1, digests guardados, salida `pnpm deploy --prod` podada, runner no-root uid 1000 y smoke posterior al prune). El cierre queda condicionado a la corrida autenticada del PR; no se ejecutaron migraciones reales contra una base de datos. |
+| A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Abierto** — Typesense corregido; AI-SEC-ENG debe definir el mecanismo de secretos y AI-PLAT-OPS implementarlo para `minio-init` |
+| A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Abierto** — `security_opt`, `logging` e `init` aplicados; AI-PLAT-OPS requiere medición previa y decisión sobre recursos/redes |
 | A5 | `nginx-prod` dependía de `web-prod` y `portal-prod` con `service_started`, y ninguno declaraba healthcheck: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto. | `docker-compose.prod.yml:58-64`, `:126-160` | **Corregido** |
 | A6 | `api-prod` y `worker-prod` fijaban `STORAGE_DRIVER: minio` y `TYPESENSE_API_KEY` como obligatorios pero **no declaraban dependencia** de MinIO ni Typesense. | `docker-compose.prod.yml:107-117`, `:187-200` | **Corregido** |
 | A7 | **Cuatro versiones de Node conviven en el mismo release**: `node:25.8.2` en api/web/portal/worker, `node:24` flotante en el migrator, `>=24` en `engines`, y `useNodeVersion: 24.13.1` en `pnpm-workspace.yaml`. Node 25 terminó soporte el 2026-06-01 (§5.1 del informe de limpieza). | `apps/*/Dockerfile:1-4`, `Dockerfile.migrator:1`, `package.json:9`, `pnpm-workspace.yaml` | **Corregido** por ADR-071: cinco imágenes y CI convergidos a Node 24.13.1; E7 protege la derivación |
-| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**, y CI solo construye worker y migrator: un Dockerfile roto de api, web o portal solo se descubre desplegando. | `.github/workflows/ci.yml:71-85` | **Escalado** |
-| A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Escalado** |
+| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**. La cobertura de imágenes de api, web y portal ya quedó cerrada por la convergencia de CI, que construye las cinco imágenes; permanecen únicamente los controles de cadena de suministro. | `.github/workflows/ci.yml:71-85` | **Abierto** — solo CVE, SBOM, firma y attestation; requiere decisión de gate vía ADR |
+| A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Abierto** — AI-SEC-ENG debe definir el control y el alcance de autenticación Redis |
 
 ### 2.3 Calidad de build
 
@@ -73,11 +73,11 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | # | Hallazgo | Estado |
 | --- | --- | --- |
 | D1 | `.env.example` no documentaba las variables de puertos publicados (`DEV_PROXY_PORT`, `ADMINER_PORT`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`), ni los pines con default (`POSTGRES_IMAGE`, `REDIS_IMAGE`, `TYPESENSE_IMAGE`), ni `PLATFORM_SUPER_ADMIN_*` —que `apps/api/src/modules/auth/platform-bootstrap.service.ts` sí consume—; y sí declaraba `MIGRATOR_IMAGE`, que ningún Compose lee. | **Corregido** |
-| D2 | `INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md` afirmaba "un deadline total de 60 segundos" y "7 pruebas aprobadas"; hoy son 90 s de compilación más 90 s de readiness, y 20 pruebas. | **Corregido** con nota de vigencia |
+| D2 | `INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md` afirmaba "un deadline total de 60 segundos" y "7 pruebas aprobadas"; en el corte histórico de ese informe eran 90 s de compilación más 90 s de readiness, y 20 pruebas. | **Corregido** con nota de vigencia |
 | D3 | `PROMPT-PLAT-OPS-RESTAURACION-PERFIL-DEV-v1.0.md` §3.1 describía Adminer "con sus `profiles` actuales", superado desde el 2026-08-02. | **Corregido** con nota de vigencia |
-| D4 | `proxy_pass http://api/` en desarrollo (con barra: strippea el prefijo) frente a `http://api` en producción (sin barra: lo preserva). El routing del proxy difiere entre entornos. | **Cerrado** en `60f41885`: `nginx/nginx.dev.conf` conserva `/api/v1` y enruta `/health` al endpoint real `/api/v1/health`; `scripts/nginx-config.test.mjs` lo protege y la sintaxis de Nginx fue validada. |
+| D4 | `proxy_pass http://api/` en desarrollo (con barra: strippea el prefijo) frente a `http://api` en producción (sin barra: lo preserva). El routing del proxy difiere entre entornos. | **Pendiente de CI remoto**: `60f41885` implementa la conservación de `/api/v1` y el enrutamiento de `/health` al endpoint real `/api/v1/health`; `scripts/nginx-config.test.mjs` lo protege y la sintaxis de Nginx fue validada localmente. El cierre queda condicionado a la corrida autenticada del PR. |
 | D5 | `nginx.prod.conf` sin `server_tokens off`, sin `Permissions-Policy`, con `X-Forwarded-For` inconsistente entre vhosts, con `Connection: upgrade` incondicional y con `listen ... http2` deprecado desde nginx 1.25.1. Aparte, conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`, HSTS `max-age=300` y ausencia de CSP y `limit_req`. | **Parcial**: lo corregible sin decidir dominio, hecho |
-| D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Cerrado** en `dd5e865c`: solo termina watchers propiedad del repositorio tras revalidar identidad; reporta y nunca mata PIDs externos; Windows no usa `/T`; los diagnósticos son fail-closed. Suite enfocada: **47/47**. |
+| D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Pendiente de CI remoto**: `dd5e865c` implementa ownership, revalidación, exclusión de PIDs externos, diagnóstico fail-closed y ausencia de `/T`. La suite enfocada local está en **47/47**; el cierre queda condicionado a la corrida autenticada del PR. |
 
 ### 2.5 Corrección de un hallazgo preliminar
 
@@ -124,7 +124,8 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 - Los handlers de señal se registran **antes** del primer paso, y todo el
   arranque queda dentro de un `try/finally` que garantiza `dashboard.stop()` en
   cualquier camino de salida.
-- **Cinco pruebas nuevas** (20 en total, antes 15). Una de ellas deriva la lista
+- **En el corte histórico de esta corrección había cinco pruebas nuevas** (20 en
+  total, antes 15). La evidencia final de tooling ya no es esa cifra: una de ellas deriva la lista
   esperada **del propio `docker-compose.yml`**, comparando los servicios que
   declaran `profiles: development` con los que el arranque levanta: es el test
   que habría detectado la ausencia de `typesense`, y falla si el Compose y el
@@ -154,7 +155,9 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 
 ### 4.3 Imagen del migrator
 
-- `e8aae966` cierra A2 con stages separados `base`, `deps`, `builder` y `runner`.
+- El rango `4f9756f4^..e8aae966` implementa A2 con stages separados `base`,
+  `deps`, `builder` y `runner`; `e8aae966` es el extremo final de ese rango,
+  no el HEAD documental de este informe.
 - `NODE_VERSION=24.13.1` y los digests de las variantes `bookworm` y
   `bookworm-slim` tienen guards de versión y digest en el Dockerfile y en el
   tooling test.
@@ -198,11 +201,13 @@ registro de lo que se hizo en su fecha y no se falsifican.
 | Typesense operativo con la key por entorno | `/health` → `{"ok":true}`; `/collections` con key → **200**, sin key → **401**, con key errónea → **401** |
 | `run --rm minio-init` | Ejecutado; bucket `iwana-media` presente y `private` |
 | `docker build --file packages/database/Dockerfile.migrator` | OK; 192,7 MB |
-| Migrator no-root operativo | `id -u` → **1000**; `node -v` → **v24.13.1**; `pnpm migration:run` carga TypeORM y llega a la conexión de BD |
+| Migrator no-root operativo | `id -u` → **1000**; `node -v` → **v24.13.1**; build y smoke del migrator final OK |
+| Registro histórico/pre-remediación de `pnpm migration:run` | La corrida histórica cargó TypeORM y llegó a la conexión de BD; **no es evidencia del migrator final ni de una migración actual** |
+| Smoke final sin base de datos | Después del prune: `typeorm/cli.js --help`, carga del datasource sin inicializar conexión y carga/verificación del runner de tenants → **OK**; no se ejecutaron `migration:run` ni `migration:tenant:run` contra una BD |
 | `nginx -t` sobre `nginx.prod.conf` | Sintaxis correcta, **sin warnings** (antes emitía 3 avisos de `http2` deprecado) |
 | `nginx -t` sobre `nginx.dev.conf` | Sintaxis correcta |
 | Camino de fallo del arranque | `MINIO_IMAGE` inválida → aborta en el paso de Docker con **exit code 1**, sin colgarse y sin dejar el proceso vivo |
-| `pnpm test:tooling` | **20 passed, 0 failed** (antes 15) |
+| `pnpm.cmd test:tooling` | **67 passed, 0 failed**; ejecución final local de tooling |
 | `turbo run test --concurrency=1 --force` | **9 tareas correctas, `Cached: 0 cached, 9 total`** — ejecución real, no caché |
 | `pnpm lint` | 8 tareas correctas, 0 errores |
 | `pnpm typecheck` | 8 tareas correctas |
@@ -342,15 +347,15 @@ requieren decisión del CTO antes de ejecutarse.
 | Severidad | Ítem | Estado | Destinatario propuesto |
 | --- | --- | --- | --- |
 | Alta | A1 — pgBouncer sin consumidor, contradiciendo la justificación de `search_path` | **Abierto** | **CTO vía ADR**, con consulta a AI-DATA-ENG |
-| Alta | A8 — sin escaneo CVE, SBOM ni firma; CI no construye api/web/portal | **Abierto** | **CTO vía ADR** + AI-PLAT-OPS |
+| Alta | A8 — sin escaneo CVE, SBOM, firma ni attestation; la cobertura de imágenes api/web/portal ya está cerrada por la convergencia de CI | **Abierto** — solo faltan CVE, SBOM, firma y attestation | **CTO vía ADR** + AI-PLAT-OPS; decidir si son gate de merge |
 | Alta | A7 — Node 25 EOL en las cuatro imágenes de apps | **Cerrado** | **Cerrado por [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)** (Aprobado e implementado, 2026-08-03) |
 | Media | B4 — healthcheck del worker sin significado | **Abierto** | AI-SR-FULL (heartbeat) |
 | Media | A3 — secretos por `environment` y en argv de `minio-init` | **Abierto** | AI-SEC-ENG + AI-PLAT-OPS |
 | Media | A9 — Redis sin autenticación fuera de E2E | **Abierto** | AI-SEC-ENG |
-| Media | A2 (single-stage del migrator) — calidad y tamaño de la imagen | **Cerrado** | AI-PLAT-OPS; C1/C2/C3 cerrados por CONVERGENCIA-NODE |
+| Media | A2 (single-stage del migrator) — calidad y tamaño de la imagen | **Pendiente de CI remoto** — implementación local completa; cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; G6.5 debe verificar el rango `4f9756f4^..e8aae966` |
 | Media | A4 — límites de recursos y segmentación de redes | **Abierto** | AI-PLAT-OPS, con medición previa |
-| Baja | D4 — `proxy_pass` divergente entre dev y prod | **Cerrado** | AI-PLAT-OPS |
-| Baja | D6 — `free-dev-ports.mjs` mata procesos ajenos | **Cerrado** | AI-PLAT-OPS |
+| Baja | D4 — `proxy_pass` divergente entre dev y prod | **Pendiente de CI remoto** — cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; confirmar `nginx-config.test.mjs` en G6.5 |
+| Baja | D6 — `free-dev-ports.mjs` mata procesos ajenos | **Pendiente de CI remoto** — cierre condicionado a la corrida autenticada del PR | AI-PLAT-OPS; confirmar suite enfocada 47/47 en G6.5 |
 
 Ninguno de estos ítems es **deuda crítica abierta al cierre de un módulo**, así
 que no dispara la escalación de la §3.3 del perfil. A1 y A8 sí deben entrar en el
@@ -366,38 +371,52 @@ Cierre explícito del bucle abierto por
 | --- | --- |
 | 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Cerrado**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071 |
 | 2. Secretos por `environment`; Typesense con API key en argv | **Parcialmente cerrado**: Typesense corregido y verificado. `minio-init` y el mecanismo general de secretos siguen abiertos (propuesta 17) |
-| 3. Migrator single-stage y sin `USER` no-root | **Cerrado** en `e8aae966`: multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. No se ejecutaron migraciones reales contra una base de datos. |
+| 3. Migrator single-stage y sin `USER` no-root | **Pendiente de CI remoto**: el rango `4f9756f4^..e8aae966` implementa multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. No se ejecutaron migraciones reales contra una base de datos; el cierre queda condicionado a la corrida autenticada del PR. |
 | 4. TLS API/worker ↔ MinIO en producción | **Abierto**, sin cambio. Bloqueado por el diferimiento de G7 en ADR-070 |
 | 5. Sin escaneo CVE, SBOM, firma ni attestation | **Abierto**, sin cambio. Requiere ADR (propuesta 7) |
 | 6. Caché BuildKit vacío; próximos builds completos | **Cerrado para los Dockerfiles**: cache mounts sobre `/pnpm/store`; caché final purgado por CA-15 |
 
 Los hallazgos **D4** y **D6**, aunque no forman parte de los seis riesgos de §5,
-quedan cerrados por la remediación documentada en `60f41885` y `dd5e865c`,
-respectivamente: proxy de desarrollo con prefijo preservado y limpieza de puertos
-limitada a watchers del repositorio revalidados.
+quedan **en verificación remota** por la remediación documentada en `60f41885`
+y `dd5e865c`, respectivamente: proxy de desarrollo con prefijo preservado y
+limpieza de puertos limitada a watchers del repositorio revalidados. Su cierre
+queda condicionado a la corrida autenticada del PR.
 
 ### 8.1 Evidencia enfocada de las remediaciones
 
 | Alcance | Evidencia |
 | --- | --- |
-| D4 | `scripts/nginx-config.test.mjs` cubre preservación de `/api/v1` y el health endpoint; `nginx -t` validó la configuración de desarrollo. |
-| D6 | `node --test scripts/free-dev-ports.test.mjs` en el HEAD final `e8aae966`: **47 passed, 0 failed**; cubre ownership, revalidación, separación de PIDs externos, diagnóstico fail-closed y ausencia de `/T`. |
-| Tooling agregado | `pnpm.cmd test:tooling` en `e8aae966`: **67 passed, 0 failed**; incluye `scripts/nginx-config.test.mjs`. |
-| A2 | El Dockerfile de `e8aae966` ejecuta smoke de CLI TypeORM, datasource y runner tenant después del prune. **Limitación deliberada:** no se ejecutaron migraciones reales contra una base de datos, por lo que este informe no reclama que `migration:run` ni `migration:tenant:run` hayan tenido éxito. |
+| D4 | `scripts/nginx-config.test.mjs` cubre preservación de `/api/v1` y el health endpoint; `nginx -t` validó la configuración de desarrollo. Estado: **en verificación remota** hasta la corrida autenticada del PR. |
+| D6 | `node --test scripts/free-dev-ports.test.mjs`: **47 passed, 0 failed** en la corrida final local; cubre ownership, revalidación, separación de PIDs externos, diagnóstico fail-closed y ausencia de `/T`. Estado: **en verificación remota** hasta la corrida autenticada del PR. |
+| Tooling agregado | `pnpm.cmd test:tooling`: **67 passed, 0 failed** en la corrida final local; incluye `scripts/nginx-config.test.mjs`. |
+| A2 | El Dockerfile del rango `4f9756f4^..e8aae966` ejecuta smoke de CLI TypeORM, datasource y runner tenant después del prune. **Limitación deliberada:** no se ejecutaron migraciones reales contra una base de datos, por lo que este informe no reclama que `migration:run` ni `migration:tenant:run` hayan tenido éxito. Estado: **pendiente de CI remoto**. |
 
 ## 9. Decisión de cierre
 
-La auditoría queda **ejecutada**. Se corrigieron tres bloqueantes de operación
-(B1, B2, B3), dos riesgos de dependencias de producción (A5, A6), el hardening
-básico de los tres archivos Compose, la ejecución no privilegiada y la
-construcción multi-stage del migrator, cuatro endurecimientos de nginx
-verificables sin dominio productivo, D4, D6 y la deriva documental de cinco
-artefactos.
+La auditoría queda **ejecutada a nivel local/G6**. Se corrigieron tres
+bloqueantes de operación (B1, B2, B3), dos riesgos de dependencias de
+producción (A5, A6), el hardening básico de los tres archivos Compose, la
+ejecución no privilegiada y la construcción multi-stage del migrator, cuatro
+endurecimientos de nginx verificables sin dominio productivo y la deriva
+documental de cinco artefactos. La evidencia local de D4 y D6 queda registrada
+en §8.1, pero todavía no equivale a G6.5.
 
-Solo permanecen abiertos **B4, A1, A3, A4 (recursos y redes), A8 y A9**. **A2,
-D4 y D6 están cerrados** con la evidencia de §8.1. **Esta auditoría no cambia
-el estado G7 definido por ADR-070**: nada de lo aplicado presupone dominio
-productivo, CA emitida ni procesamiento de PII real.
+Permanecen abiertos **B4, A1, A3, A4 (recursos y redes), A8 y A9**. **A2, D4 y
+D6 están pendientes de CI remoto / en verificación remota**: su cierre queda
+condicionado a una corrida autenticada de GitHub Actions asociada al PR, verde,
+identificada por SHA y con los jobs de merge readiness exigidos. **No se emite
+GO final ni se asigna estado cerrado definitivo a A2, D4 o D6 antes de esa
+corrida.** **Esta auditoría no cambia el estado G7 definido por ADR-070**: nada
+de lo aplicado presupone dominio productivo, CA emitida ni procesamiento de PII
+real.
+
+**Trazabilidad de commits:** la implementación de A2 corresponde al rango
+`4f9756f4^..e8aae966`; `e8aae966` es el extremo final de ese rango y no el HEAD
+documental. La corrección documental previa corresponde a `ac81ddb4`.
+
+**Registro posterior:** el ID de corrida, el SHA validado y las conclusiones de
+los jobs se anexarán después de que se ejecute el PR; no existe todavía una
+corrida remota que reportar.
 
 ## 10. Referencias
 
