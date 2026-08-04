@@ -54,16 +54,27 @@ RUN set -eu; \
       /output/pnpm-lock.yaml \
       /output/pnpm-workspace.yaml; \
     rm -rf -- /output/node_modules/cross-env; \
+    rm -rf -- /output/node_modules/.bin/cross-env; \
+    cross_env_virtual_store_dir="$(find /output/node_modules/.pnpm -mindepth 1 -maxdepth 1 -type d -name 'cross-env@*' -print -quit)"; \
+    test -n "$cross_env_virtual_store_dir"; \
+    rm -rf -- "$cross_env_virtual_store_dir"; \
     test -f /output/dist/data-source.js; \
     test -f /output/dist/cli/tenant-migrate.js; \
     test -f /output/node_modules/typeorm/cli.js; \
     test "$(find /output -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = 'dist node_modules package.json '; \
     test ! -e /output/node_modules/cross-env; \
-    test ! -L /output/node_modules/cross-env
+    test ! -L /output/node_modules/cross-env; \
+    test ! -e /output/node_modules/.bin/cross-env; \
+    test ! -L /output/node_modules/.bin/cross-env; \
+    test -z "$(find /output/node_modules -mindepth 1 \( -type d -o -type f -o -type l \) \( -name 'cross-env' -o -name 'cross-env@*' \) -print -quit)"
 
-# Smoke-load the compiled runtime after pruning without initializing a database
-# connection, and verify the TypeORM CLI entry point remains available.
-RUN cd /output && node --input-type=module -e "import { accessSync } from 'node:fs'; const { AppDataSource } = await import('./dist/data-source.js'); if (AppDataSource.isInitialized) throw new Error('DataSource must not connect during the build smoke test'); accessSync('./node_modules/typeorm/cli.js');"
+# Smoke-run the TypeORM CLI and load the compiled runtime after pruning without
+# initializing a database connection; fail the build if the CLI dependency
+# closure or compiled tenant runner is incomplete.
+RUN cd /output && \
+    node node_modules/typeorm/cli.js --help && \
+    test -f ./dist/cli/tenant-migrate.js && \
+    node --input-type=module -e "import { accessSync } from 'node:fs'; const { AppDataSource } = await import('./dist/data-source.js'); if (AppDataSource.isInitialized) throw new Error('DataSource must not connect during the build smoke test'); accessSync('./dist/cli/tenant-migrate.js');"
 
 FROM node:${NODE_VERSION}-bookworm-slim@sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2 AS runner
 WORKDIR /app
