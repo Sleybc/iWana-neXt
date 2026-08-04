@@ -1,11 +1,11 @@
 # ADR-071: Convergencia de los runtimes Node a 24 LTS con fuente única de versión
 
-**Versión:** 1.0
-**Estado:** Aprobado
-**Fecha:** 2026-08-03
+**Versión:** 1.1
+**Estado:** **Aprobado**
+**Fecha:** 2026-08-03 · **v1.1 el mismo día** (ratifica la precisión del criterio de verificación 1, introducida durante la ejecución; sin cambios en la decisión, las alternativas ni el impacto)
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobación:** CTO Humano — 2026-08-03
+**Aprobación:** CTO Humano — 2026-08-03 (v1.0) · **ratificación del criterio 1 el 2026-08-03 (v1.1)**
 **Módulos:** Plataforma transversal — imágenes de API, worker, web, portal y migrator
 **Relacionado:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (primer ADR de infraestructura) · [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) §2.2 A7 · [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md) §5.1
 
@@ -135,9 +135,32 @@ Esta decisión se considera implementada cuando:
 5. `pnpm lint`, `pnpm typecheck` y la suite completa con `Cached: 0` pasan sobre la nueva versión.
 6. Existe un test automatizado que falla si las declaraciones vuelven a divergir.
 
-**Estado de implementación:** Implementación local verificada; pendiente G6.5
-de CI remoto y cierre de CA-12. La evidencia está registrada en
-[INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md](../informes/INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md).
+**Estado de implementación: IMPLEMENTADA** — verificado por auditoría
+independiente de AI-EM-ARCH el 2026-08-03, por ejecución y no por reporte. Los
+seis criterios se cumplen; G6.5 quedó GO con la corrida Linux de CI sobre el
+merge-sha `1a95415a` del PR #2 (run `30835001419`) y CA-12 se cerró con el
+`[DESEMPATE]` registrado en el informe de fase. Evidencia completa en
+[INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md](../informes/INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md)
+y §5.2 del
+[informe de auditoría Docker](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md).
+
+**Trazabilidad del criterio 1 — RATIFICADO.** El borrador v1.0 decía "ninguna
+referencia `node:25` sobrevive en el repositorio". La redacción vigente —acotada
+a *referencias ejecutables* en Dockerfiles, workflows, manifests y artefactos de
+build— es una precisión introducida durante la ejecución y razonada en el
+`[DESEMPATE] Alcance de CA-01 y CA-02` del informe de fase. Es correcta en el
+fondo: las únicas ocurrencias restantes son capturas de navegador archivadas en
+`.playwright-mcp/`, que no son pines desplegables y que `.dockerignore` excluye
+del contexto de build; eliminarlas falsearía la evidencia del diagnóstico sin
+reducir ninguna divergencia de runtime.
+
+El cambio entró en el mismo commit que la aprobación y que la implementación
+(`b1e6a7de`), sin traza previa. La auditoría independiente de AI-EM-ARCH del
+2026-08-03 lo señaló —el criterio que mide un trabajo no debe llegar junto al
+trabajo que mide— y elevó la precisión al CTO. **El CTO la ratificó el
+2026-08-03**, y esta v1.1 la incorpora al texto aprobado. La anomalía queda
+registrada, no borrada: es el precedente de cómo se regulariza una edición
+posterior a la aprobación.
 
 ## Referencias
 

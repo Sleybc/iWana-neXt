@@ -43,21 +43,21 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | B1 | `pnpm dev` levantaba solo `postgres redis pgbouncer minio nginx`. **`typesense` y `minio-init` nunca arrancaban** pese a declarar `profiles: development`. El módulo de búsqueda quedaba sin servicio y el bucket de medios sin crear; `RUNBOOK-MEDIA-MINIO-v1.0.md` afirmaba lo contrario y proponía `pnpm dev` como remedio al error `NoSuchBucket` — un remedio que no podía funcionar. | `scripts/dev.mjs:1033-1043` frente a `docker-compose.yml:124-166` | **Corregido** |
 | B2 | El dashboard TTY **nunca se apagaba en los caminos de fallo**. `dashboard.stop()` solo se invocaba en el `finally` del bloque final; el catch global y el relanzamiento del fallo de healthcheck lo esquivaban. Como `start()` deja `setRawMode(true)`, buffer alterno y `stdin.resume()`, la terminal quedaba inutilizable y el event loop vivo: el proceso **no terminaba** pese a `process.exitCode = 1`. | `dev.mjs:651-657`, `:1102`, `:1156-1171` | **Corregido** |
 | B3 | Los handlers `SIGINT`/`SIGTERM` se registraban **después** de liberar puertos, `docker compose up`, dos builds y las migraciones. Además `managedChildren` solo contenía api/web/portal/worker: los hijos de `runStep` nunca se mataban. Un Ctrl+C temprano dejaba procesos huérfanos. | `dev.mjs:1028-1089`, `:1075` | **Corregido** |
-| B4 | El healthcheck del worker de producción **no verifica nada**: `node -e "process.kill(1, 0)"` comprueba que exista el PID 1 dentro del propio contenedor, lo cual es cierto mientras el contenedor viva. Un worker con el loop de BullMQ colgado reporta `healthy`. | `docker-compose.prod.yml:188-195`, `docker-compose.e2e.yml:77-84` | **Abierto** — exige código de aplicación |
+| B4 | El healthcheck del worker de producción **no verifica nada**: `node -e "process.kill(1, 0)"` comprueba que exista el PID 1 dentro del propio contenedor, lo cual es cierto mientras el contenedor viva. Un worker con el loop de BullMQ colgado reporta `healthy`. | `docker-compose.prod.yml:188-195`, `docker-compose.e2e.yml:77-84` | **Delegado** — [PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md) |
 
 ### 2.2 Riesgo arquitectónico y de seguridad
 
 | # | Hallazgo | Evidencia | Estado |
 | --- | --- | --- | --- |
-| A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Escalado** |
-| A2 | El migrator —único actor con DDL en producción— corría **como root**, era single-stage y usaba `node:24` sin fijar patch. | `packages/database/Dockerfile.migrator:1` | **Parcial**: no-root y patch fijado; el single-stage sigue abierto |
+| A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Escalado** — [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) (propuesto) |
+| A2 | El migrator —único actor con DDL en producción— corría **como root**, era single-stage y usaba `node:24` sin fijar patch. | `packages/database/Dockerfile.migrator:1` | **Corregido**: no-root, patch fijado y multi-stage (§5.3). Residual menor: `deploy` sigue copiando `src/` |
 | A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Parcial**: Typesense corregido; `minio-init` sigue igual |
 | A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Parcial**: `security_opt`, `logging` e `init` aplicados; recursos y redes abiertos |
 | A5 | `nginx-prod` dependía de `web-prod` y `portal-prod` con `service_started`, y ninguno declaraba healthcheck: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto. | `docker-compose.prod.yml:58-64`, `:126-160` | **Corregido** |
 | A6 | `api-prod` y `worker-prod` fijaban `STORAGE_DRIVER: minio` y `TYPESENSE_API_KEY` como obligatorios pero **no declaraban dependencia** de MinIO ni Typesense. | `docker-compose.prod.yml:107-117`, `:187-200` | **Corregido** |
 | A7 | **Cuatro versiones de Node conviven en el mismo release**: `node:25.8.2` en api/web/portal/worker, `node:24` flotante en el migrator, `>=24` en `engines`, y `useNodeVersion: 24.13.1` en `pnpm-workspace.yaml`. Node 25 terminó soporte el 2026-06-01 (§5.1 del informe de limpieza). | `apps/*/Dockerfile:1-4`, `Dockerfile.migrator:1`, `package.json:9`, `pnpm-workspace.yaml` | **Corregido** por ADR-071: cinco imágenes y CI convergidos a Node 24.13.1; E7 protege la derivación |
-| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**, y CI solo construye worker y migrator: un Dockerfile roto de api, web o portal solo se descubre desplegando. | `.github/workflows/ci.yml:71-85` | **Escalado** |
-| A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Escalado** |
+| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**, y CI solo construye worker y migrator: un Dockerfile roto de api, web o portal solo se descubre desplegando. | `.github/workflows/ci.yml:71-85` | **Escalado** — [ADR-073](../adrs/ADR-073-Cadena-de-Suministro-de-Imagenes.md) (propuesto) |
+| A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Escalado** — [ADR-074](../adrs/ADR-074-Autenticacion-de-Redis.md) (propuesto) |
 
 ### 2.3 Calidad de build
 
@@ -75,9 +75,9 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | D1 | `.env.example` no documentaba las variables de puertos publicados (`DEV_PROXY_PORT`, `ADMINER_PORT`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`), ni los pines con default (`POSTGRES_IMAGE`, `REDIS_IMAGE`, `TYPESENSE_IMAGE`), ni `PLATFORM_SUPER_ADMIN_*` —que `apps/api/src/modules/auth/platform-bootstrap.service.ts` sí consume—; y sí declaraba `MIGRATOR_IMAGE`, que ningún Compose lee. | **Corregido** |
 | D2 | `INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md` afirmaba "un deadline total de 60 segundos" y "7 pruebas aprobadas"; hoy son 90 s de compilación más 90 s de readiness, y 20 pruebas. | **Corregido** con nota de vigencia |
 | D3 | `PROMPT-PLAT-OPS-RESTAURACION-PERFIL-DEV-v1.0.md` §3.1 describía Adminer "con sus `profiles` actuales", superado desde el 2026-08-02. | **Corregido** con nota de vigencia |
-| D4 | `proxy_pass http://api/` en desarrollo (con barra: strippea el prefijo) frente a `http://api` en producción (sin barra: lo preserva). El routing del proxy difiere entre entornos. | **Abierto** |
+| D4 | `proxy_pass http://api/` en desarrollo strippeaba el prefijo: **el proxy de dev devolvía 404 en todas las rutas de API**, no era solo una divergencia. | **Corregido** y verificado con servidor eco (§5.3) |
 | D5 | `nginx.prod.conf` sin `server_tokens off`, sin `Permissions-Policy`, con `X-Forwarded-For` inconsistente entre vhosts, con `Connection: upgrade` incondicional y con `listen ... http2` deprecado desde nginx 1.25.1. Aparte, conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`, HSTS `max-age=300` y ausencia de CSP y `limit_req`. | **Parcial**: lo corregible sin decidir dominio, hecho |
-| D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Abierto** |
+| D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Corregido**: `partitionPortPids` no toca procesos ajenos (§5.3) |
 
 ### 2.5 Corrección de un hallazgo preliminar
 
@@ -261,6 +261,159 @@ caché del builder sea el único mecanismo de reutilización, cualquier trabajo 
 verificación obliga a elegir entre dejar gigabytes residuales o pagar builds
 completos. El riesgo residual §5.6 del informe anterior no era un efecto puntual
 de aquella limpieza, sino un rasgo permanente del pipeline de build actual.
+### 5.2 Auditoría de la fase PLAT-OPS/CONVERGENCIA-NODE — 2026-08-03
+
+Verificación independiente de AI-EM-ARCH sobre la ejecución de
+[ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md), realizada **por
+ejecución de cada gate, no por lectura del informe de fase**.
+
+| Criterio | Verificación propia | Resultado |
+| --- | --- | --- |
+| CA-01 | Búsqueda de `node:25` en Dockerfiles, workflows, manifests y JSON | **Correcto.** Las únicas ocurrencias están en capturas de navegador de `.playwright-mcp/`, excluidas por `.dockerignore` |
+| CA-01b | `24.x` en workflows | **Correcto.** Sin pines flotantes |
+| CA-02 | `useNodeVersion: 24.13.1`; los cinco Dockerfiles con `ARG NODE_VERSION=24.13.1` | **Correcto.** Fuente única con derivación exacta |
+| CA-03 / G6.5 | Corrida Linux de CI sobre SHA identificable | **Correcto según registro**; run `30835001419`, merge-sha `1a95415a`, 29/29 E2E. No verificable localmente — `gh` no está instalado |
+| CA-04, CA-05, CA-06, CA-13 | Verificados en la resolución del bloqueo | **Correctos** |
+| CA-08 | `turbo run test --concurrency=1 --force` | **Correcto: 9/9, `Cached: 0 cached, 9 total`** |
+| CA-07 | `turbo run lint typecheck --force` | **Correcto: 16/16, `Cached: 0 cached, 16 total`** |
+| CA-09 | `pnpm test:tooling` | **Correcto: 21/21**, incluido E7 |
+| CA-10 | `config --quiet` en dev, prod y e2e | **Correcto los tres** |
+| CA-11 | `pnpm dev` completo | **Correcto.** API healthy en ~40 s; puertos 3000, 3001 y 3002 → **HTTP 200**; worker con `Nest application successfully started`; bucket `iwana-media` presente |
+| CA-12 | Reconstrucción de la imagen de API desde caché frío y medición con el mismo método declarado | **Correcto y reproducido.** `docker image inspect --format '{{.Size}}'` → **110,4 MB** frente a los **105,3 MB** reportados: coincide dentro del margen entre dos builds distintos. El `[DESEMPATE]` que declara el "antes" como no disponible en lugar de interpolarlo es además la decisión correcta |
+| CA-14 | Auditorías documentales | **Correcto: `BLOQUEANTE: 0`** en ambas |
+| CA-15 | Baseline del daemon | **Correcto: 8 imágenes, 2,215 GB, caché BuildKit 0 B** — idéntico al baseline de §5.1 |
+
+**Limitación declarada de CA-11:** los contenedores de infraestructura ya
+estaban levantados al iniciar la comprobación, así que se ejercitó la ruta de
+arranque completa (`up --wait`, one-shot, builds, migraciones, API, web, portal
+y worker) pero **no** un arranque en frío desde cero.
+
+**Nota metodológica sobre los tamaños de imagen.** `docker images` y
+`docker image inspect --format '{{.Size}}'` **no reportan lo mismo**: para la
+imagen de API, el primero devuelve 583 MB y el segundo 110,4 MB. La diferencia
+son los manifests de atestación y las variantes de plataforma que BuildKit
+agrega al índice. El método declarado en el informe de fase —`docker image
+inspect`— es el correcto para comparar tamaño de imagen, y es el que debe usarse
+en las comparaciones futuras contra este nuevo baseline. Una discrepancia
+aparente de 5× entre informes suele ser esto y no un error de medición.
+
+#### Hallazgos de la auditoría
+
+1. **Contradicción entre artefactos vigentes — corregida en este acto.** ADR-071
+   declaraba "pendiente G6.5 de CI remoto y cierre de CA-12" mientras el informe
+   de fase declaraba ambos cerrados. Se actualizó el ADR a **IMPLEMENTADA**.
+2. **El criterio 1 de ADR-071 se modificó en el mismo commit que la aprobación y
+   la implementación** (`b1e6a7de`), sin traza previa. El fondo es correcto y está
+   razonado en un `[DESEMPATE]`, pero el criterio que mide un trabajo no debe
+   llegar junto al trabajo que mide. Se elevó al CTO, que **lo ratificó el
+   2026-08-03**; la precisión queda incorporada al texto aprobado en
+   **[ADR-071 v1.1](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)**, con la
+   anomalía registrada y no borrada. Con la ratificación, los seis criterios de
+   verificación del ADR se cumplen sin salvedades.
+3. **El fix de E2E `anchorScheduleIso` (`dd4b9d02`) es un hallazgo de calidad
+   genuino**, no atribuible a la fase: el test agendaba instalaciones con offset
+   fijo desde `now` y cruzaba la medianoche local cuando CI corría después de
+   las ~16:30 UTC, violando `assertInstallationScheduleWindow`. La causa raíz
+   está bien argumentada y el fix es de prueba, no de aplicación.
+4. **Deuda ajena registrada correctamente:** el fallo del smoke web
+   (`admin-bootstrap.spec.ts:412`) se verificó preexistente en `main` y no se
+   atribuyó a la fase.
+
+#### Estado de los hallazgos de esta auditoría tras la fase
+
+| Hallazgo | Estado |
+| --- | --- |
+| A7 — Node 25 EOL | **Cerrado.** Los cinco runtimes en 24.13.1 con fuente única y test de no regresión |
+| C1 — doble `pnpm install` | **Cerrado.** Retirado de los cuatro builders |
+| C2 — sin cache mounts | **Cerrado.** `--mount=type=cache` sobre el store de pnpm en las cinco imágenes |
+| C3 — devDependencies en producción | **Cerrado.** API y worker con `pnpm deploy --prod` sobre `bookworm-slim`, sin pnpm global ni TypeScript |
+| Propuesta 8 — build de api/web/portal en CI | **Cerrada.** Las cinco imágenes se construyen en CI con `NODE_VERSION` |
+
+Siguen abiertos B4, A1, A3, A4 (recursos y redes), A8 (CVE/SBOM/firma), A9, la
+mitad restante de A2 y D4/D6, conforme a la §7.
+
+### 5.3 Cierre de deuda ejecutable — 2026-08-03
+
+Tercera pasada. Se ataca la deuda que no requiere decisión del CTO, se emiten los
+ADRs para la que sí la requiere, y se prepara la que exige código de aplicación.
+
+#### Corregido y verificado
+
+| Hallazgo | Qué se hizo | Evidencia |
+| --- | --- | --- |
+| **D4** | `nginx.dev.conf` pasa a `proxy_pass http://api` sin barra, `/health` mapea a `/api/v1/health`, y adopta el patrón `map $http_upgrade`. Ahora dev y prod enrutan igual | **Era un defecto, no una divergencia cosmética.** Con un servidor eco en el puerto 3000 se comprobó que `GET /api/v1/health` llegaba al API como **`/v1/health`** y `/health` como `/health`: el prefijo global es `api/v1`, así que **el proxy de desarrollo devolvía 404 en todas las rutas de API**. Tras el cambio, ambas llegan como `/api/v1/health` |
+| **D6** | `partitionPortPids` separa los PIDs propios de los ajenos antes de matar; un proceso que no pertenece al repositorio se reporta y **no** se detiene | 4 tests nuevos; `test:tooling` **25/25** |
+| **A2** | `Dockerfile.migrator` pasa a multi-stage con `pnpm deploy --prod`. La imagen final ya no lleva toolchain ni devDependencies | Construye y **ejecuta migraciones reales** contra la BD de desarrollo: públicas y de todos los tenants, `EXIT=0`. **95,8 MB** frente a 133,8 MB (−28 %), `uid 1000`, `tsc` ausente |
+
+#### Defecto latente descubierto al hacer A2
+
+`@iwana/shared` estaba declarado como **devDependency** de `@iwana/db`, pero el
+`dist` compilado hace `require("@iwana/shared")` en runtime —los enums de las
+entidades son valores, no tipos, y sobreviven a la compilación—. Con la imagen
+single-stage el fallo era invisible, porque instalaba también las devDependencies.
+Un `pnpm deploy --prod` habría producido una imagen que crashea al cargar.
+
+Se movió a `dependencies`. Es una corrección de declaración, no una dependencia
+nueva: no requiere ADR.
+
+**Trampa de higiene detectada de paso.** El `pnpm install` resultante generó un
+diff de **7.711 líneas** en `pnpm-lock.yaml` para un cambio de tres. La causa es
+que el lockfile commiteado está formateado por **Prettier** —que expande los
+`resolution: {...}` en línea— mientras pnpm lo reescribe en su forma nativa.
+Ejecutar `pnpm exec prettier --write pnpm-lock.yaml` tras cada `pnpm install`
+reduce el diff a su contenido real. Sin ese paso, cualquier cambio de dependencia
+llega en un diff de 7.700 líneas donde nadie puede revisar nada.
+
+#### Emitido para decisión del CTO
+
+| ADR | Hallazgo | Recomendación |
+| --- | --- | --- |
+| [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) (propuesto) | **A1** — pgBouncer sin consumidor | **Consumirlo**, con validación bajo carga como condición de entrada. Si se retira, reescribir la justificación de `SET LOCAL search_path` en `AGENTS.md` y `CLAUDE.md` es parte inseparable de la decisión |
+| [ADR-073](../adrs/ADR-073-Cadena-de-Suministro-de-Imagenes.md) (propuesto) | **A8** — sin CVE, SBOM ni firma | Escaneo con umbral escalonado (`CRITICAL` primero), SBOM obligatorio no bloqueante, firma pospuesta hasta que exista registro de imágenes |
+| [ADR-074](../adrs/ADR-074-Autenticacion-de-Redis.md) (propuesto) | **A9** — Redis sin autenticación | `--requirepass` obligatorio **en todos los entornos**, incluido desarrollo: un baseline que solo aplica en producción no se ejercita nunca |
+
+#### Delegado por exigir código de aplicación
+
+**B4** — el healthcheck falso del worker— queda especificado en
+[PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md)
+para AI-SR-FULL. Su criterio de aceptación central no es que el contenedor llegue
+a `healthy` —el probe actual ya lo consigue— sino **demostrar la transición a
+`unhealthy` con el worker detenido**.
+
+#### Evidencia de la reauditoría
+
+| Verificación | Resultado |
+| --- | --- |
+| Las cinco imágenes construyen tras mover la dependencia | **Correcto las cinco** |
+| API arranca en contenedor | `running / healthy` |
+| Migrator multi-stage ejecuta migraciones reales | `EXIT=0`, públicas y tenant |
+| Proxy de desarrollo | `/api/v1/health` y `/health` llegan íntegros al API |
+| `turbo run lint typecheck --force` | **16/16, `Cached: 0`** |
+| `turbo run test --concurrency=1 --force` | **9/9, `Cached: 0`** |
+| `pnpm test:tooling` | **25/25** |
+| `config --quiet` en dev, prod y e2e | Correcto los tres |
+| `audit:doc-locations` · `audit:adr-citations` | **`BLOQUEANTE: 0`** en ambas |
+| Baseline del daemon | **8 imágenes / 2,215 GB / caché 0 B** |
+
+#### Lo que sigue abierto, y por qué
+
+| Ítem | Estado | Motivo |
+| --- | --- | --- |
+| B4 | Especificado, no implementado | Exige código de aplicación (AI-SR-FULL) |
+| A1, A8, A9 | ADR emitido, **Propuesto** | Decisión reservada al CTO |
+| A3 · credenciales de `minio-init` en argv | Abierto | Pasarlas por `MC_HOST_*` exige URL-encoding de la contraseña; romper el bootstrap por un endurecimiento marginal en un contenedor efímero no compensa. Se cierra de raíz con la gestión de secretos (propuesta 17), no con un parche |
+| A4 · límites de recursos | Abierto | Requiere medición previa; un `mem_limit` mal calibrado en Postgres es peor que ninguno |
+| A4 · segmentación de redes | Abierto | Decisión de topología; encaja con ADR-072 (propuesto) |
+| A2 · fuentes `.ts` en la imagen | Residual menor | El multi-stage eliminó toolchain y devDependencies; `pnpm deploy` sigue copiando `src/`. Acotarlo exige un campo `files` en los `package.json` del workspace, con efectos que no se han evaluado |
+
+**No verificado en esta sesión:** G6.5. Los conectores de GitHub siguen sin estar
+disponibles —la sesión es no interactiva y no puede completar OAuth—, `gh` no está
+instalado y `WebFetch` sobre la URL del run devuelve 404. Sí se comprobó con
+`git ls-remote` que `main` en el remoto está en `47865f29`, idéntico al local: **el
+merge del PR #2 es real**. El resultado del run de CI se acepta por registro, no
+por verificación propia. No se extrajo el token del credential manager para
+consultar la API: sería introducir un secreto en la línea de comandos, el mismo
+antipatrón que este informe registra como hallazgo A3.
 
 ## 6. Lluvia de ideas — trabajo propuesto
 

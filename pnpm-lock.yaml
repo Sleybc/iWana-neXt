@@ -531,6 +531,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@iwana/shared':
+        specifier: workspace:*
+        version: link:../shared
       pg:
         specifier: ^8.16.0
         version: 8.20.0
@@ -544,9 +547,6 @@ importers:
       '@iwana/config':
         specifier: workspace:*
         version: link:../config
-      '@iwana/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@types/jest':
         specifier: ^29.5.14
         version: 29.5.14

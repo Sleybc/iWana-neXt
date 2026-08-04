@@ -4,9 +4,11 @@
 
 **Versión:** 1.0
 **Fecha:** 2026-03-17
-**Estado:** En revisión
+**Estado:** Superado — sucedido por [`HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md`](HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md) el 2026-08-04
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
+
+> **Nota de sucesión (2026-08-04).** Este HLD no falló: **caducó**. Describía un portal de dos rutas (§4.1) y diseñó el home como ficha de estado de la cuenta porque en marzo de 2026 no existía otra fuente de datos en el portal. Cinco meses después hay 25 páginas bajo `/dashboard` y seis contratos de resumen publicados. La [auditoría multiagente del 2026-08-04](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md) midió el efecto de esa distancia y el CTO autorizó la reapertura en etapa 1. **Se conserva como referencia histórica; no confiere autoridad normativa.** Su §5.2 sigue siendo lectura útil: ya especificaba «Resumen empresa: Sí» para NOC, ACCOUNTANT y SUPPORT, y la implementación acabó siendo más restrictiva que su propia especificación.
 **PRD de referencia:** docs/prds/PRD-MOD02-DASHBOARD-EMPRESA-v1.0.md
 **PRD funcional base:** docs/prds/PRD-MOD02-DEFINICION-v1.0.md
 **HLDs relacionados:** docs/hlds/HLD-MOD02-ARQUITECTURA-v1.0.md, docs/hlds/HLD-MOD02-FRONTEND-v1.0.md

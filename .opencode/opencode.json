@@ -15,6 +15,14 @@
       "command": ["npx", "-y", "@upstash/context7-mcp"],
       "enabled": true
     },
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
     "playwright": {
       "type": "local",
       "command": ["npx", "-y", "@playwright/mcp"],

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findRepoWatcherPids, getProtectedPids } from './free-dev-ports.mjs';
+import { findRepoWatcherPids, getProtectedPids, partitionPortPids } from './free-dev-ports.mjs';
 
 test('getProtectedPids protege el proceso actual y toda su cadena de ancestros', () => {
   const entries = [
@@ -78,4 +78,52 @@ test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', (
     detectedPids.sort((left, right) => left - right),
     [90, 91],
   );
+});
+
+const repoRoot = 'C:/appiw';
+
+test('partitionPortPids no mata un proceso ajeno que ocupa un puerto de desarrollo', () => {
+  const entries = [
+    { pid: 700, ppid: 1, command: 'C:/otro-proyecto/node_modules/.bin/vite --port 3000' },
+  ];
+
+  const { owned, foreign } = partitionPortPids([700], entries, { root: repoRoot });
+
+  assert.deepEqual(owned, []);
+  assert.equal(foreign.length, 1);
+  assert.equal(foreign[0].pid, 700);
+  assert.match(foreign[0].command, /otro-proyecto/);
+});
+
+test('partitionPortPids reconoce como propio un proceso lanzado desde la raiz del repo', () => {
+  const entries = [
+    {
+      pid: 800,
+      ppid: 1,
+      command: 'node C:/appiw/node_modules/.pnpm/next/bin/next dev --port 3001',
+    },
+  ];
+
+  const { owned, foreign } = partitionPortPids([800], entries, { root: repoRoot });
+
+  assert.deepEqual(owned, [800]);
+  assert.deepEqual(foreign, []);
+});
+
+test('partitionPortPids reconoce como propio un proceso que coincide con un marcador', () => {
+  const entries = [{ pid: 900, ppid: 1, command: 'pnpm --filter @iwana/api dev' }];
+
+  const { owned } = partitionPortPids([900], entries, {
+    root: repoRoot,
+    markers: [{ command: '--filter @iwana/api dev' }],
+  });
+
+  assert.deepEqual(owned, [900]);
+});
+
+test('partitionPortPids trata como ajeno un PID ausente de la tabla de procesos', () => {
+  const { owned, foreign } = partitionPortPids([1234], [], { root: repoRoot });
+
+  assert.deepEqual(owned, []);
+  assert.deepEqual(foreign, [{ pid: 1234, command: null }]);
 });

@@ -181,6 +181,65 @@ export function findRepoWatcherPids(entries, protectedPids, markers = DEV_PROCES
     .map((entry) => entry.pid);
 }
 
+/**
+ * Separa los PIDs que ocupan los puertos de desarrollo en propios y ajenos.
+ *
+ * Antes se mataba por puerto sin más: cualquier proceso escuchando en 3000,
+ * 3001 o 3002 recibía `taskkill /F /T`, fuera o no de este repositorio. En una
+ * máquina con otro proyecto en el 3000, `pnpm dev` lo tumbaba en silencio.
+ *
+ * Un PID se considera propio si su línea de comandos referencia la raíz del
+ * repositorio o coincide con un marcador de proceso de desarrollo. Un PID que
+ * no aparece en la tabla de procesos tampoco se mata: sin poder demostrar que
+ * es nuestro, la decisión segura es no tocarlo y reportarlo.
+ */
+export function partitionPortPids(
+  portPids,
+  entries,
+  { markers = DEV_PROCESS_MARKERS, root = repoRoot } = {},
+) {
+  const byPid = new Map(entries.map((entry) => [entry.pid, entry]));
+  const normalizedRoot = normalizeForMatching(root);
+  const owned = [];
+  const foreign = [];
+
+  for (const pid of portPids) {
+    const entry = byPid.get(pid);
+
+    if (!entry) {
+      foreign.push({ pid, command: null });
+      continue;
+    }
+
+    const normalizedCommand = normalizeForMatching(entry.command);
+    const belongsToRepo =
+      normalizedCommand.includes(normalizedRoot) ||
+      markers.some((marker) => {
+        if (marker.path && !normalizedCommand.includes(normalizeForMatching(marker.path))) {
+          return false;
+        }
+
+        return normalizedCommand.includes(normalizeForMatching(marker.command));
+      });
+
+    if (belongsToRepo) {
+      owned.push(pid);
+    } else {
+      foreign.push({ pid, command: entry.command });
+    }
+  }
+
+  return { owned, foreign };
+}
+
+function getProcessTable() {
+  try {
+    return process.platform === 'win32' ? getWindowsProcessTable() : getUnixProcessTable();
+  } catch {
+    return [];
+  }
+}
+
 function getRepoWatcherPids() {
   try {
     const entries = process.platform === 'win32' ? getWindowsProcessTable() : getUnixProcessTable();
@@ -249,13 +308,35 @@ function killPid(pid) {
   process.kill(pid, 'SIGKILL');
 }
 
+function reportForeign(foreign) {
+  for (const { pid, command } of foreign) {
+    const detail = command ? `: ${command}` : ' (no aparece en la tabla de procesos)';
+    console.warn(
+      `PID ${pid} ocupa un puerto de desarrollo pero NO pertenece a este repositorio${detail}. No se detiene.`,
+    );
+  }
+}
+
 async function main() {
   let foundAnyPid = false;
+  let foreignPids = [];
 
   for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
-    const pids = [...new Set([...getPidsUsingPorts(DEV_PORTS), ...getRepoWatcherPids()])];
+    const entries = getProcessTable();
+    const { owned, foreign } = partitionPortPids(getPidsUsingPorts(DEV_PORTS), entries);
+    foreignPids = foreign;
+    const pids = [...new Set([...owned, ...getRepoWatcherPids()])];
 
     if (pids.length === 0) {
+      if (foreign.length > 0) {
+        reportForeign(foreign);
+        console.warn(
+          'Los puertos siguen ocupados por procesos ajenos. Libéralos manualmente o cambia de puerto.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+
       if (!foundAnyPid) {
         console.log('No hay procesos ocupando puertos de desarrollo (3000, 3001, 3002).');
       }
@@ -279,12 +360,18 @@ async function main() {
     await delay(SWEEP_DELAY_MS);
   }
 
-  const remainingPids = [...new Set([...getPidsUsingPorts(DEV_PORTS), ...getRepoWatcherPids()])];
+  const finalEntries = getProcessTable();
+  const finalPartition = partitionPortPids(getPidsUsingPorts(DEV_PORTS), finalEntries);
+  const remainingPids = [...new Set([...finalPartition.owned, ...getRepoWatcherPids()])];
+
+  reportForeign(finalPartition.foreign.length > 0 ? finalPartition.foreign : foreignPids);
 
   if (remainingPids.length > 0) {
     console.warn(
       `Persisten procesos en puertos de desarrollo tras ${MAX_SWEEPS} barridos: ${remainingPids.join(', ')}`,
     );
+    process.exitCode = 1;
+  } else if (finalPartition.foreign.length > 0) {
     process.exitCode = 1;
   }
 }

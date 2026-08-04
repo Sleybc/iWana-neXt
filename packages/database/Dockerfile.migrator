@@ -1,33 +1,53 @@
 # syntax=docker/dockerfile:1.7
+# packages/database/Dockerfile.migrator — imagen del migrator (DDL de arranque)
+#
+# Multi-stage. Antes era single-stage: la imagen final conservaba el toolchain de
+# compilación, las fuentes TypeScript y todas las devDependencies. El migrator es
+# el único actor que ejecuta DDL en producción, así que es justo donde menos
+# superficie conviene tener.
 ARG NODE_VERSION=24.13.1
-FROM node:${NODE_VERSION}-bookworm-slim
+
+# ── builder: instalar el grafo completo y compilar ───────────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
+
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/config/package.json ./packages/config/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --ignore-scripts
+
 COPY packages/database ./packages/database
 COPY packages/shared ./packages/shared
 COPY packages/config ./packages/config
+
+# `@iwana/shared` se compila primero: el dist de `@iwana/db` hace
+# `require("@iwana/shared")` en runtime para los enums de las entidades.
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json
-WORKDIR /app/packages/database
 
-# El migrator corría como root pese a ser el único actor con DDL en producción.
-# `node` (uid 1000) ya existe en la imagen base.
-#
-# El chown se limita al WORKDIR: pnpm escribe un archivo temporal ahí para
-# comprobar que el directorio es escribible, y sin eso aborta con EACCES. Un
-# `chown -R /app` completo también funcionaría, pero reescribe node_modules
-# entero y añade ~49 MB a la imagen final sin ninguna contrapartida.
-#
-# HOME se fija explícitamente porque Docker no lo reajusta al cambiar de
-# usuario: sin esto pnpm intentaría escribir en /root y fallaría igualmente.
-RUN chown -R node:node /app/packages/database
+# `deploy --prod` materializa @iwana/db con sus dependencias de producción
+# —incluida @iwana/shared ya compilada— y deja fuera el toolchain y las fuentes.
+RUN pnpm --filter @iwana/db deploy --prod --legacy /output
+
+# ── runner: solo lo necesario para ejecutar migraciones ──────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# pnpm se conserva a propósito: el CMD invoca los scripts de package.json, que
+# son la fuente única de los comandos de migración. Duplicar aquí las líneas de
+# `typeorm migration:run` las dejaría a merced de la deriva.
+RUN npm install -g pnpm@10.32.1
+
+# `node` (uid 1000) ya existe en la imagen base. El árbol se copia con su
+# propiedad para que pnpm pueda escribir su archivo temporal de comprobación.
+COPY --from=builder --chown=node:node /output ./
+
 USER node
+# Docker no reajusta HOME al cambiar de usuario: sin esto pnpm escribiría en /root.
 ENV HOME=/home/node
 
 # El migrator es el único actor que ejecuta DDL durante el arranque productivo.

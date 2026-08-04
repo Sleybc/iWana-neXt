@@ -21,13 +21,13 @@
     "reconcile:evidence-upload": "node dist/cli/reconcile-evidence-upload-idempotency.js"
   },
   "dependencies": {
+    "@iwana/shared": "workspace:*",
     "pg": "^8.16.0",
     "reflect-metadata": "^0.2.0",
     "typeorm": "0.3.28"
   },
   "devDependencies": {
     "@iwana/config": "workspace:*",
-    "@iwana/shared": "workspace:*",
     "@types/jest": "^29.5.14",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.11.0",

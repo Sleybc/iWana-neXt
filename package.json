@@ -25,6 +25,7 @@
     "sync:agents:check": "node scripts/sync-agents.mjs --check",
     "lint": "turbo run lint",
     "test": "turbo run test --concurrency=1",
+    "test:coverage": "turbo run test --concurrency=1 --only -- --coverage --coverageReporters=text-summary --coverageReporters=json-summary",
     "test:e2e": "playwright test --config e2e/playwright.web.config.ts",
     "test:e2e:headed": "playwright test --config e2e/playwright.web.config.ts --headed",
     "test:e2e:portal": "playwright test --config e2e/playwright.portal.config.ts",

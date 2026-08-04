@@ -213,3 +213,36 @@ e `Integridad de citas ADR` todos `success`. CA-12 se cerró con las mediciones
 actuales como nuevo baseline. La corrección del test 8b (`anchorScheduleIso`)
 quedó documentada en la sección de verificación G6.5; el smoke web en rojo es
 deuda preexistente de `main`.
+
+## Cierre de fase — auditoría independiente, 2026-08-03
+
+AI-EM-ARCH auditó la fase **ejecutando cada gate**, no leyendo este informe. El
+detalle está en §5.2 del
+[informe de auditoría Docker](INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md).
+
+Resultado: `lint`+`typecheck` **16/16 con `Cached: 0`**, suite completa **9/9 con
+`Cached: 0`**, `test:tooling` **21/21**, los tres Compose validando, `pnpm dev`
+completo con los puertos 3000/3001/3002 en **HTTP 200** y bucket presente,
+auditorías documentales en `BLOQUEANTE: 0`, y baseline del daemon restaurado a
+**8 imágenes / 2,215 GB / caché 0 B**.
+
+**Dos correcciones aplicadas por la auditoría:**
+
+1. ADR-071 declaraba "pendiente G6.5 de CI remoto y cierre de CA-12" mientras
+   este informe los daba por cerrados. Se eliminó la contradicción: el ADR pasa a
+   **IMPLEMENTADA**.
+2. La precisión del criterio de verificación 1 —introducida durante la ejecución
+   en el mismo commit que la aprobación y la implementación (`b1e6a7de`)— se
+   elevó al CTO, que **la ratificó el 2026-08-03**. Queda incorporada en
+   [ADR-071 v1.1](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md), con la
+   anomalía de procedimiento registrada y no borrada.
+
+**Limitación declarada:** CA-11 se verificó con la infraestructura ya levantada,
+así que se ejercitó la ruta completa de arranque pero no un arranque en frío.
+G6.5 se acepta por registro y no por verificación propia: `gh` no está instalado
+en el entorno de la auditoría.
+
+**Estado: fase cerrada.** Con la ratificación del criterio 1, los seis criterios
+de verificación de ADR-071 se cumplen sin salvedades. La deuda que sigue abierta
+—B4, A1, A3, A4 parcial, A8, A9, el single-stage del migrator y D4/D6— está
+registrada en §7 del informe de auditoría con destinatario propuesto.
