@@ -5,7 +5,7 @@ ARG NODE_VERSION=24.13.1
 ARG NODE_BOOKWORM_DIGEST=sha256:00e9195ebd49985a6da8921f419978d85dfe354589755192dc090425ce4da2f7
 ARG NODE_BOOKWORM_SLIM_DIGEST=sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2
 
-FROM node:${NODE_VERSION}-bookworm@sha256:00e9195ebd49985a6da8921f419978d85dfe354589755192dc090425ce4da2f7 AS base
+FROM node:${NODE_VERSION}-bookworm@${NODE_BOOKWORM_DIGEST} AS base
 ARG NODE_VERSION
 ARG NODE_BOOKWORM_DIGEST
 ARG NODE_BOOKWORM_SLIM_DIGEST
@@ -83,7 +83,7 @@ RUN cd /output && \
     test -f ./dist/cli/tenant-migrate.js && \
     node --input-type=module -e "import { accessSync } from 'node:fs'; const { AppDataSource } = await import('./dist/data-source.js'); await import('./dist/migrations/tenant/runner.js'); if (AppDataSource.isInitialized) throw new Error('DataSource must not connect during the build smoke test'); accessSync('./dist/cli/tenant-migrate.js');"
 
-FROM node:${NODE_VERSION}-bookworm-slim@sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2 AS runner
+FROM node:${NODE_VERSION}-bookworm-slim@${NODE_BOOKWORM_SLIM_DIGEST} AS runner
 WORKDIR /app
 ENV NODE_ENV=production HOME=/home/node
 COPY --from=builder --chown=node:node /output ./
