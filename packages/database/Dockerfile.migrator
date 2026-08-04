@@ -74,7 +74,7 @@ RUN set -eu; \
 RUN cd /output && \
     node node_modules/typeorm/cli.js --help && \
     test -f ./dist/cli/tenant-migrate.js && \
-    node --input-type=module -e "import { accessSync } from 'node:fs'; const { AppDataSource } = await import('./dist/data-source.js'); if (AppDataSource.isInitialized) throw new Error('DataSource must not connect during the build smoke test'); accessSync('./dist/cli/tenant-migrate.js');"
+    node --input-type=module -e "import { accessSync } from 'node:fs'; const { AppDataSource } = await import('./dist/data-source.js'); await import('./dist/migrations/tenant/runner.js'); if (AppDataSource.isInitialized) throw new Error('DataSource must not connect during the build smoke test'); accessSync('./dist/cli/tenant-migrate.js');"
 
 FROM node:${NODE_VERSION}-bookworm-slim@sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2 AS runner
 WORKDIR /app
