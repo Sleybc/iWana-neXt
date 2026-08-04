@@ -291,6 +291,22 @@ verificación obliga a elegir entre dejar gigabytes residuales o pagar builds
 completos. El riesgo residual §5.6 del informe anterior no era un efecto puntual
 de aquella limpieza, sino un rasgo permanente del pipeline de build actual.
 
+### 5.2 Cierre del fallo baseline de `E2E Web Admin Smoke`
+
+El fallo de `E2E Web Admin Smoke` quedó registrado en la evidencia previa como
+deuda baseline independiente de A2/D4/D6. Se corrigió y el check remoto pasó:
+
+| Verificación | Resultado |
+| --- | --- |
+| Causa raíz | `apps/web/next.config.ts` sin `allowedDevOrigins`: Next 16.2.12 en dev bloquea el WebSocket HMR como cross-origin (`ERR_INVALID_HTTP_RESPONSE`) y el cliente nunca hidrata, por lo que la página de login quedaba en el shell SSR sin emitir ningún `fetch` |
+| Corrección | `allowedDevOrigins: ['127.0.0.1', 'localhost', '0.0.0.0']` en `apps/web/next.config.ts` (`f83e6c23`) |
+| Desfases de spec alineados con el UI real | campo obligatorio `#tenant-admin-email`; botón `Emitir credenciales de acceso`; heading `Usuarios internos` con `exact`; usuario mock con `email`/`firstName`/`lastName` (contrato `UserListItem`); dialog de gestión por fullName; confirmación `Sí, eliminar usuario`; aserciones por email en lugar de `user-2` |
+| Reproducción local | `admin-bootstrap.spec.ts` en verde sobre el dev server real del repo (`e2e/playwright.web.config.ts`) |
+| Evidencia remota | `E2E Web Admin Smoke` **#30943413257 → success** sobre `f83e6c23`; CI completo **#30943413349 → success** (4/4 jobs: lint/typecheck/build/tests, `production-images`, `adr-citations`, E2E operativo R4.1) |
+
+El commit `f83e6c23` solo cambia `next.config.ts` y la spec E2E; no toca código
+productivo del alcance A2/D4/D6.
+
 ## 6. Lluvia de ideas — trabajo propuesto
 
 Ordenada por relación valor/coste dentro de cada bloque. Las marcadas con **ADR**
