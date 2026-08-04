@@ -298,26 +298,30 @@ test('E7 mantiene Node derivado de useNodeVersion en imágenes y CI', () => {
     NODE_BOOKWORM_DIGEST: supportedMigratorDigests[`${workspaceVersion}-bookworm`],
     NODE_BOOKWORM_SLIM_DIGEST: supportedMigratorDigests[`${workspaceVersion}-bookworm-slim`],
   };
-  const migratorDigestArgs = Object.fromEntries(
-    [...migratorSource.matchAll(/^ARG\s+(NODE_[A-Z0-9_]+_DIGEST)=(sha256:[0-9a-f]{64})$/gm)].map(
-      (match) => [match[1], match[2]],
+  const migratorDigestArgs = [
+    ...migratorSource.matchAll(
+      /^ARG\s+(NODE_[A-Z0-9_]+_DIGEST)=(sha256:[0-9a-f]{64})$/gm,
     ),
-  );
+  ].map((match) => [match[1], match[2]]);
   assert.deepEqual(
     migratorDigestArgs,
-    expectedMigratorDigestArgs,
+    Object.entries(expectedMigratorDigestArgs),
     'el migrator debe mantener los dos pins de digest esperados',
   );
 
   const migratorNodePins = [
     ...migratorSource.matchAll(
-      /^FROM\s+node:\$\{NODE_VERSION\}-(bookworm(?:-slim)?)@(sha256:[0-9a-f]{64})\s+AS\s+\w+\s*$/gm,
+      /^FROM\s+node:\$\{NODE_VERSION\}-(bookworm(?:-slim)?)@\$\{(NODE_[A-Z0-9_]+_DIGEST)\}\s+AS\s+\w+\s*$/gm,
     ),
   ].map((match) => [`${workspaceVersion}-${match[1]}`, match[2]]);
+  const expectedMigratorDigestRefs = {
+    [`${workspaceVersion}-bookworm`]: 'NODE_BOOKWORM_DIGEST',
+    [`${workspaceVersion}-bookworm-slim`]: 'NODE_BOOKWORM_SLIM_DIGEST',
+  };
   assert.deepEqual(
-    Object.fromEntries(migratorNodePins),
-    supportedMigratorDigests,
-    'las dos variantes del migrator deben mapearse a sus digests exactos',
+    migratorNodePins,
+    Object.entries(expectedMigratorDigestRefs),
+    'las dos variantes del migrator deben consumir sus ARG de digest correspondientes',
   );
   assert.match(
     migratorSource,
