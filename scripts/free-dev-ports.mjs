@@ -392,7 +392,7 @@ const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bea
 const REDACTED_COMMAND = '[REDACTED COMMAND]';
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.+$/;
 const SENSITIVE_POWERSHELL_ENV_NAME_PATTERN =
-  /(?:^|_)(?:TOKEN|PASSWORD|PASS|SECRET|API_KEY|PRIVATE_KEY|CREDENTIAL)(?:$|_)/i;
+  /(?:^|_)(?:TOKEN|PASSWORD|PASS|SECRET|API_KEY|APIKEY|PRIVATE_KEY|PRIVATEKEY|CREDENTIAL|AUTH|KEY)(?:$|_)/i;
 const SENSITIVE_LONG_OPTIONS = new Set([
   'pwd',
   'token',
@@ -474,22 +474,38 @@ function parseSensitiveOption(token) {
 
   const shortOption = value.match(/^-([pu])(?<attached>.*)$/i);
   if (shortOption) {
-    const attachedValue = shortOption.groups.attached || null;
-    return {
-      name: `-${shortOption[1]}`,
-      attachedValue: attachedValue?.startsWith('=') ? attachedValue.slice(1) : attachedValue,
-      header: false,
-    };
+    const candidateName = normalizeSensitiveOptionName(
+      `${shortOption[1]}${shortOption.groups.attached ?? ''}`,
+    );
+
+    // -Password/-User are named options, not -P/-U with an attached value.
+    // Keep the historical -p/-u aliases, including their attached forms.
+    if (SENSITIVE_LONG_OPTIONS.has(candidateName)) {
+      return {
+        name: value.split('=')[0],
+        attachedValue: value.includes('=') ? value.slice(value.indexOf('=') + 1) : null,
+        header: false,
+      };
+    }
+
+    if (shortOption[1] === shortOption[1].toLowerCase() || !shortOption.groups.attached) {
+      const attachedValue = shortOption.groups.attached || null;
+      return {
+        name: `-${shortOption[1]}`,
+        attachedValue: attachedValue?.startsWith('=') ? attachedValue.slice(1) : attachedValue,
+        header: false,
+      };
+    }
   }
 
-  const longOption = value.match(/^(--?)([^=]+)(?:=(.*))?$/);
-  if (!longOption) {
+  const namedOption = value.match(/^(--?)([A-Za-z][A-Za-z0-9_-]*)(?:=(.*))?$/);
+  if (!namedOption) {
     return looksLikeSensitiveOptionName(value.replace(/^-+/, ''))
       ? { malformed: true }
       : null;
   }
 
-  const optionName = normalizeSensitiveOptionName(longOption[2]);
+  const optionName = normalizeSensitiveOptionName(namedOption[2]);
   if (!looksLikeSensitiveOptionName(optionName)) return null;
 
   // Unlisted aliases are ambiguous: el option name puede contener el secreto
@@ -503,8 +519,8 @@ function parseSensitiveOption(token) {
   }
 
   return {
-    name: `${longOption[1]}${longOption[2]}`,
-    attachedValue: longOption[3] ?? null,
+    name: `${namedOption[1]}${namedOption[2]}`,
+    attachedValue: namedOption[3] ?? null,
     header: false,
   };
 }
@@ -536,63 +552,74 @@ function getHeaderValueEnd(tokens, startIndex, attachedValue) {
   const isAuthorizationHeader =
     headerName === 'authorization' || headerName === 'proxy-authorization';
 
-  if (headerContent) {
-    if (isAuthorizationHeader && /^(?:bearer|basic)$/i.test(headerContent)) {
-      const endIndex = valueIndex + 1;
-      if (
-        endIndex > tokens.length ||
-        !tokens[valueIndex] ||
-        isOptionToken(tokens[valueIndex])
-      ) {
-        return null;
-      }
+  const needsSeparateValue =
+    !headerContent || (isAuthorizationHeader && /^(?:bearer|basic)$/i.test(headerContent));
 
-      return endIndex;
+  // A quoted/attached header token already contains its complete value. Do
+  // not mistake a later positional command argument for a header continuation.
+  if (isAuthorizationHeader && headerContent && !needsSeparateValue) return valueIndex;
+
+  if (headerContent && !needsSeparateValue) {
+    const nextOptionIndex = tokens.findIndex(
+      (token, index) => index >= valueIndex && isOptionToken(token),
+    );
+
+    if (nextOptionIndex === -1) {
+      return valueIndex === tokens.length ? valueIndex : null;
     }
 
-    return valueIndex;
+    return nextOptionIndex;
   }
 
-  const additionalTokens = isAuthorizationHeader ? 2 : 1;
-  const endIndex = valueIndex + additionalTokens;
-  if (
-    endIndex > tokens.length ||
-    tokens.slice(valueIndex, endIndex).some((token) => !token || isOptionToken(token))
-  ) {
-    return null;
+  if (needsSeparateValue) {
+    if (!tokens[valueIndex] || isOptionToken(tokens[valueIndex])) return null;
+    valueIndex += 1;
   }
 
-  return endIndex;
+  const nextOptionIndex = tokens.findIndex(
+    (token, index) => index >= valueIndex && isOptionToken(token),
+  );
+
+  // Without an option boundary, trailing tokens may be either part of the
+  // header value or a later command argument. Do not guess: redact the whole
+  // diagnostic instead of exposing an ambiguous continuation.
+  if (nextOptionIndex === -1) {
+    return valueIndex === tokens.length ? valueIndex : null;
+  }
+
+  return nextOptionIndex;
 }
 
 function parsePowershellEnvAssignment(tokens, index) {
   const token = String(tokens[index] ?? '');
-  const match = token.match(/^\$env:(?<name>[A-Za-z_][A-Za-z0-9_]*)(?<suffix>.*)$/i);
+  const match = token.match(
+    /^(?<reference>\$\{?env:(?<name>[A-Za-z_][A-Za-z0-9_]*)\}?)(?<operator>\+=|=\+|=)?(?<attached>.*)$/i,
+  );
   if (!match) return null;
 
   const name = match.groups.name;
-  const suffix = match.groups.suffix;
+  const reference = match.groups.reference;
+  const inlineOperator = match.groups.operator ?? null;
+  let attachedValue = match.groups.attached ?? '';
   let value = null;
   let valueIndex = index + 1;
 
-  if (suffix === '') {
+  if (!inlineOperator) {
     const separator = String(tokens[valueIndex] ?? '');
-    if (!separator.startsWith('=')) return null;
-    value = separator.slice(1);
+    const separatorMatch = separator.match(/^(?<operator>\+=|=\+|=)(?<attached>.*)$/);
+    if (!separatorMatch) return null;
+    attachedValue = separatorMatch.groups.attached;
     valueIndex += 1;
-  } else if (suffix.startsWith('=')) {
-    value = suffix.slice(1);
-  } else {
-    return null;
   }
 
+  value = attachedValue;
   if (!value) {
     value = tokens[valueIndex] ?? null;
     valueIndex += 1;
   }
 
   return {
-    name: `$env:${name}`,
+    name: reference,
     sensitive: SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(name),
     value,
     nextIndex: valueIndex,
@@ -619,6 +646,13 @@ function sanitizeProcessCommand(command) {
     if (powershellAssignment) {
       if (!powershellAssignment.value) return REDACTED_COMMAND;
       if (powershellAssignment.sensitive) {
+        if (
+          isOptionToken(powershellAssignment.value) ||
+          (tokenized.tokens[powershellAssignment.nextIndex] &&
+            !isOptionToken(tokenized.tokens[powershellAssignment.nextIndex]))
+        ) {
+          return REDACTED_COMMAND;
+        }
         sanitizedTokens.push(`${powershellAssignment.name}=[REDACTED]`);
       }
       index = powershellAssignment.nextIndex - 1;

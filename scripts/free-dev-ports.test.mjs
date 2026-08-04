@@ -617,6 +617,70 @@ test('formatPidDiagnostic redacts spaced PowerShell sensitive environment assign
   }
 });
 
+test('formatPidDiagnostic fails closed for compound and braced PowerShell sensitive assignments', () => {
+  const sensitiveNames = ['TOKEN', 'PASSWORD', 'PASS', 'SECRET', 'API_KEY', 'PRIVATE_KEY', 'CREDENTIAL'];
+
+  for (const name of sensitiveNames) {
+    for (const assignment of [
+      `$env:${name}+=secret`,
+      `$env:${name} =+ secret`,
+      `\${env:${name}}=secret`,
+      `\${env:${name}} = secret`,
+    ]) {
+      const formatted = formatPidDiagnostic(338, [
+        { pid: 338, command: `tool ${assignment} --mode safe` },
+      ]);
+
+      assert.doesNotMatch(formatted, /secret|value/);
+      assert.match(formatted, /\[REDACTED\]/);
+    }
+  }
+});
+
+test('formatPidDiagnostic treats single-dash named sensitive options as named options', () => {
+  const commands = [
+    'tool -Password redact-me --mode safe',
+    'tool -User redact-me --mode safe',
+    'tool -Token redact-me --mode safe',
+    'tool -ApiKey=redact-me --mode safe',
+    'tool -client-secret redact-me --mode safe',
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(339, [{ pid: 339, command }]);
+
+    assert.doesNotMatch(formatted, /redact-me/);
+  }
+
+  const normal = formatPidDiagnostic(340, [{ pid: 340, command: 'tool -v safe -Port 3000' }]);
+  assert.equal(normal, 'PID 340 (tool -v safe -Port 3000)');
+});
+
+test('formatPidDiagnostic consumes complete multi-token sensitive header values', () => {
+  const formatted = formatPidDiagnostic(341, [
+    {
+      pid: 341,
+      command:
+        'curl --header X-Api-Key: secret value --mode safe -H X-Api-Key:attached-secret continuation --ok',
+    },
+  ]);
+
+  assert.equal(
+    formatted,
+    'PID 341 (curl --header=[REDACTED] --mode safe -H=[REDACTED] --ok)',
+  );
+  assert.doesNotMatch(formatted, /secret|value|continuation/);
+});
+
+test('formatPidDiagnostic fails closed when a header value has ambiguous token boundaries', () => {
+  const formatted = formatPidDiagnostic(342, [
+    { pid: 342, command: 'curl --header X-Api-Key: secret value positional' },
+  ]);
+
+  assert.equal(formatted, 'PID 342 ([REDACTED COMMAND])');
+  assert.doesNotMatch(formatted, /secret|value|positional/);
+});
+
 test('formatPidDiagnostic redacts an entire escaped or quoted multi-word sensitive value', () => {
   const commands = [
     String.raw`tool --token=secret\ value --mode safe`,
