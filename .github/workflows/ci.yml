@@ -125,7 +125,8 @@ jobs:
 
             cd /app
             node node_modules/typeorm/cli.js --help >/dev/null
-            node --input-type=module -e "await import('./dist/data-source.js'); await import('./dist/migrations/tenant/runner.js');"
+            DATA_SOURCE=./dist/data-source.js TENANT_RUNNER=./dist/migrations/tenant/runner.js \
+              node --input-type=module -e "await import(process.env.DATA_SOURCE); await import(process.env.TENANT_RUNNER);"
           '
 
       # El perfil production vive en docker-compose.prod.yml: sus `${VAR:?}` no
