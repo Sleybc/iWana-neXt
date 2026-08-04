@@ -93,6 +93,41 @@ jobs:
       - name: Build migrator image
         run: docker build --file packages/database/Dockerfile.migrator --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }} --tag "iwana-ci/migrator:${GITHUB_SHA}" .
 
+      # Smoke de runtime sin base de datos ni secretos para cerrar A2.
+      # Valida la imagen final; no ejecuta migraciones.
+      - name: Smoke migrator runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "iwana-ci/migrator:${GITHUB_SHA}" -ec '
+            set -eu
+
+            test "$(id -u)" = "1000"
+            test "$(node --version)" = "v${{ steps.node-version.outputs.version }}"
+
+            if command -v pnpm >/dev/null 2>&1; then
+              echo "pnpm no debe estar presente en la imagen de runtime" >&2
+              exit 1
+            fi
+
+            test ! -e /app/src
+            test ! -e /app/test
+            test ! -e /app/node_modules/typescript
+            test ! -e /app/node_modules/jest
+            test ! -e /app/node_modules/@jest
+            project_sources="$(find /app -path /app/node_modules -prune -o -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.map" -o -name "*.d.ts" \) -print -quit)"
+            test -z "$project_sources"
+
+            test -f /app/dist/data-source.js
+            test -f /app/dist/cli/tenant-migrate.js
+            test -f /app/dist/migrations/tenant/runner.js
+            test -n "$(find /app/dist/migrations/public -maxdepth 1 -type f -name "*.js" -print -quit)"
+
+            cd /app
+            node node_modules/typeorm/cli.js --help >/dev/null
+            node --input-type=module -e "await import('./dist/data-source.js'); await import('./dist/migrations/tenant/runner.js');"
+          '
+
       # El perfil production vive en docker-compose.prod.yml: sus `${VAR:?}` no
       # deben bloquear la interpolación del archivo base de desarrollo.
       # COOKIE_SECURE se valida ahora desde la plantilla (.env.production.example),
