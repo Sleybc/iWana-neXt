@@ -1,4 +1,6 @@
 import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { posix as posixPath } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -11,12 +13,6 @@ const DEV_PROCESS_MARKERS = [
   { path: `${repoRoot}/apps/worker/`, command: 'nest.js start --watch' },
   { path: `${repoRoot}/apps/web/`, command: 'next dev --port 3001' },
   { path: `${repoRoot}/apps/portal/`, command: 'next dev --port 3002' },
-  { command: 'node scripts/dev.mjs' },
-  { command: 'sh -c node scripts/dev.mjs' },
-  { command: '--filter @iwana/api dev' },
-  { command: '--filter @iwana/worker dev' },
-  { command: '--filter @iwana/web dev' },
-  { command: '--filter @iwana/portal dev' },
 ];
 
 function parseWindowsPidsFromNetstat(stdout, ports) {
@@ -82,12 +78,25 @@ function commandExists(command) {
   }
 }
 
-function parsePsEntries(stdout) {
+export function parsePsEntries(stdout) {
   return stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
+      const matchWithStartIdentity = line.match(
+        /^(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)(?:\s+(.*))$/,
+      );
+
+      if (matchWithStartIdentity) {
+        return {
+          pid: Number(matchWithStartIdentity[1]),
+          ppid: Number(matchWithStartIdentity[2]),
+          startIdentity: matchWithStartIdentity[3],
+          command: matchWithStartIdentity[4],
+        };
+      }
+
       const match = line.match(/^(\d+)\s+(\d+)\s+(.*)$/);
 
       if (!match) {
@@ -103,7 +112,7 @@ function parsePsEntries(stdout) {
     .filter((entry) => entry && Number.isFinite(entry.pid) && entry.pid > 0);
 }
 
-function parseWindowsProcessEntries(raw) {
+export function parseWindowsProcessEntries(raw) {
   const text = raw.trim();
   if (!text) return [];
 
@@ -114,6 +123,7 @@ function parseWindowsProcessEntries(raw) {
     .map((row) => ({
       pid: Number(row?.pid ?? row?.ProcessId),
       ppid: Number(row?.ppid ?? row?.ParentProcessId),
+      startIdentity: String(row?.startIdentity ?? row?.CreationDate ?? '').trim(),
       command: String(row?.command ?? row?.CommandLine ?? '').trim(),
     }))
     .filter(
@@ -127,8 +137,29 @@ function parseWindowsProcessEntries(raw) {
 }
 
 function getUnixProcessTable() {
-  const output = execSync('ps -eo pid=,ppid=,args=', { encoding: 'utf8' });
-  return parsePsEntries(output);
+  const output = execSync('ps -eo pid=,ppid=,lstart=,args=', { encoding: 'utf8' });
+  const entries = parsePsEntries(output);
+
+  if (process.platform !== 'linux' || !existsSync('/proc')) {
+    // En macOS y otros Unix, ps lstart solo sirve para diagnostico: su
+    // resolucion no es una identidad suficiente para autorizar una
+    // terminacion destructiva. La decision de no terminar se aplica en main.
+    return entries.map((entry) => ({ ...entry, startIdentity: '' }));
+  }
+
+  return entries.map((entry) => {
+    try {
+      const startIdentity = parseLinuxProcStatStarttime(
+        readFileSync(`/proc/${entry.pid}/stat`, 'utf8'),
+      );
+
+      return { ...entry, startIdentity };
+    } catch {
+      // Si /proc existe pero no se puede leer este PID, no se reutiliza la
+      // identidad de menor resolucion de ps: la terminacion debe quedar cerrada.
+      return { ...entry, startIdentity: '' };
+    }
+  });
 }
 
 function getWindowsProcessTable() {
@@ -137,7 +168,7 @@ function getWindowsProcessTable() {
     "$names = @('node.exe','cmd.exe','powershell.exe','pwsh.exe'); " +
     'Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ' +
     'Where-Object { $_.Name -in $names } | ' +
-    "Select-Object @{Name='pid';Expression={$_.ProcessId}},@{Name='ppid';Expression={$_.ParentProcessId}},@{Name='command';Expression={$_.CommandLine}} | " +
+    "Select-Object @{Name='pid';Expression={$_.ProcessId}},@{Name='ppid';Expression={$_.ParentProcessId}},@{Name='startIdentity';Expression={$_.CreationDate}},@{Name='command';Expression={$_.CommandLine}} | " +
     'ConvertTo-Json -Compress';
   const output = execSync(`powershell -NoProfile -Command "${psCommand}"`, {
     encoding: 'utf8',
@@ -159,95 +190,866 @@ export function getProtectedPids(entries, currentPid = process.pid, parentPid = 
   return protectedPids;
 }
 
-function normalizeForMatching(value) {
-  return String(value).replace(/\\/g, '/').toLowerCase();
+export function getAutomaticTerminationDecision(platform = process.platform) {
+  const canTerminate = platform === 'win32' || platform === 'linux';
+
+  return {
+    canTerminate,
+    warning: canTerminate
+      ? null
+      : 'Terminacion automatica no disponible en macOS/otros Unix sin una identidad estable de proceso.',
+  };
 }
 
-export function findRepoWatcherPids(entries, protectedPids, markers = DEV_PROCESS_MARKERS) {
-  return entries
-    .filter((entry) => !protectedPids.has(entry.pid))
-    .filter((entry) =>
-      markers.some((marker) => {
-        const normalizedCommand = normalizeForMatching(entry.command);
-        const normalizedMarkerCommand = normalizeForMatching(marker.command);
+export function normalizeForMatching(value, platform = process.platform) {
+  const valueString = String(value);
+  if (!valueString) return '';
 
-        if (marker.path && !normalizedCommand.includes(normalizeForMatching(marker.path))) {
-          return false;
-        }
-
-        return normalizedCommand.includes(normalizedMarkerCommand);
-      }),
-    )
-    .map((entry) => entry.pid);
+  const normalized = posixPath.normalize(valueString.replace(/\\/g, '/'));
+  return platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-/**
- * Separa los PIDs que ocupan los puertos de desarrollo en propios y ajenos.
- *
- * Antes se mataba por puerto sin más: cualquier proceso escuchando en 3000,
- * 3001 o 3002 recibía `taskkill /F /T`, fuera o no de este repositorio. En una
- * máquina con otro proyecto en el 3000, `pnpm dev` lo tumbaba en silencio.
- *
- * Un PID se considera propio si su línea de comandos referencia la raíz del
- * repositorio o coincide con un marcador de proceso de desarrollo. Un PID que
- * no aparece en la tabla de procesos tampoco se mata: sin poder demostrar que
- * es nuestro, la decisión segura es no tocarlo y reportarlo.
- */
-export function partitionPortPids(
-  portPids,
-  entries,
-  { markers = DEV_PROCESS_MARKERS, root = repoRoot } = {},
-) {
-  const byPid = new Map(entries.map((entry) => [entry.pid, entry]));
-  const normalizedRoot = normalizeForMatching(root);
-  const owned = [];
-  const foreign = [];
+export function parseLinuxProcStatStarttime(statLine) {
+  const line = String(statLine ?? '');
+  const pidMatch = line.match(/^(\d+)\s+\(/);
+  if (!pidMatch) return '';
 
-  for (const pid of portPids) {
-    const entry = byPid.get(pid);
+  // El nombre del proceso puede contener espacios y ')'; el ultimo ')' es el
+  // cierre del campo comm porque los campos posteriores no contienen parentesis.
+  const commEnd = line.lastIndexOf(')');
+  if (commEnd < pidMatch[0].length) return '';
 
-    if (!entry) {
-      foreign.push({ pid, command: null });
+  const fieldsAfterComm = line
+    .slice(commEnd + 1)
+    .trim()
+    .split(/\s+/);
+  const starttime = fieldsAfterComm[19];
+  return /^\d+$/.test(starttime ?? '') ? starttime : '';
+}
+
+function pathOwnsMarker(candidatePath, markerPath, platform) {
+  const normalizedCandidatePath = normalizeForMatching(candidatePath, platform);
+  const normalizedMarkerPath = normalizeForMatching(markerPath, platform);
+
+  if (!normalizedCandidatePath || !normalizedMarkerPath) return false;
+
+  const markerPrefix = normalizedMarkerPath.endsWith('/')
+    ? normalizedMarkerPath
+    : `${normalizedMarkerPath}/`;
+
+  return (
+    normalizedCandidatePath === normalizedMarkerPath ||
+    normalizedCandidatePath.startsWith(markerPrefix)
+  );
+}
+
+function getCommandTokens(command, { shellEscapes = false } = {}) {
+  const tokens = [];
+  const tokenMetadata = [];
+  let token = '';
+  let rawToken = '';
+  let quote = '';
+  let tokenStarted = false;
+  let tokenQuoted = false;
+  let ambiguous = false;
+
+  const pushToken = () => {
+    tokens.push(token);
+    tokenMetadata.push({ raw: rawToken, quoted: tokenQuoted });
+    token = '';
+    rawToken = '';
+    tokenStarted = false;
+    tokenQuoted = false;
+  };
+
+  const commandString = String(command ?? '');
+  for (let index = 0; index < commandString.length; index += 1) {
+    const character = commandString[index];
+
+    if (shellEscapes && character === '\\') {
+      rawToken += character;
+      const escapedCharacter = commandString[index + 1];
+      if (escapedCharacter === undefined) {
+        ambiguous = true;
+        token += character;
+        tokenStarted = true;
+        continue;
+      }
+
+      // A second backslash can mean either a literal backslash or the start of
+      // another escape depending on the shell. Fail closed rather than risk
+      // leaving the continuation of a sensitive value in diagnostics.
+      if (escapedCharacter === '\\') ambiguous = true;
+
+      rawToken += escapedCharacter;
+      token += escapedCharacter;
+      tokenStarted = true;
+      index += 1;
       continue;
     }
 
-    const normalizedCommand = normalizeForMatching(entry.command);
-    const belongsToRepo =
-      normalizedCommand.includes(normalizedRoot) ||
-      markers.some((marker) => {
-        if (marker.path && !normalizedCommand.includes(normalizeForMatching(marker.path))) {
-          return false;
-        }
+    if (quote) {
+      rawToken += character;
+      if (character === quote) {
+        quote = '';
+      } else {
+        token += character;
+      }
+      tokenStarted = true;
+      continue;
+    }
 
-        return normalizedCommand.includes(normalizeForMatching(marker.command));
-      });
+    if (character === '"' || character === "'") {
+      rawToken += character;
+      quote = character;
+      tokenQuoted = true;
+      tokenStarted = true;
+      continue;
+    }
 
-    if (belongsToRepo) {
-      owned.push(pid);
-    } else {
-      foreign.push({ pid, command: entry.command });
+    if (/\s/.test(character)) {
+      if (tokenStarted) {
+        pushToken();
+      }
+      continue;
+    }
+
+    rawToken += character;
+    token += character;
+    tokenStarted = true;
+  }
+
+  if (tokenStarted) pushToken();
+
+  return { tokens, tokenMetadata, complete: quote === '' && !ambiguous, ambiguous };
+}
+
+function getTokenBasename(value) {
+  const normalized = String(value ?? '').replace(/\\/g, '/');
+  return normalized.slice(normalized.lastIndexOf('/') + 1);
+}
+
+function isNodeExecutable(executable, platform) {
+  const normalizedExecutable = normalizeForMatching(executable, platform);
+  const executableName = getTokenBasename(normalizedExecutable);
+
+  if (executableName !== 'node' && executableName !== 'node.exe') return false;
+
+  return (
+    normalizedExecutable === 'node' ||
+    normalizedExecutable === 'node.exe' ||
+    normalizedExecutable.startsWith('/') ||
+    /^[a-z]:\//i.test(normalizedExecutable)
+  );
+}
+
+const REPO_DEV_FILTERS = new Set(['@iwana/api', '@iwana/worker', '@iwana/web', '@iwana/portal']);
+
+function isPnpmExecutable(executable, platform) {
+  const basename = normalizeForMatching(getTokenBasename(executable), platform);
+  return platform === 'win32'
+    ? basename === 'pnpm' || basename === 'pnpm.cmd'
+    : basename === 'pnpm';
+}
+
+function isPnpmCommand(command, platform) {
+  const { tokens, complete } = getCommandTokens(command);
+  return complete && isPnpmExecutable(tokens[0] ?? '', platform);
+}
+
+function isRepoPnpmDevCommand(command, platform) {
+  const { tokens, complete } = getCommandTokens(command);
+  return (
+    complete &&
+    tokens.length === 4 &&
+    isPnpmExecutable(tokens[0] ?? '', platform) &&
+    tokens[1] === '--filter' &&
+    REPO_DEV_FILTERS.has(tokens[2]) &&
+    tokens[3] === 'dev'
+  );
+}
+
+function isRepoDevLauncher(command, root, platform) {
+  const { tokens, complete } = getCommandTokens(command);
+  if (!complete) return false;
+
+  const normalizedRoot = String(root).replace(/\/$/, '');
+  const scriptPath = `${normalizedRoot}/scripts/dev.mjs`;
+  const normalizedRelativeScript = normalizeForMatching('scripts/dev.mjs', platform);
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const executable = tokens[index];
+    const script = tokens[index + 1];
+    if (!isNodeExecutable(executable, platform)) continue;
+
+    const executableOwnsRepo = pathOwnsMarker(executable, root, platform);
+    const scriptOwnsRepo =
+      normalizeForMatching(script, platform) === normalizeForMatching(scriptPath, platform);
+    const relativeScriptWithRepoExecutable =
+      executableOwnsRepo && normalizeForMatching(script, platform) === normalizedRelativeScript;
+
+    if (scriptOwnsRepo || relativeScriptWithRepoExecutable) return true;
+  }
+
+  return false;
+}
+
+function hasRepoDevLauncherAncestor(entry, entries, root, platform) {
+  const byPid = new Map(entries.map((candidate) => [candidate.pid, candidate]));
+  const visited = new Set();
+  let ancestorPid = entry.ppid;
+
+  while (Number.isFinite(ancestorPid) && ancestorPid > 0 && !visited.has(ancestorPid)) {
+    visited.add(ancestorPid);
+    const ancestor = byPid.get(ancestorPid);
+    if (!ancestor) return false;
+    if (isRepoDevLauncher(ancestor.command, root, platform)) return true;
+    ancestorPid = ancestor.ppid;
+  }
+
+  return false;
+}
+
+function getStartIdentity(entry) {
+  const identity = entry?.startIdentity;
+  return identity === undefined || identity === null ? '' : String(identity).trim();
+}
+
+function hasStableProcessIdentity(entry, platform) {
+  const identity = getStartIdentity(entry);
+
+  if (platform === 'win32') return identity.length > 0;
+  if (platform !== 'linux') return false;
+
+  // En Linux, solo los ticks de inicio de /proc/<pid>/stat son una identidad
+  // valida. Nunca se acepta el texto de ps lstart ni otra identidad Unix.
+  return /^\d+$/.test(identity);
+}
+
+export function findRepoWatcherPids(
+  entries,
+  protectedPids,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  root = repoRoot,
+) {
+  return entries
+    .filter((entry) => !protectedPids.has(entry.pid))
+    .filter((entry) => {
+      const pnpmCommand = isPnpmCommand(entry.command, platform);
+      const repoPnpmDevCommand = isRepoPnpmDevCommand(entry.command, platform);
+      const directMarkerMatch =
+        !pnpmCommand &&
+        markers.some((marker) => {
+          const { tokens: commandTokens, complete } = getCommandTokens(entry.command);
+          const { tokens: markerTokens, complete: markerComplete } = getCommandTokens(
+            marker.command,
+          );
+          if (!complete || !markerComplete || !marker.path || markerTokens.length === 0) {
+            return false;
+          }
+
+          const commandIsNodeInvocation = isNodeExecutable(commandTokens[0] ?? '', platform);
+          const markerIsNodeInvocation = isNodeExecutable(markerTokens[0] ?? '', platform);
+          const identityIndex = commandIsNodeInvocation && !markerIsNodeInvocation ? 1 : 0;
+          const identityToken = commandTokens[identityIndex] ?? '';
+          const markerIdentity = normalizeForMatching(getTokenBasename(markerTokens[0]), platform);
+          const commandIdentity = normalizeForMatching(getTokenBasename(identityToken), platform);
+          const identityOwnsMarker =
+            Boolean(identityToken) && pathOwnsMarker(identityToken, marker.path, platform);
+
+          // La ruta solo puede pertenecer al ejecutable o al script inmediatamente posterior a Node.
+          // Verla después de opciones o argumentos no prueba ownership.
+          if (!identityOwnsMarker || commandIdentity !== markerIdentity) return false;
+
+          return markerTokens
+            .slice(1)
+            .every(
+              (markerToken, index) =>
+                normalizeForMatching(commandTokens[identityIndex + index + 1] ?? '', platform) ===
+                normalizeForMatching(markerToken, platform),
+            );
+        });
+
+      if (directMarkerMatch) return true;
+
+      // A pnpm wrapper is safe only when its ancestry proves that this repo's
+      // path-anchored node scripts/dev.mjs launched it. A standalone pnpm
+      // command, even with an iWana filter, remains external.
+      return repoPnpmDevCommand && hasRepoDevLauncherAncestor(entry, entries, root, platform);
+    })
+    .map((entry) => entry.pid);
+}
+
+export function classifyDevPids(portPids, repoWatcherPids) {
+  const uniquePortPids = [...new Set(portPids)];
+  const safePids = [...new Set(repoWatcherPids)];
+  const safeSet = new Set(safePids);
+  const externalPids = uniquePortPids.filter((pid) => !safeSet.has(pid));
+
+  return { safePids, externalPids };
+}
+
+export function planDevPortCleanup(portPids, repoWatcherPids) {
+  const { safePids, externalPids } = classifyDevPids(portPids, repoWatcherPids);
+
+  return {
+    pidsToKill: safePids,
+    externalPids,
+    exitCode: externalPids.length > 0 ? 1 : 0,
+  };
+}
+
+export function planDevPortCleanupDecision(portPids, repoWatcherPids, platform = process.platform) {
+  const cleanup = planDevPortCleanup(portPids, repoWatcherPids);
+  const terminationDecision = getAutomaticTerminationDecision(platform);
+
+  return {
+    ...cleanup,
+    terminationWarning:
+      cleanup.pidsToKill.length > 0 && !terminationDecision.canTerminate
+        ? terminationDecision.warning
+        : null,
+  };
+}
+
+const URI_PATTERN = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"`]+/g;
+const AUTH_HEADER_PATTERN =
+  /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
+const REDACTED_COMMAND = '[REDACTED COMMAND]';
+const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.+$/;
+const SENSITIVE_POWERSHELL_ENV_NAME_PATTERN =
+  /(?:^|[_-])(?:TOKEN|PASSWORD|PASS(?:WD)?|SECRET|API[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIALS?|AUTH(?:ORIZATION)?|KEY)(?:$|[_-])/i;
+const SENSITIVE_LONG_OPTIONS = new Set([
+  'pwd',
+  'token',
+  'password',
+  'passwd',
+  'secret',
+  'api-key',
+  'authorization',
+  'credential',
+  'connection-string',
+  'database-url',
+  'db-password',
+  'dsn',
+  'client-secret',
+  'private-key',
+  'access-key',
+  'refresh-token',
+  'signing-key',
+  'cookie',
+  'auth',
+  'auth-token',
+  'access-token',
+  'bearer-token',
+  'secret-key',
+  'pass',
+  'key',
+  'user',
+]);
+
+const SENSITIVE_OPTION_HINT_PATTERN =
+  /(access|bearer|auth|authorization|credential|cookie|dsn|key|pass|passwd|password|private|pwd|secret|signing|token)/;
+const AMBIGUOUS_SENSITIVE_OPTION_DELIMITER_PATTERN = /[:./]/;
+const UNSUPPORTED_SHELL_SYNTAX_PATTERN = /[;&()|<>\r\n`^]|&&|\$\(/;
+
+function normalizeSensitiveOptionName(name) {
+  return String(name ?? '')
+    .replace(/_/g, '-')
+    .toLowerCase();
+}
+
+function looksLikeSensitiveOptionName(name) {
+  const normalizedName = normalizeSensitiveOptionName(name);
+  return (
+    SENSITIVE_LONG_OPTIONS.has(normalizedName) ||
+    SENSITIVE_OPTION_HINT_PATTERN.test(normalizedName) ||
+    [...SENSITIVE_LONG_OPTIONS].some(
+      (alias) =>
+        normalizedName.startsWith(`${alias}:`) ||
+        normalizedName.startsWith(`${alias}.`) ||
+        normalizedName.startsWith(`${alias}/`),
+    )
+  );
+}
+
+function parseSensitiveOption(token) {
+  const value = String(token ?? '');
+  if (!value.startsWith('-') || value === '-') return null;
+
+  const isHeader =
+    value === '-H' ||
+    value === '--header' ||
+    value === '--headers' ||
+    /^--?headers?(?:=|$)/i.test(value);
+  if (isHeader) {
+    const separator = value.indexOf('=');
+    return {
+      name: separator >= 0 ? value.slice(0, separator) : value,
+      attachedValue: separator >= 0 ? value.slice(separator + 1) : null,
+      header: true,
+    };
+  }
+
+  const shortHeader = value.match(/^-h(?:=(.*)|(.+))$/i);
+  if (shortHeader) {
+    return {
+      name: value.slice(0, 2),
+      attachedValue: shortHeader[1] ?? shortHeader[2] ?? null,
+      header: true,
+    };
+  }
+
+  const shortOption = value.match(/^-([pu])(?<attached>.*)$/i);
+  if (shortOption) {
+    const candidateName = normalizeSensitiveOptionName(
+      `${shortOption[1]}${shortOption.groups.attached ?? ''}`,
+    );
+
+    // -Password/-User are named options, not -P/-U with an attached value.
+    // Keep the historical -p/-u aliases, including their attached forms.
+    if (SENSITIVE_LONG_OPTIONS.has(candidateName)) {
+      return {
+        name: value.split('=')[0],
+        attachedValue: value.includes('=') ? value.slice(value.indexOf('=') + 1) : null,
+        header: false,
+      };
+    }
+
+    if (shortOption[1] === shortOption[1].toLowerCase() || !shortOption.groups.attached) {
+      const attachedValue = shortOption.groups.attached || null;
+      return {
+        name: `-${shortOption[1]}`,
+        attachedValue: attachedValue?.startsWith('=') ? attachedValue.slice(1) : attachedValue,
+        header: false,
+      };
     }
   }
 
-  return { owned, foreign };
-}
-
-function getProcessTable() {
-  try {
-    return process.platform === 'win32' ? getWindowsProcessTable() : getUnixProcessTable();
-  } catch {
-    return [];
+  const namedOption = value.match(/^(--?)([A-Za-z][A-Za-z0-9_-]*)(?:=(.*))?$/);
+  if (!namedOption) {
+    return looksLikeSensitiveOptionName(value.replace(/^-+/, '')) ? { malformed: true } : null;
   }
+
+  const optionName = normalizeSensitiveOptionName(namedOption[2]);
+  if (!looksLikeSensitiveOptionName(optionName)) return null;
+
+  // Unlisted aliases are ambiguous: el option name puede contener el secreto
+  // (por ejemplo, --custom-token:SECRET). No se conserva el nombre en el
+  // diagnostico; se redacciona el comando completo.
+  if (
+    !SENSITIVE_LONG_OPTIONS.has(optionName) ||
+    AMBIGUOUS_SENSITIVE_OPTION_DELIMITER_PATTERN.test(optionName)
+  ) {
+    return { malformed: true };
+  }
+
+  return {
+    name: `${namedOption[1]}${namedOption[2]}`,
+    attachedValue: namedOption[3] ?? null,
+    header: false,
+  };
 }
 
-function getRepoWatcherPids() {
+function redactUri(token) {
+  return String(token).replace(URI_PATTERN, '[URL REDACTED]');
+}
+
+function isOptionToken(token) {
+  return String(token ?? '').startsWith('-');
+}
+
+function getHeaderValueEnd(tokens, startIndex, attachedValue) {
+  let headerValue = attachedValue;
+  let valueIndex = startIndex;
+
+  if (headerValue === null) {
+    headerValue = tokens[valueIndex] ?? null;
+    valueIndex += 1;
+  }
+
+  if (!headerValue || isOptionToken(headerValue)) return null;
+
+  const separator = headerValue.indexOf(':');
+  if (separator < 1) return null;
+
+  const headerName = headerValue.slice(0, separator).toLowerCase();
+  const headerContent = headerValue.slice(separator + 1).trim();
+  const isAuthorizationHeader =
+    headerName === 'authorization' || headerName === 'proxy-authorization';
+
+  const needsSeparateValue =
+    !headerContent || (isAuthorizationHeader && /^(?:bearer|basic)$/i.test(headerContent));
+
+  // A quoted/attached header token already contains its complete value. Do
+  // not mistake a later positional command argument for a header continuation.
+  if (isAuthorizationHeader && headerContent && !needsSeparateValue) return valueIndex;
+
+  if (headerContent && !needsSeparateValue) {
+    const nextOptionIndex = tokens.findIndex(
+      (token, index) => index >= valueIndex && isOptionToken(token),
+    );
+
+    if (nextOptionIndex === -1) {
+      return valueIndex === tokens.length ? valueIndex : null;
+    }
+
+    return nextOptionIndex;
+  }
+
+  if (needsSeparateValue) {
+    if (!tokens[valueIndex] || isOptionToken(tokens[valueIndex])) return null;
+    valueIndex += 1;
+  }
+
+  const nextOptionIndex = tokens.findIndex(
+    (token, index) => index >= valueIndex && isOptionToken(token),
+  );
+
+  // Without an option boundary, trailing tokens may be either part of the
+  // header value or a later command argument. Do not guess: redact the whole
+  // diagnostic instead of exposing an ambiguous continuation.
+  if (nextOptionIndex === -1) {
+    return valueIndex === tokens.length ? valueIndex : null;
+  }
+
+  return nextOptionIndex;
+}
+
+function parsePowershellEnvAssignment(tokens, index) {
+  const token = String(tokens[index] ?? '');
+  const match = token.match(
+    /^(?<reference>\$\{?env:(?<name>[A-Za-z_][A-Za-z0-9_]*)\}?)(?<operator>\+=|=\+|=)?(?<attached>.*)$/i,
+  );
+  if (!match) return null;
+
+  const name = match.groups.name;
+  const reference = match.groups.reference;
+  const inlineOperator = match.groups.operator ?? null;
+  let attachedValue = match.groups.attached ?? '';
+  let value = null;
+  let valueIndex = index + 1;
+
+  if (!inlineOperator) {
+    const separator = String(tokens[valueIndex] ?? '');
+    const separatorMatch = separator.match(/^(?<operator>\+=|=\+|=)(?<attached>.*)$/);
+    if (!separatorMatch) return null;
+    attachedValue = separatorMatch.groups.attached;
+    valueIndex += 1;
+  }
+
+  value = attachedValue;
+  if (!value) {
+    value = tokens[valueIndex] ?? null;
+    valueIndex += 1;
+  }
+
+  return {
+    name: reference,
+    sensitive: SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(name),
+    value,
+    nextIndex: valueIndex,
+  };
+}
+
+const POWERSHELL_ENV_WRITER_NAMES = new Set([
+  'set-item',
+  'set-content',
+  'new-item',
+  'set-variable',
+  'si',
+  'sc',
+  'ni',
+  'sv',
+]);
+const POWERSHELL_ENV_TARGET_PARAMETER_NAMES = new Set(['path', 'literalpath', 'name', 'variable']);
+
+function getPowershellCommandName(token) {
+  return String(token ?? '')
+    .toLowerCase()
+    .replace(/^.*[\\/]/, '');
+}
+
+function isSensitivePowershellEnvName(name) {
+  const normalizedName = String(name ?? '').replace(/^[/\\]+/, '');
+  return SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(normalizedName);
+}
+
+function isSensitivePowershellEnvTarget(value, allowBareName = false) {
+  const target = String(value ?? '');
+  const environmentTarget = target.match(
+    /^(?:(?:env(?::|[\\/]))|(?:microsoft\.powershell\.core[\\/]environment::)|(?:environment::))(.+)$/i,
+  );
+
+  if (environmentTarget) return isSensitivePowershellEnvName(environmentTarget[1]);
+  return allowBareName && isSensitivePowershellEnvName(target);
+}
+
+function getPowershellParameter(token) {
+  const match = String(token ?? '').match(
+    /^-+(?<name>[A-Za-z][A-Za-z0-9-]*)(?:[=:](?<attached>.*))?$/,
+  );
+  if (!match) return null;
+
+  return {
+    name: match.groups.name.toLowerCase(),
+    attached: match.groups.attached ?? null,
+  };
+}
+
+function hasSensitivePowershellEnvironmentWriteInTokens(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const commandName = getPowershellCommandName(tokens[index]);
+    if (!POWERSHELL_ENV_WRITER_NAMES.has(commandName)) continue;
+
+    const allowBareName = commandName === 'set-variable' || commandName === 'sv';
+    let positionalTargetChecked = false;
+
+    for (let argumentIndex = index + 1; argumentIndex < tokens.length; argumentIndex += 1) {
+      const argument = String(tokens[argumentIndex] ?? '');
+      const parameter = getPowershellParameter(argument);
+
+      if (parameter) {
+        if (POWERSHELL_ENV_TARGET_PARAMETER_NAMES.has(parameter.name)) {
+          const target =
+            parameter.attached ??
+            (!isOptionToken(tokens[argumentIndex + 1] ?? '') ? tokens[argumentIndex + 1] : null);
+          if (isSensitivePowershellEnvTarget(target, allowBareName)) return true;
+        }
+        continue;
+      }
+
+      if (positionalTargetChecked) continue;
+      positionalTargetChecked = true;
+      if (isSensitivePowershellEnvTarget(argument, allowBareName)) return true;
+    }
+  }
+
+  return false;
+}
+
+function hasSensitivePowershellEnvironmentWrite(tokenized) {
+  const tokenizedCommands = [tokenized];
+
+  for (let commandIndex = 0; commandIndex < tokenizedCommands.length; commandIndex += 1) {
+    const currentCommand = tokenizedCommands[commandIndex];
+    if (hasSensitivePowershellEnvironmentWriteInTokens(currentCommand.tokens)) return true;
+
+    for (let index = 0; index < currentCommand.tokens.length; index += 1) {
+      if (!currentCommand.tokenMetadata[index]?.quoted) continue;
+
+      const nestedCommand = getCommandTokens(currentCommand.tokens[index]);
+      if (nestedCommand.complete && nestedCommand.tokens.length > 0) {
+        tokenizedCommands.push(nestedCommand);
+      }
+    }
+  }
+
+  return false;
+}
+
+const QUOTED_OPTION_LIKE_PATTERN = /(?:^|[\s"'`])(-{1,2}[A-Za-z][A-Za-z0-9_-]*(?:=[^\s"'`]*)?)/g;
+
+function containsSensitiveOptionLikeContent(value) {
+  const text = String(value ?? '');
+  QUOTED_OPTION_LIKE_PATTERN.lastIndex = 0;
+
+  for (const match of text.matchAll(QUOTED_OPTION_LIKE_PATTERN)) {
+    const sensitiveOption = parseSensitiveOption(match[1]);
+    if (sensitiveOption) return true;
+  }
+
+  return false;
+}
+
+function hasQuotedSensitiveContent(tokenized) {
+  const { tokens, tokenMetadata } = tokenized;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const metadata = tokenMetadata[index];
+    if (!metadata?.quoted) continue;
+
+    if (
+      containsSensitiveOptionLikeContent(metadata.raw) ||
+      containsSensitiveOptionLikeContent(tokens[index])
+    ) {
+      return true;
+    }
+
+    const sensitiveOption = parseSensitiveOption(tokens[index]);
+    if (sensitiveOption && !sensitiveOption.header) return true;
+  }
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const sensitiveOption = parseSensitiveOption(tokens[index]);
+    if (sensitiveOption && !sensitiveOption.malformed && !sensitiveOption.header) {
+      if (tokenMetadata[index + 1]?.quoted) return true;
+    }
+  }
+
+  return false;
+}
+
+function sanitizeProcessCommand(command) {
+  const commandString = String(command ?? '');
+  if (UNSUPPORTED_SHELL_SYNTAX_PATTERN.test(commandString)) return REDACTED_COMMAND;
+
+  const normalizedCommand = commandString.trim().replace(/\s+/g, ' ');
+  if (!normalizedCommand) return '';
+
+  const tokenized = getCommandTokens(normalizedCommand, { shellEscapes: true });
+  if (!tokenized.complete || tokenized.ambiguous) {
+    return REDACTED_COMMAND;
+  }
+  if (hasQuotedSensitiveContent(tokenized)) return REDACTED_COMMAND;
+  if (hasSensitivePowershellEnvironmentWrite(tokenized)) return REDACTED_COMMAND;
+
+  const sanitizedTokens = [];
+  for (let index = 0; index < tokenized.tokens.length; index += 1) {
+    const token = tokenized.tokens[index];
+
+    const powershellAssignment = parsePowershellEnvAssignment(tokenized.tokens, index);
+    if (powershellAssignment) {
+      if (!powershellAssignment.value) return REDACTED_COMMAND;
+      if (powershellAssignment.sensitive) {
+        if (
+          isOptionToken(powershellAssignment.value) ||
+          (tokenized.tokens[powershellAssignment.nextIndex] &&
+            !isOptionToken(tokenized.tokens[powershellAssignment.nextIndex]))
+        ) {
+          return REDACTED_COMMAND;
+        }
+        sanitizedTokens.push(`${powershellAssignment.name}=[REDACTED]`);
+      }
+      index = powershellAssignment.nextIndex - 1;
+      continue;
+    }
+
+    if (ENV_ASSIGNMENT_PATTERN.test(token)) {
+      continue;
+    }
+
+    const sensitiveOption = parseSensitiveOption(token);
+    if (!sensitiveOption) {
+      sanitizedTokens.push(redactUri(token));
+      continue;
+    }
+    if (sensitiveOption.malformed) return REDACTED_COMMAND;
+
+    let consumedValue = sensitiveOption.attachedValue;
+    let nextIndex = index + 1;
+
+    if (sensitiveOption.header) {
+      nextIndex = getHeaderValueEnd(tokenized.tokens, nextIndex, consumedValue);
+      if (nextIndex === null) return REDACTED_COMMAND;
+    } else if (consumedValue === null) {
+      consumedValue = tokenized.tokens[nextIndex] ?? null;
+      nextIndex += 1;
+      if (!consumedValue || isOptionToken(consumedValue)) return REDACTED_COMMAND;
+    } else if (!consumedValue) {
+      return REDACTED_COMMAND;
+    }
+
+    sanitizedTokens.push(`${sensitiveOption.name}=[REDACTED]`);
+    index = nextIndex - 1;
+  }
+
+  return sanitizedTokens.join(' ').replace(AUTH_HEADER_PATTERN, '$1[REDACTED]').slice(0, 160);
+}
+
+export function formatPidDiagnostic(pid, entries = []) {
+  const entry = entries.find((candidate) => candidate.pid === pid);
+  const command = sanitizeProcessCommand(entry?.command);
+
+  return command ? `PID ${pid} (${command})` : `PID ${pid}`;
+}
+
+export function isSafeRepoWatcherPid(
+  pid,
+  entries,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  currentPid = process.pid,
+  parentPid = process.ppid,
+  root = repoRoot,
+) {
+  const protectedPids = getProtectedPids(entries, currentPid, parentPid);
+  return findRepoWatcherPids(entries, protectedPids, markers, platform, root).includes(pid);
+}
+
+export function isSafeRepoWatcherPidForTermination(
+  pid,
+  discoveryEntries,
+  revalidatedEntries,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  currentPid = process.pid,
+  parentPid = process.ppid,
+  root = repoRoot,
+) {
+  const discoveryEntry = discoveryEntries.find((entry) => entry.pid === pid);
+  const revalidatedEntry = revalidatedEntries.find((entry) => entry.pid === pid);
+
+  if (
+    !discoveryEntry ||
+    !revalidatedEntry ||
+    discoveryEntry.pid !== revalidatedEntry.pid ||
+    !hasStableProcessIdentity(discoveryEntry, platform) ||
+    !hasStableProcessIdentity(revalidatedEntry, platform) ||
+    getStartIdentity(discoveryEntry) !== getStartIdentity(revalidatedEntry) ||
+    typeof discoveryEntry.command !== 'string' ||
+    discoveryEntry.command.length === 0 ||
+    discoveryEntry.command !== revalidatedEntry.command
+  ) {
+    return false;
+  }
+
+  return (
+    isSafeRepoWatcherPid(pid, discoveryEntries, markers, platform, currentPid, parentPid, root) &&
+    isSafeRepoWatcherPid(pid, revalidatedEntries, markers, platform, currentPid, parentPid, root)
+  );
+}
+
+export function planRepoWatcherTermination(
+  candidatePids,
+  discoveryEntries,
+  revalidatedEntries,
+  markers = DEV_PROCESS_MARKERS,
+  platform = process.platform,
+  currentPid = process.pid,
+  parentPid = process.ppid,
+  root = repoRoot,
+) {
+  return [...new Set(candidatePids)].filter((pid) =>
+    isSafeRepoWatcherPidForTermination(
+      pid,
+      discoveryEntries,
+      revalidatedEntries,
+      markers,
+      platform,
+      currentPid,
+      parentPid,
+      root,
+    ),
+  );
+}
+
+function formatPidDiagnostics(pids, entries) {
+  return pids.map((pid) => formatPidDiagnostic(pid, entries)).join(', ');
+}
+
+function getRepoProcessSnapshot() {
   try {
     const entries = process.platform === 'win32' ? getWindowsProcessTable() : getUnixProcessTable();
     const protectedPids = getProtectedPids(entries);
 
-    return findRepoWatcherPids(entries, protectedPids);
+    return {
+      entries,
+      repoWatcherPids: findRepoWatcherPids(entries, protectedPids),
+    };
   } catch {
-    return [];
+    return { entries: [], repoWatcherPids: [] };
   }
 }
 
@@ -297,47 +1099,49 @@ function getPidsUsingPorts(ports) {
   return [...pidSet];
 }
 
+export function buildWindowsKillCommand(pid) {
+  return `taskkill /PID ${pid} /F`;
+}
+
 function killPid(pid) {
   if (pid === process.pid) return;
 
   if (process.platform === 'win32') {
-    execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore' });
+    execSync(buildWindowsKillCommand(pid), { stdio: 'ignore' });
     return;
   }
 
   process.kill(pid, 'SIGKILL');
 }
 
-function reportForeign(foreign) {
-  for (const { pid, command } of foreign) {
-    const detail = command ? `: ${command}` : ' (no aparece en la tabla de procesos)';
-    console.warn(
-      `PID ${pid} ocupa un puerto de desarrollo pero NO pertenece a este repositorio${detail}. No se detiene.`,
-    );
-  }
-}
-
 async function main() {
   let foundAnyPid = false;
-  let foreignPids = [];
 
   for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
-    const entries = getProcessTable();
-    const { owned, foreign } = partitionPortPids(getPidsUsingPorts(DEV_PORTS), entries);
-    foreignPids = foreign;
-    const pids = [...new Set([...owned, ...getRepoWatcherPids()])];
+    const portPids = getPidsUsingPorts(DEV_PORTS);
+    const processSnapshot = getRepoProcessSnapshot();
+    const { pidsToKill, externalPids, exitCode, terminationWarning } = planDevPortCleanupDecision(
+      portPids,
+      processSnapshot.repoWatcherPids,
+    );
 
-    if (pids.length === 0) {
-      if (foreign.length > 0) {
-        reportForeign(foreign);
-        console.warn(
-          'Los puertos siguen ocupados por procesos ajenos. Libéralos manualmente o cambia de puerto.',
-        );
-        process.exitCode = 1;
-        return;
-      }
+    if (exitCode !== 0) {
+      process.exitCode = exitCode;
+      console.warn(
+        `No se detienen procesos externos en puertos de desarrollo: ${formatPidDiagnostics(externalPids, processSnapshot.entries)}.`,
+      );
+    }
 
-      if (!foundAnyPid) {
+    if (terminationWarning) {
+      process.exitCode = 1;
+      console.warn(
+        `${terminationWarning} Watchers detectados: ${formatPidDiagnostics(pidsToKill, processSnapshot.entries)}.`,
+      );
+      return;
+    }
+
+    if (pidsToKill.length === 0) {
+      if (!foundAnyPid && exitCode === 0) {
         console.log('No hay procesos ocupando puertos de desarrollo (3000, 3001, 3002).');
       }
       return;
@@ -345,11 +1149,23 @@ async function main() {
 
     foundAnyPid = true;
     console.log(
-      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs detectados: ${pids.join(', ')}`,
+      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs de watchers: ${pidsToKill.join(', ')}`,
     );
 
-    for (const pid of pids) {
+    for (const pid of pidsToKill) {
       try {
+        const latestProcessSnapshot = getRepoProcessSnapshot();
+        if (
+          !planRepoWatcherTermination(
+            [pid],
+            processSnapshot.entries,
+            latestProcessSnapshot.entries,
+          ).includes(pid)
+        ) {
+          console.warn(`Se omite PID ${pid}: ya no es un watcher seguro del repositorio.`);
+          continue;
+        }
+
         killPid(pid);
         console.log(`PID ${pid} detenido.`);
       } catch {
@@ -360,18 +1176,28 @@ async function main() {
     await delay(SWEEP_DELAY_MS);
   }
 
-  const finalEntries = getProcessTable();
-  const finalPartition = partitionPortPids(getPidsUsingPorts(DEV_PORTS), finalEntries);
-  const remainingPids = [...new Set([...finalPartition.owned, ...getRepoWatcherPids()])];
+  const remainingPortPids = getPidsUsingPorts(DEV_PORTS);
+  const remainingProcessSnapshot = getRepoProcessSnapshot();
+  const {
+    pidsToKill: remainingSafePids,
+    externalPids: remainingExternalPids,
+    exitCode,
+  } = planDevPortCleanup(remainingPortPids, remainingProcessSnapshot.repoWatcherPids);
 
-  reportForeign(finalPartition.foreign.length > 0 ? finalPartition.foreign : foreignPids);
-
-  if (remainingPids.length > 0) {
+  if (exitCode !== 0) {
+    process.exitCode = exitCode;
     console.warn(
-      `Persisten procesos en puertos de desarrollo tras ${MAX_SWEEPS} barridos: ${remainingPids.join(', ')}`,
+      `No se detienen procesos externos en puertos de desarrollo: ${formatPidDiagnostics(remainingExternalPids, remainingProcessSnapshot.entries)}.`,
     );
-    process.exitCode = 1;
-  } else if (finalPartition.foreign.length > 0) {
+  }
+
+  if (remainingSafePids.length > 0 || remainingExternalPids.length > 0) {
+    console.warn(
+      `Persisten procesos en puertos de desarrollo tras ${MAX_SWEEPS} barridos: ${[
+        ...remainingSafePids,
+        ...remainingExternalPids,
+      ].join(', ')}`,
+    );
     process.exitCode = 1;
   }
 }

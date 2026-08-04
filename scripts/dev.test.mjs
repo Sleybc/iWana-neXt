@@ -4,6 +4,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+const supportedMigratorNodeVersion = '24.13.1';
+const supportedMigratorDigests = Object.freeze({
+  [`${supportedMigratorNodeVersion}-bookworm`]:
+    'sha256:00e9195ebd49985a6da8921f419978d85dfe354589755192dc090425ce4da2f7',
+  [`${supportedMigratorNodeVersion}-bookworm-slim`]:
+    'sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2',
+});
+
 import {
   buildMissingDevEnvMessage,
   createProcessRegistry,
@@ -259,14 +267,74 @@ test('E7 mantiene Node derivado de useNodeVersion en imágenes y CI', () => {
   for (const dockerfile of dockerfiles) {
     const source = readFileSync(join(process.cwd(), dockerfile), 'utf8');
     const nodeFroms = [...source.matchAll(/^FROM\s+node:([^\s]+)(?:\s+AS\s+\S+)?\s*$/gim)];
+    const digestArgs = new Set(
+      [...source.matchAll(/^ARG\s+([A-Z][A-Z0-9_]*_DIGEST)=sha256:[0-9a-f]{64}$/gm)].map(
+        (match) => match[1],
+      ),
+    );
+    const nodeFromPattern =
+      /^\$\{NODE_VERSION\}(?:-[\w.-]+)?(?:@sha256:[0-9a-f]{64}|@\$\{([A-Z][A-Z0-9_]*_DIGEST)\})?$/;
 
     assert.match(source, new RegExp(`^ARG NODE_VERSION=${workspaceVersion}$`, 'm'));
     assert.ok(nodeFroms.length > 0, `${dockerfile} debe declarar una base Node`);
     assert.ok(
-      nodeFroms.every((match) => /^\$\{NODE_VERSION\}(?:-[\w.-]+)?$/.test(match[1])),
+      nodeFroms.every((match) => {
+        const nodeFrom = nodeFromPattern.exec(match[1]);
+        return nodeFrom !== null && (nodeFrom[1] === undefined || digestArgs.has(nodeFrom[1]));
+      }),
       `${dockerfile} debe derivar cada FROM node de NODE_VERSION`,
     );
     assert.doesNotMatch(source, /node:25(?:$|[^.\d])/);
+  }
+
+  const migratorSource = readFileSync(
+    join(process.cwd(), 'packages/database/Dockerfile.migrator'),
+    'utf8',
+  );
+  assert.equal(
+    workspaceVersion,
+    supportedMigratorNodeVersion,
+    'el contrato de digests del migrator solo soporta Node 24.13.1',
+  );
+
+  const expectedMigratorDigestArgs = {
+    NODE_BOOKWORM_DIGEST: supportedMigratorDigests[`${workspaceVersion}-bookworm`],
+    NODE_BOOKWORM_SLIM_DIGEST: supportedMigratorDigests[`${workspaceVersion}-bookworm-slim`],
+  };
+  const migratorDigestArgs = [
+    ...migratorSource.matchAll(/^ARG\s+(NODE_[A-Z0-9_]+_DIGEST)=(sha256:[0-9a-f]{64})$/gm),
+  ].map((match) => [match[1], match[2]]);
+  assert.deepEqual(
+    migratorDigestArgs,
+    Object.entries(expectedMigratorDigestArgs),
+    'el migrator debe mantener los dos pins de digest esperados',
+  );
+
+  const migratorNodePins = [
+    ...migratorSource.matchAll(
+      /^FROM\s+node:\$\{NODE_VERSION\}-(bookworm(?:-slim)?)@\$\{(NODE_[A-Z0-9_]+_DIGEST)\}\s+AS\s+\w+\s*$/gm,
+    ),
+  ].map((match) => [`${workspaceVersion}-${match[1]}`, match[2]]);
+  const expectedMigratorDigestRefs = {
+    [`${workspaceVersion}-bookworm`]: 'NODE_BOOKWORM_DIGEST',
+    [`${workspaceVersion}-bookworm-slim`]: 'NODE_BOOKWORM_SLIM_DIGEST',
+  };
+  assert.deepEqual(
+    migratorNodePins,
+    Object.entries(expectedMigratorDigestRefs),
+    'las dos variantes del migrator deben consumir sus ARG de digest correspondientes',
+  );
+  assert.match(
+    migratorSource,
+    new RegExp(`test "\\$NODE_VERSION" = "${supportedMigratorNodeVersion}"`),
+    'el build del migrator debe rechazar una version Node fuera del contrato',
+  );
+  for (const digest of Object.values(supportedMigratorDigests)) {
+    assert.match(
+      migratorSource,
+      new RegExp(`test "\\$[A-Z_]+" = "${digest}"`),
+      `el build del migrator debe afirmar el digest ${digest}`,
+    );
   }
 
   const ci = assertWorkflowUsesWorkspaceNodeVersion('.github/workflows/ci.yml');

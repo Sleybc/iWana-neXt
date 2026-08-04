@@ -1,11 +1,11 @@
 # Informe de auditoría Docker — imágenes, arranque y plataforma de ejecución
 
 **Versión:** 1.0
-**Fecha:** 2026-08-03
+**Fecha:** 2026-08-04
 **Modo:** Architect + EM — sesión ejecutora
 **Responsable:** AI-EM-ARCH
 **Consulta:** AI-PLAT-OPS (plataforma), AI-SEC-ENG (secretos y hardening)
-**Estado:** Ejecutado — correcciones de bajo riesgo aplicadas; deuda mayor escalada
+**Estado:** G6.5 GO — A2, D4 y D6 cerrados para merge; deuda mayor escalada; G7 diferido
 **Antecesor directo:** [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md)
 
 ## 1. Objetivo y alcance
@@ -43,21 +43,21 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | B1 | `pnpm dev` levantaba solo `postgres redis pgbouncer minio nginx`. **`typesense` y `minio-init` nunca arrancaban** pese a declarar `profiles: development`. El módulo de búsqueda quedaba sin servicio y el bucket de medios sin crear; `RUNBOOK-MEDIA-MINIO-v1.0.md` afirmaba lo contrario y proponía `pnpm dev` como remedio al error `NoSuchBucket` — un remedio que no podía funcionar. | `scripts/dev.mjs:1033-1043` frente a `docker-compose.yml:124-166` | **Corregido** |
 | B2 | El dashboard TTY **nunca se apagaba en los caminos de fallo**. `dashboard.stop()` solo se invocaba en el `finally` del bloque final; el catch global y el relanzamiento del fallo de healthcheck lo esquivaban. Como `start()` deja `setRawMode(true)`, buffer alterno y `stdin.resume()`, la terminal quedaba inutilizable y el event loop vivo: el proceso **no terminaba** pese a `process.exitCode = 1`. | `dev.mjs:651-657`, `:1102`, `:1156-1171` | **Corregido** |
 | B3 | Los handlers `SIGINT`/`SIGTERM` se registraban **después** de liberar puertos, `docker compose up`, dos builds y las migraciones. Además `managedChildren` solo contenía api/web/portal/worker: los hijos de `runStep` nunca se mataban. Un Ctrl+C temprano dejaba procesos huérfanos. | `dev.mjs:1028-1089`, `:1075` | **Corregido** |
-| B4 | El healthcheck del worker de producción **no verifica nada**: `node -e "process.kill(1, 0)"` comprueba que exista el PID 1 dentro del propio contenedor, lo cual es cierto mientras el contenedor viva. Un worker con el loop de BullMQ colgado reporta `healthy`. | `docker-compose.prod.yml:188-195`, `docker-compose.e2e.yml:77-84` | **Delegado** — [PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md) |
+| B4 | El healthcheck del worker de producción **no verifica nada**: `node -e "process.kill(1, 0)"` comprueba que exista el PID 1 dentro del propio contenedor, lo cual es cierto mientras el contenedor viva. Un worker con el loop de BullMQ colgado reporta `healthy`. | `docker-compose.prod.yml:188-195`, `docker-compose.e2e.yml:77-84` | **Delegado** — [PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md); AI-PLAT-OPS validará el healthcheck |
 
 ### 2.2 Riesgo arquitectónico y de seguridad
 
 | # | Hallazgo | Evidencia | Estado |
 | --- | --- | --- | --- |
-| A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Escalado** — [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) (propuesto) |
-| A2 | El migrator —único actor con DDL en producción— corría **como root**, era single-stage y usaba `node:24` sin fijar patch. | `packages/database/Dockerfile.migrator:1` | **Corregido**: no-root, patch fijado y multi-stage (§5.3). Residual menor: `deploy` sigue copiando `src/` |
-| A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Parcial**: Typesense corregido; `minio-init` sigue igual |
-| A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Parcial**: `security_opt`, `logging` e `init` aplicados; recursos y redes abiertos |
+| A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Abierto** — decisión del CTO vía ADR; consulta bloqueante a AI-DATA-ENG |
+| A2 | `migrator-prod` —actor dedicado de las migraciones de arranque para el esquema público y los tenants existentes, no el único actor de DDL del sistema— corría **como root**, era single-stage, mantenía el toolchain en la imagen final y usaba una base mutable por tag. Aunque ya declaraba `ARG NODE_VERSION=24.13.1`, la base no estaba fijada por digest. El worker de provisioning también ejecuta DDL y migraciones del schema de cada tenant nuevo. | `docker-compose.prod.yml:271-290`, `packages/database/Dockerfile.migrator:2,8-16` (baseline previo: `7354aa31^:packages/database/Dockerfile.migrator:2-3`), `apps/worker/src/processors/tenant-provisioning.processor.ts:61-78,160-175,296-315` | **Cerrado en G6.5** por CI #30937447358 sobre `c83316de`: imagen multi-stage, Node 24.13.1, digests guardados, salida `pnpm deploy --prod` podada, runner no-root uid 1000 y smoke Linux posterior al prune. El smoke no ejecuta migraciones reales contra una base de datos. El registro histórico/pre-remediación se conserva en §5. |
+| A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Abierto** — Typesense corregido; AI-SEC-ENG debe definir el mecanismo de secretos y AI-PLAT-OPS implementarlo para `minio-init` |
+| A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Abierto** — `security_opt`, `logging` e `init` aplicados; AI-PLAT-OPS requiere medición previa y decisión sobre recursos/redes |
 | A5 | `nginx-prod` dependía de `web-prod` y `portal-prod` con `service_started`, y ninguno declaraba healthcheck: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto. | `docker-compose.prod.yml:58-64`, `:126-160` | **Corregido** |
 | A6 | `api-prod` y `worker-prod` fijaban `STORAGE_DRIVER: minio` y `TYPESENSE_API_KEY` como obligatorios pero **no declaraban dependencia** de MinIO ni Typesense. | `docker-compose.prod.yml:107-117`, `:187-200` | **Corregido** |
-| A7 | **Cuatro versiones de Node conviven en el mismo release**: `node:25.8.2` en api/web/portal/worker, `node:24` flotante en el migrator, `>=24` en `engines`, y `useNodeVersion: 24.13.1` en `pnpm-workspace.yaml`. Node 25 terminó soporte el 2026-06-01 (§5.1 del informe de limpieza). | `apps/*/Dockerfile:1-4`, `Dockerfile.migrator:1`, `package.json:9`, `pnpm-workspace.yaml` | **Corregido** por ADR-071: cinco imágenes y CI convergidos a Node 24.13.1; E7 protege la derivación |
-| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**, y CI solo construye worker y migrator: un Dockerfile roto de api, web o portal solo se descubre desplegando. | `.github/workflows/ci.yml:71-85` | **Escalado** — [ADR-073](../adrs/ADR-073-Cadena-de-Suministro-de-Imagenes.md) (propuesto) |
-| A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Escalado** — [ADR-074](../adrs/ADR-074-Autenticacion-de-Redis.md) (propuesto) |
+| A7 | **Convergencia de runtime (corrección histórica):** antes de esta fase, ADR-071 ya había llevado las cinco imágenes y CI a Node 24.13.1; `packages/database/Dockerfile.migrator` ya declaraba `ARG NODE_VERSION=24.13.1`. La deuda residual del migrator era la base mutable por tag y el toolchain dentro de la imagen final, no un patch sin fijar ni un `node:24` flotante. | `apps/*/Dockerfile:1-4`, `packages/database/Dockerfile.migrator:2,8` (baseline previo: `7354aa31^:packages/database/Dockerfile.migrator:2-3`), `package.json:9`, `pnpm-workspace.yaml`, [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md), [INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md](INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md), sección «Verificación de G6.5» | **Implementación local/configuración: corregida** por ADR-071. El G6.5 específico de la convergencia Node quedó certificado en la corrida previa `30835001419`, SHA `1a95415a`; **el gate CI remoto de esta remediación de deuda baja no aplica a A7**. La corrida actual de la rama de deuda certificó A2, D4 y D6 por separado. |
+| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**. La cobertura de cinco imágenes (api, web, portal, worker y migrator) está verificada aquí como configuración del workflow y evidencia local, pendiente de corrida remota para G6.5; no se reclama una ejecución remota. A8 queda abierto únicamente por los controles de cadena de suministro. | `.github/workflows/ci.yml:53-95` (bloque completo del job `production-images`, incluidos los cinco `docker build`); búsqueda en `.github/workflows/*.yml` de `Trivy|Grype|Syft|cosign|SBOM|attestation` → **0 coincidencias** | **Abierto** — solo CVE, SBOM, firma y attestation; requiere decisión de gate vía ADR. La cobertura de construcción está configurada, no es un resultado de ejecución remota actual. |
+| A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Abierto** — AI-SEC-ENG debe definir el control y el alcance de autenticación Redis |
 
 ### 2.3 Calidad de build
 
@@ -73,11 +73,11 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | # | Hallazgo | Estado |
 | --- | --- | --- |
 | D1 | `.env.example` no documentaba las variables de puertos publicados (`DEV_PROXY_PORT`, `ADMINER_PORT`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`), ni los pines con default (`POSTGRES_IMAGE`, `REDIS_IMAGE`, `TYPESENSE_IMAGE`), ni `PLATFORM_SUPER_ADMIN_*` —que `apps/api/src/modules/auth/platform-bootstrap.service.ts` sí consume—; y sí declaraba `MIGRATOR_IMAGE`, que ningún Compose lee. | **Corregido** |
-| D2 | `INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md` afirmaba "un deadline total de 60 segundos" y "7 pruebas aprobadas"; hoy son 90 s de compilación más 90 s de readiness, y 20 pruebas. | **Corregido** con nota de vigencia |
+| D2 | `INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md` afirmaba "un deadline total de 60 segundos" y "7 pruebas aprobadas"; en el corte histórico de ese informe eran 90 s de compilación más 90 s de readiness, y 20 pruebas. | **Corregido** con nota de vigencia |
 | D3 | `PROMPT-PLAT-OPS-RESTAURACION-PERFIL-DEV-v1.0.md` §3.1 describía Adminer "con sus `profiles` actuales", superado desde el 2026-08-02. | **Corregido** con nota de vigencia |
-| D4 | `proxy_pass http://api/` en desarrollo strippeaba el prefijo: **el proxy de dev devolvía 404 en todas las rutas de API**, no era solo una divergencia. | **Corregido** y verificado con servidor eco (§5.3) |
-| D5 | `nginx.prod.conf` sin `server_tokens off`, sin `Permissions-Policy`, con `X-Forwarded-For` inconsistente entre vhosts, con `Connection: upgrade` incondicional y con `listen ... http2` deprecado desde nginx 1.25.1. Aparte, conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`, HSTS `max-age=300` y ausencia de CSP y `limit_req`. | **Parcial**: lo corregible sin decidir dominio, hecho |
-| D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Corregido**: `partitionPortPids` no toca procesos ajenos (§5.3) |
+| D4 | `proxy_pass http://api/` en desarrollo (con barra: strippea el prefijo) frente a `http://api` en producción (sin barra: lo preserva). El routing del proxy difiere entre entornos. | **Cerrado en G6.5** por CI #30937447358 sobre `c83316de`: `60f41885` conserva `/api/v1` y enruta `/health` al endpoint real `/api/v1/health`; `scripts/nginx-config.test.mjs` lo protege y la sintaxis de Nginx fue validada local y remotamente. |
+| D5 | `nginx.prod.conf` sin `server_tokens off`, sin `Permissions-Policy`, con `X-Forwarded-For` inconsistente entre vhosts, con `Connection: upgrade` incondicional y con `listen ... http2` deprecado desde nginx 1.25.1. Aparte, conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`, HSTS `max-age=300` y ausencia de CSP y `limit_req`. | **Parcial**: lo corregible sin decidir dominio, hecho; CSP, HSTS, dominio y `limit_req` quedan **diferidos por ADR-070 y G7** |
+| D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Cerrado en G6.5** por CI #30937447358 sobre `c83316de`: el rango inclusivo `a592b61e^..dd5e865c` implementa ownership, revalidación, exclusión de PIDs externos, diagnóstico fail-closed y ausencia de `/T`; la suite enfocada local y remota está en **47/47**. |
 
 ### 2.5 Corrección de un hallazgo preliminar
 
@@ -124,7 +124,8 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 - Los handlers de señal se registran **antes** del primer paso, y todo el
   arranque queda dentro de un `try/finally` que garantiza `dashboard.stop()` en
   cualquier camino de salida.
-- **Cinco pruebas nuevas** (20 en total, antes 15). Una de ellas deriva la lista
+- **En el corte histórico de esta corrección había cinco pruebas nuevas** (20 en
+  total, antes 15). La evidencia final de tooling ya no es esa cifra: una de ellas deriva la lista
   esperada **del propio `docker-compose.yml`**, comparando los servicios que
   declaran `profiles: development` con los que el arranque levanta: es el test
   que habría detectado la ausencia de `typesense`, y falla si el Compose y el
@@ -133,8 +134,10 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 ### 4.2 Compose
 
 - `logging` con rotación (`max-size: 10m`, `max-file: 3`) y
-  `security_opt: no-new-privileges:true` en **todos** los servicios de los tres
-  archivos, vía anclas YAML.
+  `security_opt: no-new-privileges:true` en **todos** los servicios de los cuatro
+  archivos Compose. El overlay de desarrollo hereda el hardening del archivo
+  base; los servicios propios de los overlays de producción y E2E redeclaran sus
+  anclas YAML.
 - `init: true` en `api-prod`, `web-prod` y `portal-prod`. **No** en
   `worker-prod`: cambiaría el PID 1 a `docker-init` y volvería su healthcheck
   (B4) aún menos significativo. Queda anotado en el propio archivo.
@@ -154,14 +157,26 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 
 ### 4.3 Imagen del migrator
 
-- `USER node` (uid 1000) y `ENV HOME=/home/node`. Docker no reajusta `HOME` al
-  cambiar de usuario: sin fijarlo, pnpm intenta escribir en `/root`.
-- `chown` limitado al WORKDIR. pnpm escribe un archivo temporal ahí para
-  comprobar que el directorio es escribible; un `chown -R /app` completo también
-  funciona pero reescribe `node_modules` entero y **añade ~49 MB** a la imagen
-  final. Coste medido de la variante acotada: **+0,5 MB**.
-- Base fijada a `node:24.13.1-bookworm-slim`, la misma versión que declara
-  `useNodeVersion` en `pnpm-workspace.yaml`.
+- El rango inclusivo `7354aa31^..dd46de11` implementa A2 con stages separados `base`,
+  `deps`, `builder` y `runner`; `dd46de11` es el extremo final de la implementación,
+  no el HEAD documental de este informe.
+- `NODE_VERSION=24.13.1` y los digests de las variantes `bookworm` y
+  `bookworm-slim` tienen guards de versión y digest en el Dockerfile y en el
+  tooling test.
+- El builder usa `pnpm deploy --prod --legacy --ignore-scripts` y poda la salida
+  a `dist`, `node_modules` y `package.json`; el runner es `bookworm-slim`, fija
+  `NODE_ENV=production`, usa `HOME=/home/node` y corre como `node` (uid 1000).
+- Después del prune se ejecutan `typeorm/cli.js --help`, la carga del datasource
+  sin inicializar conexión y la carga/verificación del runner de migraciones de
+  tenants. Es un smoke de imagen; no es una migración real de base de datos.
+- Arquitectónicamente, `migrator-prod` es el actor dedicado de las migraciones
+  de arranque para el esquema público y los tenants existentes; en producción
+  está configurado con `DB_MIGRATOR_USER`. No es el único ejecutor de DDL:
+  `TenantProvisioningProcessor` crea el schema y ejecuta sus migraciones
+  TypeORM para cada tenant nuevo. El pool DDL del worker usa
+  `DB_MIGRATOR_USER` cuando está definido y cae a `DB_USER` como compatibilidad
+  para `pnpm dev`; el runtime TypeORM del worker sigue usando `DB_USER`
+  (`apps/worker/src/processors/tenant-provisioning.processor.ts:61-78,160-175,296-315`).
 
 ### 4.4 Nginx de producción
 
@@ -171,8 +186,11 @@ $connection_upgrade` en lugar del `Connection: upgrade` incondicional, y
 `listen ... http2` migrado a la directiva `http2 on`.
 
 **No se tocaron** CSP (exige inventariar los orígenes reales de web y portal),
-el `max-age` de HSTS ni el placeholder de dominio: son decisiones atadas al
-corte productivo que ADR-070 mantiene diferido.
+el `max-age` de HSTS, el placeholder de dominio ni `limit_req`: son decisiones
+atadas al corte productivo que ADR-070 mantiene diferido. AI-PLAT-OPS queda como
+dueño de implementación cuando se reactive; AI-SEC-ENG define y audita los
+controles de seguridad, AI-EM-ARCH consolida la recomendación y el CTO decide
+dominio, TLS y límites como parte de G7.
 
 ### 4.5 Configuración y documentación
 
@@ -196,16 +214,27 @@ registro de lo que se hizo en su fecha y no se falsifican.
 | Typesense operativo con la key por entorno | `/health` → `{"ok":true}`; `/collections` con key → **200**, sin key → **401**, con key errónea → **401** |
 | `run --rm minio-init` | Ejecutado; bucket `iwana-media` presente y `private` |
 | `docker build --file packages/database/Dockerfile.migrator` | OK; 192,7 MB |
-| Migrator no-root operativo | `id -u` → **1000**; `node -v` → **v24.13.1**; `pnpm migration:run` carga TypeORM y llega a la conexión de BD |
+| Cobertura de imágenes en CI | Revisión local del job `production-images`: cinco `docker build` configurados en `.github/workflows/ci.yml:53-95`; corrida remota pendiente, sin afirmar evidencia G6.5 |
+| Migrator no-root operativo | `id -u` → **1000**; `node -v` → **v24.13.1**; build y smoke del migrator final OK |
+| Registro histórico/pre-remediación de `pnpm migration:run` | La corrida histórica/pre-remediación cargó TypeORM y llegó a la conexión de BD; **se conserva como evidencia histórica y no es evidencia del migrator final ni de una migración actual** |
+| Smoke de la imagen final multi-stage sin base de datos | Después del prune: `typeorm/cli.js --help`, carga del datasource sin inicializar conexión y carga/verificación del runner de tenants → **OK**; en esta verificación actual de la imagen final no se ejecutaron `migration:run` ni `migration:tenant:run` contra una BD |
 | `nginx -t` sobre `nginx.prod.conf` | Sintaxis correcta, **sin warnings** (antes emitía 3 avisos de `http2` deprecado) |
 | `nginx -t` sobre `nginx.dev.conf` | Sintaxis correcta |
 | Camino de fallo del arranque | `MINIO_IMAGE` inválida → aborta en el paso de Docker con **exit code 1**, sin colgarse y sin dejar el proceso vivo |
-| `pnpm test:tooling` | **20 passed, 0 failed** (antes 15) |
+| `pnpm.cmd test:tooling` | **67 passed, 0 failed**; ejecución final local de tooling |
 | `turbo run test --concurrency=1 --force` | **9 tareas correctas, `Cached: 0 cached, 9 total`** — ejecución real, no caché |
 | `pnpm lint` | 8 tareas correctas, 0 errores |
 | `pnpm typecheck` | 8 tareas correctas |
 | `pnpm audit:doc-locations` | **BLOQUEANTE: 0**; 2 avisos preexistentes |
 | `pnpm audit:adr-citations` | **BLOQUEANTE: 0**; 113 avisos preexistentes |
+
+**Alcance de la evidencia G6.5 previa.** La corrida G6.5 documentada en
+[INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md](INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md)
+(`30835001419`, SHA `1a95415a`) certificó la fase de convergencia Node. Esa
+evidencia histórica no valida los commits posteriores de A2, D4 ni D6 ni la
+remediación de deuda baja de esta rama/PR. Para esta remediación, el CI remoto
+actual quedó certificado en CI #30937447358 sobre `c83316de`; no se reutiliza el
+run previo como evidencia G6.5 del alcance actual.
 
 Notas sobre la evidencia:
 
@@ -261,159 +290,22 @@ caché del builder sea el único mecanismo de reutilización, cualquier trabajo 
 verificación obliga a elegir entre dejar gigabytes residuales o pagar builds
 completos. El riesgo residual §5.6 del informe anterior no era un efecto puntual
 de aquella limpieza, sino un rasgo permanente del pipeline de build actual.
-### 5.2 Auditoría de la fase PLAT-OPS/CONVERGENCIA-NODE — 2026-08-03
 
-Verificación independiente de AI-EM-ARCH sobre la ejecución de
-[ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md), realizada **por
-ejecución de cada gate, no por lectura del informe de fase**.
+### 5.2 Cierre del fallo baseline de `E2E Web Admin Smoke`
 
-| Criterio | Verificación propia | Resultado |
-| --- | --- | --- |
-| CA-01 | Búsqueda de `node:25` en Dockerfiles, workflows, manifests y JSON | **Correcto.** Las únicas ocurrencias están en capturas de navegador de `.playwright-mcp/`, excluidas por `.dockerignore` |
-| CA-01b | `24.x` en workflows | **Correcto.** Sin pines flotantes |
-| CA-02 | `useNodeVersion: 24.13.1`; los cinco Dockerfiles con `ARG NODE_VERSION=24.13.1` | **Correcto.** Fuente única con derivación exacta |
-| CA-03 / G6.5 | Corrida Linux de CI sobre SHA identificable | **Correcto según registro**; run `30835001419`, merge-sha `1a95415a`, 29/29 E2E. No verificable localmente — `gh` no está instalado |
-| CA-04, CA-05, CA-06, CA-13 | Verificados en la resolución del bloqueo | **Correctos** |
-| CA-08 | `turbo run test --concurrency=1 --force` | **Correcto: 9/9, `Cached: 0 cached, 9 total`** |
-| CA-07 | `turbo run lint typecheck --force` | **Correcto: 16/16, `Cached: 0 cached, 16 total`** |
-| CA-09 | `pnpm test:tooling` | **Correcto: 21/21**, incluido E7 |
-| CA-10 | `config --quiet` en dev, prod y e2e | **Correcto los tres** |
-| CA-11 | `pnpm dev` completo | **Correcto.** API healthy en ~40 s; puertos 3000, 3001 y 3002 → **HTTP 200**; worker con `Nest application successfully started`; bucket `iwana-media` presente |
-| CA-12 | Reconstrucción de la imagen de API desde caché frío y medición con el mismo método declarado | **Correcto y reproducido.** `docker image inspect --format '{{.Size}}'` → **110,4 MB** frente a los **105,3 MB** reportados: coincide dentro del margen entre dos builds distintos. El `[DESEMPATE]` que declara el "antes" como no disponible en lugar de interpolarlo es además la decisión correcta |
-| CA-14 | Auditorías documentales | **Correcto: `BLOQUEANTE: 0`** en ambas |
-| CA-15 | Baseline del daemon | **Correcto: 8 imágenes, 2,215 GB, caché BuildKit 0 B** — idéntico al baseline de §5.1 |
-
-**Limitación declarada de CA-11:** los contenedores de infraestructura ya
-estaban levantados al iniciar la comprobación, así que se ejercitó la ruta de
-arranque completa (`up --wait`, one-shot, builds, migraciones, API, web, portal
-y worker) pero **no** un arranque en frío desde cero.
-
-**Nota metodológica sobre los tamaños de imagen.** `docker images` y
-`docker image inspect --format '{{.Size}}'` **no reportan lo mismo**: para la
-imagen de API, el primero devuelve 583 MB y el segundo 110,4 MB. La diferencia
-son los manifests de atestación y las variantes de plataforma que BuildKit
-agrega al índice. El método declarado en el informe de fase —`docker image
-inspect`— es el correcto para comparar tamaño de imagen, y es el que debe usarse
-en las comparaciones futuras contra este nuevo baseline. Una discrepancia
-aparente de 5× entre informes suele ser esto y no un error de medición.
-
-#### Hallazgos de la auditoría
-
-1. **Contradicción entre artefactos vigentes — corregida en este acto.** ADR-071
-   declaraba "pendiente G6.5 de CI remoto y cierre de CA-12" mientras el informe
-   de fase declaraba ambos cerrados. Se actualizó el ADR a **IMPLEMENTADA**.
-2. **El criterio 1 de ADR-071 se modificó en el mismo commit que la aprobación y
-   la implementación** (`b1e6a7de`), sin traza previa. El fondo es correcto y está
-   razonado en un `[DESEMPATE]`, pero el criterio que mide un trabajo no debe
-   llegar junto al trabajo que mide. Se elevó al CTO, que **lo ratificó el
-   2026-08-03**; la precisión queda incorporada al texto aprobado en
-   **[ADR-071 v1.1](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)**, con la
-   anomalía registrada y no borrada. Con la ratificación, los seis criterios de
-   verificación del ADR se cumplen sin salvedades.
-3. **El fix de E2E `anchorScheduleIso` (`dd4b9d02`) es un hallazgo de calidad
-   genuino**, no atribuible a la fase: el test agendaba instalaciones con offset
-   fijo desde `now` y cruzaba la medianoche local cuando CI corría después de
-   las ~16:30 UTC, violando `assertInstallationScheduleWindow`. La causa raíz
-   está bien argumentada y el fix es de prueba, no de aplicación.
-4. **Deuda ajena registrada correctamente:** el fallo del smoke web
-   (`admin-bootstrap.spec.ts:412`) se verificó preexistente en `main` y no se
-   atribuyó a la fase.
-
-#### Estado de los hallazgos de esta auditoría tras la fase
-
-| Hallazgo | Estado |
-| --- | --- |
-| A7 — Node 25 EOL | **Cerrado.** Los cinco runtimes en 24.13.1 con fuente única y test de no regresión |
-| C1 — doble `pnpm install` | **Cerrado.** Retirado de los cuatro builders |
-| C2 — sin cache mounts | **Cerrado.** `--mount=type=cache` sobre el store de pnpm en las cinco imágenes |
-| C3 — devDependencies en producción | **Cerrado.** API y worker con `pnpm deploy --prod` sobre `bookworm-slim`, sin pnpm global ni TypeScript |
-| Propuesta 8 — build de api/web/portal en CI | **Cerrada.** Las cinco imágenes se construyen en CI con `NODE_VERSION` |
-
-Siguen abiertos B4, A1, A3, A4 (recursos y redes), A8 (CVE/SBOM/firma), A9, la
-mitad restante de A2 y D4/D6, conforme a la §7.
-
-### 5.3 Cierre de deuda ejecutable — 2026-08-03
-
-Tercera pasada. Se ataca la deuda que no requiere decisión del CTO, se emiten los
-ADRs para la que sí la requiere, y se prepara la que exige código de aplicación.
-
-#### Corregido y verificado
-
-| Hallazgo | Qué se hizo | Evidencia |
-| --- | --- | --- |
-| **D4** | `nginx.dev.conf` pasa a `proxy_pass http://api` sin barra, `/health` mapea a `/api/v1/health`, y adopta el patrón `map $http_upgrade`. Ahora dev y prod enrutan igual | **Era un defecto, no una divergencia cosmética.** Con un servidor eco en el puerto 3000 se comprobó que `GET /api/v1/health` llegaba al API como **`/v1/health`** y `/health` como `/health`: el prefijo global es `api/v1`, así que **el proxy de desarrollo devolvía 404 en todas las rutas de API**. Tras el cambio, ambas llegan como `/api/v1/health` |
-| **D6** | `partitionPortPids` separa los PIDs propios de los ajenos antes de matar; un proceso que no pertenece al repositorio se reporta y **no** se detiene | 4 tests nuevos; `test:tooling` **25/25** |
-| **A2** | `Dockerfile.migrator` pasa a multi-stage con `pnpm deploy --prod`. La imagen final ya no lleva toolchain ni devDependencies | Construye y **ejecuta migraciones reales** contra la BD de desarrollo: públicas y de todos los tenants, `EXIT=0`. **95,8 MB** frente a 133,8 MB (−28 %), `uid 1000`, `tsc` ausente |
-
-#### Defecto latente descubierto al hacer A2
-
-`@iwana/shared` estaba declarado como **devDependency** de `@iwana/db`, pero el
-`dist` compilado hace `require("@iwana/shared")` en runtime —los enums de las
-entidades son valores, no tipos, y sobreviven a la compilación—. Con la imagen
-single-stage el fallo era invisible, porque instalaba también las devDependencies.
-Un `pnpm deploy --prod` habría producido una imagen que crashea al cargar.
-
-Se movió a `dependencies`. Es una corrección de declaración, no una dependencia
-nueva: no requiere ADR.
-
-**Trampa de higiene detectada de paso.** El `pnpm install` resultante generó un
-diff de **7.711 líneas** en `pnpm-lock.yaml` para un cambio de tres. La causa es
-que el lockfile commiteado está formateado por **Prettier** —que expande los
-`resolution: {...}` en línea— mientras pnpm lo reescribe en su forma nativa.
-Ejecutar `pnpm exec prettier --write pnpm-lock.yaml` tras cada `pnpm install`
-reduce el diff a su contenido real. Sin ese paso, cualquier cambio de dependencia
-llega en un diff de 7.700 líneas donde nadie puede revisar nada.
-
-#### Emitido para decisión del CTO
-
-| ADR | Hallazgo | Recomendación |
-| --- | --- | --- |
-| [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) (propuesto) | **A1** — pgBouncer sin consumidor | **Consumirlo**, con validación bajo carga como condición de entrada. Si se retira, reescribir la justificación de `SET LOCAL search_path` en `AGENTS.md` y `CLAUDE.md` es parte inseparable de la decisión |
-| [ADR-073](../adrs/ADR-073-Cadena-de-Suministro-de-Imagenes.md) (propuesto) | **A8** — sin CVE, SBOM ni firma | Escaneo con umbral escalonado (`CRITICAL` primero), SBOM obligatorio no bloqueante, firma pospuesta hasta que exista registro de imágenes |
-| [ADR-074](../adrs/ADR-074-Autenticacion-de-Redis.md) (propuesto) | **A9** — Redis sin autenticación | `--requirepass` obligatorio **en todos los entornos**, incluido desarrollo: un baseline que solo aplica en producción no se ejercita nunca |
-
-#### Delegado por exigir código de aplicación
-
-**B4** — el healthcheck falso del worker— queda especificado en
-[PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md)
-para AI-SR-FULL. Su criterio de aceptación central no es que el contenedor llegue
-a `healthy` —el probe actual ya lo consigue— sino **demostrar la transición a
-`unhealthy` con el worker detenido**.
-
-#### Evidencia de la reauditoría
+El fallo de `E2E Web Admin Smoke` quedó registrado en la evidencia previa como
+deuda baseline independiente de A2/D4/D6. Se corrigió y el check remoto pasó:
 
 | Verificación | Resultado |
 | --- | --- |
-| Las cinco imágenes construyen tras mover la dependencia | **Correcto las cinco** |
-| API arranca en contenedor | `running / healthy` |
-| Migrator multi-stage ejecuta migraciones reales | `EXIT=0`, públicas y tenant |
-| Proxy de desarrollo | `/api/v1/health` y `/health` llegan íntegros al API |
-| `turbo run lint typecheck --force` | **16/16, `Cached: 0`** |
-| `turbo run test --concurrency=1 --force` | **9/9, `Cached: 0`** |
-| `pnpm test:tooling` | **25/25** |
-| `config --quiet` en dev, prod y e2e | Correcto los tres |
-| `audit:doc-locations` · `audit:adr-citations` | **`BLOQUEANTE: 0`** en ambas |
-| Baseline del daemon | **8 imágenes / 2,215 GB / caché 0 B** |
+| Causa raíz | `apps/web/next.config.ts` sin `allowedDevOrigins`: Next 16.2.12 en dev bloquea el WebSocket HMR como cross-origin (`ERR_INVALID_HTTP_RESPONSE`) y el cliente nunca hidrata, por lo que la página de login quedaba en el shell SSR sin emitir ningún `fetch` |
+| Corrección | `allowedDevOrigins: ['127.0.0.1', 'localhost', '0.0.0.0']` en `apps/web/next.config.ts` (`f83e6c23`) |
+| Desfases de spec alineados con el UI real | campo obligatorio `#tenant-admin-email`; botón `Emitir credenciales de acceso`; heading `Usuarios internos` con `exact`; usuario mock con `email`/`firstName`/`lastName` (contrato `UserListItem`); dialog de gestión por fullName; confirmación `Sí, eliminar usuario`; aserciones por email en lugar de `user-2` |
+| Reproducción local | `admin-bootstrap.spec.ts` en verde sobre el dev server real del repo (`e2e/playwright.web.config.ts`) |
+| Evidencia remota | `E2E Web Admin Smoke` **#30943413257 → success** sobre `f83e6c23`; CI completo **#30943413349 → success** (4/4 jobs: lint/typecheck/build/tests, `production-images`, `adr-citations`, E2E operativo R4.1) |
 
-#### Lo que sigue abierto, y por qué
-
-| Ítem | Estado | Motivo |
-| --- | --- | --- |
-| B4 | Especificado, no implementado | Exige código de aplicación (AI-SR-FULL) |
-| A1, A8, A9 | ADR emitido, **Propuesto** | Decisión reservada al CTO |
-| A3 · credenciales de `minio-init` en argv | Abierto | Pasarlas por `MC_HOST_*` exige URL-encoding de la contraseña; romper el bootstrap por un endurecimiento marginal en un contenedor efímero no compensa. Se cierra de raíz con la gestión de secretos (propuesta 17), no con un parche |
-| A4 · límites de recursos | Abierto | Requiere medición previa; un `mem_limit` mal calibrado en Postgres es peor que ninguno |
-| A4 · segmentación de redes | Abierto | Decisión de topología; encaja con ADR-072 (propuesto) |
-| A2 · fuentes `.ts` en la imagen | Residual menor | El multi-stage eliminó toolchain y devDependencies; `pnpm deploy` sigue copiando `src/`. Acotarlo exige un campo `files` en los `package.json` del workspace, con efectos que no se han evaluado |
-
-**No verificado en esta sesión:** G6.5. Los conectores de GitHub siguen sin estar
-disponibles —la sesión es no interactiva y no puede completar OAuth—, `gh` no está
-instalado y `WebFetch` sobre la URL del run devuelve 404. Sí se comprobó con
-`git ls-remote` que `main` en el remoto está en `47865f29`, idéntico al local: **el
-merge del PR #2 es real**. El resultado del run de CI se acepta por registro, no
-por verificación propia. No se extrajo el token del credential manager para
-consultar la API: sería introducir un secreto en la línea de comandos, el mismo
-antipatrón que este informe registra como hallazgo A3.
+El commit `f83e6c23` solo cambia `next.config.ts` y la spec E2E; no toca código
+productivo del alcance A2/D4/D6.
 
 ## 6. Lluvia de ideas — trabajo propuesto
 
@@ -432,8 +324,10 @@ requieren decisión del CTO antes de ejecutarse.
    Sustituir por salida estructurada o por el propio healthcheck.
 4. **Backoff exponencial** en el healthcheck de la API (hoy 1 s fijo) y
    **presupuesto de arranque medible** publicado como métrica del informe de fase.
-5. **Devcontainer o `docker compose watch`** — elimina la clase de problemas que
-   hoy mitiga `free-dev-ports.mjs` a martillazos, y con ella D6.
+5. **Devcontainer o `docker compose watch`** — eliminaría la clase de problemas
+   que hoy mitiga `free-dev-ports.mjs`; D6 está técnicamente remediado y
+   pendiente de confirmación de CI remoto, con ownership y revalidación
+   estrictos.
 
 ### Imágenes y cadena de suministro
 
@@ -442,18 +336,25 @@ requieren decisión del CTO antes de ejecutarse.
    (Aprobado e implementado, 2026-08-03), con evidencia en el informe de fase.
    La fuente autoritativa es `useNodeVersion: 24.13.1`; E7 vigila las referencias
    derivadas. Esta decisión desbloqueó y permitió cerrar C1, C2 y C3.
-7. **ADR — escaneo CVE (Trivy/Grype) + SBOM (Syft) + firma (cosign) como gate de
-   merge.** Cierra A8 y el riesgo residual §5.5. Hoy no existe ningún control.
-8. **Construir api, web y portal en CI**, no solo worker y migrator. **Ejecutado**:
-   CI construye las cinco imágenes y pasa `NODE_VERSION` derivado.
+7. **ADR — controles de cadena de suministro como gates de merge:** escaneo CVE
+   (Trivy/Grype), SBOM (Syft), firma de imágenes (cosign) y attestation/provenance
+   verificable. Cierra A8 y el riesgo residual §5.5. Hoy no existe ningún
+   control.
+8. **Construir api, web y portal en CI**, no solo worker y migrator. **Configurado
+    y verificado localmente**: el workflow construye las cinco imágenes y pasa
+    `NODE_VERSION` derivado; la corrida remota que aporta evidencia G6.5 queda
+    pendiente.
 9. **Runner sobre `-slim`/`-alpine` sin pnpm global**, con `pnpm deploy --prod`
-   para el árbol de runtime. **Ejecutado para API y worker**; el migrator
-   single-stage permanece como deuda A2.
+    para el árbol de runtime. **Ejecutado para API y worker**; el migrator
+    también cuenta con la implementación en runner slim multi-stage del rango
+    `7354aa31^..dd46de11`, presente y verificada localmente; A2 queda
+    pendiente de confirmación de CI remoto.
 10. **`RUN --mount=type=cache` sobre el store de pnpm** y `cache-to/from
     type=gha` en CI. **Cache mounts ejecutados y verificados**; `cache-to/from`
     de GitHub Actions queda como mejora separada.
-11. **Multi-stage del migrator** — hoy la imagen final conserva toolchain y
-    fuentes. Cierra la mitad restante de A2.
+11. **Multi-stage del migrator** — **Ejecutado en el rango inclusivo `7354aa31^..dd46de11`**: la imagen final
+    usa runner slim no-root, salida de producción podada, guards de versión/digest
+    y smoke de CLI/datasource/runner después del prune.
 12. **Unificar los cuatro Dockerfiles de apps** en uno parametrizado por
     `ARG APP`: comparten el grueso de las líneas y ya divergen entre sí.
 13. **Renovate/Dependabot sobre las referencias de imagen.** Hoy los pines viven
@@ -488,23 +389,24 @@ requieren decisión del CTO antes de ejecutarse.
 
 ## 7. Deuda registrada y decisiones requeridas
 
-| Severidad | Ítem | Destinatario propuesto |
-| --- | --- | --- |
-| Alta | A1 — pgBouncer sin consumidor, contradiciendo la justificación de `search_path` | **CTO vía ADR**, con consulta a AI-DATA-ENG |
-| Alta | A8 — sin escaneo CVE, SBOM ni firma; CI no construye api/web/portal | **CTO vía ADR** + AI-PLAT-OPS |
-| Alta | A7 — Node 25 EOL en las cuatro imágenes de apps | **Cerrado por [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)** (Aprobado e implementado, 2026-08-03) |
-| Media | B4 — healthcheck del worker sin significado | AI-SR-FULL (heartbeat) |
-| Media | A3 — secretos por `environment` y en argv de `minio-init` | AI-SEC-ENG + AI-PLAT-OPS |
-| Media | A9 — Redis sin autenticación fuera de E2E | AI-SEC-ENG |
-| Media | A2 (single-stage del migrator) — calidad y tamaño de la imagen | AI-PLAT-OPS; C1/C2/C3 cerrados por CONVERGENCIA-NODE |
-| Media | A4 — límites de recursos y segmentación de redes | AI-PLAT-OPS, con medición previa |
-| Baja | D4 — `proxy_pass` divergente entre dev y prod | AI-PLAT-OPS |
-| Baja | D6 — `free-dev-ports.mjs` mata procesos ajenos | AI-PLAT-OPS |
+| Severidad | Ítem | Estado | Destinatario propuesto |
+| --- | --- | --- | --- |
+| Alta | A1 — pgBouncer sin consumidor, contradiciendo la justificación de `search_path` | **Abierto** | **CTO vía ADR**, con consulta a AI-DATA-ENG |
+| Alta | A8 — sin escaneo CVE, SBOM, firma ni attestation; la cobertura de cinco imágenes está verificada por configuración/evidencia local, sin afirmar ejecución remota | **Abierto** — solo faltan CVE, SBOM, firma y attestation | **CTO vía ADR** + AI-PLAT-OPS; decidir si son gate de merge |
+| Alta | A7 — Node 25 EOL en las cuatro imágenes de apps | **Implementación local/configuración: corregida**; G6.5 de la convergencia Node certificado en la corrida previa `30835001419` / SHA `1a95415a`; el gate CI remoto de esta remediación de deuda baja no aplica a A7 | **Cerrado por [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)** (Aprobado e implementado, 2026-08-03; la evidencia G6.5 histórica de Node no se reutiliza para A2, D4 ni D6) |
+| Media | B4 — healthcheck del worker sin significado | **Abierto** | AI-SR-FULL (heartbeat) |
+| Media | A3 — secretos por `environment` y en argv de `minio-init` | **Abierto** | AI-SEC-ENG + AI-PLAT-OPS |
+| Media | A9 — Redis sin autenticación fuera de E2E | **Abierto** | AI-SEC-ENG |
+| Media | A2 (single-stage del migrator) — calidad y tamaño de la imagen | **Cerrado en G6.5** — CI #30937447358 verde sobre `c83316de`; el smoke valida la imagen final, CLI, datasource y runner tenant, sin ejecutar migraciones reales contra una base de datos | AI-PLAT-OPS |
+| Media | A4 — límites de recursos y segmentación de redes | **Abierto** | AI-PLAT-OPS, con medición previa |
+| Baja | D4 — `proxy_pass` divergente entre dev y prod | **Cerrado en G6.5** — CI #30937447358 verde sobre `c83316de`; `nginx-config.test.mjs` incluido en la validación | AI-PLAT-OPS |
+| Baja | D6 — `free-dev-ports.mjs` mata procesos ajenos | **Cerrado en G6.5** — CI #30937447358 verde sobre `c83316de`; suite enfocada 47/47 | AI-PLAT-OPS |
+| Condicionada a producción | D5 — CSP, HSTS, dominio productivo y `limit_req` restantes | **Diferido por ADR-070 y G7**; no se considera corregido ni cerrado en esta auditoría | AI-PLAT-OPS implementa al reactivar; AI-SEC-ENG define/audita; AI-EM-ARCH recomienda y el CTO decide dominio, TLS y límites en G7 |
 
 Ninguno de estos ítems es **deuda crítica abierta al cierre de un módulo**, así
-que no dispara la escalación de la §3.3 del perfil. A1, A7 y A8 sí deben entrar
-en el roadmap con fase asignada: es exactamente el defecto que esta auditoría
-corrige del informe anterior —registrar riesgos sin nombrar cuándo se pagan.
+que no dispara la escalación de la §3.3 del perfil. A1 y A8 sí deben entrar en el
+roadmap con fase asignada: es exactamente el defecto que esta auditoría corrige
+del informe anterior —registrar riesgos sin nombrar cuándo se pagan.
 
 ## 8. Estado de los riesgos residuales del informe de limpieza
 
@@ -513,25 +415,90 @@ Cierre explícito del bucle abierto por
 
 | Riesgo §5 | Estado tras esta auditoría |
 | --- | --- |
-| 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Cerrado**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071 |
+| 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Implementación local/configuración: corregida**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071; G6.5 de la convergencia Node quedó certificado en la corrida previa `30835001419` / SHA `1a95415a`, que no valida A2, D4 ni D6 |
 | 2. Secretos por `environment`; Typesense con API key en argv | **Parcialmente cerrado**: Typesense corregido y verificado. `minio-init` y el mecanismo general de secretos siguen abiertos (propuesta 17) |
-| 3. Migrator single-stage y sin `USER` no-root | **Parcialmente cerrado**: corre como uid 1000 con patch fijado. El single-stage sigue abierto (propuesta 11) |
+| 3. Migrator single-stage y sin `USER` no-root | **Cerrado en G6.5**; el rango inclusivo `7354aa31^..dd46de11` implementa multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. CI #30937447358 sobre `c83316de` lo verificó en Linux. No se ejecutaron migraciones reales contra una base de datos. |
 | 4. TLS API/worker ↔ MinIO en producción | **Abierto**, sin cambio. Bloqueado por el diferimiento de G7 en ADR-070 |
+| 4b. D5 — CSP, HSTS, dominio productivo y `limit_req` | **Diferido por ADR-070 y G7**, sin implementación ni afirmación de cierre. Se reactiva con los disparadores de ADR-070; AI-PLAT-OPS implementa, AI-SEC-ENG define/audita, AI-EM-ARCH recomienda y el CTO decide en G7 |
 | 5. Sin escaneo CVE, SBOM, firma ni attestation | **Abierto**, sin cambio. Requiere ADR (propuesta 7) |
 | 6. Caché BuildKit vacío; próximos builds completos | **Cerrado para los Dockerfiles**: cache mounts sobre `/pnpm/store`; caché final purgado por CA-15 |
 
+- **D4:** **Cerrado en G6.5**. Remediación documentada en `60f41885` y verificada en CI #30937447358 sobre `c83316de`.
+- **D6:** **Cerrado en G6.5**. Remediación documentada en el rango inclusivo `a592b61e^..dd5e865c` y verificada en CI #30937447358 sobre `c83316de`.
+
+El cierre remoto queda respaldado por la corrida autenticada del PR indicada en §9.1.
+
+**D5 permanece diferido, no omitido:** CSP, el `max-age` de HSTS, el dominio
+productivo y `limit_req` siguen sin implementación. ADR-070 define el disparador
+de reactivación y mantiene G7 diferido; al reactivarse, AI-PLAT-OPS ejecuta la
+configuración, AI-SEC-ENG define y audita los controles, AI-EM-ARCH recomienda y
+el CTO decide dominio, TLS y límites dentro de G7.
+
+### 8.1 Evidencia enfocada de las remediaciones
+
+| Alcance | Evidencia |
+| --- | --- |
+| D4 | `scripts/nginx-config.test.mjs` cubre preservación de `/api/v1` y el health endpoint; `nginx -t` validó la configuración de desarrollo; CI #30937447358 sobre `c83316de` quedó verde. **Cerrado en G6.5**. |
+| D6 | `node --test scripts/free-dev-ports.test.mjs`: **47 passed, 0 failed** en la corrida final local y validado dentro del CI verde #30937447358; cubre ownership, revalidación, separación de PIDs externos, diagnóstico fail-closed y ausencia de `/T`. **Cerrado en G6.5**. |
+| Tooling agregado | `pnpm.cmd test:tooling`: **67 passed, 0 failed** en la corrida final local; incluye `scripts/nginx-config.test.mjs`. |
+| A2 | El Dockerfile del rango inclusivo `7354aa31^..dd46de11` ejecuta smoke de CLI TypeORM, datasource y runner tenant después del prune. CI #30937447358 sobre `c83316de` lo verificó en Linux. **Limitación deliberada:** no se ejecutaron migraciones reales contra una base de datos, por lo que este informe no reclama que `migration:run` ni `migration:tenant:run` hayan tenido éxito. **Cerrado en G6.5**. |
+
 ## 9. Decisión de cierre
 
-La auditoría queda **ejecutada**. Se corrigieron tres bloqueantes de operación
-(B1, B2, B3), dos riesgos de dependencias de producción (A5, A6), el hardening
-básico de los tres archivos Compose, la ejecución no privilegiada del migrator,
-cuatro endurecimientos de nginx verificables sin dominio productivo, y la deriva
-documental de cinco artefactos.
+Se corrigieron tres bloqueantes de operación (B1, B2, B3), dos riesgos de
+dependencias de producción (A5, A6), el hardening básico de los cuatro archivos
+Compose, la ejecución no privilegiada y la construcción multi-stage del migrator,
+cuatro endurecimientos de nginx verificables sin dominio productivo y la deriva
+documental de cinco artefactos. La evidencia local de D4 y D6 queda registrada
+en §8.1.
 
-Queda abierta la deuda de la §7, con destinatario propuesto y, en tres casos,
-con decisión de CTO requerida vía ADR. **Esta auditoría no cambia el estado G7
-definido por ADR-070**: nada de lo aplicado presupone dominio productivo, CA
-emitida ni procesamiento de PII real.
+### 9.1 Estados de los gates
+
+Los tres estados se registran por separado conforme a [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md); ninguno autoriza por sí solo el
+despliegue productivo.
+
+| Gate | Estado de esta auditoría | Evidencia y alcance | Consecuencia |
+| --- | --- | --- | --- |
+| **G6** | **GO** para esta remediación de bajo riesgo | Suites, lint, typecheck, Compose, smoke de imágenes y validaciones de plataforma locales; A2, D4 y D6 están implementados y verificados localmente | La calidad local queda respaldada por G6.5 remoto |
+| **G6.5** | **GO para el PR actual** | CI #30937447358, [run Linux](https://github.com/SleyiW/iWana-neXt/actions/runs/30937447358) sobre `c83316deeb61ce5ab0f6ab23522b8183adaf2052`: `production-images`, `ci`, `adr-citations` y E2E operativo R4.1 verdes; incluye build de cinco imágenes y smoke del migrator | A2, D4 y D6 quedan cerrados para merge; no autoriza despliegue productivo |
+| **G7** | **Diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** | No hay dominio productivo, TLS/CA, rollback ni restore de release verificados en este alcance | No se formula claim de dominio productivo ni de procesamiento de PII real; no se autoriza producción |
+
+La implementación local/configuración de A7 y la cobertura del bloque CI de
+cinco imágenes se verifican en este informe como fuente/configuración y
+evidencia local. A7 cuenta además con G6.5 específico de la convergencia Node
+en la corrida histórica `30835001419` / SHA `1a95415a`. La corrida actual
+`30937447358` / SHA `c83316de` certifica por separado los commits posteriores
+de A2, D4 y D6.
+
+Permanecen abiertos **B4, A1, A3, A4 (recursos y redes), A8 y A9**. A2, D4 y
+D6 quedan cerrados para merge por el CI verde #30937447358, identificado por
+SHA, sin extender ese cierre a las deudas fuera de alcance. **Esta auditoría no
+cambia el estado G7 definido por ADR-070**:
+nada de lo aplicado presupone dominio productivo, CA emitida ni procesamiento de
+PII real.
+
+**D5 permanece diferido por ADR-070/G7.** CSP, HSTS, el dominio productivo y
+`limit_req` no son deuda cerrada de esta fase. La ruta de decisión es: AI-SEC-ENG
+define y audita los controles; AI-PLAT-OPS implementa tras la reactivación; AI-EM-ARCH
+recomienda; y el CTO decide dominio, TLS y límites al autorizar G7.
+
+**Reconciliación documental pendiente de ADR-071.** ADR-071 conserva en su
+versión vigente el texto histórico **«Implementación local verificada; pendiente
+G6.5 de CI remoto y cierre de CA-12»**. Ese texto debe reconciliarse
+explícitamente con el [informe de convergencia Node](INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md), que registra el G6.5 histórico de la convergencia, y con la evidencia del PR actual, cuyo G6.5 para A2, D4 y D6 quedó certificado por CI #30937447358. Esta tarea no reescribe ADR-071 ni usa su texto histórico para cerrar el PR actual.
+
+**Trazabilidad de commits:** la implementación de A2 corresponde al rango inclusivo
+`7354aa31^..dd46de11`; `dd46de11` es el extremo final de ese rango y no el HEAD
+documental. La corrección documental previa corresponde a `ac81ddb4`.
+
+**Registro posterior:** CI #30937447358 ([run](https://github.com/SleyiW/iWana-neXt/actions/runs/30937447358)) validó el SHA
+`c83316deeb61ce5ab0f6ab23522b8183adaf2052`. Quedaron verdes `adr-citations`,
+`production-images` (incluido `Smoke migrator runtime`), `ci` y E2E operativo
+R4.1; el workflow independiente `E2E Web Admin Smoke` falló en una expectativa
+de login que también falla en `main` y en corridas previas, por lo que se registra
+como deuda baseline separada y no como evidencia contra A2, D4 o D6. El run
+histórico `30835001419` / SHA `1a95415a` pertenece exclusivamente a la
+convergencia Node documentada en el informe de fase enlazado arriba.
 
 ## 10. Referencias
 
@@ -539,5 +506,5 @@ emitida ni procesamiento de PII real.
 - [Perfil_IA_EM_Architect_Unificado_v2.md](../roles/Perfil_IA_EM_Architect_Unificado_v2.md) (v2.3)
 - [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md)
 - [INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md](INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md)
-- [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)
+- [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)
 - [RUNBOOK-MEDIA-MINIO-v1.0.md](../runbooks/RUNBOOK-MEDIA-MINIO-v1.0.md), [RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md](../runbooks/RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)
