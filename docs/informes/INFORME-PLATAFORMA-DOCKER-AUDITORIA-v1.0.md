@@ -50,13 +50,13 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | # | Hallazgo | Evidencia | Estado |
 | --- | --- | --- | --- |
 | A1 | **pgBouncer se levanta y nadie lo consume.** `api-prod` y `worker-prod` conectan a `postgres:5432` directo. `CLAUDE.md` y `AGENTS.md` justifican `SET LOCAL search_path` precisamente porque "pgBouncer no persiste `search_path`": la premisa arquitectónica no se corresponde con el runtime. | `docker-compose.prod.yml:84-85`, `:171-172` frente a `docker-compose.yml:78-99` | **Abierto** — decisión del CTO vía ADR; consulta bloqueante a AI-DATA-ENG |
-| A2 | El migrator —único actor con DDL en producción— corría **como root**, era single-stage y usaba `node:24` sin fijar patch. | `packages/database/Dockerfile.migrator` | **Pendiente de CI remoto**: la implementación local corresponde al rango inclusivo `7354aa31^..e8aae966` (imagen multi-stage, Node 24.13.1, digests guardados, salida `pnpm deploy --prod` podada, runner no-root uid 1000 y smoke posterior al prune). El cierre queda condicionado a la corrida autenticada del PR; no se ejecutaron migraciones reales contra una base de datos. |
+| A2 | El migrator —actor dedicado de las migraciones de arranque para el esquema público y los tenants existentes, no el único actor de DDL del sistema— corría **como root**, era single-stage, mantenía el toolchain en la imagen final y usaba una base mutable por tag. Aunque ya declaraba `ARG NODE_VERSION=24.13.1`, la base no estaba fijada por digest. El worker de provisioning también ejecuta DDL y migraciones del schema de cada tenant nuevo. | `packages/database/Dockerfile.migrator:2,8-16` (baseline previo: `7354aa31^:packages/database/Dockerfile.migrator:2-3`), `apps/worker/src/processors/tenant-provisioning.processor.ts:160-175,296-315` | **Pendiente de CI remoto**: la implementación local corresponde al rango inclusivo `7354aa31^..e8aae966` (imagen multi-stage, Node 24.13.1, digests guardados, salida `pnpm deploy --prod` podada, runner no-root uid 1000 y smoke posterior al prune). El cierre queda condicionado a la corrida autenticada del PR; no se ejecutaron migraciones reales contra una base de datos. |
 | A3 | **Secretos en la línea de comandos.** La API key de Typesense iba como argumento de un proceso de larga duración; las credenciales root de MinIO como argumento de `mc alias set`. | `docker-compose.yml:152-155`, `:138` | **Abierto** — Typesense corregido; AI-SEC-ENG debe definir el mecanismo de secretos y AI-PLAT-OPS implementarlo para `minio-init` |
 | A4 | **Cero hardening y cero rotación de logs** en los 4 Compose: ni `security_opt`, ni `logging`, ni `init`, ni `pids_limit`, ni `read_only`, ni `deploy.resources`, ni `networks` propias. | grep sobre los 4 archivos → 0 coincidencias | **Abierto** — `security_opt`, `logging` e `init` aplicados; AI-PLAT-OPS requiere medición previa y decisión sobre recursos/redes |
 | A5 | `nginx-prod` dependía de `web-prod` y `portal-prod` con `service_started`, y ninguno declaraba healthcheck: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto. | `docker-compose.prod.yml:58-64`, `:126-160` | **Corregido** |
 | A6 | `api-prod` y `worker-prod` fijaban `STORAGE_DRIVER: minio` y `TYPESENSE_API_KEY` como obligatorios pero **no declaraban dependencia** de MinIO ni Typesense. | `docker-compose.prod.yml:107-117`, `:187-200` | **Corregido** |
-| A7 | **Cuatro versiones de Node conviven en el mismo release**: `node:25.8.2` en api/web/portal/worker, `node:24` flotante en el migrator, `>=24` en `engines`, y `useNodeVersion: 24.13.1` en `pnpm-workspace.yaml`. Node 25 terminó soporte el 2026-06-01 (§5.1 del informe de limpieza). | `apps/*/Dockerfile:1-4`, `Dockerfile.migrator:1`, `package.json:9`, `pnpm-workspace.yaml` | **Corregido** por ADR-071: cinco imágenes y CI convergidos a Node 24.13.1; E7 protege la derivación |
-| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**. La cobertura de imágenes de api, web y portal ya quedó cerrada por la convergencia de CI, que construye las cinco imágenes; permanecen únicamente los controles de cadena de suministro. | `.github/workflows/ci.yml:71-85` | **Abierto** — solo CVE, SBOM, firma y attestation; requiere decisión de gate vía ADR |
+| A7 | **Convergencia de runtime (corrección histórica):** antes de esta fase, ADR-071 ya había llevado las cinco imágenes y CI a Node 24.13.1; `packages/database/Dockerfile.migrator` ya declaraba `ARG NODE_VERSION=24.13.1`. La deuda residual del migrator era la base mutable por tag y el toolchain dentro de la imagen final, no un patch sin fijar ni un `node:24` flotante. | `apps/*/Dockerfile:1-4`, `packages/database/Dockerfile.migrator:2,8` (baseline previo: `7354aa31^:packages/database/Dockerfile.migrator:2-3`), `package.json:9`, `pnpm-workspace.yaml`, [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md) | **Corregido en fuente y configuración** por ADR-071: cinco imágenes y CI convergidos a Node 24.13.1; E7 protege la derivación. La verificación local/configurada no es evidencia de ejecución CI; G6.5 remoto sigue pendiente |
+| A8 | **Sin escaneo CVE, SBOM, firma ni attestation**. La cobertura de cinco imágenes (api, web, portal, worker y migrator) está verificada aquí como configuración del workflow y evidencia local, pendiente de corrida remota para G6.5; no se reclama una ejecución remota. A8 queda abierto únicamente por los controles de cadena de suministro. | `.github/workflows/ci.yml:53-95` (job completo `production-images`, incluidos worker y migrator) | **Abierto** — solo CVE, SBOM, firma y attestation; requiere decisión de gate vía ADR |
 | A9 | **Redis sin autenticación**: `redis-server --save 60 1` sin `--requirepass`. `REDIS_PASSWORD` solo se consume en el overlay E2E y no se pasa a ningún servicio de producción. El riesgo ya está declarado en `.env.example:90-93` pero sin plan de cierre. | `docker-compose.yml:65`, `docker-compose.e2e.yml:56` | **Abierto** — AI-SEC-ENG debe definir el control y el alcance de autenticación Redis |
 
 ### 2.3 Calidad de build
@@ -167,6 +167,11 @@ Se registra porque acota futuras auditorías y evita reabrir lo cerrado:
 - Después del prune se ejecutan `typeorm/cli.js --help`, la carga del datasource
   sin inicializar conexión y la carga/verificación del runner de migraciones de
   tenants. Es un smoke de imagen; no es una migración real de base de datos.
+- Arquitectónicamente, el migrator es el actor dedicado de las migraciones de
+  arranque para el esquema público y los tenants existentes. No es el único
+  ejecutor de DDL: `TenantProvisioningProcessor` crea el schema y ejecuta sus
+  migraciones TypeORM para cada tenant nuevo
+  (`apps/worker/src/processors/tenant-provisioning.processor.ts:160-175,296-315`).
 
 ### 4.4 Nginx de producción
 
@@ -201,6 +206,7 @@ registro de lo que se hizo en su fecha y no se falsifican.
 | Typesense operativo con la key por entorno | `/health` → `{"ok":true}`; `/collections` con key → **200**, sin key → **401**, con key errónea → **401** |
 | `run --rm minio-init` | Ejecutado; bucket `iwana-media` presente y `private` |
 | `docker build --file packages/database/Dockerfile.migrator` | OK; 192,7 MB |
+| Cobertura de imágenes en CI | Revisión local del job `production-images`: cinco `docker build` configurados en `.github/workflows/ci.yml:53-95`; corrida remota pendiente, sin afirmar evidencia G6.5 |
 | Migrator no-root operativo | `id -u` → **1000**; `node -v` → **v24.13.1**; build y smoke del migrator final OK |
 | Registro histórico/pre-remediación de `pnpm migration:run` | La corrida histórica cargó TypeORM y llegó a la conexión de BD; **no es evidencia del migrator final ni de una migración actual** |
 | Smoke final sin base de datos | Después del prune: `typeorm/cli.js --help`, carga del datasource sin inicializar conexión y carga/verificación del runner de tenants → **OK**; no se ejecutaron `migration:run` ni `migration:tenant:run` contra una BD |
@@ -300,8 +306,10 @@ requieren decisión del CTO antes de ejecutarse.
    derivadas. Esta decisión desbloqueó y permitió cerrar C1, C2 y C3.
 7. **ADR — escaneo CVE (Trivy/Grype) + SBOM (Syft) + firma (cosign) como gate de
    merge.** Cierra A8 y el riesgo residual §5.5. Hoy no existe ningún control.
-8. **Construir api, web y portal en CI**, no solo worker y migrator. **Ejecutado**:
-   CI construye las cinco imágenes y pasa `NODE_VERSION` derivado.
+8. **Construir api, web y portal en CI**, no solo worker y migrator. **Configurado
+    y verificado localmente**: el workflow construye las cinco imágenes y pasa
+    `NODE_VERSION` derivado; la corrida remota que aporta evidencia G6.5 queda
+    pendiente.
 9. **Runner sobre `-slim`/`-alpine` sin pnpm global**, con `pnpm deploy --prod`
     para el árbol de runtime. **Ejecutado para API y worker**; el migrator
     también cuenta con la implementación en runner slim multi-stage del rango
@@ -350,8 +358,8 @@ requieren decisión del CTO antes de ejecutarse.
 | Severidad | Ítem | Estado | Destinatario propuesto |
 | --- | --- | --- | --- |
 | Alta | A1 — pgBouncer sin consumidor, contradiciendo la justificación de `search_path` | **Abierto** | **CTO vía ADR**, con consulta a AI-DATA-ENG |
-| Alta | A8 — sin escaneo CVE, SBOM, firma ni attestation; la cobertura de imágenes api/web/portal ya está cerrada por la convergencia de CI | **Abierto** — solo faltan CVE, SBOM, firma y attestation | **CTO vía ADR** + AI-PLAT-OPS; decidir si son gate de merge |
-| Alta | A7 — Node 25 EOL en las cuatro imágenes de apps | **Cerrado** | **Cerrado por [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)** (Aprobado e implementado, 2026-08-03) |
+| Alta | A8 — sin escaneo CVE, SBOM, firma ni attestation; la cobertura de cinco imágenes está verificada por configuración/evidencia local, sin afirmar ejecución remota | **Abierto** — solo faltan CVE, SBOM, firma y attestation | **CTO vía ADR** + AI-PLAT-OPS; decidir si son gate de merge |
+| Alta | A7 — Node 25 EOL en las cuatro imágenes de apps | **Cerrado** | **Cerrado por [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)** (Aprobado e implementado, 2026-08-03; la corrida remota G6.5 se registra por separado y sigue pendiente en este informe) |
 | Media | B4 — healthcheck del worker sin significado | **Abierto** | AI-SR-FULL (heartbeat) |
 | Media | A3 — secretos por `environment` y en argv de `minio-init` | **Abierto** | AI-SEC-ENG + AI-PLAT-OPS |
 | Media | A9 — Redis sin autenticación fuera de E2E | **Abierto** | AI-SEC-ENG |
@@ -372,7 +380,7 @@ Cierre explícito del bucle abierto por
 
 | Riesgo §5 | Estado tras esta auditoría |
 | --- | --- |
-| 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Cerrado**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071 |
+| 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Cerrado en fuente y configuración**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071; la ejecución remota G6.5 se verifica por separado |
 | 2. Secretos por `environment`; Typesense con API key en argv | **Parcialmente cerrado**: Typesense corregido y verificado. `minio-init` y el mecanismo general de secretos siguen abiertos (propuesta 17) |
 | 3. Migrator single-stage y sin `USER` no-root | **Pendiente de CI remoto**: el rango inclusivo `7354aa31^..e8aae966` implementa multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. No se ejecutaron migraciones reales contra una base de datos; el cierre queda condicionado a la corrida autenticada del PR. |
 | 4. TLS API/worker ↔ MinIO en producción | **Abierto**, sin cambio. Bloqueado por el diferimiento de G7 en ADR-070 |
@@ -403,6 +411,10 @@ ejecución no privilegiada y la construcción multi-stage del migrator, cuatro
 endurecimientos de nginx verificables sin dominio productivo y la deriva
 documental de cinco artefactos. La evidencia local de D4 y D6 queda registrada
 en §8.1, pero todavía no equivale a G6.5.
+
+La convergencia de runtime de A7 y la cobertura del bloque CI de cinco imágenes
+se verifican como fuente/configuración y evidencia local; no constituyen una
+ejecución remota ni evidencia G6.5.
 
 Permanecen abiertos **B4, A1, A3, A4 (recursos y redes), A8 y A9**. **A2, D4 y
 D6 están pendientes de CI remoto / en verificación remota**: su cierre queda
