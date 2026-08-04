@@ -518,7 +518,7 @@ const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bea
 const REDACTED_COMMAND = '[REDACTED COMMAND]';
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.+$/;
 const SENSITIVE_POWERSHELL_ENV_NAME_PATTERN =
-  /(?:^|_)(?:TOKEN|PASSWORD|PASS|SECRET|API_KEY|APIKEY|PRIVATE_KEY|PRIVATEKEY|CREDENTIAL|AUTH|KEY)(?:$|_)/i;
+  /(?:^|[_-])(?:TOKEN|PASSWORD|PASS(?:WD)?|SECRET|API[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIALS?|AUTH(?:ORIZATION)?|KEY)(?:$|[_-])/i;
 const SENSITIVE_LONG_OPTIONS = new Set([
   'pwd',
   'token',
@@ -752,6 +752,104 @@ function parsePowershellEnvAssignment(tokens, index) {
   };
 }
 
+const POWERSHELL_ENV_WRITER_NAMES = new Set([
+  'set-item',
+  'set-content',
+  'new-item',
+  'set-variable',
+  'si',
+  'sc',
+  'ni',
+  'sv',
+]);
+const POWERSHELL_ENV_TARGET_PARAMETER_NAMES = new Set(['path', 'literalpath', 'name', 'variable']);
+
+function getPowershellCommandName(token) {
+  return String(token ?? '')
+    .toLowerCase()
+    .replace(/^.*[\\/]/, '');
+}
+
+function isSensitivePowershellEnvName(name) {
+  const normalizedName = String(name ?? '').replace(/^[/\\]+/, '');
+  return SENSITIVE_POWERSHELL_ENV_NAME_PATTERN.test(normalizedName);
+}
+
+function isSensitivePowershellEnvTarget(value, allowBareName = false) {
+  const target = String(value ?? '');
+  const environmentTarget = target.match(
+    /^(?:(?:env(?::|[\\/]))|(?:microsoft\.powershell\.core[\\/]environment::)|(?:environment::))(.+)$/i,
+  );
+
+  if (environmentTarget) return isSensitivePowershellEnvName(environmentTarget[1]);
+  return allowBareName && isSensitivePowershellEnvName(target);
+}
+
+function getPowershellParameter(token) {
+  const match = String(token ?? '').match(
+    /^-+(?<name>[A-Za-z][A-Za-z0-9-]*)(?:=(?<attached>.*))?$/,
+  );
+  if (!match) return null;
+
+  return {
+    name: match.groups.name.toLowerCase(),
+    attached: match.groups.attached ?? null,
+  };
+}
+
+function hasSensitivePowershellEnvironmentWriteInTokens(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const commandName = getPowershellCommandName(tokens[index]);
+    if (!POWERSHELL_ENV_WRITER_NAMES.has(commandName)) continue;
+
+    const allowBareName = commandName === 'set-variable' || commandName === 'sv';
+    let positionalTargetChecked = false;
+
+    for (let argumentIndex = index + 1; argumentIndex < tokens.length; argumentIndex += 1) {
+      const argument = String(tokens[argumentIndex] ?? '');
+      const parameter = getPowershellParameter(argument);
+
+      if (parameter) {
+        if (POWERSHELL_ENV_TARGET_PARAMETER_NAMES.has(parameter.name)) {
+          const target =
+            parameter.attached ??
+            (!isOptionToken(tokens[argumentIndex + 1] ?? '')
+              ? tokens[argumentIndex + 1]
+              : null);
+          if (isSensitivePowershellEnvTarget(target, allowBareName)) return true;
+        }
+        continue;
+      }
+
+      if (positionalTargetChecked) continue;
+      positionalTargetChecked = true;
+      if (isSensitivePowershellEnvTarget(argument, allowBareName)) return true;
+    }
+  }
+
+  return false;
+}
+
+function hasSensitivePowershellEnvironmentWrite(tokenized) {
+  const tokenizedCommands = [tokenized];
+
+  for (let commandIndex = 0; commandIndex < tokenizedCommands.length; commandIndex += 1) {
+    const currentCommand = tokenizedCommands[commandIndex];
+    if (hasSensitivePowershellEnvironmentWriteInTokens(currentCommand.tokens)) return true;
+
+    for (let index = 0; index < currentCommand.tokens.length; index += 1) {
+      if (!currentCommand.tokenMetadata[index]?.quoted) continue;
+
+      const nestedCommand = getCommandTokens(currentCommand.tokens[index]);
+      if (nestedCommand.complete && nestedCommand.tokens.length > 0) {
+        tokenizedCommands.push(nestedCommand);
+      }
+    }
+  }
+
+  return false;
+}
+
 const QUOTED_OPTION_LIKE_PATTERN = /(?:^|[\s"'`])(-{1,2}[A-Za-z][A-Za-z0-9_-]*(?:=[^\s"'`]*)?)/g;
 
 function containsSensitiveOptionLikeContent(value) {
@@ -806,6 +904,7 @@ function sanitizeProcessCommand(command) {
     return REDACTED_COMMAND;
   }
   if (hasQuotedSensitiveContent(tokenized)) return REDACTED_COMMAND;
+  if (hasSensitivePowershellEnvironmentWrite(tokenized)) return REDACTED_COMMAND;
 
   const sanitizedTokens = [];
   for (let index = 0; index < tokenized.tokens.length; index += 1) {

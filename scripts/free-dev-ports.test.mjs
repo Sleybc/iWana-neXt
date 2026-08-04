@@ -721,6 +721,24 @@ test('formatPidDiagnostic fails closed for compound and braced PowerShell sensit
   }
 });
 
+test('formatPidDiagnostic redacts PowerShell environment-writing cmdlets', () => {
+  const secret = 'secret-leak';
+  const commands = [
+    `powershell -Command "Set-Item Env:TOKEN ${secret}"`,
+    `PoWeRsHeLl -Command 'set-content "Env:password" ${secret}'`,
+    `pwsh -Command "New-Item Env:API_KEY -Value ${secret}"`,
+    `powershell -Command "Set-Variable -Name PRIVATE_KEY -Value ${secret}"`,
+    `powershell -Command "si Env:AUTH_TOKEN ${secret}"`,
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(344, [{ pid: 344, command }]);
+
+    assert.equal(formatted, 'PID 344 ([REDACTED COMMAND])', command);
+    assert.doesNotMatch(formatted, /secret-leak/);
+  }
+});
+
 test('formatPidDiagnostic treats single-dash named sensitive options as named options', () => {
   const commands = [
     'tool -Password redact-me --mode safe',
