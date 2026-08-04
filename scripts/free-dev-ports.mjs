@@ -500,6 +500,19 @@ export function planDevPortCleanup(portPids, repoWatcherPids) {
   };
 }
 
+export function planDevPortCleanupDecision(portPids, repoWatcherPids, platform = process.platform) {
+  const cleanup = planDevPortCleanup(portPids, repoWatcherPids);
+  const terminationDecision = getAutomaticTerminationDecision(platform);
+
+  return {
+    ...cleanup,
+    terminationWarning:
+      cleanup.pidsToKill.length > 0 && !terminationDecision.canTerminate
+        ? terminationDecision.warning
+        : null,
+  };
+}
+
 const URI_PATTERN = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"`]+/g;
 const AUTH_HEADER_PATTERN = /((?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+)\S+/gi;
 const REDACTED_COMMAND = '[REDACTED COMMAND]';
@@ -1016,29 +1029,28 @@ function killPid(pid) {
 
 async function main() {
   let foundAnyPid = false;
-  const terminationDecision = getAutomaticTerminationDecision();
 
   for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
     const portPids = getPidsUsingPorts(DEV_PORTS);
     const processSnapshot = getRepoProcessSnapshot();
-    const { pidsToKill, externalPids, exitCode } = planDevPortCleanup(
+    const { pidsToKill, externalPids, exitCode, terminationWarning } = planDevPortCleanupDecision(
       portPids,
       processSnapshot.repoWatcherPids,
     );
-
-    if (pidsToKill.length > 0 && !terminationDecision.canTerminate) {
-      process.exitCode = 1;
-      console.warn(
-        `${terminationDecision.warning} Watchers detectados: ${formatPidDiagnostics(pidsToKill, processSnapshot.entries)}.`,
-      );
-      return;
-    }
 
     if (exitCode !== 0) {
       process.exitCode = exitCode;
       console.warn(
         `No se detienen procesos externos en puertos de desarrollo: ${formatPidDiagnostics(externalPids, processSnapshot.entries)}.`,
       );
+    }
+
+    if (terminationWarning) {
+      process.exitCode = 1;
+      console.warn(
+        `${terminationWarning} Watchers detectados: ${formatPidDiagnostics(pidsToKill, processSnapshot.entries)}.`,
+      );
+      return;
     }
 
     if (pidsToKill.length === 0) {

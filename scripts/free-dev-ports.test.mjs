@@ -14,6 +14,7 @@ import {
   parseLinuxProcStatStarttime,
   parseWindowsProcessEntries,
   planDevPortCleanup,
+  planDevPortCleanupDecision,
 } from './free-dev-ports.mjs';
 
 test('getProtectedPids protege el proceso actual y toda su cadena de ancestros', () => {
@@ -499,6 +500,16 @@ test('planDevPortCleanup kills only safe watchers in mixed cases and reports exi
     pidsToKill: [202],
     externalPids: [101],
     exitCode: 1,
+  });
+});
+
+test('planDevPortCleanupDecision conserva externos antes de bloquear watchers en Unix no Linux', () => {
+  assert.deepEqual(planDevPortCleanupDecision([101, 202], [202], 'darwin'), {
+    pidsToKill: [202],
+    externalPids: [101],
+    exitCode: 1,
+    terminationWarning:
+      'Terminacion automatica no disponible en macOS/otros Unix sin una identidad estable de proceso.',
   });
 });
 
