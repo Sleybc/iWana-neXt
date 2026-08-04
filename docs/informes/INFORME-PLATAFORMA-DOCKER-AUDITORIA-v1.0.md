@@ -287,8 +287,9 @@ requieren decisión del CTO antes de ejecutarse.
 4. **Backoff exponencial** en el healthcheck de la API (hoy 1 s fijo) y
    **presupuesto de arranque medible** publicado como métrica del informe de fase.
 5. **Devcontainer o `docker compose watch`** — eliminaría la clase de problemas
-   que hoy mitiga `free-dev-ports.mjs`; D6 ya está cerrado con ownership y
-   revalidación estrictos.
+   que hoy mitiga `free-dev-ports.mjs`; D6 está técnicamente remediado y
+   pendiente de confirmación de CI remoto, con ownership y revalidación
+   estrictos.
 
 ### Imágenes y cadena de suministro
 
@@ -303,7 +304,9 @@ requieren decisión del CTO antes de ejecutarse.
    CI construye las cinco imágenes y pasa `NODE_VERSION` derivado.
 9. **Runner sobre `-slim`/`-alpine` sin pnpm global**, con `pnpm deploy --prod`
     para el árbol de runtime. **Ejecutado para API y worker**; el migrator
-    también quedó en runner slim multi-stage al cerrar A2 en `e8aae966`.
+    también cuenta con la implementación en runner slim multi-stage del rango
+    `4f9756f4^..e8aae966`, presente y verificada localmente; A2 queda
+    pendiente de confirmación de CI remoto.
 10. **`RUN --mount=type=cache` sobre el store de pnpm** y `cache-to/from
     type=gha` en CI. **Cache mounts ejecutados y verificados**; `cache-to/from`
     de GitHub Actions queda como mejora separada.
