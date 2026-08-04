@@ -787,7 +787,7 @@ function isSensitivePowershellEnvTarget(value, allowBareName = false) {
 
 function getPowershellParameter(token) {
   const match = String(token ?? '').match(
-    /^-+(?<name>[A-Za-z][A-Za-z0-9-]*)(?:=(?<attached>.*))?$/,
+    /^-+(?<name>[A-Za-z][A-Za-z0-9-]*)(?:[=:](?<attached>.*))?$/,
   );
   if (!match) return null;
 

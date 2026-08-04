@@ -739,6 +739,27 @@ test('formatPidDiagnostic redacts PowerShell environment-writing cmdlets', () =>
   }
 });
 
+test('formatPidDiagnostic fails closed for colon-attached PowerShell environment parameters', () => {
+  const secret = 'colon-secret-leak';
+  const commands = [
+    `Set-Item -Path:Env:TOKEN -Value ${secret}`,
+    `Set-Content -LiteralPath:Env:PASSWORD -Value ${secret}`,
+    `New-Item -Path:Env:API_KEY -Value ${secret}`,
+    `Set-Variable -Name:TOKEN -Value ${secret}`,
+    `powershell -Command "sEt-ItEm -PaTh:EnV:TOKEN -VaLuE ${secret}"`,
+    `pwsh -Command 'sEt-CoNtEnT -LiTeRaLPaTh:EnV:PASSWORD -VaLuE ${secret}'`,
+    `powershell -Command "nEw-ItEm -pAtH:EnV:API_KEY -vAlUe ${secret}"`,
+    `pwsh -Command 'sEt-VaRiAbLe -NaMe:TOKEN -VaLuE ${secret}'`,
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(345, [{ pid: 345, command }]);
+
+    assert.equal(formatted, 'PID 345 ([REDACTED COMMAND])', command);
+    assert.doesNotMatch(formatted, /colon-secret-leak/);
+  }
+});
+
 test('formatPidDiagnostic treats single-dash named sensitive options as named options', () => {
   const commands = [
     'tool -Password redact-me --mode safe',
