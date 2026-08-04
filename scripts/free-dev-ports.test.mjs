@@ -5,6 +5,7 @@ import {
   classifyDevPids,
   findRepoWatcherPids,
   formatPidDiagnostic,
+  getAutomaticTerminationDecision,
   getProtectedPids,
   isSafeRepoWatcherPid,
   parsePsEntries,
@@ -35,7 +36,11 @@ test('getProtectedPids protege el proceso actual y toda su cadena de ancestros',
 test('findRepoWatcherPids conserva watchers residuales fuera del arbol protegido', () => {
   const entries = [
     { pid: 20, ppid: 10, command: 'pnpm dev' },
-    { pid: 30, ppid: 20, command: 'node scripts/dev.mjs' },
+    {
+      pid: 30,
+      ppid: 20,
+      command: '/usr/bin/node /home/sley/Documentos/appiw/scripts/dev.mjs',
+    },
     {
       pid: 60,
       ppid: 1,
@@ -44,6 +49,11 @@ test('findRepoWatcherPids conserva watchers residuales fuera del arbol protegido
     },
     {
       pid: 70,
+      ppid: 30,
+      command: '/home/sley/Documentos/appiw/node_modules/.bin/pnpm --filter @iwana/api dev',
+    },
+    {
+      pid: 71,
       ppid: 1,
       command: '/home/sley/Documentos/appiw/node_modules/.bin/pnpm --filter @iwana/api dev',
     },
@@ -52,14 +62,57 @@ test('findRepoWatcherPids conserva watchers residuales fuera del arbol protegido
   const protectedPids = new Set([20, 30]);
   const markers = [
     { path: '/home/sley/Documentos/appiw/apps/api/', command: 'nest.js start --watch' },
-    { path: '/home/sley/Documentos/appiw/', command: 'pnpm --filter @iwana/api dev' },
   ];
 
-  const detectedPids = findRepoWatcherPids(entries, protectedPids, markers);
+  const detectedPids = findRepoWatcherPids(
+    entries,
+    protectedPids,
+    markers,
+    'linux',
+    '/home/sley/Documentos/appiw',
+  );
 
   assert.deepEqual(
     detectedPids.sort((left, right) => left - right),
     [60, 70],
+  );
+});
+
+test('findRepoWatcherPids solo acepta pnpm dev con ancestro node scripts/dev.mjs del repo', () => {
+  const repoRoot = '/home/sley/Documentos/appiw';
+  const entries = [
+    {
+      pid: 200,
+      ppid: 1,
+      command: `/usr/bin/node ${repoRoot}/scripts/dev.mjs`,
+    },
+    {
+      pid: 201,
+      ppid: 200,
+      command: `${repoRoot}/node_modules/.bin/pnpm --filter @iwana/worker dev`,
+    },
+    {
+      pid: 202,
+      ppid: 1,
+      command: `${repoRoot}/node_modules/.bin/pnpm --filter @iwana/web dev`,
+    },
+    {
+      pid: 203,
+      ppid: 204,
+      command: `${repoRoot}/node_modules/.bin/pnpm --filter @iwana/portal dev`,
+    },
+    { pid: 204, ppid: 1, command: '/tmp/other-project/scripts/dev.mjs' },
+  ];
+
+  assert.deepEqual(
+    findRepoWatcherPids(
+      entries,
+      new Set([200]),
+      [{ path: repoRoot, command: 'pnpm --filter @iwana/worker dev' }],
+      'linux',
+      repoRoot,
+    ),
+    [201],
   );
 });
 
@@ -156,18 +209,20 @@ test('findRepoWatcherPids detecta watchers de Windows con rutas en backslash', (
     },
     {
       pid: 91,
-      ppid: 1,
+      ppid: 93,
       command: 'C:\\appiw\\node_modules\\.bin\\pnpm.CMD --filter @iwana/web dev',
     },
     { pid: 92, ppid: 1, command: 'node unrelated-script.mjs' },
+    {
+      pid: 93,
+      ppid: 1,
+      command: 'C:\\appiw\\node_modules\\.bin\\node.exe C:\\appiw\\scripts\\dev.mjs',
+    },
   ];
   const protectedPids = new Set();
-  const markers = [
-    { path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' },
-    { path: 'C:/appiw/', command: 'pnpm.CMD --filter @iwana/web dev' },
-  ];
+  const markers = [{ path: 'C:/appiw/apps/api/', command: 'nest.js start --watch' }];
 
-  const detectedPids = findRepoWatcherPids(entries, protectedPids, markers);
+  const detectedPids = findRepoWatcherPids(entries, protectedPids, markers, 'win32', 'C:/appiw');
 
   assert.deepEqual(
     detectedPids.sort((left, right) => left - right),
@@ -353,6 +408,24 @@ test('planRepoWatcherTermination acepta en Linux solo ticks de /proc como identi
     ),
     [],
   );
+});
+
+test('getAutomaticTerminationDecision solo permite terminar con identidad estable', () => {
+  assert.deepEqual(getAutomaticTerminationDecision('linux'), {
+    canTerminate: true,
+    warning: null,
+  });
+  assert.deepEqual(getAutomaticTerminationDecision('win32'), {
+    canTerminate: true,
+    warning: null,
+  });
+
+  for (const platform of ['darwin', 'freebsd']) {
+    const decision = getAutomaticTerminationDecision(platform);
+    assert.equal(decision.canTerminate, false);
+    assert.match(decision.warning ?? '', /terminacion automatica no disponible/i);
+    assert.match(decision.warning ?? '', /identidad estable/i);
+  }
 });
 
 test('parseLinuxProcStatStarttime extrae field 22 aunque comm contenga parentesis', () => {
@@ -698,6 +771,24 @@ test('formatPidDiagnostic redacts an entire escaped or quoted multi-word sensiti
       formatted,
     );
     assert.doesNotMatch(formatted, /secret|value/);
+  }
+});
+
+test('formatPidDiagnostic fails closed when quotes hide sensitive option-like content', () => {
+  const commands = [
+    'tool --mode "safe --token secret"',
+    "tool --mode 'safe --token secret'",
+    'tool --mode "safe --token"secret',
+    "tool --mode 'safe --token'secret",
+    "tool --mode safe' --token secret'",
+    'tool --mode "safe" --token "secret"',
+  ];
+
+  for (const command of commands) {
+    const formatted = formatPidDiagnostic(343, [{ pid: 343, command }]);
+
+    assert.equal(formatted, 'PID 343 ([REDACTED COMMAND])', command);
+    assert.doesNotMatch(formatted, /secret/);
   }
 });
 

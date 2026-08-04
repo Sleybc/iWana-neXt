@@ -141,8 +141,9 @@ function getUnixProcessTable() {
   const entries = parsePsEntries(output);
 
   if (process.platform !== 'linux' || !existsSync('/proc')) {
-    // ps lstart solo sirve para diagnostico: su resolucion no es una
-    // identidad suficiente para autorizar una terminacion destructiva.
+    // En macOS y otros Unix, ps lstart solo sirve para diagnostico: su
+    // resolucion no es una identidad suficiente para autorizar una
+    // terminacion destructiva. La decision de no terminar se aplica en main.
     return entries.map((entry) => ({ ...entry, startIdentity: '' }));
   }
 
@@ -189,6 +190,17 @@ export function getProtectedPids(entries, currentPid = process.pid, parentPid = 
   return protectedPids;
 }
 
+export function getAutomaticTerminationDecision(platform = process.platform) {
+  const canTerminate = platform === 'win32' || platform === 'linux';
+
+  return {
+    canTerminate,
+    warning: canTerminate
+      ? null
+      : 'Terminacion automatica no disponible en macOS/otros Unix sin una identidad estable de proceso.',
+  };
+}
+
 export function normalizeForMatching(value, platform = process.platform) {
   const valueString = String(value);
   if (!valueString) return '';
@@ -230,16 +242,29 @@ function pathOwnsMarker(candidatePath, markerPath, platform) {
 
 function getCommandTokens(command, { shellEscapes = false } = {}) {
   const tokens = [];
+  const tokenMetadata = [];
   let token = '';
+  let rawToken = '';
   let quote = '';
   let tokenStarted = false;
+  let tokenQuoted = false;
   let ambiguous = false;
+
+  const pushToken = () => {
+    tokens.push(token);
+    tokenMetadata.push({ raw: rawToken, quoted: tokenQuoted });
+    token = '';
+    rawToken = '';
+    tokenStarted = false;
+    tokenQuoted = false;
+  };
 
   const commandString = String(command ?? '');
   for (let index = 0; index < commandString.length; index += 1) {
     const character = commandString[index];
 
     if (shellEscapes && character === '\\') {
+      rawToken += character;
       const escapedCharacter = commandString[index + 1];
       if (escapedCharacter === undefined) {
         ambiguous = true;
@@ -253,6 +278,7 @@ function getCommandTokens(command, { shellEscapes = false } = {}) {
       // leaving the continuation of a sensitive value in diagnostics.
       if (escapedCharacter === '\\') ambiguous = true;
 
+      rawToken += escapedCharacter;
       token += escapedCharacter;
       tokenStarted = true;
       index += 1;
@@ -260,6 +286,7 @@ function getCommandTokens(command, { shellEscapes = false } = {}) {
     }
 
     if (quote) {
+      rawToken += character;
       if (character === quote) {
         quote = '';
       } else {
@@ -270,27 +297,28 @@ function getCommandTokens(command, { shellEscapes = false } = {}) {
     }
 
     if (character === '"' || character === "'") {
+      rawToken += character;
       quote = character;
+      tokenQuoted = true;
       tokenStarted = true;
       continue;
     }
 
     if (/\s/.test(character)) {
       if (tokenStarted) {
-        tokens.push(token);
-        token = '';
-        tokenStarted = false;
+        pushToken();
       }
       continue;
     }
 
+    rawToken += character;
     token += character;
     tokenStarted = true;
   }
 
-  if (tokenStarted) tokens.push(token);
+  if (tokenStarted) pushToken();
 
-  return { tokens, complete: quote === '' && !ambiguous, ambiguous };
+  return { tokens, tokenMetadata, complete: quote === '' && !ambiguous, ambiguous };
 }
 
 function getTokenBasename(value) {
@@ -310,6 +338,78 @@ function isNodeExecutable(executable, platform) {
     normalizedExecutable.startsWith('/') ||
     /^[a-z]:\//i.test(normalizedExecutable)
   );
+}
+
+const REPO_DEV_FILTERS = new Set([
+  '@iwana/api',
+  '@iwana/worker',
+  '@iwana/web',
+  '@iwana/portal',
+]);
+
+function isPnpmExecutable(executable, platform) {
+  const basename = normalizeForMatching(getTokenBasename(executable), platform);
+  return platform === 'win32'
+    ? basename === 'pnpm' || basename === 'pnpm.cmd'
+    : basename === 'pnpm';
+}
+
+function isPnpmCommand(command, platform) {
+  const { tokens, complete } = getCommandTokens(command);
+  return complete && isPnpmExecutable(tokens[0] ?? '', platform);
+}
+
+function isRepoPnpmDevCommand(command, platform) {
+  const { tokens, complete } = getCommandTokens(command);
+  return (
+    complete &&
+    tokens.length === 4 &&
+    isPnpmExecutable(tokens[0] ?? '', platform) &&
+    tokens[1] === '--filter' &&
+    REPO_DEV_FILTERS.has(tokens[2]) &&
+    tokens[3] === 'dev'
+  );
+}
+
+function isRepoDevLauncher(command, root, platform) {
+  const { tokens, complete } = getCommandTokens(command);
+  if (!complete) return false;
+
+  const normalizedRoot = String(root).replace(/\/$/, '');
+  const scriptPath = `${normalizedRoot}/scripts/dev.mjs`;
+  const normalizedRelativeScript = normalizeForMatching('scripts/dev.mjs', platform);
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const executable = tokens[index];
+    const script = tokens[index + 1];
+    if (!isNodeExecutable(executable, platform)) continue;
+
+    const executableOwnsRepo = pathOwnsMarker(executable, root, platform);
+    const scriptOwnsRepo =
+      normalizeForMatching(script, platform) === normalizeForMatching(scriptPath, platform);
+    const relativeScriptWithRepoExecutable =
+      executableOwnsRepo && normalizeForMatching(script, platform) === normalizedRelativeScript;
+
+    if (scriptOwnsRepo || relativeScriptWithRepoExecutable) return true;
+  }
+
+  return false;
+}
+
+function hasRepoDevLauncherAncestor(entry, entries, root, platform) {
+  const byPid = new Map(entries.map((candidate) => [candidate.pid, candidate]));
+  const visited = new Set();
+  let ancestorPid = entry.ppid;
+
+  while (Number.isFinite(ancestorPid) && ancestorPid > 0 && !visited.has(ancestorPid)) {
+    visited.add(ancestorPid);
+    const ancestor = byPid.get(ancestorPid);
+    if (!ancestor) return false;
+    if (isRepoDevLauncher(ancestor.command, root, platform)) return true;
+    ancestorPid = ancestor.ppid;
+  }
+
+  return false;
 }
 
 function getStartIdentity(entry) {
@@ -333,11 +433,14 @@ export function findRepoWatcherPids(
   protectedPids,
   markers = DEV_PROCESS_MARKERS,
   platform = process.platform,
+  root = repoRoot,
 ) {
   return entries
     .filter((entry) => !protectedPids.has(entry.pid))
-    .filter((entry) =>
-      markers.some((marker) => {
+    .filter((entry) => {
+      const pnpmCommand = isPnpmCommand(entry.command, platform);
+      const repoPnpmDevCommand = isRepoPnpmDevCommand(entry.command, platform);
+      const directMarkerMatch = !pnpmCommand && markers.some((marker) => {
         const { tokens: commandTokens, complete } = getCommandTokens(entry.command);
         const { tokens: markerTokens, complete: markerComplete } = getCommandTokens(marker.command);
         if (!complete || !markerComplete || !marker.path || markerTokens.length === 0) {
@@ -363,8 +466,18 @@ export function findRepoWatcherPids(
             normalizeForMatching(commandTokens[identityIndex + index + 1] ?? '', platform) ===
             normalizeForMatching(markerToken, platform),
         );
-      }),
-    )
+      });
+
+      if (directMarkerMatch) return true;
+
+      // A pnpm wrapper is safe only when its ancestry proves that this repo's
+      // path-anchored node scripts/dev.mjs launched it. A standalone pnpm
+      // command, even with an iWana filter, remains external.
+      return (
+        repoPnpmDevCommand &&
+        hasRepoDevLauncherAncestor(entry, entries, root, platform)
+      );
+    })
     .map((entry) => entry.pid);
 }
 
@@ -626,6 +739,48 @@ function parsePowershellEnvAssignment(tokens, index) {
   };
 }
 
+const QUOTED_OPTION_LIKE_PATTERN = /(?:^|[\s"'`])(-{1,2}[A-Za-z][A-Za-z0-9_-]*(?:=[^\s"'`]*)?)/g;
+
+function containsSensitiveOptionLikeContent(value) {
+  const text = String(value ?? '');
+  QUOTED_OPTION_LIKE_PATTERN.lastIndex = 0;
+
+  for (const match of text.matchAll(QUOTED_OPTION_LIKE_PATTERN)) {
+    const sensitiveOption = parseSensitiveOption(match[1]);
+    if (sensitiveOption) return true;
+  }
+
+  return false;
+}
+
+function hasQuotedSensitiveContent(tokenized) {
+  const { tokens, tokenMetadata } = tokenized;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const metadata = tokenMetadata[index];
+    if (!metadata?.quoted) continue;
+
+    if (
+      containsSensitiveOptionLikeContent(metadata.raw) ||
+      containsSensitiveOptionLikeContent(tokens[index])
+    ) {
+      return true;
+    }
+
+    const sensitiveOption = parseSensitiveOption(tokens[index]);
+    if (sensitiveOption && !sensitiveOption.header) return true;
+  }
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const sensitiveOption = parseSensitiveOption(tokens[index]);
+    if (sensitiveOption && !sensitiveOption.malformed && !sensitiveOption.header) {
+      if (tokenMetadata[index + 1]?.quoted) return true;
+    }
+  }
+
+  return false;
+}
+
 function sanitizeProcessCommand(command) {
   const commandString = String(command ?? '');
   if (UNSUPPORTED_SHELL_SYNTAX_PATTERN.test(commandString)) return REDACTED_COMMAND;
@@ -637,6 +792,7 @@ function sanitizeProcessCommand(command) {
   if (!tokenized.complete || tokenized.ambiguous) {
     return REDACTED_COMMAND;
   }
+  if (hasQuotedSensitiveContent(tokenized)) return REDACTED_COMMAND;
 
   const sanitizedTokens = [];
   for (let index = 0; index < tokenized.tokens.length; index += 1) {
@@ -708,9 +864,10 @@ export function isSafeRepoWatcherPid(
   platform = process.platform,
   currentPid = process.pid,
   parentPid = process.ppid,
+  root = repoRoot,
 ) {
   const protectedPids = getProtectedPids(entries, currentPid, parentPid);
-  return findRepoWatcherPids(entries, protectedPids, markers, platform).includes(pid);
+  return findRepoWatcherPids(entries, protectedPids, markers, platform, root).includes(pid);
 }
 
 export function isSafeRepoWatcherPidForTermination(
@@ -721,6 +878,7 @@ export function isSafeRepoWatcherPidForTermination(
   platform = process.platform,
   currentPid = process.pid,
   parentPid = process.ppid,
+  root = repoRoot,
 ) {
   const discoveryEntry = discoveryEntries.find((entry) => entry.pid === pid);
   const revalidatedEntry = revalidatedEntries.find((entry) => entry.pid === pid);
@@ -747,8 +905,9 @@ export function isSafeRepoWatcherPidForTermination(
       platform,
       currentPid,
       parentPid,
+      root,
     ) &&
-    isSafeRepoWatcherPid(pid, revalidatedEntries, markers, platform, currentPid, parentPid)
+    isSafeRepoWatcherPid(pid, revalidatedEntries, markers, platform, currentPid, parentPid, root)
   );
 }
 
@@ -760,6 +919,7 @@ export function planRepoWatcherTermination(
   platform = process.platform,
   currentPid = process.pid,
   parentPid = process.ppid,
+  root = repoRoot,
 ) {
   return [...new Set(candidatePids)].filter((pid) =>
     isSafeRepoWatcherPidForTermination(
@@ -770,6 +930,7 @@ export function planRepoWatcherTermination(
       platform,
       currentPid,
       parentPid,
+      root,
     ),
   );
 }
@@ -855,6 +1016,7 @@ function killPid(pid) {
 
 async function main() {
   let foundAnyPid = false;
+  const terminationDecision = getAutomaticTerminationDecision();
 
   for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
     const portPids = getPidsUsingPorts(DEV_PORTS);
@@ -863,6 +1025,14 @@ async function main() {
       portPids,
       processSnapshot.repoWatcherPids,
     );
+
+    if (pidsToKill.length > 0 && !terminationDecision.canTerminate) {
+      process.exitCode = 1;
+      console.warn(
+        `${terminationDecision.warning} Watchers detectados: ${formatPidDiagnostics(pidsToKill, processSnapshot.entries)}.`,
+      );
+      return;
+    }
 
     if (exitCode !== 0) {
       process.exitCode = exitCode;
