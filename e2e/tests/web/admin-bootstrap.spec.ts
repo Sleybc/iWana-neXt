@@ -58,6 +58,9 @@ function setupAdminBootstrapMocks() {
         role: 'NOC',
         status: 'PENDING_VERIFICATION',
         tenantId: 'tenant-1',
+        email: 'operador-noc@empresa-demo.test',
+        firstName: 'Operador',
+        lastName: 'NOC',
         mfaEnabled: false,
         emailVerified: false,
         passwordResetRequired: true,
@@ -332,6 +335,9 @@ function setupAdminBootstrapMocks() {
           role: 'SUPPORT',
           status: 'PENDING_VERIFICATION',
           tenantId: 'tenant-1',
+          email: 'noc@empresa-demo.test',
+          firstName: 'NOC',
+          lastName: 'Demo',
           mfaEnabled: false,
           emailVerified: false,
           passwordResetRequired: true,
@@ -445,10 +451,11 @@ test.describe('Bootstrap operativo admin', () => {
     await page.locator('#tenant-name').fill('Empresa Demo');
     await page.locator('#tenant-slug').fill('empresa-demo');
     await page.locator('#tenant-contact-email').fill('ops@example.test');
+    await page.locator('#tenant-admin-email').fill('admin@empresa-demo.test');
     await page.locator('#tenant-max-subscribers').fill('100');
     await page.getByRole('button', { name: 'Crear empresa' }).click();
     await expect(page.getByText('Configuración completada.')).toBeVisible();
-    await page.getByRole('button', { name: 'Regenerar credenciales' }).click();
+    await page.getByRole('button', { name: 'Emitir credenciales de acceso' }).click();
     await expect(page.getByText('admin@empresa-demo.test')).toBeVisible();
     await expect(page.getByText('TempPass123!')).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar' }).click();
@@ -467,7 +474,9 @@ test.describe('Bootstrap operativo admin', () => {
     await expect(page.getByText('Configuración operativa actualizada.')).toBeVisible();
 
     await page.getByRole('link', { name: 'Usuarios internos' }).click();
-    await expect(page.getByRole('heading', { name: 'Usuarios internos' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Usuarios internos', exact: true }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Crear usuario interno' }).click();
     const createUserDialog = page.getByRole('dialog', { name: 'Crear usuario' });
     await createUserDialog.locator('#uc-email').fill('noc@empresa-demo.test');
@@ -477,16 +486,17 @@ test.describe('Bootstrap operativo admin', () => {
     await expect(page.getByLabel('Contraseña temporal')).toContainText('TempUser123!');
     await createUserDialog.getByRole('button', { name: 'Entendido, cerrar' }).click();
     await expect(page.getByRole('cell', { name: 'Soporte' }).first()).toBeVisible();
-    await expect(page.getByRole('cell', { name: /user-2/ }).first()).toBeVisible();
+    await expect(page.getByText('noc@empresa-demo.test', { exact: true }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Gestionar' }).first().click();
-    const manageUserDialog = page.getByRole('dialog', { name: 'Gestión de usuario' });
+    const manageUserDialog = page.getByRole('dialog', { name: 'NOC Demo' });
     await expect(manageUserDialog).toBeVisible();
     await selectCustomOption(manageUserDialog, 'Rol', 'Operador NOC');
     await selectCustomOption(manageUserDialog, 'Estado', 'Activo');
     await manageUserDialog.getByRole('button', { name: 'Guardar cambios' }).click();
     await expect(page.getByText('Usuario actualizado correctamente.')).toBeVisible();
     await manageUserDialog.getByRole('button', { name: 'Eliminar usuario' }).click();
-    await expect(page.getByRole('cell', { name: /user-2/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Sí, eliminar usuario' }).click();
+    await expect(page.getByText('noc@empresa-demo.test', { exact: true })).toHaveCount(0);
   });
 });

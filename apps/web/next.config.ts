@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@iwana/ui', '@iwana/shared'],
   cacheComponents: true,
   turbopack: {},
+  allowedDevOrigins: ['127.0.0.1', 'localhost', '0.0.0.0'],
   async rewrites() {
     return [
       {
