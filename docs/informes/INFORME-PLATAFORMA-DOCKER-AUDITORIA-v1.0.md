@@ -398,11 +398,10 @@ Cierre explícito del bucle abierto por
 | 5. Sin escaneo CVE, SBOM, firma ni attestation | **Abierto**, sin cambio. Requiere ADR (propuesta 7) |
 | 6. Caché BuildKit vacío; próximos builds completos | **Cerrado para los Dockerfiles**: cache mounts sobre `/pnpm/store`; caché final purgado por CA-15 |
 
-Los hallazgos **D4** y **D6**, aunque no forman parte de los seis riesgos de §5,
-quedan **en verificación remota** por la remediación documentada en `60f41885`
-y el rango inclusivo `a592b61e^..dd5e865c`, respectivamente: proxy de desarrollo con prefijo preservado y
-limpieza de puertos limitada a watchers del repositorio revalidados. Su cierre
-queda condicionado a la corrida autenticada del PR.
+- **D4:** **Implementación local: corregida**; **Gate CI remoto de esta remediación: pendiente**. Remediación documentada en `60f41885`: proxy de desarrollo con prefijo preservado.
+- **D6:** **Implementación local: corregida**; **Gate CI remoto de esta remediación: pendiente**. Remediación documentada en el rango inclusivo `a592b61e^..dd5e865c`: limpieza de puertos limitada a watchers del repositorio revalidados.
+
+Su cierre queda condicionado a la corrida autenticada del PR.
 
 ### 8.1 Evidencia enfocada de las remediaciones
 
