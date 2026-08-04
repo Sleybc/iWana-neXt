@@ -1,38 +1,37 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_VERSION=24.13.1
-FROM node:${NODE_VERSION}-bookworm-slim
+
+FROM node:${NODE_VERSION}-bookworm AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.32.1
+
+FROM base AS deps
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/config/package.json ./packages/config/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --ignore-scripts
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
+COPY packages/database/package.json ./packages/database/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/config/package.json ./packages/config/
 COPY packages/database ./packages/database
 COPY packages/shared ./packages/shared
 COPY packages/config ./packages/config
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json
-WORKDIR /app/packages/database
+RUN pnpm --filter @iwana/db deploy --prod --legacy /output
 
-# El migrator corría como root pese a ser el único actor con DDL en producción.
-# `node` (uid 1000) ya existe en la imagen base.
-#
-# El chown se limita al WORKDIR: pnpm escribe un archivo temporal ahí para
-# comprobar que el directorio es escribible, y sin eso aborta con EACCES. Un
-# `chown -R /app` completo también funcionaría, pero reescribe node_modules
-# entero y añade ~49 MB a la imagen final sin ninguna contrapartida.
-#
-# HOME se fija explícitamente porque Docker no lo reajusta al cambiar de
-# usuario: sin esto pnpm intentaría escribir en /root y fallaría igualmente.
-RUN chown -R node:node /app/packages/database
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production HOME=/home/node
+COPY --from=builder --chown=node:node /output ./
 USER node
-ENV HOME=/home/node
-
-# El migrator es el único actor que ejecuta DDL durante el arranque productivo.
-# `-e` conserva stderr y propaga el primer código de salida distinto de cero:
-# una migración fallida nunca puede terminar con un mensaje de éxito falso.
-# El script public de TypeORM corre antes que el runner tenant, que solo puede
-# consultar `public.tenants` después de que exista el esquema público.
-CMD ["sh", "-ec", "pnpm migration:run && pnpm migration:tenant:run"]
+CMD ["sh", "-ec", "node node_modules/typeorm/cli.js migration:run -d dist/data-source.js && node dist/cli/tenant-migrate.js"]
