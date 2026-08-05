@@ -696,9 +696,15 @@ export class VisitRequestsService {
         }
 
         if (validated.attemptDecision === 'CLOSE_CASE') {
+          const closeReason = validated.closeReason?.trim();
+          if (!closeReason) {
+            throw new BadRequestException(
+              'Al cerrar el caso tras el límite de intentos debes indicar closeReason (motivo del cierre).',
+            );
+          }
           const closeUpdates: Partial<VisitRequest> = {
             status: VisitRequestStatus.CANCELLED,
-            cancelReason: 'Cierre por decisión del coordinador tras límite de intentos',
+            cancelReason: closeReason,
             cancelledAt: new Date(),
             cancelledByUserId: actor.sub,
           };

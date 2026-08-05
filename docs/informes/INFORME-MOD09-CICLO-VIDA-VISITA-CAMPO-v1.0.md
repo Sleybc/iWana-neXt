@@ -5,7 +5,7 @@
 **Fecha:** 2026-08-04
 **Generado por:** AI-EM-ARCH (modo Orchestrator)
 **Agentes ejecutores:** AI-SR-QA (F0, F6 QA-red/green), AI-SR-FULL (F1–F4, F6 backend), AI-FE-PLATFORM (F5, F6 frontend)
-**Estado:** **SUSPENDIDO por orden del CTO** (2026-08-05). Remediación F6 con **G6 calidad GO**. **G6.5 no cerrado** (vigilancia CI detenida). PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) · tip `3f514287`. **G7** pendiente. Cronología: §9. Prompt remediación: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
+**Estado:** Hotfix N1/N2 **implementado en código** (2026-08-05). G6 calidad GO. H2 cerrado en código tras migración `107` (aplicar en tenants). G6.5 suspendido. Prompt: [PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md](../prompts/PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md).
 
 ---
 
@@ -34,12 +34,25 @@
 | V4, H3 | Cerrado | Cerrado ✓ | Cerrado ✓ |
 | H1 | Cerrado | **Reabierto (B1)** | **Cerrado** — emisión preserva `REQUIRES_RESCHEDULE` (CA-R1) |
 | V3 | Cerrado | **Reabierto (B2)** | **Cerrado** — barrido D7 + review Reprogramar/Cerrar (CA-R2) |
-| H2 | Cerrado | **No cerrado (B2+B3)** | **Cerrado** — ruta E2 + decisión post-EXPIRED (CA-R2/CA-R3) |
+| H2 | Cerrado | **No cerrado (B2+B3)** | **Cerrado en código (hotfix N1)** — migración 107; requiere `migration:tenant:run` en cada entorno |
 | V2 | Diferido | Diferido | Diferido |
 
 **Causa sistémica de falsos verdes (auditoría):** tests de portal inventaban `REQUIRES_RESCHEDULE` que la API no emitía; worker no asertaba VR ni decisión humana. Remediación: contratos tipados + cadena worker (pre) → review API (post).
 
-**G6 remediación:** **GO** (CA-R1…CA-R7, 2026-08-05). **G6.5:** **SUSPENDIDO** — no se consolidó veredicto; vigilancia CI detenida por orden del usuario. Último tip en PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4): `3f514287`. **G7:** pendiente.
+**G6 remediación:** **GO** (CA-R1…CA-R7, 2026-08-05). **G6.5:** **SUSPENDIDO**. **Hotfix N1/N2** (2026-08-05): ver §0.1. **G7:** pendiente.
+
+### 0.1 Auditoría hotfix — enum EXPIRED + motivo de cierre (2026-08-05)
+
+Fuente: auditoría aportada a la sesión. AI-EM-ARCH **acepta** N1/N2.
+
+| ID | Sev | Hallazgo | Decisión / remediación |
+| --- | --- | --- | --- |
+| **N1** | Bloqueante | `ScheduleEventStatus.EXPIRED` en TS sin valor en enum Postgres `schedule_event_status` → barrido falla siempre | Migración tenant `107_add_schedule_event_status_expired.ts` (`ADD VALUE IF NOT EXISTS 'EXPIRED'`). **H2 reabre hasta evidencia de migración+tests.** |
+| **N2** | Medio | `CLOSE_CASE` en `scheduleVisitRequest` usaba `cancelReason` fijo sin motivo del coordinador | Exigir `closeReason` (Zod + servicio); persistir en `cancelReason`. Spec E5 CA3. |
+
+Prompt: [PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md](../prompts/PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md).
+
+**Estado hotfix código:** N1 y N2 implementados en working tree (migración 107 + `closeReason`). Tests: `107_*.spec` 2/2 PASS · remediacion-auditoria 8/8 PASS. **Pendiente:** `pnpm --filter @iwana/db migration:tenant:run` en entornos y push al PR.
 
 ### Remediación F6 — avance de tracks (2026-08-05)
 
@@ -49,10 +62,11 @@
 | Backend | AI-SR-FULL | **Cerrado** — B1/B2/B4/A1–A3; migración tenant `106_add_schedule_event_review_notes.ts`; gracia barrido `EXPIRED_SCHEDULE_EVENTS_GRACE_MINUTES` (default 15). |
 | Frontend | AI-FE-PLATFORM | **Cerrado** — ruta `/dashboard/scheduling/unrealized-visits`; E5 cableado; `attemptDecision`/`decision` tipados. |
 | QA-green | AI-SR-QA | **Cerrado** — Task 6: CA-R1…CA-R7 GO; suites API/worker/portal `--no-cache` en verde; cobertura WFM **no verificada**; informe §3/§6/§7/§8 actualizado. **No** declara G6.5. |
+| Hotfix N1/N2 | AI-EM-ARCH (ejecución directa) | **Código listo** — migración 107 + closeReason; evidencia unitaria PASS |
 
-**Contrato DTO congelado (post QA-red ↔ SR-FULL):**
+**Contrato DTO congelado (post QA-red ↔ SR-FULL + hotfix N2):**
 
-- Agendar: `attemptDecision: 'FORCE_RESCHEDULE' \| 'CLOSE_CASE'`
+- Agendar: `attemptDecision: 'FORCE_RESCHEDULE' \| 'CLOSE_CASE'` (+ `closeReason` obligatorio si CLOSE_CASE)
 - Review E2: `decision: 'RESCHEDULE' \| 'CLOSE_CASE'`
 - Notes de coordinador → columna/campo `reviewNotes`
 
@@ -128,7 +142,7 @@ Test de advisory lock + 409 con cuerpo `{ error: 'DUPLICATE_ACTIVE_WORK', origin
 | V6 | **Cerrado** | F3.4 | Normalización trim() de originRef en persistencia y comparación SQL |
 | V8 | **Cerrado** | F4.2, F4.3 | Puerto FieldServiceWorkPort (MOD10→MOD09) + requestFieldService idempotente |
 | H1 | **Cerrado** | F1.1 + **F6/B1** | `getEffectiveVisitRequestStatus` / enrich / SQL no degradan `REQUIRES_RESCHEDULE`; chip con status de contrato tipado (CA-R1) |
-| H2 | **Cerrado** | F4.1 + **F6/B2+B3** | Ruta `/dashboard/scheduling/unrealized-visits` monta `UnrealizedVisitsView`; enlaces desde Programación/pendientes; review post-EXPIRED operable |
+| H2 | **Cerrado (código; N1)** | F4.1 + F6 + **107** | Enum Postgres `EXPIRED` + ruta E2; aplicar migraciones tenant en cada entorno para efecto runtime |
 | H3 | **Cerrado** | F1.3 | Intentos fallidos dejan rastro en evento (nonRealizationCauseId, causeReportedAt, evidenceSubmitted) |
 
 **Cerrados:** 9/10 · **Diferido:** 1/10 (V2) · Remediación F6: B1–B4 / A1–A3 pagados (ver §6)
@@ -157,6 +171,7 @@ Test de advisory lock + 409 con cuerpo `{ error: 'DUPLICATE_ACTIVE_WORK', origin
 | `104_add_non_realization_fields_to_schedule_events.ts` | Columnas de clasificación, evidencia y `slaPausedAt` |
 | `105_add_visit_request_additional_reason.ts` | Columna `additional_reason TEXT` |
 | `106_add_schedule_event_review_notes.ts` | Columna `review_notes TEXT` (A3 — notes del coordinador) |
+| `107_add_schedule_event_status_expired.ts` | `ALTER TYPE schedule_event_status ADD VALUE IF NOT EXISTS 'EXPIRED'` (N1 / H2) |
 
 ---
 
@@ -175,7 +190,9 @@ Según §"Fuera de este plan" del prompt:
 | Severidad | Descripción | Ref |
 | --- | --- | --- |
 | ~~Crítica~~ **Pagada** | B1–B4 — remediados en F6; evidencia QA-green CA-R1…CA-R4/CA-R7 | PROMPT-MOD09-REMEDIACION… |
+| ~~Crítica (hotfix)~~ **Pagada en código** | N1 — `EXPIRED` en Postgres (`107`); falta aplicar migraciones en entornos | Hotfix N1 |
 | ~~Alta~~ **Pagada** | A1 timezone+gracia; A2 sin `as any` en camino límite/review; A3 `reviewNotes` + migración 106 | Remediación F6 / CA-R5–CA-R6 |
+| ~~Media (hotfix)~~ **Pagada** | N2 — `closeReason` obligatorio en CLOSE_CASE (schedule) | Hotfix N2 |
 | Media | F0.5/F0.6 no como tests nuevos dedicados (Puerta 0 parcial); cobertura ≥80% WFM **no verificada** (Jest coverage Unknown% 0/0 en intento QA-green) | Auditoría 2026-08-05 + QA-green |
 | Media | `hashtext` int4 — posible colisión de advisory lock entre originRef distintos (solo serialización extra) | F3 |
 | Baja | Sin smoke unitario del `page.tsx` App Router de unrealized-visits (ruta + montaje de vista + enlaces sí verificados) | CA-R3 residual |

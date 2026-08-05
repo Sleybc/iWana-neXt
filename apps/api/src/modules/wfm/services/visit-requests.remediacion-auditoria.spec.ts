@@ -358,12 +358,26 @@ describe('VisitRequestsService — remediación auditoría MOD09 (B1/B4)', () =>
       );
     });
 
-    it('con attemptDecision CLOSE_CASE cierra el caso sin agendar en silencio', async () => {
+    it('con attemptDecision CLOSE_CASE sin closeReason → 400 (spec E5)', async () => {
+      setupExhaustedRetriesManager();
+
+      const payload: ScheduleVisitRequestInput = {
+        ...schedulePayloadBase,
+        attemptDecision: 'CLOSE_CASE' satisfies AttemptDecisionType,
+      };
+
+      await expect(service.scheduleVisitRequest('vr-limit-3', payload, adminActor)).rejects.toThrow(
+        /closeReason|motivo/i,
+      );
+    });
+
+    it('con attemptDecision CLOSE_CASE y closeReason cierra el caso persistiendo el motivo', async () => {
       const manager = setupExhaustedRetriesManager();
 
       const payload: ScheduleVisitRequestInput = {
         ...schedulePayloadBase,
         attemptDecision: 'CLOSE_CASE' satisfies AttemptDecisionType,
+        closeReason: 'El cliente desistió tras tres intentos fallidos.',
       };
 
       const result = await service.scheduleVisitRequest('vr-limit-3', payload, adminActor);
@@ -372,7 +386,10 @@ describe('VisitRequestsService — remediación auditoría MOD09 (B1/B4)', () =>
       expect(manager.update).toHaveBeenCalledWith(
         expect.anything(),
         { id: 'vr-limit-3', tenantId: TENANT_CONTEXT.tenantId },
-        expect.objectContaining({ status: VisitRequestStatus.CANCELLED }),
+        expect.objectContaining({
+          status: VisitRequestStatus.CANCELLED,
+          cancelReason: 'El cliente desistió tras tres intentos fallidos.',
+        }),
       );
     });
   });

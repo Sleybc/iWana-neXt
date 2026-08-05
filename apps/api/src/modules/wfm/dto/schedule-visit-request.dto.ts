@@ -21,17 +21,30 @@ export type AttemptDecisionType = z.infer<typeof AttemptDecision>;
 // --- Zod schema ---
 
 /** Schema Zod para agendar una solicitud de visita (status: READY_TO_SCHEDULE → SCHEDULED). SPEC-MOD09 §6.2 */
-export const ScheduleVisitRequestSchema = z.object({
-  scheduledStartAt: z.string().datetime({ offset: true }),
-  scheduledEndAt: z.string().datetime({ offset: true }),
-  assignedUserId: z.string().uuid(),
-  operatingSiteId: z.string().uuid().optional().nullable(),
-  organizationSiteId: z.string().uuid().optional().nullable(),
-  createWorkOrder: z.boolean().optional(),
-  workOrderSummary: z.string().trim().max(160).optional(),
-  workOrderNotes: z.string().trim().max(4000).nullable().optional(),
-  attemptDecision: AttemptDecision.optional(),
-});
+export const ScheduleVisitRequestSchema = z
+  .object({
+    scheduledStartAt: z.string().datetime({ offset: true }),
+    scheduledEndAt: z.string().datetime({ offset: true }),
+    assignedUserId: z.string().uuid(),
+    operatingSiteId: z.string().uuid().optional().nullable(),
+    organizationSiteId: z.string().uuid().optional().nullable(),
+    createWorkOrder: z.boolean().optional(),
+    workOrderSummary: z.string().trim().max(160).optional(),
+    workOrderNotes: z.string().trim().max(4000).nullable().optional(),
+    attemptDecision: AttemptDecision.optional(),
+    /** Obligatorio con attemptDecision CLOSE_CASE (spec E5 CA3). */
+    closeReason: z.string().trim().min(1).max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.attemptDecision === 'CLOSE_CASE' && !data.closeReason?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['closeReason'],
+        message:
+          'Al cerrar el caso tras el límite de intentos debes indicar closeReason (motivo del cierre).',
+      });
+    }
+  });
 
 export type ScheduleVisitRequestInput = z.infer<typeof ScheduleVisitRequestSchema>;
 
@@ -108,4 +121,15 @@ export class ScheduleVisitRequestDto {
   @IsOptional()
   @IsEnum(['FORCE_RESCHEDULE', 'CLOSE_CASE'] as const)
   attemptDecision?: AttemptDecisionType;
+
+  @ApiPropertyOptional({
+    example: 'El cliente desistió de la instalación tras tres intentos fallidos.',
+    description:
+      'Motivo del cierre. Obligatorio cuando attemptDecision es CLOSE_CASE (spec visita no realizada E5).',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  closeReason?: string;
 }

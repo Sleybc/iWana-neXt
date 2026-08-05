@@ -63,6 +63,7 @@ import { CreateNonRealizationCauses103 } from './103_create_non_realization_caus
 import { AddNonRealizationFieldsToScheduleEvents104 } from './104_add_non_realization_fields_to_schedule_events';
 import { AddVisitRequestAdditionalReason105 } from './105_add_visit_request_additional_reason';
 import { AddScheduleEventReviewNotes106 } from './106_add_schedule_event_review_notes';
+import { AddScheduleEventStatusExpired107 } from './107_add_schedule_event_status_expired';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -205,6 +206,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddNonRealizationFieldsToScheduleEvents104,
   AddVisitRequestAdditionalReason105,
   AddScheduleEventReviewNotes106,
+  AddScheduleEventStatusExpired107,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

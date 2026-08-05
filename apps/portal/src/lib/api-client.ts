@@ -3199,10 +3199,12 @@ export interface ScheduleWfmVisitRequestDto {
   /** ADR-076 — motivo de la visita adicional. */
   additionalReason?: string | null | undefined;
   /**
-   * ADR-077 D4 — override al límite de 3 intentos.
-   * FORCE_RESCHEDULE agenda; CLOSE_CASE no aplica en este endpoint (usar cancel).
+   * ADR-077 (propuesto) D4 — override al límite de 3 intentos.
+   * FORCE_RESCHEDULE agenda; CLOSE_CASE cierra sin agendar y exige `closeReason`.
    */
   attemptDecision?: VisitAttemptDecision | null | undefined;
+  /** Motivo obligatorio cuando attemptDecision es CLOSE_CASE (spec E5). */
+  closeReason?: string | null | undefined;
 }
 
 export interface WfmBusinessHoursDay {
