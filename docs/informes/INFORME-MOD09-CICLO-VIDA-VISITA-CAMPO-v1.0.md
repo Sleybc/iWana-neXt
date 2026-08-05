@@ -5,7 +5,7 @@
 **Fecha:** 2026-08-04
 **Generado por:** AI-EM-ARCH (modo Orchestrator)
 **Agentes ejecutores:** AI-SR-QA (F0, F6 QA-red/green), AI-SR-FULL (F1–F4, F6 backend), AI-FE-PLATFORM (F5, F6 frontend)
-**Estado:** Plan F0–F5 + remediación F6 (B1–B4 / A1–A3) con **G6 remediación GO** (QA-green 2026-08-05). Pendientes **G6.5** (merge readiness / CI Linux por SHA) y **G7** (CTO). Prompt: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
+**Estado:** Plan F0–F5 + remediación F6 (B1–B4 / A1–A3) con **G6 remediación GO** (QA-green 2026-08-05). **G6.5 NO-GO / BLOQUEADO** (AI-PLAT-OPS 2026-08-05 — sin SHA remoto ni corrida Linux; plantilla §7.1). **G7** pendiente (CTO). Prompt: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
 
 ---
 
