@@ -5,7 +5,7 @@
 **Estado:** Propuesta — pendiente de aprobacion del CTO
 **Modulo:** MOD09 Programacion / WFM
 **Superficies:** `/dashboard/scheduling/pending-visits`, `/dashboard/scheduling`, detalle de expediente CRM, detalle de ticket
-**ADR de referencia:** [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+**ADR de referencia:** [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 **Informe de referencia:** docs/informes/INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md
 
 ---
@@ -166,7 +166,7 @@ la variante informativa: aviso sin campo de motivo y sin cambio del boton primar
    ademas de por color.
 8. Se comporta igual en las superficies que montan el dialogo: bandeja y agenda.
 9. El servidor rechaza con `409` aunque el cliente omita la advertencia: la alerta es
-   experiencia, no control (ADR-076 (propuesto) regla 3).
+   experiencia, no control (ADR-076 regla 3).
 
 ---
 
@@ -333,7 +333,7 @@ asociada debe retirarse de la bandeja automaticamente.
 ## 13. Referencias
 
 - docs/adrs/ADR-039-Bandeja-Visitas-Pendientes-WFM.md
-- [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+- [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 - docs/informes/INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md
 - docs/specs/SPEC-WFM-PENDING-VISITS-ACTO-OPERATIVO-v1.0.md
 - docs/specs/SPEC-WFM-PENDING-VISITS-CALENDAR-FIRST-v1.0.md

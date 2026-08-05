@@ -1,7 +1,7 @@
 # ADR-077: Ciclo de vida de la visita agendada que no se realiza
 
 **Version:** 1.0
-**Estado:** Propuesto
+**Estado:** Aprobado
 **Fecha:** 2026-08-04
 **Autor:** AI-EM-ARCH
 **Modo activo:** Mixto
@@ -11,7 +11,7 @@
 **HLD relacionado:** docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md
 **Spec relacionada:** [UX visita no realizada](../specs/2026-08-04-mod09-visita-no-realizada-ux-spec.md)
 **ADRs antecedentes:** ADR-037, ADR-039, ADR-046, ADR-047, ADR-068
-**ADR hermano:** [ADR-076 (propuesto)](ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+**ADR hermano:** [ADR-076](ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 
 ---
 
@@ -44,7 +44,7 @@ Resultado: *"La solicitud no esta lista para agendar"*.
 no puede corregirse. La unica salida del operador es cancelarla y recrearla desde el
 origen — **que es exactamente el vector V1 de duplicacion documentado en
 INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0**. El flujo de no ejecucion
-desemboca en el defecto de duplicacion. Con la guarda de ADR-076 (propuesto) implantada y H1 sin
+desemboca en el defecto de duplicacion. Con la guarda de ADR-076 implantada y H1 sin
 corregir, el operador quedaria directamente bloqueado.
 
 ### H2 — El caso mas frecuente no activa nada
@@ -168,13 +168,13 @@ Reglas duras del barrido:
 
 ### D8. Reagendar tras no ejecucion no es duplicado
 
-La guarda de unicidad de ADR-076 (propuesto) debe tratar el reagendamiento posterior a una no
+La guarda de unicidad de ADR-076 debe tratar el reagendamiento posterior a una no
 ejecucion como el caso legitimo por excelencia: el trabajo previo termino, la unidad de
 origen es la misma, y volver a agendarla es precisamente lo que debe ocurrir. **No
 requiere la marca de visita adicional ni motivo de excepcion.**
 
 `PARTIAL_EXECUTION` es el unico caso de esta taxonomia que si constituye segunda visita
-sobre trabajo vivo, y se canaliza por la marca explicita de ADR-076 (propuesto) D3.
+sobre trabajo vivo, y se canaliza por la marca explicita de ADR-076 D3.
 
 ---
 
@@ -225,7 +225,7 @@ sobre trabajo vivo, y se canaliza por la marca explicita de ADR-076 (propuesto) 
 6. El evento del intento fallido se conserva con estado terminal explicito; prohibido
    eliminarlo.
 7. El barrido de vencidos no modifica el destino del trabajo: solo marca y hace visible.
-8. Reagendar tras no ejecucion no activa la guarda de duplicado de ADR-076 (propuesto).
+8. Reagendar tras no ejecucion no activa la guarda de duplicado de ADR-076.
 9. La comunicacion entre MOD11 y MOD09 mantiene el patron de eventos y puertos vigente
    (ADR-047, ADR-068). Prohibida la lectura cruzada de tablas.
 10. Migraciones reversibles, OpenAPI actualizado, pruebas y evidencia documental
@@ -274,9 +274,16 @@ Motivo:
 - Introduce un job repetible nuevo en el worker.
 - Modifica el comportamiento de estados definidos en ADR-068.
 
-**Estado de aprobacion:** el CTO fijo el 2026-08-04 el limite de 3 intentos (D4) y la
-clasificacion en dos niveles (D2), y delego en arquitectura la politica de SLA (D5).
-Pendiente de aprobacion explicita el resto del cuerpo del ADR.
+**Estado de aprobacion:** **aprobado por el CTO el 2026-08-05** en su totalidad.
+
+El 2026-08-04 el CTO ya habia fijado el limite de 3 intentos (D4) y la clasificacion en
+dos niveles (D2), y delegado en arquitectura la politica de SLA (D5). La aprobacion del
+2026-08-05 cubre el resto del cuerpo del ADR, incluida la politica de SLA propuesta en
+D5, y se emite sobre la implementacion ya auditada (ver
+INFORME-MOD09-CICLO-VIDA-VISITA-CAMPO-v1.0).
+
+La pausa de SLA por causa de cliente queda aprobada **con su condicion de evidencia**:
+sin evidencia del intento registrada por el tecnico, el reloj sigue corriendo (D5).
 
 ---
 
@@ -286,6 +293,6 @@ Pendiente de aprobacion explicita el resto del cuerpo del ADR.
 - docs/adrs/ADR-039-Bandeja-Visitas-Pendientes-WFM.md
 - docs/adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md
 - docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md
-- [ADR-076 (propuesto)](ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+- [ADR-076](ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 - docs/informes/INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md
 - [UX visita no realizada](../specs/2026-08-04-mod09-visita-no-realizada-ux-spec.md)

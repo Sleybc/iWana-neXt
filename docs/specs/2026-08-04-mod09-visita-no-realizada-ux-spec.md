@@ -5,8 +5,8 @@
 **Estado:** Propuesta — pendiente de aprobacion del CTO
 **Modulos:** MOD09 Programacion / WFM, MOD11 Ejecucion Operativa
 **Superficies:** orden de ejecucion (tecnico), `/dashboard/scheduling/pending-visits`, vista de revision de vencidos, detalle de solicitud
-**ADR de referencia:** [ADR-077 (propuesto)](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md)
-**ADR hermano:** [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+**ADR de referencia:** [ADR-077](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md)
+**ADR hermano:** [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 
 ---
 
@@ -59,7 +59,7 @@ Campo de nota opcional: `Cuentanos que paso` — una linea, ayuda a la reclasifi
 ### Evidencia
 
 Para las tres causas de cliente, la evidencia es **obligatoria** (foto del sitio) porque
-sostiene la pausa del SLA (ADR-077 (propuesto) D5). Texto de ayuda visible al pedirla:
+sostiene la pausa del SLA (ADR-077 D5). Texto de ayuda visible al pedirla:
 
 > Toma una foto del sitio. Es lo que respalda que la visita se intento.
 
@@ -97,7 +97,7 @@ decision y no debe condicionar lo que reporta.
 son invisibles:
 
 - **Reportadas por el tecnico**: cerradas como no ejecutadas, esperando decision.
-- **Vencidas sin reporte**: la franja paso, nadie cerro nada (ADR-077 (propuesto) D7).
+- **Vencidas sin reporte**: la franja paso, nadie cerro nada (ADR-077 D7).
 
 ### Estructura
 
@@ -140,7 +140,7 @@ causa que el tecnico no puede reportar.
 
 **Superficie:** `PendingVisitRequestInbox`, fila y tarjeta movil.
 
-Una solicitud en `REQUIRES_RESCHEDULE` es **agendable** (ADR-077 (propuesto) D3) y se distingue de
+Una solicitud en `REQUIRES_RESCHEDULE` es **agendable** (ADR-077 D3) y se distingue de
 las nuevas:
 
 | Situacion | Chip | Texto accesible |
@@ -150,12 +150,12 @@ las nuevas:
 | Tercer intento agotado | `Requiere decision` | `Se agotaron los tres intentos. Alguien debe decidir si continua o se cierra.` |
 
 El trabajo que vuelve por causa de la operacion **sube** en el orden de la bandeja
-(ADR-077 (propuesto) D5): es deuda propia.
+(ADR-077 D5): es deuda propia.
 
 ### Criterios de aceptacion
 
 1. Una solicitud en `REQUIRES_RESCHEDULE` puede agendarse desde la bandeja sin pasos
-   adicionales y sin exigir motivo de excepcion (ADR-077 (propuesto) D8).
+   adicionales y sin exigir motivo de excepcion (ADR-077 D8).
 2. El chip de intento refleja el contador real y solo cuenta intentos imputables al
    cliente.
 3. Con los tres intentos agotados, la accion de agendar deja paso a la de decidir; no se
@@ -195,7 +195,7 @@ punto de decision:
 > una vez mas o si el caso se cierra.
 
 Acciones: `Reprogramar de todas formas` · `Cerrar el caso`. **Ninguna preseleccionada, y
-ninguna automatica** (ADR-077 (propuesto) D4). Cerrar exige motivo.
+ninguna automatica** (ADR-077 D4). Cerrar exige motivo.
 
 Para instalaciones, el cierre devuelve el caso al expediente con nota visible en CRM,
 porque la decision es comercial.
@@ -228,9 +228,9 @@ porque la decision es comercial.
 | Elemento | Depende de |
 | --- | --- |
 | E1 | Taxonomia de causa en el contrato de cierre de orden (MOD11) |
-| E2 | Job de deteccion de vencidos (ADR-077 (propuesto) D7) y vista nueva en el portal |
-| E3 | `REQUIRES_RESCHEDULE` agendable (ADR-077 (propuesto) D3) y contador de intentos |
-| E4 | Conservacion del evento fallido (ADR-077 (propuesto) D6) |
+| E2 | Job de deteccion de vencidos (ADR-077 D7) y vista nueva en el portal |
+| E3 | `REQUIRES_RESCHEDULE` agendable (ADR-077 D3) y contador de intentos |
+| E4 | Conservacion del evento fallido (ADR-077 D6) |
 | E5 | Contador de intentos y puerto de retorno hacia CRM para instalaciones |
 
 **Orden recomendado:** E3 primero — es la correccion que desbloquea trabajo hoy
@@ -240,8 +240,8 @@ inagendable —, despues E1, luego E2 y E4, y E5 al final.
 
 ## 10. Referencias
 
-- [ADR-077 (propuesto)](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md)
-- [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
+- [ADR-077](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md)
+- [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md)
 - docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md
 - docs/specs/SPEC-WFM-PENDING-VISITS-ACTO-OPERATIVO-v1.0.md
 - [UX antiduplicacion](2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md)

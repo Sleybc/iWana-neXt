@@ -8,7 +8,7 @@
 **Agentes destinatarios:** AI-SR-FULL (backend + worker), AI-FE-PLATFORM (portal)
 **Revisor obligatorio:** AI-SR-QA
 **Consulta:** AI-PROD-UX (copy y estados), AI-DS-OWNER (solo si falta variante de componente)
-**ADRs habilitantes:** [ADR-076 (propuesto)](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md) · [ADR-077 (propuesto)](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md)
+**ADRs habilitantes:** [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md) · [ADR-077](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md)
 **Specs de experiencia:** [antiduplicación](../specs/2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md) · [visita no realizada](../specs/2026-08-04-mod09-visita-no-realizada-ux-spec.md)
 **Informe de origen:** [INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md](../informes/INFORME-MOD09-DUPLICACION-AGENDAMIENTO-VISITAS-v1.0.md)
 
@@ -24,8 +24,8 @@
 Las dos fases comparten superficie, tablas, tests y — sobre todo — **una dependencia
 cruzada que las hace inseparables**:
 
-- Si la guarda de unicidad de ADR-076 (propuesto) entra **antes** de que
-  `REQUIRES_RESCHEDULE` sea agendable (ADR-077 (propuesto) D3), el operador queda
+- Si la guarda de unicidad de ADR-076 entra **antes** de que
+  `REQUIRES_RESCHEDULE` sea agendable (ADR-077 D3), el operador queda
   bloqueado por partida doble: no puede reagendar la visita que volvió por no realizarse,
   y la guarda le impide crear una nueva. La operación se detiene.
 - Si el ciclo de no realización entra **sin** la guarda, cada visita fallida sigue
@@ -57,7 +57,7 @@ rehagas.** El resumen ejecutable:
 **Decisiones de negocio ya tomadas** (no las reabras): eje de unicidad por unidad de
 origen —expediente o ticket, nunca el suscriptor ni el nodo—; máximo 3 intentos
 imputables al cliente; clasificación en dos niveles; política de SLA de
-ADR-077 (propuesto) D5; ampliación de `ExecutionOrderSchedulingPort` aprobada.
+ADR-077 D5; ampliación de `ExecutionOrderSchedulingPort` aprobada.
 
 ---
 
@@ -65,8 +65,8 @@ ADR-077 (propuesto) D5; ampliación de `ExecutionOrderSchedulingPort` aprobada.
 
 **Reprogramar no es lo mismo que fallar, aunque hoy ambos pasen por `moveToPending`.**
 
-ADR-076 (propuesto) D7 pide conservar el mismo `scheduleEventId` al devolver a
-pendientes. ADR-077 (propuesto) D6 pide conservar el evento fallido con estado terminal.
+ADR-076 D7 pide conservar el mismo `scheduleEventId` al devolver a
+pendientes. ADR-077 D6 pide conservar el evento fallido con estado terminal.
 No se contradicen: describen **dos casos distintos** que el código actual mezcla.
 
 | Caso | Qué pasó | Evento | Orden de ejecución | Intento |
@@ -126,7 +126,7 @@ recorra cancelar → reagendar y mover a pendientes → reagendar sin producir h
 
 | # | Alcance |
 | --- | --- |
-| F2.1 | Taxonomía de causa de no realización y su persistencia (ADR-077 (propuesto) D1) |
+| F2.1 | Taxonomía de causa de no realización y su persistencia (ADR-077 D1) |
 | F2.2 | Doble clasificación: la del técnico se conserva, la del coordinador es autoritativa |
 | F2.3 | Contador de intentos, incrementado **solo** por causas de cliente |
 | F2.4 | Política de SLA por causa: pausa / corre / cierra. **Sin reinicio en ninguna ruta** |
@@ -148,7 +148,7 @@ Ahora sí, con el ciclo de vida cerrado detrás.
 | F3.2 | Bloqueo pesimista en `scheduleVisitRequest` | V5 |
 | F3.3 | Marca explícita de visita adicional con motivo obligatorio, persistido y auditado | — |
 | F3.4 | Normalización (`trim`) de `origin_ref` en persistencia y comparación | V6 |
-| F3.5 | **Reagendar tras no ejecución no activa la guarda** (ADR-077 (propuesto) D8) | — |
+| F3.5 | **Reagendar tras no ejecución no activa la guarda** (ADR-077 D8) | — |
 
 **Puerta 3:** los seis tests de la Fase 0 siguen en verde, más test de concurrencia
 (exactamente un evento, una orden de trabajo, una orden de ejecución, técnico no
@@ -190,7 +190,7 @@ En este orden, porque cada uno depende del anterior para tener datos que mostrar
 
 ### Fuera de este plan (endurecimiento diferido)
 
-- **Índice único sobre `schedule_events`** (ADR-076 (propuesto) D2.3): condicionado a que
+- **Índice único sobre `schedule_events`** (ADR-076 D2.3): condicionado a que
   las fases 1 a 4 estén en producción y exista migración de limpieza por tenant. Un
   `CREATE UNIQUE INDEX` contra datos con duplicados falla, y `CONCURRENTLY` es
   incompatible con el envoltorio transaccional de `runInTenantSchema`.
@@ -209,7 +209,7 @@ En este orden, porque cada uno depende del anterior para tener datos que mostrar
 3. **Las causas de operación y fuerza mayor no consumen intento.**
 4. **La clasificación del técnico no se sobrescribe**: reclasificar añade.
 5. **Prohibido ampliar la clave de unicidad** con `subscriber_id`, `contract_id` o
-   `subject_ref_id` (ADR-076 (propuesto) regla 1).
+   `subject_ref_id` (ADR-076 regla 1).
 6. **Toda guarda vive en el servidor.** La verificación de cliente es experiencia, no
    control: el `409` debe producirse aunque el cliente la omita.
 7. **Boundaries.** Solo tablas propias; comunicación por eventos y puertos aprobados
@@ -248,7 +248,7 @@ En este orden, porque cada uno depende del anterior para tener datos que mostrar
 - La idempotencia de MOD11 es **por `scheduleEventId`**; `execution_order_idempotency_records`
   cubre comandos de ejecución, **no** la creación desde agenda.
 - `runInTenantSchema` abre transacción sin nivel explícito: READ COMMITTED. No lo resuelvas
-  elevando el aislamiento (ADR-076 (propuesto) A4).
+  elevando el aislamiento (ADR-076 A4).
 - La primera ejecución del barrido en un tenant con historial puede producir un volumen
   alto de vencidos. Anticípalo: no proceses todo en una tanda.
 - El contenedor de "Advertencias operativas" de `ScheduleVisitRequestConfirmDialog.tsx:121-130`

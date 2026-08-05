@@ -1,7 +1,7 @@
 # ADR-076: Unicidad de trabajo de campo activo por unidad de origen
 
 **Version:** 1.0
-**Estado:** Propuesto
+**Estado:** Aprobado
 **Fecha:** 2026-08-04
 **Autor:** AI-EM-ARCH
 **Modo activo:** Mixto
@@ -288,9 +288,16 @@ Motivo:
 - Introduce restriccion de base diferida sobre `schedule_events` con migracion de
   limpieza previa.
 
-**Estado de aprobacion:** el CTO aprobo el 2026-08-04 el eje de unicidad por unidad de
-origen (D1) y la ampliacion del puerto de ordenes de ejecucion (D7). Pendiente de
-aprobacion explicita el resto del cuerpo del ADR.
+**Estado de aprobacion:** **aprobado por el CTO el 2026-08-05** en su totalidad.
+
+El 2026-08-04 el CTO ya habia fijado el eje de unicidad por unidad de origen (D1) y
+autorizado la ampliacion del puerto de ordenes de ejecucion (D7). La aprobacion del
+2026-08-05 cubre el resto del cuerpo del ADR y se emite sobre la implementacion ya
+auditada (ver INFORME-MOD09-CICLO-VIDA-VISITA-CAMPO-v1.0).
+
+El endurecimiento diferido de D2.3 —indice unico parcial sobre `schedule_events`— queda
+aprobado en su decision pero **no ejecutado**: mantiene las condiciones de aplicabilidad
+descritas en D3.
 
 ---
 
