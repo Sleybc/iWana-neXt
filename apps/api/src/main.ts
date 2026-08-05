@@ -20,6 +20,7 @@ import { AppModule } from './app.module';
  * - CORS: origen controlado por variable CORS_ORIGIN (validada por Joi en AppModule)
  *
  * Puerto: process.env.PORT ?? 3000
+ * Interfaz: process.env.BIND_HOST ?? 127.0.0.1 (0.0.0.0 solo con NODE_ENV=production)
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -90,7 +91,9 @@ async function bootstrap(): Promise<void> {
   app.use(cookieParser());
 
   // CORS: origen controlado por CORS_ORIGIN (puede ser lista separada por comas)
-  // En produccion Joi garantiza que CORS_ORIGIN esta definido; el fallback solo aplica a dev local
+  // Con NODE_ENV=production, Joi exige CORS_ORIGIN y rechaza cualquier origen
+  // localhost/127.0.0.1 (app.config.ts): el arranque falla antes de llegar aqui.
+  // El fallback de esta linea solo puede activarse en desarrollo o test.
   const corsOrigins = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3001,http://localhost:3002')
     .split(',')
     .map((origin) => origin.trim());
@@ -120,7 +123,26 @@ async function bootstrap(): Promise<void> {
   }
 
   const port = process.env['PORT'] ?? 3000;
-  await app.listen(port);
+
+  // Interfaz de red donde la API acepta conexiones (ADR-078 D2 — mitigacion P0).
+  //
+  // Fuera de produccion el default es 127.0.0.1: mientras no exista TLS, ligar a
+  // todas las interfaces deja las respuestas con PII descifrada alcanzables en
+  // claro desde cualquier equipo del segmento de red. Con loopback la superficie
+  // queda restringida al propio equipo.
+  //
+  // En produccion el proceso corre aislado en la red del contenedor y nginx lo
+  // alcanza por nombre de servicio (`api-prod:3000`): alli el default sigue
+  // siendo 0.0.0.0 y esta mitigacion no altera el comportamiento desplegado.
+  //
+  // BIND_HOST sobrescribe ambos defaults de forma explicita y consciente
+  // (p. ej. BIND_HOST=0.0.0.0 para usar el proxy nginx de desarrollo o para
+  // probar desde otro equipo de la LAN). Revertir no requiere tocar codigo.
+  const bindHost =
+    process.env['BIND_HOST']?.trim() ||
+    (process.env['NODE_ENV'] === 'production' ? '0.0.0.0' : '127.0.0.1');
+
+  await app.listen(port, bindHost);
 }
 
 bootstrap();

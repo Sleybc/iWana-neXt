@@ -12,6 +12,82 @@ type ApiDataSourceOptions = Pick<
 >;
 
 /**
+ * Hosts que solo son alcanzables desde la red de desarrollo. En perfil de
+ * producción cualquiera de ellos produce un fallo silencioso: los correos de
+ * reset y verificación saldrían con enlaces que el destinatario no puede abrir,
+ * y CORS dejaría fuera al frontend real. Riesgos 1 y 2 de ADR-070.
+ */
+const DEVELOPMENT_ONLY_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
+
+type OriginVerdict = 'ok' | 'not-absolute' | 'development-only';
+
+/** Clasifica un origen aislado sin exponer su valor en el resultado. */
+function classifyProductionOrigin(raw: string): OriginVerdict {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return 'not-absolute';
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return 'not-absolute';
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (DEVELOPMENT_ONLY_HOSTNAMES.has(hostname) || hostname.endsWith('.localhost')) {
+    return 'development-only';
+  }
+
+  return 'ok';
+}
+
+/** Valida una lista de orígenes separada por comas (formato de CORS_ORIGIN). */
+const productionOriginListValidator: Joi.CustomValidator<string> = (value, helpers) => {
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  if (origins.length === 0) {
+    return helpers.error('iwana.origin.notAbsolute');
+  }
+
+  for (const origin of origins) {
+    const verdict = classifyProductionOrigin(origin);
+
+    if (verdict === 'not-absolute') {
+      return helpers.error('iwana.origin.notAbsolute');
+    }
+
+    if (verdict === 'development-only') {
+      return helpers.error('iwana.origin.developmentOnly');
+    }
+  }
+
+  // Se devuelve el valor sin normalizar: main.ts lee process.env directamente y
+  // no debe divergir de lo que validó Joi.
+  return value;
+};
+
+/** Valida una URL absoluta única (formato de FRONTEND_URL). */
+const productionUrlValidator: Joi.CustomValidator<string> = (value, helpers) => {
+  const verdict = classifyProductionOrigin(value.trim());
+
+  if (verdict === 'not-absolute') {
+    return helpers.error('iwana.origin.notAbsolute');
+  }
+
+  if (verdict === 'development-only') {
+    return helpers.error('iwana.origin.developmentOnly');
+  }
+
+  return value;
+};
+
+/**
  * Construye las opciones efectivas del runtime de la API.
  *
  * El DDL productivo pertenece exclusivamente al migrator; la API solo usa
@@ -45,6 +121,11 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
   return Joi.object({
     NODE_ENV: Joi.string().valid('development', 'staging', 'production').default('development'),
     PORT: Joi.number().default(3000),
+    // Interfaz de escucha (ADR-078 D2). Deliberadamente sin default en Joi: el
+    // valor efectivo depende de NODE_ENV y se resuelve en main.ts (127.0.0.1
+    // fuera de produccion, 0.0.0.0 dentro del contenedor productivo). Aqui solo
+    // se valida el formato para que un valor invalido falle al arrancar.
+    BIND_HOST: Joi.string().trim().min(1).optional(),
     // Base de datos (variables usadas por @iwana/db dataSourceOptions)
     DB_HOST: Joi.string().default('localhost'),
     DB_PORT: Joi.number().default(5432),
@@ -79,7 +160,22 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
     MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,
     MFA_ENCRYPTION_KEY_PREVIOUS: mfaEncryptionKeyPreviousJoiSchema,
-    CORS_ORIGIN: Joi.string().default('http://localhost:3001,http://localhost:3002'),
+    // Lista de orígenes permitidos por CORS, separada por comas.
+    // Producción: obligatoria y sin default a localhost — riesgo 2 de ADR-070.
+    CORS_ORIGIN: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().trim().required().custom(productionOriginListValidator).messages({
+        'any.required':
+          'CORS_ORIGIN es obligatorio con NODE_ENV=production: sin él la API arrancaría aceptando solo orígenes de desarrollo y bloquearía al frontend real.',
+        'string.empty':
+          'CORS_ORIGIN debe ser una lista de orígenes absolutos http(s) separados por comas.',
+        'iwana.origin.notAbsolute':
+          'CORS_ORIGIN debe ser una lista de orígenes absolutos http(s) separados por comas.',
+        'iwana.origin.developmentOnly':
+          'CORS_ORIGIN no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
+      }),
+      otherwise: Joi.string().default('http://localhost:3001,http://localhost:3002'),
+    }),
     COOKIE_SECURE: Joi.boolean().default(false),
     APP_NAME: Joi.string().default('iWana neXt'),
     SMTP_HOST: Joi.string().allow('').optional(),
@@ -88,7 +184,21 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     SMTP_PASS: Joi.string().allow('').optional(),
     SMTP_FROM: Joi.string().allow('').optional(),
     SMTP_SECURE: Joi.boolean().optional(),
-    FRONTEND_URL: Joi.string().uri().optional(),
+    // Base de los enlaces de los correos transaccionales (reset de contraseña y
+    // verificación de email, apps/api/src/modules/auth/auth.service.ts).
+    // Producción: obligatoria y sin default a localhost — riesgo 1 de ADR-070.
+    FRONTEND_URL: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().trim().required().custom(productionUrlValidator).messages({
+        'any.required':
+          'FRONTEND_URL es obligatoria con NODE_ENV=production: sin ella los correos de reset y verificación saldrían apuntando a localhost sin fallo visible al arrancar.',
+        'string.empty': 'FRONTEND_URL debe ser una URL absoluta http(s).',
+        'iwana.origin.notAbsolute': 'FRONTEND_URL debe ser una URL absoluta http(s).',
+        'iwana.origin.developmentOnly':
+          'FRONTEND_URL no puede apuntar a localhost/127.0.0.1 con NODE_ENV=production.',
+      }),
+      otherwise: Joi.string().uri().optional(),
+    }),
     API_PUBLIC_BASE_URL: Joi.string().uri().optional(),
     STORAGE_DRIVER: Joi.when('NODE_ENV', {
       is: 'production',

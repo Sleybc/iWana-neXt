@@ -59,7 +59,10 @@ export default defineConfig({
   webServer: {
     // Turbopack dev hangs compiling /dashboard/assurance on Windows in this suite.
     // Webpack dev matches the production build result and keeps E2E navigation stable.
-    command: 'pnpm --filter @iwana/portal exec next dev --webpack --port 3002',
+    // Se invoca el wrapper `scripts/next-dev.mjs` en lugar de `next dev` directo
+    // para que el servidor de E2E respete el binding a loopback (ADR-078 D2).
+    command:
+      'pnpm --filter @iwana/portal exec node ../../scripts/next-dev.mjs --webpack --port 3002',
     url: 'http://127.0.0.1:3002',
     reuseExistingServer: true,
     timeout: 120_000,

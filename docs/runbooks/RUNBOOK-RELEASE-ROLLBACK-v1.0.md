@@ -106,6 +106,7 @@ El segundo comando solo registra el SHA en el acta; no registrar el contenido de
 - `config --quiet` termina con código `0`.
 - Todos los secretos son inyectados por el mecanismo operativo aprobado; no están en imágenes, Compose, workflows ni logs.
 - El dominio productivo y el certificado de CA reconocida están definidos/provisionados para R3.5. El autofirmado de `scripts/generate-certs.ps1` solo es válido para desarrollo o staging cerrado.
+- `CORS_ORIGIN` y `FRONTEND_URL` están definidas en `.env.production` con el FQDN aprobado. Con `NODE_ENV=production` la API las exige y rechaza cualquier valor `localhost`/`127.0.0.1`: **`api-prod` no arranca sin ellas**, por diseño (riesgos 1 y 2 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)). El fallo es explícito en el log de arranque, no silencioso.
 - Existe un backup previo con checksum y restore verificado. Si no existe la evidencia, declarar **NO-GO**.
 - El rollback es compatible con el estado de datos. Una migración irreversible o no probada impide avanzar.
 - El responsable de datos confirma el alcance de tenants activos y el plan de restore.
@@ -269,6 +270,17 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
    ```
 
 4. Verificar carga por Nginx y smoke de QA. No borrar volúmenes.
+
+> **Interacción entre `NEXT_PUBLIC_API_URL` y el rollback por digest** (riesgo 3 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)).
+>
+> `NEXT_PUBLIC_API_URL` **no es una variable de runtime de web/portal**: se bakea en el bundle en tiempo de build (`ARG NEXT_PUBLIC_API_URL` en `apps/web/Dockerfile` y `apps/portal/Dockerfile`, alimentado por `build.args` en `docker-compose.prod.yml`). El contenedor solo recibe `NODE_ENV` en `environment`. Consecuencias operativas al ejecutar este paso:
+>
+> 1. **Cada digest de `web-prod`/`portal-prod` lleva grabado el dominio con el que se construyó.** Volver a un digest anterior devuelve también su `NEXT_PUBLIC_API_URL` anterior. Un rollback de imagen es, a la vez, un rollback de dominio de API para el navegador.
+> 2. **Cambiar el dominio no es un reinicio, es un rebuild.** Editar `NEXT_PUBLIC_API_URL` en `.env.production` y hacer `up -d` no cambia el bundle servido: hay que reconstruir ambas imágenes, lo que produce digests nuevos y obliga a registrarlos en el acta como punto de rollback nuevo.
+> 3. **Regla de emparejamiento:** si el rollback cruza un cambio de dominio, el digest anterior de `web-prod`/`portal-prod` apunta al dominio anterior. Restaurar solo las imágenes deja el frontend llamando a un host que ya no atiende. En ese caso el rollback debe incluir la configuración de Nginx y el `CORS_ORIGIN` de `api-prod` correspondientes a ese mismo dominio, o no ejecutarse.
+> 4. **Verificación obligatoria del paso 4:** además del smoke, confirmar en el navegador que las llamadas XHR salen al dominio esperado. Un bundle con el dominio equivocado arranca, pasa el healthcheck HTTP y falla solo en el primer request autenticado.
+>
+> Este runbook **documenta** la interacción; no la rediseña. Mover `NEXT_PUBLIC_API_URL` a runtime sería un cambio de arquitectura del frontend y exige ADR propio.
 
 ### 5.3 API
 
