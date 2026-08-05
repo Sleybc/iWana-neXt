@@ -5,7 +5,7 @@
 **Fecha:** 2026-08-04
 **Generado por:** AI-EM-ARCH (modo Orchestrator)
 **Agentes ejecutores:** AI-SR-QA (F0, F6 QA-red/green), AI-SR-FULL (F1–F4, F6 backend), AI-FE-PLATFORM (F5, F6 frontend)
-**Estado:** Plan F0–F5 + remediación F6 (B1–B4 / A1–A3) con **G6 remediación GO** (QA-green 2026-08-05). **G6.5 NO-GO / BLOQUEADO** (AI-PLAT-OPS 2026-08-05 — sin SHA remoto ni corrida Linux; plantilla §7.1). **G7** pendiente (CTO). Prompt: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
+**Estado:** Plan F0–F5 + remediación F6 (B1–B4 / A1–A3) con **G6 remediación GO** (QA-green 2026-08-05). **G6.5 en espera de CI Linux** — rama `feat/mod09-ciclo-vida-visita-campo`, SHA `5669d98a`, PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) (CTO autorizó commit/push 2026-08-05). **G7** pendiente. Prompt: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
 
 ---
 
@@ -39,7 +39,7 @@
 
 **Causa sistémica de falsos verdes (auditoría):** tests de portal inventaban `REQUIRES_RESCHEDULE` que la API no emitía; worker no asertaba VR ni decisión humana. Remediación: contratos tipados + cadena worker (pre) → review API (post).
 
-**G6 remediación:** **GO** (CA-R1…CA-R7 verdes con evidencia Cached: 0 / `--no-cache`, 2026-08-05). **G6.5:** **NO-GO / BLOQUEADO** (AI-PLAT-OPS 2026-08-05) — sin SHA de remediación en remoto ni corrida Linux real; plantilla de evidencia en §7.1. **G7:** pendiente (fuera de alcance PLAT-OPS en esta activación).
+**G6 remediación:** **GO** (CA-R1…CA-R7 verdes con evidencia Cached: 0 / `--no-cache`, 2026-08-05). **G6.5:** **en espera de CI** — push + PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) sobre SHA `5669d98aef7d521631024c639c5dd93de776db90` (rama `feat/mod09-ciclo-vida-visita-campo`). Rellenar §7.1 cuando `production-images` y `execution-orders-e2e` cierren en verde. **G7:** pendiente.
 
 ### Remediación F6 — avance de tracks (2026-08-05)
 
