@@ -64,10 +64,19 @@ export class AddScheduleEventStatusExpired107 implements MigrationInterface {
         (value) => `'${value}'`,
       ).join(', ')})`,
     );
+    // El DEFAULT de la columna (030: DEFAULT 'DRAFT') pertenece al tipo antiguo y
+    // Postgres no puede castearlo automaticamente al tipo recreado: sin este
+    // DROP DEFAULT previo, el ALTER COLUMN falla con
+    // "default for column status cannot be cast automatically".
+    await queryRunner.query(`ALTER TABLE schedule_events ALTER COLUMN status DROP DEFAULT`);
     await queryRunner.query(
       `ALTER TABLE schedule_events
        ALTER COLUMN status TYPE schedule_event_status
        USING status::text::schedule_event_status`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE schedule_events
+       ALTER COLUMN status SET DEFAULT 'DRAFT'::schedule_event_status`,
     );
     await queryRunner.query(`DROP TYPE schedule_event_status_107_extended`);
   }

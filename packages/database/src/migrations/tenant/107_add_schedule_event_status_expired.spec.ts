@@ -31,4 +31,30 @@ describe('107_add_schedule_event_status_expired', () => {
       /EXPIRED|IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN/,
     );
   });
+
+  it('down libera el DEFAULT antes de recastear la columna y lo restituye después', async () => {
+    const queries: string[] = [];
+    const queryRunner = {
+      query: jest.fn(async (sql: string) => {
+        queries.push(sql);
+        if (sql.includes('COUNT(*)')) {
+          return [{ total: 0 }];
+        }
+        return [];
+      }),
+    };
+
+    const migration = new AddScheduleEventStatusExpired107();
+    await migration.down(queryRunner as never);
+
+    const dropDefault = queries.findIndex((sql) => sql.includes('DROP DEFAULT'));
+    const alterType = queries.findIndex((sql) => sql.includes('ALTER COLUMN status TYPE'));
+    const setDefault = queries.findIndex((sql) => sql.includes('SET DEFAULT'));
+
+    // Sin este orden Postgres aborta con
+    // "default for column status cannot be cast automatically" (verificado contra PG).
+    expect(dropDefault).toBeGreaterThanOrEqual(0);
+    expect(dropDefault).toBeLessThan(alterType);
+    expect(alterType).toBeLessThan(setDefault);
+  });
 });

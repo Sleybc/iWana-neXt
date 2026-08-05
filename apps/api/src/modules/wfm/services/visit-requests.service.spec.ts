@@ -1246,6 +1246,7 @@ describe('VisitRequestsService', () => {
         scheduledEndAt: '2026-06-01T15:00:00Z',
         createWorkOrder: false,
         attemptDecision: 'CLOSE_CASE',
+        closeReason: 'El cliente desistió tras tres intentos',
       },
       { sub: 'admin-001', role: UserRole.ADMIN } as never,
     );
@@ -1254,8 +1255,63 @@ describe('VisitRequestsService', () => {
     expect(manager.update).toHaveBeenCalledWith(
       expect.anything(),
       { id: 'vr-close', tenantId: TENANT_CONTEXT.tenantId },
-      expect.objectContaining({ status: VisitRequestStatus.CANCELLED }),
+      expect.objectContaining({
+        status: VisitRequestStatus.CANCELLED,
+        // El motivo del coordinador se persiste, no un literal fijo (spec E5 CA3).
+        cancelReason: 'El cliente desistió tras tres intentos',
+      }),
     );
+  });
+
+  it('CLOSE_CASE exige motivo de cierre cuando retryCount >= 3 (N2)', async () => {
+    const visitRequest = {
+      id: 'vr-close-sin-motivo',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 3,
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Cerrar caso sin motivo',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: null,
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-close-sin-motivo',
+      scheduleEventId: null,
+      slaPausedAt: null,
+    };
+
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await expect(
+      service.scheduleVisitRequest(
+        'vr-close-sin-motivo',
+        {
+          assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+          scheduledStartAt: '2026-06-01T14:00:00Z',
+          scheduledEndAt: '2026-06-01T15:00:00Z',
+          createWorkOrder: false,
+          attemptDecision: 'CLOSE_CASE',
+        },
+        { sub: 'admin-001', role: UserRole.ADMIN } as never,
+      ),
+    ).rejects.toThrow(/closeReason/);
+
+    expect(manager.update).not.toHaveBeenCalled();
   });
 
   it('rechaza agendar cuando el evento vinculado está EXPIRED (B2)', async () => {
