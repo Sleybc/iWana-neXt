@@ -66,7 +66,7 @@ ser también señal de un boundary mal trazado, y eso es materia de ADR-037 y AD
 | **E1** | **Mapear el ciclo completo** entre `WfmModule`, `TasksModule`, `AssuranceModule` y `HealthModule`: quién importa a quién, cuáles usan `forwardRef` hoy y cuáles no |
 | **E2** | **Corregir el bootstrap.** Ver §3: la elección entre las dos vías depende de E1 |
 | **E3** | **Prueba de bootstrap**: un test que compile el `AppModule` real (`Test.createTestingModule({ imports: [AppModule] }).compile()`) y falle si algún módulo queda `undefined`. Es la red que faltaba |
-| **E4** | Verificar que la API levanta y responde `GET /api/v1/health`, y que liga a `127.0.0.1` conforme a `BIND_HOST` (evidencia pendiente de P0 en ADR-078) |
+| **E4** | Verificar que la API levanta y responde `GET /api/v1/health`, y que liga a `127.0.0.1` conforme a `BIND_HOST` (evidencia pendiente de P0 en ADR-078 (propuesto)) |
 
 ### Fuera de alcance
 
