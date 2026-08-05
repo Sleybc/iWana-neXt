@@ -5,7 +5,7 @@
 **Fecha:** 2026-08-04
 **Generado por:** AI-EM-ARCH (modo Orchestrator)
 **Agentes ejecutores:** AI-SR-QA (F0, F6 QA-red/green), AI-SR-FULL (F1–F4, F6 backend), AI-FE-PLATFORM (F5, F6 frontend)
-**Estado:** Plan F0–F5 + remediación F6 (B1–B4 / A1–A3) con **G6 remediación GO** (QA-green 2026-08-05). **G6.5 en espera de CI Linux** — rama `feat/mod09-ciclo-vida-visita-campo`, SHA `5669d98a`, PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) (CTO autorizó commit/push 2026-08-05). **G7** pendiente. Prompt: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
+**Estado:** **SUSPENDIDO por orden del CTO** (2026-08-05). Remediación F6 con **G6 calidad GO**. **G6.5 no cerrado** (vigilancia CI detenida). PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) · tip `3f514287`. **G7** pendiente. Cronología: §9. Prompt remediación: [PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md](../prompts/PROMPT-MOD09-REMEDIACION-AUDITORIA-CICLO-VIDA-v1.0.md).
 
 ---
 
@@ -39,7 +39,7 @@
 
 **Causa sistémica de falsos verdes (auditoría):** tests de portal inventaban `REQUIRES_RESCHEDULE` que la API no emitía; worker no asertaba VR ni decisión humana. Remediación: contratos tipados + cadena worker (pre) → review API (post).
 
-**G6 remediación:** **GO** (CA-R1…CA-R7 verdes con evidencia Cached: 0 / `--no-cache`, 2026-08-05). **G6.5:** **en espera de CI** — push + PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) sobre SHA `5669d98aef7d521631024c639c5dd93de776db90` (rama `feat/mod09-ciclo-vida-visita-campo`). Rellenar §7.1 cuando `production-images` y `execution-orders-e2e` cierren en verde. **G7:** pendiente.
+**G6 remediación:** **GO** (CA-R1…CA-R7, 2026-08-05). **G6.5:** **SUSPENDIDO** — no se consolidó veredicto; vigilancia CI detenida por orden del usuario. Último tip en PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4): `3f514287`. **G7:** pendiente.
 
 ### Remediación F6 — avance de tracks (2026-08-05)
 
@@ -264,8 +264,7 @@ Según §"Fuera de este plan" del prompt:
 - **ADR-076 (propuesto) y ADR-077 (propuesto)** permanecen en estado `Propuesto`. Sus decisiones de negocio tienen firma del CTO fechada 2026-08-04 dentro de cada ADR. La ejecución de este plan es la implementación de esas decisiones. Si el CTO aprueba formalmente los ADRs, se actualiza su estado a `Aprobado` sin cambios de contenido.
 - **Specs UX** (`2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md`, `2026-08-04-mod09-visita-no-realizada-ux-spec.md`) están en estado `Propuesta — pendiente de aprobación del CTO`. Fase 5 fue implementada contra ellas por estar referenciadas en el prompt autorizado.
 - El subagente AI-SR-QA produjo archivos sin texto de retorno en la sesión; el defecto se mitigó delegando fases posteriores con prompts más dirigidos y exploración previa.
-- Latencia de gates F0–F5: 0. **Post-auditoría:** emitido prompt de remediación 2026-08-05; tracks QA-red → Backend ∥ Frontend → **QA-green cerrado**. **G6 remediación GO** (QA recomienda; **EM-ARCH consolida y ratifica** 2026-08-05). **G6.5 NO-GO / BLOQUEADO** (AI-PLAT-OPS 2026-08-05): sin commit/push del working tree F6 y sin corrida Linux real de `production-images` + `execution-orders-e2e` sobre SHA de remediación — plantilla §7.1. G7 no evaluado.
-- **`[BLOQUEO]` G6.5 → EM-ARCH (AI-PLAT-OPS):** desbloqueo exacto = (1) commit de remediación F6, (2) push rama o PR a `main`, (3) Actions verde de `production-images` + `execution-orders-e2e` sobre ese SHA, (4) rellenar §7.1 y reactivar PLAT-OPS. Opcional: instalar `gh` para listar runs. No tocar workflows. No G7.
+- Latencia de gates F0–F5: 0. **Post-auditoría:** remediación F6 completada (QA-red → Backend ∥ Frontend → QA-green). **G6 remediación GO** ratificado por EM-ARCH. **G6.5 suspendido** por orden del usuario antes de consolidar CI (ver §9). G7 no evaluado.
 - **`[DESEMPATE]` B1:** agendabilidad de `REQUIRES_RESCHEDULE` ≠ degradar status emitido. Helper de “¿se puede agendar?” separado de enrich/list.
 - **`[DESEMPATE]` B2:** D7 del barrido se mantiene (no decide). El cierre del callejón es el camino E2 (Reprogramar/Cerrar) sobre `EXPIRED`, no auto-transicionar VR en el job.
 
@@ -280,3 +279,68 @@ Según §"Fuera de este plan" del prompt:
 | CA-R5 | **GO** | Worker SQL `scheduled_end_at < NOW() - ($1…)` sin `AT TIME ZONE`; gracia `EXPIRED_SCHEDULE_EVENTS_GRACE_MINUTES` (default 15) |
 | CA-R6 | **GO** | Persistencia `reviewNotes` + migración 106; cero `as any` en `visit-requests.service.ts` / `schedule-events.service.ts` |
 | CA-R7 | **GO** | 100+9+13 (+218 WFM) PASS `--no-cache`; cadena pre-barrido (worker) + post-decisión (review API) |
+
+---
+
+## 9. Cronología de sesión y suspensión (2026-08-05) — AI-EM-ARCH
+
+**Modo:** EM + Orchestrator. **Motivo de cierre de sesión operativa:** el usuario ordenó detener el proceso (percepción de bucle en vigilancia G6.5). Subagentes PLAT-OPS interrumpidos. Sin más polls.
+
+### 9.1 Qué se pidió
+
+1. Asumir AI-EM-ARCH, desplegar protocolo multiagente sobre auditoría defect-first (B1–B4, A1–A3) del ciclo de vida de visita campo.
+2. Continuar a G6.5 tras G6 GO.
+3. CTO autorizó commit + push/PR.
+4. Detener proceso / detener subagente restante y generar informe de lo ocurrido.
+
+### 9.2 Qué ocurrió (secuencia)
+
+| # | Evento | Resultado |
+| --- | --- | --- |
+| 1 | Auditoría aceptada; H1/V3/H2 reabiertos; G6 NO-GO | Prompt + plan F6 emitidos |
+| 2 | Tracks: QA-red · Backend · Frontend en paralelo | B1–B4 / A1–A3 implementados |
+| 3 | QA-green (CA-R1…CA-R7) | **G6 remediación GO** (EM-ARCH ratifica) |
+| 4 | Intento G6.5 | Bloqueado: working tree sin commit; `gh` ausente |
+| 5 | Autorización CTO → commit + push + PR | Rama `feat/mod09-ciclo-vida-visita-campo`; [PR #4](https://github.com/SleyiW/iWana-neXt/pull/4) |
+| 6 | Fallo job ADR citations | 10 citas ADR-076/077 sin `(propuesto)` → fix push `3f514287` |
+| 7 | Vigilancia CI (PLAT-OPS) | Usuario detiene por bucle; agentes interrumpidos |
+| 8 | Esta sección | Estado **SUSPENDIDO**; G6.5 **sin veredicto consolidado** |
+
+### 9.3 Commits en la rama (tip al suspender)
+
+| SHA | Mensaje |
+| --- | --- |
+| `7343e0bb` | feat(wfm): ciclo de vida de visita no realizada y remediación F6 |
+| `5669d98a` | docs(wfm): plantilla G6.5 y bloqueo precondiciones CI Linux |
+| `2c2ae50b` | docs(wfm): registrar PR #4 y SHA para gate G6.5 |
+| `3f514287` | fix(docs): marcar ADR-076/077 como (propuesto) en citas de remediación |
+
+**Tip al suspender:** `3f514287da7a827c45c0a770c563a818b297e9c1` · tracking `origin/feat/mod09-ciclo-vida-visita-campo`.
+
+### 9.4 Tracks / subagentes
+
+| Rol | Estado al suspender |
+| --- | --- |
+| AI-SR-QA (red + green) | Cerrado |
+| AI-SR-FULL (backend F6) | Cerrado |
+| AI-FE-PLATFORM (frontend F6) | Cerrado |
+| AI-PLAT-OPS (prep + watch CI) | **Interrumpido** por orden del usuario — no declarar G6.5 |
+
+### 9.5 Gates al suspender
+
+| Gate | Estado |
+| --- | --- |
+| G6 (calidad remediación F6) | **GO** |
+| G6.5 (merge readiness) | **SUSPENDIDO** — sin evidencia §7.1 rellenada; no inventar corrida |
+| G7 (producción) | No iniciado |
+
+### 9.6 Cómo retomar (sin bucle)
+
+1. Revisar estado del [PR #4](https://github.com/SleyiW/iWana-neXt/pull/4) en Actions (una sola consulta o watch humano).
+2. Si `production-images` + `execution-orders-e2e` verdes sobre tip del PR → rellenar §7.1 y declarar G6.5 GO (una pasada PLAT-OPS, sin poll infinito).
+3. Si fallan → registrar causa en §7.1 y abrir remediación puntual.
+4. No reactivar vigilancia continua salvo petición explícita del CTO.
+
+### 9.7 Nota sobre el “bucle”
+
+La sensación de bucle vino de: (a) retorno stale de PLAT-OPS prep tras el desbloqueo ya hecho; (b) re-despacho de vigilancia CI; (c) notificaciones de cierre de tracks en cascada. **No hubo reimplementación de F6.** La suspensión corta solo el carril G6.5/orquestación activa.
