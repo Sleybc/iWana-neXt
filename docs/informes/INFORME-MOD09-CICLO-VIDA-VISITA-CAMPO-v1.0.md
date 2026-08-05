@@ -5,7 +5,7 @@
 **Fecha:** 2026-08-04
 **Generado por:** AI-EM-ARCH (modo Orchestrator)
 **Agentes ejecutores:** AI-SR-QA (F0, F6 QA-red/green), AI-SR-FULL (F1–F4, F6 backend), AI-FE-PLATFORM (F5, F6 frontend)
-**Estado:** Hotfix N1/N2 **implementado en código** (2026-08-05). G6 calidad GO. H2 cerrado en código tras migración `107` (aplicar en tenants). G6.5 suspendido. Prompt: [PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md](../prompts/PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md).
+**Estado:** Hotfix N1/N2 **cerrado en local** (2026-08-05): migración `107` aplicada en 10 tenants; `EXPIRED` verificado en Postgres. G6 calidad GO. G6.5 suspendido. PR [#4](https://github.com/SleyiW/iWana-neXt/pull/4) tip `f601c0cc`.
 
 ---
 
@@ -52,7 +52,7 @@ Fuente: auditoría aportada a la sesión. AI-EM-ARCH **acepta** N1/N2.
 
 Prompt: [PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md](../prompts/PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md).
 
-**Estado hotfix código:** N1 y N2 implementados en working tree (migración 107 + `closeReason`). Tests: `107_*.spec` 2/2 PASS · remediacion-auditoria 8/8 PASS. **Pendiente:** `pnpm --filter @iwana/db migration:tenant:run` en entornos y push al PR.
+**Estado hotfix código:** N1 y N2 implementados (`f601c0cc`). Tests unitarios PASS. **Migraciones tenant aplicadas** en local (2026-08-05): 10/10 schemas OK (`pnpm --filter @iwana/db migration:tenant:run`), enum `EXPIRED` verificado en `tenant_iwana`.
 
 ### Remediación F6 — avance de tracks (2026-08-05)
 
@@ -62,7 +62,7 @@ Prompt: [PROMPT-MOD09-HOTFIX-ENUM-EXPIRED-CLOSE-REASON-v1.0.md](../prompts/PROMP
 | Backend | AI-SR-FULL | **Cerrado** — B1/B2/B4/A1–A3; migración tenant `106_add_schedule_event_review_notes.ts`; gracia barrido `EXPIRED_SCHEDULE_EVENTS_GRACE_MINUTES` (default 15). |
 | Frontend | AI-FE-PLATFORM | **Cerrado** — ruta `/dashboard/scheduling/unrealized-visits`; E5 cableado; `attemptDecision`/`decision` tipados. |
 | QA-green | AI-SR-QA | **Cerrado** — Task 6: CA-R1…CA-R7 GO; suites API/worker/portal `--no-cache` en verde; cobertura WFM **no verificada**; informe §3/§6/§7/§8 actualizado. **No** declara G6.5. |
-| Hotfix N1/N2 | AI-EM-ARCH (ejecución directa) | **Código listo** — migración 107 + closeReason; evidencia unitaria PASS |
+| Hotfix N1/N2 | AI-EM-ARCH (ejecución directa) | **Cerrado en local** — migración 107 + closeReason; `migration:tenant:run` 10/10 tenants |
 
 **Contrato DTO congelado (post QA-red ↔ SR-FULL + hotfix N2):**
 
