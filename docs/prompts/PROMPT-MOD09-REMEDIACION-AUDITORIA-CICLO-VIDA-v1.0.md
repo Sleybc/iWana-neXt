@@ -41,9 +41,9 @@ Dejar el ciclo de vida de visita no realizada **operable de punta a punta** (API
 
 ### No entra
 
-- Aprobación formal de ADR-076/077 (sigue CTO)
+- Aprobación formal de ADR-076 (propuesto) / ADR-077 (propuesto) (sigue CTO)
 - V2 sync expediente (deuda baja diferida)
-- Índice único `schedule_events` (ADR-076 D2.3)
+- Índice único `schedule_events` (ADR-076 (propuesto) D2.3)
 - Dashboards de causa raíz
 - G6.5 / G7
 
@@ -53,7 +53,7 @@ Dejar el ciclo de vida de visita no realizada **operable de punta a punta** (API
 
 | Artefacto | Ruta | Estado |
 | --- | --- | --- |
-| ADR-077 | `docs/adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md` | Propuesto — decisiones D3, D4, D7 son autoridad de esta remediación |
+| ADR-077 (propuesto) | `docs/adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md` | Propuesto — decisiones D3, D4, D7 son autoridad de esta remediación |
 | UX spec | `docs/specs/2026-08-04-mod09-visita-no-realizada-ux-spec.md` | Propuesta — E2, E3, E5 |
 | Informe vivo | `docs/informes/INFORME-MOD09-CICLO-VIDA-VISITA-CAMPO-v1.0.md` | Actualizar §3/§6/§8 |
 | Prompt original | `docs/prompts/PROMPT-MOD09-CICLO-VIDA-VISITA-CAMPO-v1.0.md` | Superado para estos hallazgos; no reabrir F0–F5 |
@@ -94,7 +94,7 @@ Dejar el ciclo de vida de visita no realizada **operable de punta a punta** (API
 
 ### B2 — Barrido EXPIRED deja VisitRequest operable vía decisión (V3/H2)
 
-**Causa raíz:** el job marca `schedule_events.status = EXPIRED` y no toca la VisitRequest (correcto bajo ADR-077 D7: *el barrido no decide*). El defecto es que **ningún camino de decisión humana** saca la VR de `SCHEDULED` → callejón: `scheduleVisitRequest` early-return, `cancelVisitRequest` rechaza, `reviewNonRealizationCause` no reprograma.
+**Causa raíz:** el job marca `schedule_events.status = EXPIRED` y no toca la VisitRequest (correcto bajo ADR-077 (propuesto) D7: *el barrido no decide*). El defecto es que **ningún camino de decisión humana** saca la VR de `SCHEDULED` → callejón: `scheduleVisitRequest` early-return, `cancelVisitRequest` rechaza, `reviewNonRealizationCause` no reprograma.
 
 **Decisión EM-ARCH:**
 
@@ -121,7 +121,7 @@ Dejar el ciclo de vida de visita no realizada **operable de punta a punta** (API
 
 ### B4 — Límite de 3 intentos = decisión, no muro
 
-**Decisión EM-ARCH (ADR-077 D4 + spec §7 / E5):**
+**Decisión EM-ARCH (ADR-077 (propuesto) D4 + spec §7 / E5):**
 
 - Con `retryCount >= 3` (intentos imputables a cliente), **prohibido** `BadRequestException` que impida toda acción.
 - API: exigir decisión explícita en el payload de agendamiento o endpoint dedicado, p. ej. `attemptDecision: 'FORCE_RESCHEDULE' | 'CLOSE_CASE'` (nombre final a criterio SR-FULL, documentado en OpenAPI). Sin ese campo → 400 **accionable** que indique que se requiere decisión (no “no se puede agendar”).

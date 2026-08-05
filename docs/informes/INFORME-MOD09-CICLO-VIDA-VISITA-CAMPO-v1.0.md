@@ -11,7 +11,7 @@
 
 ## 0. Auditoría post-ejecución (2026-08-05) — AI-EM-ARCH
 
-**Modo:** Mixto (Architect + EM + Orchestrator). Fuente: auditoría defect-first aportada a la sesión; hallazgos verificados en código (`visit-requests.service.ts`, `expired-schedule-events.processor.ts`, `UnrealizedVisitsView.tsx`, `pending-visits-ui.ts`, ADR-077 D3/D4/D7).
+**Modo:** Mixto (Architect + EM + Orchestrator). Fuente: auditoría defect-first aportada a la sesión; hallazgos verificados en código (`visit-requests.service.ts`, `expired-schedule-events.processor.ts`, `UnrealizedVisitsView.tsx`, `pending-visits-ui.ts`, ADR-077 (propuesto) D3/D4/D7).
 
 ### Veredicto
 
@@ -164,7 +164,7 @@ Test de advisory lock + 409 con cuerpo `{ error: 'DUPLICATE_ACTIVE_WORK', origin
 
 Según §"Fuera de este plan" del prompt:
 
-- **Índice único sobre `schedule_events`** (ADR-076 D2.3): condicionado a producción de Fases 1–4 + migración de limpieza por tenant
+- **Índice único sobre `schedule_events`** (ADR-076 (propuesto) D2.3): condicionado a producción de Fases 1–4 + migración de limpieza por tenant
 - **Indicador derivado en listado, filtro "trabajo activo", bloque de trabajos relacionados** (antiduplicación §6, §7, §9): exige ampliar contrato de listado
 - **Métricas y tableros de causa raíz**: dato capturado, explotación en fase aparte
 
@@ -180,7 +180,7 @@ Según §"Fuera de este plan" del prompt:
 | Media | `hashtext` int4 — posible colisión de advisory lock entre originRef distintos (solo serialización extra) | F3 |
 | Baja | Sin smoke unitario del `page.tsx` App Router de unrealized-visits (ruta + montaje de vista + enlaces sí verificados) | CA-R3 residual |
 | Baja | V2 — sync del expediente falla en silencio dentro de mensaje de éxito (no parte de este plan) | scheduling-visit-request-sync.ts:58-70 |
-| Baja | Índice único `schedule_events` pendiente de migración de limpieza | ADR-076 D2.3 |
+| Baja | Índice único `schedule_events` pendiente de migración de limpieza | ADR-076 (propuesto) D2.3 |
 | Baja | Métricas de causa raíz sin dashboard (dato capturado, sin explotación) | Prompt §Fuera de este plan |
 | Baja | closeNotes usado para almacenar `cancellationReason` en vez de columna dedicada | F1.4 |
 
@@ -261,7 +261,7 @@ Según §"Fuera de este plan" del prompt:
 
 ## 8. Notas orquestador
 
-- **ADR-076 y ADR-077** permanecen en estado `Propuesto`. Sus decisiones de negocio tienen firma del CTO fechada 2026-08-04 dentro de cada ADR. La ejecución de este plan es la implementación de esas decisiones. Si el CTO aprueba formalmente los ADRs, se actualiza su estado a `Aprobado` sin cambios de contenido.
+- **ADR-076 (propuesto) y ADR-077 (propuesto)** permanecen en estado `Propuesto`. Sus decisiones de negocio tienen firma del CTO fechada 2026-08-04 dentro de cada ADR. La ejecución de este plan es la implementación de esas decisiones. Si el CTO aprueba formalmente los ADRs, se actualiza su estado a `Aprobado` sin cambios de contenido.
 - **Specs UX** (`2026-08-04-mod09-antiduplicacion-visitas-ux-spec.md`, `2026-08-04-mod09-visita-no-realizada-ux-spec.md`) están en estado `Propuesta — pendiente de aprobación del CTO`. Fase 5 fue implementada contra ellas por estar referenciadas en el prompt autorizado.
 - El subagente AI-SR-QA produjo archivos sin texto de retorno en la sesión; el defecto se mitigó delegando fases posteriores con prompts más dirigidos y exploración previa.
 - Latencia de gates F0–F5: 0. **Post-auditoría:** emitido prompt de remediación 2026-08-05; tracks QA-red → Backend ∥ Frontend → **QA-green cerrado**. **G6 remediación GO** (QA recomienda; **EM-ARCH consolida y ratifica** 2026-08-05). **G6.5 NO-GO / BLOQUEADO** (AI-PLAT-OPS 2026-08-05): sin commit/push del working tree F6 y sin corrida Linux real de `production-images` + `execution-orders-e2e` sobre SHA de remediación — plantilla §7.1. G7 no evaluado.
