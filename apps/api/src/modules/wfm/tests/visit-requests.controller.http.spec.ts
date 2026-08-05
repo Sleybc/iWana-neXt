@@ -28,6 +28,8 @@ import { WorkOrdersService } from '../services/work-orders.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
+import { NonRealizationCausesService } from '../services/non-realization-causes.service';
+import { NonRealizationSlaService } from '../services/non-realization-sla.service';
 import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 
 const VISIT_REQUEST_ID = '550e8400-e29b-41d4-a716-446655440001';
@@ -144,6 +146,8 @@ describe('VisitRequestsController (HTTP Contract)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [WfmController],
       providers: [
+        { provide: NonRealizationCausesService, useValue: {} },
+        { provide: NonRealizationSlaService, useValue: {} },
         { provide: ScheduleEventsService, useValue: {} },
         { provide: VisitRequestsService, useValue: mockVisitRequestsService },
         { provide: ScheduleRecommendationsService, useValue: mockScheduleRecommendationsService },

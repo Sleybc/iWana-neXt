@@ -126,6 +126,18 @@ describe('ExecutionOrderEventsProcessor', () => {
     });
   });
 
+  /**
+   * Fase 0 — red de seguridad (PROMPT-MOD09-CICLO-VIDA-VISITA-CAMPO §3).
+   *
+   * F0.5 — cubierto por los tests heredados de esta suite:
+   *   "ExecutionOrderClosedV1 EXECUTED: ... VisitRequest→CLOSED" (§ejecutada)
+   *   "ExecutionOrderClosedV1 CANCELLED: VisitRequest→CANCELLED" (§cancelada)
+   *   "ExecutionOrderFollowUpRequiredV1 REQUIRES_FOLLOW_UP: ... VisitRequest→REQUIRES_RESCHEDULE" (§requiere seguimiento)
+   *
+   * F0.6 — cubierto por "ExecutionOrderClosedV1 EXECUTED: ... VisitRequest→CLOSED":
+   *   una visita ejecutada normalmente cierra en CLOSED, no en REQUIRES_RESCHEDULE
+   *   ni en ningún estado de los flujos nuevos (F2–F4).
+   */
   describe('matriz de convergencia ADR-068', () => {
     it('ExecutionOrderStartedV1: ScheduleEvent→IN_PROGRESS, VisitRequest→IN_EXECUTION, Task→IN_PROGRESS', async () => {
       setupHappyPath(poolClient)

@@ -1192,6 +1192,12 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
                 <Link href="/dashboard/scheduling/agenda">Ir a agenda</Link>
               </Button>
             )}
+            <Button asChild type="button" variant="secondary">
+              <Link href="/dashboard/scheduling/pending-visits">Pendientes</Link>
+            </Button>
+            <Button asChild type="button" variant="secondary">
+              <Link href="/dashboard/scheduling/unrealized-visits">Visitas sin realizar</Link>
+            </Button>
             <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-tight">
               {formatWfmDayLabel(new Date())}
             </Badge>

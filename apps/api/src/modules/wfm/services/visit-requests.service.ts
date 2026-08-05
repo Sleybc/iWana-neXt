@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -298,23 +299,44 @@ export class VisitRequestsService {
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const organizationSiteId = validated.organizationSiteId ?? null;
-      const duplicate = await this.findActiveDuplicateByOrigin(
-        qr.manager,
-        tenantId,
-        validated.originContext,
-        validated.originRef ?? null,
-        validated.workType,
-      );
 
-      if (duplicate) {
-        return this.enrichVisitRequest(duplicate, qr.manager);
+      // F3.4: normalizar originRef antes de cualquier comparación o persistencia
+      const normalizedOriginRef = validated.originRef?.trim() ?? null;
+
+      // F3.3 & F3.1: Guarda de unicidad con advisory lock al inicio de la transacción.
+      // Si isAdditional=true, la guarda no aplica (ADR-076 D3: la segunda visita
+      // legítima es un acto humano explícito con motivo obligatorio).
+      if (!validated.isAdditional && normalizedOriginRef) {
+        // F3.1: pg_advisory_xact_lock con clave derivada de la unidad de origen.
+        // Previene carreras bajo READ COMMITTED serializando el check + create
+        // para la misma tupla (tenantId, originContext, originRef, workType).
+        await qr.manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `${tenantId}|${validated.originContext}|${normalizedOriginRef}|${validated.workType}`,
+        ]);
+
+        const duplicate = await this.findActiveDuplicateByOrigin(
+          qr.manager,
+          tenantId,
+          validated.originContext,
+          normalizedOriginRef,
+          validated.workType,
+        );
+
+        if (duplicate) {
+          throw new ConflictException({
+            error: 'DUPLICATE_ACTIVE_WORK',
+            originRef: normalizedOriginRef,
+            activeVisitRequestId: duplicate.id,
+          });
+        }
       }
 
       const visitRequest = qr.manager.create(VisitRequest, {
         tenantId,
         status: this.deriveStatusFromContext(validated),
         originContext: validated.originContext,
-        originRef: validated.originRef ?? null,
+        // F3.4: persistir originRef normalizado
+        originRef: normalizedOriginRef,
         originLabel: validated.originLabel ?? null,
         workType: validated.workType,
         priority: validated.priority ?? WorkOrderPriority.NORMAL,
@@ -346,6 +368,8 @@ export class VisitRequestsService {
         cancelledAt: null,
         cancelledByUserId: null,
         cancelReason: null,
+        // F3.3: persistir motivo de visita adicional
+        additionalReason: validated.isAdditional ? (validated.additionalReason ?? null) : null,
       });
 
       try {
@@ -353,22 +377,60 @@ export class VisitRequestsService {
         return this.enrichVisitRequest(savedVisitRequest, qr.manager);
       } catch (error) {
         if (this.isActiveOriginUniqueViolation(error)) {
+          // Safety net: el índice único de BD detectó una carrera residual.
+          // Con el advisory lock esto no debería ocurrir, pero se conserva
+          // la defensa para escenarios con escritura directa en BD.
           const existing = await this.findActiveDuplicateByOrigin(
             qr.manager,
             tenantId,
             validated.originContext,
-            validated.originRef ?? null,
+            normalizedOriginRef,
             validated.workType,
           );
 
           if (existing) {
-            return this.enrichVisitRequest(existing, qr.manager);
+            throw new ConflictException({
+              error: 'DUPLICATE_ACTIVE_WORK',
+              originRef: normalizedOriginRef,
+              activeVisitRequestId: existing.id,
+            });
           }
         }
 
         throw error;
       }
     });
+  }
+
+  /**
+   * Versión idempotente de createVisitRequest.
+   *
+   * Si ya existe una visita activa (no-terminal) para el mismo origen,
+   * retorna la visita existente en vez de lanzar ConflictException.
+   * Esto evita que callers como el flujo de tickets tengan que manejar
+   * el error — simplemente obtienen la visita que ya existe.
+   *
+   * F4.3 — requestFieldService idempotente (V8).
+   */
+  async requestFieldService(
+    input: CreateVisitRequestInput,
+    actor: JwtPayload,
+  ): Promise<VisitRequestResponse> {
+    try {
+      return await this.createVisitRequest(input, actor);
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        const body = error.getResponse() as {
+          error?: string;
+          activeVisitRequestId?: string;
+        };
+        if (body?.error === 'DUPLICATE_ACTIVE_WORK' && body?.activeVisitRequestId) {
+          // Idempotente: retornar la visita existente en vez de propagar el error.
+          return this.getVisitRequestById(body.activeVisitRequestId, actor);
+        }
+      }
+      throw error;
+    }
   }
 
   async updateVisitRequestContext(
@@ -395,7 +457,8 @@ export class VisitRequestsService {
       if (
         visitRequest.status !== VisitRequestStatus.PENDING &&
         visitRequest.status !== VisitRequestStatus.NEEDS_CONTEXT &&
-        visitRequest.status !== VisitRequestStatus.READY_TO_SCHEDULE
+        visitRequest.status !== VisitRequestStatus.READY_TO_SCHEDULE &&
+        visitRequest.status !== VisitRequestStatus.REQUIRES_RESCHEDULE
       ) {
         throw new BadRequestException(
           `La solicitud esta en estado ${visitRequest.status} y no permite completar contexto`,
@@ -452,7 +515,11 @@ export class VisitRequestsService {
         contractId: hasField('contractId')
           ? (validated.contractId ?? null)
           : visitRequest.contractId,
-        status: this.deriveStatusFromContext(mergedContext, visitRequest.status),
+        // ADR-077 D3: al corregir contexto no se degrada REQUIRES_RESCHEDULE.
+        status:
+          visitRequest.status === VisitRequestStatus.REQUIRES_RESCHEDULE
+            ? VisitRequestStatus.REQUIRES_RESCHEDULE
+            : this.deriveStatusFromContext(mergedContext, visitRequest.status),
       };
 
       await qr.manager.update(VisitRequest, { id, tenantId }, updates);
@@ -565,8 +632,11 @@ export class VisitRequestsService {
     assertScheduleStartNotInPast(startAt);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // F3.2: SELECT ... FOR UPDATE — bloqueo pesimista sobre la VisitRequest.
+      // Previene que dos schedulers concurrentes agenden la misma solicitud.
       const visitRequest = await qr.manager.findOne(VisitRequest, {
         where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
       });
 
       if (!visitRequest) {
@@ -575,7 +645,34 @@ export class VisitRequestsService {
 
       this.ensureActorCanAccessVisitRequest(actor, visitRequest);
 
+      // F3.5: Reagendar tras no ejecución NO activa la guarda de unicidad.
+      // REQUIRES_RESCHEDULE viene de un intento fallido previo (ADR-077 D8):
+      // es el MISMO trabajo que vuelve, no uno nuevo. No se aplica advisory
+      // lock ni verificación de duplicados.
+      if (visitRequest.status !== VisitRequestStatus.REQUIRES_RESCHEDULE) {
+        // F3.1: Advisory lock por unidad de origen para prevenir carreras
+        // entre scheduleVisitRequest y createVisitRequest concurrentes.
+        const normalizedOriginRef = visitRequest.originRef?.trim() ?? null;
+        if (normalizedOriginRef) {
+          await qr.manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+            `${tenantId}|${visitRequest.originContext}|${normalizedOriginRef}|${visitRequest.workType}`,
+          ]);
+        }
+      }
+
       if (visitRequest.status === VisitRequestStatus.SCHEDULED && visitRequest.scheduleEventId) {
+        const linkedEvent = await qr.manager.findOne(ScheduleEvent, {
+          where: { id: visitRequest.scheduleEventId, tenantId },
+        });
+
+        // Evento vencido por barrido (D7): no hay early-return silencioso.
+        // El coordinador debe decidir en la vista de revisión (Reprogramar / Cerrar).
+        if (linkedEvent?.status === ScheduleEventStatus.EXPIRED) {
+          throw new BadRequestException(
+            'El evento vinculado está vencido. Debe pasar por la revisión de visitas sin realizar (Reprogramar o Cerrar) antes de agendar.',
+          );
+        }
+
         return this.enrichVisitRequest(visitRequest, qr.manager);
       }
 
@@ -585,10 +682,33 @@ export class VisitRequestsService {
         );
       }
 
-      const effectiveStatus = this.getEffectiveVisitRequestStatus(visitRequest);
-
-      if (effectiveStatus !== VisitRequestStatus.READY_TO_SCHEDULE) {
+      if (!this.isSchedulableVisitRequestStatus(visitRequest)) {
         throw new BadRequestException('La solicitud no esta lista para agendar');
+      }
+
+      // ADR-077 D4: con retryCount >= 3 exige decisión explícita (no muro ciego).
+      // El contador solo se incrementa con causas CUSTOMER.
+      if ((visitRequest.retryCount ?? 0) >= 3) {
+        if (!validated.attemptDecision) {
+          throw new BadRequestException(
+            "Se alcanzó el límite de 3 intentos imputables al cliente. Indique attemptDecision: 'FORCE_RESCHEDULE' para forzar reprogramación o 'CLOSE_CASE' para cerrar el caso.",
+          );
+        }
+
+        if (validated.attemptDecision === 'CLOSE_CASE') {
+          const closeUpdates: Partial<VisitRequest> = {
+            status: VisitRequestStatus.CANCELLED,
+            cancelReason: 'Cierre por decisión del coordinador tras límite de intentos',
+            cancelledAt: new Date(),
+            cancelledByUserId: actor.sub,
+          };
+          await qr.manager.update(VisitRequest, { id, tenantId }, closeUpdates);
+          return this.enrichVisitRequest(
+            { ...visitRequest, ...closeUpdates } as VisitRequest,
+            qr.manager,
+          );
+        }
+        // FORCE_RESCHEDULE → continúa el agendamiento
       }
 
       await this.assertEligibleOperationalAssignee(validated.assignedUserId);
@@ -723,6 +843,10 @@ export class VisitRequestsService {
 
       await qr.manager.save(ScheduleEvent, savedEvent);
 
+      // Al reagendar, se reanuda el SLA (limpiar pausa si existía).
+      // ADR-077 D5: el SLA nunca se reinicia; la pausa descuenta el tiempo acumulado.
+      const shouldResumeSla = visitRequest.slaPausedAt !== null;
+
       const updates: Partial<VisitRequest> = {
         status: VisitRequestStatus.SCHEDULED,
         scheduleEventId: savedEvent.id,
@@ -731,6 +855,7 @@ export class VisitRequestsService {
         organizationSiteId,
         scheduledByUserId: actor.sub,
         scheduledAt: new Date(),
+        ...(shouldResumeSla ? { slaPausedAt: null } : {}),
         ...(resolvedExpedienteId && !visitRequest.expedienteId
           ? { expedienteId: resolvedExpedienteId }
           : {}),
@@ -1082,22 +1207,27 @@ export class VisitRequestsService {
     originRef: string | null,
     workType: CreateVisitRequestInput['workType'],
   ): Promise<VisitRequest | null> {
-    if (!originRef) {
+    // F3.4: originRef sin origen o vacío tras trim no es comparable
+    const normalizedRef = originRef?.trim();
+    if (!normalizedRef) {
       return null;
     }
 
-    return manager
-      .createQueryBuilder(VisitRequest, 'vr')
-      .where('vr.tenant_id = :tenantId', { tenantId })
-      .andWhere('vr.origin_context = :originContext', { originContext })
-      .andWhere('vr.origin_ref = :originRef', { originRef })
-      .andWhere('vr.work_type = :workType', { workType })
-      .andWhere('vr.deleted_at IS NULL')
-      .andWhere('vr.status NOT IN (:...terminalStatuses)', {
-        terminalStatuses: Array.from(TERMINAL_VISIT_REQUEST_STATUSES),
-      })
-      .orderBy('vr.created_at', 'DESC')
-      .getOne();
+    return (
+      manager
+        .createQueryBuilder(VisitRequest, 'vr')
+        .where('vr.tenant_id = :tenantId', { tenantId })
+        .andWhere('vr.origin_context = :originContext', { originContext })
+        // F3.4: comparar con origen normalizado
+        .andWhere('TRIM(vr.origin_ref) = :originRef', { originRef: normalizedRef })
+        .andWhere('vr.work_type = :workType', { workType })
+        .andWhere('vr.deleted_at IS NULL')
+        .andWhere('vr.status NOT IN (:...terminalStatuses)', {
+          terminalStatuses: Array.from(TERMINAL_VISIT_REQUEST_STATUSES),
+        })
+        .orderBy('vr.created_at', 'DESC')
+        .getOne()
+    );
   }
 
   private isActiveOriginUniqueViolation(error: unknown): boolean {
@@ -1133,6 +1263,10 @@ export class VisitRequestsService {
     return VisitRequestStatus.NEEDS_CONTEXT;
   }
 
+  /**
+   * Proyección de lectura para READY_TO_SCHEDULE / NEEDS_CONTEXT (contexto incompleto).
+   * No degrada REQUIRES_RESCHEDULE ni otros estados persistidos (ADR-077 D3).
+   */
   private getEffectiveVisitRequestStatus(
     visitRequest: Pick<VisitRequest, 'status' | 'address' | 'municipality'>,
   ): VisitRequestStatus {
@@ -1144,6 +1278,22 @@ export class VisitRequestsService {
     }
 
     return visitRequest.status;
+  }
+
+  /**
+   * Agendabilidad separada de la proyección de status (ADR-077 D3).
+   * REQUIRES_RESCHEDULE es agendable sin degradarse a READY_TO_SCHEDULE.
+   */
+  private isSchedulableVisitRequestStatus(
+    visitRequest: Pick<VisitRequest, 'status' | 'address' | 'municipality'>,
+  ): boolean {
+    if (visitRequest.status === VisitRequestStatus.REQUIRES_RESCHEDULE) {
+      return true;
+    }
+
+    return (
+      this.getEffectiveVisitRequestStatus(visitRequest) === VisitRequestStatus.READY_TO_SCHEDULE
+    );
   }
 
   private normalizeVisitRequestStatus<T extends VisitRequest>(visitRequest: T): T {
@@ -1159,6 +1309,10 @@ export class VisitRequestsService {
     } as T;
   }
 
+  /**
+   * SQL de filtro para READY_TO_SCHEDULE / NEEDS_CONTEXT por contexto.
+   * No convierte REQUIRES_RESCHEDULE → READY_TO_SCHEDULE (ADR-077 D3).
+   */
   private buildEffectiveStatusSql(alias: string): string {
     return `CASE
       WHEN ${alias}.status IN ('${VisitRequestStatus.READY_TO_SCHEDULE}', '${VisitRequestStatus.NEEDS_CONTEXT}')

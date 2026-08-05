@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -8,6 +9,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { z } from 'zod';
 import { WorkOrderSourceContext, WfmWorkType, WorkOrderPriority } from '@iwana/shared';
@@ -37,6 +39,11 @@ export const CreateVisitRequestSchema = z.object({
   subscriberId: z.string().uuid().optional().nullable(),
   ticketId: z.string().max(160).optional().nullable(),
   contractId: z.string().uuid().optional().nullable(),
+
+  /** Marca explicita de visita adicional sobre origen con trabajo activo (ADR-076 D3) */
+  isAdditional: z.boolean().optional(),
+  /** Motivo obligatorio cuando isAdditional=true (ADR-076 D3) */
+  additionalReason: z.string().optional().nullable(),
 });
 
 export type CreateVisitRequestInput = z.infer<typeof CreateVisitRequestSchema>;
@@ -188,4 +195,22 @@ export class CreateVisitRequestDto {
   @IsOptional()
   @IsUUID()
   contractId?: string | null;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Marca explicita de visita adicional sobre origen con trabajo activo (ADR-076 D3)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isAdditional?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Motivo obligatorio cuando la visita es adicional. Requerido si isAdditional=true (ADR-076 D3)',
+  })
+  @ValidateIf((o: CreateVisitRequestDto) => o.isAdditional === true)
+  @IsString()
+  @IsNotEmpty({ message: 'additionalReason es obligatorio cuando isAdditional es true' })
+  @MaxLength(500)
+  additionalReason?: string | null;
 }

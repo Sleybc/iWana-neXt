@@ -18,6 +18,7 @@ export { RefreshToken } from './refresh-token.entity';
 export { AuditLog } from './audit-log.entity';
 
 // MOD09 — WFM / Programacion Fase 1
+export { NonRealizationCause } from './non-realization-cause.entity';
 export { ScheduleEvent } from './schedule-event.entity';
 export { WorkOrder } from './work-order.entity';
 export { WorkOrderTask } from './work-order-task.entity';

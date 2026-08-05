@@ -17,6 +17,7 @@ import {
   OPERATIONS_EXECUTION_RELAY_QUEUE,
   OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
+  SCHEDULE_EVENTS_SWEEP_QUEUE,
 } from '@iwana/shared';
 import { AssuranceFieldServiceProcessor } from './processors/assurance-field-service.processor';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
@@ -35,6 +36,7 @@ import { ExecutionOrderEventsProcessor } from './processors/execution-order-even
 import { ExecutionOrderRelayProcessor } from './processors/execution-order-relay.processor';
 import { ExecutionOrderTombstoneProcessor } from './processors/execution-order-tombstone.processor';
 import { ExecutionOrderDlqProcessor } from './processors/execution-order-dlq.processor';
+import { ExpiredScheduleEventsProcessor } from './processors/expired-schedule-events.processor';
 import {
   EvidenceOrphanDetectionProcessor,
   EVIDENCE_ORPHAN_DETECTION_QUEUE,
@@ -210,6 +212,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
     BullModule.registerQueue({ name: EVIDENCE_ORPHAN_DETECTION_QUEUE }),
     BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
+    BullModule.registerQueue({ name: SCHEDULE_EVENTS_SWEEP_QUEUE }),
   ],
   providers: [
     {
@@ -247,6 +250,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     ExecutionOrderDlqProcessor,
     EvidenceOrphanDetectionProcessor,
     EvidenceAnalysisProcessor,
+    ExpiredScheduleEventsProcessor,
   ],
 })
 export class WorkerModule {}

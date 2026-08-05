@@ -7,4 +7,6 @@ export enum ScheduleEventStatus {
   CANCELLED = 'CANCELLED',
   RESCHEDULED = 'RESCHEDULED',
   NO_SHOW = 'NO_SHOW',
+  /** Evento vencido por barrido automático — no se cerró a tiempo (H2) */
+  EXPIRED = 'EXPIRED',
 }

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -9,6 +10,13 @@ import {
   MaxLength,
 } from 'class-validator';
 import { z } from 'zod';
+
+/**
+ * Decisión explícita al agotar los 3 intentos imputables al cliente (ADR-077 D4).
+ * Sin este campo, scheduleVisitRequest responde 400 accionable.
+ */
+export const AttemptDecision = z.enum(['FORCE_RESCHEDULE', 'CLOSE_CASE']);
+export type AttemptDecisionType = z.infer<typeof AttemptDecision>;
 
 // --- Zod schema ---
 
@@ -22,6 +30,7 @@ export const ScheduleVisitRequestSchema = z.object({
   createWorkOrder: z.boolean().optional(),
   workOrderSummary: z.string().trim().max(160).optional(),
   workOrderNotes: z.string().trim().max(4000).nullable().optional(),
+  attemptDecision: AttemptDecision.optional(),
 });
 
 export type ScheduleVisitRequestInput = z.infer<typeof ScheduleVisitRequestSchema>;
@@ -90,4 +99,13 @@ export class ScheduleVisitRequestDto {
   @IsString()
   @MaxLength(4000)
   workOrderNotes?: string | null;
+
+  @ApiPropertyOptional({
+    enum: ['FORCE_RESCHEDULE', 'CLOSE_CASE'],
+    description:
+      'Obligatorio cuando retryCount >= 3. FORCE_RESCHEDULE fuerza el agendamiento; CLOSE_CASE cierra el caso sin agendar (ADR-077 D4).',
+  })
+  @IsOptional()
+  @IsEnum(['FORCE_RESCHEDULE', 'CLOSE_CASE'] as const)
+  attemptDecision?: AttemptDecisionType;
 }

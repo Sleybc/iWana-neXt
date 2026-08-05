@@ -32,3 +32,6 @@ export const OPERATIONS_EXECUTION_EVENTS_QUEUE = 'operations-execution-events';
 export const OPERATIONS_EXECUTION_RELAY_QUEUE = 'operations-execution-relay';
 export const OPERATIONS_EXECUTION_TOMBSTONE_QUEUE = 'operations-execution-tombstone';
 export const OPERATIONS_EXECUTION_DLQ = 'operations-execution-dlq';
+
+/** Barrido periódico de eventos de agenda vencidos sin cierre (MOD09 F4.1). */
+export const SCHEDULE_EVENTS_SWEEP_QUEUE = 'schedule-events-sweep';

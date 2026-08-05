@@ -22,6 +22,8 @@ import { TechnicianAvailabilityService } from '../services/technician-availabili
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
 import { WorkOrdersService } from '../services/work-orders.service';
+import { NonRealizationCausesService } from '../services/non-realization-causes.service';
+import { NonRealizationSlaService } from '../services/non-realization-sla.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -119,6 +121,8 @@ describe('Wfm organization sites HTTP', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [WfmController],
       providers: [
+        { provide: NonRealizationCausesService, useValue: {} },
+        { provide: NonRealizationSlaService, useValue: {} },
         { provide: ScheduleEventsService, useValue: {} },
         { provide: VisitRequestsService, useValue: {} },
         { provide: ScheduleRecommendationsService, useValue: {} },

@@ -26,6 +26,8 @@ import { TechnicianAvailabilityService } from '../services/technician-availabili
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
 import { WorkOrdersService } from '../services/work-orders.service';
+import { NonRealizationCausesService } from '../services/non-realization-causes.service';
+import { NonRealizationSlaService } from '../services/non-realization-sla.service';
 
 type TenantCtx = { tenantId: string; schemaName: string };
 
@@ -286,6 +288,8 @@ describe('Calendar -> WFM operating window HTTP contract', () => {
       controllers: [OrganizationController, WfmController],
       providers: [
         { provide: OrganizationService, useValue: organizationServiceMock },
+        { provide: NonRealizationCausesService, useValue: {} },
+        { provide: NonRealizationSlaService, useValue: {} },
         { provide: ScheduleEventsService, useValue: {} },
         { provide: VisitRequestsService, useValue: {} },
         { provide: ScheduleRecommendationsService, useValue: {} },

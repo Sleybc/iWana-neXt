@@ -58,6 +58,11 @@ import { ExecutionOrderServerScope0980000000000 } from './098_execution_order_se
 import { ExtendEvidenceUploadIntentStatus0990000000000 } from './099_extend_evidence_upload_intent_status';
 import { LinkExecutionOrderEvidenceIdempotency1000000000000 } from './100_link_execution_order_evidence_idempotency';
 import { AlignExecutionOrderEvidenceIntentRetention1010000000000 } from './101_align_execution_order_evidence_intent_retention';
+import { AddVisitRequestRetryCount102 } from './102_add_visit_request_retry_count';
+import { CreateNonRealizationCauses103 } from './103_create_non_realization_causes';
+import { AddNonRealizationFieldsToScheduleEvents104 } from './104_add_non_realization_fields_to_schedule_events';
+import { AddVisitRequestAdditionalReason105 } from './105_add_visit_request_additional_reason';
+import { AddScheduleEventReviewNotes106 } from './106_add_schedule_event_review_notes';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -195,6 +200,11 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ExtendEvidenceUploadIntentStatus0990000000000,
   LinkExecutionOrderEvidenceIdempotency1000000000000,
   AlignExecutionOrderEvidenceIntentRetention1010000000000,
+  AddVisitRequestRetryCount102,
+  CreateNonRealizationCauses103,
+  AddNonRealizationFieldsToScheduleEvents104,
+  AddVisitRequestAdditionalReason105,
+  AddScheduleEventReviewNotes106,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

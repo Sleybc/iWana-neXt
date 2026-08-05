@@ -23,12 +23,15 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { UserRole, VisitRequestStatus } from '@iwana/shared';
+import { TenantContext } from '@iwana/db';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { NonRealizationCausesService } from './services/non-realization-causes.service';
+import { NonRealizationSlaService } from './services/non-realization-sla.service';
 import { ScheduleEventsService } from './services/schedule-events.service';
 import { VisitRequestsService } from './services/visit-requests.service';
 import { ScheduleRecommendationsService } from './services/schedule-recommendations.service';
@@ -63,6 +66,7 @@ import {
   TransitionScheduleEventDto,
   TransitionWorkOrderDto,
   ResolveOperatingWindowDto,
+  ReviewNonRealizationDto,
   UpdateScheduleEventDto,
   UpdateVisitRequestContextDto,
   VisitRequestFilterOptionsQueryDto,
@@ -75,6 +79,8 @@ import {
 @Controller('wfm')
 export class WfmController {
   constructor(
+    private readonly nonRealizationCausesService: NonRealizationCausesService,
+    private readonly nonRealizationSlaService: NonRealizationSlaService,
     private readonly scheduleEventsService: ScheduleEventsService,
     private readonly visitRequestsService: VisitRequestsService,
     private readonly scheduleRecommendationsService: ScheduleRecommendationsService,
@@ -209,7 +215,11 @@ export class WfmController {
 
   @Post('visit-requests/:id/schedule')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
-  @ApiOperation({ summary: 'Agendar una solicitud de visita lista para programar' })
+  @ApiOperation({
+    summary: 'Agendar una solicitud de visita lista para programar',
+    description:
+      'Acepta READY_TO_SCHEDULE y REQUIRES_RESCHEDULE. Con retryCount >= 3 exige attemptDecision FORCE_RESCHEDULE|CLOSE_CASE (ADR-077 D4).',
+  })
   @ApiResponse({ status: 201, description: 'Solicitud agendada' })
   scheduleVisitRequest(
     @Param('id', ParseUUIDPipe) id: string,
@@ -459,5 +469,40 @@ export class WfmController {
   @ApiParam({ name: 'id', format: 'uuid' })
   async deleteOperationalEventuality(@Param('id', ParseUUIDPipe) id: string) {
     await this.operationalEventualitiesService.softDelete(id);
+  }
+
+  // ─── Non-Realization Causes (Taxonomía) ─────────────────────────────────
+
+  @Get('non-realization-causes')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @ApiOperation({ summary: 'Listar causas activas de no realización de visita' })
+  async listNonRealizationCauses() {
+    return this.nonRealizationCausesService.listActive();
+  }
+
+  @Post('events/:id/review-cause')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Revisar/reclasificar la causa de no realización de un evento (coordinador)',
+    description:
+      'Persiste la causa autoritativa y notes del coordinador. Para eventos EXPIRED exige decision RESCHEDULE|CLOSE_CASE (ADR-077 D7).',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  async reviewNonRealizationCause(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewNonRealizationDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.reviewCause(id, dto, actor);
+  }
+
+  /**
+   * Revisión del coordinador: confirma la causa del técnico o la reclasifica.
+   * La clasificación del coordinador es autoritativa para SLA, intentos y métricas.
+   * ADR-077 D2.
+   */
+  private async reviewCause(eventId: string, dto: ReviewNonRealizationDto, actor: JwtPayload) {
+    return this.scheduleEventsService.reviewNonRealizationCause(eventId, dto, actor);
   }
 }

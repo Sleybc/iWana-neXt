@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, QueryFailedError } from 'typeorm';
@@ -50,6 +52,7 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssuranceFieldServicePort } from '../ports/assurance-field-service.port';
+import { FieldServiceWorkPort } from '../ports/field-service-work.port';
 import { PqrService } from './pqr.service';
 import { AT_RISK_THRESHOLD_RATIO, SlaService } from './sla.service';
 import { TimelineService } from './timeline.service';
@@ -133,6 +136,9 @@ export class TicketsService {
     private readonly pqrService: PqrService,
     private readonly timelineService: TimelineService,
     private readonly fieldServicePort: AssuranceFieldServicePort,
+    @Optional()
+    @Inject(FieldServiceWorkPort)
+    private readonly fieldServiceWorkPort?: FieldServiceWorkPort,
   ) {}
 
   async generateTicketNumber(
@@ -567,6 +573,21 @@ export class TicketsService {
       updates.slaBreachStatus = this.slaService.deriveBreachStatus(nextTicket);
 
       await qr.manager.update(SupportTicket, { id, tenantId }, updates);
+
+      // F4.2: Si el ticket se resuelve o cierra sin que se haya ejecutado
+      // la visita de campo, cancelar la visita activa asociada (V8).
+      if (
+        (validated.status === TicketStatus.RESOLVED || validated.status === TicketStatus.CLOSED) &&
+        this.fieldServiceWorkPort
+      ) {
+        await this.fieldServiceWorkPort.cancelActiveForTicket(
+          qr.manager,
+          tenantId,
+          id,
+          'Ticket resuelto por canal remoto',
+          actor.sub,
+        );
+      }
 
       await this.timelineService.recordWithManager(qr.manager, {
         ticketId: id,

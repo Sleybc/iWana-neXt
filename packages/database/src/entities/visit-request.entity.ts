@@ -124,6 +124,18 @@ export class VisitRequest {
   @Column({ name: 'execution_order_id', type: 'uuid', nullable: true })
   executionOrderId: string | null;
 
+  /** Contador de intentos de visita fallidos imputables al cliente (ADR-077 D6) */
+  @Column({ name: 'retry_count', type: 'int', default: 0 })
+  retryCount: number;
+
+  /** Timestamp de cuando se pauso el SLA por ultima vez (ADR-077 D5). NULL = no pausado. */
+  @Column({ name: 'sla_paused_at', type: 'timestamptz', nullable: true })
+  slaPausedAt: Date | null;
+
+  /** Motivo de la visita adicional cuando isAdditional=true (ADR-076 D3) */
+  @Column({ name: 'additional_reason', type: 'text', nullable: true })
+  additionalReason: string | null;
+
   /** Usuario que creo la solicitud */
   @Column({ name: 'requested_by_user_id', type: 'uuid' })
   requestedByUserId: string;

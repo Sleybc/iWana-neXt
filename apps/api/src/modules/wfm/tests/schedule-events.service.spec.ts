@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { ScheduleEventStatus, UserRole, VisitRequestStatus } from '@iwana/shared';
+import { ScheduleEventStatus, UserRole, VisitRequestStatus, WorkOrderStatus } from '@iwana/shared';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
@@ -25,6 +25,7 @@ jest.mock('@iwana/db', () => ({
   Tenant: class {},
   User: class {},
   MediaAsset: class {},
+  NonRealizationCause: class {},
   // media.service evalúa MediaUsage a nivel de módulo vía la cadena tasks → users → tenant → media.
   MediaUsage: {
     LOGO: 'logo',
@@ -48,6 +49,11 @@ describe('ScheduleEventsService', () => {
     resolveWithManager: jest.Mock;
   };
   let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
+
+  let mockExecutionOrdersService: {
+    createFromSchedulingWithManager: jest.Mock;
+    cancelFromSchedulingWithManager: jest.Mock;
+  };
 
   const adminActor = {
     sub: 'admin-001',
@@ -129,12 +135,20 @@ describe('ScheduleEventsService', () => {
       generateCode: jest.fn(),
     } as any;
 
+    mockExecutionOrdersService = {
+      createFromSchedulingWithManager: jest.fn(),
+      cancelFromSchedulingWithManager: jest
+        .fn()
+        .mockResolvedValue({ id: 'eo-test', status: 'CANCELLED' }),
+    };
+
     service = new ScheduleEventsService(
       mockDataSource as DataSource,
       mockTenantService as unknown as WfmTenantSettingsReadPort,
       mockOperatingWindowResolver as unknown as OperatingWindowResolverService,
       mockConflictService,
       mockWorkOrdersService,
+      mockExecutionOrdersService,
     );
   });
 
@@ -612,19 +626,249 @@ describe('ScheduleEventsService', () => {
   });
 
   describe('moveToPending', () => {
-    it('should return the linked visit request to ready scheduling, preserve the work order, and remove the event from agenda', async () => {
+    const baseEvent = {
+      id: 'evt-200',
+      tenantId: 'tenant-001',
+      workOrderId: 'wo-200',
+      executionOrderId: 'eo-200',
+      status: ScheduleEventStatus.SCHEDULED,
+    };
+    const baseVisitRequest = {
+      id: 'vr-200',
+      tenantId: 'tenant-001',
+      status: VisitRequestStatus.SCHEDULED,
+      scheduleEventId: 'evt-200',
+      workOrderId: 'wo-200',
+      executionOrderId: 'eo-200',
+      retryCount: 0,
+      scheduledByUserId: 'admin-previous',
+      scheduledAt: new Date('2026-06-01T08:00:00Z'),
+    };
+
+    it('REPROGRAM: conserva evento, vuelve a SCHEDULED, no cancela OT ni EO', async () => {
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest
+              .fn()
+              .mockResolvedValueOnce({ ...baseEvent })
+              .mockResolvedValueOnce({ ...baseVisitRequest }),
+            update: updateMock,
+            softDelete: jest.fn(),
+            query: jest.fn(),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      const result = await service.moveToPending(
+        'evt-200',
+        { intent: 'REPROGRAM' },
+        adminActor as any,
+      );
+
+      // Evento: status → SCHEDULED, sin soft-delete
+      expect(updateMock).toHaveBeenNthCalledWith(
+        1,
+        expect.any(Function),
+        { id: 'evt-200', tenantId: 'tenant-001' },
+        expect.objectContaining({ status: ScheduleEventStatus.SCHEDULED }),
+      );
+      // VisitRequest: READY_TO_SCHEDULE, conserva workOrderId/executionOrderId
+      expect(updateMock).toHaveBeenNthCalledWith(
+        2,
+        expect.any(Function),
+        { id: 'vr-200', tenantId: 'tenant-001' },
+        expect.objectContaining({
+          status: VisitRequestStatus.READY_TO_SCHEDULE,
+          scheduleEventId: null,
+          workOrderId: 'wo-200',
+          executionOrderId: 'eo-200',
+          scheduledByUserId: null,
+          scheduledAt: null,
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: 'vr-200',
+          status: VisitRequestStatus.READY_TO_SCHEDULE,
+          scheduleEventId: null,
+          workOrderId: 'wo-200',
+        }),
+      );
+    });
+
+    it('FAILED_ATTEMPT CUSTOMER: evento → NO_SHOW, VisitRequest → REQUIRES_RESCHEDULE, retryCount++', async () => {
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+      const softDeleteMock = jest.fn().mockResolvedValue({ affected: 1 });
+      const queryMock = jest.fn().mockResolvedValue([]);
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest
+              .fn()
+              .mockResolvedValueOnce({ ...baseEvent })
+              .mockResolvedValueOnce({ ...baseVisitRequest }),
+            update: updateMock,
+            softDelete: softDeleteMock,
+            query: queryMock,
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      const result = await service.moveToPending(
+        'evt-200',
+        { intent: 'FAILED_ATTEMPT', failureCause: 'CUSTOMER', failureReason: 'Cliente ausente' },
+        adminActor as any,
+      );
+
+      // Evento → NO_SHOW + soft-delete
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'evt-200', tenantId: 'tenant-001' },
+        expect.objectContaining({ status: ScheduleEventStatus.NO_SHOW }),
+      );
+      expect(softDeleteMock).toHaveBeenCalled();
+
+      // WorkOrder → CANCELLED
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'wo-200', tenantId: 'tenant-001' },
+        expect.objectContaining({
+          status: WorkOrderStatus.CANCELLED,
+          scheduledEventId: null,
+        }),
+      );
+
+      // ExecutionOrder → cancelada via port
+      expect(mockExecutionOrdersService.cancelFromSchedulingWithManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'tenant-001',
+        'eo-200',
+        'evt-200',
+        expect.stringContaining('Cliente ausente'),
+        adminActor,
+      );
+
+      // VisitRequest → REQUIRES_RESCHEDULE
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'vr-200', tenantId: 'tenant-001' },
+        expect.objectContaining({
+          status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+          scheduleEventId: null,
+          workOrderId: null,
+          executionOrderId: null,
+        }),
+      );
+
+      // retry_count incrementado via SQL nativo
+      expect(queryMock).toHaveBeenCalledWith(
+        expect.stringContaining('retry_count = retry_count + 1'),
+        ['vr-200', 'tenant-001'],
+      );
+
+      expect(result.status).toBe(VisitRequestStatus.REQUIRES_RESCHEDULE);
+    });
+
+    it('FAILED_ATTEMPT OPERATIONAL: evento → CANCELLED, VisitRequest → REQUIRES_RESCHEDULE, NO incrementa retryCount', async () => {
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+      const softDeleteMock = jest.fn().mockResolvedValue({ affected: 1 });
+      const queryMock = jest.fn().mockResolvedValue([]);
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest
+              .fn()
+              .mockResolvedValueOnce({ ...baseEvent })
+              .mockResolvedValueOnce({ ...baseVisitRequest }),
+            update: updateMock,
+            softDelete: softDeleteMock,
+            query: queryMock,
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      const result = await service.moveToPending(
+        'evt-200',
+        {
+          intent: 'FAILED_ATTEMPT',
+          failureCause: 'OPERATIONAL',
+          failureReason: 'Falla de vehiculo',
+        },
+        adminActor as any,
+      );
+
+      // Evento → CANCELLED
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'evt-200', tenantId: 'tenant-001' },
+        expect.objectContaining({ status: ScheduleEventStatus.CANCELLED }),
+      );
+
+      // VisitRequest → REQUIRES_RESCHEDULE
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'vr-200', tenantId: 'tenant-001' },
+        expect.objectContaining({ status: VisitRequestStatus.REQUIRES_RESCHEDULE }),
+      );
+
+      // retry_count NO se incrementa (causa operacional)
+      expect(queryMock).not.toHaveBeenCalled();
+
+      expect(result.status).toBe(VisitRequestStatus.REQUIRES_RESCHEDULE);
+    });
+
+    it('should throw when FAILED_ATTEMPT without failureCause', async () => {
+      await expect(
+        service.moveToPending('evt-200', { intent: 'FAILED_ATTEMPT' } as any, adminActor as any),
+      ).rejects.toThrow('Para un intento fallido es obligatorio indicar la causa');
+    });
+
+    it('should reject events that are already in execution', async () => {
       const existingEvent = {
-        id: 'evt-200',
+        id: 'evt-201',
         tenantId: 'tenant-001',
-        workOrderId: 'wo-200',
+        status: ScheduleEventStatus.IN_PROGRESS,
+      };
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest.fn().mockResolvedValue(existingEvent),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await expect(
+        service.moveToPending('evt-201', { intent: 'REPROGRAM' }, adminActor as any),
+      ).rejects.toThrow('El evento esta en estado IN_PROGRESS y no puede devolverse a pendiente');
+    });
+  });
+
+  describe('cancel', () => {
+    it('should cancel event, work order, execution order, and set visit request to READY_TO_SCHEDULE', async () => {
+      const existingEvent = {
+        id: 'evt-cancel',
+        tenantId: 'tenant-001',
+        workOrderId: 'wo-cancel',
+        executionOrderId: 'eo-cancel',
         status: ScheduleEventStatus.SCHEDULED,
       };
       const linkedVisitRequest = {
-        id: 'vr-200',
+        id: 'vr-cancel',
         tenantId: 'tenant-001',
         status: VisitRequestStatus.SCHEDULED,
-        scheduleEventId: 'evt-200',
-        workOrderId: 'wo-200',
+        scheduleEventId: 'evt-cancel',
+        workOrderId: 'wo-cancel',
+        executionOrderId: 'eo-cancel',
         scheduledByUserId: 'admin-previous',
         scheduledAt: new Date('2026-06-01T08:00:00Z'),
       };
@@ -646,60 +890,279 @@ describe('ScheduleEventsService', () => {
         return fn(mockQr as any);
       });
 
-      const result = await service.moveToPending('evt-200', {}, adminActor as any);
+      await service.cancel('evt-cancel', adminActor as any);
 
-      expect(updateMock).toHaveBeenNthCalledWith(
-        1,
+      // WorkOrder → CANCELLED
+      expect(updateMock).toHaveBeenCalledWith(
         expect.any(Function),
-        { tenantId: 'tenant-001', scheduledEventId: 'evt-200' },
-        { scheduledEventId: null },
-      );
-      expect(updateMock).toHaveBeenNthCalledWith(
-        2,
-        expect.any(Function),
-        { id: 'vr-200', tenantId: 'tenant-001' },
+        { id: 'wo-cancel', tenantId: 'tenant-001' },
         expect.objectContaining({
-          status: VisitRequestStatus.READY_TO_SCHEDULE,
-          scheduleEventId: null,
-          workOrderId: 'wo-200',
-          scheduledByUserId: null,
-          scheduledAt: null,
+          status: WorkOrderStatus.CANCELLED,
+          scheduledEventId: null,
         }),
       );
-      expect(softDeleteMock).toHaveBeenCalledWith(expect.any(Function), {
-        id: 'evt-200',
-        tenantId: 'tenant-001',
-      });
-      expect(result).toEqual(
+
+      // ExecutionOrder → cancelada via port
+      expect(mockExecutionOrdersService.cancelFromSchedulingWithManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'tenant-001',
+        'eo-cancel',
+        'evt-cancel',
+        'Cancelado desde agenda',
+        adminActor,
+      );
+
+      // Evento → CANCELLED + soft-delete
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'evt-cancel', tenantId: 'tenant-001' },
+        expect.objectContaining({ status: ScheduleEventStatus.CANCELLED }),
+      );
+      expect(softDeleteMock).toHaveBeenCalled();
+
+      // VisitRequest → READY_TO_SCHEDULE
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.any(Function),
+        { id: 'vr-cancel', tenantId: 'tenant-001' },
         expect.objectContaining({
-          id: 'vr-200',
           status: VisitRequestStatus.READY_TO_SCHEDULE,
           scheduleEventId: null,
-          workOrderId: 'wo-200',
-          scheduledByUserId: null,
-          scheduledAt: null,
         }),
       );
     });
 
-    it('should reject events that are already in execution', async () => {
-      const existingEvent = {
-        id: 'evt-201',
+    it('should reject cancellation of terminal events', async () => {
+      const terminalEvent = {
+        id: 'evt-term',
         tenantId: 'tenant-001',
-        status: ScheduleEventStatus.IN_PROGRESS,
+        status: ScheduleEventStatus.COMPLETED,
       };
 
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
         const mockQr = {
           manager: {
-            findOne: jest.fn().mockResolvedValue(existingEvent),
+            findOne: jest.fn().mockResolvedValue(terminalEvent),
           },
         };
         return fn(mockQr as any);
       });
 
-      await expect(service.moveToPending('evt-201', {}, adminActor as any)).rejects.toThrow(
-        'El evento esta en estado IN_PROGRESS y no puede devolverse a pendiente',
+      await expect(service.cancel('evt-term', adminActor as any)).rejects.toThrow(
+        'El evento esta en estado terminal',
+      );
+    });
+
+    it('should cancel event without linked visit request gracefully', async () => {
+      const existingEvent = {
+        id: 'evt-no-vr',
+        tenantId: 'tenant-001',
+        workOrderId: null,
+        executionOrderId: null,
+        status: ScheduleEventStatus.SCHEDULED,
+      };
+
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+      const softDeleteMock = jest.fn().mockResolvedValue({ affected: 1 });
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest.fn().mockResolvedValueOnce(existingEvent).mockResolvedValueOnce(null), // No VisitRequest
+            update: updateMock,
+            softDelete: softDeleteMock,
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await service.cancel('evt-no-vr', adminActor as any);
+
+      // Evento cancelado normalmente
+      expect(softDeleteMock).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * QA-red — Remediación auditoría MOD09 (B2 / A3).
+   * Se espera RED hasta que AI-SR-FULL extienda review/Reprogramar sobre EXPIRED
+   * y persista notes del coordinador.
+   */
+  describe('reviewNonRealizationCause — remediación B2/A3', () => {
+    const expiredEvent = {
+      id: 'evt-expired-001',
+      tenantId: 'tenant-001',
+      status: ScheduleEventStatus.EXPIRED,
+      reviewedCauseId: null,
+      nonRealizationCauseId: null,
+      evidenceSubmitted: false,
+    };
+
+    const stuckVisitRequest = {
+      id: 'vr-stuck-scheduled',
+      tenantId: 'tenant-001',
+      status: VisitRequestStatus.SCHEDULED,
+      scheduleEventId: 'evt-expired-001',
+      retryCount: 1,
+      slaPausedAt: null,
+    };
+
+    const customerCause = {
+      id: '11111111-1111-4111-8111-111111111111',
+      tenantId: 'tenant-001',
+      category: 'CUSTOMER',
+      label: 'Cliente ausente',
+      requiresEvidence: false,
+      pausesSla: true,
+      closesWork: false,
+    };
+
+    it('sin decision sobre EXPIRED responde 400 accionable (B2 / D7)', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const findOne = jest
+          .fn()
+          .mockResolvedValueOnce(expiredEvent)
+          .mockResolvedValueOnce(customerCause);
+
+        return fn({
+          manager: {
+            findOne,
+            update: jest.fn(),
+            query: jest.fn().mockResolvedValue([]),
+          },
+        } as never);
+      });
+
+      await expect(
+        service.reviewNonRealizationCause(
+          'evt-expired-001',
+          { nonRealizationCauseId: customerCause.id, notes: null },
+          adminActor as never,
+        ),
+      ).rejects.toThrow(/decision.*(RESCHEDULE|CLOSE_CASE)/i);
+    });
+
+    it('Reprogramar vía review (decision RESCHEDULE) sobre EXPIRED deja VR en REQUIRES_RESCHEDULE (B2)', async () => {
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const findOne = jest
+          .fn()
+          .mockResolvedValueOnce(expiredEvent)
+          .mockResolvedValueOnce(customerCause)
+          .mockResolvedValue(stuckVisitRequest);
+
+        return fn({
+          manager: {
+            findOne,
+            update: updateMock,
+            query: jest.fn().mockResolvedValue([]),
+          },
+        } as never);
+      });
+
+      await service.reviewNonRealizationCause(
+        'evt-expired-001',
+        {
+          nonRealizationCauseId: customerCause.id,
+          notes: null,
+          decision: 'RESCHEDULE',
+        },
+        adminActor as never,
+      );
+
+      // Evento permanece terminal EXPIRED; la VR deja de estar "agendada viva"
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.anything(),
+        { id: 'vr-stuck-scheduled', tenantId: 'tenant-001' },
+        expect.objectContaining({
+          status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+          scheduleEventId: null,
+        }),
+      );
+    });
+
+    it('CLOSE_CASE sobre EXPIRED deja VisitRequest CANCELLED (B2)', async () => {
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const findOne = jest
+          .fn()
+          .mockResolvedValueOnce(expiredEvent)
+          .mockResolvedValueOnce(customerCause)
+          .mockResolvedValue(stuckVisitRequest);
+
+        return fn({
+          manager: {
+            findOne,
+            update: updateMock,
+            query: jest.fn().mockResolvedValue([]),
+          },
+        } as never);
+      });
+
+      await service.reviewNonRealizationCause(
+        'evt-expired-001',
+        {
+          nonRealizationCauseId: customerCause.id,
+          notes: 'Caso cerrado',
+          decision: 'CLOSE_CASE',
+        },
+        adminActor as never,
+      );
+
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.anything(),
+        { id: 'vr-stuck-scheduled', tenantId: 'tenant-001' },
+        expect.objectContaining({
+          status: VisitRequestStatus.CANCELLED,
+          scheduleEventId: null,
+        }),
+      );
+    });
+
+    it('persiste notes del coordinador en la revisión del evento (A3)', async () => {
+      const updateMock = jest.fn().mockResolvedValue({ affected: 1 });
+      const coordinatorNotes = 'Confirmado por el cliente vía telefónica.';
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const findOne = jest
+          .fn()
+          .mockResolvedValueOnce({
+            ...expiredEvent,
+            status: ScheduleEventStatus.NO_SHOW,
+          })
+          .mockResolvedValueOnce(customerCause)
+          .mockResolvedValue(stuckVisitRequest);
+
+        return fn({
+          manager: {
+            findOne,
+            update: updateMock,
+            query: jest.fn().mockResolvedValue([]),
+          },
+        } as never);
+      });
+
+      await service.reviewNonRealizationCause(
+        'evt-expired-001',
+        { nonRealizationCauseId: customerCause.id, notes: coordinatorNotes },
+        adminActor as never,
+      );
+
+      const eventUpdateCall = updateMock.mock.calls.find((call) => {
+        const criteria = call[1] as { id?: string } | undefined;
+        return criteria?.id === 'evt-expired-001';
+      });
+
+      expect(eventUpdateCall).toBeDefined();
+      const payload = eventUpdateCall?.[2] as Record<string, unknown>;
+      // Contrato A3: las notes del DTO no se validan-y-tiran; deben persistirse
+      // (columna acordada: reviewNotes — SR-FULL puede alinear nombre en migración).
+      expect(payload).toEqual(
+        expect.objectContaining({
+          reviewedCauseId: customerCause.id,
+          reviewNotes: coordinatorNotes,
+        }),
       );
     });
   });

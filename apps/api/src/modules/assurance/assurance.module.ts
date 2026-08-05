@@ -1,5 +1,5 @@
 import { BullModule } from '@nestjs/bullmq';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   SupportTicket,
@@ -10,6 +10,7 @@ import {
   TicketWorkOrderLink,
 } from '@iwana/db';
 import { ASSURANCE_FIELD_SERVICE_QUEUE } from '@iwana/shared';
+import { WfmModule } from '../wfm/wfm.module';
 import { AssuranceController } from './assurance.controller';
 import { AssuranceExecutionOrderNotifierAdapter } from './ports/assurance-execution-order-notifier.adapter';
 import { AssuranceFieldServiceAdapter } from './ports/assurance-field-service.adapter';
@@ -24,6 +25,7 @@ import { TimelineService } from './services/timeline.service';
 
 @Module({
   imports: [
+    forwardRef(() => WfmModule),
     TypeOrmModule.forFeature([
       SupportTicket,
       TicketComment,

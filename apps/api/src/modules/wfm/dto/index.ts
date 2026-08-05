@@ -19,3 +19,4 @@ export * from './reject-visit-request.dto';
 export * from './wfm-organization-site.dto';
 export * from './wfm-eligible-assignee.dto';
 export * from './operational-eventuality.dto';
+export * from './review-non-realization.dto';

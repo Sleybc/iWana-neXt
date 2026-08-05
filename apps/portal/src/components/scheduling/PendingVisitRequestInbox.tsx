@@ -28,8 +28,11 @@ import {
   getVisitRequestOriginLabel,
   getVisitRequestPresentationStatus,
   getVisitRequestReferenceLabel,
+  getVisitRequestRetryChip,
   getVisitRequestStatusLabel,
   getVisitRequestStatusVariant,
+  hasExhaustedRetries,
+  requiresAttemptDecision,
 } from './pending-visits-ui';
 
 interface PendingVisitRequestInboxProps {
@@ -45,6 +48,8 @@ interface PendingVisitRequestInboxProps {
   onFiltersChange: (next: PendingVisitFilters) => void;
   onLoadMore?: () => void;
   onOpenDispatch: (visitRequestId: string) => void;
+  /** E5 — cuando el chip es «Requiere decisión», abre el diálogo de override. */
+  onDecideExhaustedAttempts?: (visitRequestId: string) => void;
   onRefresh: () => void;
   extraActions?: ReactNode;
   compactMode?: boolean;
@@ -106,7 +111,10 @@ function getVisitRequestDisplayName(
   return getCrmCustomerName(visitRequest, crmCustomerNames) ?? visitRequest.title;
 }
 
-function getDispatchActionLabel(isDispatchOpen: boolean): string {
+function getDispatchActionLabel(isDispatchOpen: boolean, needsDecision: boolean): string {
+  if (needsDecision) {
+    return 'Decidir';
+  }
   return isDispatchOpen ? 'Continuar despacho' : 'Abrir despacho';
 }
 
@@ -129,25 +137,33 @@ function VisitRequestDispatchButton({
   visitRequestId,
   displayName,
   isDispatchOpen,
+  needsDecision,
   compact,
   onOpenDispatch,
+  onDecideExhaustedAttempts,
 }: {
   visitRequestId: string;
   displayName: string;
   isDispatchOpen: boolean;
+  needsDecision: boolean;
   compact?: boolean;
   onOpenDispatch: (visitRequestId: string) => void;
+  onDecideExhaustedAttempts?: (visitRequestId: string) => void;
 }) {
-  const label = getDispatchActionLabel(isDispatchOpen);
+  const label = getDispatchActionLabel(isDispatchOpen, needsDecision);
 
   return (
     <Button
       type="button"
-      variant={isDispatchOpen ? 'primary' : 'secondary'}
+      variant={needsDecision ? 'primary' : isDispatchOpen ? 'primary' : 'secondary'}
       className={compact ? 'w-full' : undefined}
       aria-label={`${label} para ${displayName}`}
       onClick={(event) => {
         event.stopPropagation();
+        if (needsDecision && onDecideExhaustedAttempts) {
+          onDecideExhaustedAttempts(visitRequestId);
+          return;
+        }
         onOpenDispatch(visitRequestId);
       }}
     >
@@ -162,6 +178,7 @@ function VisitRequestRow({
   isSelected,
   isDispatchOpen,
   onOpenDispatch,
+  onDecideExhaustedAttempts,
   compact,
   crmCustomerNames,
 }: {
@@ -169,20 +186,34 @@ function VisitRequestRow({
   isSelected: boolean;
   isDispatchOpen: boolean;
   onOpenDispatch: (visitRequestId: string) => void;
+  onDecideExhaustedAttempts?: (visitRequestId: string) => void;
   compact?: boolean;
   crmCustomerNames?: Record<string, string>;
 }) {
   const presentationStatus = getVisitRequestPresentationStatus(visitRequest);
   const displayName = getVisitRequestDisplayName(visitRequest, crmCustomerNames);
+  const retryChip = getVisitRequestRetryChip(visitRequest);
+  const isExhausted = hasExhaustedRetries(visitRequest);
+  const needsDecision = requiresAttemptDecision(visitRequest);
 
   return (
     <article
       role="button"
       tabIndex={0}
-      onClick={() => onOpenDispatch(visitRequest.id)}
+      onClick={() => {
+        if (needsDecision && onDecideExhaustedAttempts) {
+          onDecideExhaustedAttempts(visitRequest.id);
+          return;
+        }
+        onOpenDispatch(visitRequest.id);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
+          if (needsDecision && onDecideExhaustedAttempts) {
+            onDecideExhaustedAttempts(visitRequest.id);
+            return;
+          }
           onOpenDispatch(visitRequest.id);
         }
       }}
@@ -204,10 +235,28 @@ function VisitRequestRow({
             {getVisitRequestReferenceLabel(visitRequest)}
           </p>
         </div>
-        <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
-          {getVisitRequestStatusLabel(presentationStatus)}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {retryChip && (
+            <Badge variant={retryChip.variant} aria-label={retryChip.accessibleText}>
+              {retryChip.label}
+            </Badge>
+          )}
+          <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
+            {getVisitRequestStatusLabel(presentationStatus)}
+          </Badge>
+        </div>
       </div>
+
+      {isExhausted && (
+        <div className={`${compact ? 'mt-2' : 'mt-3'}`}>
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-100">
+            <p className="font-medium">Se alcanzó el límite de intentos</p>
+            <p className="mt-0.5">
+              No se pudo hacer la visita en tres oportunidades. Requiere decisión del coordinador.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className={`${compact ? 'mt-2' : 'mt-3'} flex flex-wrap gap-2`}>
         <Badge variant="neutral">{getVisitRequestOriginLabel(visitRequest.originContext)}</Badge>
@@ -237,8 +286,10 @@ function VisitRequestRow({
           visitRequestId={visitRequest.id}
           displayName={displayName}
           isDispatchOpen={isDispatchOpen}
+          needsDecision={needsDecision}
           {...(compact ? { compact: true } : {})}
           onOpenDispatch={onOpenDispatch}
+          {...(onDecideExhaustedAttempts ? { onDecideExhaustedAttempts } : {})}
         />
       </div>
     </article>
@@ -268,6 +319,7 @@ export function PendingVisitRequestInbox({
   onFiltersChange,
   onLoadMore,
   onOpenDispatch,
+  onDecideExhaustedAttempts,
   onRefresh,
   extraActions,
   compactMode = false,
@@ -413,6 +465,7 @@ export function PendingVisitRequestInbox({
               isSelected={visitRequest.id === selectedVisitRequestId}
               isDispatchOpen={visitRequest.id === openDispatchVisitRequestId}
               onOpenDispatch={onOpenDispatch}
+              {...(onDecideExhaustedAttempts ? { onDecideExhaustedAttempts } : {})}
               {...(crmCustomerNames ? { crmCustomerNames } : {})}
               compact
             />
@@ -442,6 +495,9 @@ export function PendingVisitRequestInbox({
                     const displayName = getVisitRequestDisplayName(visitRequest, crmCustomerNames);
                     const isSelected = visitRequest.id === selectedVisitRequestId;
                     const isDispatchOpen = visitRequest.id === openDispatchVisitRequestId;
+                    const retryChip = getVisitRequestRetryChip(visitRequest);
+                    const isExhausted = hasExhaustedRetries(visitRequest);
+                    const needsDecision = requiresAttemptDecision(visitRequest);
 
                     return (
                       <tr
@@ -451,7 +507,13 @@ export function PendingVisitRequestInbox({
                             ? 'bg-iwana-primary-50/70 dark:bg-iwana-primary-900/15'
                             : 'hover:bg-gray-50 dark:hover:bg-dark-surface-3'
                         }`}
-                        onClick={() => onOpenDispatch(visitRequest.id)}
+                        onClick={() => {
+                          if (needsDecision && onDecideExhaustedAttempts) {
+                            onDecideExhaustedAttempts(visitRequest.id);
+                            return;
+                          }
+                          onOpenDispatch(visitRequest.id);
+                        }}
                       >
                         <td className="px-4 py-3 align-middle">
                           <Badge variant={getWorkOrderPriorityVariant(visitRequest.priority)}>
@@ -459,9 +521,24 @@ export function PendingVisitRequestInbox({
                           </Badge>
                         </td>
                         <td className="px-4 py-3 align-middle">
-                          <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
-                            {getVisitRequestStatusLabel(presentationStatus)}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {retryChip && (
+                              <Badge
+                                variant={retryChip.variant}
+                                aria-label={retryChip.accessibleText}
+                              >
+                                {retryChip.label}
+                              </Badge>
+                            )}
+                            <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
+                              {getVisitRequestStatusLabel(presentationStatus)}
+                            </Badge>
+                          </div>
+                          {isExhausted && (
+                            <p className="mt-1.5 text-xs text-red-600 dark:text-red-300">
+                              Se alcanzó el límite de intentos. Requiere decisión del coordinador.
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3 align-middle">
                           <Badge variant="neutral">
@@ -495,7 +572,9 @@ export function PendingVisitRequestInbox({
                             visitRequestId={visitRequest.id}
                             displayName={displayName}
                             isDispatchOpen={isDispatchOpen}
+                            needsDecision={needsDecision}
                             onOpenDispatch={onOpenDispatch}
+                            {...(onDecideExhaustedAttempts ? { onDecideExhaustedAttempts } : {})}
                           />
                         </td>
                       </tr>

@@ -9,6 +9,12 @@ interface ScheduleVisitRequestWithFollowUpInput {
   payload: ManualSchedulePayload;
   createWorkOrder: boolean;
   workOrderNotes: string | null;
+  /** ADR-076 — visita adicional sobre trabajo activo. */
+  isAdditional?: boolean;
+  /** ADR-076 — motivo de la visita adicional. */
+  additionalReason?: string | null;
+  /** ADR-077 D4 — override al límite de 3 intentos. */
+  attemptDecision?: 'FORCE_RESCHEDULE' | 'CLOSE_CASE' | null;
 }
 
 export async function scheduleVisitRequestWithFollowUp({
@@ -16,6 +22,9 @@ export async function scheduleVisitRequestWithFollowUp({
   payload,
   createWorkOrder,
   workOrderNotes,
+  isAdditional = false,
+  additionalReason = null,
+  attemptDecision = null,
 }: ScheduleVisitRequestWithFollowUpInput): Promise<string> {
   const scheduledVisitRequest = await wfmApi.visitRequests.schedule(visitRequest.id, {
     assignedUserId: payload.assignedUserId,
@@ -26,9 +35,14 @@ export async function scheduleVisitRequestWithFollowUp({
       : {}),
     createWorkOrder,
     workOrderNotes: createWorkOrder ? workOrderNotes?.trim() || null : null,
+    ...(isAdditional ? { isAdditional: true, additionalReason } : {}),
+    ...(attemptDecision ? { attemptDecision } : {}),
   });
 
   let feedbackMessage = `La solicitud ${visitRequest.title} quedó agendada correctamente.`;
+  if (isAdditional) {
+    feedbackMessage = `La segunda visita para ${visitRequest.title} quedó agendada. El motivo quedó registrado en la orden de trabajo.`;
+  }
   const syncWarnings: string[] = [];
 
   if (

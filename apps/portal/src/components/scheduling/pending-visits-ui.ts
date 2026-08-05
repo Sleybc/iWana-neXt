@@ -11,6 +11,63 @@ import { formatLocationLabel } from '@/components/crm/subscribers/subscriber-ui'
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
 
+/** ADR-077 — chip informativo de reintento para la bandeja de pendientes. */
+export interface RetryChipInfo {
+  label: string;
+  variant: BadgeVariant;
+  accessibleText: string;
+}
+
+export function getVisitRequestRetryChip(visitRequest: WfmVisitRequest): RetryChipInfo | null {
+  if (visitRequest.status !== VisitRequestStatus.REQUIRES_RESCHEDULE) {
+    return null;
+  }
+
+  const retryCount = visitRequest.retryCount ?? 0;
+
+  if (retryCount >= 3) {
+    return {
+      label: 'Requiere decisión',
+      variant: 'error',
+      accessibleText:
+        'Se agotaron los tres intentos. Alguien debe decidir si continúa o se cierra.',
+    };
+  }
+
+  if (retryCount > 0) {
+    return {
+      label: `Intento ${retryCount} de 3`,
+      variant: 'warning',
+      accessibleText: visitRequest.lastNonRealizationCauseLabel
+        ? `La visita no se pudo hacer: ${visitRequest.lastNonRealizationCauseLabel}. Es el intento ${retryCount}.`
+        : `La visita no se pudo hacer. Es el intento ${retryCount}.`,
+    };
+  }
+
+  // Causa de operación: no consume intento
+  return {
+    label: 'Reprogramar',
+    variant: 'neutral',
+    accessibleText: 'La visita no se hizo por una novedad de la operación.',
+  };
+}
+
+/** ADR-077 — indica si se alcanzó el límite de intentos (solo causas de cliente). */
+export function hasExhaustedRetries(visitRequest: WfmVisitRequest): boolean {
+  return (visitRequest.retryCount ?? 0) >= 3;
+}
+
+/**
+ * ADR-077 D4 / E5 — chip «Requiere decisión»: status real REQUIRES_RESCHEDULE y 3 intentos.
+ * La CTA de agendar debe ceder a la de decidir (no muro silencioso).
+ */
+export function requiresAttemptDecision(visitRequest: WfmVisitRequest): boolean {
+  return (
+    visitRequest.status === VisitRequestStatus.REQUIRES_RESCHEDULE &&
+    hasExhaustedRetries(visitRequest)
+  );
+}
+
 export interface PendingVisitFilters {
   status: '' | VisitRequestStatus;
   originContext: '' | WorkOrderSourceContext;

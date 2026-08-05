@@ -4,8 +4,18 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRight, ClipboardList, X } from 'lucide-react';
 import { Badge, Button, Input } from '@iwana/ui';
-import type { UpdateWfmVisitRequestContextDto, WfmVisitRequest } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import type {
+  UpdateWfmVisitRequestContextDto,
+  WfmVisitRequest,
+  EventNonRealizationAttempt,
+} from '@/lib/api-client';
+import { wfmApi } from '@/lib/api-client';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 import { getOperatingWindowMessage, useOperatingWindow } from './useOperatingWindow';
 import {
   formatVisitRequestTerritory,
@@ -104,10 +114,24 @@ export function PendingVisitRequestDetailPanel({
 }: PendingVisitRequestDetailPanelProps) {
   const [contextDraft, setContextDraft] = useState<ContextDraft>(() => toContextDraft(null));
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** ADR-077 — historial de intentos fallidos. */
+  const [attempts, setAttempts] = useState<EventNonRealizationAttempt[] | null>(null);
+  const [isLoadingAttempts, setIsLoadingAttempts] = useState(false);
 
   useEffect(() => {
     setContextDraft(toContextDraft(selectedVisitRequest));
     setSaveError(null);
+    // ADR-077 — cargar historial de intentos
+    if (selectedVisitRequest?.scheduleEventId) {
+      setIsLoadingAttempts(true);
+      wfmApi.events
+        .getAttempts(selectedVisitRequest.scheduleEventId)
+        .then(setAttempts)
+        .catch(() => setAttempts(null))
+        .finally(() => setIsLoadingAttempts(false));
+    } else {
+      setAttempts(null);
+    }
   }, [selectedVisitRequest]);
 
   const presentationStatus = selectedVisitRequest
@@ -374,6 +398,63 @@ export function PendingVisitRequestDetailPanel({
           />
         </div>
       </section>
+
+      {/* ADR-077 — historial de intentos */}
+      {(selectedVisitRequest.retryCount ?? 0) > 0 && (
+        <section className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+              Intentos anteriores
+            </p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+              Causas registradas en cada intento fallido de esta visita.
+            </p>
+          </div>
+          {isLoadingAttempts ? (
+            <PortalSkeletonBlock className="h-16" />
+          ) : attempts && attempts.length > 0 ? (
+            <ul className="space-y-2" role="list">
+              {attempts.map((attempt) => (
+                <li
+                  key={attempt.eventId}
+                  className="rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-dark-border"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {attempt.causeLabel ?? 'Causa no reportada'}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(attempt.scheduledStartAt).toLocaleDateString('es-CO', {
+                          dateStyle: 'medium',
+                        })}{' '}
+                        · {attempt.technicianName || 'Técnico no disponible'}
+                      </p>
+                      {attempt.reviewedCauseLabel &&
+                        attempt.reviewedCauseLabel !== attempt.causeLabel && (
+                          <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-300">
+                            Reclasificada: {attempt.reviewedCauseLabel}
+                          </p>
+                        )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {attempt.evidenceSubmitted ? (
+                        <Badge variant="info">Con evidencia</Badge>
+                      ) : (
+                        <Badge variant="warning">Sin evidencia</Badge>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Sin intentos registrados para esta solicitud.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border dark:bg-dark-surface-2">
         <div>

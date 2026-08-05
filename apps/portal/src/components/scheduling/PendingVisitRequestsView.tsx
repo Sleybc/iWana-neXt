@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ClipboardList } from 'lucide-react';
-import { Badge } from '@iwana/ui';
+import { Badge, Button } from '@iwana/ui';
 import { UserRole, WorkOrderPriority, WorkOrderSourceContext, WfmWorkType } from '@iwana/shared';
 import {
   ApiError,
@@ -12,6 +13,7 @@ import {
   type InternalUser,
   type ListWfmVisitRequestsResponse,
   type UpdateWfmVisitRequestContextDto,
+  type VisitAttemptDecision,
   type WfmVisitRequest,
   type WfmVisitRequestFilterOptionsResponse,
   type WfmScheduleRecommendation,
@@ -28,6 +30,7 @@ import {
   buildDefaultPendingVisitFilters,
   canAccessPendingVisits,
   formatVisitRequestLocationLabel,
+  requiresAttemptDecision,
   type PendingVisitFilters,
 } from './pending-visits-ui';
 import {
@@ -45,6 +48,8 @@ import { toLocalDateValue } from './schedule-event-time';
 import { VisitRequestRecommendationPanel } from './VisitRequestRecommendationPanel';
 import type { VisitRecommendationDraft } from './VisitRequestRecommendationPanel';
 import { ScheduleVisitRequestConfirmDialog } from './ScheduleVisitRequestConfirmDialog';
+import type { ScheduleCollisionInfo } from './ScheduleVisitRequestConfirmDialog';
+import { ExhaustedAttemptsDecisionDialog } from './ExhaustedAttemptsDecisionDialog';
 import { scheduleVisitRequestWithFollowUp } from './scheduling-visit-request-sync';
 import type { MatrixManualScheduleDraft } from './matrix-scheduling-selection';
 
@@ -294,6 +299,21 @@ export function PendingVisitRequestsView() {
   const [scheduleWorkOrderNotes, setScheduleWorkOrderNotes] = useState('');
   const [isDispatchDrawerOpen, setIsDispatchDrawerOpen] = useState(false);
   const [isLoadingEligibleAssignees, setIsLoadingEligibleAssignees] = useState(false);
+  /** ADR-076 — colisión detectada en el diálogo de confirmación. */
+  const [scheduleCollisionInfo, setScheduleCollisionInfo] = useState<ScheduleCollisionInfo | null>(
+    null,
+  );
+  /** ADR-076 — motivo de visita adicional forzada. */
+  const [scheduleAdditionalReason, setScheduleAdditionalReason] = useState('');
+  /** ADR-077 E5 — diálogo de decisión al agotar 3 intentos. */
+  const [isExhaustedDecisionOpen, setIsExhaustedDecisionOpen] = useState(false);
+  const [exhaustedDecisionVisitRequest, setExhaustedDecisionVisitRequest] =
+    useState<WfmVisitRequest | null>(null);
+  const [exhaustedDecisionError, setExhaustedDecisionError] = useState<string | null>(null);
+  const [isExhaustedDecisionSubmitting, setIsExhaustedDecisionSubmitting] = useState(false);
+  /** Override autorizado para el próximo schedule (FORCE_RESCHEDULE). */
+  const [authorizedAttemptDecision, setAuthorizedAttemptDecision] =
+    useState<VisitAttemptDecision | null>(null);
 
   const canAccess = canAccessPendingVisits(user?.role);
   const canAccessDetailedAgenda = canViewScheduling(user?.role);
@@ -339,6 +359,12 @@ export function PendingVisitRequestsView() {
   function handleOpenDispatch(visitRequestId: string) {
     const fromPage = response?.items.find((item) => item.id === visitRequestId) ?? null;
     if (fromPage) {
+      if (requiresAttemptDecision(fromPage) && authorizedAttemptDecision !== 'FORCE_RESCHEDULE') {
+        setExhaustedDecisionVisitRequest(fromPage);
+        setExhaustedDecisionError(null);
+        setIsExhaustedDecisionOpen(true);
+        return;
+      }
       setSelectedVisitRequest(fromPage);
       resetRecommendationState();
       setIsDispatchDrawerOpen(true);
@@ -348,6 +374,15 @@ export function PendingVisitRequestsView() {
     void (async () => {
       try {
         const visitRequest = await wfmApi.visitRequests.get(visitRequestId);
+        if (
+          requiresAttemptDecision(visitRequest) &&
+          authorizedAttemptDecision !== 'FORCE_RESCHEDULE'
+        ) {
+          setExhaustedDecisionVisitRequest(visitRequest);
+          setExhaustedDecisionError(null);
+          setIsExhaustedDecisionOpen(true);
+          return;
+        }
         setSelectedVisitRequest(visitRequest);
         resetRecommendationState();
         setIsDispatchDrawerOpen(true);
@@ -355,6 +390,72 @@ export function PendingVisitRequestsView() {
         setError(mapPendingVisitError(loadError));
       }
     })();
+  }
+
+  function handleDecideExhaustedAttempts(visitRequestId: string) {
+    const fromPage = response?.items.find((item) => item.id === visitRequestId) ?? null;
+    if (fromPage) {
+      setExhaustedDecisionVisitRequest(fromPage);
+      setExhaustedDecisionError(null);
+      setIsExhaustedDecisionOpen(true);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const visitRequest = await wfmApi.visitRequests.get(visitRequestId);
+        setExhaustedDecisionVisitRequest(visitRequest);
+        setExhaustedDecisionError(null);
+        setIsExhaustedDecisionOpen(true);
+      } catch (loadError) {
+        setError(mapPendingVisitError(loadError));
+      }
+    })();
+  }
+
+  async function handleExhaustedAttemptDecision(
+    decision: VisitAttemptDecision,
+    closeReason?: string,
+  ) {
+    const visitRequest = exhaustedDecisionVisitRequest;
+    if (!visitRequest) {
+      return;
+    }
+
+    setIsExhaustedDecisionSubmitting(true);
+    setExhaustedDecisionError(null);
+
+    try {
+      if (decision === 'CLOSE_CASE') {
+        const reason = closeReason?.trim();
+        if (!reason) {
+          setExhaustedDecisionError('Indica el motivo del cierre para continuar.');
+          return;
+        }
+        await wfmApi.visitRequests.cancel(visitRequest.id, { cancelReason: reason });
+        setFeedback(`El caso de ${visitRequest.title} quedó cerrado.`);
+        setIsExhaustedDecisionOpen(false);
+        setExhaustedDecisionVisitRequest(null);
+        setAuthorizedAttemptDecision(null);
+        if (!isSalesRole) {
+          await loadInbox();
+        }
+        return;
+      }
+
+      setAuthorizedAttemptDecision('FORCE_RESCHEDULE');
+      setIsExhaustedDecisionOpen(false);
+      setSelectedVisitRequest(visitRequest);
+      resetRecommendationState();
+      setIsDispatchDrawerOpen(true);
+      setFeedback(
+        'Decisión registrada: puedes reprogramar de todas formas. Confirma técnico y franja.',
+      );
+    } catch (decisionError) {
+      setExhaustedDecisionError(mapPendingVisitError(decisionError));
+    } finally {
+      setIsExhaustedDecisionSubmitting(false);
+    }
   }
 
   function clearCrmQueryParams() {
@@ -925,11 +1026,16 @@ export function PendingVisitRequestsView() {
     <div className="space-y-6">
       <PageHeader
         title="Visitas pendientes"
-        subtitle="Revisa la bandeja, elige una solicitud y abre el despacho para calcular franjas o enviarla a agenda."
+        subtitle="Revisa la bandeja, elige una solicitud y abre el despacho para calcular franjas o confirmar agenda de campo."
         actions={
-          <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
-            {formatWfmDayLabel(new Date())}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" asChild>
+              <Link href="/dashboard/scheduling/unrealized-visits">Visitas sin realizar</Link>
+            </Button>
+            <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
+              {formatWfmDayLabel(new Date())}
+            </Badge>
+          </div>
         }
       />
 
@@ -992,6 +1098,7 @@ export function PendingVisitRequestsView() {
             }));
           }}
           onOpenDispatch={handleOpenDispatch}
+          onDecideExhaustedAttempts={handleDecideExhaustedAttempts}
           onRefresh={() => {
             setFeedback(null);
             if (!isSalesRole) {
@@ -1106,9 +1213,12 @@ export function PendingVisitRequestsView() {
         isSubmitting={isScheduling}
         createWorkOrder={scheduleCreateWorkOrder}
         workOrderNotes={scheduleWorkOrderNotes}
+        collisionInfo={scheduleCollisionInfo}
+        additionalReason={scheduleAdditionalReason}
         onOpenChange={setIsConfirmOpen}
         onCreateWorkOrderChange={setScheduleCreateWorkOrder}
         onWorkOrderNotesChange={setScheduleWorkOrderNotes}
+        onAdditionalReasonChange={setScheduleAdditionalReason}
         onConfirm={async () => {
           if (!selectedVisitRequest) {
             return;
@@ -1160,9 +1270,19 @@ export function PendingVisitRequestsView() {
               workOrderNotes: scheduleCreateWorkOrder
                 ? scheduleWorkOrderNotes.trim() || null
                 : null,
+              isAdditional: scheduleCollisionInfo?.hasOriginCollision === true,
+              additionalReason: scheduleCollisionInfo?.hasOriginCollision
+                ? scheduleAdditionalReason.trim() || null
+                : null,
+              attemptDecision:
+                authorizedAttemptDecision === 'FORCE_RESCHEDULE' ||
+                requiresAttemptDecision(selectedVisitRequest)
+                  ? 'FORCE_RESCHEDULE'
+                  : null,
             });
             setFeedback(feedbackMessage);
             setIsConfirmOpen(false);
+            setAuthorizedAttemptDecision(null);
             resetRecommendationState();
             if (!isSalesRole) {
               await loadInbox();
@@ -1173,6 +1293,20 @@ export function PendingVisitRequestsView() {
             setIsScheduling(false);
           }
         }}
+      />
+
+      <ExhaustedAttemptsDecisionDialog
+        open={isExhaustedDecisionOpen}
+        visitRequest={exhaustedDecisionVisitRequest}
+        error={exhaustedDecisionError}
+        isSubmitting={isExhaustedDecisionSubmitting}
+        onOpenChange={(open) => {
+          setIsExhaustedDecisionOpen(open);
+          if (!open) {
+            setExhaustedDecisionError(null);
+          }
+        }}
+        onConfirm={handleExhaustedAttemptDecision}
       />
     </div>
   );

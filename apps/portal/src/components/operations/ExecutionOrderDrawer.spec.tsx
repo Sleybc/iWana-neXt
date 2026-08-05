@@ -960,19 +960,50 @@ describe('ExecutionOrderDrawer', () => {
   // Block 6 — Cierre
   // ----------------------------------------------------
   describe('Block 6 — Cierre', () => {
-    it('muestra resultado y resumen, sin causa de texto libre, cuando el catálogo no distingue aplicabilidad', () => {
+    it('sin causas disponibles, solo muestra Ejecutada y Ejecutada con observaciones', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
       });
       expect(screen.getByLabelText('Resultado')).toBeInTheDocument();
       expect(screen.getByRole('textbox', { name: 'Resumen de cierre' })).toBeInTheDocument();
-      expect(screen.queryByRole('textbox', { name: /Causa/ })).not.toBeInTheDocument();
-      expect(screen.getByText('Resultado no disponible')).toBeInTheDocument();
-      expect(
-        screen.getByText(/No ejecutada.*no está disponible temporalmente/),
-      ).toBeInTheDocument();
+      // NOT_EXECUTED no debe aparecer sin catálogo de causas
       expect(screen.queryByRole('option', { name: 'No ejecutada' })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
+    });
+
+    it('muestra opción No ejecutada y selector de causas cuando el catálogo está disponible', async () => {
+      const user = userEvent.setup();
+      const causes = [
+        {
+          id: 'cause-1',
+          code: 'CUSTOMER_ABSENT',
+          label: 'El cliente no estaba',
+          category: 'CUSTOMER' as const,
+          requiresEvidence: true,
+        },
+        {
+          id: 'cause-2',
+          code: 'FORCE_MAJEURE',
+          label: 'Clima o vía cerrada',
+          category: 'FORCE_MAJEURE' as const,
+          requiresEvidence: false,
+        },
+      ];
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        nonRealizationCauses: causes,
+      });
+      // Abrir el select de resultado y seleccionar NOT_EXECUTED
+      await user.click(screen.getByRole('combobox', { name: 'Resultado' }));
+      await user.click(screen.getByRole('option', { name: 'No ejecutada' }));
+      // Las tarjetas de causa deben aparecer
+      expect(screen.getByText('El cliente no estaba')).toBeInTheDocument();
+      expect(screen.getByText('Clima o vía cerrada')).toBeInTheDocument();
+      // Seleccionar una causa con evidencia requerida
+      await user.click(screen.getByText('El cliente no estaba'));
+      expect(
+        screen.getByText(/Toma una foto del sitio. Es lo que respalda que la visita se intentó./),
+      ).toBeInTheDocument();
     });
 
     it('bloquea el cierre cuando la versión asignada de la plantilla no está disponible', () => {

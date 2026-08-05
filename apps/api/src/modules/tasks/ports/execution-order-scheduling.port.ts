@@ -12,4 +12,14 @@ export interface ExecutionOrderSchedulingPort {
     input: CreateExecutionOrderFromSchedulingInput,
     actor: JwtPayload,
   ): Promise<{ id: string; executionOrderNumber: string; status: string }>;
+
+  /** Cancela una OT desde la agenda de WFM usando el manager transaccional activo. */
+  cancelFromSchedulingWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    executionOrderId: string,
+    scheduleEventId: string,
+    reason: string,
+    actor: JwtPayload,
+  ): Promise<{ id: string; status: string }>;
 }

@@ -30,6 +30,7 @@ import type {
   CloseExecutionOrderDto,
   ExecutionOrderDetailResponse,
   RegisterExecutionOrderItemUsageDto,
+  NonRealizationCause,
 } from '@/lib/api-client';
 import type { ExecutionOrderMissingRequirement } from './OperationsClient';
 import {
@@ -86,6 +87,10 @@ interface ExecutionOrderDrawerProps {
   custodyOptions?: ExecutionOrderCustodyOption[];
   /** Opciones de inventario autorizadas; el formulario no acepta IDs escritos a mano. */
   itemOptions?: Array<{ value: string; label: string }>;
+  /** ADR-077 — causas de no realización del catálogo. */
+  nonRealizationCauses?: NonRealizationCause[] | null;
+  /** ADR-077 — callback de subida de evidencia para intento fallido. */
+  onUploadNonRealizationEvidence?: (file: File) => Promise<void | boolean>;
 }
 
 type CustomerAcceptanceMethod = NonNullable<CloseExecutionOrderDto['customerAcceptance']>['method'];
@@ -311,6 +316,8 @@ export function ExecutionOrderDrawer({
   onCloseOrder,
   custodyOptions,
   itemOptions = [],
+  nonRealizationCauses = null,
+  onUploadNonRealizationEvidence,
 }: ExecutionOrderDrawerProps) {
   const normalizedEvidence = evidence ?? EMPTY_EVIDENCE;
   const terminal = order ? TERMINAL_STATUSES.has(order.status) : false;
@@ -359,6 +366,21 @@ export function ExecutionOrderDrawer({
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeValidationError, setCloseValidationError] = useState<string | null>(null);
 
+  // ADR-077 — cierre con causa de no realización
+  const [selectedNonRealizationCauseId, setSelectedNonRealizationCauseId] = useState('');
+  const [nonRealizationNote, setNonRealizationNote] = useState('');
+  const [nonRealizationEvidenceFile, setNonRealizationEvidenceFile] = useState<File | null>(null);
+  const nonRealizationEvidenceRef = useRef<HTMLInputElement>(null);
+  const isNotExecuted = closeResult === ExecutionOrderResult.NOT_EXECUTED;
+  const selectedNonRealizationCause = isNotExecuted
+    ? ((nonRealizationCauses ?? []).find((c) => c.id === selectedNonRealizationCauseId) ?? null)
+    : null;
+  const nonRealizationRequiresEvidence = selectedNonRealizationCause?.requiresEvidence === true;
+  const nonRealizationCanConfirm =
+    !isNotExecuted ||
+    (selectedNonRealizationCauseId.length > 0 &&
+      (!nonRealizationRequiresEvidence || nonRealizationEvidenceFile !== null));
+
   useEffect(() => {
     setItemAction('');
     setSelectedCustodyId('');
@@ -386,8 +408,11 @@ export function ExecutionOrderDrawer({
         value: ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS,
         label: 'Ejecutada con observaciones',
       },
+      ...(nonRealizationCauses && nonRealizationCauses.length > 0
+        ? [{ value: ExecutionOrderResult.NOT_EXECUTED, label: 'No ejecutada' }]
+        : []),
     ],
-    [],
+    [nonRealizationCauses],
   );
 
   const customerAcceptanceRequired = closureRequiresCustomerAcceptance(
@@ -548,6 +573,14 @@ export function ExecutionOrderDrawer({
       result: closeResult,
       summary: closeSummary.trim(),
     };
+    if (isNotExecuted && selectedNonRealizationCauseId) {
+      payload.reasonCode = selectedNonRealizationCauseId;
+      if (selectedNonRealizationCause) {
+        payload.followUp = {
+          reasonCode: selectedNonRealizationCause.code,
+        };
+      }
+    }
     if (acceptanceComplete) {
       payload.customerAcceptance = {
         artifactId,
@@ -563,6 +596,9 @@ export function ExecutionOrderDrawer({
     itemUsage,
     template,
     onCloseOrder,
+    isNotExecuted,
+    selectedNonRealizationCauseId,
+    selectedNonRealizationCause,
   ]);
 
   const customerAcceptanceProvided =
@@ -576,10 +612,6 @@ export function ExecutionOrderDrawer({
     () => [{ value: 'SIGNATURE', label: 'Firma' }],
     [],
   );
-
-  // Limitación vigente: reasonCatalogs es un array plano y no distingue aplicabilidad por comando.
-  // No se ofrece «No ejecutada» hasta contar con un catálogo tipado o una regla real del API.
-  const notExecutedUnavailable = template !== null;
 
   const customerSignatureEvidence = useMemo(
     () =>
@@ -1377,15 +1409,121 @@ export function ExecutionOrderDrawer({
                   value={closeResult}
                   options={resultOptions}
                   disabled={isSubmitting}
-                  onChange={(e) => setCloseResult(e.target.value as ExecutionOrderResult)}
+                  onChange={(e) => {
+                    const next = e.target.value as ExecutionOrderResult;
+                    setCloseResult(next);
+                    if (next !== ExecutionOrderResult.NOT_EXECUTED) {
+                      setSelectedNonRealizationCauseId('');
+                      setNonRealizationNote('');
+                      setNonRealizationEvidenceFile(null);
+                    }
+                  }}
                 />
-                {notExecutedUnavailable ? (
+                {isNotExecuted && nonRealizationCauses && nonRealizationCauses.length > 0 && (
+                  <div className="space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                      Causa de la visita no realizada
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Elige la causa antes de confirmar el cierre. Es obligatoria para conservar la
+                      trazabilidad.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {nonRealizationCauses.map((cause) => {
+                        const isSelected = cause.id === selectedNonRealizationCauseId;
+                        const categoryLabel =
+                          cause.category === 'CUSTOMER'
+                            ? 'Cliente'
+                            : cause.category === 'OPERATIONAL'
+                              ? 'Operación'
+                              : 'Fuerza mayor';
+                        return (
+                          <button
+                            key={cause.id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            disabled={isSubmitting}
+                            onClick={() => setSelectedNonRealizationCauseId(cause.id)}
+                            className={`rounded-xl border p-3 text-left text-sm transition-colors min-h-[44px] ${
+                              isSelected
+                                ? 'border-iwana-primary bg-iwana-primary-50/60 dark:border-iwana-primary-300 dark:bg-iwana-primary-900/15'
+                                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-border dark:bg-dark-surface-2'
+                            }`}
+                          >
+                            <span className="block font-medium text-gray-900 dark:text-white">
+                              {cause.label}
+                            </span>
+                            <span className="block mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                              {categoryLabel}
+                              {cause.requiresEvidence ? ' · Requiere evidencia' : ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {nonRealizationRequiresEvidence && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                          Toma una foto del sitio. Es lo que respalda que la visita se intentó.
+                        </p>
+                        <input
+                          ref={nonRealizationEvidenceRef}
+                          type="file"
+                          aria-label="Evidencia de intento fallido"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setNonRealizationEvidenceFile(file);
+                            if (onUploadNonRealizationEvidence) {
+                              void onUploadNonRealizationEvidence(file);
+                            }
+                          }}
+                        />
+                        {nonRealizationEvidenceFile ? (
+                          <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-300">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>{nonRealizationEvidenceFile.name}</span>
+                            <button
+                              type="button"
+                              className="text-red-600 underline dark:text-red-400"
+                              onClick={() => setNonRealizationEvidenceFile(null)}
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={isSubmitting}
+                            onClick={() => nonRealizationEvidenceRef.current?.click()}
+                          >
+                            <Camera className="h-4 w-4" />
+                            Adjuntar evidencia
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    <Input
+                      id="eo-non-realization-note"
+                      label="Cuéntanos qué pasó"
+                      value={nonRealizationNote}
+                      disabled={isSubmitting}
+                      onChange={(e) => setNonRealizationNote(e.target.value)}
+                      placeholder="Una línea ayuda a la reclasificación..."
+                    />
+                  </div>
+                )}
+                {isNotExecuted && (!nonRealizationCauses || nonRealizationCauses.length === 0) && (
                   <PortalAlert
                     variant="warning"
-                    title="Resultado no disponible"
-                    description="La opción «No ejecutada» no está disponible temporalmente porque el catálogo de causas no distingue cuáles aplican. Consulta al coordinador para registrar este caso."
+                    title="Causas no disponibles"
+                    description="El catálogo de causas aún no está disponible. Consulta al coordinador para registrar este caso."
                   />
-                ) : null}
+                )}
                 <Input
                   id="eo-close-summary"
                   label="Resumen de cierre"
@@ -1453,10 +1591,15 @@ export function ExecutionOrderDrawer({
                     disabled={
                       isSubmitting ||
                       closeSummary.trim().length === 0 ||
-                      customerAcceptanceIncomplete
+                      customerAcceptanceIncomplete ||
+                      !nonRealizationCanConfirm
                     }
                     onClick={() => {
                       setCloseValidationError(null);
+                      if (!nonRealizationCanConfirm) {
+                        setCloseValidationError('Elige una causa para cerrar como no ejecutada.');
+                        return;
+                      }
                       setCloseConfirmOpen(true);
                     }}
                   >

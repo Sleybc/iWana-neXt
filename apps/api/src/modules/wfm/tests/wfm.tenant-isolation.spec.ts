@@ -24,6 +24,8 @@ import { OperatingWindowResolverService } from '../services/operating-window-res
 import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
 import { VisitRequestsService } from '../services/visit-requests.service';
+import { NonRealizationCausesService } from '../services/non-realization-causes.service';
+import { NonRealizationSlaService } from '../services/non-realization-sla.service';
 
 type TenantCtx = { tenantId: string; schemaName: string };
 
@@ -197,6 +199,19 @@ describe('WfmController tenant isolation', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [WfmController],
       providers: [
+        {
+          provide: NonRealizationCausesService,
+          useValue: { listActive: jest.fn().mockResolvedValue([]), seedDefaults: jest.fn() },
+        },
+        {
+          provide: NonRealizationSlaService,
+          useValue: {
+            evaluateSlaAction: jest.fn(),
+            consumesRetry: jest.fn(),
+            isCustomerCause: jest.fn(),
+            computeReclassificationRetryDelta: jest.fn(),
+          },
+        },
         ScheduleEventsService,
         { provide: DataSource, useValue: {} },
         {

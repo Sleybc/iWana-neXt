@@ -1,9 +1,12 @@
 import { VisitRequestStatus, WorkOrderSourceContext } from '@iwana/shared';
+import type { WfmVisitRequest } from '@/lib/api-client';
 import {
   filterActionablePendingVisitRequests,
   formatVisitRequestLocationLabel,
   formatVisitRequestTerritory,
   getVisitRequestOriginLabel,
+  getVisitRequestRetryChip,
+  requiresAttemptDecision,
 } from './pending-visits-ui';
 
 describe('getVisitRequestOriginLabel', () => {
@@ -40,8 +43,42 @@ describe('filterActionablePendingVisitRequests', () => {
       { id: 'cancelled', status: VisitRequestStatus.CANCELLED },
     ] as const;
 
-    expect(filterActionablePendingVisitRequests([...visitRequests] as any)).toEqual([
+    expect(filterActionablePendingVisitRequests([...visitRequests] as WfmVisitRequest[])).toEqual([
       expect.objectContaining({ id: 'ready' }),
     ]);
+  });
+});
+
+describe('getVisitRequestRetryChip / requiresAttemptDecision', () => {
+  it('emite chip de intento con status REQUIRES_RESCHEDULE del contrato', () => {
+    const chip = getVisitRequestRetryChip({
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 2,
+      lastNonRealizationCauseLabel: 'El cliente no estaba',
+    } as WfmVisitRequest);
+
+    expect(chip).toEqual(
+      expect.objectContaining({
+        label: 'Intento 2 de 3',
+        variant: 'warning',
+      }),
+    );
+  });
+
+  it('emite Requiere decisión solo con REQUIRES_RESCHEDULE y 3 intentos', () => {
+    const exhausted = {
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 3,
+    } as WfmVisitRequest;
+
+    expect(getVisitRequestRetryChip(exhausted)?.label).toBe('Requiere decisión');
+    expect(requiresAttemptDecision(exhausted)).toBe(true);
+
+    expect(
+      requiresAttemptDecision({
+        status: VisitRequestStatus.READY_TO_SCHEDULE,
+        retryCount: 3,
+      } as WfmVisitRequest),
+    ).toBe(false);
   });
 });

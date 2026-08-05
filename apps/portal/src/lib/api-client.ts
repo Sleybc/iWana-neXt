@@ -2861,6 +2861,12 @@ export interface WfmScheduleEvent {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  /** ADR-077 — causa reportada en campo. */
+  nonRealizationCauseId?: string | null;
+  /** ADR-077 — causa confirmada/reclasificada por coordinador. */
+  reviewedCauseId?: string | null;
+  /** ADR-077 — evidencia adjunta al intento. */
+  evidenceSubmitted?: boolean | null;
 }
 
 export interface CreateWfmEmbeddedWorkOrderDto {
@@ -2921,6 +2927,16 @@ export interface RescheduleWfmEventDto {
 
 export interface MoveWfmEventToPendingDto {
   reason?: string | null | undefined;
+  /** ADR-077 — discrimina reprogramación de intento fallido. */
+  intent?: 'REPROGRAM' | 'FAILED_ATTEMPT' | null | undefined;
+  /** ADR-077 — motivo del fallo. */
+  failureReason?: string | null | undefined;
+  /** ADR-077 — clave de la causa de no realización. */
+  failureCause?: string | null | undefined;
+  /** ADR-077 — referencia a la causa del catálogo. */
+  nonRealizationCauseId?: string | null | undefined;
+  /** ADR-077 — si se adjuntó evidencia del intento. */
+  evidenceSubmitted?: boolean | null | undefined;
 }
 
 export interface ListWfmScheduleEventsParams {
@@ -2977,6 +2993,49 @@ export interface WfmScheduleRecommendation {
   eventCount: number;
 }
 
+/** ADR-077 — taxonomía de causa de no realización. */
+export interface NonRealizationCause {
+  id: string;
+  code: string;
+  label: string;
+  category: 'CUSTOMER' | 'OPERATIONAL' | 'FORCE_MAJEURE';
+  requiresEvidence: boolean;
+}
+
+/**
+ * ADR-077 D4 — decisión explícita al agotar 3 intentos imputables al cliente.
+ * Obligatorio en schedule cuando retryCount >= 3; sin él la API responde 400 accionable.
+ */
+export type VisitAttemptDecision = 'FORCE_RESCHEDULE' | 'CLOSE_CASE';
+
+/**
+ * Destino operativo tras la revisión E2 (vista visitas sin realizar).
+ * RESCHEDULE deja la solicitud en REQUIRES_RESCHEDULE; CLOSE_CASE cierra el caso.
+ */
+export type ReviewNonRealizationDecision = 'RESCHEDULE' | 'CLOSE_CASE';
+
+/** ADR-077 — revisión de causa por el coordinador. */
+export interface ReviewNonRealizationCauseDto {
+  nonRealizationCauseId: string;
+  /** Notas del coordinador (persistidas en el evento). */
+  notes?: string | null;
+  /** Destino tras confirmar/reclasificar causa (E2). Ausente = solo reclasificar. */
+  decision?: ReviewNonRealizationDecision | null;
+}
+
+/** ADR-077 — intento fallido registrado en el evento. */
+export interface EventNonRealizationAttempt {
+  eventId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  technicianId: string;
+  technicianName: string;
+  causeLabel: string | null;
+  reviewedCauseLabel: string | null;
+  causeReportedAt: string | null;
+  evidenceSubmitted: boolean;
+}
+
 export interface WfmVisitRequest {
   id: string;
   tenantId: string;
@@ -3015,6 +3074,18 @@ export interface WfmVisitRequest {
   updatedAt: string;
   deletedAt: string | null;
   rejectReason?: string | undefined;
+  /** ADR-077 — contador de intentos fallidos imputables al cliente. */
+  retryCount?: number | null;
+  /** ADR-077 — código de la causa reportada en campo. */
+  failureCause?: string | null;
+  /** ADR-077 — clave de la causa del catálogo asociada al último evento fallido. */
+  nonRealizationCauseId?: string | null;
+  /** ADR-077 — etiqueta visible de la causa de no realización. */
+  lastNonRealizationCauseLabel?: string | null;
+  /** ADR-076 — indica que esta visita es adicional (forzada) sobre trabajo activo. */
+  isAdditional?: boolean | null;
+  /** ADR-076 — motivo de la visita adicional. */
+  additionalReason?: string | null;
 }
 
 export interface ListWfmVisitRequestsParams {
@@ -3078,6 +3149,10 @@ export interface CreateWfmVisitRequestDto {
   subscriberId?: string | null | undefined;
   ticketId?: string | null | undefined;
   contractId?: string | null | undefined;
+  /** ADR-076 — visita adicional sobre trabajo activo. */
+  isAdditional?: boolean | null | undefined;
+  /** ADR-076 — motivo de la visita adicional. */
+  additionalReason?: string | null | undefined;
 }
 
 export interface UpdateWfmVisitRequestContextDto {
@@ -3119,6 +3194,15 @@ export interface ScheduleWfmVisitRequestDto {
   createWorkOrder?: boolean | undefined;
   workOrderSummary?: string | undefined;
   workOrderNotes?: string | null | undefined;
+  /** ADR-076 — visita adicional sobre trabajo activo. */
+  isAdditional?: boolean | null | undefined;
+  /** ADR-076 — motivo de la visita adicional. */
+  additionalReason?: string | null | undefined;
+  /**
+   * ADR-077 D4 — override al límite de 3 intentos.
+   * FORCE_RESCHEDULE agenda; CLOSE_CASE no aplica en este endpoint (usar cancel).
+   */
+  attemptDecision?: VisitAttemptDecision | null | undefined;
 }
 
 export interface WfmBusinessHoursDay {
@@ -3654,8 +3738,34 @@ export const wfmApi = {
         tenantSlug,
       ),
 
+    /** ADR-077 — revisión de causa por el coordinador. */
+    reviewCause: (id: string, dto: ReviewNonRealizationCauseDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}/review-cause`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    /** ADR-077 — historial de intentos de un evento. */
+    getAttempts: (id: string, tenantSlug?: string) =>
+      request<EventNonRealizationAttempt[]>(
+        `/wfm/events/${id}/attempts`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
     remove: (id: string, tenantSlug?: string) =>
       request<void>(`/wfm/events/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  /** ADR-077 — taxonomía de causas de no realización. */
+  nonRealizationCauses: {
+    list: (tenantSlug?: string) =>
+      request<NonRealizationCause[]>(
+        '/wfm/non-realization-causes',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
   },
 
   recommendations: {

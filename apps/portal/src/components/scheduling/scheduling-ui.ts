@@ -215,6 +215,11 @@ const eventStatusMeta: Record<
     description: 'No se logró ejecutar la visita programada.',
     badgeVariant: 'error',
   },
+  [ScheduleEventStatus.EXPIRED]: {
+    label: 'Vencido',
+    description: 'Evento que venció sin ser cerrado a tiempo.',
+    badgeVariant: 'neutral',
+  },
 };
 
 const workOrderStatusMeta: Record<

@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
+  NonRealizationCause,
   ScheduleEvent,
   WorkOrder,
   WorkOrderTask,
@@ -15,6 +16,8 @@ import { ExpedientesModule } from '../crm/expedientes/expedientes.module';
 import { UsersModule } from '../users/users.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { WfmController } from './wfm.controller';
+import { NonRealizationCausesService } from './services/non-realization-causes.service';
+import { NonRealizationSlaService } from './services/non-realization-sla.service';
 import { OperationalEventualitiesService } from './services/operational-eventualities.service';
 import { ScheduleConflictService } from './services/schedule-conflict.service';
 import { ScheduleEventsService } from './services/schedule-events.service';
@@ -30,6 +33,8 @@ import { WfmTenantSettingsReadPort } from './ports/wfm-tenant-settings-read.port
 import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.adapter';
 import { WfmOrganizationSitesReadPort } from './ports/wfm-organization-sites-read.port';
 import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.adapter';
+import { FieldServiceWorkAdapter } from './ports/field-service-work.adapter';
+import { FieldServiceWorkPort } from '../assurance/ports/field-service-work.port';
 
 /**
  * Modulo WFM — Fase 01: Agenda, Work Orders y disponibilidad de tecnicos.
@@ -44,6 +49,7 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
     UsersModule,
     TasksModule,
     TypeOrmModule.forFeature([
+      NonRealizationCause,
       ScheduleEvent,
       WorkOrder,
       WorkOrderTask,
@@ -55,6 +61,8 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
   ],
   controllers: [WfmController],
   providers: [
+    NonRealizationCausesService,
+    NonRealizationSlaService,
     ScheduleConflictService,
     ScheduleEventsService,
     VisitRequestsService,
@@ -65,6 +73,7 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
     OperatingWindowResolverService,
     OperationalEventualitiesService,
     WfmOrganizationSitesAdapter,
+    FieldServiceWorkAdapter,
     WfmTenantSettingsReadAdapter,
     {
       provide: WfmWorkOrderReadPort,
@@ -78,7 +87,22 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
       provide: WfmOrganizationSitesReadPort,
       useExisting: WfmOrganizationSitesAdapter,
     },
+    {
+      provide: FieldServiceWorkPort,
+      useClass: FieldServiceWorkAdapter,
+    },
   ],
-  exports: [WfmWorkOrderReadPort],
+  exports: [WfmWorkOrderReadPort, FieldServiceWorkPort],
 })
-export class WfmModule {}
+export class WfmModule implements OnModuleInit {
+  constructor(
+    private readonly scheduleEventsService: ScheduleEventsService,
+    private readonly nonRealizationSlaService: NonRealizationSlaService,
+  ) {}
+
+  onModuleInit() {
+    // Cablear NonRealizationSlaService en ScheduleEventsService
+    // (evita dependencia circular vía constructor)
+    this.scheduleEventsService.nonRealizationSlaService = this.nonRealizationSlaService;
+  }
+}

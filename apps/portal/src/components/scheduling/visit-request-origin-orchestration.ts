@@ -6,14 +6,100 @@ import {
   WfmWorkType,
   TicketPriority,
 } from '@iwana/shared';
-import { assuranceApi, wfmApi } from '@/lib/api-client';
+import { assuranceApi, wfmApi, ApiError, type WfmVisitRequest } from '@/lib/api-client';
 import {
   buildPendingVisitInboxHref,
   buildPendingVisitSchedulingHref,
 } from './pending-visit-scheduling-handoff';
 import { parseOptionalCoordinate } from './scheduling-ui';
+import { isScheduleEventTerminalStatus } from './scheduling-ui';
 
 export type VisitRequestNextAction = 'schedule-now' | 'send-to-pending';
+
+/** ADR-076 — resultado de verificación de trabajo activo para un origen. */
+export interface ActiveWorkCheck {
+  hasActiveWork: boolean;
+  activeVisitRequestId: string | null;
+  activeEventStatus: string | null;
+  activeEventDate: string | null;
+  activeEventTime: string | null;
+  activeTechnicianName: string | null;
+}
+
+/**
+ * ADR-076 — verifica si existe trabajo activo para un origen dado.
+ * Consulta los eventos existentes del expediente y retorna
+ * información del trabajo activo si existe.
+ */
+export async function checkActiveWorkForOrigin(expedienteId: string): Promise<ActiveWorkCheck> {
+  try {
+    const eventsResponse = await wfmApi.events.list({
+      expedienteId,
+      page: 1,
+      limit: 100,
+    });
+
+    const activeEvent = eventsResponse.data.find(
+      (event) => !isScheduleEventTerminalStatus(event.status),
+    );
+
+    if (activeEvent) {
+      return {
+        hasActiveWork: true,
+        activeVisitRequestId: activeEvent.id,
+        activeEventStatus: activeEvent.status,
+        activeEventDate: activeEvent.scheduledStartAt ?? null,
+        activeEventTime: activeEvent.scheduledStartAt ?? null,
+        activeTechnicianName: activeEvent.assignedUserId ?? null,
+      };
+    }
+
+    return {
+      hasActiveWork: false,
+      activeVisitRequestId: null,
+      activeEventStatus: null,
+      activeEventDate: null,
+      activeEventTime: null,
+      activeTechnicianName: null,
+    };
+  } catch {
+    // En caso de error de red, asumimos que no hay trabajo activo para no bloquear.
+    return {
+      hasActiveWork: false,
+      activeVisitRequestId: null,
+      activeEventStatus: null,
+      activeEventDate: null,
+      activeEventTime: null,
+      activeTechnicianName: null,
+    };
+  }
+}
+
+/** ADR-076 — error de duplicado devuelto por el backend. */
+export interface DuplicateActiveWorkError {
+  error: 'DUPLICATE_ACTIVE_WORK';
+  originRef: string;
+  activeVisitRequestId: string;
+}
+
+/** ADR-076 — resultado de creación de visita con posible duplicado. */
+export interface CreateVisitRequestResult {
+  visitRequest?: WfmVisitRequest | undefined;
+  duplicate?: DuplicateActiveWorkError | undefined;
+  href?: string | undefined;
+}
+
+function isDuplicateActiveWorkError(error: unknown): error is DuplicateActiveWorkError {
+  if (error instanceof ApiError && error.status === 409) {
+    try {
+      const details = error.details as Record<string, unknown> | undefined;
+      return details?.error === 'DUPLICATE_ACTIVE_WORK';
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
 
 function mapAssurancePriorityToWorkOrder(priority: TicketPriority): WorkOrderPriority {
   switch (priority) {

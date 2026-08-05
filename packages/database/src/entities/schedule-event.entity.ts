@@ -122,6 +122,42 @@ export class ScheduleEvent {
   @Column({ name: 'contract_id', type: 'uuid', nullable: true })
   contractId: string | null;
 
+  /** ID del tecnico que reporto la causa de no realizacion (ADR-077 D2) */
+  @Column({ name: 'cause_reported_by_id', type: 'uuid', nullable: true })
+  causeReportedById: string | null;
+
+  /** Timestamp del reporte de causa por el tecnico */
+  @Column({ name: 'cause_reported_at', type: 'timestamptz', nullable: true })
+  causeReportedAt: Date | null;
+
+  /** ID del coordinador que reviso/reclasifico la causa (ADR-077 D2) */
+  @Column({ name: 'cause_reviewed_by_id', type: 'uuid', nullable: true })
+  causeReviewedById: string | null;
+
+  /** Timestamp de la revision/reclasificacion por el coordinador */
+  @Column({ name: 'cause_reviewed_at', type: 'timestamptz', nullable: true })
+  causeReviewedAt: Date | null;
+
+  /** FK a non_realization_causes.id — clasificacion del tecnico (se conserva). */
+  @Column({ name: 'non_realization_cause_id', type: 'uuid', nullable: true })
+  nonRealizationCauseId: string | null;
+
+  /** FK a non_realization_causes.id — clasificacion del coordinador (autoritativa). */
+  @Column({ name: 'reviewed_cause_id', type: 'uuid', nullable: true })
+  reviewedCauseId: string | null;
+
+  /** Si el tecnico subio evidencia del intento fallido. Requisito para pausar SLA. */
+  @Column({ name: 'evidence_submitted', type: 'boolean', default: false })
+  evidenceSubmitted: boolean;
+
+  /** Descripcion del fallo registrada por el tecnico (ADR-077 D2). */
+  @Column({ name: 'failure_reason', type: 'text', nullable: true })
+  failureReason: string | null;
+
+  /** Notas del coordinador al revisar/reclasificar la causa (ADR-077 D2). */
+  @Column({ name: 'review_notes', type: 'text', nullable: true })
+  reviewNotes: string | null;
+
   @Column({ name: 'created_by', type: 'uuid' })
   createdBy: string;
 

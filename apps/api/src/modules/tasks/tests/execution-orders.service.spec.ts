@@ -115,6 +115,127 @@ describe('ExecutionOrdersService', () => {
     expect(result.subscriberId).toBe('sub-uuid');
   });
 
+  describe('cancelFromSchedulingWithManager', () => {
+    const scheduleEventId = '22222222-2222-4222-8222-222222222222';
+    const executionOrderId = 'eo-001';
+    const reason = 'Cliente canceló la visita';
+    const tenantId = 'tenant-001';
+
+    it('cancela la OT y registra el motivo en closeNotes', async () => {
+      const originalOrder = {
+        id: executionOrderId,
+        tenantId,
+        scheduleEventId,
+        status: ExecutionOrderStatus.ASSIGNED,
+        version: 3,
+        closeNotes: null,
+        updatedByUserId: null,
+        closedAt: null,
+      };
+
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(originalOrder),
+        save: jest
+          .fn()
+          .mockImplementation(async (_entity, payload) => ({ id: executionOrderId, ...payload })),
+      };
+
+      const result = await service.cancelFromSchedulingWithManager(
+        manager as never,
+        tenantId,
+        executionOrderId,
+        scheduleEventId,
+        reason,
+        actor,
+      );
+
+      expect(result).toEqual({ id: executionOrderId, status: ExecutionOrderStatus.CANCELLED });
+      expect(manager.findOne).toHaveBeenCalledWith(expect.any(Function), {
+        where: { id: executionOrderId, tenantId },
+      });
+      expect(manager.save).toHaveBeenCalled();
+      const savedPayload = (manager.save as jest.Mock).mock.calls[0][1];
+      expect(savedPayload.status).toBe(ExecutionOrderStatus.CANCELLED);
+      expect(savedPayload.closeNotes).toBe(reason);
+      expect(savedPayload.closedAt).toBeInstanceOf(Date);
+      expect(savedPayload.updatedByUserId).toBe(actor.sub);
+      expect(savedPayload.version).toBe(4);
+    });
+
+    it('lanza NotFoundException si la OT no existe', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn(),
+      };
+
+      await expect(
+        service.cancelFromSchedulingWithManager(
+          manager as never,
+          tenantId,
+          'nonexistent-id',
+          scheduleEventId,
+          reason,
+          actor,
+        ),
+      ).rejects.toThrow('OT de ejecución no encontrada');
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('lanza ConflictException si el scheduleEventId no coincide', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: executionOrderId,
+          tenantId,
+          scheduleEventId: '99999999-9999-4999-8999-999999999999', // distinto
+          status: ExecutionOrderStatus.ASSIGNED,
+          version: 2,
+        }),
+        save: jest.fn(),
+      };
+
+      await expect(
+        service.cancelFromSchedulingWithManager(
+          manager as never,
+          tenantId,
+          executionOrderId,
+          scheduleEventId,
+          reason,
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('OT no pertenece'),
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('no requiere runInTenantSchema — usa el manager transaccional directamente', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: executionOrderId,
+          tenantId,
+          scheduleEventId,
+          status: ExecutionOrderStatus.ASSIGNED,
+          version: 1,
+        }),
+        save: jest.fn().mockImplementation(async (_entity, payload) => ({ ...payload })),
+      };
+
+      // Asegurar que mockRunInTenantSchema no fue llamado
+      mockRunInTenantSchema.mockClear();
+
+      await service.cancelFromSchedulingWithManager(
+        manager as never,
+        tenantId,
+        executionOrderId,
+        scheduleEventId,
+        reason,
+        actor,
+      );
+
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+  });
+
   it('calcula progress como porcentaje desde requisitos satisfechos y total', async () => {
     const closureGateEvaluator = {
       evaluate: jest.fn().mockReturnValue({

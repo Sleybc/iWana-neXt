@@ -582,6 +582,54 @@ export class ExecutionOrdersService {
     return manager.save(ExecutionOrder, entity);
   }
 
+  /**
+   * Cancela una OT desde la agenda de WFM usando el manager transaccional
+   * activo que estableció `runInTenantSchema`. No abre una nueva transacción
+   * ni resuelve el schema por su cuenta.
+   *
+   * Guarda el motivo en `closeNotes` porque la entidad ExecutionOrder no
+   * tiene una columna dedicada `cancellationReason` (ver F1.4 PRD).
+   */
+  async cancelFromSchedulingWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    executionOrderId: string,
+    scheduleEventId: string,
+    reason: string,
+    actor: JwtPayload,
+  ): Promise<{ id: string; status: string }> {
+    const order = await manager.findOne(ExecutionOrder, {
+      where: { id: executionOrderId, tenantId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('OT de ejecución no encontrada');
+    }
+
+    // Integridad: el scheduleEventId debe coincidir con el que se pasa
+    // desde WFM para evitar cancelar una OT que fue reasignada a otro evento.
+    if (order.scheduleEventId !== scheduleEventId) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_EVENT_MISMATCH',
+        message: 'La OT no pertenece al evento de agenda indicado; ¿fue reasignada mientras tanto?',
+      });
+    }
+
+    order.status = ExecutionOrderStatus.CANCELLED;
+    order.closeNotes = reason;
+    order.closedAt = new Date();
+    order.updatedByUserId = actor.sub ?? null;
+    (order as { version: number }).version = (order.version ?? 0) + 1;
+
+    const saved = await manager.save(ExecutionOrder, order);
+
+    this.logger.log(
+      `OT ${saved.id} cancelada desde agenda. Evento: ${scheduleEventId}. Razón: ${reason.slice(0, 100)}${reason.length > 100 ? '…' : ''}. Actor: ${actor.sub}`,
+    );
+
+    return { id: saved.id, status: saved.status };
+  }
+
   async start(
     id: string,
     input: StartExecutionOrderInput,

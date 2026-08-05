@@ -15,6 +15,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { WfmController } from '../wfm.controller';
 import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
+import { NonRealizationCausesService } from '../services/non-realization-causes.service';
+import { NonRealizationSlaService } from '../services/non-realization-sla.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { WorkOrdersService } from '../services/work-orders.service';
@@ -206,6 +208,19 @@ describe('WfmController HTTP', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [WfmController],
       providers: [
+        {
+          provide: NonRealizationCausesService,
+          useValue: { listActive: jest.fn().mockResolvedValue([]), seedDefaults: jest.fn() },
+        },
+        {
+          provide: NonRealizationSlaService,
+          useValue: {
+            evaluateSlaAction: jest.fn(),
+            consumesRetry: jest.fn(),
+            isCustomerCause: jest.fn(),
+            computeReclassificationRetryDelta: jest.fn(),
+          },
+        },
         { provide: ScheduleEventsService, useValue: scheduleEventsServiceMock },
         { provide: VisitRequestsService, useValue: visitRequestsServiceMock },
         { provide: WorkOrdersService, useValue: workOrdersServiceMock },
@@ -614,7 +629,7 @@ describe('WfmController HTTP', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/wfm/events/${EVENT_UUID}/move-to-pending`)
         .set('Authorization', 'Bearer tech-token')
-        .send({})
+        .send({ intent: 'REPROGRAM' })
         .expect(403);
     });
 
@@ -629,7 +644,7 @@ describe('WfmController HTTP', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/wfm/events/${EVENT_UUID}/move-to-pending`)
         .set('Authorization', 'Bearer admin-token')
-        .send({})
+        .send({ intent: 'REPROGRAM' })
         .expect(200)
         .expect(({ body }) => {
           expect(body).toEqual(
@@ -642,7 +657,7 @@ describe('WfmController HTTP', () => {
           );
           expect(scheduleEventsServiceMock.moveToPending).toHaveBeenCalledWith(
             EVENT_UUID,
-            {},
+            { intent: 'REPROGRAM' },
             expect.objectContaining({ sub: 'admin-001', role: UserRole.ADMIN }),
           );
         });
@@ -658,7 +673,7 @@ describe('WfmController HTTP', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/wfm/events/${EVENT_UUID}/move-to-pending`)
         .set('Authorization', 'Bearer noc-token')
-        .send({ reason: 'Revisar contexto antes de reagendar' })
+        .send({ intent: 'REPROGRAM', reason: 'Revisar contexto antes de reagendar' })
         .expect(400)
         .expect(({ body }) => {
           expect(body.message).toBe(

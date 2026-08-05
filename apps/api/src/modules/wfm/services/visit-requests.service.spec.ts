@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { UsersService } from '../../users/users.service';
@@ -310,7 +310,7 @@ describe('VisitRequestsService', () => {
     expect(result.executionOrderId).toBe('eo-001');
   });
 
-  it('retorna el duplicado activo cuando el indice unico detecta carrera', async () => {
+  it('rechaza con 409 cuando el indice unico detecta carrera (safety net)', async () => {
     const duplicate = {
       id: 'vr-dup',
       tenantId: TENANT_CONTEXT.tenantId,
@@ -338,21 +338,21 @@ describe('VisitRequestsService', () => {
       callback({ manager }),
     );
 
-    const result = await service.createVisitRequest(
-      {
-        originContext: WorkOrderSourceContext.CRM,
-        originRef: 'exp-001',
-        workType: WfmWorkType.INSTALLATION,
-        title: 'Instalación expediente',
-        priority: WorkOrderPriority.NORMAL,
-      },
-      {
-        sub: 'admin-001',
-        role: UserRole.ADMIN,
-      } as never,
-    );
-
-    expect(result).toEqual({ ...duplicate, customerDisplayName: null });
+    await expect(
+      service.createVisitRequest(
+        {
+          originContext: WorkOrderSourceContext.CRM,
+          originRef: 'exp-001',
+          workType: WfmWorkType.INSTALLATION,
+          title: 'Instalación expediente',
+          priority: WorkOrderPriority.NORMAL,
+        },
+        {
+          sub: 'admin-001',
+          role: UserRole.ADMIN,
+        } as never,
+      ),
+    ).rejects.toThrow(ConflictException);
   });
 
   it('enriquece solicitudes CRM con el nombre del cliente desde expedienteId', async () => {
@@ -937,6 +937,375 @@ describe('VisitRequestsService', () => {
         } as never,
       ),
     ).rejects.toThrow('La instalacion debe quedar dentro del horario operativo configurado.');
+  });
+
+  it('acepta agendar una solicitud en REQUIRES_RESCHEDULE (F1.1)', async () => {
+    const visitRequest = {
+      id: 'vr-requires-reschedule',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 1,
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Visita que vuelve tras intento fallido',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-reschedule',
+    };
+
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+      save: jest.fn().mockImplementation(async (_entity, data) => ({
+        id: 'evt-reschedule',
+        status: 'SCHEDULED',
+        ...data,
+      })),
+    });
+
+    // Agendabilidad: REQUIRES_RESCHEDULE es agendable sin degradar el status emitido (ADR-077 D3)
+    usersService.findAll.mockResolvedValue({
+      data: [buildUserResponse({ id: '550e8400-e29b-41d4-a716-446655440000' })],
+      meta: { nextCursor: null, total: 1 },
+    });
+
+    operatingWindowResolver.resolveWithManager.mockResolvedValue({
+      status: 'OPEN',
+      source: 'COMPANY_HOURS',
+      startTime: '07:00',
+      endTime: '18:00',
+      reason: null,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.scheduleVisitRequest(
+      'vr-requires-reschedule',
+      {
+        assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+        scheduledStartAt: '2026-06-01T14:00:00Z',
+        scheduledEndAt: '2026-06-01T15:00:00Z',
+        createWorkOrder: false,
+      },
+      {
+        sub: 'admin-001',
+        role: UserRole.ADMIN,
+      } as never,
+    );
+
+    expect(result.status).toBe(VisitRequestStatus.SCHEDULED);
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: 'vr-requires-reschedule', tenantId: TENANT_CONTEXT.tenantId },
+      expect.objectContaining({ status: VisitRequestStatus.SCHEDULED }),
+    );
+  });
+
+  it('preserva REQUIRES_RESCHEDULE al obtener por id (B1 / ADR-077 D3)', async () => {
+    const visitRequest = {
+      id: 'vr-requires-get',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 2,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: null,
+      originLabel: 'Oportunidad RETRY001',
+      workType: WfmWorkType.INSTALLATION,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Reintento visible',
+      expedienteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getVisitRequestById('vr-requires-get', {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    expect(result.status).toBe(VisitRequestStatus.REQUIRES_RESCHEDULE);
+    expect(result.retryCount).toBe(2);
+  });
+
+  it('preserva REQUIRES_RESCHEDULE al corregir contexto (B1)', async () => {
+    const visitRequest = {
+      id: 'vr-requires-ctx',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 1,
+      address: 'Calle vieja',
+      municipality: 'Bogotá',
+      requestedWindowStartAt: null,
+      requestedWindowEndAt: null,
+      description: null,
+      sector: null,
+      latitude: null,
+      longitude: null,
+      organizationSiteId: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      slaDueAt: null,
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.updateVisitRequestContext(
+      'vr-requires-ctx',
+      { address: 'Calle nueva 10' },
+      { sub: 'admin-001', role: UserRole.ADMIN } as never,
+    );
+
+    expect(result.status).toBe(VisitRequestStatus.REQUIRES_RESCHEDULE);
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: 'vr-requires-ctx', tenantId: TENANT_CONTEXT.tenantId },
+      expect.objectContaining({ status: VisitRequestStatus.REQUIRES_RESCHEDULE }),
+    );
+  });
+
+  it('exige attemptDecision cuando retryCount >= 3 (B4)', async () => {
+    const visitRequest = {
+      id: 'vr-limit',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 3,
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Límite de intentos',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: null,
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-limit',
+      scheduleEventId: null,
+      slaPausedAt: null,
+    };
+
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await expect(
+      service.scheduleVisitRequest(
+        'vr-limit',
+        {
+          assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+          scheduledStartAt: '2026-06-01T14:00:00Z',
+          scheduledEndAt: '2026-06-01T15:00:00Z',
+          createWorkOrder: false,
+        },
+        { sub: 'admin-001', role: UserRole.ADMIN } as never,
+      ),
+    ).rejects.toThrow(/attemptDecision/);
+  });
+
+  it('FORCE_RESCHEDULE agenda con retryCount >= 3 (B4)', async () => {
+    const visitRequest = {
+      id: 'vr-force',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 3,
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Forzar reprogramación',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: null,
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-force',
+      scheduleEventId: null,
+      slaPausedAt: null,
+    };
+
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+      save: jest.fn().mockImplementation(async (_entity, data) => ({
+        id: 'evt-force',
+        status: 'SCHEDULED',
+        ...data,
+      })),
+    });
+
+    usersService.findAll.mockResolvedValue({
+      data: [buildUserResponse({ id: '550e8400-e29b-41d4-a716-446655440000' })],
+      meta: { nextCursor: null, total: 1 },
+    });
+
+    operatingWindowResolver.resolveWithManager.mockResolvedValue({
+      status: 'OPEN',
+      source: 'COMPANY_HOURS',
+      startTime: '07:00',
+      endTime: '18:00',
+      reason: null,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.scheduleVisitRequest(
+      'vr-force',
+      {
+        assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+        scheduledStartAt: '2026-06-01T14:00:00Z',
+        scheduledEndAt: '2026-06-01T15:00:00Z',
+        createWorkOrder: false,
+        attemptDecision: 'FORCE_RESCHEDULE',
+      },
+      { sub: 'admin-001', role: UserRole.ADMIN } as never,
+    );
+
+    expect(result.status).toBe(VisitRequestStatus.SCHEDULED);
+  });
+
+  it('CLOSE_CASE cierra sin agendar cuando retryCount >= 3 (B4)', async () => {
+    const visitRequest = {
+      id: 'vr-close',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.REQUIRES_RESCHEDULE,
+      retryCount: 3,
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Cerrar caso',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: null,
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-close',
+      scheduleEventId: null,
+      slaPausedAt: null,
+    };
+
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.scheduleVisitRequest(
+      'vr-close',
+      {
+        assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+        scheduledStartAt: '2026-06-01T14:00:00Z',
+        scheduledEndAt: '2026-06-01T15:00:00Z',
+        createWorkOrder: false,
+        attemptDecision: 'CLOSE_CASE',
+      },
+      { sub: 'admin-001', role: UserRole.ADMIN } as never,
+    );
+
+    expect(result.status).toBe(VisitRequestStatus.CANCELLED);
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: 'vr-close', tenantId: TENANT_CONTEXT.tenantId },
+      expect.objectContaining({ status: VisitRequestStatus.CANCELLED }),
+    );
+  });
+
+  it('rechaza agendar cuando el evento vinculado está EXPIRED (B2)', async () => {
+    const visitRequest = {
+      id: 'vr-expired-link',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.SCHEDULED,
+      retryCount: 0,
+      scheduleEventId: 'evt-expired',
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Agendada con evento vencido',
+      description: null,
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: null,
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-expired',
+    };
+
+    const manager = buildManager({
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(visitRequest)
+        .mockResolvedValueOnce({ id: 'evt-expired', status: 'EXPIRED' }),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await expect(
+      service.scheduleVisitRequest(
+        'vr-expired-link',
+        {
+          assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+          scheduledStartAt: '2026-06-01T14:00:00Z',
+          scheduledEndAt: '2026-06-01T15:00:00Z',
+          createWorkOrder: false,
+        },
+        { sub: 'admin-001', role: UserRole.ADMIN } as never,
+      ),
+    ).rejects.toThrow(/vencido/);
   });
 
   it('mueve una solicitud PENDING a READY_TO_SCHEDULE cuando ya tiene direccion y municipio', async () => {

@@ -9,3 +9,4 @@ export * from './work-order-status.enum';
 export * from './work-order-task-status.enum';
 export * from './operational-eventuality-type.enum';
 export * from './operational-eventuality-status.enum';
+export * from './non-realization-cause-category.enum';
