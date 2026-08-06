@@ -14,7 +14,7 @@ import { OrganizationModule } from '../organization/organization.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { ExpedientesModule } from '../crm/expedientes/expedientes.module';
 import { UsersModule } from '../users/users.module';
-import { TasksModule } from '../tasks/tasks.module';
+import { ExecutionOrderSchedulingModule } from '../tasks/execution-order-scheduling.module';
 import { WfmController } from './wfm.controller';
 import { NonRealizationCausesService } from './services/non-realization-causes.service';
 import { NonRealizationSlaService } from './services/non-realization-sla.service';
@@ -47,7 +47,9 @@ import { FieldServiceWorkPort } from '../assurance/ports/field-service-work.port
     OrganizationModule,
     ExpedientesModule,
     UsersModule,
-    TasksModule,
+    // Puerto tipado MOD09→MOD11 (ADR-047): módulo fino sin AssuranceModule,
+    // evita el ciclo Health → Tasks → Assurance → Wfm → Tasks.
+    ExecutionOrderSchedulingModule,
     TypeOrmModule.forFeature([
       NonRealizationCause,
       ScheduleEvent,
