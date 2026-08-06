@@ -487,7 +487,23 @@ Fases del prompt: `g65` → `staging-clave` → `staging-ventana-1` → `staging
 
 **Siguiente tramo autorizado:** [`PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md`](../prompts/PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md) — **no** saltar a prod/ventana 2. Prerrequisitos: ~~separar/commit SEC-P1~~ → CI Linux (G6.5) → merge → provisionar staging + secret store.
 
-**Rama lista (2026-08-06):** `feat/sec-p1-cierre-expand-contract` · commits `6b43a2dd` + `b3cee2f2` · pusheada a origin. Crear PR (gh sin auth en esta máquina): https://github.com/SleyiW/iWana-neXt/pull/new/feat/sec-p1-cierre-expand-contract · SHA G6.5 = tip de la rama.
+**Rama lista (2026-08-06):** mergeado a `main` (`1452d631` + docs `12607573`). Tip posterior incluye también MOD09 (`db182702`). Crear PR ya no aplica.
+
+### Intento G6.5 / staging (2026-08-06 — post-merge main)
+
+**Resultado:** **NO_GO** fases `g65` y staging del prompt [`PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md`](../prompts/PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md).
+
+| Check | Resultado |
+| --- | --- |
+| Código en `main` / `origin/main` | **OK** — tip `db182702` (SEC-P1 mergeado; runbook casilla merge `[x]`) |
+| G6.5 CI Linux (ADR-069) | **Bloqueado** — `gh` sin auth; API Actions del repo privado no legible desde esta máquina |
+| Gates locales post-merge | `@iwana/db` 25/156 PASS + typecheck; `@iwana/worker` 15/105 PASS + typecheck (**no sustituyen** G6.5) |
+| Staging (clave / ventana 1) | **Bloqueado** — sin `.env.staging`, sin stack staging; solo `*_dev` |
+| Casillas runbook staging/prod | Siguen `[ ]` (correcto; no colapsar) |
+
+**Desbloqueo humano (orden):** `gh auth login` (o token `actions:read`) → archivar run CI del SHA en informe → provisionar staging + `PII_HASH_KEY` distinta → `staging-clave` → `staging-ventana-1` → criterio 6 → consolidar.
+
+**PLAT-OPS:** [AI-PLAT-OPS](2268bcfa-ae4e-4db2-aa60-ad2204605d0b) — nada del prompt G65 ejecutable ahora.
 
 **F-1:** 44 `MARKED_FOR_DELETION` con digests SHA-256 — pendiente humano (no cuentan como migrados).
 
