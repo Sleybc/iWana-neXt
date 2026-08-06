@@ -45,7 +45,7 @@ Marcar cuando el ítem es verdadero **para el entorno que se va a tocar**. Los d
 
 ### 0.1 Programa / repo (compartido)
 
-- [ ] Código SEC-P1 **mergeado** (021/022, 108–110, fix A-4, `assertTenantMigrationParity`, contracts diferidos, N-1 provisioning). *2026-08-06: aún en working tree local — **no** mergeado.*
+- [ ] Código SEC-P1 **mergeado** (021/022, 108–110, fix A-4, `assertTenantMigrationParity`, contracts diferidos, N-1 provisioning). *2026-08-06: commit `6b43a2dd` en rama `feat/sec-p1-cierre-expand-contract` — pendiente merge a `main` + G6.5.*
 - [x] `PII_HASH_KEY` **no** está en git ni en dumps (solo placeholders en `*.example`).
 - [x] A1/A2 **aprobado por CTO** (2026-08-06): claves por entorno; staging ≠ prod.
 - [x] Owner PLAT-OPS asignado; CTO informado del plan S1 (plan congelado en informe).
