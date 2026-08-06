@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import { z } from 'zod';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
@@ -10,6 +9,8 @@ import { clampLimit } from '../../../common/pagination/clamp-limit';
 import { applySort } from '../../../common/pagination/apply-sort';
 import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
+import { hashEmail } from '../../../common/crypto/hash-email.util';
+import { hmacPii, resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.util';
 import {
   PersonType,
   CustomerSegment,
@@ -106,6 +107,7 @@ const SORTABLE_FIELDS: string[] = [];
 export class SubscribersService {
   private readonly encryptionKey: Buffer;
   private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly piiHashKey: Buffer;
   private readonly logger = new Logger(SubscribersService.name);
 
   constructor(
@@ -118,6 +120,7 @@ export class SubscribersService {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
+    this.piiHashKey = resolvePiiHashKey(this.configService);
   }
 
   // ── CRUD ──
@@ -188,8 +191,8 @@ export class SubscribersService {
 
     // Hash determinista para búsqueda por documento/email/teléfono (migración 014)
     const documentNumberHash = dto.documentNumber ? hashDocumentNumber(dto.documentNumber) : null;
-    const emailHash = this.sha256Hash(dto.email);
-    const phoneHash = this.sha256Hash(dto.phone);
+    const emailHash = hashEmail(dto.email, this.piiHashKey);
+    const phoneHash = this.hmacPhoneHash(dto.phone);
     const normalizedManualReason = dto.manualOverrideReason?.trim();
 
     if (normalizedManualReason && normalizedManualReason.length < 10) {
@@ -437,8 +440,14 @@ export class SubscribersService {
     if (dto.commercialName !== undefined) entity.commercialName = dto.commercialName;
     if (dto.legalRepresentativeId !== undefined)
       entity.legalRepresentativeId = dto.legalRepresentativeId;
-    if (dto.email !== undefined) entity.emailEncrypted = this.encryptValue(dto.email);
-    if (dto.phone !== undefined) entity.phoneEncrypted = this.encryptValue(dto.phone);
+    if (dto.email !== undefined) {
+      entity.emailEncrypted = this.encryptValue(dto.email);
+      entity.emailHash = hashEmail(dto.email, this.piiHashKey);
+    }
+    if (dto.phone !== undefined) {
+      entity.phoneEncrypted = this.encryptValue(dto.phone);
+      entity.phoneHash = this.hmacPhoneHash(dto.phone);
+    }
     if (dto.altContactName !== undefined)
       entity.altContactName = dto.altContactName ? dto.altContactName.trim() : null;
     if (dto.altContactPhone !== undefined)
@@ -548,8 +557,7 @@ export class SubscribersService {
 
   /**
    * Búsqueda determinista por documento, NIT, email o teléfono.
-   * Usa columnas hash SHA-256 para búsqueda sin descifrar (migración 014).
-   * Fallback a descifrado en memoria si las columnas hash no existen.
+   * Usa columnas HMAC-SHA-256 (`*_hmac`, SEC-P1 / migraciones 108–109).
    */
   async search(query: {
     documentNumber?: string | undefined;
@@ -565,7 +573,7 @@ export class SubscribersService {
       const conditions: string[] = [];
       const params: Record<string, string> = {};
 
-      // Búsqueda por hash SHA-256 (columnas de migración 014)
+      // Búsqueda por HMAC (columnas *_hmac)
       if (query.documentNumber) {
         conditions.push('s.documentNumberHash = :docHash');
         params.docHash = hashDocumentNumber(query.documentNumber);
@@ -578,12 +586,12 @@ export class SubscribersService {
 
       if (query.email) {
         conditions.push('s.emailHash = :emailHash');
-        params.emailHash = this.sha256Hash(query.email);
+        params.emailHash = hashEmail(query.email, this.piiHashKey);
       }
 
       if (query.phone) {
         conditions.push('s.phoneHash = :phoneHash');
-        params.phoneHash = this.sha256Hash(query.phone);
+        params.phoneHash = this.hmacPhoneHash(query.phone);
       }
 
       if (conditions.length === 0) {
@@ -973,10 +981,11 @@ export class SubscribersService {
   }
 
   /**
-   * Hash SHA-256 determinista para búsqueda sin descifrar.
+   * HMAC-SHA-256 de teléfono (sin normalización de casing; el caller decide formato).
+   * Emails usan {@link hashEmail} (toLowerCase + trim).
    */
-  private sha256Hash(value: string): string {
-    return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+  private hmacPhoneHash(value: string): string {
+    return hmacPii(value, this.piiHashKey);
   }
 
   /**

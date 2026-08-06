@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import type { QueryRunner } from 'typeorm';
+import { hmacDocumentNumber, loadPiiHashKeyFromEnv } from './pii-hmac.util';
 
 /** Formato en reposo: iv_hex:authTag_hex:ciphertext_hex (AES-256-GCM). */
 const ENCRYPTED_PARTS = 3;
@@ -7,11 +8,13 @@ const DEFAULT_BATCH_SIZE = 100;
 const MAX_BATCH_SIZE = 500;
 
 /**
- * SHA-256 hex (64 chars) del número de documento en texto plano.
- * Misma semántica que `apps/api` `hashDocumentNumber` y subscribers (migración 014).
+ * HMAC-SHA-256 hex (64 chars) del número de documento (SEC-P1).
+ * Misma semántica que `apps/api` `hashDocumentNumber`. Requiere `PII_HASH_KEY`
+ * salvo que se inyecte `hashKey` en opciones de backfill.
  */
-export function hashDocumentNumber(documentNumber: string): string {
-  return crypto.createHash('sha256').update(documentNumber, 'utf8').digest('hex');
+export function hashDocumentNumber(documentNumber: string, hashKey?: Buffer): string {
+  const key = hashKey ?? loadPiiHashKeyFromEnv();
+  return hmacDocumentNumber(documentNumber, key);
 }
 
 export function parseEncryptionKeyHex(keyHex: string): Buffer {
@@ -105,6 +108,8 @@ export type BackfillDocumentNumberHashOptions = {
   batchSize?: number;
   activeKey?: Buffer;
   previousKey?: Buffer | null;
+  /** Clave HMAC (`PII_HASH_KEY`). Si se omite, se carga de env al primer lote. */
+  hashKey?: Buffer;
   /** Logger opcional: solo conteos / ids; nunca plaintext ni ciphertext. */
   warn?: (message: string) => void;
 };
@@ -129,6 +134,7 @@ export async function backfillExpedienteDocumentNumberHashes(
     options.activeKey !== undefined
       ? { activeKey: options.activeKey, previousKey: options.previousKey ?? null }
       : null;
+  let hashKey: Buffer | null = options.hashKey ?? null;
 
   const safeBatch = Math.min(
     Math.max(Math.floor(options.batchSize ?? DEFAULT_BATCH_SIZE) || DEFAULT_BATCH_SIZE, 1),
@@ -166,6 +172,9 @@ export async function backfillExpedienteDocumentNumberHashes(
     if (!keys) {
       keys = loadAesGcmKeysFromEnv();
     }
+    if (!hashKey) {
+      hashKey = loadPiiHashKeyFromEnv();
+    }
 
     afterId = batch[batch.length - 1]!.id;
 
@@ -179,7 +188,7 @@ export async function backfillExpedienteDocumentNumberHashes(
 
       try {
         const plaintext = decryptAes256Gcm(ciphertext, keys.activeKey, keys.previousKey);
-        const hash = hashDocumentNumber(plaintext);
+        const hash = hashDocumentNumber(plaintext, hashKey);
         await queryRunner.query(
           `
             UPDATE expediente_records

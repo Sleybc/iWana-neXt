@@ -90,12 +90,29 @@ Si una clave débil o real estuvo versionada:
 
 ## 6. Variables y plantilla
 
-Ver `.env.example` (raíz): `MFA_ENCRYPTION_KEY` vacío + comentario de generación; `MFA_ENCRYPTION_KEY_PREVIOUS` opcional y vacío por defecto.
+Ver `.env.example` (raíz): `MFA_ENCRYPTION_KEY` vacío + comentario de generación; `MFA_ENCRYPTION_KEY_PREVIOUS` opcional y vacío por defecto; `PII_HASH_KEY` (SEC-P1) independiente, mismo formato 64 hex.
 
 En local, si el `.env` no versionado aún tiene 64 ceros: generar clave nueva, seguir §2 (PREVIOUS = valor antiguo solo en secret store local), no subir el archivo.
 
 ---
 
+## 6bis. Rotación de `PII_HASH_KEY` (D-D / SEC-P1)
+
+`PII_HASH_KEY` **no** se rota con el procedimiento AES de §2. Es una clave distinta a propósito (ADR-078 (propuesto) D-A): rotar cifrado no debe forzar recalcular hashes, y viceversa.
+
+**Consecuencia aceptada (D-D):** rotar `PII_HASH_KEY` exige **backfill completo** de todas las columnas `*_hmac` (users, subscribers, expediente_records, platform_users) recalculando HMAC con la clave nueva a partir del plaintext (email en claro / ciphertext descifrado). No hay columna de versión de clave en este corte — eso requeriría ADR propio.
+
+Procedimiento operativo resumido:
+
+1. Generar nueva clave (`openssl rand -hex 32`) y desplegarla como `PII_HASH_KEY` **solo tras** tener ventana para backfill.
+2. Ejecutar backfill por schema (mismo andamiaje que migración 108 / util `backfill-pii-hmac.util`) hasta `pending = 0`.
+3. Verificar búsquedas por documento/email/teléfono.
+4. Retirar la clave antigua del secret store.
+
+Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos ≠ HMAC nueva clave).
+
+---
+
 ## 7. Nota para AI-SEC-ENG
 
-Este runbook **no** auto-aprueba el gate de seguridad (G-SEC). SEC-ENG debe re-revisar tras merges de remediación (fail-fast Joi, job de recifrado, ausencia de placeholders inseguros en ejemplos versionados).
+Este runbook **no** auto-aprueba el gate de seguridad (G-SEC). SEC-ENG debe re-revisar tras merges de remediación (fail-fast Joi, job de recifrado, ausencia de placeholders inseguros en ejemplos versionados, rotación PII_HASH_KEY documentada).

@@ -8,7 +8,7 @@ SET search_path TO tenant_mod04_083_rev, public;
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(512) NOT NULL,
-  email_hash VARCHAR(64) NOT NULL UNIQUE,
+  email_hmac VARCHAR(64) NOT NULL UNIQUE,
   first_name VARCHAR(512),
   last_name VARCHAR(512),
   document_number VARCHAR(512)

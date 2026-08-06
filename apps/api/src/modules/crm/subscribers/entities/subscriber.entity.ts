@@ -66,14 +66,14 @@ export class Subscriber {
   @Column({ type: 'varchar', length: 500, name: 'document_number_encrypted', nullable: true })
   documentNumberEncrypted: string | null;
 
-  // Hashes SHA-256 para búsqueda determinista sin descifrar (migración 014)
-  @Column({ type: 'varchar', length: 64, name: 'document_number_hash', nullable: true })
+  // HMAC-SHA-256 para búsqueda determinista sin descifrar (SEC-P1 / migración 108)
+  @Column({ type: 'varchar', length: 64, name: 'document_number_hmac', nullable: true })
   documentNumberHash: string | null;
 
-  @Column({ type: 'varchar', length: 64, name: 'email_hash', nullable: true })
+  @Column({ type: 'varchar', length: 64, name: 'email_hmac', nullable: true })
   emailHash: string | null;
 
-  @Column({ type: 'varchar', length: 64, name: 'phone_hash', nullable: true })
+  @Column({ type: 'varchar', length: 64, name: 'phone_hmac', nullable: true })
   phoneHash: string | null;
 
   @Column({ type: 'varchar', length: 300, name: 'first_name', nullable: true })

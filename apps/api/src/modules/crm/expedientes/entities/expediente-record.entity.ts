@@ -77,7 +77,7 @@ export class ExpedienteRecord {
   documentNumberEncrypted: string | null;
 
   /** SHA-256 del documento en claro — búsqueda sin descifrar (migración 087 / D-4). */
-  @Column({ type: 'varchar', length: 64, name: 'document_number_hash', nullable: true })
+  @Column({ type: 'varchar', length: 64, name: 'document_number_hmac', nullable: true })
   documentNumberHash: string | null;
 
   @Column({ type: 'varchar', length: 20, name: 'gender', nullable: true })

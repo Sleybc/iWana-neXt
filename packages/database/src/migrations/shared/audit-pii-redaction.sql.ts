@@ -93,7 +93,10 @@ export const CREATE_PII_PREDICATE_SQL = `
           'customerdisplayname', 'customer_display_name',
           'expedientefullname', 'expediente_full_name',
           'fiscalname', 'fiscal_name',
-          'suggestedpartyname', 'suggested_party_name'
+          'suggestedpartyname', 'suggested_party_name',
+          'latitude', 'longitude',
+          'description', 'title', 'sector', 'municipality',
+          'sourcedetail', 'source_detail'
         )
         OR key ~* '(password|secret|token|credential|apikey|api.?key|private.?key|authorization|otp|qr|seed|recovery|backup|ciphertext)'
       )
@@ -101,9 +104,10 @@ export const CREATE_PII_PREDICATE_SQL = `
 `;
 
 /**
- * Crea el redactor recursivo. Solo sustituye valores **string**: un número o un
- * booleano bajo una clave PII no transporta el dato y vaciarlo perdería forma.
- * Idempotente por construcción — reescribir un `[REDACTADO]` lo deja igual.
+ * Crea el redactor recursivo.
+ * - Strings bajo clave PII → `[REDACTADO]`
+ * - Numbers bajo clave PII (latitude/longitude) → también `[REDACTADO]` (texto)
+ * Idempotente por construcción.
  */
 export const CREATE_PII_REDACTOR_SQL = `
   CREATE OR REPLACE FUNCTION ${PII_REDACT_FN}(data jsonb)
@@ -138,12 +142,17 @@ export const CREATE_PII_REDACTOR_SQL = `
     END IF;
 
     FOR k, v IN SELECT * FROM jsonb_each(data) LOOP
-      IF jsonb_typeof(v) = 'string' AND ${PII_PREDICATE_FN}(k) THEN
-        scalar_value := v #>> '{}';
-        IF scalar_value IS DISTINCT FROM '[REDACTADO]' THEN
-          result := result || jsonb_build_object(k, to_jsonb('[REDACTADO]'::text));
+      IF ${PII_PREDICATE_FN}(k) AND jsonb_typeof(v) IN ('string', 'number') THEN
+        IF jsonb_typeof(v) = 'string' THEN
+          scalar_value := v #>> '{}';
+          IF scalar_value IS DISTINCT FROM '[REDACTADO]' THEN
+            result := result || jsonb_build_object(k, to_jsonb('[REDACTADO]'::text));
+          ELSE
+            result := result || jsonb_build_object(k, v);
+          END IF;
         ELSE
-          result := result || jsonb_build_object(k, v);
+          -- number (coordenadas): sustituir por marcador string
+          result := result || jsonb_build_object(k, to_jsonb('[REDACTADO]'::text));
         END IF;
       ELSIF jsonb_typeof(v) IN ('object', 'array') THEN
         result := result || jsonb_build_object(k, ${PII_REDACT_FN}(v));

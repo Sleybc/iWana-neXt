@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Brackets, DataSource } from 'typeorm';
 import { PlatformAuditLog } from '@iwana/db';
+import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
 import { AuditLogResponseDto, PlatformAuditLogListResponseDto } from './dto/audit-log-response.dto';
@@ -25,6 +26,8 @@ import { encodeAuditCursor, decodeAuditCursor } from '../../common/pagination';
  * - Nunca lanza excepciones: los fallos de auditoria son silenciosos.
  * - Si tenantId/schemaName están presentes en el input, se ignoran
  *   (las entradas de plataforma SIEMPRE van al schema público).
+ * - oldValue/newValue se sanitizan aquí con la misma denylist que
+ *   AuditService / AuditInterceptor (SEC-P1 / D-C / H-2).
  *
  * RF-AUD-03 (PRD-MOD01-DEFINICION v1.1): operaciones SYSTEM_ADMIN/IWANA_SUPPORT
  * registradas en public.platform_audit_logs (ADR-018).
@@ -46,14 +49,16 @@ export class PlatformAuditService {
    */
   async log(entry: AuditEntryInput): Promise<void> {
     try {
+      const oldValue = sanitizeAuditPayload(entry.oldValue ?? null);
+      const newValue = sanitizeAuditPayload(entry.newValue ?? null);
       const repo = this.dataSource.getRepository(PlatformAuditLog);
       const logEntry = repo.create({
         userId: entry.userId ?? null,
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
-        oldValue: entry.oldValue ?? null,
-        newValue: entry.newValue ?? null,
+        oldValue,
+        newValue,
         ipAddress: entry.ipAddress ?? null,
         userAgent: entry.userAgent ?? null,
         requestId: entry.requestId ?? null,

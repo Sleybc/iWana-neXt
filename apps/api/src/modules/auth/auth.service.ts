@@ -191,7 +191,7 @@ export class AuthService {
    * Autentica un usuario con email + password.
    *
    * Flujo:
-   * 1. Buscar usuario por emailHash (SHA-256 del email en minusculas)
+   * 1. Buscar usuario por emailHash (HMAC-SHA-256 del email en minusculas + trim)
    * 2. Verificar estado: ACTIVE o PENDING_VERIFICATION
    * 3. Verificar lockout (lockedUntil > now)
    * 4. Comparar password con bcrypt

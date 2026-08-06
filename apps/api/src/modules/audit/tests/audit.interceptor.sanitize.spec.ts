@@ -224,10 +224,22 @@ describe('AuditInterceptor — saneado de la respuesta', () => {
       'expedienteFullName',
       'fiscalName',
       'suggestedPartyName',
+      'latitude',
+      'longitude',
+      'description',
+      'title',
+      'sector',
+      'municipality',
+      'sourceDetail',
     ])('omite %s', (key) => {
       const result = sanitize({ data: { [key]: 'valor-ficticio' } });
 
       expect(Object.keys((result as { data: object }).data)).toEqual([]);
+    });
+
+    it('omite latitude/longitude numéricos (no solo string)', () => {
+      const result = sanitize({ data: { latitude: 4.711, longitude: -74.072, id: '1' } });
+      expect((result as { data: Record<string, unknown> }).data).toEqual({ id: '1' });
     });
   });
 

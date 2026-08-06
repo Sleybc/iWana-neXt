@@ -1,9 +1,11 @@
-import * as crypto from 'crypto';
+import { hmacPii, resolvePiiHashKey } from './pii-hash-key.util';
 
 /**
- * SHA-256 del email normalizado (minúsculas + trim).
+ * HMAC-SHA-256 del email normalizado (minúsculas + trim).
  * Derivado de búsqueda/compatibilidad; no sustituye el email en texto plano.
+ * Requiere `PII_HASH_KEY` (SEC-P1).
+ * Semántica alineada con `@iwana/db` `hmacEmail` / `scripts/lib/pii-hmac.mjs`.
  */
-export function hashEmail(email: string): string {
-  return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+export function hashEmail(email: string, key?: Buffer): string {
+  return hmacPii(email.toLowerCase().trim(), key ?? resolvePiiHashKey());
 }

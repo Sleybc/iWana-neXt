@@ -64,3 +64,12 @@ export {
   isTenantContextMissingError,
 } from './tenant-context';
 export type { TenantContextPayload } from './tenant-context';
+
+// HMAC PII (SEC-P1) — fuente de verdad compartida para migraciones, worker y scripts ESM
+export {
+  hmacDocumentNumber,
+  hmacEmail,
+  hmacPhone,
+  hmacPiiValue,
+  loadPiiHashKeyFromEnv,
+} from './migrations/shared/pii-hmac.util';

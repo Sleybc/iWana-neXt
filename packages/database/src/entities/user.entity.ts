@@ -22,7 +22,7 @@ import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
  *
  * SEGURIDAD:
  * - email: texto plano con constraint UNIQUE dentro del tenant
- * - emailHash: SHA-256 derivado para compatibilidad transversal de autenticacion
+ * - emailHash: HMAC-SHA-256 derivado para búsqueda (SEC-P1 / PII_HASH_KEY)
  * - passwordHash: bcrypt 12 rounds
  * - mfaSecret: AES-256-GCM cifrado (nullable hasta activacion MFA)
  * - password_reset_token: cifrado (nullable, expira en 24h)
@@ -41,12 +41,12 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Email en texto plano; emailHash se mantiene derivado para compatibilidad transversal. */
+  /** Email en texto plano; emailHash es HMAC-SHA-256 derivado (SEC-P1 / PII_HASH_KEY). */
   @Column({ length: 255, unique: true })
   email: string;
 
-  /** SHA-256 del email normalizado. Longitud 64 = 256 bits en hex */
-  @Column({ unique: true, name: 'email_hash', length: 64 })
+  /** HMAC-SHA-256 del email normalizado. Longitud 64 = 256 bits en hex */
+  @Column({ unique: true, name: 'email_hmac', length: 64 })
   emailHash: string;
 
   /** bcrypt 12 rounds. Longitud 60 = formato bcrypt estandar */

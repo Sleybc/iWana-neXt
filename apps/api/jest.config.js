@@ -33,6 +33,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/test-setup-pii-hash-key.ts'],
   testPathIgnorePatterns: ['\\.postgres\\.integration\\.spec\\.ts$'],
   // R-14 — CAUSA RAÍZ (no subir testTimeout: eso trata el síntoma).
   // Jest ya es un runner paralelo. Ejecutarlo bajo otro planificador paralelo

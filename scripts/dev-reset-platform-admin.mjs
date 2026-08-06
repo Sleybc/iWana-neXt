@@ -2,12 +2,14 @@
 /**
  * Sincroniza la contraseña del superadmin de plataforma con PLATFORM_SUPER_ADMIN_* (solo dev local).
  * Útil tras reset de DB cuando bootstrap omitió al usuario existente con hash desactualizado.
+ *
+ * SEC-P1: lookup por `email_hmac` (HMAC-SHA-256 + PII_HASH_KEY), no SHA-256/`email_hash`.
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { hmacEmail, loadPiiHashKeyFromEnv } from './lib/pii-hmac.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -42,7 +44,13 @@ if (!email || !password) {
   process.exit(1);
 }
 
-const emailHash = createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+let emailHmac;
+try {
+  emailHmac = hmacEmail(email, loadPiiHashKeyFromEnv());
+} catch (err) {
+  console.error(`dev-reset-platform-admin: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 
 const hashResult = spawnSync(
   process.execPath,
@@ -69,7 +77,7 @@ const dbUser = process.env.DB_USER ?? 'iwana';
 const dbName = process.env.DB_NAME ?? 'iwana_dev';
 const container = process.env.IWANA_POSTGRES_CONTAINER ?? 'iwana-postgres';
 
-const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}' WHERE email_hash = '${emailHash}';`;
+const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}' WHERE email_hmac = '${emailHmac}';`;
 
 const result = spawnSync(
   'docker',
@@ -86,7 +94,7 @@ console.log(
   JSON.stringify({
     ok: true,
     action: 'password_synced',
-    emailHashPrefix: emailHash.slice(0, 12),
+    emailHmacPrefix: emailHmac.slice(0, 12),
     rowsHint: (result.stdout ?? '').trim(),
   }),
 );

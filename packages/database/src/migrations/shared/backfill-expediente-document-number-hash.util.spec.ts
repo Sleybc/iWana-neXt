@@ -9,6 +9,7 @@ import {
 
 /** Clave de prueba con entropía no nula (no es secreto real). */
 const ACTIVE_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const PII_HASH_HEX = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210';
 
 /**
  * R-9 — vector de frontera como dato (no import cruzado).
@@ -22,8 +23,22 @@ const R9_CIPHERTEXT_LITERAL =
 
 describe('088 backfill expediente document_number_hash (helper)', () => {
   const activeKey = parseEncryptionKeyHex(ACTIVE_HEX);
+  const hashKey = Buffer.from(PII_HASH_HEX, 'hex');
   const plaintext = '900123456';
-  const expectedHash = hashDocumentNumber(plaintext);
+  const expectedHash = hashDocumentNumber(plaintext, hashKey);
+  const previousPii = process.env.PII_HASH_KEY;
+
+  beforeAll(() => {
+    process.env.PII_HASH_KEY = PII_HASH_HEX;
+  });
+
+  afterAll(() => {
+    if (previousPii === undefined) {
+      delete process.env.PII_HASH_KEY;
+    } else {
+      process.env.PII_HASH_KEY = previousPii;
+    }
+  });
 
   describe('R-9: vector ciphertext literal (frontera formato)', () => {
     it('descifra el literal embebido al plaintext esperado con el helper de migración', () => {
@@ -94,7 +109,7 @@ describe('088 backfill expediente document_number_hash (helper)', () => {
 
     // Semántica de findAll por documentNumber: igualdad de hash (sin reopen decrypt).
     const listByDocument = [...store.values()].filter(
-      (row) => row.document_number_hash === hashDocumentNumber(plaintext),
+      (row) => row.document_number_hash === hashDocumentNumber(plaintext, hashKey),
     );
     expect(listByDocument).toHaveLength(1);
     expect(listByDocument[0]?.id).toBe(rowId);

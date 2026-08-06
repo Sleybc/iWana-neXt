@@ -18,13 +18,14 @@ import { PlatformRole, UserStatus } from '@iwana/shared';
  *
  * SEGURIDAD:
  * - email: almacenado cifrado con AES-256-GCM (IV unico por registro)
- * - emailHash: SHA-256 del email en minusculas — usado en indices y busquedas
+ * - emailHash: HMAC-SHA-256 del email en minusculas — usado en indices y busquedas
+ *   (SEC-P1 / PII_HASH_KEY; ya no es SHA-256 enumerable)
  * - passwordHash: bcrypt 12 rounds — NO cifrar adicionalmente (redundante)
  * - mfaSecret: AES-256-GCM cifrado — obligatorio para plataforma (mfaEnabled siempre true)
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 3 (Modelo de Datos)
  */
-@Index('idx_platform_users_email_hash', ['emailHash'])
+@Index('idx_platform_users_email_hmac', ['emailHash'])
 @Entity({ schema: 'public', name: 'platform_users' })
 export class PlatformUser {
   @PrimaryGeneratedColumn('uuid')
@@ -39,10 +40,10 @@ export class PlatformUser {
   email: string;
 
   /**
-   * SHA-256 del email normalizado (trim().toLowerCase()).
+   * HMAC-SHA-256 del email normalizado (trim().toLowerCase()).
    * Longitud 64 = 256 bits en hex. Unico e indexado para busquedas eficientes.
    */
-  @Column({ unique: true, name: 'email_hash', length: 64 })
+  @Column({ unique: true, name: 'email_hmac', length: 64 })
   emailHash: string;
 
   /**

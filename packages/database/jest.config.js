@@ -26,6 +26,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s', '!**/*.spec.ts'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/test-setup-pii-hash-key.ts'],
   // R-14: sin `maxWorkers` explícito jest usa (cores - 1) — 15 workers en esta
   // máquina para un paquete con pocas suites: puro coste de spawn, y sumaba a la
   // sobresuscripción con los demás paquetes. El presupuesto se acota ARRIBA

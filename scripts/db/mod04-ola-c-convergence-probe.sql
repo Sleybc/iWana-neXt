@@ -12,7 +12,7 @@ SET search_path TO tenant_mod04_ola_c_conv, public;
 CREATE TABLE users (
   id UUID NOT NULL DEFAULT gen_random_uuid(),
   email VARCHAR(512) NOT NULL,
-  email_hash VARCHAR(64) NOT NULL,
+  email_hmac VARCHAR(64) NOT NULL,
   password_hash VARCHAR(60) NOT NULL,
   role VARCHAR(20) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'PENDING_VERIFICATION',
@@ -39,7 +39,7 @@ CREATE TABLE users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
   CONSTRAINT pk_users PRIMARY KEY (id),
-  CONSTRAINT uq_users_email_hash UNIQUE (email_hash)
+  CONSTRAINT uq_users_email_hmac UNIQUE (email_hmac)
 );
 
 -- 083 (idempotente, equivalente a AlignUsersEntityDdl083)

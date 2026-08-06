@@ -64,6 +64,9 @@ import { AddNonRealizationFieldsToScheduleEvents104 } from './104_add_non_realiz
 import { AddVisitRequestAdditionalReason105 } from './105_add_visit_request_additional_reason';
 import { AddScheduleEventReviewNotes106 } from './106_add_schedule_event_review_notes';
 import { AddScheduleEventStatusExpired107 } from './107_add_schedule_event_status_expired';
+import { AddPiiHmacColumns1080000000000 } from './108_add_pii_hmac_columns';
+import { DropPiiSha256HashColumns1090000000000 } from './109_drop_pii_sha256_hash_columns';
+import { RedactAuditPiiCoordsAndFreeText1100000000000 } from './110_redact_audit_pii_coords_and_free_text';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -207,6 +210,9 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddVisitRequestAdditionalReason105,
   AddScheduleEventReviewNotes106,
   AddScheduleEventStatusExpired107,
+  AddPiiHmacColumns1080000000000,
+  DropPiiSha256HashColumns1090000000000,
+  RedactAuditPiiCoordsAndFreeText1100000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

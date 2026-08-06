@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import * as crypto from 'crypto';
+import { randomBytes } from 'crypto';
 import { DataSource } from 'typeorm';
-import { User, runInTenantSchema } from '@iwana/db';
+import { User, hmacEmail, loadPiiHashKeyFromEnv, runInTenantSchema } from '@iwana/db';
 import { TAX_COLOMBIA_PRESETS, UserRole, UserStatus } from '@iwana/shared';
 
 const TEMPORARY_PASSWORD_TTL_MS = 24 * 60 * 60 * 1000;
@@ -47,7 +47,8 @@ export class TenantSeedService {
   async seedInitialAdmin(input: TenantSeedInput): Promise<{ created: boolean }> {
     return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
       const adminEmail = input.adminEmail.toLowerCase().trim();
-      const emailHash = this.hashEmail(adminEmail);
+      // SEC-P1: HMAC vía @iwana/db (misma fuente que migraciones / scripts ESM).
+      const emailHash = hmacEmail(adminEmail, loadPiiHashKeyFromEnv());
 
       const existingAdmin = await qr.manager.findOne(User, {
         where: { emailHash },
@@ -69,7 +70,7 @@ export class TenantSeedService {
       // Antes se sembraba con `TENANT_INITIAL_ADMIN_PASSWORD`, la misma para
       // todas las empresas del despliegue: quien conociera esa variable entraba
       // a cualquier empresa recién creada durante su ventana de 24h.
-      const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+      const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
 
       const adminUser = qr.manager.create(User, {
         // Texto plano (H-14). La ruta de descifrado legacy de `UsersService` se
@@ -156,10 +157,6 @@ export class TenantSeedService {
     });
 
     this.logger.log(`[TenantSeedService] Tax presets completados para schema ${schemaName}`);
-  }
-
-  private hashEmail(email: string): string {
-    return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
   }
 
   // `validateBootstrapPassword` se retiró junto con la contraseña compartida:

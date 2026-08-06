@@ -292,7 +292,7 @@ describe('UsersService', () => {
           {
             id: entity.id,
             email: entity.email,
-            email_hash: entity.emailHash,
+            email_hmac: entity.emailHash,
             password_hash: entity.passwordHash,
             role: entity.role,
             status: entity.status,

@@ -141,6 +141,7 @@ describe('SubscriberCreationService', () => {
           useValue: {
             getOrThrow: (key: string) => {
               if (key === 'MFA_ENCRYPTION_KEY') return TEST_ENCRYPTION_KEY;
+              if (key === 'PII_HASH_KEY') return TEST_ENCRYPTION_KEY;
               return null;
             },
           },

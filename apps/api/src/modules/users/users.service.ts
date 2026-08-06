@@ -97,7 +97,8 @@ export interface SearchIndexUserRecord {
  * Servicio de gestion de usuarios por tenant.
  *
  * Opera siempre dentro del schema del tenant via TenantContext + runInTenantSchema.
- * El email se persiste en texto plano y mantiene emailHash como derivado SHA-256
+ * El email se persiste en texto plano y mantiene emailHash como derivado HMAC-SHA-256
+ * (SEC-P1 / PII_HASH_KEY; búsqueda determinista sin exponer el email en índices SHA crudos).
  * para compatibilidad transversal con autenticacion y bootstrap.
  *
  * Operaciones disponibles:
@@ -108,7 +109,7 @@ export interface SearchIndexUserRecord {
  * - remove: soft delete (solo ADMIN, no puede borrar a otro ADMIN del mismo tenant)
  *
  * SEGURIDAD:
- * - Email en texto plano con unique constraint; emailHash derivado para compatibilidad
+ * - Email en texto plano con unique constraint; emailHash HMAC-SHA-256 (SEC-P1)
  * - Password temporal generado con crypto.randomBytes (nunca predecible)
  * - Audit trail en CREATE, UPDATE, DELETE via AuditService
  * - RBAC: ADMIN no puede eliminar a otro ADMIN (RF-RBAC-04)
@@ -610,7 +611,7 @@ export class UsersService {
 
       if (existing?.deletedAt) {
         /**
-         * El usuario fue eliminado (soft delete) pero el email_hash tiene unique constraint
+         * El usuario fue eliminado (soft delete) pero el email_hmac tiene unique constraint
          * a nivel de columna PostgreSQL — no se puede insertar una fila nueva con el mismo hash.
          * Solución: restaurar el registro eliminado y reinicializar todos sus campos con los
          * nuevos datos, como si fuera un usuario completamente nuevo.
@@ -1606,7 +1607,7 @@ export class UsersService {
     return {
       id: String(row['id']),
       email: String(row['email']),
-      emailHash: String(row['email_hash'] ?? row['emailHash'] ?? ''),
+      emailHash: String(row['email_hmac'] ?? row['emailHash'] ?? ''),
       passwordHash: String(row['password_hash'] ?? row['passwordHash'] ?? ''),
       role: row['role'] as UserRole,
       status: row['status'] as UserStatus,

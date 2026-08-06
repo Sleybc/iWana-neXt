@@ -40,7 +40,7 @@ async function main() {
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email VARCHAR(255) NOT NULL,
-      email_hash VARCHAR(64) NOT NULL,
+      email_hmac VARCHAR(64) NOT NULL,
       password_hash VARCHAR(255) NOT NULL DEFAULT 'x',
       role VARCHAR(40) NOT NULL DEFAULT 'NOC',
       status VARCHAR(40) NOT NULL DEFAULT 'ACTIVE',
@@ -69,7 +69,7 @@ async function main() {
         values.push(`($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`);
         params.push(
           `user${idx}@bench.local`,
-          `hash${idx}`,
+          idx.toString(16).padStart(64, '0'),
           `Nombre${idx % 200}`,
           `Apellido${idx % 300}`,
           idx % 7 === 0 ? 'Soporte tecnico' : idx % 5 === 0 ? 'NOC' : 'Operaciones',
@@ -77,7 +77,7 @@ async function main() {
         );
       }
       await client.query(
-        `INSERT INTO users (email, email_hash, first_name, last_name, job_title, deleted_at)
+        `INSERT INTO users (email, email_hmac, first_name, last_name, job_title, deleted_at)
          VALUES ${values.join(',')}`,
         params,
       );

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
  * Verificación local de login plataforma (dev). Lee .env.development sin imprimir secretos.
+ *
+ * SEC-P1: el prefijo de diagnóstico usa HMAC-SHA-256 + PII_HASH_KEY (email_hmac), no SHA-256.
  */
 import { readFileSync, existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hmacEmail, loadPiiHashKeyFromEnv } from './lib/pii-hmac.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -41,6 +43,14 @@ if (!email || !password) {
   process.exit(1);
 }
 
+let emailHmac;
+try {
+  emailHmac = hmacEmail(email, loadPiiHashKeyFromEnv());
+} catch (err) {
+  console.error(`verify-platform-login: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+
 const res = await fetch(`${apiBase}/api/v1/auth/platform/login`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -48,12 +58,11 @@ const res = await fetch(`${apiBase}/api/v1/auth/platform/login`, {
 });
 
 const body = await res.text();
-const emailHash = createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
 
 console.log(
   JSON.stringify({
     status: res.status,
-    emailHashPrefix: emailHash.slice(0, 12),
+    emailHmacPrefix: emailHmac.slice(0, 12),
     ok: res.ok,
     hasAccessToken: body.includes('accessToken'),
     bodyPreview: body.slice(0, 120),

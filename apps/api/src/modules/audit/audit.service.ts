@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
+import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 
 /**
@@ -15,9 +16,10 @@ import { AuditEntryInput } from './interfaces/audit-entry.interface';
  * - Cada llamada a log() crea su propia transaccion independiente (QueryRunner
  *   separado del de la operacion principal).
  *
- * SEGURIDAD:
- * - oldValue/newValue deben ser sanitizados por el caller: sin passwordHash,
- *   sin mfaSecret, sin campos cifrados, sin PII en texto plano.
+ * SEGURIDAD (SEC-P1 / D-C):
+ * - oldValue/newValue se sanitizan **aquí** con la misma denylist que
+ *   `AuditInterceptor` — las rutas directas (p. ej. expediente.service) no
+ *   pueden evadir el control.
  * - Inmutabilidad append-only: trigger PostgreSQL `reject_audit_mutation()` (migr. 075).
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/audit)
@@ -52,6 +54,9 @@ export class AuditService {
         schemaName = ctx.schemaName;
       }
 
+      const oldValue = sanitizeAuditPayload(entry.oldValue ?? null);
+      const newValue = sanitizeAuditPayload(entry.newValue ?? null);
+
       await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
         const logEntry = qr.manager.create(AuditLog, {
           tenantId,
@@ -59,8 +64,8 @@ export class AuditService {
           action: entry.action,
           entityType: entry.entityType,
           entityId: entry.entityId,
-          oldValue: entry.oldValue ?? null,
-          newValue: entry.newValue ?? null,
+          oldValue,
+          newValue,
           ipAddress: entry.ipAddress ?? null,
           userAgent: entry.userAgent ?? null,
           requestId: entry.requestId ?? null,

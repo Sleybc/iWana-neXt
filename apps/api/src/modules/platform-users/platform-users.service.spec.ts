@@ -304,10 +304,7 @@ describe('PlatformUsersService', () => {
 
   it('changeLoginEmail rechaza el cambio cuando el correo es igual al actual', async () => {
     const currentEmail = 'admin@iwana.co';
-    const currentEmailHash = crypto
-      .createHash('sha256')
-      .update(currentEmail.toLowerCase().trim())
-      .digest('hex');
+    const currentEmailHash = require('../../common/crypto/hash-email.util').hashEmail(currentEmail);
     const entity = buildPlatformUser({ email: currentEmail, emailHash: currentEmailHash });
     repo.findOne.mockResolvedValue(entity);
     (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => true);

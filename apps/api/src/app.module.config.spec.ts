@@ -18,6 +18,15 @@ describe('AppModule configuration', () => {
         JWT_PUBLIC_KEY: 'not-a-real-key',
       },
     ],
+    [
+      'PII_HASH_KEY',
+      {
+        EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
+        JWT_PRIVATE_KEY: 'not-a-real-key',
+        JWT_PUBLIC_KEY: 'not-a-real-key',
+        MFA_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+      },
+    ],
   ])('rechaza configuración inválida al arrancar: %s', (variable, environment) => {
     const validation = createAppConfigurationSchema().validate(environment, { abortEarly: false });
 
@@ -38,6 +47,7 @@ describe('AppModule configuration', () => {
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
         MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+        PII_HASH_KEY: '0123456789abcdef'.repeat(4),
         ...(service === 'S3/MinIO credentials'
           ? { TYPESENSE_HOST: 'typesense', TYPESENSE_API_KEY: 'typesense-key' }
           : { S3_ACCESS_KEY_ID: 'minio-user', S3_SECRET_ACCESS_KEY: 'minio-secret' }),
@@ -66,6 +76,7 @@ describe('AppModule configuration', () => {
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
         MFA_ENCRYPTION_KEY: 'a'.repeat(64),
+        PII_HASH_KEY: '0123456789abcdef'.repeat(4),
         STORAGE_DRIVER: 'local',
         S3_ACCESS_KEY_ID: 'not-a-secret',
         S3_SECRET_ACCESS_KEY: 'not-a-secret',
@@ -89,6 +100,7 @@ describe('AppModule configuration', () => {
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
         MFA_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+        PII_HASH_KEY: 'fedcba9876543210'.repeat(4),
         STORAGE_DRIVER: 'minio',
         S3_ACCESS_KEY_ID: 'not-a-secret',
         S3_SECRET_ACCESS_KEY: 'not-a-secret',
@@ -118,6 +130,7 @@ describe('AppModule configuration', () => {
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
         MFA_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+        PII_HASH_KEY: 'fedcba9876543210'.repeat(4),
         S3_ACCESS_KEY_ID: 'not-a-secret',
         S3_SECRET_ACCESS_KEY: 'not-a-secret',
         TYPESENSE_HOST: 'typesense',

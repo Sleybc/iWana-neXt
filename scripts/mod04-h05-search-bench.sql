@@ -7,7 +7,7 @@ SET search_path TO tenant_bench_h05, public;
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) NOT NULL,
-  email_hash VARCHAR(64) NOT NULL,
+  email_hmac VARCHAR(64) NOT NULL,
   first_name VARCHAR(100),
   last_name VARCHAR(100),
   job_title VARCHAR(120),
@@ -22,10 +22,10 @@ BEGIN
   SELECT COUNT(*) INTO c FROM users;
   IF c < 50000 THEN
     FOR i IN c..(49999) LOOP
-      INSERT INTO users (email, email_hash, first_name, last_name, job_title)
+      INSERT INTO users (email, email_hmac, first_name, last_name, job_title)
       VALUES (
         'user' || i || '@bench.local',
-        'hash' || i,
+        lpad(to_hex(i), 64, '0'),
         'Nombre' || (i % 200),
         'Apellido' || (i % 300),
         CASE WHEN i % 7 = 0 THEN 'Soporte tecnico' WHEN i % 5 = 0 THEN 'NOC' ELSE 'Operaciones' END

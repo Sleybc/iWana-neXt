@@ -10,6 +10,7 @@ import {
   DocumentType,
 } from '@iwana/shared';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
+import { hashEmail } from '../../../../common/crypto/hash-email.util';
 import { SubscribersService } from '../subscribers.service';
 import { VatTreatmentService } from '../vat-treatment.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
@@ -58,6 +59,7 @@ describe('SubscribersService', () => {
           useValue: {
             getOrThrow: (key: string) => {
               if (key === 'MFA_ENCRYPTION_KEY') return TEST_ENCRYPTION_KEY;
+              if (key === 'PII_HASH_KEY') return TEST_ENCRYPTION_KEY;
               return null;
             },
           },
@@ -102,13 +104,13 @@ describe('SubscribersService', () => {
       );
     });
 
-    it('genera hash SHA-256 determinista para búsqueda de documento', () => {
+    it('genera hash HMAC-SHA-256 determinista para búsqueda de documento', () => {
       const value = '12345678';
       const hash1 = hashDocumentNumber(value);
       const hash2 = hashDocumentNumber(value);
 
       expect(hash1).toBe(hash2);
-      expect(hash1).toHaveLength(64); // SHA-256 hex = 64 caracteres
+      expect(hash1).toHaveLength(64);
     });
 
     it('descifra campos PII del suscriptor correctamente', () => {
@@ -272,9 +274,9 @@ describe('SubscribersService', () => {
       expect(results).toEqual([]);
     });
 
-    it('search por email usa hash SHA-256 para búsqueda determinista', async () => {
+    it('search por email usa HMAC para búsqueda determinista', async () => {
       const email = 'test@example.com';
-      const expectedHash = (service as any).sha256Hash(email);
+      const expectedHash = hashEmail(email);
       const subscriber = buildSubscriber({
         emailHash: expectedHash,
       });
@@ -285,9 +287,9 @@ describe('SubscribersService', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('search por teléfono usa hash SHA-256 para búsqueda determinista', async () => {
+    it('search por teléfono usa HMAC para búsqueda determinista', async () => {
       const phone = '3001112222';
-      const expectedHash = (service as any).sha256Hash(phone);
+      const expectedHash = (service as any).hmacPhoneHash(phone);
       const subscriber = buildSubscriber({
         phoneHash: expectedHash,
       });
@@ -298,7 +300,7 @@ describe('SubscribersService', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('search por documento usa hash SHA-256', async () => {
+    it('search por documento usa HMAC', async () => {
       const docNumber = '12345678';
       const expectedHash = hashDocumentNumber(docNumber);
       const subscriber = buildSubscriber({

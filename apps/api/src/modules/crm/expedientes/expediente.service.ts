@@ -587,8 +587,8 @@ export class ExpedienteService {
       entityType: 'ExpedienteRecord',
       entityId: created.id,
       userId: actorUserId,
+      // SEC-P1 / E7 + GSEC-04: sin fullName (PII) en audit manual
       newValue: {
-        fullName: created.fullName,
         acquisitionChannel: created.acquisitionChannel,
         sourceDetail: created.sourceDetail,
         status: created.status,

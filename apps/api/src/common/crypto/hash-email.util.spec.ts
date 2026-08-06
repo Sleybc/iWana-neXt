@@ -1,12 +1,28 @@
 import { hashEmail } from './hash-email.util';
 import { looksLikeEncryptedAesGcm } from './aes-gcm.util';
 
+const TEST_PII_HASH_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
 describe('hashEmail', () => {
+  const previous = process.env.PII_HASH_KEY;
+
+  beforeAll(() => {
+    process.env.PII_HASH_KEY = TEST_PII_HASH_KEY;
+  });
+
+  afterAll(() => {
+    if (previous === undefined) {
+      delete process.env.PII_HASH_KEY;
+    } else {
+      process.env.PII_HASH_KEY = previous;
+    }
+  });
+
   it('normaliza mayúsculas y espacios alrededor', () => {
     expect(hashEmail('  User@Example.COM ')).toBe(hashEmail('user@example.com'));
   });
 
-  it('produce hex SHA-256 de 64 caracteres', () => {
+  it('produce hex HMAC-SHA-256 de 64 caracteres', () => {
     const digest = hashEmail('usuario@empresa.test');
     expect(digest).toMatch(/^[0-9a-f]{64}$/);
   });

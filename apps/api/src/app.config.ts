@@ -5,6 +5,7 @@ import {
   mfaEncryptionKeyJoiSchema,
   mfaEncryptionKeyPreviousJoiSchema,
 } from './common/crypto/aes-gcm.util';
+import { piiHashKeyJoiSchema } from './common/crypto/pii-hash-key.util';
 
 type ApiDataSourceOptions = Pick<
   TypeOrmModuleOptions,
@@ -160,6 +161,9 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
     MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,
     MFA_ENCRYPTION_KEY_PREVIOUS: mfaEncryptionKeyPreviousJoiSchema,
+    // Clave HMAC-SHA-256 para búsquedas por PII (SEC-P1 / ADR-078 D3).
+    // Independiente de MFA_ENCRYPTION_KEY — no derivar por HKDF (D-A).
+    PII_HASH_KEY: piiHashKeyJoiSchema,
     // Lista de orígenes permitidos por CORS, separada por comas.
     // Producción: obligatoria y sin default a localhost — riesgo 2 de ADR-070.
     CORS_ORIGIN: Joi.when('NODE_ENV', {

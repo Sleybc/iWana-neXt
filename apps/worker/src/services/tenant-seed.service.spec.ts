@@ -1,6 +1,6 @@
 import * as bcrypt from 'bcryptjs';
 import { DataSource } from 'typeorm';
-import { User, runInTenantSchema } from '@iwana/db';
+import { User, hmacEmail, loadPiiHashKeyFromEnv, runInTenantSchema } from '@iwana/db';
 import { UserRole, UserStatus } from '@iwana/shared';
 import { TenantSeedService } from './tenant-seed.service';
 
@@ -23,15 +23,23 @@ jest.mock('@iwana/db', () => {
 
 describe('TenantSeedService', () => {
   let service: TenantSeedService;
+  const TEST_PII_HASH_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const previousPiiHashKey = process.env.PII_HASH_KEY;
 
-  // Sin ConfigService: el seed dejo de cifrar el email del ADMIN (H-14) y ya no
-  // necesita `MFA_ENCRYPTION_KEY`.
+  // Sin ConfigService: el seed dejo de cifrar el email del ADMIN (H-14).
+  // Requiere PII_HASH_KEY para HMAC (SEC-P1).
   beforeEach(() => {
+    process.env.PII_HASH_KEY = TEST_PII_HASH_KEY;
     service = new TenantSeedService({} as DataSource);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+    if (previousPiiHashKey === undefined) {
+      delete process.env.PII_HASH_KEY;
+    } else {
+      process.env.PII_HASH_KEY = previousPiiHashKey;
+    }
   });
 
   it('crea el ADMIN inicial con contraseña fija hasheada e idempotencia de primer seed', async () => {
@@ -110,9 +118,7 @@ describe('TenantSeedService', () => {
     ]);
 
     const [, createdUser] = manager.create.mock.calls[0] as [unknown, { emailHash: string }];
-    expect(createdUser.emailHash).toBe(
-      require('crypto').createHash('sha256').update(SEED_ADMIN_EMAIL).digest('hex'),
-    );
+    expect(createdUser.emailHash).toBe(hmacEmail(SEED_ADMIN_EMAIL, loadPiiHashKeyFromEnv()));
   });
 
   it('no crea un segundo ADMIN si el email ya existe en el schema del tenant', async () => {

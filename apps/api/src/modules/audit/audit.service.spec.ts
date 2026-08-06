@@ -218,4 +218,65 @@ describe('AuditService', () => {
     );
     expect(save).toHaveBeenCalledTimes(1);
   });
+
+  it('SEC-P1: no persiste fullName, latitude ni longitude en newValue', async () => {
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'tenant_s1' });
+    const { save, create } = setupRunInTenantSchema();
+
+    await service.log({
+      ...BASE_ENTRY,
+      action: AuditAction.CREATE,
+      entityType: 'Wfm',
+      newValue: {
+        id: 'evt-1',
+        fullName: 'Persona Ficticia',
+        latitude: 4.711,
+        longitude: -74.072,
+        status: 'SCHEDULED',
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        newValue: expect.objectContaining({
+          id: 'evt-1',
+          status: 'SCHEDULED',
+        }),
+      }),
+    );
+    const savedPayload = create.mock.calls[0]![1] as {
+      newValue: Record<string, unknown>;
+    };
+    expect(savedPayload.newValue).not.toHaveProperty('fullName');
+    expect(savedPayload.newValue).not.toHaveProperty('latitude');
+    expect(savedPayload.newValue).not.toHaveProperty('longitude');
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('SEC-P1 H-5: omite description/title/sector/municipality y coords numéricas', async () => {
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'tenant_s1' });
+    const { create } = setupRunInTenantSchema();
+
+    await service.log({
+      ...BASE_ENTRY,
+      action: AuditAction.CREATE,
+      entityType: 'ScheduleEvent',
+      newValue: {
+        id: 'evt-2',
+        description: 'Visita a domicilio ficticio',
+        title: 'Instalación ficticia',
+        sector: 'Norte',
+        municipality: 'Municipio Ficticio',
+        latitude: 4.65,
+        longitude: -74.05,
+        status: 'DRAFT',
+      },
+    });
+
+    const savedPayload = create.mock.calls[0]![1] as {
+      newValue: Record<string, unknown>;
+    };
+    expect(savedPayload.newValue).toEqual({ id: 'evt-2', status: 'DRAFT' });
+  });
 });

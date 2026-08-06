@@ -210,6 +210,22 @@ describe('PlatformAuditService', () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ oldValue, newValue }));
   });
 
+  it('SEC-P1 H-2: sanitiza PII en newValue antes de persistir', async () => {
+    await service.log({
+      ...BASE_ENTRY,
+      newValue: {
+        id: 'brand-1',
+        email: 'admin@ejemplo.invalid',
+        fullName: 'Persona Ficticia',
+        latitude: 4.71,
+        status: 'ok',
+      },
+    });
+
+    const payload = create.mock.calls[0]![0] as { newValue: Record<string, unknown> };
+    expect(payload.newValue).toEqual({ id: 'brand-1', status: 'ok' });
+  });
+
   it('persiste null para oldValue y newValue cuando no se proveen', async () => {
     await service.log(BASE_ENTRY);
 
