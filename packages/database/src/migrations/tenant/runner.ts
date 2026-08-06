@@ -68,6 +68,7 @@ import { AddPiiHmacColumns1080000000000 } from './108_add_pii_hmac_columns';
 import { DropPiiSha256HashColumns1090000000000 } from './109_drop_pii_sha256_hash_columns';
 import { RedactAuditPiiCoordsAndFreeText1100000000000 } from './110_redact_audit_pii_coords_and_free_text';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
+import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
 import { AddExpedienteTechnicalViabilityFields1700000000006 } from './006_add_expediente_technical_viability_fields';
@@ -241,10 +242,11 @@ function extractMigrationTimestamp(name: string): number {
  * TypeORM expone `transaction` en MigrationInterface; el runner tenant usa
  * `transactional` (nombre del ADR) para no acoplarse al modo nativo del CLI.
  */
-export type TenantMigrationLike = MigrationInterface & {
-  /** false = DDL fuera de TX (p. ej. CREATE INDEX CONCURRENTLY). Default true. */
-  transactional?: boolean;
-};
+export type TenantMigrationLike = MigrationInterface &
+  DeferrableMigration & {
+    /** false = DDL fuera de TX (p. ej. CREATE INDEX CONCURRENTLY). Default true. */
+    transactional?: boolean;
+  };
 
 /** Default true: las migraciones existentes (000–086) siguen el camino atómico. */
 export function isTenantMigrationTransactional(migration: TenantMigrationLike): boolean {
@@ -338,7 +340,17 @@ async function getAppliedTenantMigrationNames(queryRunner: QueryRunner): Promise
   return new Set(rows.map((row) => row.name));
 }
 
-export async function applyTenantMigrationsInOrder(dataSource: DataSource): Promise<void> {
+/**
+ * Aplica las migraciones tenant pendientes en orden, saltando las diferidas.
+ *
+ * `env` permite inyectar un entorno distinto al del proceso (p. ej. el
+ * provisioning de un tenant nuevo debe forzar el contract cuando la flota ya lo
+ * aplicó — ver N-1). Quien no lo pase usa `process.env`.
+ */
+export async function applyTenantMigrationsInOrder(
+  dataSource: DataSource,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
   const queryRunner = dataSource.createQueryRunner();
 
   try {
@@ -350,6 +362,14 @@ export async function applyTenantMigrationsInOrder(dataSource: DataSource): Prom
       const migrationName = migration.name ?? MigrationClass.name;
 
       if (appliedNames.has(migrationName)) {
+        continue;
+      }
+
+      if (isMigrationDeferred(migration, env)) {
+        // Se salta sin registrar: la próxima corrida la volverá a considerar.
+        // En silencio a propósito — esto corre una vez por schema, y avisar 55
+        // veces enterraría el resto del log. El resumen lo emite el CLI
+        // (`cli/tenant-migrate.ts`) una sola vez al terminar.
         continue;
       }
 

@@ -12,6 +12,15 @@ export type BackfillHmacResult = {
   processed: number;
   updated: number;
   skipped: number;
+  /**
+   * Derivaciones de campo que fallaron (descifrado o HMAC).
+   *
+   * No es redundante con `skipped`: en tablas de un solo campo coincide, pero en
+   * `subscribers` una fila con 3 campos donde falla 1 cuenta como `updated` y su
+   * fallo solo aparecería aquí. Sin este contador, una pérdida parcial es
+   * invisible en el resumen de la migración.
+   */
+  failed: number;
 };
 
 export type BackfillHmacOptions = {
@@ -120,7 +129,7 @@ export async function backfillExpedienteDocumentNumberHmac(
     );
   }
 
-  return { processed, updated, skipped };
+  return { processed, updated, skipped, failed: skipped };
 }
 
 /**
@@ -141,6 +150,7 @@ export async function backfillSubscriberHmacColumns(
   let processed = 0;
   let updated = 0;
   let skipped = 0;
+  let failed = 0;
   let afterId: string | null = null;
 
   for (;;) {
@@ -214,6 +224,7 @@ export async function backfillSubscriberHmacColumns(
           );
           rowUpdated = true;
         } catch {
+          failed += 1;
           warn(`No se pudo backfillear ${column} para subscriber ${row.id}`);
         }
       };
@@ -243,7 +254,19 @@ export async function backfillSubscriberHmacColumns(
     }
   }
 
-  return { processed, updated, skipped };
+  // Paridad con los otros tres backfills: si se seleccionaron filas pendientes y
+  // ninguna pudo derivarse, la causa es sistémica (clave equivocada), no un dato
+  // corrupto aislado. Fallar aquí evita que la 109 borre las columnas SHA-256 de
+  // filas cuyo HMAC quedó NULL — pérdida irrecuperable sin la clave AES original.
+  if (processed > 0 && updated === 0) {
+    throw new Error(
+      `Backfill subscribers.*_hmac no actualizó ninguna fila ` +
+        `(processed=${processed}, updated=${updated}, skipped=${skipped}, failed=${failed}). ` +
+        'Revisar MFA_ENCRYPTION_KEY / PII_HASH_KEY; no omitir en silencio.',
+    );
+  }
+
+  return { processed, updated, skipped, failed };
 }
 
 /**
@@ -323,7 +346,7 @@ export async function backfillUsersEmailHmac(
     );
   }
 
-  return { processed, updated, skipped };
+  return { processed, updated, skipped, failed: skipped };
 }
 
 /**
@@ -410,5 +433,5 @@ export async function backfillPlatformUsersEmailHmac(
     );
   }
 
-  return { processed, updated, skipped };
+  return { processed, updated, skipped, failed: skipped };
 }

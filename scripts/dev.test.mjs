@@ -13,7 +13,9 @@ const supportedMigratorDigests = Object.freeze({
 });
 
 import {
+  assertMigrationEnv,
   buildMissingDevEnvMessage,
+  buildMissingMigrationEnvMessage,
   createProcessRegistry,
   devComposeFiles,
   devInfraOneShots,
@@ -21,6 +23,7 @@ import {
   findMissingDevEnvVars,
   parseEnvFile,
   requiredDevEnvVars,
+  requiredMigrationEnvVars,
   resolvePnpmTarget,
   waitForApiHealth,
   waitForCompilation,
@@ -475,6 +478,53 @@ test('buildMissingDevEnvMessage nombra la variable, el archivo y la referencia',
   assert.match(message, /DB_BOOTSTRAP_USER/);
   assert.match(message, /\.env/);
   assert.match(message, /\.env\.example/);
+});
+
+test('requiredMigrationEnvVars exige PII_HASH_KEY para backfill HMAC', () => {
+  assert.ok(requiredMigrationEnvVars.includes('PII_HASH_KEY'));
+  assert.equal(requiredMigrationEnvVars.includes('MFA_ENCRYPTION_KEY'), false);
+});
+
+test('findMissingDevEnvVars con requiredMigrationEnvVars detecta PII_HASH_KEY ausente', () => {
+  const missing = findMissingDevEnvVars(new Map(), {}, requiredMigrationEnvVars);
+
+  assert.deepEqual(missing, ['PII_HASH_KEY']);
+});
+
+test('findMissingDevEnvVars con requiredMigrationEnvVars acepta PII_HASH_KEY del shell', () => {
+  const missing = findMissingDevEnvVars(
+    new Map(),
+    { PII_HASH_KEY: 'a'.repeat(64) },
+    requiredMigrationEnvVars,
+  );
+
+  assert.deepEqual(missing, []);
+});
+
+test('buildMissingMigrationEnvMessage es accionable (openssl + .env.example + runbook)', () => {
+  const message = buildMissingMigrationEnvMessage(['PII_HASH_KEY'], '.env');
+
+  assert.match(message, /PII_HASH_KEY/);
+  assert.match(message, /\.env/);
+  assert.match(message, /openssl rand -hex 32/);
+  assert.match(message, /\.env\.example/);
+  assert.match(message, /RUNBOOK-ENCRYPTION-KEY-ROTATION/);
+  assert.match(message, /\.env\.development\.local/);
+});
+
+test('assertMigrationEnv lanza cuando falta PII_HASH_KEY', () => {
+  assert.throws(
+    () => assertMigrationEnv(new Map(), {}),
+    (error) => {
+      assert.match(String(error.message), /PII_HASH_KEY/);
+      assert.match(String(error.message), /openssl rand -hex 32/);
+      return true;
+    },
+  );
+});
+
+test('assertMigrationEnv no lanza cuando PII_HASH_KEY está en .env', () => {
+  assert.doesNotThrow(() => assertMigrationEnv(new Map([['PII_HASH_KEY', 'b'.repeat(64)]]), {}));
 });
 
 test('waitForApiHealth starts its deadline after compilation completes', async () => {
