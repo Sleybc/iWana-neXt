@@ -485,7 +485,9 @@ Fases del prompt: `g65` → `staging-clave` → `staging-ventana-1` → `staging
 
 **A1/A2:** aprobado CTO. **Pendiente CTO al ejecutar:** go secretos prod · fecha hard B1 · go ventana 1/2 prod.
 
-**Siguiente tramo autorizado:** [`PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md`](../prompts/PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md) — **no** saltar a prod/ventana 2. Prerrequisitos: separar/commit SEC-P1 → CI Linux (G6.5) → merge → provisionar staging + secret store.
+**Siguiente tramo autorizado:** [`PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md`](../prompts/PROMPT-OPERATIVO-SEC-P1-G65-STAGING-v1.0.md) — **no** saltar a prod/ventana 2. Prerrequisitos: ~~separar/commit SEC-P1~~ → CI Linux (G6.5) → merge → provisionar staging + secret store.
+
+**Rama lista (2026-08-06):** `feat/sec-p1-cierre-expand-contract` · commits `6b43a2dd` + `b3cee2f2` · pusheada a origin. Crear PR (gh sin auth en esta máquina): https://github.com/SleyiW/iWana-neXt/pull/new/feat/sec-p1-cierre-expand-contract · SHA G6.5 = tip de la rama.
 
 **F-1:** 44 `MARKED_FOR_DELETION` con digests SHA-256 — pendiente humano (no cuentan como migrados).
 
