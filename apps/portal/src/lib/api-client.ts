@@ -3095,6 +3095,10 @@ export interface ListWfmVisitRequestsParams {
   priority?: WorkOrderPriority | undefined;
   municipality?: string | undefined;
   sector?: string | undefined;
+  /** ADR-076 — pre-buscar por unidad de origen antes de POST create. */
+  originRef?: string | undefined;
+  /** Filtro por expediente CRM (columna dedicada; complementa originRef). */
+  expedienteId?: string | undefined;
   from?: string | undefined;
   to?: string | undefined;
   page?: number | undefined;
@@ -3602,6 +3606,8 @@ export const wfmApi = {
       if (params?.priority) searchParams.set('priority', params.priority);
       if (params?.municipality) searchParams.set('municipality', params.municipality);
       if (params?.sector) searchParams.set('sector', params.sector);
+      if (params?.originRef) searchParams.set('originRef', params.originRef);
+      if (params?.expedienteId) searchParams.set('expedienteId', params.expedienteId);
       if (params?.from) searchParams.set('from', params.from);
       if (params?.to) searchParams.set('to', params.to);
       if (params?.page !== undefined) searchParams.set('page', String(params.page));

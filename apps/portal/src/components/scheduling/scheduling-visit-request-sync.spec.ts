@@ -138,4 +138,30 @@ describe('scheduleVisitRequestWithFollowUp', () => {
       'La solicitud Instalación GPON barrio norte quedó agendada correctamente. Advertencias: No fue posible vincular la orden de trabajo con Aseguramiento. No fue posible persistir las referencias operativas en CRM. No fue posible actualizar el expediente automáticamente.',
     );
   });
+
+  it('avanza el expediente a instalación agendada aunque no se cree orden de trabajo', async () => {
+    scheduleVisitRequestMock.mockResolvedValue(
+      buildVisitRequest({
+        workOrderId: null,
+        scheduleEventId: 'evt-1',
+        status: VisitRequestStatus.SCHEDULED,
+      }),
+    );
+
+    const message = await scheduleVisitRequestWithFollowUp({
+      visitRequest: buildVisitRequest(),
+      payload: {
+        assignedUserId: 'tech-1',
+        scheduledStartAt: '2026-06-01T14:00:00.000Z',
+        scheduledEndAt: '2026-06-01T16:00:00.000Z',
+      },
+      createWorkOrder: false,
+      workOrderNotes: null,
+    });
+
+    expect(transitionExpedienteSyncMock).toHaveBeenCalledTimes(1);
+    expect(linkWorkOrderMock).not.toHaveBeenCalled();
+    expect(linkInstallationOperationalRefsMock).not.toHaveBeenCalled();
+    expect(message).toContain('El expediente quedó marcado como instalación agendada.');
+  });
 });

@@ -17,6 +17,31 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
   createCrmVisitRequestAndRoute: jest.fn(),
+  resolveCrmInstallationFieldWork: jest.fn().mockResolvedValue({
+    kind: 'none',
+    visitRequestId: null,
+    scheduleEventId: null,
+    activeEventStatus: null,
+    scheduledStartAt: null,
+    assignedUserId: null,
+    href: null,
+  }),
+}));
+
+jest.mock('@/components/crm/expedientes/useCrmInstallationFieldWork', () => ({
+  useCrmInstallationFieldWork: () => ({
+    fieldWork: {
+      kind: 'none',
+      visitRequestId: null,
+      scheduleEventId: null,
+      activeEventStatus: null,
+      scheduledStartAt: null,
+      assignedUserId: null,
+      href: null,
+    },
+    isLoading: false,
+    error: null,
+  }),
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({

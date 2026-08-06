@@ -71,8 +71,24 @@ const TERMINAL_VISIT_REQUEST_STATUSES = new Set<VisitRequestStatus>([
   VisitRequestStatus.EXPIRED,
 ]);
 
+/** Estados terminales de ScheduleEvent (ADR-076 D2; alineados al portal + EXPIRED). */
+const TERMINAL_SCHEDULE_EVENT_STATUSES = new Set<ScheduleEventStatus>([
+  ScheduleEventStatus.COMPLETED,
+  ScheduleEventStatus.CANCELLED,
+  ScheduleEventStatus.EXPIRED,
+  ScheduleEventStatus.NO_SHOW,
+]);
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const MIN_DURATION_MS = 15 * 60 * 1000;
 const VISIT_REQUEST_ACTIVE_ORIGIN_UNIQUE = 'idx_visit_requests_active_origin_unique';
+
+type ActiveScheduleWorkHit = {
+  visitRequestId: string | null;
+  scheduleEventId: string;
+};
 
 type VisitRequestListResponse = {
   items: VisitRequestResponse[];
@@ -144,6 +160,14 @@ export class VisitRequestsService {
     // D-5 / R-4: validar paginación antes de ocupar conexión del pool.
     const { page, limit } = clampPage(validated.page, validated.limit);
 
+    if (
+      actor.role === UserRole.SALES &&
+      validated.originContext &&
+      validated.originContext !== WorkOrderSourceContext.CRM
+    ) {
+      throw new ForbiddenException('SALES solo puede consultar solicitudes originadas desde CRM');
+    }
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
 
@@ -152,13 +176,19 @@ export class VisitRequestsService {
         .where('vr.tenant_id = :tenantId', { tenantId })
         .andWhere('vr.deleted_at IS NULL');
 
-      if (validated.status) {
-        this.applyVisitRequestStatusFilter(qb, validated.status);
-      }
-      if (validated.originContext) {
+      // SALES solo opera orígenes CRM (misma regla que get/create por solicitud).
+      if (actor.role === UserRole.SALES) {
+        qb.andWhere('vr.origin_context = :salesOriginContext', {
+          salesOriginContext: WorkOrderSourceContext.CRM,
+        });
+      } else if (validated.originContext) {
         qb.andWhere('vr.origin_context = :originContext', {
           originContext: validated.originContext,
         });
+      }
+
+      if (validated.status) {
+        this.applyVisitRequestStatusFilter(qb, validated.status);
       }
       if (validated.workType) {
         qb.andWhere('vr.work_type = :workType', { workType: validated.workType });
@@ -171,6 +201,18 @@ export class VisitRequestsService {
       }
       if (validated.sector) {
         this.applySectorFilter(qb, validated.sector);
+      }
+      // ADR-076: pre-búsqueda por unidad de origen (misma normalización que la guarda).
+      const normalizedOriginRef = validated.originRef?.trim();
+      if (normalizedOriginRef) {
+        qb.andWhere('TRIM(vr.origin_ref) = :originRef', {
+          originRef: normalizedOriginRef,
+        });
+      }
+      if (validated.expedienteId) {
+        qb.andWhere('vr.expediente_id = :expedienteId', {
+          expedienteId: validated.expedienteId,
+        });
       }
       if (validated.from) {
         qb.andWhere('vr.created_at >= :from', { from: validated.from });
@@ -327,6 +369,28 @@ export class VisitRequestsService {
             error: 'DUPLICATE_ACTIVE_WORK',
             originRef: normalizedOriginRef,
             activeVisitRequestId: duplicate.id,
+          });
+        }
+
+        // ADR-076 D2: trabajo de campo ya agendado (VR SCHEDULED + evento no terminal,
+        // o ScheduleEvent activo por expediente en CRM).
+        const activeScheduleWork = await this.findActiveScheduleWorkByOrigin(
+          qr.manager,
+          tenantId,
+          validated.originContext,
+          normalizedOriginRef,
+          validated.workType,
+          validated.expedienteId ?? null,
+        );
+
+        if (activeScheduleWork) {
+          throw new ConflictException({
+            error: 'DUPLICATE_ACTIVE_WORK',
+            originRef: normalizedOriginRef,
+            ...(activeScheduleWork.visitRequestId
+              ? { activeVisitRequestId: activeScheduleWork.visitRequestId }
+              : {}),
+            activeScheduleEventId: activeScheduleWork.scheduleEventId,
           });
         }
       }
@@ -1234,6 +1298,90 @@ export class VisitRequestsService {
         .orderBy('vr.created_at', 'DESC')
         .getOne()
     );
+  }
+
+  /**
+   * ADR-076 D2 — detecta trabajo de campo ya agendado para la misma unidad de origen.
+   * Cubre VR en SCHEDULED con ScheduleEvent no terminal, y (CRM) eventos activos por expediente.
+   */
+  private async findActiveScheduleWorkByOrigin(
+    manager: EntityManager,
+    tenantId: string,
+    originContext: WorkOrderSourceContext,
+    originRef: string | null,
+    workType: CreateVisitRequestInput['workType'],
+    expedienteId?: string | null,
+  ): Promise<ActiveScheduleWorkHit | null> {
+    const normalizedRef = originRef?.trim();
+    if (!normalizedRef) {
+      return null;
+    }
+
+    const scheduledVisitRequest = await manager
+      .createQueryBuilder(VisitRequest, 'vr')
+      .where('vr.tenant_id = :tenantId', { tenantId })
+      .andWhere('vr.origin_context = :originContext', { originContext })
+      .andWhere('TRIM(vr.origin_ref) = :originRef', { originRef: normalizedRef })
+      .andWhere('vr.work_type = :workType', { workType })
+      .andWhere('vr.deleted_at IS NULL')
+      .andWhere('vr.status = :status', { status: VisitRequestStatus.SCHEDULED })
+      .andWhere('vr.schedule_event_id IS NOT NULL')
+      .orderBy('vr.created_at', 'DESC')
+      .getOne();
+
+    if (scheduledVisitRequest?.scheduleEventId) {
+      const linkedEvent = await manager.findOne(ScheduleEvent, {
+        where: { id: scheduledVisitRequest.scheduleEventId, tenantId },
+      });
+
+      if (
+        linkedEvent &&
+        linkedEvent.deletedAt == null &&
+        !TERMINAL_SCHEDULE_EVENT_STATUSES.has(linkedEvent.status)
+      ) {
+        return {
+          visitRequestId: scheduledVisitRequest.id,
+          scheduleEventId: linkedEvent.id,
+        };
+      }
+    }
+
+    if (originContext === WorkOrderSourceContext.CRM) {
+      const expedienteLookupId =
+        expedienteId?.trim() || (UUID_V4_PATTERN.test(normalizedRef) ? normalizedRef : null);
+
+      if (expedienteLookupId) {
+        const activeEvent = await manager
+          .createQueryBuilder(ScheduleEvent, 'se')
+          .where('se.tenant_id = :tenantId', { tenantId })
+          .andWhere('se.expediente_id = :expedienteId', {
+            expedienteId: expedienteLookupId,
+          })
+          .andWhere('se.type = :workType', { workType })
+          .andWhere('se.deleted_at IS NULL')
+          .andWhere('se.status NOT IN (:...terminalStatuses)', {
+            terminalStatuses: Array.from(TERMINAL_SCHEDULE_EVENT_STATUSES),
+          })
+          .orderBy('se.created_at', 'DESC')
+          .getOne();
+
+        if (activeEvent) {
+          const linkedVisitRequest = await manager.findOne(VisitRequest, {
+            where: {
+              tenantId,
+              scheduleEventId: activeEvent.id,
+            },
+          });
+
+          return {
+            visitRequestId: linkedVisitRequest?.id ?? null,
+            scheduleEventId: activeEvent.id,
+          };
+        }
+      }
+    }
+
+    return null;
   }
 
   private isActiveOriginUniqueViolation(error: unknown): boolean {

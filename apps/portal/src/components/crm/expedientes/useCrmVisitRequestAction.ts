@@ -15,12 +15,21 @@ export interface CrmVisitRequestContext {
   longitude?: number | null;
 }
 
+export interface CrmVisitRequestSubmitOptions {
+  isAdditional?: boolean;
+  additionalReason?: string | null;
+}
+
 export function useCrmVisitRequestAction() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = async (context: CrmVisitRequestContext, nextAction: VisitRequestNextAction) => {
+  const submit = async (
+    context: CrmVisitRequestContext,
+    nextAction: VisitRequestNextAction,
+    options?: CrmVisitRequestSubmitOptions,
+  ) => {
     if (isSubmitting) {
       return;
     }
@@ -45,6 +54,10 @@ export function useCrmVisitRequestAction() {
         input.latitude = context.latitude;
         input.longitude = context.longitude;
       }
+      if (options?.isAdditional) {
+        input.isAdditional = true;
+        input.additionalReason = options.additionalReason ?? null;
+      }
 
       const result = await createCrmVisitRequestAndRoute(input);
       router.push(result.href);
@@ -52,7 +65,9 @@ export function useCrmVisitRequestAction() {
       setError(
         submitError instanceof ApiError
           ? submitError.message
-          : 'No fue posible coordinar la visita de instalación. Intenta de nuevo.',
+          : submitError instanceof Error
+            ? submitError.message
+            : 'No fue posible coordinar la visita de instalación. Intenta de nuevo.',
       );
     } finally {
       setIsSubmitting(false);

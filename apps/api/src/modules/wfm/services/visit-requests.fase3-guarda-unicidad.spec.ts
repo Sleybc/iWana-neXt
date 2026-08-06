@@ -10,6 +10,7 @@ import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
 import { EXECUTION_ORDER_SCHEDULING_PORT } from '../../tasks/ports/execution-order-scheduling.port';
 import {
+  ScheduleEventStatus,
   UserRole,
   VisitRequestStatus,
   WorkOrderPriority,
@@ -543,5 +544,148 @@ describe('VisitRequestsService — Fase 3 guarda de unicidad', () => {
     expect(manager.query).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', [
       `${TENANT_CONTEXT.tenantId}|CRM|exp-cancelled|INSTALLATION`,
     ]);
+  });
+
+  // ─── ADR-076 D2: Guarda de trabajo agendado activo ─────────────────────
+
+  it('D2 — rechaza con 409 cuando hay VR SCHEDULED + ScheduleEvent SCHEDULED', async () => {
+    const scheduledVr = {
+      id: 'vr-scheduled-active',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.SCHEDULED,
+      originContext: WorkOrderSourceContext.ASSURANCE,
+      originRef: 'ticket-scheduled',
+      workType: WfmWorkType.SUPPORT,
+      scheduleEventId: 'se-active-001',
+    };
+
+    const activeEvent = {
+      id: 'se-active-001',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: ScheduleEventStatus.SCHEDULED,
+      deletedAt: null,
+    };
+
+    const noDuplicateQb = buildDuplicateQb(null);
+    const scheduledVrQb = buildDuplicateQb(scheduledVr);
+    const manager = buildManager({
+      createQueryBuilder: jest
+        .fn()
+        .mockReturnValueOnce(noDuplicateQb)
+        .mockReturnValueOnce(scheduledVrQb),
+      findOne: jest.fn().mockResolvedValue(activeEvent),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    let caughtError: ConflictException | null = null;
+    try {
+      await service.createVisitRequest(
+        {
+          originContext: WorkOrderSourceContext.ASSURANCE,
+          originRef: 'ticket-scheduled',
+          workType: WfmWorkType.SUPPORT,
+          title: 'Nueva visita sobre origen ya agendado',
+          priority: WorkOrderPriority.NORMAL,
+        },
+        ADMIN_ACTOR,
+      );
+    } catch (error) {
+      caughtError = error as ConflictException;
+    }
+
+    expect(caughtError).toBeInstanceOf(ConflictException);
+    const response = (caughtError as ConflictException).getResponse() as Record<string, unknown>;
+    expect(response.error).toBe('DUPLICATE_ACTIVE_WORK');
+    expect(response.originRef).toBe('ticket-scheduled');
+    expect(response.activeVisitRequestId).toBe('vr-scheduled-active');
+    expect(response.activeScheduleEventId).toBe('se-active-001');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('D2 — permite create si el ScheduleEvent vinculado está CANCELLED o EXPIRED', async () => {
+    for (const terminalStatus of [ScheduleEventStatus.CANCELLED, ScheduleEventStatus.EXPIRED]) {
+      const scheduledVr = {
+        id: `vr-scheduled-${terminalStatus}`,
+        tenantId: TENANT_CONTEXT.tenantId,
+        status: VisitRequestStatus.SCHEDULED,
+        originContext: WorkOrderSourceContext.ASSURANCE,
+        originRef: `ticket-${terminalStatus.toLowerCase()}`,
+        workType: WfmWorkType.SUPPORT,
+        scheduleEventId: `se-${terminalStatus.toLowerCase()}`,
+      };
+
+      const terminalEvent = {
+        id: `se-${terminalStatus.toLowerCase()}`,
+        tenantId: TENANT_CONTEXT.tenantId,
+        status: terminalStatus,
+        deletedAt: null,
+      };
+
+      const noDuplicateQb = buildDuplicateQb(null);
+      const scheduledVrQb = buildDuplicateQb(scheduledVr);
+      // Path CRM no aplica (ASSURANCE): no hay tercera QB de ScheduleEvent por expediente.
+      const manager = buildManager({
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValueOnce(noDuplicateQb)
+          .mockReturnValueOnce(scheduledVrQb),
+        findOne: jest.fn().mockResolvedValue(terminalEvent),
+        save: jest.fn().mockImplementation(async (_entity, entity) => ({
+          id: `vr-after-${terminalStatus}`,
+          ...entity,
+        })),
+      });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+        callback({ manager }),
+      );
+
+      const result = await service.createVisitRequest(
+        {
+          originContext: WorkOrderSourceContext.ASSURANCE,
+          originRef: `ticket-${terminalStatus.toLowerCase()}`,
+          workType: WfmWorkType.SUPPORT,
+          title: `Visita tras evento ${terminalStatus}`,
+          priority: WorkOrderPriority.NORMAL,
+        },
+        ADMIN_ACTOR,
+      );
+
+      expect(result.id).toBe(`vr-after-${terminalStatus}`);
+      expect(manager.save).toHaveBeenCalled();
+    }
+  });
+
+  it('D2 — permite create con isAdditional=true aunque haya evento activo', async () => {
+    const manager = buildManager({
+      createQueryBuilder: jest.fn(),
+      save: jest.fn().mockImplementation(async (_entity, entity) => ({
+        id: 'vr-additional-over-scheduled',
+        ...entity,
+      })),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.createVisitRequest(
+      {
+        originContext: WorkOrderSourceContext.ASSURANCE,
+        originRef: 'ticket-with-active-event',
+        workType: WfmWorkType.SUPPORT,
+        title: 'Visita adicional sobre origen agendado',
+        priority: WorkOrderPriority.NORMAL,
+        isAdditional: true,
+        additionalReason: 'Segunda cuadrilla por refuerzo operativo',
+      },
+      ADMIN_ACTOR,
+    );
+
+    expect(manager.createQueryBuilder).not.toHaveBeenCalled();
+    expect(result.id).toBe('vr-additional-over-scheduled');
   });
 });

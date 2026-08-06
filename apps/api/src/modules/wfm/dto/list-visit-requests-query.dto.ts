@@ -1,5 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { z } from 'zod';
 import {
@@ -19,6 +29,10 @@ export const ListVisitRequestsQuerySchema = z.object({
   priority: z.nativeEnum(WorkOrderPriority).optional(),
   municipality: z.string().optional(),
   sector: z.string().optional(),
+  /** ADR-076: pre-buscar por unidad de origen antes de POST create. */
+  originRef: z.string().max(160).optional(),
+  /** Filtro por expediente CRM (columna dedicada; complementa originRef). */
+  expedienteId: z.string().uuid().optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   page: z.number().int().min(1).optional().default(1),
@@ -68,6 +82,26 @@ export class ListVisitRequestsQueryDto {
   @IsOptional()
   @IsString()
   sector?: string;
+
+  @ApiPropertyOptional({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    maxLength: 160,
+    description:
+      'Filtrar por referencia de origen (ADR-076). Comparación exacta tras trim. Útil para pre-buscar visita activa antes de POST create.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  originRef?: string;
+
+  @ApiPropertyOptional({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    format: 'uuid',
+    description: 'Filtrar por expediente CRM vinculado a la solicitud',
+  })
+  @IsOptional()
+  @IsUUID()
+  expedienteId?: string;
 
   @ApiPropertyOptional({
     example: '2026-06-01T00:00:00Z',

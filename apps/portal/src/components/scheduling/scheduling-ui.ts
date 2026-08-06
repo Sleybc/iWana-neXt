@@ -448,6 +448,7 @@ export function isScheduleEventTerminalStatus(status: ScheduleEventStatus): bool
     ScheduleEventStatus.COMPLETED,
     ScheduleEventStatus.CANCELLED,
     ScheduleEventStatus.NO_SHOW,
+    ScheduleEventStatus.EXPIRED,
   ].includes(status);
 }
 

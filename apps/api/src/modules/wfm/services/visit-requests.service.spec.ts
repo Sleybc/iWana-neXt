@@ -324,7 +324,12 @@ describe('VisitRequestsService', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
-      getOne: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(duplicate),
+      // 1) guarda VR no terminal, 2) guarda D2 VR SCHEDULED, 3) safety net post-23505
+      getOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(duplicate),
     };
     const manager = buildManager({
       createQueryBuilder: jest.fn().mockReturnValue(qb),
@@ -488,6 +493,101 @@ describe('VisitRequestsService', () => {
       expect.stringContaining('UPDATE visit_requests vr'),
       [TENANT_CONTEXT.tenantId],
     );
+  });
+
+  it('filtra listado por originRef normalizado (ADR-076 pre-búsqueda)', async () => {
+    const qb = buildEntityQueryBuilder([], 0);
+    const manager = buildManager({
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await service.listVisitRequests(
+      {
+        page: 1,
+        limit: 20,
+        originRef: '  550e8400-e29b-41d4-a716-446655440000  ',
+        originContext: WorkOrderSourceContext.CRM,
+        workType: WfmWorkType.INSTALLATION,
+      },
+      {
+        sub: 'admin-001',
+        role: UserRole.ADMIN,
+      } as never,
+    );
+
+    expect(qb.andWhere).toHaveBeenCalledWith('TRIM(vr.origin_ref) = :originRef', {
+      originRef: '550e8400-e29b-41d4-a716-446655440000',
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('vr.origin_context = :originContext', {
+      originContext: WorkOrderSourceContext.CRM,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('vr.work_type = :workType', {
+      workType: WfmWorkType.INSTALLATION,
+    });
+  });
+
+  it('filtra listado por expedienteId', async () => {
+    const expedienteId = '550e8400-e29b-41d4-a716-446655440099';
+    const qb = buildEntityQueryBuilder([], 0);
+    const manager = buildManager({
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await service.listVisitRequests({ page: 1, limit: 5, expedienteId }, {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    expect(qb.andWhere).toHaveBeenCalledWith('vr.expediente_id = :expedienteId', {
+      expedienteId,
+    });
+  });
+
+  it('restringe listado de SALES a orígenes CRM', async () => {
+    const qb = buildEntityQueryBuilder([], 0);
+    const manager = buildManager({
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await service.listVisitRequests({ page: 1, limit: 20, originRef: 'exp-sales-1' }, {
+      sub: 'sales-001',
+      role: UserRole.SALES,
+    } as never);
+
+    expect(qb.andWhere).toHaveBeenCalledWith('vr.origin_context = :salesOriginContext', {
+      salesOriginContext: WorkOrderSourceContext.CRM,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('TRIM(vr.origin_ref) = :originRef', {
+      originRef: 'exp-sales-1',
+    });
+  });
+
+  it('rechaza listado SALES con originContext distinto de CRM', async () => {
+    await expect(
+      service.listVisitRequests(
+        {
+          page: 1,
+          limit: 20,
+          originContext: WorkOrderSourceContext.ASSURANCE,
+        },
+        {
+          sub: 'sales-001',
+          role: UserRole.SALES,
+        } as never,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('persiste organizationSiteId cuando llega en la solicitud', async () => {

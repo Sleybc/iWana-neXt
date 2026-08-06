@@ -137,8 +137,12 @@ export class WfmController {
   // ─── Visit Requests ───────────────────────────────────────────────────────
 
   @Get('visit-requests')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar solicitudes pendientes de visita del tenant' })
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({
+    summary: 'Listar solicitudes pendientes de visita del tenant',
+    description:
+      'Soporta filtros originRef y expedienteId (ADR-076) para pre-buscar trabajo activo por unidad de origen antes de POST create. SALES solo ve orígenes CRM.',
+  })
   listVisitRequests(@Query() query: ListVisitRequestsQueryDto, @CurrentUser() actor: JwtPayload) {
     return this.visitRequestsService.listVisitRequests(query, actor);
   }

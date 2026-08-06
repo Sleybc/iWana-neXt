@@ -100,6 +100,19 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
         return true;
       }
 
+      if (authHeader === 'Bearer sales-token') {
+        req.user = {
+          sub: 'sales-001',
+          email: 'sales@test.com',
+          role: UserRole.SALES,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-sales',
+          type: 'tenant',
+        } as any;
+        return true;
+      }
+
       return false;
     }
   },
@@ -294,6 +307,68 @@ describe('VisitRequestsController (HTTP Contract)', () => {
         expect.objectContaining({ municipality: 'Bogota' }),
         expect.objectContaining({ role: UserRole.NOC }),
       );
+    });
+
+    it('should allow ADMIN to pre-search by originRef and expedienteId (ADR-076)', async () => {
+      const expedienteId = '550e8400-e29b-41d4-a716-446655440000';
+      mockVisitRequestsService.listVisitRequests.mockResolvedValue({
+        items: [],
+        meta: { total: 0, page: 1, limit: 5, totalPages: 0 },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({
+          originRef: expedienteId,
+          expedienteId,
+          originContext: WorkOrderSourceContext.CRM,
+          workType: WfmWorkType.INSTALLATION,
+          page: 1,
+          limit: 5,
+        })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+
+      expect(mockVisitRequestsService.listVisitRequests).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originRef: expedienteId,
+          expedienteId,
+          originContext: WorkOrderSourceContext.CRM,
+          workType: WfmWorkType.INSTALLATION,
+          page: 1,
+          limit: 5,
+        }),
+        expect.objectContaining({ role: UserRole.ADMIN }),
+      );
+    });
+
+    it('should allow SALES to list visit requests for CRM pre-search', async () => {
+      const originRef = '550e8400-e29b-41d4-a716-446655440010';
+      mockVisitRequestsService.listVisitRequests.mockResolvedValue({
+        items: [],
+        meta: { total: 0, page: 1, limit: 5, totalPages: 0 },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({ originRef, page: 1, limit: 5 })
+        .set('Authorization', 'Bearer sales-token')
+        .expect(200);
+
+      expect(mockVisitRequestsService.listVisitRequests).toHaveBeenCalledWith(
+        expect.objectContaining({ originRef, page: 1, limit: 5 }),
+        expect.objectContaining({ role: UserRole.SALES }),
+      );
+    });
+
+    it('should return 400 when expedienteId is not a UUID', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({ expedienteId: 'not-a-uuid' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+
+      expectValidationMessageContains(response.body.message, 'expedienteId');
     });
   });
 

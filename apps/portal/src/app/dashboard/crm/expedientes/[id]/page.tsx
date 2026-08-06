@@ -68,9 +68,25 @@ import {
   hasMissingOperationalRefsForInstallation,
 } from '@/components/crm/expedientes/expediente-scheduling';
 import { ExpedienteSchedulingActions } from '@/components/crm/expedientes/ExpedienteSchedulingActions';
+import { useCrmInstallationFieldWork } from '@/components/crm/expedientes/useCrmInstallationFieldWork';
 import { useCrmVisitRequestAction } from '@/components/crm/expedientes/useCrmVisitRequestAction';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import type { SectionId, DraftValues } from '@/components/crm/expedientes/sections';
+
+function getInstallationFieldWorkCtaLabel(
+  kind: 'scheduled' | 'in_progress' | 'pending_inbox' | 'none',
+): string {
+  switch (kind) {
+    case 'scheduled':
+      return 'Ver la visita agendada';
+    case 'in_progress':
+      return 'Ver la visita en curso';
+    case 'pending_inbox':
+      return 'Abrir en pendientes';
+    default:
+      return 'Coordinar visita de instalación';
+  }
+}
 
 function getActorLabel(name: string | null | undefined): string {
   return name?.trim() || 'Usuario no disponible';
@@ -184,6 +200,9 @@ export default function ExpedienteDetailPage() {
     isSubmitting: isCoordinatingInstallation,
     submit: submitVisitRequest,
   } = useCrmVisitRequestAction();
+  const { fieldWork: installationFieldWork, isLoading: isInstallationFieldWorkLoading } =
+    useCrmInstallationFieldWork(id);
+  const hasActiveInstallationFieldWork = installationFieldWork.kind !== 'none';
 
   // Controla que el spinner de carga full-page solo se muestre en la carga inicial.
   // Las recargas posteriores (después de guardar) son silenciosas para no resetear el tab activo.
@@ -486,7 +505,18 @@ export default function ExpedienteDetailPage() {
   };
 
   const handleCoordinateInstallation = async () => {
-    if (!expediente || !canCoordinateInstallationVisit || isCoordinatingInstallation) {
+    if (!expediente || isCoordinatingInstallation || isInstallationFieldWorkLoading) {
+      return;
+    }
+
+    if (hasActiveInstallationFieldWork) {
+      if (installationFieldWork.href) {
+        router.push(installationFieldWork.href);
+      }
+      return;
+    }
+
+    if (!canCoordinateInstallationVisit) {
       return;
     }
 
@@ -697,7 +727,7 @@ export default function ExpedienteDetailPage() {
           </div>
         </div>
       )}
-      {canCoordinateInstallationVisit && expediente && (
+      {(canCoordinateInstallationVisit || hasActiveInstallationFieldWork) && expediente && (
         <div
           id="programacion"
           className="rounded-[20px] border border-sky-200 bg-sky-50 px-4 py-4 shadow-iwana-soft dark:border-sky-900/40 dark:bg-sky-900/20"
@@ -708,8 +738,9 @@ export default function ExpedienteDetailPage() {
                 Coordinación de visita
               </p>
               <p className="text-sm text-sky-800 dark:text-sky-200">
-                Crea la solicitud de visita desde CRM y elige si deseas agendar de una vez o dejarla
-                en pendientes.
+                {hasActiveInstallationFieldWork
+                  ? 'Hay trabajo de instalación activo para este expediente. Revisa la visita existente o coordina otra si hace falta.'
+                  : 'Crea la solicitud de visita desde CRM y elige si deseas agendar de una vez o dejarla en pendientes.'}
               </p>
             </div>
             <ExpedienteSchedulingActions
@@ -781,11 +812,16 @@ export default function ExpedienteDetailPage() {
               type="button"
               variant="secondary"
               onClick={() => void handleCoordinateInstallation()}
-              disabled={!canCoordinateInstallationVisit || isCoordinatingInstallation}
-              loading={isCoordinatingInstallation}
+              disabled={
+                isCoordinatingInstallation ||
+                isInstallationFieldWorkLoading ||
+                (!hasActiveInstallationFieldWork && !canCoordinateInstallationVisit) ||
+                (hasActiveInstallationFieldWork && !installationFieldWork.href)
+              }
+              loading={isCoordinatingInstallation || isInstallationFieldWorkLoading}
             >
               <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
-              Coordinar visita de instalación
+              {getInstallationFieldWorkCtaLabel(installationFieldWork.kind)}
             </Button>
           </div>
         </div>
@@ -1010,11 +1046,16 @@ export default function ExpedienteDetailPage() {
             type="button"
             variant="secondary"
             onClick={() => void handleCoordinateInstallation()}
-            disabled={!canCoordinateInstallationVisit || isCoordinatingInstallation}
-            loading={isCoordinatingInstallation}
+            disabled={
+              isCoordinatingInstallation ||
+              isInstallationFieldWorkLoading ||
+              (!hasActiveInstallationFieldWork && !canCoordinateInstallationVisit) ||
+              (hasActiveInstallationFieldWork && !installationFieldWork.href)
+            }
+            loading={isCoordinatingInstallation || isInstallationFieldWorkLoading}
           >
             <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
-            Coordinar visita de instalación
+            {getInstallationFieldWorkCtaLabel(installationFieldWork.kind)}
           </Button>
         </div>
         {transitionTarget === 'LISTO_PARA_INSTALACION' && installationReadiness && (

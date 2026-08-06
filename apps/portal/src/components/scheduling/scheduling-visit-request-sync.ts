@@ -45,12 +45,14 @@ export async function scheduleVisitRequestWithFollowUp({
   }
   const syncWarnings: string[] = [];
 
+  // El CTA E1 del expediente se basa en el hecho WFM (VR/evento), no en este sync.
+  // Aun así, tras agendar CRM avanzamos el pipeline aunque no se haya creado WO
+  // (antes el requisito de workOrderId dejaba el expediente en LISTO_PARA_INSTALACION).
   if (
     scheduledVisitRequest.originContext === WorkOrderSourceContext.CRM &&
-    scheduledVisitRequest.expedienteId &&
-    scheduledVisitRequest.workOrderId
+    scheduledVisitRequest.expedienteId
   ) {
-    if (scheduledVisitRequest.ticketId) {
+    if (scheduledVisitRequest.workOrderId && scheduledVisitRequest.ticketId) {
       try {
         await assuranceApi.tickets.linkWorkOrder(scheduledVisitRequest.ticketId, {
           workOrderId: scheduledVisitRequest.workOrderId,
