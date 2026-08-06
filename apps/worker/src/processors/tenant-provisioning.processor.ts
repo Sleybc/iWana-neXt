@@ -312,12 +312,56 @@ export class TenantProvisioningProcessor extends WorkerHost {
         extra: { options: `-c search_path="${schemaName}"` },
       });
       await tenantDs.initialize();
-      await applyTenantMigrationsInOrder(tenantDs);
+      const migrationEnv = await this.resolvePiiContractEnv();
+      await applyTenantMigrationsInOrder(tenantDs, migrationEnv);
     } finally {
       if (tenantDs?.isInitialized) {
         await tenantDs.destroy();
       }
     }
+  }
+
+  /**
+   * Resuelve el entorno de migración para un tenant nuevo (N-1).
+   *
+   * Un schema recién provisionado no tiene datos pre-SEC-P1: no necesita los
+   * digests SHA-256 como respaldo. Si la flota ACTIVE existente ya cerró la
+   * ventana 2 (aplicó la 109), el tenant nuevo debe nacer con el contract
+   * aplicado; si naciera en 105 mientras el resto está en 106, la paridad por
+   * código (F-2) lo marcaría como divergente en cada corrida posterior y el
+   * `checkTenantMigrationsComplete` (>= TENANT_MIGRATIONS.length) lo dejaría
+   * sin activar. A la inversa, en un entorno pre-contract (flota en ventana 1)
+   * el tenant nuevo se provisiona sin el contract para mantener la paridad.
+   *
+   * Decisión de flota (R2-2): se pregunta si **alguna** ACTIVE ya tiene la 109
+   * (no solo el primer schema por nombre). Ante error de consulta (R2-1):
+   * fail-closed — la excepción sube a `process()` y BullMQ reintenta; no se
+   * activa un tenant asumiendo pre-contract.
+   */
+  private async resolvePiiContractEnv(): Promise<NodeJS.ProcessEnv> {
+    const tenants = await this.pgPool.query<{ schema_name: string }>(
+      `SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE' ORDER BY schema_name`,
+    );
+
+    for (const row of tenants.rows ?? []) {
+      const schemaName = row.schema_name;
+      if (!isValidSchemaName(schemaName)) {
+        throw new UnrecoverableError(
+          `resolvePiiContractEnv: schema inválido en public.tenants: "${schemaName}"`,
+        );
+      }
+      const contract = await this.pgPool.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM "${schemaName}"."typeorm_migrations"
+           WHERE "name" = 'DropPiiSha256HashColumns1090000000000'
+         ) AS exists`,
+      );
+      if ((contract.rows ?? [])[0]?.exists) {
+        return { ...process.env, IWANA_APPLY_PII_CONTRACT: 'true' };
+      }
+    }
+
+    return process.env;
   }
 
   /**

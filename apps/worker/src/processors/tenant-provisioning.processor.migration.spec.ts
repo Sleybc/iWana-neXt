@@ -159,6 +159,7 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
 
   describe('runMigrationsForSchema', () => {
     it('runs tenant migrations through the canonical ordered helper', async () => {
+      mockPool.query.mockResolvedValue({ rows: [] }); // resolvePiiContractEnv: sin flota ACTIVE
       const processor = createProcessor();
 
       await expect(
@@ -172,6 +173,82 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
         }),
       );
       expect(mockApplyTenantMigrationsInOrder).toHaveBeenCalledTimes(1);
+      expect(mockApplyTenantMigrationsInOrder).toHaveBeenCalledWith(expect.anything(), process.env);
+    });
+  });
+
+  describe('resolvePiiContractEnv (N-1)', () => {
+    it('fuerza el contract cuando alguna ACTIVE ya aplicó la 109', async () => {
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_demo' }] })
+        .mockResolvedValueOnce({ rows: [{ exists: true }] });
+
+      const processor = createProcessor();
+      const env = await (processor as any).resolvePiiContractEnv();
+
+      expect(env.IWANA_APPLY_PII_CONTRACT).toBe('true');
+    });
+
+    it('fuerza el contract si solo un tenant posterior de la flota tiene la 109 (R2-2)', async () => {
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{ schema_name: 'tenant_a' }, { schema_name: 'tenant_b' }],
+        })
+        .mockResolvedValueOnce({ rows: [{ exists: false }] }) // tenant_a sin 109
+        .mockResolvedValueOnce({ rows: [{ exists: true }] }); // tenant_b con 109
+
+      const processor = createProcessor();
+      const env = await (processor as any).resolvePiiContractEnv();
+
+      expect(env.IWANA_APPLY_PII_CONTRACT).toBe('true');
+    });
+
+    it('no fuerza el contract si la flota aún está en ventana 1 (109 pendiente)', async () => {
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_demo' }] })
+        .mockResolvedValueOnce({ rows: [{ exists: false }] });
+
+      const processor = createProcessor();
+      const env = await (processor as any).resolvePiiContractEnv();
+
+      expect(env.IWANA_APPLY_PII_CONTRACT).toBeUndefined();
+    });
+
+    it('no fuerza el contract cuando no hay tenants ACTIVE (bootstrap)', async () => {
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
+
+      const processor = createProcessor();
+      const env = await (processor as any).resolvePiiContractEnv();
+
+      expect(env.IWANA_APPLY_PII_CONTRACT).toBeUndefined();
+    });
+
+    it('antepone el contract sin mutar el process.env real', async () => {
+      const original = process.env.IWANA_APPLY_PII_CONTRACT;
+      delete process.env.IWANA_APPLY_PII_CONTRACT;
+      try {
+        mockPool.query
+          .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_demo' }] })
+          .mockResolvedValueOnce({ rows: [{ exists: true }] });
+
+        const processor = createProcessor();
+        const env = await (processor as any).resolvePiiContractEnv();
+
+        expect(env.IWANA_APPLY_PII_CONTRACT).toBe('true');
+        expect(process.env.IWANA_APPLY_PII_CONTRACT).toBeUndefined();
+      } finally {
+        if (original !== undefined) {
+          process.env.IWANA_APPLY_PII_CONTRACT = original;
+        }
+      }
+    });
+
+    it('falla cerrado si la consulta de flota no responde (R2-1)', async () => {
+      mockPool.query.mockRejectedValueOnce(new Error('connection reset'));
+
+      const processor = createProcessor();
+
+      await expect((processor as any).resolvePiiContractEnv()).rejects.toThrow(/connection reset/);
     });
   });
 

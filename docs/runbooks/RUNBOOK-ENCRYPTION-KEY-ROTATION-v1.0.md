@@ -111,6 +111,8 @@ Procedimiento operativo resumido:
 
 Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos ≠ HMAC nueva clave).
 
+**Despliegue inicial SEC-P1 (expand/contract, no rotación):** ver [RUNBOOK-SEC-P1-VENTANA-EXPAND-CONTRACT-v1.0.md](./RUNBOOK-SEC-P1-VENTANA-EXPAND-CONTRACT-v1.0.md) — secuencia S1 + A1/A2 + B1. No mezclar rotación de clave con la ventana 2 del contract.
+
 ---
 
 ## 7. Nota para AI-SEC-ENG

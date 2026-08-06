@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from './db-credentials';
+import { resolvePublicMigrations } from './migrations/public';
 import { AuditLog } from './entities/audit-log.entity';
 import { AccessPermissionCatalog } from './entities/access-permission-catalog.entity';
 import { AccessProfile } from './entities/access-profile.entity';
@@ -150,7 +151,9 @@ export const dataSourceOptions: DataSourceOptions = {
     ExecutionOrderIdempotencyRecord,
     ExecutionOrderAuditIntent,
   ],
-  migrations: ['dist/migrations/public/*.js'],
+  // Lista explícita, no glob: el glob dejaba el orden en manos del sufijo de
+  // cada clase y no permite excluir las diferidas. Ver migrations/public/index.
+  migrations: resolvePublicMigrations(),
   migrationsTableName: 'typeorm_migrations',
   migrationsRun: false,
   synchronize: false, // Solo migraciones versionadas — nunca synchronize en produccion

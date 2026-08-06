@@ -45,6 +45,10 @@ export const requiredDevEnvVars = [
   'MINIO_MC_IMAGE',
   'NGINX_IMAGE',
 ];
+// Variables que las migraciones TypeORM exigen en runtime (backfill HMAC SEC-P1).
+// Distintas de requiredDevEnvVars: Compose puede levantar infra sin ellas, pero
+// `pnpm db:migrate:all` falla a mitad de transacción si faltan.
+export const requiredMigrationEnvVars = ['PII_HASH_KEY'];
 const isWindows = process.platform === 'win32';
 const hasScriptCommand =
   !isWindows && spawnSync('script', ['-qc', 'true', '/dev/null'], { stdio: 'ignore' }).status === 0;
@@ -256,6 +260,76 @@ function assertDevEnv() {
   }
 
   throw new Error(buildMissingDevEnvMessage(missing, '.env'));
+}
+
+export function buildMissingMigrationEnvMessage(missing, envPath = '.env') {
+  const detalle = missing.map((name) => `  - ${name}`).join('\n');
+
+  return [
+    `Faltan ${missing.length} variable(s) obligatoria(s) para migraciones en ${envPath}:`,
+    detalle,
+    '',
+    'Las migraciones de backfill HMAC (SEC-P1) requieren estas claves antes de',
+    '`pnpm db:migrate:all`; sin ellas el runner aborta a mitad de transacción.',
+    'Genera cada clave con: openssl rand -hex 32',
+    'El CLI de TypeORM carga, en orden, .env.development.local → .env.development →',
+    '.env y se detiene al completar DB_*; si .env.development ya trae DB_HOST/USER/',
+    'PASSWORD, PII_HASH_KEY en solo .env no llega al proceso. Preferí',
+    '.env.development.local (o .env.development) según .env.example y',
+    'docs/runbooks/RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md (§6bis).',
+    'No copies secretos reales a archivos versionados.',
+  ].join('\n');
+}
+
+export function assertMigrationEnv(fileValues, shellEnv = process.env) {
+  const missing = findMissingDevEnvVars(fileValues, shellEnv, requiredMigrationEnvVars);
+
+  if (missing.length === 0) {
+    return;
+  }
+
+  throw new Error(buildMissingMigrationEnvMessage(missing, '.env'));
+}
+
+/**
+ * Une candidatos de entorno con semántica first-wins (igual que `process.loadEnvFile`).
+ * Replica el orden de `ensureDatabaseEnvLoaded` en `@iwana/db` data-source.
+ */
+export function readMigrationEnvFileValues(rootDir = rootCwd) {
+  const merged = new Map();
+
+  for (const candidate of ['.env.development.local', '.env.development', '.env']) {
+    const values = readEnvFile(join(rootDir, candidate));
+
+    for (const [key, value] of values) {
+      if (!merged.has(key)) {
+        merged.set(key, value);
+      }
+    }
+  }
+
+  return merged;
+}
+
+function assertMigrationEnvFromDisk() {
+  const fileValues = readMigrationEnvFileValues();
+  assertMigrationEnv(fileValues, process.env);
+
+  // Inyecta en process.env para que el hijo `pnpm db:migrate:all` herede la clave
+  // aunque data-source haga early-return tras cargar .env.development.
+  for (const name of requiredMigrationEnvVars) {
+    const shellValue = process.env[name];
+
+    if (typeof shellValue === 'string' && shellValue.trim() !== '') {
+      continue;
+    }
+
+    const fileValue = fileValues.get(name);
+
+    if (typeof fileValue === 'string' && fileValue.trim() !== '') {
+      process.env[name] = fileValue;
+    }
+  }
 }
 
 function stripAnsi(text) {
@@ -1159,6 +1233,8 @@ async function runStartupSequence({ dashboard, registry, trackChild }) {
     dashboard,
     trackChild,
   });
+
+  assertMigrationEnvFromDisk();
 
   await runStep('Ejecutando migraciones', 'pnpm', ['db:migrate:all'], { dashboard, trackChild });
 

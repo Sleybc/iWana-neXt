@@ -12,11 +12,19 @@ const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
  *
  * Schema: tenant. Reversible solo con IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN
  * (recrea columnas hash vacías — no restaura digests SHA-256).
+ *
+ * **Diferida** (`IWANA_APPLY_PII_CONTRACT`): es el contract del expand/contract
+ * que abre la 108. Mientras no se aplique, las columnas `*_hash` conservan los
+ * digests SHA-256 originales y volver al binario pre-SEC-P1 no exige restaurar
+ * backup. Aplicarla cierra esa puerta — y también retira los últimos hashes
+ * enumerables (S-1), así que no debe quedarse diferida indefinidamente.
  */
 export class DropPiiSha256HashColumns1090000000000 implements MigrationInterface {
   name = 'DropPiiSha256HashColumns1090000000000';
 
   transactional = true;
+
+  deferredBy = 'IWANA_APPLY_PII_CONTRACT';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Guardián: no dropear hash si quedan filas con ciphertext sin hmac.
@@ -39,6 +47,32 @@ export class DropPiiSha256HashColumns1090000000000 implements MigrationInterface
     if ((pendingUsers[0]?.total ?? 0) > 0) {
       throw new Error(
         `109 bloqueada: ${pendingUsers[0]!.total} user(s) sin email_hmac. Reejecutar 108.`,
+      );
+    }
+
+    // Subscribers: el backfill de 108 tolera fallos por campo (una fila con 3
+    // campos donde falla 1 igual cuenta como actualizada). Sin este guardián el
+    // DROP de más abajo se lleva los digests SHA-256 de filas cuyo HMAC quedó
+    // NULL, y la búsqueda por documento/email/teléfono de esos suscriptores
+    // queda rota sin forma de recalcularla si la clave AES ya no está.
+    const pendingSubscribers = (await queryRunner.query(`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE document_number_hmac IS NULL AND document_number_encrypted IS NOT NULL
+        )::int AS doc,
+        COUNT(*) FILTER (WHERE email_hmac IS NULL AND email_encrypted IS NOT NULL)::int AS email,
+        COUNT(*) FILTER (WHERE phone_hmac IS NULL AND phone_encrypted IS NOT NULL)::int AS phone
+      FROM subscribers
+    `)) as Array<{ doc: number; email: number; phone: number }>;
+    const subscriberGaps = pendingSubscribers[0] ?? { doc: 0, email: 0, phone: 0 };
+    const totalSubscriberGaps = subscriberGaps.doc + subscriberGaps.email + subscriberGaps.phone;
+    if (totalSubscriberGaps > 0) {
+      throw new Error(
+        `109 bloqueada: subscribers con ciphertext pero sin HMAC ` +
+          `(document_number=${subscriberGaps.doc}, email=${subscriberGaps.email}, ` +
+          `phone=${subscriberGaps.phone}). Dropear las columnas SHA-256 ahora ` +
+          'perdería su búsqueda de forma irrecuperable. Reejecutar 108 con ' +
+          'MFA_ENCRYPTION_KEY (y MFA_ENCRYPTION_KEY_PREVIOUS si hubo rotación).',
       );
     }
 

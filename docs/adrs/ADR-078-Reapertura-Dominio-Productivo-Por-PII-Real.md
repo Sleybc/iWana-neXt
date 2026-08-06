@@ -123,6 +123,44 @@ ADR-070 §Riesgos congelados enumera seis. `rejectUnauthorized: false` en
 `packages/database/src/data-source.ts` es el séptimo y no figuraba. Queda incorporado aquí
 para que la reapertura no lo pierda.
 
+### D7. El acceso operativo legítimo no es lo que este ADR restringe
+
+Declaración del CTO (2026-08-05), incorporada como decisión: **los datos se almacenan de
+forma segura, y el personal autorizado puede verlos porque son parte del funcionamiento
+del sistema.**
+
+Esto no entra en conflicto con nada de lo anterior. Son dos capas distintas:
+
+| Capa | Contra qué protege | Mecanismo |
+| --- | --- | --- |
+| **Confidencialidad frente a terceros** | Quien **no** debe ver el dato: alguien en el segmento de red, un volcado de la base, un tercero en tránsito | TLS, cifrado en reposo, HMAC con clave, sanitización del audit trail |
+| **Control de acceso** | Quién **sí** debe verlo y para qué | RBAC por rol, resolución de tenant desde JWT verificado, auditoría de accesos |
+
+Ningún control de la primera capa impide la segunda. Cifrar en reposo no impide que un
+usuario con rol adecuado consulte por cédula: la aplicación descifra para quien está
+autorizado. Ese es su propósito.
+
+**Finalidades operativas declaradas legítimas** — enunciadas por el CTO y registradas aquí
+porque son las que sostienen la base legal del tratamiento:
+
+1. **Consulta por número de documento** para localizar al suscriptor y su facturación.
+2. **Ubicación y coordenadas** para despacho de cuadrillas y ejecución de trabajo de campo.
+3. **Correo electrónico** para notificar fallas, cortes e información del servicio.
+4. **Teléfono** para coordinar la visita técnica y contactar durante la ejecución.
+
+**Consecuencia técnica que conviene fijar:** la corrección de S-1 —pasar de SHA-256 sin sal
+a HMAC con clave dedicada— **preserva la búsqueda determinista por documento**. La
+finalidad 1 sigue funcionando igual; lo que cambia es que un tercero con acceso a la tabla
+ya no puede recuperar la cédula por fuerza bruta sin la clave. La corrección protege sin
+restar función.
+
+**Lo que sí queda pendiente de decisión**, y enlaza con D6: estas cuatro finalidades deben
+estar cubiertas por la autorización que el titular otorga. Una autorización genérica no
+ampara cualquier uso posterior; enumerar las finalidades es lo que la hace verificable.
+
+*Requiere verificación con fuente oficial:* si la enumeración de finalidades debe constar
+en el texto de autorización que firma el titular, y con qué grado de detalle.
+
 ### D6. El consentimiento se asienta en el sistema o se declara fuera de alcance
 
 Dado D-declaración del CTO, se requiere una decisión explícita: o `consent_records` pasa a
