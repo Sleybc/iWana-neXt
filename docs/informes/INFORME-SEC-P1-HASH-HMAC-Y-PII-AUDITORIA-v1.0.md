@@ -637,3 +637,16 @@ Primer arranque en vacío real del repo. Base con 0 tablas → 22 migraciones ap
 | Endurecimiento de `IWANA_APPLY_PII_CONTRACT` | El precedente `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` exige el literal `"true"`, confirmación interactiva y alcance de un schema; este flag acepta `1`/`yes`/`on`, sin confirmación, y alcanza toda la flota. AI-SEC-ENG lo clasifica Media |
 | Gate auto-propagante | `resolvePiiContractEnv` (worker) fija el flag al provisionar. Justificado, pero convierte el control humano en control de primera aplicación: debe declararse como tal, no como «gate humano» |
 | Ausencia de backup/restore | ADR-078 §D4 lo declara inexistente y este incidente lo confirmó. No hay script de backup ni de reset gobernado en el repo |
+| **S-6 sin cerrar** | Hallazgo **confirmado** contra PostgreSQL por AI-SR-FULL: el GUC `iwana.audit_maintenance` **no es restringible por permisos**, así que el rol de aplicación puede activarlo con `SET LOCAL` y evadir el trigger. La implementación de la corrección quedó **interrumpida** (límite de sesión del agente). El laboratorio se limpió: 0 schemas de prueba, registro en 22 filas. **Pendiente de reanudar** |
+
+### Verificación independiente (AI-SR-QA)
+
+Confirmado contra la base: 22 filas en `public.typeorm_migrations`, **cero** timestamps de menos de 13 dígitos, `PlatformUsersEmailHmac1784419209000` en posición contigua tras la 020, `DropPlatformUsersEmailHash1784419210000` ausente, y `platform_users` con `email_hash` nullable + `email_hmac` NOT NULL con su UNIQUE.
+
+Evidencia adicional que AI-SR-QA aportó sin que se le pidiera, y que vale registrar: los `id` van **1..22 contiguos y monótonos con el timestamp**. Un registro acumulado históricamente los tendría desalineados —las 012–015 renombradas se habrían insertado fuera de secuencia—, así que la contigüidad prueba por sí sola que fue un bootstrap único sobre base virgen.
+
+**Corrección al método de verificación propuesto por AI-EM-ARCH.** El humo que se encargó —`migration:revert` con la variable ausente— pasó (exit 0), pero **no es discriminante del fix H-1**: la fila de `id` más alto era la 023, que no es diferida y por tanto sí está en la lista filtrada, de modo que el comando habría pasado igual con el data source anterior. La condición que realmente falla exige que la última fila sea la 022 diferida ya aplicada, no reproducible aquí sin aplicar el contract. La prueba discriminante se hizo sin tocar la base, comparando lo que cada data source entrega al CLI y reproduciendo la resolución de `undoLastMigration`: con la lista de `run` → `TypeORMError`; con la de `revert` → resuelve.
+
+**Corolario:** lo que hacía fallar el revert en la base anterior eran, con toda probabilidad, las **filas huérfanas** que sanea la 023 — un defecto distinto del filtrado de diferidas. Son dos arreglos independientes y el humo no distingue cuál actuó.
+
+**Huella y límites declarados:** el ciclo revert→run consumió un `id` (la última fila pasó de 22 a 23; 22 filas y contenido lógico idénticos). El **camino de migraciones tenant no tiene evidencia sobre base real** en este bootstrap: con 0 tenants, la paridad es trivialmente verdadera. Gates: 28 suites / 179 tests, `typecheck`, `lint` y `build` en verde, ejecutados por el script del paquete sin turbo en el camino — el antecedente de caché no aplica.
