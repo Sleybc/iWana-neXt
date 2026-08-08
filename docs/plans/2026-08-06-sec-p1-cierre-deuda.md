@@ -428,6 +428,78 @@ Recorrer **todos** los schemas, no solo los ACTIVE: los `MARKED_FOR_DELETION` lo
 
 ---
 
+### Task 10: Invariante de privilegios sobre el audit trail
+
+**Contexto para quien ejecuta:** al verificar el cierre de S-6 se descubrió que lo que realmente impide al rol de aplicación mutar el audit trail **no es el trigger, es el GRANT**: la migración 015 (SEC-04) nunca le dio `UPDATE`, así que la sentencia muere antes de que el trigger opine. El trigger endurecido de la Tarea 2 es la segunda capa. El problema es que **ese invariante no lo vigila nada**: si un rol nuevo —reporting, analytics, un rol de aplicación futuro— recibe `UPDATE` sobre auditoría, la defensa principal desaparece en silencio y ningún test falla. Esta tarea convierte esa circunstancia afortunada en una propiedad garantizada, y es lo que hace defendible la clasificación de S-6 como Baja: sin ella, la clasificación caduca en cuanto alguien toque los GRANT.
+
+**Baseline medido el 2026-08-08 (dev):**
+
+```
+iwana           | UPDATE=t DELETE=t | superuser  -> exento, ver nota
+iwana_app       | UPDATE=f DELETE=f |            -> correcto: solo INSERT
+iwana_migrator  | UPDATE=t DELETE=t |            -> rol de mantenimiento, correcto
+```
+
+**Files:**
+- Create: `packages/database/src/migrations/audit-privileges.invariant.integration.spec.ts`
+- Read first: `packages/database/src/migrations/tenant/111_harden_audit_maintenance_guard.integration.spec.ts` (patrón de conexión por rol), `packages/database/src/migrations/public/015_audit_owner_least_privilege.ts` (de dónde sale el invariante)
+
+- [ ] **Step 1: Escribir el spec**
+
+Debe recorrer **todos** los schemas de tenant, no una muestra: el invariante es por schema y un solo tenant desalineado basta para romperlo. Consulta base:
+
+```sql
+SELECT r.rolname, n.nspname, c.relname,
+       has_table_privilege(r.rolname, c.oid, 'UPDATE')   AS upd,
+       has_table_privilege(r.rolname, c.oid, 'DELETE')   AS del,
+       has_table_privilege(r.rolname, c.oid, 'TRUNCATE') AS trunc
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+CROSS JOIN pg_roles r
+WHERE c.relname IN ('audit_logs', 'platform_audit_logs')
+  AND c.relkind = 'r'
+  AND r.rolname NOT LIKE 'pg\_%'
+  AND NOT r.rolsuper
+```
+
+Aserto: el conjunto de `rolname` con `upd OR del OR trunc` debe ser **exactamente** `{'iwana_migrator'}`. Ni más (un rol nuevo con privilegio reabre S-6) ni menos (si el migrador lo pierde, la redacción de PII de la 110 deja de ser posible y la 111 bloquearía el mantenimiento legítimo).
+
+El mensaje de fallo debe nombrar el rol, el schema y la tabla concretos, y explicar qué se rompe: sin eso, quien lo vea dentro de seis meses no sabrá si añadir el rol a una allowlist o revocar el privilegio. La respuesta correcta casi siempre es revocar.
+
+- [ ] **Step 2: Declarar la exención de superusuario en el propio spec**
+
+`NOT r.rolsuper` excluye a los superusers **a propósito**, y hay que escribir por qué: un superuser tiene el privilegio, es miembro implícito de todos los roles —así que `pg_has_role` lo deja pasar el guard de la 111— y además puede desactivar triggers. El audit trail **no es inmutable frente a un superuser y ningún diseño en la base lo hará**. Un test que fingiera lo contrario daría una garantía falsa.
+
+- [ ] **Step 3: Ejecutar contra la base**
+
+```bash
+pnpm --filter @iwana/db test:integration -- audit-privileges
+```
+
+Esperado: PASS con el baseline actual.
+
+- [ ] **Step 4: Verificar que el test tiene dientes**
+
+Conceder temporalmente el privilegio y comprobar que el spec falla nombrando el rol:
+
+```bash
+docker exec iwana_postgres_dev psql -U iwana -d dbiw -c "GRANT UPDATE ON tenant_secp1_a.audit_logs TO iwana_app;"
+pnpm --filter @iwana/db test:integration -- audit-privileges   # debe FALLAR
+docker exec iwana_postgres_dev psql -U iwana -d dbiw -c "REVOKE UPDATE ON tenant_secp1_a.audit_logs FROM iwana_app;"
+pnpm --filter @iwana/db test:integration -- audit-privileges   # debe volver a PASAR
+```
+
+**No omitas este paso.** Un test de invariante que nunca se ha visto fallar es indistinguible de uno que no comprueba nada, y en esta fase ya nos ha pasado tres veces confundir una señal adyacente con la evidencia.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/database/src/migrations/audit-privileges.invariant.integration.spec.ts
+git commit -m "test(security): invariante de privilegios sobre el audit trail"
+```
+
+---
+
 ## Orden de ejecución y dependencias
 
 ```
