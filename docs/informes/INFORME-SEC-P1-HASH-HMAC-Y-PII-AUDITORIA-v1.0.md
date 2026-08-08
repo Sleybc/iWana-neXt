@@ -704,6 +704,20 @@ El least-privilege que impuso la migración **015** (SEC-04) ya rechazaba la mut
 
 **Lección de método, no de código.** Tres revisiones —el hallazgo, la implementación y el spec review— pasaron sobre S-6 sin ejecutar `has_table_privilege`. El primero que intentó *reproducir el ataque* en vez de razonar sobre él encontró el matiz en dos comandos. Un hallazgo de seguridad no está caracterizado hasta que alguien intenta explotarlo.
 
+**Condición de vigencia de esta clasificación.** «Baja» vale mientras el invariante de privilegios se sostenga, y hoy **nada lo vigila**: si un rol futuro recibe `UPDATE` sobre auditoría, la defensa principal cae en silencio y la severidad registrada quedaría mintiendo. Por eso la reclasificación va acompañada de la **Task 10** del plan de cierre — un test de invariante que enumera los roles con privilegio de mutación sobre `audit_logs` y `platform_audit_logs` y falla si aparece alguno que no sea el de mantenimiento. Baseline medido el 2026-08-08:
+
+```
+iwana           | UPDATE=t DELETE=t | superuser  -> exento (ver límite declarado)
+iwana_app       | UPDATE=f DELETE=f |            -> solo INSERT, correcto
+iwana_migrator  | UPDATE=t DELETE=t |            -> rol de mantenimiento, correcto
+```
+
+#### Límite declarado: el audit trail no es inmutable frente a un superusuario
+
+`iwana` es superuser: tiene `UPDATE`/`DELETE` sobre las tablas de auditoría, es **miembro implícito de todos los roles** —de modo que `pg_has_role` lo deja atravesar el guard de la 111— y puede además desactivar triggers directamente. Ningún control dentro de la base cierra esa vía.
+
+Esto **no es un defecto pendiente de corregir**: es el límite del control, y se declara aquí para que nadie lea la inmutabilidad del trail como una garantía absoluta. La mitigación del escenario «superusuario hostil o comprometido» no es técnica dentro de PostgreSQL, sino de custodia de credenciales y de separación de quién posee ese rol. El test de la Task 10 excluye a los superusers a propósito y con esa razón escrita: un test que fingiera cubrirlos daría una garantía falsa, que es peor que no darla.
+
 ### Task 1 — Merge del PR #5 (ejecutado sin G6.5 — incumplimiento declarado)
 
 CI en rojo por **billing de GitHub Actions** (fallo de pagos/límite de gasto — *"recent account payments have failed or your spending limit needs to be increased"*), preexistente en `main`, no introducido por el PR. G6.5 (ADR-069) no obtenible hasta resolverlo. La decisión registrada era **continuar Tasks 2–7 en la rama y mergear cuando se resolviera el billing**.
