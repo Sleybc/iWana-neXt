@@ -609,6 +609,8 @@ Ambas premisas iban dentro de encargos delegados. Que los agentes las contradije
 
 **Custodia abierta.** Existen dos volúmenes Docker anónimos (`b724d6a2…`, `cc2c3bf7…`) con datadir de PostgreSQL 18 fechado 2026-08-01 — posterior al expediente. **No inspeccionados**: verificar su contenido es una lectura de PII de un titular identificable. Están marcados `dangling`, de modo que **`docker volume prune` o `docker system prune` los elimina**. Mientras no haya decisión, no se ejecuta ninguno de los dos en esa máquina.
 
+**Decisión del CTO (constancia escrita 2026-08-08 ~07:10, vía sesión de cierre de deuda SEC-P1):** eliminar ambos volúmenes (`b724d6a2ffde3ec55c238b9755f172d1b61357f507e506885e931600b66f55b5`, `cc2c3bf7799777b20b3f02e6451c3f779fb96c70ee7eb982e53f442efabc69bb`) **sin inspeccionarlos**, adoptando la recomendación de AI-EM-ARCH: no queda finalidad que justifique conservarlos (ADR-078 se decide sin esa evidencia), montarlos para «ver qué hay» sería tratamiento de PII sin finalidad declarada, y conservarlos sin custodia ni purga es el peor escenario. El responsable adoptó la opción «Eliminar sin inspeccionar». **Ejecutado el 2026-08-08** (ver «Cierre de deuda — plan 2026-08-06», Task 8).
+
 ### Bootstrap limpio — D-5 cerrado
 
 Primer arranque en vacío real del repo. Base con 0 tablas → 22 migraciones aplicadas en orden:
@@ -650,3 +652,41 @@ Evidencia adicional que AI-SR-QA aportó sin que se le pidiera, y que vale regis
 **Corolario:** lo que hacía fallar el revert en la base anterior eran, con toda probabilidad, las **filas huérfanas** que sanea la 023 — un defecto distinto del filtrado de diferidas. Son dos arreglos independientes y el humo no distingue cuál actuó.
 
 **Huella y límites declarados:** el ciclo revert→run consumió un `id` (la última fila pasó de 22 a 23; 22 filas y contenido lógico idénticos). El **camino de migraciones tenant no tiene evidencia sobre base real** en este bootstrap: con 0 tenants, la paridad es trivialmente verdadera. Gates: 28 suites / 179 tests, `typecheck`, `lint` y `build` en verde, ejecutados por el script del paquete sin turbo en el camino — el antecedente de caché no aplica.
+
+---
+
+## Cierre de deuda — plan 2026-08-06 (ejecución 2026-08-08)
+
+**Modo:** AI-EM-ARCH Orchestrator + EM · **Plan:** [`docs/plans/2026-08-06-sec-p1-cierre-deuda.md`](../plans/2026-08-06-sec-p1-cierre-deuda.md) · **Protocolo multiagente desplegado** según `subagent-driven-development` (implementador fresh por tarea + revisión en dos etapas).
+
+### Task 8 — volúmenes Docker huérfanos (decisión CTO por escrito)
+
+**Decisión del CTO (2026-08-08 ~07:10, constancia escrita vía sesión):** eliminar `b724d6a2…` y `cc2c3bf7…` **sin inspeccionarlos**. Registrada **antes** de ejecutar (constancia previa, como exige el plan y como faltó el 2026-08-06). Ejecutado y verificado: `docker volume ls --filter dangling=true` ya no los muestra (quedan solo los `*_e2e` de fixtures, no autorizados). **Estado: CERRADO.**
+
+### Task 2 — S-6 escotilla del audit trail (cerrado)
+
+**Fecha:** 2026-08-08 · **Commit:** `729a35b1` · **Agente:** [AI-SR-FULL](b50ac1b6-25bf-413a-9449-9d65e3165738) (implementador, TDD red→green real) · [AI-SR-QA](04ea63a7-43b4-4815-a239-e068eb6afe4f) (spec review: **SPEC COMPLIANT**) · [AI-SEC-ENG](b279aa50-19ee-4e08-9402-ce29afcd4702) (**GO**).
+
+| Ítem | Evidencia |
+| --- | --- |
+| Migración tenant **111** + pública **024** | `CREATE OR REPLACE FUNCTION public.reject_audit_mutation()` exige `to_regrole('iwana_migrator') IS NULL OR pg_has_role(current_user,'iwana_migrator','MEMBER')` además del GUC; mensaje sin la receta; `down()` restaura 075/014 |
+| Integration spec (3 casos) contra PostgreSQL real | 3/3 PASS: app+GUC → `42501`; migrator+GUC → aplica; sin GUC → `42501` |
+| Paso 8 (110 sigue posible) | `SET LOCAL` como `iwana_migrator` → sin error |
+| Gates | `@iwana/db` 28 suites / 179 tests, typecheck, lint, build en verde |
+| Owner de la función verificado | `iwana_migrator` (CREATE OR REPLACE no reasigna ownership; least-privilege SEC-04 intacto) |
+
+**Hallazgos SEC-ENG (baja, no bloqueantes, registrados):**
+- **B-1:** el hardening es efectivo solo donde existe el rol `iwana_migrator`; confirmar `to_regrole('iwana_migrator')` en staging/prod antes de declarar S-6 cerrado allí.
+- **B-2:** `down()` de 111/024 restaura la versión vulnerable (GUC solo); revertir reabre S-6 — documentar en runbook de rollback.
+
+**Estado: S-6 CERRADO en código y verificado contra PostgreSQL real.**
+
+### Task 1 — Merge del PR #5 (pendiente humano)
+
+CI en rojo por **billing de GitHub Actions** (fallo de pagos/límite de gasto — *"recent account payments have failed or your spending limit needs to be increased"*), preexistente en `main`, no introducido por el PR. G6.5 (ADR-069) no obtenible hasta resolverlo. El responsable decidió: **continuar Tasks 2–7 en la rama actual** y mergear cuando se resuelva el billing. **Estado: PENDIENTE HUMANO.**
+
+### Pendientes
+
+- Tasks 3–7 del plan (en ejecución).
+- Task 9 (ventana 2) — gate CTO, precondición Task 7 completa.
+- PR #5 merge (billing GitHub Actions).
