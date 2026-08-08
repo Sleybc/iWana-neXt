@@ -6,9 +6,19 @@
  * pasaba el guard. Hoy no existe tal endpoint y el 404 del router tapaba el
  * hueco, pero el guard no puede depender de que el router no exista.
  *
+ * Además del comportamiento, se afirma sobre la **fuente** del guard. La razón es
+ * un merge concreto: la rama de MOD01 refactoriza este mismo bloque a un mapa
+ * `LIMITED_SCOPES` y añade un segundo alcance (`password-change`). Al resolver ese
+ * conflicto, volver al `startsWith` a secas reintroduciría el defecto con los
+ * tests de ambas ramas en verde, porque cada uno prueba solo su mitad. La
+ * afirmación sobre la fuente sobrevive a la resolución del conflicto: caiga el
+ * lado que caiga, `startsWith(allowed)` no puede volver al guard.
+ *
  * Sin PII ni credenciales: el payload es un JWT ficticio mínimo.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -70,5 +80,31 @@ describe('JwtAuthGuard — coincidencia de ruta para tokens de alcance limitado'
     expect(guard.handleRequest(null, tokenCompleto, null, contextoConRuta('/api/v1/users'))).toBe(
       tokenCompleto,
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Red sobre la fuente: `startsWith` a secas no puede volver al guard
+  // ---------------------------------------------------------------------------
+
+  describe('la fuente del guard no compara por prefijo de cadena', () => {
+    /**
+     * Solo el código: los comentarios del guard citan literalmente la forma
+     * defectuosa para explicar por qué se descartó, y compararlos daría un rojo
+     * falso. Un rojo falso es peor que ninguna red — invita a relajar la
+     * afirmación hasta dejarla sin fuerza.
+     */
+    const fuente = readFileSync(join(__dirname, 'jwt-auth.guard.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '');
+
+    it('no invoca startsWith con la ruta permitida sin delimitar', () => {
+      // Se prohíbe `startsWith(allowed)`. El `startsWith` con el delimitador
+      // añadido, dentro de matchesAllowedPath, es la forma correcta y no empareja.
+      expect(fuente).not.toMatch(/startsWith\(\s*allowed\s*\)/);
+    });
+
+    it('la comparacion de rutas pasa por matchesAllowedPath', () => {
+      expect(fuente).toMatch(/\.some\(\s*\(allowed\)\s*=>\s*[\s\S]{0,80}matchesAllowedPath/);
+    });
   });
 });
