@@ -59,6 +59,7 @@ describe('AuthController HTTP', () => {
 
   const mockAuthService = {
     login: jest.fn(),
+    loginPlatform: jest.fn(),
     refreshTokens: jest.fn(),
     logout: jest.fn(),
     setupMfa: jest.fn(),
@@ -297,9 +298,83 @@ describe('AuthController HTTP', () => {
         message: 'Contrasena actualizada correctamente.',
       },
     });
-    expect(mockAuthService.changePassword).toHaveBeenCalledWith('user-uuid-1', {
-      currentPassword: 'OldPassw0rd!',
-      newPassword: 'NewPassw0rd!',
+    // El servicio recibe el payload completo, no solo el sub: necesita `type`
+    // para no resolver a un usuario de plataforma via TenantContext, y `jti`
+    // para revocar el token de alcance limitado al completar el cambio.
+    expect(mockAuthService.changePassword).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'user-uuid-1', type: 'tenant', jti: 'jti-http-test' }),
+      { currentPassword: 'OldPassw0rd!', newPassword: 'NewPassw0rd!' },
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // MOD01 — primer ingreso: contrato HTTP del indicador de cambio forzado
+  //
+  // A nivel de servicio el indicador puede estar perfectamente calculado y aun
+  // asi no llegar al cliente: NestJS descarta los campos omitidos al serializar.
+  // Es la misma causa por la que `mfaRequired` / `mfaSetupRequired` tuvieron que
+  // propagarse a mano. Si este contrato se rompe, el usuario entra sin cambiar
+  // nada mientras el backend cree que se lo exigio, y ningun test de servicio lo
+  // detecta. Por eso se verifica sobre la respuesta HTTP real.
+  // ---------------------------------------------------------------------------
+
+  describe('POST /api/v1/auth/platform/login — indicador de cambio forzado', () => {
+    it('serializa passwordResetRequired=true en el cuerpo de la respuesta', async () => {
+      mockAuthService.loginPlatform.mockResolvedValue({
+        accessToken: 'jwt-scoped-1',
+        passwordResetRequired: true,
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/platform/login')
+        .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        data: {
+          accessToken: 'jwt-scoped-1',
+          passwordResetRequired: true,
+        },
+      });
+    });
+
+    it('no emite cookie de refresh en el primer ingreso forzado', async () => {
+      // El token entregado es de alcance limitado: no debe venir acompanado de
+      // una sesion renovable que sobreviva al cambio de contrasena.
+      mockAuthService.loginPlatform.mockResolvedValue({
+        accessToken: 'jwt-scoped-2',
+        passwordResetRequired: true,
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/platform/login')
+        .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('omite el indicador cuando la cuenta ya cambio su contrasena', async () => {
+      mockAuthService.loginPlatform.mockResolvedValue({ accessToken: 'jwt-full-1' });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/platform/login')
+        .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(response.body).toEqual({ data: { accessToken: 'jwt-full-1' } });
+      expect(response.body.data.passwordResetRequired).toBeUndefined();
+    });
+
+    it('sigue propagando mfaRequired cuando el MFA es el paso pendiente', async () => {
+      mockAuthService.loginPlatform.mockResolvedValue({ accessToken: '', mfaRequired: true });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/platform/login')
+        .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(response.body).toEqual({ data: { accessToken: '', mfaRequired: true } });
     });
   });
 });

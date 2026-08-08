@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
+import { isAuditSecretEntry, sanitizeAuditPayload } from './audit-sanitize.policy';
+
 /**
  * E7 / SEC-P1 §5.8 — red anti-reintroducción.
  *
@@ -15,7 +17,38 @@ import { join, relative, resolve } from 'node:path';
 const API_SRC_ROOT = resolve(__dirname, '../..');
 
 /** Claves mínimas del criterio §5.5 / §5.8. */
-const FORBIDDEN_AUDIT_PAYLOAD_KEYS = ['fullName', 'latitude', 'longitude'] as const;
+const FORBIDDEN_AUDIT_PAYLOAD_KEYS = [
+  'fullName',
+  'latitude',
+  'longitude',
+  // Credenciales (MOD01 / primer ingreso). No son "PII" pero comparten la misma
+  // historia: las migraciones 074 (tenant) y 012 (pública) existen porque
+  // `temporaryPassword` llegó en claro al trail y hubo que redactarlo
+  // retroactivamente sobre una tabla append-only protegida por trigger. Un
+  // caller que vuelva a pasar una credencial en `oldValue`/`newValue` falla aquí.
+  'password',
+  'newPassword',
+  'currentPassword',
+  'temporaryPassword',
+  'passwordHash',
+] as const;
+
+/**
+ * Claves de credencial que la denylist del sink debe descartar SIEMPRE, venga
+ * el payload de donde venga. El barrido de callers es la primera red; ésta es
+ * la segunda, y es la que no depende de que nadie escriba bien el literal.
+ */
+const CREDENTIAL_KEYS_THAT_MUST_BE_STRIPPED = [
+  'password',
+  'newPassword',
+  'currentPassword',
+  'temporaryPassword',
+  'passwordHash',
+  'password_hash',
+  'mfaSecret',
+  'refreshToken',
+  'accessToken',
+] as const;
 
 function collectProductionTsFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -111,6 +144,53 @@ describe('E7 SEC-P1 — anti-reintroducción de PII en auditService.log()', () =
       'latitude',
       'longitude',
     ]);
+  });
+
+  it('detecta una credencial simulada en el literal (auto-verificación del guard)', () => {
+    // Reproduce la forma exacta de la fuga que motivó las migraciones 074 y 012.
+    const sample = `
+      await this.auditService.log({
+        action: 'PASSWORD_CHANGED',
+        newValue: { temporaryPassword: 'x', currentPassword: 'y', newPassword: 'z' },
+      });
+    `;
+    const literals = extractAuditServiceLogObjectLiterals(sample);
+    expect(literals).toHaveLength(1);
+    expect(findForbiddenPiiKeysInAuditLogLiteral(literals[0]!.literal).sort()).toEqual([
+      'currentPassword',
+      'newPassword',
+      'temporaryPassword',
+    ]);
+  });
+
+  it('la denylist del sink descarta toda clave de credencial, en cualquier nivel del árbol', () => {
+    // §4.1 del encargo: verificar que la política cubre `password`,
+    // `newPassword`, `currentPassword` y `temporaryPassword`. Se comprueba
+    // contra la política real, no contra una copia del patrón.
+    for (const key of CREDENTIAL_KEYS_THAT_MUST_BE_STRIPPED) {
+      expect(isAuditSecretEntry(key, 'valor-de-prueba')).toBe(true);
+
+      const sanitized = sanitizeAuditPayload({
+        action: 'PASSWORD_CHANGED',
+        [key]: 'valor-de-prueba',
+        anidado: { [key]: 'valor-de-prueba' },
+      });
+
+      expect(sanitized).not.toHaveProperty(key);
+      expect(sanitized?.['anidado']).not.toHaveProperty(key);
+      // El evento sí sobrevive; los valores no.
+      expect(sanitized?.['action']).toBe('PASSWORD_CHANGED');
+      expect(JSON.stringify(sanitized)).not.toContain('valor-de-prueba');
+    }
+  });
+
+  it('conserva los booleanos de estado: passwordResetRequired no es una credencial', () => {
+    // La marca del primer ingreso debe poder auditarse: es la señal de que la
+    // cuenta dejó de arrastrar la credencial de arranque. Descartarla junto con
+    // los secretos borraría justo el rastro que interesa conservar.
+    const sanitized = sanitizeAuditPayload({ passwordResetRequired: false });
+
+    expect(sanitized?.['passwordResetRequired']).toBe(false);
   });
 
   it('ningún servicio de producción pasa fullName, latitude ni longitude a auditService.log()', () => {

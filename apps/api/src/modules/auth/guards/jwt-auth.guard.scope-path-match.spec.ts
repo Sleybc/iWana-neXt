@@ -1,18 +1,32 @@
 /**
- * S-M01-01 — el guard de scope limitado compara rutas, no prefijos de cadena.
+ * [SEC-REVIEW] S-M01-01 — el guard de alcance limitado compara rutas, no
+ * prefijos de cadena.
  *
- * `MFA_SETUP_ALLOWED_PATHS.some((allowed) => requestPath.startsWith(allowed))`
- * aceptaba cualquier ruta que empezara por una permitida: `/auth/mfa/setupX`
- * pasaba el guard. Hoy no existe tal endpoint y el 404 del router tapaba el
- * hueco, pero el guard no puede depender de que el router no exista.
+ * `limitedScope.paths.some((allowed) => requestPath.startsWith(allowed))`
+ * aceptaba cualquier ruta que empezara por una permitida. Comprobado contra la
+ * API real: `POST /api/v1/auth/change-passwordX` **no fue rechazado por el
+ * guard** — devolvió el 404 del router, que dice que hoy no existe tal endpoint,
+ * no que el guard lo cubra. Cualquier ruta futura bajo uno de esos prefijos
+ * quedaría alcanzable con un token cuya credencial de origen es conocida.
  *
- * Además del comportamiento, se afirma sobre la **fuente** del guard. La razón es
- * un merge concreto: la rama de MOD01 refactoriza este mismo bloque a un mapa
- * `LIMITED_SCOPES` y añade un segundo alcance (`password-change`). Al resolver ese
- * conflicto, volver al `startsWith` a secas reintroduciría el defecto con los
- * tests de ambas ramas en verde, porque cada uno prueba solo su mitad. La
- * afirmación sobre la fuente sobrevive a la resolución del conflicto: caiga el
- * lado que caiga, `startsWith(allowed)` no puede volver al guard.
+ * Dos redes, deliberadamente redundantes:
+ *
+ * 1. **Comportamiento, derivado de `LIMITED_SCOPES`.** Los casos no se escriben a
+ *    mano: se generan recorriendo todos los alcances declarados y todas sus
+ *    rutas. Un alcance nuevo queda cubierto sin tocar este archivo, y volver a
+ *    `startsWith` deja en rojo a todos a la vez.
+ * 2. **Fuente.** Una afirmación sobre el texto del guard, porque la primera red
+ *    solo protege lo que hoy está declarado. Si alguien resuelve un conflicto de
+ *    merge devolviendo el `startsWith` a secas, esta cae aunque el mapa de
+ *    alcances haya cambiado de forma.
+ *
+ * La segunda red no es paranoia abstracta: este archivo nació por duplicado en
+ * las dos ramas que se fusionaron aquí. `main` afirmaba sobre
+ * `MFA_SETUP_ALLOWED_PATHS` y MOD01 sobre el mapa `LIMITED_SCOPES`; cada mitad
+ * pasaba con su propio guard, así que una resolución que devolviera el
+ * `startsWith` a secas —o que dejara el `.some()` iterando un solo alcance—
+ * habría quedado en verde. La afirmación sobre la fuente es la única que
+ * sobrevive a la resolución del conflicto caiga el lado que caiga.
  *
  * Sin PII ni credenciales: el payload es un JWT ficticio mínimo.
  */
@@ -24,6 +38,12 @@ import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface';
 
+type LimitedScopeMap = Record<string, { paths: readonly string[]; message: string }>;
+
+/** Los alcances declarados por el guard, leídos de su propia fuente de verdad. */
+const LIMITED_SCOPES = (JwtAuthGuard as unknown as { LIMITED_SCOPES: LimitedScopeMap })
+  .LIMITED_SCOPES;
+
 /** Construye un ExecutionContext HTTP mínimo con la ruta pedida. */
 function contextoConRuta(path: string): ExecutionContext {
   return {
@@ -33,10 +53,9 @@ function contextoConRuta(path: string): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-const TOKEN_ALCANCE_MFA = {
-  sub: 'usuario-ficticio',
-  scope: 'mfa-setup',
-} as unknown as JwtPayload;
+function tokenConAlcance(scope: string): JwtPayload {
+  return { sub: 'usuario-ficticio', scope } as unknown as JwtPayload;
+}
 
 describe('JwtAuthGuard — coincidencia de ruta para tokens de alcance limitado', () => {
   let guard: JwtAuthGuard;
@@ -45,33 +64,56 @@ describe('JwtAuthGuard — coincidencia de ruta para tokens de alcance limitado'
     guard = new JwtAuthGuard(new Reflector());
   });
 
-  function autorizar(path: string): JwtPayload {
-    return guard.handleRequest(null, TOKEN_ALCANCE_MFA, null, contextoConRuta(path));
+  function autorizar(scope: string, path: string): JwtPayload {
+    const token = tokenConAlcance(scope);
+    return guard.handleRequest(null, token, null, contextoConRuta(path));
   }
 
-  describe('rutas permitidas', () => {
-    it.each(['/api/v1/auth/mfa/setup', '/api/v1/auth/mfa/verify'])('acepta %s', (path) => {
-      expect(autorizar(path)).toBe(TOKEN_ALCANCE_MFA);
-    });
-
-    it('acepta un descendiente real de una ruta permitida', () => {
-      expect(autorizar('/api/v1/auth/mfa/setup/qr')).toBe(TOKEN_ALCANCE_MFA);
-    });
+  it('el guard declara al menos un alcance limitado', () => {
+    // Si el mapa se vacía o cambia de nombre, los casos derivados de abajo se
+    // quedarían en cero y la suite pasaría sin comprobar nada.
+    expect(Object.keys(LIMITED_SCOPES).length).toBeGreaterThan(0);
   });
 
-  describe('rutas rechazadas', () => {
+  // ---------------------------------------------------------------------------
+  // Red 1 — comportamiento, para cada alcance y cada ruta declarada
+  // ---------------------------------------------------------------------------
+
+  const casos = Object.entries(LIMITED_SCOPES).flatMap(([scope, { paths }]) =>
+    paths.map((path) => ({ scope, path })),
+  );
+
+  describe.each(casos)('alcance $scope sobre $path', ({ scope, path }) => {
+    it('acepta la ruta exacta', () => {
+      expect(autorizar(scope, path)).toMatchObject({ scope });
+    });
+
+    it('acepta un descendiente real', () => {
+      expect(autorizar(scope, `${path}/detalle`)).toMatchObject({ scope });
+    });
+
     // El defecto: prefijo de cadena, no de ruta.
-    it.each([
-      '/api/v1/auth/mfa/setupX',
-      '/api/v1/auth/mfa/setup-admin',
-      '/api/v1/auth/mfa/verifyY',
-    ])('rechaza %s aunque comparta prefijo de cadena', (path) => {
-      expect(() => autorizar(path)).toThrow(ForbiddenException);
+    it.each(['X', '-admin', '.json'])('rechaza la ruta con el sufijo pegado "%s"', (sufijo) => {
+      expect(() => autorizar(scope, `${path}${sufijo}`)).toThrow(ForbiddenException);
     });
 
     it('rechaza una ruta sin relacion con el alcance', () => {
-      expect(() => autorizar('/api/v1/users')).toThrow(ForbiddenException);
+      expect(() => autorizar(scope, '/api/v1/users')).toThrow(ForbiddenException);
     });
+  });
+
+  it('un alcance no puede alcanzar las rutas de otro', () => {
+    const alcances = Object.keys(LIMITED_SCOPES);
+
+    for (const scope of alcances) {
+      for (const otro of alcances) {
+        if (otro === scope) continue;
+
+        for (const ajena of LIMITED_SCOPES[otro]?.paths ?? []) {
+          expect(() => autorizar(scope, ajena)).toThrow(ForbiddenException);
+        }
+      }
+    }
   });
 
   it('no aplica la restriccion a tokens sin scope limitado', () => {
@@ -83,7 +125,7 @@ describe('JwtAuthGuard — coincidencia de ruta para tokens de alcance limitado'
   });
 
   // ---------------------------------------------------------------------------
-  // Red sobre la fuente: `startsWith` a secas no puede volver al guard
+  // Red 2 — fuente: `startsWith` a secas no puede volver al guard
   // ---------------------------------------------------------------------------
 
   describe('la fuente del guard no compara por prefijo de cadena', () => {

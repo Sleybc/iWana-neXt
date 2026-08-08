@@ -19,6 +19,16 @@ export interface AuthResponse {
    * No se emite refresh token en este caso.
    */
   mfaSetupRequired?: boolean;
+  /**
+   * true cuando la cuenta sigue usando la credencial de arranque y debe cambiarla
+   * antes de operar. El accessToken emitido tiene scope='password-change' y solo
+   * permite llamar a /auth/change-password.
+   *
+   * Se propaga EXPLICITAMENTE en el controlador: NestJS descarta los campos
+   * omitidos al serializar, y un indicador que no llega al cliente deja al
+   * usuario entrando sin cambiar nada mientras el backend cree que lo exigio.
+   */
+  passwordResetRequired?: boolean;
 }
 
 /**

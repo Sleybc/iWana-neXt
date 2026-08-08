@@ -128,6 +128,35 @@ function buildUser(overrides: Partial<User> = {}): User {
   } as User;
 }
 
+/** Payload de un usuario de tenant autenticado, tal como lo entrega JwtStrategy. */
+function tenantActor(sub: string): JwtPayload {
+  return {
+    sub,
+    email: 'abc123hash',
+    role: 'tenant_admin',
+    tenantId: 'tenant-test-uuid',
+    schemaName: 'tenant_test',
+    jti: 'jti-tenant-test',
+    type: 'tenant',
+    exp: Math.floor(Date.now() / 1000) + 900,
+  };
+}
+
+/** Payload de un usuario de plataforma autenticado. */
+function platformActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
+  return {
+    sub: 'platform-uuid-1',
+    email: 'platform-hash',
+    role: 'system_admin',
+    tenantId: null,
+    schemaName: null,
+    jti: 'jti-platform-test',
+    type: 'platform',
+    exp: Math.floor(Date.now() / 1000) + 900,
+    ...overrides,
+  };
+}
+
 /** Configura mockRunInTenantSchema para ejecutar el callback con un EntityManager mockeado */
 function setupRunInTenantSchema(managerOverrides: Record<string, jest.Mock> = {}): {
   manager: Record<string, jest.Mock>;
@@ -236,8 +265,9 @@ describe('AuthService', () => {
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
         },
         {
-          // PlatformAuditService: trail de public.platform_audit_logs (S-8).
-          // Es el destino de los eventos de loginPlatform, que no tiene TenantContext.
+          // PlatformAuditService: sink público (public.platform_audit_logs), el
+          // trail de S-8. Es el destino de los eventos de cuentas de plataforma
+          // —loginPlatform entre ellos—, que no tienen TenantContext.
           provide: PlatformAuditService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
         },
@@ -1402,7 +1432,7 @@ describe('AuthService', () => {
         update: jest.fn().mockResolvedValue({ affected: 1 }),
       });
 
-      await service.changePassword(user.id, {
+      await service.changePassword(tenantActor(user.id), {
         currentPassword: 'OldPass1!',
         newPassword: 'NewPass1!',
       });
@@ -1420,7 +1450,7 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.changePassword('ghost-uuid', {
+        service.changePassword(tenantActor('ghost-uuid'), {
           currentPassword: 'OldPass1!',
           newPassword: 'NewPass1!',
         }),
@@ -1436,11 +1466,314 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.changePassword(user.id, {
+        service.changePassword(tenantActor(user.id), {
           currentPassword: 'WrongPass1!',
           newPassword: 'NewPass1!',
         }),
       ).rejects.toThrow('La contraseña actual no coincide con la que usas para iniciar sesión.');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // MOD01 — primer ingreso con la credencial de arranque
+  // ---------------------------------------------------------------------------
+
+  describe('primer ingreso de plataforma (passwordResetRequired)', () => {
+    let platformUserRepo: { findOne: jest.Mock; update: jest.Mock };
+
+    /** Usuario de plataforma con la credencial de arranque sin cambiar. */
+    function buildPlatformUser(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'platform-uuid-1',
+        emailHash: 'platform-hash',
+        passwordHash: '$2b$12$hash',
+        role: 'system_admin',
+        status: UserStatus.ACTIVE,
+        mfaEnabled: false,
+        mfaSecret: null,
+        lastLoginAt: null,
+        passwordResetRequired: true,
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      platformUserRepo = (
+        service as unknown as {
+          platformUserRepository: { findOne: jest.Mock; update: jest.Mock };
+        }
+      ).platformUserRepository;
+      platformUserRepo.update.mockResolvedValue({ affected: 1 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    });
+
+    it('el login devuelve passwordResetRequired y NO entrega una sesion completa', async () => {
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+      const result = await service.loginPlatform({
+        email: 'admin@example.test',
+        password: 'CredencialArranque1!',
+      });
+
+      expect(result.passwordResetRequired).toBe(true);
+      expect(result.accessToken).toBe('mock.jwt.token');
+    });
+
+    it('el token emitido lleva scope password-change: no abre la consola', async () => {
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+      await service.loginPlatform({
+        email: 'admin@example.test',
+        password: 'CredencialArranque1!',
+      });
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'platform',
+          scope: 'password-change',
+          passwordResetRequired: true,
+        }),
+        expect.objectContaining({ audience: JWT_CLAIMS_BY_TOKEN_TYPE.platform.audience }),
+      );
+    });
+
+    it('el cambio de contrasena va ANTES que el MFA (§3.3): no pide TOTP todavia', async () => {
+      // Vincular un segundo factor a una cuenta cuya primera credencial es
+      // conocida ampliaria la ventana en vez de cerrarla.
+      platformUserRepo.findOne.mockResolvedValue(
+        buildPlatformUser({ mfaEnabled: true, mfaSecret: null }),
+      );
+
+      const result = await service.loginPlatform({
+        email: 'admin@example.test',
+        password: 'CredencialArranque1!',
+      });
+
+      expect(result.passwordResetRequired).toBe(true);
+      expect(result.mfaRequired).toBeUndefined();
+    });
+
+    // -------------------------------------------------------------------------
+    // Auditoria del primer ingreso — defecto detectado al fusionar MOD01 con S-8
+    // -------------------------------------------------------------------------
+    //
+    // El `return` del primer ingreso se inserto por encima del `log()` de LOGIN
+    // que S-8 emite al cierre del metodo. Git fusiono ambos lados sin marcar
+    // conflicto: el resultado compilaba, pasaba los tests de las dos ramas y
+    // dejaba sin rastro el unico ingreso que usa una credencial conocida por
+    // todo el que despliega. Estos casos son la red que lo impide.
+
+    describe('auditoria del primer ingreso', () => {
+      function platformAuditLog(): jest.Mock {
+        return (service as unknown as { platformAuditService: { log: jest.Mock } })
+          .platformAuditService.log;
+      }
+
+      it('deja fila LOGIN aunque el metodo retorne antes del bloque MFA', async () => {
+        platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+        await service.loginPlatform(
+          { email: 'admin@example.test', password: 'CredencialArranque1!' },
+          '203.0.113.10',
+          'agente-de-prueba',
+        );
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN,
+            entityType: 'PlatformUser',
+            entityId: 'platform-uuid-1',
+            userId: 'platform-uuid-1',
+            ipAddress: '203.0.113.10',
+            userAgent: 'agente-de-prueba',
+          }),
+        );
+      });
+
+      it('la fila distingue el primer ingreso del login ordinario', async () => {
+        // Sin esto el trail no permitiria separar el ingreso con la credencial
+        // de arranque de cualquier otro login de plataforma.
+        platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+        await service.loginPlatform({
+          email: 'admin@example.test',
+          password: 'CredencialArranque1!',
+        });
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN,
+            newValue: expect.objectContaining({ passwordResetRequired: true }),
+          }),
+        );
+      });
+
+      it('emite exactamente un LOGIN: el camino no cae ademas en el del cierre', async () => {
+        platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+        await service.loginPlatform({
+          email: 'admin@example.test',
+          password: 'CredencialArranque1!',
+        });
+
+        const logins = platformAuditLog().mock.calls.filter(
+          ([entrada]: [{ action: string }]) => entrada.action === AuditAction.LOGIN,
+        );
+
+        expect(logins).toHaveLength(1);
+      });
+
+      it('no filtra la contrasena, el token ni el correo en la fila', async () => {
+        platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+        await service.loginPlatform({
+          email: 'admin@example.test',
+          password: 'CredencialArranque1!',
+        });
+
+        const auditado = JSON.stringify(platformAuditLog().mock.calls);
+
+        expect(auditado).not.toContain('CredencialArranque1!');
+        expect(auditado).not.toContain('admin@example.test');
+        expect(auditado).not.toContain('mock.jwt.token');
+        expect(auditado).not.toContain('$2b$12$hash');
+      });
+
+      // No se prueba "el fallo del sink no bloquea el login": `PlatformAuditService.log()`
+      // atrapa sus propios errores y nunca rechaza, asi que forzar el rechazo con el
+      // mock probaria el mock, no el servicio. Por eso el `await` va desnudo aqui,
+      // igual que en el resto de llamadas de auditoria de este metodo.
+    });
+
+    it('una credencial incorrecta sigue fallando aunque la marca este activa', async () => {
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.loginPlatform({ email: 'admin@example.test', password: 'incorrecta' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('sin la marca, el login de plataforma sigue su curso normal', async () => {
+      platformUserRepo.findOne.mockResolvedValue(
+        buildPlatformUser({ passwordResetRequired: false }),
+      );
+
+      const result = await service.loginPlatform({
+        email: 'admin@example.test',
+        password: 'ContrasenaElegida1!',
+      });
+
+      expect(result.passwordResetRequired).toBeUndefined();
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ passwordResetRequired: false }),
+        expect.anything(),
+      );
+      expect(jwtService.sign).not.toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'password-change' }),
+        expect.anything(),
+      );
+    });
+
+    it('changePassword de plataforma limpia la marca en la misma escritura del hash', async () => {
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+      await service.changePassword(platformActor(), {
+        currentPassword: 'CredencialArranque1!',
+        newPassword: 'ContrasenaElegida1!',
+      });
+
+      expect(platformUserRepo.update).toHaveBeenCalledWith('platform-uuid-1', {
+        passwordHash: expect.any(String),
+        passwordResetRequired: false,
+      });
+    });
+
+    it('changePassword de plataforma NO resuelve el usuario por TenantContext', async () => {
+      // TenantContext.getOrThrow() lanza un Error generico (→ HTTP 500) fuera de
+      // un schema de tenant: por ahi el primer ingreso se caeria con un 500.
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+      mockTenantContextGetOrThrow.mockClear();
+
+      await service.changePassword(platformActor(), {
+        currentPassword: 'CredencialArranque1!',
+        newPassword: 'ContrasenaElegida1!',
+      });
+
+      expect(mockTenantContextGetOrThrow).not.toHaveBeenCalled();
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('changePassword de plataforma revoca el token de alcance limitado que lo trajo', async () => {
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+
+      await service.changePassword(platformActor({ jti: 'jti-scoped-1' }), {
+        currentPassword: 'CredencialArranque1!',
+        newPassword: 'ContrasenaElegida1!',
+      });
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'jti:blacklist:jti-scoped-1',
+        '1',
+        'EX',
+        expect.any(Number),
+      );
+    });
+
+    it('changePassword de plataforma rechaza una contrasena actual incorrecta', async () => {
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.changePassword(platformActor(), {
+          currentPassword: 'incorrecta',
+          newPassword: 'ContrasenaElegida1!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(platformUserRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('changePassword de plataforma lanza NotFound si la cuenta ya no existe', async () => {
+      platformUserRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.changePassword(platformActor(), {
+          currentPassword: 'CredencialArranque1!',
+          newPassword: 'ContrasenaElegida1!',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('el audit trail registra el evento sin ningun valor de credencial', async () => {
+      // Precedente real: migraciones 074 (tenant) y 012 (publica) existen porque
+      // una contrasena llego en claro al trail. El evento se audita; los valores no.
+      //
+      // Y va por el sink PUBLICO: `AuditService.log()` descarta en silencio toda
+      // entrada sin TenantContext, que es justo el caso de una cuenta de
+      // plataforma. Por ahi el evento se perdia sin que nada fallara.
+      platformUserRepo.findOne.mockResolvedValue(buildPlatformUser());
+      const auditLog = (service as unknown as { platformAuditService: { log: jest.Mock } })
+        .platformAuditService.log;
+      const tenantAuditLog = (service as unknown as { auditService: { log: jest.Mock } })
+        .auditService.log;
+      auditLog.mockClear();
+      tenantAuditLog.mockClear();
+
+      await service.changePassword(platformActor(), {
+        currentPassword: 'CredencialArranque1!',
+        newPassword: 'ContrasenaElegida1!',
+      });
+
+      expect(auditLog).toHaveBeenCalledTimes(1);
+      expect(tenantAuditLog).not.toHaveBeenCalled();
+      const payload = auditLog.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload['action']).toBe('PASSWORD_CHANGED');
+      expect(payload['entityType']).toBe('PlatformUser');
+      expect(payload['oldValue']).toBeUndefined();
+      expect(payload['newValue']).toBeUndefined();
+      expect(JSON.stringify(payload)).not.toContain('CredencialArranque1!');
+      expect(JSON.stringify(payload)).not.toContain('ContrasenaElegida1!');
     });
   });
 

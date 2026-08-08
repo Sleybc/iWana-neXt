@@ -126,6 +126,12 @@ export class AuthService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly auditService: AuditService,
+    // Los usuarios de plataforma no tienen schema de tenant, asi que sus eventos
+    // van por el sink publico. Desde S-8 `AuditService.log()` ya no los descarta
+    // —reencamina toda entrada sin destino a `public.platform_audit_logs` con el
+    // prefijo `ANOMALIA_AUDITORIA:`—, pero esa via es una red, no un destino: la
+    // fila queda marcada como anomalia y con el entityType deformado. Un evento
+    // de plataforma se emite aqui, no alli.
     private readonly platformAuditService: PlatformAuditService,
     private readonly mailerService: MailerService,
   ) {
@@ -149,6 +155,15 @@ export class AuthService {
    * `@Public()`, asi que `AuditInterceptor` no la cubre y el registro tiene que
    * ser explicito. Antes no habia ninguno: un intento fallido contra las cuentas
    * mas privilegiadas del sistema no dejaba rastro.
+   *
+   * El metodo tiene **dos** salidas exitosas y cada una emite su `LOGIN`:
+   * la del primer ingreso (`passwordResetRequired`), que retorna antes del
+   * bloque MFA, y la ordinaria al cierre. Se distinguen por `newValue`. Al
+   * añadir una tercera salida hay que emitirlo tambien: no hay nada que lo
+   * obligue estructuralmente, solo `auth.service.spec.ts`.
+   *
+   * El reto MFA pendiente no es una salida exitosa —ni exito ni fallo— y por
+   * eso no audita.
    *
    * Nunca se registran la contrasena, el codigo TOTP, el token emitido ni el
    * correo: `motivo` es un codigo cerrado y `entityId` es el UUID de la cuenta,
@@ -186,6 +201,43 @@ export class AuthService {
     if (!passwordValid) {
       await this.logPlatformLoginFailed(user.id, 'CONTRASENA_INVALIDA', ipAddress, userAgent);
       throw new UnauthorizedException('Credenciales invalidas.');
+    }
+
+    // Contrasena primero, MFA despues (PROMPT-MOD01 §3.3).
+    //
+    // La credencial de arranque es conocida por diseno. Vincular un segundo
+    // factor a una cuenta cuya primera credencial es publica ampliaria la
+    // ventana en vez de cerrarla: quien conozca la credencial podria registrar
+    // SU authenticator. Por eso el cambio de contrasena va antes que cualquier
+    // paso de MFA, y el token que se entrega aqui no abre la consola.
+    if (user.passwordResetRequired) {
+      const { accessToken } = this.signPlatformAccessToken(user, 'password-change');
+
+      // El LOGIN se emite AQUI, no en el cierre del metodo: este `return`
+      // sale del metodo antes de llegar a aquel. La autenticacion ya esta
+      // consumada —la contrasena se verifico arriba y se entrega un token—,
+      // asi que es un login y debe dejar fila.
+      //
+      // NO MOVER ni suprimir este registro. Es el unico ingreso que usa una
+      // credencial conocida por todo el que despliega; si algo tiene que
+      // quedar trazado, es este. El defecto no es hipotetico: al fusionar
+      // MOD01 con la auditoria de S-8, git combino ambos lados sin marcar
+      // conflicto y dejo este camino sin auditar — el `return` se inserto
+      // por encima del `log()` y nada lo senalo.
+      await this.platformAuditService.log({
+        action: AuditAction.LOGIN,
+        entityType: PLATFORM_USER_ENTITY_TYPE,
+        entityId: user.id,
+        userId: user.id,
+        ipAddress: ipAddress ?? null,
+        userAgent: userAgent ?? null,
+        // Distingue este ingreso del normal: sin segundo factor por diseno y
+        // con el token acotado a `password-change`. Sin contrasena, sin token
+        // y sin correo — la cuenta va por UUID, como en el resto del trail.
+        newValue: { mfaAplicado: false, passwordResetRequired: true },
+      });
+
+      return { accessToken, passwordResetRequired: true };
     }
 
     if (user.mfaEnabled) {
@@ -768,7 +820,15 @@ export class AuthService {
    *
    * RF-AUTH-09
    */
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+  async changePassword(actor: JwtPayload, dto: ChangePasswordDto): Promise<void> {
+    // Los usuarios de plataforma no viven en un schema de tenant: resolverlos por
+    // TenantContext daria un 500 generico en vez de cambiar la contrasena.
+    if (actor.type === 'platform') {
+      await this.changePlatformPassword(actor, dto);
+      return;
+    }
+
+    const userId = actor.sub;
     const { schemaName } = TenantContext.getOrThrow();
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -803,6 +863,92 @@ export class AuthService {
         entityId: userId,
         userId,
       });
+    });
+  }
+
+  /**
+   * Cambia la contrasena de un usuario de plataforma autenticado.
+   *
+   * Es la salida del primer ingreso: al completarse, `passwordResetRequired`
+   * queda en false y el token de alcance limitado que trajo al usuario hasta
+   * aqui deja de servir. El siguiente login entrega ya una sesion completa.
+   *
+   * Sobre la invalidacion: el login de plataforma no emite refresh token, asi
+   * que el unico credencial vivo es el access token en curso. Se anota su JTI en
+   * la blacklist para que el token de alcance 'password-change' no sobreviva al
+   * cambio que lo justificaba.
+   *
+   * NUNCA se auditan los valores: el evento PASSWORD_CHANGED se registra sin
+   * `oldValue` ni `newValue` que contengan la credencial. Las migraciones 074
+   * (tenant) y 012 (publica) existen porque eso se incumplio una vez.
+   */
+  private async changePlatformPassword(actor: JwtPayload, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.platformUserRepository.findOne({
+      where: { id: actor.sub },
+      withDeleted: false,
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado.');
+    }
+
+    const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!passwordValid) {
+      throw new UnauthorizedException(
+        'La contraseña actual no coincide con la que usas para iniciar sesión.',
+      );
+    }
+
+    const newHash = await bcrypt.hash(dto.newPassword, 12);
+
+    // Hash y marca en la misma sentencia: no puede quedar la contrasena nueva
+    // aplicada con la cuenta todavia marcada como pendiente, ni al reves.
+    await this.platformUserRepository.update(user.id, {
+      passwordHash: newHash,
+      passwordResetRequired: false,
+    });
+
+    // VENTANA CONOCIDA Y ACEPTADA — [SEC-REVIEW] S-M01-06.
+    //
+    // El apagado de la marca vive en Postgres y la revocacion del token en Redis:
+    // son dos sistemas y no hay transaccion que los abarque. Si el proceso muere
+    // entre la sentencia de arriba y este `set`, queda la contrasena ya cambiada,
+    // la cuenta ya desmarcada, y el access token de alcance 'password-change'
+    // todavia valido hasta que expire por su cuenta (15 min como maximo).
+    //
+    // Se acepta, y conviene decir por que en vez de dejarlo implicito:
+    //
+    // - Ese token solo alcanza POST /auth/change-password (LIMITED_SCOPES). No
+    //   abre la consola ni ninguna otra ruta.
+    // - Para usarlo hay que presentar ademas `currentPassword`, que a esas alturas
+    //   ya es la contrasena NUEVA — la que solo conoce quien acaba de fijarla. Con
+    //   la credencial de arranque, la conocida, el token no sirve para nada.
+    // - Expira solo. El peor caso es una reemision del mismo cambio por parte de
+    //   su propio dueno.
+    //
+    // Cerrarla del todo exigiria una transaccion distribuida entre Postgres y
+    // Redis (outbox, 2PC o compensacion), maquinaria con modos de fallo propios
+    // —y mas probables— que el escenario que evitaria. Si algun dia este token
+    // ampliara su alcance, la ecuacion cambia y esta decision hay que rehacerla.
+    const expiresAt = actor.exp ?? 0;
+    const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
+
+    if (remainingTtl > 0) {
+      await this.redis.set(`jti:blacklist:${actor.jti}`, '1', 'EX', remainingTtl);
+    }
+
+    // Sink publico, no `auditService`: una cuenta de plataforma no tiene
+    // TenantContext. Cuando se escribio esto, `AuditService.log()` retornaba sin
+    // escribir en ese caso y la llamada parecia auditar sin auditar. S-8 cerro
+    // esa fuga: hoy reencamina la entrada a `public.platform_audit_logs` como
+    // `ANOMALIA_AUDITORIA:`. La eleccion no cambia — pasar por ahi dejaria el
+    // cambio de contrasena registrado como anomalia en vez de como el evento
+    // legitimo que es.
+    void this.platformAuditService.log({
+      action: AuditAction.PASSWORD_CHANGED,
+      entityType: 'PlatformUser',
+      entityId: user.id,
+      userId: user.id,
     });
   }
 
@@ -1022,8 +1168,15 @@ export class AuthService {
 
   /**
    * Firma un access token para un usuario de plataforma.
+   *
+   * @param scope - Si es 'password-change', emite un token de alcance limitado que
+   *   solo permite acceder a /auth/change-password. Se usa cuando la cuenta sigue
+   *   con la credencial de arranque: el token no debe abrir la consola.
    */
-  private signPlatformAccessToken(user: PlatformUser): { accessToken: string; jti: string } {
+  private signPlatformAccessToken(
+    user: PlatformUser,
+    scope?: 'password-change',
+  ): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
       sub: user.id,
@@ -1033,6 +1186,10 @@ export class AuthService {
       schemaName: null,
       jti,
       type: 'platform',
+      // Indica al frontend si la cuenta debe cambiar la contrasena antes de operar
+      passwordResetRequired: user.passwordResetRequired ?? false,
+      // Scope limitado para el cambio obligatorio — ausente en tokens completos
+      ...(scope ? { scope } : {}),
     };
 
     const accessToken = this.jwtService.sign(payload, {

@@ -161,6 +161,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return 'mfa_required';
     }
 
+    // Primer ingreso con la credencial de arranque: el token recibido solo
+    // alcanza /auth/change-password. Hay que decidir con el indicador de la
+    // respuesta —no con /auth/me, que ese token ya no puede consultar— y dejar
+    // al usuario sin sesion (user = null) para que el layout protegido no le
+    // abra ninguna ruta de la consola hasta completar el cambio.
+    if (result.passwordResetRequired) {
+      clearPendingPlatformMfaLogin();
+      setUser(null);
+      return 'password_reset_required';
+    }
+
     const profile = await authApi.me();
     const platformProfile = await fetchPlatformProfileSafely();
     setUser(toAuthUser(profile, platformProfile));

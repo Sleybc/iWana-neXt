@@ -16,6 +16,13 @@ import { PlatformAuditService } from '../audit/platform-audit.service';
  * Solo actua cuando el entorno define email y password de bootstrap.
  * Si el usuario ya existe, no duplica el registro ni reescribe credenciales.
  *
+ * La cuenta nace con `passwordResetRequired = true`: la credencial llega por
+ * variable de entorno, de modo que la conoce cualquiera con acceso al fichero de
+ * despliegue. El primer ingreso la sustituye antes de habilitar la consola.
+ *
+ * En `NODE_ENV=production` este camino no existe: `createAppConfigurationSchema`
+ * rechaza al arrancar las variables `PLATFORM_SUPER_ADMIN_*`.
+ *
  * AUDITORIA (S-8): el alta se registra en `public.platform_audit_logs`. Es una
  * escritura de arranque, sin peticion HTTP ni usuario autenticado: ninguna via
  * automatica la cubre, asi que sin este registro explicito la creacion de la
@@ -64,6 +71,9 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
       status: UserStatus.ACTIVE,
       mfaEnabled: false,
       mfaSecret: null,
+      // La credencial de arranque viene del entorno y es conocida por quien
+      // despliega: la cuenta no opera hasta cambiarla en el primer ingreso.
+      passwordResetRequired: true,
       lastLoginAt: null,
       deletedAt: null,
     });
