@@ -15,7 +15,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { authApi, ApiError } from '@/lib/api-client';
+import { authApi, ApiError, persistAccessToken } from '@/lib/api-client';
 import { PlatformAuthExperience } from '@/components/auth/PlatformAuthExperience';
 import { Button, cn } from '@iwana/ui';
 import {
@@ -83,8 +83,13 @@ export default function ChangePasswordPage() {
     setServerError(null);
     try {
       await authApi.changePassword(data.currentPassword, data.newPassword);
-      // Contraseña cambiada con éxito — redirigir al dashboard
-      router.push('/dashboard');
+
+      // El token que trajo al usuario hasta aquí tiene alcance limitado y el
+      // backend lo revoca al aplicar el cambio: no sirve para entrar a la
+      // consola. Se limpia la sesión local y se pide un ingreso nuevo, que ya
+      // será completo y sin cambio forzado.
+      persistAccessToken('');
+      router.replace('/auth/login?reason=password-changed');
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) {

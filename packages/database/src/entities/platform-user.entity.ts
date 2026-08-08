@@ -96,6 +96,17 @@ export class PlatformUser {
   @Column({ length: 10, default: 'es-CO' })
   language: string;
 
+  /**
+   * true mientras la cuenta arrastre la credencial de arranque.
+   *
+   * El login de plataforma no entrega una sesion completa mientras siga en true:
+   * emite un token de alcance limitado que solo sirve para cambiar la contrasena
+   * (ver `AuthService.loginPlatform`). Homologo de `User.passwordResetRequired`
+   * en los schemas de tenant — mismo nombre porque es el mismo concepto.
+   */
+  @Column({ name: 'password_reset_required', default: false })
+  passwordResetRequired: boolean;
+
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 

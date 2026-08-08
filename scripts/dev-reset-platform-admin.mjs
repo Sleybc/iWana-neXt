@@ -77,12 +77,22 @@ const dbUser = process.env.DB_USER ?? 'iwana';
 const dbName = process.env.DB_NAME ?? 'iwana_dev';
 const container = process.env.IWANA_POSTGRES_CONTAINER ?? 'iwana-postgres';
 
-const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}' WHERE email_hmac = '${emailHmac}';`;
+// Se reactiva `password_reset_required`: tras el sync la cuenta vuelve a usar la
+// credencial del entorno, que es conocida. El primer ingreso debe exigir cambio
+// otra vez — igual que en el bootstrap inicial (MOD01 / primer ingreso).
+const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}', password_reset_required = true WHERE email_hmac = '${emailHmac}';`;
 
+// El SQL viaja por stdin, no como argumento `-c`.
+//
+// En Windows este spawn necesita `shell: true` para resolver `docker`, y el
+// shell parte el argumento por espacios: psql recibía `UPDATE` como sentencia
+// completa y el resto como argumentos sueltos ("syntax error at end of input").
+// Por stdin no hay nada que citar, y de paso el hash no aparece en la línea de
+// comandos —donde cualquier listado de procesos podría leerlo—.
 const result = spawnSync(
   'docker',
-  ['exec', container, 'psql', '-U', dbUser, '-d', dbName, '-c', sql],
-  { encoding: 'utf8', shell: process.platform === 'win32' },
+  ['exec', '-i', container, 'psql', '-U', dbUser, '-d', dbName, '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+  { input: sql, encoding: 'utf8', shell: process.platform === 'win32' },
 );
 
 if (result.status !== 0) {
@@ -93,7 +103,7 @@ if (result.status !== 0) {
 console.log(
   JSON.stringify({
     ok: true,
-    action: 'password_synced',
+    action: 'password_synced_change_required',
     emailHmacPrefix: emailHmac.slice(0, 12),
     rowsHint: (result.stdout ?? '').trim(),
   }),

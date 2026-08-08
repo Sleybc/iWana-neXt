@@ -132,6 +132,10 @@ export class AuthController {
       data: {
         accessToken: result.accessToken,
         ...(result.mfaRequired ? { mfaRequired: true } : {}),
+        // Propagado explicitamente: NestJS descarta los campos omitidos al
+        // serializar. Si este indicador no viaja, la consola deja entrar al
+        // usuario sin cambiar nada mientras el backend cree que lo exigio.
+        ...(result.passwordResetRequired ? { passwordResetRequired: true } : {}),
       },
     };
   }
@@ -307,7 +311,10 @@ export class AuthController {
 
   /**
    * POST /api/v1/auth/change-password
-   * Cambia la contrasena del usuario autenticado.
+   * Cambia la contrasena del usuario autenticado, sea de tenant o de plataforma.
+   *
+   * Es tambien la unica ruta que alcanza un token con scope='password-change':
+   * la salida del primer ingreso con la credencial de arranque.
    *
    * RF-AUTH-09
    */
@@ -320,7 +327,10 @@ export class AuthController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePasswordDto,
   ): Promise<{ data: { message: string } }> {
-    await this.authService.changePassword(user.sub, dto);
+    // Se pasa el payload completo, no solo el sub: el servicio necesita `type`
+    // para no resolver a un usuario de plataforma via TenantContext, y `jti`
+    // para revocar el token de alcance limitado al completar el cambio.
+    await this.authService.changePassword(user, dto);
     return { data: { message: 'Contrasena actualizada correctamente.' } };
   }
 

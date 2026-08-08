@@ -21,6 +21,7 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
@@ -109,6 +110,10 @@ export class AuthService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly auditService: AuditService,
+    // Los usuarios de plataforma no tienen schema de tenant: `AuditService.log()`
+    // descarta en silencio toda entrada sin contexto, asi que sus eventos deben
+    // ir por el sink publico o no se registran.
+    private readonly platformAuditService: PlatformAuditService,
     private readonly mailerService: MailerService,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
@@ -154,6 +159,19 @@ export class AuthService {
 
     if (!passwordValid) {
       throw new UnauthorizedException('Credenciales invalidas.');
+    }
+
+    // Contrasena primero, MFA despues (PROMPT-MOD01 §3.3).
+    //
+    // La credencial de arranque es conocida por diseno. Vincular un segundo
+    // factor a una cuenta cuya primera credencial es publica ampliaria la
+    // ventana en vez de cerrarla: quien conozca la credencial podria registrar
+    // SU authenticator. Por eso el cambio de contrasena va antes que cualquier
+    // paso de MFA, y el token que se entrega aqui no abre la consola.
+    if (user.passwordResetRequired) {
+      const { accessToken } = this.signPlatformAccessToken(user, 'password-change');
+
+      return { accessToken, passwordResetRequired: true };
     }
 
     if (user.mfaEnabled) {
@@ -695,7 +713,15 @@ export class AuthService {
    *
    * RF-AUTH-09
    */
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+  async changePassword(actor: JwtPayload, dto: ChangePasswordDto): Promise<void> {
+    // Los usuarios de plataforma no viven en un schema de tenant: resolverlos por
+    // TenantContext daria un 500 generico en vez de cambiar la contrasena.
+    if (actor.type === 'platform') {
+      await this.changePlatformPassword(actor, dto);
+      return;
+    }
+
+    const userId = actor.sub;
     const { schemaName } = TenantContext.getOrThrow();
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -730,6 +756,66 @@ export class AuthService {
         entityId: userId,
         userId,
       });
+    });
+  }
+
+  /**
+   * Cambia la contrasena de un usuario de plataforma autenticado.
+   *
+   * Es la salida del primer ingreso: al completarse, `passwordResetRequired`
+   * queda en false y el token de alcance limitado que trajo al usuario hasta
+   * aqui deja de servir. El siguiente login entrega ya una sesion completa.
+   *
+   * Sobre la invalidacion: el login de plataforma no emite refresh token, asi
+   * que el unico credencial vivo es el access token en curso. Se anota su JTI en
+   * la blacklist para que el token de alcance 'password-change' no sobreviva al
+   * cambio que lo justificaba.
+   *
+   * NUNCA se auditan los valores: el evento PASSWORD_CHANGED se registra sin
+   * `oldValue` ni `newValue` que contengan la credencial. Las migraciones 074
+   * (tenant) y 012 (publica) existen porque eso se incumplio una vez.
+   */
+  private async changePlatformPassword(actor: JwtPayload, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.platformUserRepository.findOne({
+      where: { id: actor.sub },
+      withDeleted: false,
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado.');
+    }
+
+    const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!passwordValid) {
+      throw new UnauthorizedException(
+        'La contraseña actual no coincide con la que usas para iniciar sesión.',
+      );
+    }
+
+    const newHash = await bcrypt.hash(dto.newPassword, 12);
+
+    // Hash y marca en la misma sentencia: no puede quedar la contrasena nueva
+    // aplicada con la cuenta todavia marcada como pendiente, ni al reves.
+    await this.platformUserRepository.update(user.id, {
+      passwordHash: newHash,
+      passwordResetRequired: false,
+    });
+
+    const expiresAt = actor.exp ?? 0;
+    const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
+
+    if (remainingTtl > 0) {
+      await this.redis.set(`jti:blacklist:${actor.jti}`, '1', 'EX', remainingTtl);
+    }
+
+    // Sink publico, no `auditService`: una cuenta de plataforma no tiene
+    // TenantContext, y `AuditService.log()` retorna sin escribir cuando no lo
+    // encuentra. La llamada parecia auditar y no auditaba.
+    void this.platformAuditService.log({
+      action: AuditAction.PASSWORD_CHANGED,
+      entityType: 'PlatformUser',
+      entityId: user.id,
+      userId: user.id,
     });
   }
 
@@ -949,8 +1035,15 @@ export class AuthService {
 
   /**
    * Firma un access token para un usuario de plataforma.
+   *
+   * @param scope - Si es 'password-change', emite un token de alcance limitado que
+   *   solo permite acceder a /auth/change-password. Se usa cuando la cuenta sigue
+   *   con la credencial de arranque: el token no debe abrir la consola.
    */
-  private signPlatformAccessToken(user: PlatformUser): { accessToken: string; jti: string } {
+  private signPlatformAccessToken(
+    user: PlatformUser,
+    scope?: 'password-change',
+  ): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
       sub: user.id,
@@ -960,6 +1053,10 @@ export class AuthService {
       schemaName: null,
       jti,
       type: 'platform',
+      // Indica al frontend si la cuenta debe cambiar la contrasena antes de operar
+      passwordResetRequired: user.passwordResetRequired ?? false,
+      // Scope limitado para el cambio obligatorio — ausente en tokens completos
+      ...(scope ? { scope } : {}),
     };
 
     const accessToken = this.jwtService.sign(payload, {

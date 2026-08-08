@@ -200,6 +200,14 @@ describe('ConfigModule.forRoot — fail-fast de arranque en perfil producción',
     const snapshot = { ...process.env };
 
     try {
+      // La credencial de arranque de plataforma está prohibida en perfil
+      // producción (MOD01 §3.2). Como este helper superpone el entorno sobre el
+      // `process.env` real en vez de sustituirlo, un `.env` de desarrollo ya
+      // cargado por otra suite del mismo worker la colaría aquí y haría fallar
+      // el escenario de arranque correcto de forma intermitente.
+      delete process.env['PLATFORM_SUPER_ADMIN_EMAIL'];
+      delete process.env['PLATFORM_SUPER_ADMIN_PASSWORD'];
+
       for (const [key, value] of Object.entries(env)) {
         if (value === undefined) {
           delete process.env[key];

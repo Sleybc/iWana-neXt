@@ -23,11 +23,14 @@ export interface JwtPayload {
   /** Indica si el usuario debe cambiar su contrasena en el siguiente ingreso (primer acceso con credenciales temporales) */
   passwordResetRequired?: boolean;
   /**
-   * Alcance del token. Si es 'mfa-setup', el token es de uso limitado:
-   * solo permite acceder a POST /auth/mfa/setup y POST /auth/mfa/verify.
-   * Ausente o undefined = token completo sin restricciones de ruta.
+   * Alcance del token. Ausente o undefined = token completo sin restricciones de ruta.
+   *
+   * - 'mfa-setup': solo POST /auth/mfa/setup y POST /auth/mfa/verify.
+   * - 'password-change': solo POST /auth/change-password. Lo emite el login de
+   *   plataforma cuando la cuenta sigue con la credencial de arranque
+   *   (`passwordResetRequired`), de modo que el token no abra la consola.
    */
-  scope?: 'mfa-setup';
+  scope?: 'mfa-setup' | 'password-change';
   /**
    * Emisor y audiencia. Diferencian criptograficamente los tokens de plataforma
    * de los de tenant (ver auth.constants.ts). Los emite @nestjs/jwt al firmar.

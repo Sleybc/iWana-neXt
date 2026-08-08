@@ -20,7 +20,8 @@ import type { JwtPayload } from '../interfaces/jwt-payload.interface';
  * - Endpoint sin @Public() → require Bearer token valido.
  * - Token expirado o invalido → HTTP 401 Unauthorized.
  * - Token con scope='mfa-setup' → solo permite POST /auth/mfa/setup y POST /auth/mfa/verify.
- *   Cualquier otra ruta → HTTP 403 Forbidden.
+ * - Token con scope='password-change' → solo permite POST /auth/change-password.
+ *   Cualquier otra ruta, en ambos casos → HTTP 403 Forbidden.
  *
  * Pipeline de seguridad (HLD Seccion 2):
  *   Rate Limiter → TLS → JwtAuthGuard → TenantMiddleware → RolesGuard → AbacGuard
@@ -35,6 +36,31 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     '/api/v1/auth/mfa/setup',
     '/api/v1/auth/mfa/verify',
   ];
+
+  /**
+   * Rutas permitidas para tokens con scope='password-change'. Solo esta ruta.
+   *
+   * Deliberadamente no incluye /auth/me: el indicador de cambio obligatorio
+   * viaja en la respuesta del login, asi que el cliente no necesita consultar
+   * el perfil para saber que debe cambiar la contrasena. Abrir /auth/me aqui
+   * ampliaria el alcance de un token cuya credencial de origen es conocida.
+   */
+  private static readonly PASSWORD_CHANGE_ALLOWED_PATHS = ['/api/v1/auth/change-password'];
+
+  /** Rutas permitidas por alcance limitado, y el mensaje con el que se rechaza el resto. */
+  private static readonly LIMITED_SCOPES: Record<
+    'mfa-setup' | 'password-change',
+    { paths: readonly string[]; message: string }
+  > = {
+    'mfa-setup': {
+      paths: JwtAuthGuard.MFA_SETUP_ALLOWED_PATHS,
+      message: 'Token de alcance limitado. Completa la configuracion de MFA antes de continuar.',
+    },
+    'password-change': {
+      paths: JwtAuthGuard.PASSWORD_CHANGE_ALLOWED_PATHS,
+      message: 'Token de alcance limitado. Cambia tu contrasena antes de continuar.',
+    },
+  };
 
   constructor(private readonly reflector: Reflector) {
     super();
@@ -64,17 +90,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       throw err ?? new UnauthorizedException('Token de acceso invalido o expirado.');
     }
 
-    // Verificar scope limitado: tokens con scope='mfa-setup' solo pueden acceder a rutas MFA
-    if (user.scope === 'mfa-setup') {
+    // Verificar scope limitado: un token con alcance acotado solo alcanza sus rutas.
+    const limitedScope = user.scope ? JwtAuthGuard.LIMITED_SCOPES[user.scope] : undefined;
+
+    if (limitedScope) {
       const request = context.switchToHttp().getRequest<{ url: string; path: string }>();
       const requestPath = request.path ?? request.url;
-      const isAllowed = JwtAuthGuard.MFA_SETUP_ALLOWED_PATHS.some((allowed) =>
-        requestPath.startsWith(allowed),
-      );
+      const isAllowed = limitedScope.paths.some((allowed) => requestPath.startsWith(allowed));
+
       if (!isAllowed) {
-        throw new ForbiddenException(
-          'Token de alcance limitado. Completa la configuracion de MFA antes de continuar.',
-        );
+        throw new ForbiddenException(limitedScope.message);
       }
     }
 

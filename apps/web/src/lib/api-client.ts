@@ -319,6 +319,12 @@ async function requestBlob(path: string, options?: RequestOptions): Promise<Blob
 export interface PlatformLoginResponse {
   accessToken: string;
   mfaRequired?: boolean;
+  /**
+   * true cuando la cuenta sigue usando la credencial de arranque. El accessToken
+   * recibido tiene alcance limitado: solo sirve para POST /auth/change-password.
+   * No intentes /auth/me con el — el guard responde 403.
+   */
+  passwordResetRequired?: boolean;
 }
 
 export function setPendingPlatformMfaLogin(payload: PendingPlatformMfaLogin): void {
@@ -363,6 +369,12 @@ export const authApi = {
     request<{ message: string }>('/auth/change-password', {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
+      // Un 401 aqui significa "la contrasena actual no coincide", no "sesion
+      // expirada". Sin esto el cliente intentaria /auth/refresh —que en el
+      // primer ingreso de plataforma no existe, porque ese login no emite
+      // refresh token— y expulsaria al usuario al login en vez de mostrarle el
+      // error del formulario.
+      skipRefreshRetry: true,
     }),
 
   mfaSetup: () =>
