@@ -430,7 +430,7 @@ La re-verificación multiagente de la primera ronda dejó QA=GO, AppSec=GO_WITH_
 
 | Hallazgo | Corrección | Verificación |
 | --- | --- | --- |
-| **Env truthy (SEC bajo):** `isMigrationDeferred` ignoraba `TRUE`/`1` (env mal escrito dejaba el contract diferido en silencio) | `envValueIsTrue` en `deferred-migration.util.ts` acepta `true`/`1`/`yes`/`on` (trim + minúsculas); usado por `isMigrationDeferred`, `shouldWarnContractEnvResidual` y el aviso F-3 del CLI | Spec `migration-order.spec.ts` actualizado (antes exigía el valor exacto `true`) + casos nuevos de `envValueIsTrue`. En vivo: `IWANA_APPLY_PII_CONTRACT=TRUE` → aviso F-3 emitido |
+| **Env truthy (SEC bajo):** `isMigrationDeferred` ignoraba `TRUE`/`1` (env mal escrito dejaba el contract diferido en silencio) | `envValueIsTrue` en `deferred-migration.util.ts` acepta `true`/`1`/`yes`/`on` (trim + minúsculas); usado por `isMigrationDeferred`, `shouldWarnContractEnvResidual` y el aviso F-3 del CLI | Spec `migration-order.spec.ts` actualizado (antes exigía el valor exacto `true`) + casos nuevos de `envValueIsTrue`. En vivo: `IWANA_APPLY_PII_CONTRACT=TRUE` → aviso F-3 emitido · **Nota 2026-08-08 (Task 3):** esta tolerancia quedó **invertida** para el flag destructivo — ver «Cierre de deuda — plan 2026-08-06», Task 3 |
 | **Test del ramo F-3 (QA/SEC bajo):** la decisión del aviso vivía en función interna no exportada | Extracción a puras `shouldWarnContractEnvResidual` + `describeContractEnvResidualWarning` + spec propio (5 casos) | Spec PASS |
 | **N-1 (SEC medio):** un tenant nuevo provisionado tras la ventana 2 nacía en 105 (contract sin aplicar) → S-1 reabierto para esa flota y paridad bloqueada | `tenant-provisioning.processor.ts`: `resolvePiiContractEnv()` fuerza `IWANA_APPLY_PII_CONTRACT=true` durante el provisioning **si la flota ACTIVE ya aplicó la 109** (y no lo fuerza en entornos pre-contract). `applyTenantMigrationsInOrder(dataSource, env)` acepta el override | 4 casos nuevos en `tenant-provisioning.processor.migration.spec.ts`; suite worker 103 PASS |
 | **Cableado prod (PLAT-OPS):** `PII_HASH_KEY` no llegaba a `api-prod`/`worker-prod`/`migrator-prod` (Joi `.required()` fallaría en prod) | `docker-compose.prod.yml`: `PII_HASH_KEY` cableada en los tres servicios + `IWANA_APPLY_PII_CONTRACT` declarada en `migrator-prod` (opcional, inyección por env-file/`-e`); `.env.production.example` documenta el contract | Diff compose/env example |
@@ -635,9 +635,9 @@ Primer arranque en vacío real del repo. Base con 0 tablas → 22 migraciones ap
 
 | Deuda | Detalle |
 | --- | --- |
-| Tenants no-ACTIVE fuera de run y de paridad | Un tenant `SUSPENDED` o en provisioning puede rezagarse en el contract sin que nada lo denuncie; se cruza con la re-medición de volumen al reactivar. **Decisión única pendiente**, no dos parches |
-| Endurecimiento de `IWANA_APPLY_PII_CONTRACT` | El precedente `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` exige el literal `"true"`, confirmación interactiva y alcance de un schema; este flag acepta `1`/`yes`/`on`, sin confirmación, y alcanza toda la flota. AI-SEC-ENG lo clasifica Media |
-| Gate auto-propagante | `resolvePiiContractEnv` (worker) fija el flag al provisionar. Justificado, pero convierte el control humano en control de primera aplicación: debe declararse como tal, no como «gate humano» |
+| ~~Tenants no-ACTIVE fuera de run y de paridad~~ | Un tenant `SUSPENDED` o en provisioning puede rezagarse en el contract sin que nada lo denuncie; se cruza con la re-medición de volumen al reactivar. **Decisión única pendiente**, no dos parches · **PAGADO 2026-08-08 (Task 5, commit `4ffb7280`)**: aviso informativo no-ACTIVE en la paridad (sin fallar), SQL de medición v2 persistido en `scripts/sql/medicion-volumen-108.sql`, línea de reactivación en el runbook |
+| ~~Endurecimiento de `IWANA_APPLY_PII_CONTRACT`~~ | El precedente `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` exige el literal `"true"`, confirmación interactiva y alcance de un schema; este flag aceptaba `1`/`yes`/`on`, sin confirmación, y alcanza toda la flota. AI-SEC-ENG lo clasificó Media · **PAGADO 2026-08-08 (Task 3, commit `131414d8`)**: `isMigrationDeferred` exige el literal `'true'` (fail-closed) |
+| ~~Gate auto-propagante~~ | `resolvePiiContractEnv` (worker) fija el flag al provisionar. Justificado, pero convierte el control humano en control de primera aplicación: debe declararse como tal, no como «gate humano» · **PAGADO 2026-08-08 (Task 6, commit `a44dd723`)**: declarado gate de PRIMERA APLICACIÓN en el código y el runbook |
 | Ausencia de backup/restore | ADR-078 §D4 lo declara inexistente y este incidente lo confirmó. No hay script de backup ni de reset gobernado en el repo |
 | **S-6 sin cerrar** | Hallazgo **confirmado** contra PostgreSQL por AI-SR-FULL: el GUC `iwana.audit_maintenance` **no es restringible por permisos**, así que el rol de aplicación puede activarlo con `SET LOCAL` y evadir el trigger. La implementación de la corrección quedó **interrumpida** (límite de sesión del agente). El laboratorio se limpió: 0 schemas de prueba, registro en 22 filas. **Pendiente de reanudar** |
 
@@ -685,8 +685,75 @@ Evidencia adicional que AI-SR-QA aportó sin que se le pidiera, y que vale regis
 
 CI en rojo por **billing de GitHub Actions** (fallo de pagos/límite de gasto — *"recent account payments have failed or your spending limit needs to be increased"*), preexistente en `main`, no introducido por el PR. G6.5 (ADR-069) no obtenible hasta resolverlo. El responsable decidió: **continuar Tasks 2–7 en la rama actual** y mergear cuando se resuelva el billing. **Estado: PENDIENTE HUMANO.**
 
+### Task 3 — Endurecer el gate del contract destructivo (cerrado)
+
+**Fecha:** 2026-08-08 · **Commit:** `131414d8` · **Agente:** [AI-SR-FULL](8cb27c77-d105-42cf-8a74-1fc8297088fc) (TDD red→green) · [AI-SR-QA](c60f2698-47c7-4f2a-873a-6ddac0344d2a) (**SPEC COMPLIANT**).
+
+| Ítem | Evidencia |
+| --- | --- |
+| `isMigrationDeferred` exige `env[envVar] === 'true'` | `TRUE`/`1`/`yes`/`on` → diferido (fail-closed); test que falla primero confirmado |
+| `envValueIsTrue` conservada | Solo alimenta `shouldWarnContractEnvResidual` (aviso F-3); JSDoc advierte no usarla en flags destructivos |
+| `migration-order.spec.ts` alineado | 022 no incluida con `'1'`/`'TRUE'`/`'yes'`/`'on'`/`'false'` |
+| Gates | `@iwana/db` 28 suites / **180 tests**, typecheck, lint en verde |
+
+Nota de gobernanza: el commit `131414d8` incluyó 40 líneas del informe vivo (edición del orquestador de Tasks 8/2) por `git commit -am`. **Estado: CERRADO.** Runbook y este informe quedaron alineados al literal exacto `true` en Tasks 5/6.
+
+### Task 4 — Validaciones que el bootstrap limpio no pudo ejercer (cerrado)
+
+**Fecha:** 2026-08-08 · **Commit:** `99f6dc98` · **Agente:** [AI-SR-FULL](8cb27c77-d105-42cf-8a74-1fc8297088fc) · [AI-SR-QA](c60f2698-47c7-4f2a-873a-6ddac0344d2a) (**SPEC COMPLIANT**).
+
+| Ítem | Evidencia |
+| --- | --- |
+| Integration spec 023 (rama de borrado) | 1/1 PASS contra PostgreSQL real: 7 filas legacy retiradas, idempotente (0 en segunda pasada), transacción con rollback |
+| 2 tenants provisionados | `tenant_secp1_a/b` **ACTIVE**, 106 migraciones idénticas (alineadas con el código); 109/022 anunciadas como diferidas |
+| Ventana 1 verificada en tenants reales | `email_hash|YES` (nullable) y `email_hmac|NO` en ambos — la 109 quedó diferida, la 108 aplicada |
+| Gates | `@iwana/db` 28 suites / 180 tests, typecheck, lint, build en verde |
+
+**Estado: CERRADO.** Quedan 2 tenants sintéticos como evidencia de paridad (no se pidió su limpieza).
+
+### Task 5 — Tenants no-ACTIVE, decisión única (cerrado)
+
+**Fecha:** 2026-08-08 · **Commit:** `4ffb7280` · **Agente:** [AI-SR-FULL](88e5b3b3-6889-4b79-9945-034ae4ee181e) (TDD, 11 casos) · [AI-SR-QA](ef94a5e0-14a4-4993-b3ae-f42d033209c6) (**SPEC COMPLIANT**).
+
+| Ítem | Evidencia |
+| --- | --- |
+| SQL medición v2 persistido | `scripts/sql/medicion-volumen-108.sql` (método D-3: post-condición del ANALYZE + `COUNT(*)`); ejecutado de principio a fin contra ambos tenants: veredicto KEEP, 3 celdas, `celdas_por_count_exacto=3` (ANALYZE denegado→COUNT, válido) y también bajo `iwana_app` (3 WARNING + count, exit 0) |
+| Paridad como aviso | `[MIGRATOR] Aviso: N schema(s) no-ACTIVE; M con migraciones distintas` sin cambiar exit code; tolera `typeorm_migrations` ausente; verificado en vivo con un SUSPENDED sintético (luego eliminado) |
+| Runbook reactivación | §4.2 paso 9: medición v2 sobre su schema antes de reactivar; umbral ~50 k → orquestador |
+| Gates | `@iwana/db` 28 suites / **191 tests**, typecheck, lint, build en verde |
+
+Nota: el commit incluyó `cli/tenant-migrate.ts` (ajuste del comentario de deuda, coherente al pagarse aquí). **Estado: CERRADO.**
+
+### Task 6 — Declarar el gate auto-propagante (cerrado)
+
+**Fecha:** 2026-08-08 · **Commit:** `a44dd723` · **Agente:** [AI-SR-FULL](88e5b3b3-6889-4b79-9945-034ae4ee181e) · [AI-SR-QA](ef94a5e0-14a4-4993-b3ae-f42d033209c6) (**SPEC COMPLIANT**).
+
+- `resolvePiiContractEnv` (worker): comentario declara el flag como gate de **primera aplicación**, no por corrida; propagación automática tras el primer contract.
+- Runbook alineado: el contract se habilita **solo** con el literal `true` (fail-closed; `envValueIsTrue` solo alimenta el aviso F-3); §4.2 paso 3 aclara el literal.
+- Gates: worker typecheck/lint en verde, spec de provisioning 18/18 PASS.
+
+**Estado: CERRADO.**
+
+### Task 7 — Backup y restore con ensayo verificado (cerrado)
+
+**Fecha:** 2026-08-08 · **Commit:** `5930b580` · **Agente:** [AI-PLAT-OPS](23a26177-14f0-4392-9400-d97f400d861f) (implementador) · [AI-SR-QA](ed195eb8-e5ae-4b87-ae62-007cf197244e) (**SPEC COMPLIANT**, reverificó el ensayo en vivo).
+
+| Ítem | Evidencia |
+| --- | --- |
+| Scripts | `scripts/db/backup.mjs` (`pg_dump -Fc`, timestamp ISO, `BACKUP_DIR` fuera del árbol, fallo duro si el destino está en el repo) + `scripts/db/restore.mjs` (confirmación por tecleo del nombre, sin TTY → exit 2, `--list`/`--dry-run`, valida `-Fc` antes de tocar la DB) |
+| Scripts raíz | `pnpm db:backup` / `pnpm db:restore` operativos |
+| Ensayo verificado | Backup real de `dbiw` (850 426 B, 1822 entradas TOC); restore en `dbiw_restore_test`: paridad exacta (23 públicas, 6 tablas base, 2 schemas tenant, 105 tablas/tenant, `email_hmac` presente); base de prueba DROPEADA |
+| Guarda confirmación | Sin TTY/sin `--yes` → exit 2; archivo no-`-Fc` rechazado (exit 1); `BACKUP_DIR` en repo sin gitignore → fallo duro |
+| Runbook | v1.2: §0.2 remite al drill, §4.2 paso 2 usa los comandos, nueva §4.3 (comandos, retención = dumps en `BACKUP_DIR`, tecleo+TTY, «ventana 2 no se declara cerrada sin el drill del día») |
+| `.gitignore` | `.backups/` ignorado |
+
+Desviación documentada (no bloqueante): el plan listaba `scripts/db-backup.mjs`/`db-restore.mjs` y un runbook propio `RUNBOOK-BACKUP-RESTORE-v1.0.md`; la implementación usó `scripts/db/backup.mjs`/`restore.mjs` (coherente con `scripts/db/apply-least-privilege.mjs`) y documentó en el runbook SEC-P1 §4.3. La política de retención operativa queda como nota fuera del alcance del plan (no se inventó).
+
+**Estado: CERRADO.** Con esto, los prerrequisitos §0.2 y el go/no-go §4.1 de la ventana 2 son cumplibles.
+
 ### Pendientes
 
-- Tasks 3–7 del plan (en ejecución).
-- Task 9 (ventana 2) — gate CTO, precondición Task 7 completa.
-- PR #5 merge (billing GitHub Actions).
+- Task 9 (ventana 2) — **gate CTO**, precondición Task 7 completa (ya cumplida). Verificar backup fresco + medición v2 + aplicar contract + retirar variable + barrido de `*_hash` en TODOS los schemas + sello temporal en el informe.
+- Task 1 / PR #5 merge — **pendiente humano** (billing GitHub Actions).
+- Confirmar `to_regrole('iwana_migrator')` en staging/prod antes de declarar S-6 cerrado allí (B-1) y documentar en runbook de rollback que revertir 111/024 reabre la escotilla (B-2).
+- Política de retención operativa de backups (nota de Task 7, previa a staging/prod).
