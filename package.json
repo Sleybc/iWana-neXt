@@ -12,7 +12,10 @@
   "scripts": {
     "build": "turbo run build",
     "db:apply-least-privilege": "node scripts/db/apply-least-privilege.mjs",
+    "db:backup": "node scripts/db/backup.mjs",
+    "db:restore": "node scripts/db/restore.mjs",
     "db:migrate:all": "pnpm --filter @iwana/db build && pnpm --filter @iwana/db migration:run && pnpm --filter @iwana/db migration:tenant:run && pnpm db:apply-least-privilege",
+    "db:purge-backups": "node scripts/db/purge-backups.mjs",
     "encryption:reencrypt": "pnpm --filter @iwana/api encryption:reencrypt",
     "dev:free-ports": "node scripts/free-dev-ports.mjs",
     "dev:verify-platform-login": "node scripts/dev-verify-platform-login.mjs",

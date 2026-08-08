@@ -126,13 +126,19 @@ describe('orden de migraciones públicas', () => {
     expect(nombres({ IWANA_APPLY_PII_CONTRACT: 'true' })).toContain(
       'DropPlatformUsersEmailHash1784419210000',
     );
-    // Hallazgo SEC: los valores de verdad se interpretan de forma tolerante
-    // (`envValueIsTrue`: '1', 'TRUE', 'yes', 'on'), para que un env mal escrito
-    // no deje el contract destructivo diferido en silencio.
-    expect(nombres({ IWANA_APPLY_PII_CONTRACT: '1' })).toContain(
+    // El contract destructivo exige el literal exacto 'true' (fail-closed): un
+    // env mal escrito ('1', 'TRUE', 'yes', 'on') debe dejar la 022 DIFERIDA, no
+    // aplicar la destrucción de la vía de rollback por una ortografía tolerante.
+    expect(nombres({ IWANA_APPLY_PII_CONTRACT: '1' })).not.toContain(
       'DropPlatformUsersEmailHash1784419210000',
     );
-    expect(nombres({ IWANA_APPLY_PII_CONTRACT: 'TRUE' })).toContain(
+    expect(nombres({ IWANA_APPLY_PII_CONTRACT: 'TRUE' })).not.toContain(
+      'DropPlatformUsersEmailHash1784419210000',
+    );
+    expect(nombres({ IWANA_APPLY_PII_CONTRACT: 'yes' })).not.toContain(
+      'DropPlatformUsersEmailHash1784419210000',
+    );
+    expect(nombres({ IWANA_APPLY_PII_CONTRACT: 'on' })).not.toContain(
       'DropPlatformUsersEmailHash1784419210000',
     );
     expect(nombres({ IWANA_APPLY_PII_CONTRACT: 'false' })).not.toContain(

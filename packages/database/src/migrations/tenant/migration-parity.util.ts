@@ -18,6 +18,11 @@ import { TENANT_MIGRATIONS } from './runner';
  * el CLI de migración (`cli/tenant-migrate.ts`) después de `runTenantMigrations`
  * y antes de dar la corrida por buena — no cambia el runner.
  *
+ * Los tenants no-ACTIVE (SUSPENDED, PROVISIONING, MARKED_FOR_DELETION, …) no
+ * se migran por diseño, así que no participan del chequeo que falla; sí se
+ * reportan como aviso informativo (cuántos son y cuántos difieren del baseline
+ * ACTIVE) para que un rezago no pase inadvertido al reactivarlos.
+ *
  * Solo lectura: no toca datos ni DDL. Los nombres de schema se validan con
  * `isValidSchemaName` antes de interpolarse en SQL (mismo patrón que
  * `runInTenantSchema`).
@@ -26,6 +31,29 @@ import { TENANT_MIGRATIONS } from './runner';
 export interface TenantMigrationSnapshot {
   schemaName: string;
   names: string[];
+}
+
+/** Snapshot de un tenant no-ACTIVE: `names` es null cuando no tiene tabla
+ * `typeorm_migrations` (provisioning a medias): sin registro, sin comparar. */
+export interface NonActiveTenantSnapshot {
+  schemaName: string;
+  names: string[] | null;
+  /** true si el conjunto difiere del baseline ACTIVE (incluye "sin registro"). */
+  diverges: boolean;
+  /** Migraciones que el baseline tiene y este schema no (vacíos si sin registro). */
+  missing: string[];
+  /** Migraciones que este schema tiene y el baseline no (vacíos si sin registro). */
+  extra: string[];
+}
+
+export interface NonActiveTenantParityReport {
+  /** Total de schemas de tenant con status <> 'ACTIVE'. */
+  count: number;
+  /** Cuántos tienen un conjunto de migraciones distinto del de la flota ACTIVE. */
+  diverging: number;
+  /** Schemas no-ACTIVE sin tabla typeorm_migrations (provisioning a medias). */
+  withoutMigrationRecord: number;
+  snapshots: NonActiveTenantSnapshot[];
 }
 
 export interface MigrationDivergence {
@@ -164,8 +192,116 @@ export function computeMigrationParityReport(
 }
 
 /**
+ * Compara el conjunto de migraciones de cada tenant no-ACTIVE contra el
+ * baseline ACTIVE. Pura y testeable (mismo patrón que
+ * `computeMigrationParityReport`).
+ *
+ * Un no-ACTIVE "sin registro" (sin tabla `typeorm_migrations`) cuenta como
+ * divergente informativo: su estado de migraciones es desconocido, y eso es
+ * exactamente lo que el operador debe verificar al reactivarlo.
+ */
+export function computeNonActiveTenantParityReport(
+  snapshots: Pick<NonActiveTenantSnapshot, 'schemaName' | 'names'>[],
+  referenceNames: ReadonlyArray<string>,
+): NonActiveTenantParityReport {
+  const computed: NonActiveTenantSnapshot[] = snapshots.map((snapshot) => {
+    if (snapshot.names === null) {
+      return { ...snapshot, diverges: true, missing: [], extra: [] };
+    }
+    const missing = referenceNames.filter((name) => !snapshot.names!.includes(name));
+    const extra = snapshot.names.filter((name) => !referenceNames.includes(name));
+    return {
+      ...snapshot,
+      diverges: missing.length > 0 || extra.length > 0,
+      missing,
+      extra,
+    };
+  });
+
+  return {
+    count: computed.length,
+    diverging: computed.filter((snapshot) => snapshot.diverges).length,
+    withoutMigrationRecord: computed.filter((snapshot) => snapshot.names === null).length,
+    snapshots: computed,
+  };
+}
+
+/**
+ * Carga el conjunto de migraciones de cada tenant no-ACTIVE (`status <> 'ACTIVE'`).
+ *
+ * No se migran por diseño, así que un rezago es esperado: esta carga es la base
+ * del aviso informativo, nunca de un fallo. Un schema sin tabla
+ * `typeorm_migrations` (provisioning a medias) se tolera como "sin registro".
+ */
+export async function loadNonActiveTenantSnapshots(
+  dataSource: DataSource,
+  referenceNames: ReadonlyArray<string>,
+): Promise<NonActiveTenantParityReport> {
+  const tenants = (await dataSource.query(
+    `SELECT schema_name FROM public.tenants WHERE status <> 'ACTIVE' ORDER BY schema_name`,
+  )) as Array<{ schema_name: string }>;
+
+  const raw: { schemaName: string; names: string[] | null }[] = [];
+  for (const tenant of tenants) {
+    const schemaName = tenant.schema_name;
+    if (!isValidSchemaName(schemaName)) {
+      throw new Error(
+        `Chequeo de paridad abortado: schema inválido en public.tenants: "${schemaName}".`,
+      );
+    }
+
+    const hasRecord = (await dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = '${schemaName}' AND table_name = 'typeorm_migrations'
+       ) AS "exists"`,
+    )) as Array<{ exists: boolean }>;
+
+    let names: string[] | null = null;
+    if (hasRecord[0]?.exists) {
+      const rows = (await dataSource.query(
+        `SELECT "name" FROM "${schemaName}"."typeorm_migrations" ORDER BY "id" ASC`,
+      )) as Array<{ name: string }>;
+      names = rows.map((row) => row.name);
+    }
+
+    raw.push({ schemaName, names });
+  }
+
+  return computeNonActiveTenantParityReport(raw, referenceNames);
+}
+
+/** Resumen del aviso de tenants no-ACTIVE (sin prefijo `[MIGRATOR]`). */
+export function describeNonActiveTenantParityWarning(report: NonActiveTenantParityReport): string {
+  return (
+    `Aviso: ${report.count} schema(s) no-ACTIVE; ` +
+    `${report.diverging} con migraciones distintas de la flota ACTIVE ` +
+    `— no se migran por diseño, verificar al reactivar.`
+  );
+}
+
+/** Detalle por schema no-ACTIVE divergente (para la consola del CLI). */
+export function describeNonActiveTenantDivergence(snapshot: NonActiveTenantSnapshot): string {
+  if (snapshot.names === null) {
+    return (
+      `Aviso: ${snapshot.schemaName} sin tabla typeorm_migrations ` +
+      `(provisioning a medias) — sin registro de migraciones comparables.`
+    );
+  }
+  return (
+    `Aviso: ${snapshot.schemaName} con migraciones distintas de la flota ACTIVE ` +
+    `(faltantes=[${snapshot.missing.join(', ')}] extra=[${snapshot.extra.join(', ')}]).`
+  );
+}
+
+/**
  * Lanza si la flota de tenants ACTIVE no tiene el mismo conjunto de migraciones
  * o si ese conjunto se desalinea con lo que el código espera (F-2).
+ *
+ * Emite además un aviso informativo (no bloqueante) sobre los tenants
+ * no-ACTIVE: no se migran por diseño, así que un rezago no es un error ni
+ * cambia el código de salida. Al reactivar un no-ACTIVE hay que verificar su
+ * alineación y medir el volumen de la 108 sobre su schema (ver runbook SEC-P1).
  */
 export async function assertTenantMigrationParity(
   dataSource: DataSource,
@@ -186,6 +322,17 @@ export async function assertTenantMigrationParity(
       )
     : [];
   const report = computeMigrationParityReport(snapshots, expectedNames);
+
+  const referenceNames = expectedNames.length > 0 ? expectedNames : (baseline?.names ?? []);
+  const nonActive = await loadNonActiveTenantSnapshots(dataSource, referenceNames);
+  if (nonActive.count > 0) {
+    log(describeNonActiveTenantParityWarning(nonActive));
+    for (const snapshot of nonActive.snapshots) {
+      if (snapshot.diverges) {
+        log(describeNonActiveTenantDivergence(snapshot));
+      }
+    }
+  }
 
   if (report.ok) {
     const migrationCount = report.tenants[0]?.names.length ?? 0;

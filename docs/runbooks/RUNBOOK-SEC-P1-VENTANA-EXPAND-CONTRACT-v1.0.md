@@ -2,8 +2,8 @@
 
 **Tipo:** Runbook operativo  
 **Módulo:** TRANSVERSAL — PII / hashes con clave / audit trail  
-**Versión:** 1.1  
-**Fecha:** 2026-08-06  
+**Versión:** 1.2  
+**Fecha:** 2026-08-08  
 **Autor:** AI-EM-ARCH (plan) · Ejecutor: AI-PLAT-OPS  
 **Estado del plan:** Congelado — secuencia **S1 + A1/A2 + B1** (recomendación EM-ARCH adoptada 2026-08-06)  
 **Estado de ejecución (actualizar casillas al completar cada entorno):**
@@ -52,7 +52,12 @@ Marcar cuando el ítem es verdadero **para el entorno que se va a tocar**. Los d
 - [x] Conocido: `pnpm db:migrate:all` = build `@iwana/db` + públicas + tenants + least-privilege. **En prod** la vía es el contenedor `migrator-prod` (solo públicas + tenants).
 - [x] Conocido: sin `PII_HASH_KEY` el bootstrap Joi **falla** (fail-fast).
 - [x] **Cableado (artefacto prod):** `PII_HASH_KEY` declarada en `api-prod`, `worker-prod` y `migrator-prod` (`docker-compose.prod.yml`). `IWANA_APPLY_PII_CONTRACT` opcional solo en `migrator-prod` (inyectar en ventana 2 §4.2 paso 3; retirar §4.2 paso 7). *Inyectar el valor real en el secret store sigue siendo por entorno (§1).*
-- [x] Conocido: **schemas `MARKED_FOR_DELETION` no se migran ni se verifican** (solo `ACTIVE`). Reactivación → expand/contract previo (§4.2 paso 9). Timeline de DROP = pendiente humano (F-1).
+- [x] Conocido: **schemas `MARKED_FOR_DELETION` no se migran ni se verifican** (solo `ACTIVE`). Reactivación → expand/contract previo (§4.2 paso 9). **Antes de reactivar: medición de volumen de la 108 sobre el schema** (`scripts/sql/medicion-volumen-108.sql`) — ver §4.2 paso 9. Timeline de DROP = pendiente humano (F-1).
+- [ ] **Check de despliegue S-6 (B-1):** antes de declarar S-6 cerrado en un entorno, confirmar que el rol `iwana_migrator` existe en ese entorno. El hardening de la 111/024 solo es efectivo donde el rol existe: con `to_regrole` nulo el guard se degrada silenciosamente al modo GUC-solo (comportamiento de CI). Comando:
+  ```sql
+  SELECT to_regrole('iwana_migrator');  -- esperado: iwana_migrator
+  ```
+  *Dev: verificado 2026-08-08 (`iwana_migrator` presente).*
 
 ### 0.2 Por entorno (repetir antes de ventana 1)
 
@@ -61,6 +66,8 @@ Marcar cuando el ítem es verdadero **para el entorno que se va a tocar**. Los d
 | Backup/restore del entorno **probado** (drill reciente) | [x] (local ops) | [ ] | [ ] |
 | Secret store / env del entorno listo (§1) | [x] (dev) | [ ] | [ ] |
 | Binario SEC-P1 **desplegable** en el entorno (post-merge) | [x] (local) | [ ] | [ ] |
+
+> **Drill mínimo de backup/restore por entorno:** `pnpm db:backup` (dump `-Fc` de la base completa en `BACKUP_DIR`, por defecto `.backups/`) + un ensayo de restore verificado sobre base desechable con `pnpm db:restore --target <base_temporal> --from <dump>` (ver §4.3). Sin drill reciente en el entorno, la casilla no se marca: un backup sin restore ensayado no es una capacidad, es un fichero.
 
 ---
 
@@ -183,6 +190,7 @@ Durante el soak (por entorno que aplique B1 — tipicamente **prod**; staging op
 | Backup restaurable verificado **el mismo día** | Sí | [ ] | [ ] |
 | `pending` criterio 6 = 0 | Sí | [ ] | [ ] |
 | Paridad migraciones OK | Sí | [ ] | [ ] |
+| S-6 activo en el entorno (`to_regrole('iwana_migrator')` no nulo — §0.1) | Sí | [ ] | [ ] |
 | Go CTO producción | Sí (prod) | N/A | [ ] |
 
 *Dev local: go/no-go histórico cumplido 2026-08-06 (ventana 2 aplicada; ver informe). No sustituye staging/prod.*
@@ -190,14 +198,22 @@ Durante el soak (por entorno que aplique B1 — tipicamente **prod**; staging op
 ### 4.2 Ejecución
 
 1. Detener API, web, portal y worker (recomendado; DDL + DROP).
-2. Backup fresco + smoke de restore (o evidencia de drill del día).
+2. Backup fresco + smoke de restore (drill del día):
+
+   ```bash
+   pnpm db:backup                                             # dump -Fc fresco en BACKUP_DIR
+   pnpm db:restore --list --from <ruta-del-dump>              # smoke: el dump es un -Fc valido
+   pnpm db:restore --target dbiw_restore_test --from <ruta-del-dump> --yes   # ensayo sobre base desechable
+   ```
+
+   Verificar la paridad de conteos entre `dbiw` y `dbiw_restore_test` (migraciones y tablas por schema) y **DROPEAR** `dbiw_restore_test` al terminar. Es el drill mínimo que desbloquea el go/no-go de §4.1. La base de prueba se crea y elimina en el mismo drill; el target nunca apunta a una base con datos. En prod, parametrizar los scripts por env (ver §4.3).
 3. Ejecutar con el contract activo:
    - **Host (staging/dev):** `IWANA_APPLY_PII_CONTRACT=true pnpm db:migrate:all`
-   - **Contenedor (prod):** `docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile production --env-file .env.production run --rm --no-deps -e IWANA_APPLY_PII_CONTRACT=true migrator-prod`. La variable puede ir en `.env.production` durante la ventana, pero **no** debe sumarse al secret store permanente.
+   - **Contenedor (prod):** `docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile production --env-file .env.production run --rm --no-deps -e IWANA_APPLY_PII_CONTRACT=true migrator-prod`. La variable puede ir en `.env.production` durante la ventana, pero **no** debe sumarse al secret store permanente. El literal debe ser **exactamente** `true` (minúsculas): el contract es fail-closed, cualquier otro valor lo deja diferido sin error (ver paso 5).
 4. Leer `[MIGRATOR]`:
    - `022` y `109` **aplicadas** (ya no anunciadas como diferidas)
    - Paridad OK en todos los ACTIVE
-5. **Stop criterion (ventana 2):** si tras la corrida `022`/`109` **siguen anunciadas como `DIFERIDA`**, la ventana **no se completó**: revisar la inyección/ortografía del env (`true` en minúscula; el CLI también acepta `1`/`yes`/`on` — `envValueIsTrue`) y los guardianes de 022/109. No retirar el env ni registrar el cierre S-1. Si algún tenant falla o la paridad rompe → **no rearrancar** con flota mixta; remediar o alinear rollback.
+5. **Stop criterion (ventana 2):** si tras la corrida `022`/`109` **siguen anunciadas como `DIFERIDA`**, la ventana **no se completó**: revisar la inyección/ortografía del env — el contract **solo** se habilita con el literal exacto `true` en minúsculas (fail-closed; `TRUE`, `1`, `yes` o `on` dejan la migración diferida sin error. `envValueIsTrue` ya no abre el contract: únicamente alimenta el aviso F-3 del env residual) — y los guardianes de 022/109. No retirar el env ni registrar el cierre S-1. Si algún tenant falla o la paridad rompe → **no rearrancar** con flota mixta; remediar o alinear rollback.
 6. Arrancar + smoke §2.2 paso 7.
 7. **Retirar `IWANA_APPLY_PII_CONTRACT`** del mecanismo usado (env-file / `-e`). Matiz de timing: el aviso F-3 («variable activa sin contracts pendientes») se emite al final de la **propia corrida de la ventana 2** y es esperado; el indicador de env residual es que el aviso **aparezca en corridas posteriores** ya sin la variable prevista. Si aparece, retirarla del lugar donde quedó.
 8. Verificación estructural (conteos / existencia de columna, **nunca valores**):
@@ -221,18 +237,41 @@ WHERE table_schema = current_schema()
 ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_hash, …)
 ```
 
-9. Actualizar informe vivo: residual S-1 **cerrado** en ese entorno; anotar evidencia (conteos, paridad, fecha). La verificación estructural y de paridad cubre **solo schemas `ACTIVE`** (concern F-1): los `MARKED_FOR_DELETION` retienen sus columnas `*_hash` SHA-256 hasta que se eliminen o se reactiven (en cuyo caso pasan primero su propio expand/contract antes de servir tráfico). Un **tenant nuevo** provisionado tras la ventana 2 nace con el contract aplicado automáticamente (el provisioning resuelve el estado de la flota — N-1).
+9. Actualizar informe vivo: residual S-1 **cerrado** en ese entorno; anotar evidencia (conteos, paridad, fecha). La verificación estructural y de paridad cubre **solo schemas `ACTIVE`** (concern F-1): los `MARKED_FOR_DELETION` retienen sus columnas `*_hash` SHA-256 hasta que se eliminen o se reactiven (en cuyo caso pasan primero su propio expand/contract antes de servir tráfico). Un **tenant nuevo** provisionado tras la ventana 2 nace con el contract aplicado automáticamente (el provisioning resuelve el estado de la flota — N-1): el flag es un gate de **primera aplicación**, no humano por corrida — a partir del primer contract aplicado en la flota el provisioning lo replica solo, y la presencia del flag no debe leerse como «hace falta autorización por tenant».
+
+> **Antes de reactivar un tenant `MARKED_FOR_DELETION`:** ejecutar sobre **su** schema la medición de volumen de la 108 (SQL v2 en `scripts/sql/medicion-volumen-108.sql`): el veredicto KEEP `transactional = true` se sostiene sobre una medición del universo `ACTIVE`, y un tenant reactivado aporta volumen que esa medición nunca vio. Si su peak en `users`, `subscribers` o `expediente_records` supera ~50 k, el expand/contract de reactivación se planifica con el orquestador antes de correrlo. Los no-ACTIVE no se migran por diseño; si quedaron rezagados en el contract, es esperado y el CLI solo lo avisa (sin fallar) — verificar su alineación de migraciones en la misma operación.
 10. Registrar la **ventana de mantenimiento real** (inicio/fin, entorno, responsable) en el informe vivo y el canal de notificación de mantenimiento acordado, y confirmar que no hay conexiones long-lived (pooler/PgBouncer) reteniendo locks DDL sobre las tablas afectadas (concern F-3).
 
 | Ventana 2 — checklist | dev | staging | prod |
 | --- | --- | --- | --- |
-| 022/109 aplicadas; sin anuncio DIFERIDA | [x] 2026-08-06 | [ ] | [ ] |
-| Paridad OK post-contract | [x] 10×106 | [ ] | [ ] |
+| 022/109 aplicadas; sin anuncio DIFERIDA | [x] 2026-08-06 · [x] 2026-08-08 (flota reconstruida, 2×107) | [ ] | [ ] |
+| Paridad OK post-contract | [x] 10×106 · [x] 2×107 (2026-08-08) | [ ] | [ ] |
 | `platform_users.email_hash` ausente | [x] | [ ] | [ ] |
 | 0 `*_hash` búsqueda PII en ACTIVE | [x] | [ ] | [ ] |
 | Env `IWANA_APPLY_PII_CONTRACT` retirado | [x] | [ ] | [ ] |
 | Informe vivo actualizado (entorno) | [x] | [ ] | [ ] |
 | Ventana de mantenimiento registrada | [x] (dev) | [ ] | [ ] |
+
+### 4.3 Backup/restore operativo
+
+Capacidad que ADR-078 §D4 declaraba inexistente y que el plan SEC-P1 cierra con la Task 7: scripts en `scripts/db/` + ensayo verificado.
+
+| Operación | Comando |
+| --- | --- |
+| Backup completo (`-Fc`, todos los schemas) | `pnpm db:backup` |
+| Contenido del dump, sin tocar nada | `pnpm db:restore --list --from <dump>` |
+| Restore sobre una base destino explícita | `pnpm db:restore --target <base> --from <dump>` |
+
+Parametrización por env (misma familia que `scripts/db/apply-least-privilege.mjs`): `POSTGRES_CONTAINER`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `BACKUP_DIR` y `DB_BACKUP_MODE` (`docker` por defecto — ejecuta pg_dump/pg_restore dentro del contenedor; `host` usa los binarios del host). Por defecto el backup usa el rol bootstrap (superuser en dev) para capturar ownership y todos los schemas; `DB_USER` lo acota si el entorno lo exige.
+
+Retención: los dumps viven en `BACKUP_DIR` (por defecto `<repo>/.backups/`, ignorado por git — un dump con PII versionado es defecto bloqueante). **Política de retención operativa (fijada 2026-08-08, custodia PLAT-OPS):**
+- **Conservar siempre** los últimos **10 dumps** (`--keep-count`, default 10).
+- De los anteriores, **purgar** los que superen **14 días** (`--keep-days`, default 14).
+- Nunca se elimina el único dump existente.
+- **Purga:** `pnpm db:purge-backups` (dry-run por defecto; `--execute` aplica — mismo criterio fail-closed que `db:restore` con `--yes`). Retención configurable por argumento: `pnpm db:purge-backups --keep-count=20 --keep-days=30`.
+- Frecuencia sugerida: **semanal** por PLAT-OPS; la purga es idempotente y no destructiva en dry-run. Sin purga, el backup se convierte en el problema que resolvía.
+
+Seguridad: el restore es destructivo y exige confirmación tecleando el **nombre exacto del archivo** de backup con TTY (mismo patrón que `cli/tenant-revert.ts`); sin TTY requiere `--yes` explícito. `--list`/`--dry-run` no tocan la base. La ventana 2 de un entorno **no se declara cerrada** sin el drill del día (§4.1: backup restaurable verificado el mismo día).
 
 ---
 
@@ -256,7 +295,8 @@ ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_
 | Momento | Acción |
 | --- | --- |
 | Tras ventana 1, **antes** de ventana 2 | Revertir binario si hace falta; digests SHA-256 siguen (salvo altas post-expand). `down` de 021/108 con flag destructivo solo si hay huérfanos — ver cabeceras de migración. |
-| Tras ventana 2 | **Solo restore de backup**. No hay reconstrucción de SHA-256 originales. |
+| Tras ventana 2 | **Solo restore de backup** (`pnpm db:restore --target <base> --from <dump>` — ver §4.3). No hay reconstrucción de SHA-256 originales. |
+| **S-6 (B-2)** | **Revertir la 111/024 reabre la escotilla:** su `down()` restaura la versión anterior de `reject_audit_mutation()` (GUC-solo, la de la 075/014), que cualquier rol puede evadir con `SET LOCAL iwana.audit_maintenance='on'`. Solo está justificado durante la ventana 1 para una corrección sobre la 108; una vez cerrada la ventana 2, no revertir la 111/024 — la vía de rollback es el restore de backup. |
 
 ---
 

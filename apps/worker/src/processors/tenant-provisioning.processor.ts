@@ -337,6 +337,11 @@ export class TenantProvisioningProcessor extends WorkerHost {
    * (no solo el primer schema por nombre). Ante error de consulta (R2-1):
    * fail-closed — la excepción sube a `process()` y BullMQ reintenta; no se
    * activa un tenant asumiendo pre-contract.
+   *
+   * Gobernanza: es un gate de PRIMERA APLICACIÓN, no un gate por corrida. A
+   * partir del primer contract aplicado en la flota, el provisioning lo
+   * replica solo, sin intervención humana; nadie debe leer el flag en el
+   * runbook como «hace falta autorización cada vez».
    */
   private async resolvePiiContractEnv(): Promise<NodeJS.ProcessEnv> {
     const tenants = await this.pgPool.query<{ schema_name: string }>(
@@ -357,6 +362,9 @@ export class TenantProvisioningProcessor extends WorkerHost {
          ) AS exists`,
       );
       if ((contract.rows ?? [])[0]?.exists) {
+        // Gate de PRIMERA APLICACIÓN, no por corrida: si la flota ya aplicó el
+        // contract, el provisioning lo propaga solo y sin intervención humana.
+        // La autorización es la decisión de abrir la ventana 2, no esta rama.
         return { ...process.env, IWANA_APPLY_PII_CONTRACT: 'true' };
       }
     }

@@ -31,9 +31,12 @@ import type { DataSource } from 'typeorm';
  * un solo tenant adelantado bastaría para que el aviso F-3 dijera «retire la
  * variable» con el resto de la flota sin el contract aplicado.
  *
- * Deuda declarada (registrada por AI-EM-ARCH, no se corrige aquí): la paridad
- * solo cubre tenants ACTIVE. Uno suspendido o en provisioning queda fuera del
- * run y de la comprobación, y puede rezagarse en el contract sin denuncia.
+ * La paridad solo cubre tenants ACTIVE en el chequeo que falla; los no-ACTIVE
+ * (suspendidos, en provisioning, MARKED_FOR_DELETION) no se migran por diseño y
+ * se reportan como aviso informativo sin cambiar el código de salida (Task 5
+ * del plan de cierre 2026-08-06). Al reactivar un no-ACTIVE hay que alinear su
+ * conjunto de migraciones y medir el volumen de la 108 sobre su schema antes de
+ * correr su expand/contract (ver runbook SEC-P1 §4.2 paso 9).
  */
 async function loadAppliedMigrationNames(dataSource: DataSource): Promise<Set<string>> {
   const publicRows = await dataSource.query<Array<{ name: string }>>(

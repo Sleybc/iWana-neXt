@@ -33,15 +33,25 @@ describe('isMigrationDeferred', () => {
     expect(isMigrationDeferred({}, {})).toBe(false);
   });
 
-  it('difiere mientras la variable no valga un valor de verdad', () => {
+  it('difiere salvo que la variable sea exactamente el literal "true"', () => {
     const migration = { deferredBy: 'IWANA_APPLY_PII_CONTRACT' };
 
     expect(isMigrationDeferred(migration, {})).toBe(true);
     expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: '' })).toBe(true);
     expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: '0' })).toBe(true);
     expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'true' })).toBe(false);
-    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'TRUE' })).toBe(false);
-    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: '1' })).toBe(false);
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'TRUE' })).toBe(true);
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: '1' })).toBe(true);
+  });
+
+  it('solo el literal "true" habilita un contract destructivo', () => {
+    const migration = { deferredBy: 'IWANA_APPLY_PII_CONTRACT' };
+
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'true' })).toBe(false);
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'TRUE' })).toBe(true);
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: '1' })).toBe(true);
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'yes' })).toBe(true);
+    expect(isMigrationDeferred(migration, { IWANA_APPLY_PII_CONTRACT: 'on' })).toBe(true);
   });
 
   it('el aviso nombra la migración y la variable que la habilita', () => {

@@ -18,7 +18,19 @@ export interface DeferrableMigration {
   deferredBy?: string;
 }
 
-/** `true` si la migración está marcada como diferida y su variable no está activa. */
+/**
+ * `true` si la migración está marcada como diferida y su variable no está activa.
+ *
+ * Para las migraciones que `deferredBy` declara (los `contract` de un
+ * expand/contract, que RETIRAN columnas de respaldo de forma irreversible), el
+ * flag solo se considera activo con el literal exacto `'true'`. Inversión
+ * deliberada del razonamiento anterior: un env mal escrito (`TRUE`, `1`,
+ * `yes`, `on`) debe **fallar cerrado** —quedarse diferido— no abierto. El
+ * fallo benigno de un operador que no logra aplicar el contract es recuperable;
+ * el maligno (destruir la vía de rollback de toda la flota por una
+ * ortografía tolerante) no lo es. Mismo criterio que el precedente
+ * `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` (ver `cli/tenant-revert.ts`).
+ */
 export function isMigrationDeferred(
   migration: DeferrableMigration,
   env: NodeJS.ProcessEnv = process.env,
@@ -29,14 +41,17 @@ export function isMigrationDeferred(
     return false;
   }
 
-  return !envValueIsTrue(env[envVar]);
+  return env[envVar] !== 'true';
 }
 
 /**
- * Interpreta una variable de entorno booleana de forma tolerante (hallazgo SEC).
- * Acepta `true`, `1`, `yes`, `on` (con trim y sin importar mayúsculas): un env
- * mal escrito como `TRUE` o `1` no debe dejar un contract destructivo diferido
- * en silencio.
+ * Interpreta una variable de entorno booleana de forma tolerante para usos
+ * NO destructivos (hallazgo SEC): acepta `true`, `1`, `yes`, `on` (con trim y
+ * sin importar mayúsculas). Quien la use en un aviso o advertencia (p. ej.
+ * `shouldWarnContractEnvResidual`) se beneficia de la tolerancia: un env mal
+ * escrito debe seguir denunciándose. NO debe usarse para flags que gobiernan
+ * operaciones destructivas — esos exigen el literal `'true'` (ver
+ * `isMigrationDeferred`).
  */
 export function envValueIsTrue(value: string | undefined): boolean {
   if (value == null) {
