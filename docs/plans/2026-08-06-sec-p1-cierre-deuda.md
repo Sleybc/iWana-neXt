@@ -402,13 +402,13 @@ Esperado: ninguno de los dos aparece.
 
 **Precondición dura:** la Tarea 7 (backup con restore ensayado) debe estar completa. Con ella, aplicar el contract deja de ser irreversible y la decisión cambia de naturaleza.
 
-- [ ] **Step 1: Verificar que existe backup fresco y restaurable**
+- [x] **Step 1: Verificar que existe backup fresco y restaurable**
 
-- [ ] **Step 2: Ejecutar la medición de volumen v2 sobre la flota real**
+- [x] **Step 2: Ejecutar la medición de volumen v2 sobre la flota real**
 
 Si algún peak supera ~50 k, detenerse y consultar antes de tocar el flag.
 
-- [ ] **Step 3: Aplicar el contract**
+- [x] **Step 3: Aplicar el contract**
 
 ```bash
 IWANA_APPLY_PII_CONTRACT=true pnpm db:migrate:all
@@ -416,15 +416,15 @@ IWANA_APPLY_PII_CONTRACT=true pnpm db:migrate:all
 
 Esperado: `022` y `109` aplicadas, con sus guardianes de huecos de HMAC en verde.
 
-- [ ] **Step 4: Retirar la variable del entorno**
+- [x] **Step 4: Retirar la variable del entorno**
 
 El CLI emite un aviso si detecta que quedó activa sin contracts pendientes. Actuar sobre él.
 
-- [ ] **Step 5: Verificar que no quedan digests SHA-256 de búsqueda PII**
+- [x] **Step 5: Verificar que no quedan digests SHA-256 de búsqueda PII**
 
 Recorrer **todos** los schemas, no solo los ACTIVE: los `MARKED_FOR_DELETION` los retienen y son el residual que cierra S-1 del todo.
 
-- [ ] **Step 6: Registrar la ventana 2 en el informe vivo, con sello temporal**
+- [x] **Step 6: Registrar la ventana 2 en el informe vivo, con sello temporal**
 
 ---
 

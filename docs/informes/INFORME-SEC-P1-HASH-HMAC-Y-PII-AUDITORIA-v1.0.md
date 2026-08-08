@@ -751,6 +751,23 @@ Desviación documentada (no bloqueante): el plan listaba `scripts/db-backup.mjs`
 
 **Estado: CERRADO.** Con esto, los prerrequisitos §0.2 y el go/no-go §4.1 de la ventana 2 son cumplibles.
 
+### Task 9 — Ventana 2 (cerrada en dev, gate CTO aprobado)
+
+**Decisión del CTO (2026-08-08 ~07:55, constancia escrita vía sesión, previa a ejecutar):** ejecutar la ventana 2 **ahora en dev** sobre los 2 tenants sintéticos (`tenant_secp1_a/b`). No aplica a staging/prod en esta decisión.
+
+**Ejecución verificada (2026-08-08 ~07:58, sello temporal):**
+
+| Paso del plan | Evidencia |
+| --- | --- |
+| 1. Backup fresco | `dbiw-2026-08-08T13-33-31-707Z.dump` (850 426 B, `pg_restore --list` válido) |
+| 2. Medición de volumen v2 | KEEP en ambos tenants (peak 0 filas, 3 celdas, `celdas_sobre_50k=0`) — muy bajo el umbral ~50k |
+| 3. Aplicar contract | `IWANA_APPLY_PII_CONTRACT=true pnpm db:migrate:all`: **022** aplicada en pública (guardián de huecos HMAC en verde), **109** aplicada; paridad **107/107** en ambos tenants |
+| 4. Retirar variable | `Remove-Item Env:IWANA_APPLY_PII_CONTRACT`; verificada vacía en la sesión posterior. El aviso F-3 al final de la corrida era el esperado |
+| 5. Barrido `*_hash` | `public.platform_users`: 0 digests de búsqueda PII (solo `password_hash`, credencial). En `users`/`subscribers`/`expediente_records` de ambos tenants: 0 digests (`email_hash` eliminado; `email_hmac` NOT NULL; solo queda `password_hash` de credencial) |
+| 6. Sello temporal | Esta entrada |
+
+**Estado: VENTANA 2 CERRADA en dev.** La flota de dev queda en 107 migraciones (contract aplicado); un tenant nuevo provisionado ahora nace con el contract (gate de primera aplicación, Task 6). Staging y producción siguen en ventana 1, sin fecha hard ni go — pendientes de los gates del runbook §4.1.
+
 ### Pendientes
 
 - Task 9 (ventana 2) — **gate CTO**, precondición Task 7 completa (ya cumplida). Verificar backup fresco + medición v2 + aplicar contract + retirar variable + barrido de `*_hash` en TODOS los schemas + sello temporal en el informe.

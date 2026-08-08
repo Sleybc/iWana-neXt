@@ -238,8 +238,8 @@ ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_
 
 | Ventana 2 — checklist | dev | staging | prod |
 | --- | --- | --- | --- |
-| 022/109 aplicadas; sin anuncio DIFERIDA | [x] 2026-08-06 | [ ] | [ ] |
-| Paridad OK post-contract | [x] 10×106 | [ ] | [ ] |
+| 022/109 aplicadas; sin anuncio DIFERIDA | [x] 2026-08-06 · [x] 2026-08-08 (flota reconstruida, 2×107) | [ ] | [ ] |
+| Paridad OK post-contract | [x] 10×106 · [x] 2×107 (2026-08-08) | [ ] | [ ] |
 | `platform_users.email_hash` ausente | [x] | [ ] | [ ] |
 | 0 `*_hash` búsqueda PII en ACTIVE | [x] | [ ] | [ ] |
 | Env `IWANA_APPLY_PII_CONTRACT` retirado | [x] | [ ] | [ ] |
