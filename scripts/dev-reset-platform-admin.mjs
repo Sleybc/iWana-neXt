@@ -84,7 +84,11 @@ const passwordHash = hashResult.stdout.trim();
 
 const dbUser = process.env.DB_USER ?? 'iwana';
 const dbName = process.env.DB_NAME ?? 'iwana_dev';
-const container = process.env.IWANA_POSTGRES_CONTAINER ?? 'iwana-postgres';
+// El nombre real que levanta docker-compose en desarrollo es `iwana_postgres_dev`
+// (guiones bajos y sufijo de entorno). El valor anterior, `iwana-postgres`, no
+// corresponde a ningún contenedor del compose y hacía fallar el script con
+// «No such container» a cualquiera que lo ejecutara sin el override.
+const container = process.env.IWANA_POSTGRES_CONTAINER ?? 'iwana_postgres_dev';
 
 // Se reactiva `password_reset_required`: tras el sync la cuenta vuelve a usar la
 // credencial del entorno, que es conocida. El primer ingreso debe exigir cambio
