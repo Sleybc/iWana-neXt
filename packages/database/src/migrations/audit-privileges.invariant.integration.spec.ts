@@ -243,17 +243,62 @@ describeWithDb('Invariante de privilegios sobre el audit trail — PostgreSQL re
       `[audit-privileges] superficies inspeccionadas (${scanned.length}): ${scanned.join(', ')} | tenants registrados: ${registeredTenantSchemas.length} | roles no-superusuario inspeccionados: ${inspectedRoles.map((role) => role.rolname).join(', ')}`,
     );
 
-    expect(scanned).toContain('public.platform_audit_logs');
+    if (!scanned.includes('public.platform_audit_logs')) {
+      throw new Error(
+        [
+          'La exploración no encontró public.platform_audit_logs.',
+          '',
+          'QUÉ SE ROMPE: los asertos de este spec recorren el conjunto de superficies;',
+          'si ese conjunto llega vacío o incompleto, pasan en verde por vacuidad y el',
+          'invariante deja de vigilar nada sin que nadie se entere.',
+          '',
+          'QUÉ HACER: comprobar que la base está migrada (`pnpm db:migrate:all`) antes de',
+          'interpretar cualquier resultado de esta suite.',
+        ].join('\n'),
+      );
+    }
 
     // Todo tenant del registro con schema aprovisionado tiene que estar dentro.
     // Si alguno queda fuera, la exploración se ha estrechado y el invariante
     // pasaría a cubrir una muestra en vez de la flota.
-    expect(tenantsWithoutAuditTable).toEqual([]);
-    expect(scanned.length).toBe(registeredTenantSchemas.length + 1);
+    if (tenantsWithoutAuditTable.length > 0) {
+      throw new Error(
+        [
+          `${tenantsWithoutAuditTable.length} tenant(s) del registro sin tabla de auditoría inspeccionable:`,
+          '',
+          tenantsWithoutAuditTable.map((schema) => `  - ${schema}.audit_logs (ausente)`).join('\n'),
+          '',
+          'QUÉ SE ROMPE: el invariante es por schema. Un tenant registrado en',
+          '`public.tenants` cuyo `audit_logs` no existe queda fuera de la exploración, así',
+          'que este spec pasaría a cubrir una muestra en vez de la flota completa.',
+          '',
+          'QUÉ HACER: distinguir el caso antes de tocar nada.',
+          '  - Tenant a medio aprovisionar: correr `pnpm --filter @iwana/db migration:tenant:run`',
+          '    y repetir. La cadena tenant crea `audit_logs`.',
+          '  - Fila huérfana de una suite de integración que abortó (r4_r2_4 inserta y borra',
+          '    su tenant en afterAll): retirar la fila del registro.',
+          '  - Ninguna de las dos: es un tenant de la flota sin trail de auditoría. Escalar',
+          '    al orquestador AI-EM-ARCH antes de seguir; no silenciar este aserto.',
+        ].join('\n'),
+      );
+    }
 
     // Al menos un rol no-superusuario que inspeccionar: si la base no tiene los
     // roles least-privilege (SEC-04 sin aplicar), este spec no prueba nada.
-    expect(inspectedRoles.length).toBeGreaterThan(0);
+    if (inspectedRoles.length === 0) {
+      throw new Error(
+        [
+          'No hay ningún rol no-superusuario que inspeccionar en esta base.',
+          '',
+          'SEC-04 no está aplicado: sin `iwana_app` ni `iwana_migrator` el invariante no',
+          'tiene sujeto y un verde aquí no significaría nada.',
+          `QUÉ HACER: aplicar los roles least-privilege antes de correr la suite: ${APPLY_LEAST_PRIVILEGE}`,
+        ].join('\n'),
+      );
+    }
+
+    // Una superficie por tenant registrado, más la de plataforma.
+    expect(scanned.length).toBe(registeredTenantSchemas.length + 1);
   });
 
   it('ningún rol fuera del de mantenimiento puede mutar el audit trail', () => {
