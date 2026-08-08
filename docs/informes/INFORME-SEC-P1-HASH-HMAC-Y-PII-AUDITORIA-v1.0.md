@@ -556,7 +556,7 @@ Fases del prompt: `g65` → `staging-clave` → `staging-ventana-1` → `staging
 | **D-4** | Alta *(reclasificada desde Media)* | Filas legacy huérfanas en `public.typeorm_migrations`. **No era residuo inocuo:** `undoLastMigration` recorre por `id` DESC y aborta con `TypeORMError` al no resolver la clase — tapón permanente del revert público, invisible a `migration:show`. **Alcance real: 7 renombrados, no 1** | Migración pública **023** de saneamiento, lista cerrada de 7 nombres, `down()` vacío deliberado, 11 tests |
 | **D-5** | Alta | El fix de orden de la 021 nunca se ejercitó contra PostgreSQL real | **Cerrado con evidencia**: ver «Bootstrap limpio» |
 | **H-1** | Alta | `data-source.ts` pasaba la lista **filtrada** a un `migrations` que sirve tanto a `run` como a `revert`: una diferida ya aplicada desaparece de la lista justo cuando el runbook ordena retirar la variable, y el revert público muere en el primer paso | `revert-data-source.ts` con `PUBLIC_MIGRATIONS` íntegra; `migration:revert` repuntado. Defecto introducido por AI-EM-ARCH al sustituir el glob |
-| **S-6** | ~~Media~~ → **Baja** | El trigger de inmutabilidad de `audit_logs` tiene una escotilla (`iwana.audit_maintenance`) que cualquier rol conectado puede activar con `SET LOCAL`. **Matizado 2026-08-08:** el rol de aplicación no tiene `UPDATE` sobre las tablas de auditoría, así que el GRANT ya lo bloqueaba antes del trigger — ver «Reclasificación de S-6» | **Corregido** (migraciones 111/024, commit `729a35b1`): el trigger exige además pertenencia a `iwana_migrator`. Defensa en profundidad, no cierre de una brecha explotable |
+| **S-6** | **Media** (reclasificación a Baja **en suspenso**) | El trigger de inmutabilidad de `audit_logs` tiene una escotilla (`iwana.audit_maintenance`) que cualquier rol conectado puede activar con `SET LOCAL`. Un intento de rebaja a Baja el 2026-08-08 —basado en que el rol de aplicación no tiene `UPDATE`— quedó **sin confirmar** al aparecer los default privileges `arwd`: ver «Reclasificación EN SUSPENSO» | **Corregido** (migraciones 111/024, commit `729a35b1`): el trigger exige además pertenencia a `iwana_migrator` |
 
 ### Reencuadre de D-4: el defecto no es el sufijo corto, es el renombrado
 
@@ -682,7 +682,24 @@ Evidencia adicional que AI-SR-QA aportó sin que se le pidiera, y que vale regis
 
 **Estado: S-6 CERRADO en código y verificado contra PostgreSQL real.**
 
-#### Reclasificación de S-6: Media → Baja (AI-EM-ARCH, 2026-08-08)
+#### Reclasificación EN SUSPENSO — no darla por buena (AI-EM-ARCH, 2026-08-08)
+
+**La rebaja descrita a continuación no está confirmada.** Se apoyaba en una foto de los tenants existentes (`iwana_app` sin `UPDATE`), y al especificar la Task 10 apareció evidencia que la contradice:
+
+```
+pg_default_acl (schemas de tenant y public):
+  iwana_app = arwd/iwana_migrator      -- a=INSERT r=SELECT w=UPDATE d=DELETE
+```
+
+Los **default privileges conceden `UPDATE` y `DELETE` al rol de aplicación sobre toda tabla nueva**, y `scripts/db/apply-least-privilege.sql` re-endurece auditoría a `SELECT, INSERT` **después** de conceder sobre `ALL TABLES`. El estado «el rol de aplicación no puede mutar auditoría» no es una propiedad del diseño: es el resultado de haber ejecutado ese script después de crear las tablas. Y `grep` sobre `apps/worker/src` confirma que **el provisioning de tenants no invoca least-privilege en ningún punto**.
+
+Si existe una ventana real —un `audit_logs` con `UPDATE` concedido al rol de aplicación entre su creación y la siguiente pasada del script—, S-6 **era explotable**, la severidad Media de AI-SEC-ENG era la correcta, y las migraciones 111/024 son la defensa que cierra esa ventana, no un extra en profundidad.
+
+**Medición que decide (pendiente):** provisionar un tenant por la vía de la aplicación —no por `db:migrate:all`— y comprobar `has_table_privilege('iwana_app','<schema>.audit_logs','UPDATE')` **antes** de cualquier re-apply. Hasta tenerla, **la severidad vigente es Media**.
+
+Se deja escrito en lugar de corregirse en silencio porque es el cuarto caso del mismo patrón en esta fase, y esta vez el defecto está en la corrección de un defecto: se sustituyó una inferencia no medida por otra inferencia no medida. El invariante de la Task 10 gana valor con esto — no vigila una circunstancia estable, vigila algo que el ciclo de vida del provisioning puede romper.
+
+#### Reclasificación propuesta y SIN CONFIRMAR: Media → Baja (AI-EM-ARCH, 2026-08-08)
 
 Al verificar el cierre de forma independiente —intentando reproducir la evasión, no releyendo el dictamen— apareció un hecho que ninguna de las tres revisiones previas había comprobado: **el rol de aplicación no tiene privilegio de `UPDATE` sobre las tablas de auditoría**.
 
