@@ -4,7 +4,9 @@ import { AuditAction } from '@iwana/shared';
  * Input para registrar una entrada de audit trail.
  *
  * Cuando tenantId/schemaName se omiten, el servicio los resuelve desde TenantContext.
- * Si tampoco hay TenantContext activo, la entrada se omite silenciosamente.
+ * Si tampoco hay TenantContext activo, la entrada NO se descarta: se reencamina a
+ * `public.platform_audit_logs` como anomalia (S-8). Un llamador de plataforma debe
+ * usar `PlatformAuditService` directamente en lugar de depender de ese reencaminado.
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/audit)
  */

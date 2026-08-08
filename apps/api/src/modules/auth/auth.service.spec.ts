@@ -29,12 +29,13 @@ import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { AuditAction, UserRole, UserStatus } from '@iwana/shared';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
 import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { MailerService } from '../mailer/mailer.service';
 import {
   ChangePasswordDto,
@@ -232,6 +233,12 @@ describe('AuthService', () => {
         {
           // AuditService: mock fire-and-forget — no debe bloquear los tests de auth
           provide: AuditService,
+          useValue: { log: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          // PlatformAuditService: trail de public.platform_audit_logs (S-8).
+          // Es el destino de los eventos de loginPlatform, que no tiene TenantContext.
+          provide: PlatformAuditService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
         },
         {
@@ -950,6 +957,198 @@ describe('AuthService', () => {
       // Se envia totpCode pero el secret no esta configurado
       const dto = { email: 'admin@iwana.co', password: 'Passw0rd!', totpCode: '123456' };
       await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    // -------------------------------------------------------------------------
+    // S-8: el login de plataforma no dejaba NINGUN rastro, ni de exito ni de
+    // fallo. La ruta es @Public(), asi que AuditInterceptor tampoco la cubre.
+    // -------------------------------------------------------------------------
+
+    describe('audit trail (S-8)', () => {
+      function platformAuditLog(): jest.Mock {
+        return (service as unknown as { platformAuditService: { log: jest.Mock } })
+          .platformAuditService.log;
+      }
+
+      /** Une todos los payloads auditados en un solo string para buscar filtraciones. */
+      function serializarLlamadas(): string {
+        return JSON.stringify(platformAuditLog().mock.calls);
+      }
+
+      it('registra LOGIN en el trail de plataforma cuando el login es valido', async () => {
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-1',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status: 'active',
+          mfaEnabled: false,
+          mfaSecret: null,
+        });
+        platformUserRepo.update.mockResolvedValue({ affected: 1 });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+        await service.loginPlatform(
+          { email: 'admin@iwana.co', password: 'Passw0rd!' },
+          '203.0.113.10',
+          'agente-de-prueba',
+        );
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN,
+            entityType: 'PlatformUser',
+            entityId: 'platform-user-uuid-1',
+            userId: 'platform-user-uuid-1',
+            ipAddress: '203.0.113.10',
+            userAgent: 'agente-de-prueba',
+          }),
+        );
+      });
+
+      it('registra LOGIN_FAILED cuando la contrasena es incorrecta', async () => {
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-2',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status: 'active',
+          mfaEnabled: false,
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+        await expect(
+          service.loginPlatform({ email: 'admin@iwana.co', password: 'ClaveIncorrecta!' }),
+        ).rejects.toThrow(UnauthorizedException);
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN_FAILED,
+            entityType: 'PlatformUser',
+            entityId: 'platform-user-uuid-2',
+            userId: 'platform-user-uuid-2',
+            newValue: { motivo: 'CONTRASENA_INVALIDA' },
+          }),
+        );
+      });
+
+      it('registra LOGIN_FAILED sin userId ni correo cuando la cuenta no existe', async () => {
+        platformUserRepo.findOne.mockResolvedValue(null);
+
+        await expect(
+          service.loginPlatform({ email: 'noexiste@iwana.co', password: 'Any1pass!' }),
+        ).rejects.toThrow(UnauthorizedException);
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN_FAILED,
+            entityId: 'USUARIO_DESCONOCIDO',
+            userId: null,
+            newValue: { motivo: 'USUARIO_NO_ENCONTRADO' },
+          }),
+        );
+
+        // El correo tecleado es PII: no puede acabar en el trail
+        expect(serializarLlamadas()).not.toContain('noexiste@iwana.co');
+      });
+
+      it('registra LOGIN_FAILED cuando la cuenta esta suspendida', async () => {
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-3',
+          emailHash: 'h',
+          passwordHash: 'ph',
+          status: UserStatus.SUSPENDED,
+          mfaEnabled: false,
+        });
+
+        await expect(
+          service.loginPlatform({ email: 'susp@iwana.co', password: 'Pass1234!' }),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN_FAILED,
+            newValue: { motivo: 'CUENTA_SUSPENDIDA' },
+          }),
+        );
+      });
+
+      it('registra LOGIN_FAILED cuando el codigo MFA es invalido', async () => {
+        const encryptedSecret = (service as any).encryptSecret('PLATFORMMFASECRET') as string;
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-4',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status: 'active',
+          mfaEnabled: true,
+          mfaSecret: encryptedSecret,
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+        jest
+          .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
+          .mockResolvedValue(false);
+
+        await expect(
+          service.loginPlatform({
+            email: 'admin@iwana.co',
+            password: 'Passw0rd!',
+            totpCode: '000000',
+          }),
+        ).rejects.toThrow(UnauthorizedException);
+
+        expect(platformAuditLog()).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: AuditAction.LOGIN_FAILED,
+            newValue: { motivo: 'MFA_INVALIDO' },
+          }),
+        );
+      });
+
+      it('no filtra contrasena, codigo TOTP ni token en ningun payload auditado', async () => {
+        const contrasena = 'ClaveDePruebaNoReal!2026';
+        const totp = '424242';
+
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-5',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status: 'active',
+          mfaEnabled: false,
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+        await expect(
+          service.loginPlatform({
+            email: 'admin@iwana.co',
+            password: contrasena,
+            totpCode: totp,
+          }),
+        ).rejects.toThrow(UnauthorizedException);
+
+        const auditado = serializarLlamadas();
+        expect(auditado).not.toContain(contrasena);
+        expect(auditado).not.toContain(totp);
+        expect(auditado).not.toContain('mock.jwt.token');
+      });
+
+      it('no audita como intento el reto MFA pendiente de codigo', async () => {
+        const encryptedSecret = (service as any).encryptSecret('PLATFORMMFASECRET') as string;
+        platformUserRepo.findOne.mockResolvedValue({
+          id: 'platform-user-uuid-6',
+          emailHash: 'h',
+          passwordHash: '$2b$12$hash',
+          status: 'active',
+          mfaEnabled: true,
+          mfaSecret: encryptedSecret,
+        });
+        (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+        const result = await service.loginPlatform({
+          email: 'admin@iwana.co',
+          password: 'Passw0rd!',
+        });
+
+        expect(result.mfaRequired).toBe(true);
+        expect(platformAuditLog()).not.toHaveBeenCalled();
+      });
     });
   });
 

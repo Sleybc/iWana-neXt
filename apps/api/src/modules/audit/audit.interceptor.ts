@@ -6,6 +6,7 @@ import { tap } from 'rxjs/operators';
 import { AuditAction } from '@iwana/shared';
 import { TenantContext } from '@iwana/db';
 import { AuditService } from './audit.service';
+import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
 import { PlatformAuditService } from './platform-audit.service';
 import { AUDIT_ENTITY_KEY } from './decorators/audit-entity.decorator';
 import { SKIP_AUDIT_KEY } from './decorators/skip-audit.decorator';
@@ -200,7 +201,7 @@ export class AuditInterceptor implements NestInterceptor {
             );
             void this.platformAuditService.log({
               ...entryBase,
-              entityType: `ANOMALIA_AUDITORIA:${entityType}`,
+              entityType: `${ANOMALIA_AUDITORIA_PREFIX}${entityType}`,
               newValue: {
                 motivo: 'Peticion autenticada sin contexto de auditoria resoluble',
                 tokenType: user?.type ?? null,

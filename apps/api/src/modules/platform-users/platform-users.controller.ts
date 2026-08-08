@@ -6,10 +6,14 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request as ExpressRequest } from 'express';
 import { PlatformRole } from '@iwana/shared';
+import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
+import { AuditRequestContext } from '../audit/interfaces/audit-request-context.interface';
 import { AuthService } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -38,6 +42,20 @@ export class PlatformUsersController {
     private readonly authService: AuthService,
   ) {}
 
+  /**
+   * Extrae IP y User-Agent para las entradas de auditoría que emite el servicio.
+   *
+   * Los handlers CUD de este controlador llevan `@SkipAudit()`: emiten su propia
+   * entrada semántica en lugar de la genérica del interceptor, así que el origen
+   * de la petición hay que pasarlo a mano (S-8).
+   */
+  private static auditContext(req: ExpressRequest): AuditRequestContext {
+    return {
+      ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
+      userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
+    };
+  }
+
   @Get('bootstrap/status')
   @Public()
   @ApiOperation({ summary: 'Estado del bootstrap de plataforma — indica si hay usuarios creados' })
@@ -48,6 +66,7 @@ export class PlatformUsersController {
 
   @Post('bootstrap')
   @Public()
+  @SkipAudit()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary:
@@ -57,8 +76,12 @@ export class PlatformUsersController {
   @ApiResponse({ status: 409, description: 'Ya existen usuarios o email inválido.' })
   async createBootstrapUser(
     @Body() dto: CreatePlatformUserBootstrapDto,
+    @Request() req: ExpressRequest,
   ): Promise<{ data: { accessToken: string } }> {
-    const user = await this.platformUsersService.createBootstrapUser(dto);
+    const user = await this.platformUsersService.createBootstrapUser(
+      dto,
+      PlatformUsersController.auditContext(req),
+    );
     const accessToken = this.authService.signPlatformToken(user as unknown as PlatformUser);
     return { data: { accessToken } };
   }
@@ -72,36 +95,54 @@ export class PlatformUsersController {
   }
 
   @Patch('me')
+  @SkipAudit()
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({ summary: 'Actualizar perfil propio del usuario de plataforma' })
   async updateMyProfile(
     @CurrentUser() user: JwtPayload,
     @Body() dto: UpdatePlatformUserDto,
+    @Request() req: ExpressRequest,
   ): Promise<{ data: PlatformUserResponseDto }> {
-    const data = await this.platformUsersService.updateProfile(user.sub, dto);
+    const data = await this.platformUsersService.updateProfile(
+      user.sub,
+      dto,
+      PlatformUsersController.auditContext(req),
+    );
     return { data };
   }
 
   @Patch('me/login-email')
+  @SkipAudit()
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @ApiOperation({ summary: 'Actualizar el email de acceso del usuario de plataforma autenticado' })
   async updateMyLoginEmail(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePlatformUserLoginEmailDto,
+    @Request() req: ExpressRequest,
   ): Promise<{ data: PlatformUserResponseDto }> {
-    const data = await this.platformUsersService.changeLoginEmail(user.sub, dto);
+    const data = await this.platformUsersService.changeLoginEmail(
+      user.sub,
+      dto,
+      PlatformUsersController.auditContext(req),
+    );
     return { data };
   }
 
   @Post('me/change-password')
+  @SkipAudit()
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar la contraseña del usuario de plataforma autenticado' })
   async updateMyPassword(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePlatformUserPasswordDto,
+    @Request() req: ExpressRequest,
   ): Promise<{ data: { message: string } }> {
-    await this.platformUsersService.changePassword(user.sub, dto);
+    await this.platformUsersService.changePassword(
+      user.sub,
+      dto,
+      PlatformUsersController.auditContext(req),
+    );
     return { data: { message: 'Contraseña actualizada correctamente.' } };
   }
 }

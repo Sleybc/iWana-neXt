@@ -52,15 +52,24 @@ try {
   process.exit(1);
 }
 
+// La contraseña viaja por stdin, no como argumento del hijo.
+//
+// Pasarla en `argv` la dejaba legible en cualquier listado de procesos del
+// equipo (`ps -ef`, Get-CimInstance Win32_Process) durante todo el bcrypt de
+// coste 12 — el mismo defecto que ya se corrigió en la ruta del SQL. Por stdin
+// no aparece en la línea de comandos y no hay nada que citar.
 const hashResult = spawnSync(
   process.execPath,
   [
     '-e',
-    "const bcrypt=require('bcryptjs'); bcrypt.hash(process.argv[1],12).then(h=>process.stdout.write(h));",
-    password,
+    "let d='';process.stdin.setEncoding('utf8');" +
+      "process.stdin.on('data',(c)=>{d+=c;});" +
+      "process.stdin.on('end',()=>{const bcrypt=require('bcryptjs');" +
+      'bcrypt.hash(d,12).then((h)=>process.stdout.write(h));});',
   ],
   {
     cwd: join(root, 'apps', 'api'),
+    input: password,
     encoding: 'utf8',
     shell: false,
   },

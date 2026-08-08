@@ -4,7 +4,8 @@
  * Verifica:
  * - log() persiste usando TenantContext cuando no se pasan tenantId/schemaName.
  * - log() persiste usando tenantId/schemaName explícitos (bypass de TenantContext).
- * - log() omite silenciosamente cuando no hay contexto ni valores explícitos.
+ * - log() reencamina a platform_audit_logs como anomalía cuando no hay contexto
+ *   ni valores explícitos (S-8: antes se descartaba en silencio).
  * - log() swallows cualquier error de persistencia (nunca relanza).
  *
  * MOCKS:
@@ -17,6 +18,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AuditAction } from '@iwana/shared';
 import { AuditService } from './audit.service';
+import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
+import { PlatformAuditService } from './platform-audit.service';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 
 // ---------------------------------------------------------------------------
@@ -76,10 +79,12 @@ const BASE_ENTRY: AuditEntryInput = {
 
 describe('AuditService', () => {
   let service: AuditService;
+  let platformAuditLog: jest.Mock;
 
   beforeEach(async () => {
     mockRunInTenantSchema.mockReset();
     mockTenantContextGet.mockReset();
+    platformAuditLog = jest.fn().mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -87,6 +92,10 @@ describe('AuditService', () => {
         {
           provide: DataSource,
           useValue: {}, // DataSource injected via @InjectDataSource; no se usa directamente
+        },
+        {
+          provide: PlatformAuditService,
+          useValue: { log: platformAuditLog },
         },
       ],
     }).compile();
@@ -142,15 +151,36 @@ describe('AuditService', () => {
   });
 
   // --------------------------------------------------------------------------
-  // Caso 3: omisión silenciosa sin contexto ni valores explícitos
+  // Caso 3 (S-8): sin contexto NO se descarta — se reencamina como anomalía
   // --------------------------------------------------------------------------
 
-  it('omite silenciosamente cuando no hay TenantContext ni tenantId/schemaName', async () => {
+  it('reencamina a platform_audit_logs como anomalía cuando no hay TenantContext ni tenantId/schemaName', async () => {
     mockTenantContextGet.mockReturnValue(undefined); // Sin contexto activo
 
     await service.log(BASE_ENTRY); // No lanza
 
+    // No escribe en ningún schema de tenant: no hay tenant al que atribuirlo
     expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+
+    // Pero tampoco se pierde: queda trazado en el trail de plataforma
+    expect(platformAuditLog).toHaveBeenCalledTimes(1);
+    expect(platformAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: BASE_ENTRY.action,
+        entityType: `${ANOMALIA_AUDITORIA_PREFIX}${BASE_ENTRY.entityType}`,
+        entityId: BASE_ENTRY.entityId,
+        userId: BASE_ENTRY.userId,
+      }),
+    );
+  });
+
+  it('no reencamina cuando el destino de tenant sí es resoluble', async () => {
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'tenant_s1' });
+    setupRunInTenantSchema();
+
+    await service.log(BASE_ENTRY);
+
+    expect(platformAuditLog).not.toHaveBeenCalled();
   });
 
   // --------------------------------------------------------------------------

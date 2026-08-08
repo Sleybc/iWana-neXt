@@ -8,7 +8,7 @@ import { PlatformUser } from '@iwana/db';
 import { PlatformRole, UserStatus, AuditAction } from '@iwana/shared';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import { Repository } from 'typeorm';
-import { AuditService } from '../audit/audit.service';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformUsersService } from './platform-users.service';
 
 jest.mock('bcryptjs', () => ({
@@ -54,7 +54,9 @@ function encryptPlatformEmail(
 describe('PlatformUsersService', () => {
   let service: PlatformUsersService;
   let repo: jest.Mocked<Repository<PlatformUser>>;
-  const auditServiceMock = { log: jest.fn() };
+  // S-8: las operaciones de plataforma no tienen TenantContext; su trail es
+  // public.platform_audit_logs, no el schema de un tenant.
+  const platformAuditServiceMock = { log: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -69,7 +71,7 @@ describe('PlatformUsersService', () => {
             create: jest.fn(),
           },
         },
-        { provide: AuditService, useValue: auditServiceMock },
+        { provide: PlatformAuditService, useValue: platformAuditServiceMock },
         {
           provide: ConfigService,
           useValue: {
@@ -110,7 +112,7 @@ describe('PlatformUsersService', () => {
         async (user: unknown) => ({ ...(user as object), id: 'new-uuid' }) as PlatformUser,
       );
       (bcrypt.hash as unknown as jest.Mock).mockImplementation(async () => 'hashed_password');
-      (auditServiceMock.log as unknown as jest.Mock).mockImplementation(async () => {
+      (platformAuditServiceMock.log as unknown as jest.Mock).mockImplementation(async () => {
         /* void */
       });
     });
@@ -124,7 +126,7 @@ describe('PlatformUsersService', () => {
       const result = await service.createBootstrapUser(dto);
       expect(result.email).toBe('admin@iwana.co');
       expect(result.role).toBe(PlatformRole.SYSTEM_ADMIN);
-      expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect(platformAuditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ entityType: 'PlatformUser', action: AuditAction.CREATE }),
       );
     });
@@ -235,7 +237,7 @@ describe('PlatformUsersService', () => {
 
     await service.updateProfile(entity.id, { language: 'en-US' });
 
-    expect(auditServiceMock.log).toHaveBeenCalledWith(
+    expect(platformAuditServiceMock.log).toHaveBeenCalledWith(
       expect.objectContaining({
         entityType: 'PlatformUser',
         action: 'UPDATE',
@@ -347,7 +349,7 @@ describe('PlatformUsersService', () => {
     expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({ passwordHash: 'hashed_nueva_password' }),
     );
-    expect(auditServiceMock.log).toHaveBeenCalledWith(
+    expect(platformAuditServiceMock.log).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.PASSWORD_CHANGED,
         entityType: 'PlatformUser',

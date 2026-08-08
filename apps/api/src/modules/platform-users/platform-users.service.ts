@@ -11,7 +11,9 @@ import * as bcrypt from 'bcryptjs';
 import { PlatformUser } from '@iwana/db';
 import { AuditAction, PlatformRole, UserStatus } from '@iwana/shared';
 import { Repository } from 'typeorm';
-import { AuditService } from '../audit/audit.service';
+import { PLATFORM_USER_ENTITY_TYPE } from '../audit/audit.constants';
+import { AuditRequestContext } from '../audit/interfaces/audit-request-context.interface';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
@@ -46,7 +48,7 @@ export class PlatformUsersService {
   constructor(
     @InjectRepository(PlatformUser)
     private readonly platformUserRepo: Repository<PlatformUser>,
-    private readonly auditService: AuditService,
+    private readonly platformAuditService: PlatformAuditService,
     private readonly configService: ConfigService,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
@@ -68,6 +70,7 @@ export class PlatformUsersService {
   async updateProfile(
     userId: string,
     dto: UpdatePlatformUserDto,
+    requestContext: AuditRequestContext = {},
   ): Promise<PlatformUserResponseDto> {
     const user = (await this.platformUserRepo.findOne({
       where: { id: userId },
@@ -102,11 +105,11 @@ export class PlatformUsersService {
 
     const saved = (await this.platformUserRepo.save(user)) as PlatformUserWithProfile;
 
-    // Se invoca AuditService para mantener consistencia con el patrón del repo.
-    // Si no hay contexto de tenant, AuditService omite el registro sin bloquear la operación.
-    await this.auditService.log({
+    // Una operación de plataforma no tiene TenantContext: su trail es
+    // public.platform_audit_logs, vía PlatformAuditService (S-8).
+    await this.platformAuditService.log({
       action: AuditAction.UPDATE,
-      entityType: 'PlatformUser',
+      entityType: PLATFORM_USER_ENTITY_TYPE,
       entityId: saved.id,
       userId: saved.id,
       oldValue: {
@@ -123,6 +126,8 @@ export class PlatformUsersService {
         timezone: saved.timezone,
         language: saved.language,
       },
+      ipAddress: requestContext.ipAddress ?? null,
+      userAgent: requestContext.userAgent ?? null,
     });
 
     return this.toDto(saved);
@@ -131,6 +136,7 @@ export class PlatformUsersService {
   async changeLoginEmail(
     userId: string,
     dto: ChangePlatformUserLoginEmailDto,
+    requestContext: AuditRequestContext = {},
   ): Promise<PlatformUserResponseDto> {
     const user = (await this.platformUserRepo.findOne({
       where: { id: userId },
@@ -167,19 +173,28 @@ export class PlatformUsersService {
 
     const saved = (await this.platformUserRepo.save(user)) as PlatformUserWithProfile;
 
-    await this.auditService.log({
+    // El correo nuevo y el anterior NO se persisten: son PII. Lo que hace
+    // distinguible esta fila de una edición de perfil es el marcador del payload,
+    // no el `entityType` — que es el mismo para toda la entidad (S-8).
+    await this.platformAuditService.log({
       action: AuditAction.UPDATE,
-      entityType: 'PlatformUserLoginEmail',
+      entityType: PLATFORM_USER_ENTITY_TYPE,
       entityId: saved.id,
       userId: saved.id,
       oldValue: { loginEmailChanged: false },
       newValue: { loginEmailChanged: true },
+      ipAddress: requestContext.ipAddress ?? null,
+      userAgent: requestContext.userAgent ?? null,
     });
 
     return this.toDto(saved);
   }
 
-  async changePassword(userId: string, dto: ChangePlatformUserPasswordDto): Promise<void> {
+  async changePassword(
+    userId: string,
+    dto: ChangePlatformUserPasswordDto,
+    requestContext: AuditRequestContext = {},
+  ): Promise<void> {
     const user = await this.platformUserRepo.findOne({
       where: { id: userId },
     });
@@ -197,13 +212,15 @@ export class PlatformUsersService {
     user.passwordHash = await bcrypt.hash(dto.newPassword, 12);
     await this.platformUserRepo.save(user);
 
-    await this.auditService.log({
+    await this.platformAuditService.log({
       action: AuditAction.PASSWORD_CHANGED,
-      entityType: 'PlatformUser',
+      entityType: PLATFORM_USER_ENTITY_TYPE,
       entityId: user.id,
       userId: user.id,
       oldValue: null,
       newValue: { passwordChanged: true },
+      ipAddress: requestContext.ipAddress ?? null,
+      userAgent: requestContext.userAgent ?? null,
     });
   }
 
@@ -215,7 +232,10 @@ export class PlatformUsersService {
     };
   }
 
-  async createBootstrapUser(dto: CreatePlatformUserBootstrapDto): Promise<PlatformUserResponseDto> {
+  async createBootstrapUser(
+    dto: CreatePlatformUserBootstrapDto,
+    requestContext: AuditRequestContext = {},
+  ): Promise<PlatformUserResponseDto> {
     const count = await this.platformUserRepo.count();
     if (count > 0) {
       throw new ConflictException(
@@ -248,13 +268,19 @@ export class PlatformUsersService {
 
     const saved = await this.platformUserRepo.save(user);
 
-    await this.auditService.log({
+    // Alta del primer SYSTEM_ADMIN por el flujo `@Public()` de bootstrap. Sin
+    // usuario autenticado ni TenantContext, el interceptor no la cubre: si esta
+    // llamada no escribe, la creación de la cuenta más privilegiada del sistema no
+    // queda registrada por ninguna vía (S-8). El correo no se persiste — es PII.
+    await this.platformAuditService.log({
       action: AuditAction.CREATE,
-      entityType: 'PlatformUser',
+      entityType: PLATFORM_USER_ENTITY_TYPE,
       entityId: saved.id,
       userId: saved.id,
       oldValue: null,
-      newValue: { email: dto.email, role: PlatformRole.SYSTEM_ADMIN },
+      newValue: { role: PlatformRole.SYSTEM_ADMIN, origen: 'BOOTSTRAP_PUBLICO' },
+      ipAddress: requestContext.ipAddress ?? null,
+      userAgent: requestContext.userAgent ?? null,
     });
 
     return this.toDto(saved as PlatformUserWithProfile);

@@ -21,6 +21,11 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import {
+  PLATFORM_USER_ENTITY_TYPE,
+  UNKNOWN_PLATFORM_USER_ENTITY_ID,
+} from '../audit/audit.constants';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
@@ -62,6 +67,18 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 /** Duracion de las credenciales temporales del ADMIN inicial (24 horas) */
 const TEMPORARY_PASSWORD_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * Motivos cerrados de fallo de login de plataforma que se persisten en el trail.
+ * Codigos estables, sin PII ni detalle de la credencial presentada.
+ */
+type PlatformLoginFailureReason =
+  | 'USUARIO_NO_ENCONTRADO'
+  | 'CUENTA_SUSPENDIDA'
+  | 'CUENTA_INACTIVA'
+  | 'CONTRASENA_INVALIDA'
+  | 'MFA_SIN_SECRETO'
+  | 'MFA_INVALIDO';
 
 /** Login bootstrap fijo del ADMIN inicial sembrado por el worker */
 
@@ -109,6 +126,7 @@ export class AuthService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly auditService: AuditService,
+    private readonly platformAuditService: PlatformAuditService,
     private readonly mailerService: MailerService,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
@@ -125,11 +143,21 @@ export class AuthService {
    *
    * Emite un access token RS256 de tipo `platform` para operar endpoints de
    * administracion transversal, especialmente el alta del primer tenant.
+   *
+   * AUDITORIA (S-8): cada intento —exitoso o fallido— deja fila en
+   * `public.platform_audit_logs` via {@link PlatformAuditService}. La ruta es
+   * `@Public()`, asi que `AuditInterceptor` no la cubre y el registro tiene que
+   * ser explicito. Antes no habia ninguno: un intento fallido contra las cuentas
+   * mas privilegiadas del sistema no dejaba rastro.
+   *
+   * Nunca se registran la contrasena, el codigo TOTP, el token emitido ni el
+   * correo: `motivo` es un codigo cerrado y `entityId` es el UUID de la cuenta,
+   * o `USUARIO_DESCONOCIDO` cuando el correo no corresponde a ninguna.
    */
   async loginPlatform(
     dto: LoginDto,
-    _ipAddress?: string,
-    _userAgent?: string,
+    ipAddress?: string,
+    userAgent?: string,
   ): Promise<AuthResponse> {
     const emailHash = hashEmail(dto.email);
 
@@ -139,25 +167,30 @@ export class AuthService {
     });
 
     if (!user) {
+      await this.logPlatformLoginFailed(null, 'USUARIO_NO_ENCONTRADO', ipAddress, userAgent);
       throw new UnauthorizedException('Credenciales invalidas.');
     }
 
     if (user.status === UserStatus.SUSPENDED) {
+      await this.logPlatformLoginFailed(user.id, 'CUENTA_SUSPENDIDA', ipAddress, userAgent);
       throw new ForbiddenException('La cuenta de plataforma esta suspendida.');
     }
 
     if (user.status === UserStatus.INACTIVE) {
+      await this.logPlatformLoginFailed(user.id, 'CUENTA_INACTIVA', ipAddress, userAgent);
       throw new UnauthorizedException('Credenciales invalidas.');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
 
     if (!passwordValid) {
+      await this.logPlatformLoginFailed(user.id, 'CONTRASENA_INVALIDA', ipAddress, userAgent);
       throw new UnauthorizedException('Credenciales invalidas.');
     }
 
     if (user.mfaEnabled) {
       if (!dto.totpCode) {
+        // Reto MFA pendiente: ni exito ni fallo todavia, no se audita como intento.
         return {
           accessToken: '',
           mfaRequired: true,
@@ -165,11 +198,13 @@ export class AuthService {
       }
 
       if (!user.mfaSecret) {
+        await this.logPlatformLoginFailed(user.id, 'MFA_SIN_SECRETO', ipAddress, userAgent);
         throw new UnauthorizedException('La cuenta requiere completar el setup de MFA.');
       }
 
       const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret), dto.totpCode);
       if (!mfaValid) {
+        await this.logPlatformLoginFailed(user.id, 'MFA_INVALIDO', ipAddress, userAgent);
         throw new UnauthorizedException('Codigo MFA invalido.');
       }
     }
@@ -180,7 +215,45 @@ export class AuthService {
 
     const { accessToken } = this.signPlatformAccessToken(user);
 
+    await this.platformAuditService.log({
+      action: AuditAction.LOGIN,
+      entityType: PLATFORM_USER_ENTITY_TYPE,
+      entityId: user.id,
+      userId: user.id,
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+      newValue: { mfaAplicado: user.mfaEnabled },
+    });
+
     return { accessToken };
+  }
+
+  /**
+   * Registra un intento fallido de login de plataforma.
+   *
+   * Se `await`ea a proposito: la respuesta 401/403 sale despues de que la fila
+   * este escrita. Un fire-and-forget dejaba la ventana en la que el proceso
+   * responde y muere sin haber persistido el intento — justo el escenario que
+   * hace falta trazar.
+   *
+   * `userId` null y `entityId = USUARIO_DESCONOCIDO` cuando el correo no
+   * corresponde a ninguna cuenta: no se persiste el correo tecleado (PII).
+   */
+  private async logPlatformLoginFailed(
+    userId: string | null,
+    motivo: PlatformLoginFailureReason,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    await this.platformAuditService.log({
+      action: AuditAction.LOGIN_FAILED,
+      entityType: PLATFORM_USER_ENTITY_TYPE,
+      entityId: userId ?? UNKNOWN_PLATFORM_USER_ENTITY_ID,
+      userId,
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+      newValue: { motivo },
+    });
   }
 
   // ---------------------------------------------------------------------------

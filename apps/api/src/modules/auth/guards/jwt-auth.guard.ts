@@ -36,6 +36,21 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     '/api/v1/auth/mfa/verify',
   ];
 
+  /**
+   * Compara la ruta pedida contra una permitida.
+   *
+   * `startsWith` a secas era coincidencia por prefijo de **cadena**, no de ruta:
+   * `/api/v1/auth/mfa/setupX` la satisfacia. Hoy esa ruta no existe y el 404 del
+   * router disimulaba el fallo, pero cualquier endpoint futuro cuyo path empiece
+   * por uno permitido quedaria alcanzable con un token de alcance limitado.
+   *
+   * Se acepta la igualdad exacta y los descendientes reales (`allowed + '/'`),
+   * que es lo que significa un prefijo de ruta.
+   */
+  private static matchesAllowedPath(requestPath: string, allowed: string): boolean {
+    return requestPath === allowed || requestPath.startsWith(`${allowed}/`);
+  }
+
   constructor(private readonly reflector: Reflector) {
     super();
   }
@@ -69,7 +84,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       const request = context.switchToHttp().getRequest<{ url: string; path: string }>();
       const requestPath = request.path ?? request.url;
       const isAllowed = JwtAuthGuard.MFA_SETUP_ALLOWED_PATHS.some((allowed) =>
-        requestPath.startsWith(allowed),
+        JwtAuthGuard.matchesAllowedPath(requestPath, allowed),
       );
       if (!isAllowed) {
         throw new ForbiddenException(

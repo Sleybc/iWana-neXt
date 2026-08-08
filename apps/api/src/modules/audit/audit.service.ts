@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
+import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
+import { PlatformAuditService } from './platform-audit.service';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 
 /**
@@ -12,7 +14,8 @@ import { AuditEntryInput } from './interfaces/audit-entry.interface';
  * - Nunca lanza excepciones: los fallos de auditoria son silenciosos para
  *   no bloquear la operacion principal del negocio.
  * - Si no hay TenantContext activo y tampoco se proveen tenantId/schemaName
- *   en el input, la entrada se omite.
+ *   en el input, la entrada **no se descarta**: se reencamina a
+ *   `public.platform_audit_logs` como anomalia (ver `log()`).
  * - Cada llamada a log() crea su propia transaccion independiente (QueryRunner
  *   separado del de la operacion principal).
  *
@@ -32,11 +35,21 @@ export class AuditService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly platformAuditService: PlatformAuditService,
   ) {}
 
   /**
    * Registra una entrada de audit trail en el schema del tenant.
    * Fire-and-forget: retorna void y swallows cualquier error interno.
+   *
+   * Sin destino de tenant resoluble la entrada **no se descarta**: se reencamina
+   * a `public.platform_audit_logs` con el prefijo `ANOMALIA_AUDITORIA:`, el mismo
+   * camino que `AuditInterceptor` usa en su rama sin destino (H-01).
+   *
+   * El `return` silencioso anterior (S-8) borraba toda llamada emitida fuera de un
+   * tenant — es decir, **todas** las de plataforma, que por definicion no tienen
+   * TenantContext. Un llamador de plataforma debe usar `PlatformAuditService`
+   * directamente; si llega aqui, eso mismo es el hallazgo que hay que dejar trazado.
    */
   async log(entry: AuditEntryInput): Promise<void> {
     try {
@@ -47,7 +60,14 @@ export class AuditService {
       if (!tenantId || !schemaName) {
         const ctx = TenantContext.get();
         if (!ctx) {
-          // Sin contexto de tenant ni valores explicitos — omitir silenciosamente
+          this.logger.warn(
+            `Entrada de audit sin destino de tenant resoluble; se reencamina como anomalia ` +
+              `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]`,
+          );
+          await this.platformAuditService.log({
+            ...entry,
+            entityType: `${ANOMALIA_AUDITORIA_PREFIX}${entry.entityType}`,
+          });
           return;
         }
         tenantId = ctx.tenantId;
