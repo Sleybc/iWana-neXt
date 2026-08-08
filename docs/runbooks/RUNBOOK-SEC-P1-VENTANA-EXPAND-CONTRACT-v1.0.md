@@ -52,7 +52,7 @@ Marcar cuando el ítem es verdadero **para el entorno que se va a tocar**. Los d
 - [x] Conocido: `pnpm db:migrate:all` = build `@iwana/db` + públicas + tenants + least-privilege. **En prod** la vía es el contenedor `migrator-prod` (solo públicas + tenants).
 - [x] Conocido: sin `PII_HASH_KEY` el bootstrap Joi **falla** (fail-fast).
 - [x] **Cableado (artefacto prod):** `PII_HASH_KEY` declarada en `api-prod`, `worker-prod` y `migrator-prod` (`docker-compose.prod.yml`). `IWANA_APPLY_PII_CONTRACT` opcional solo en `migrator-prod` (inyectar en ventana 2 §4.2 paso 3; retirar §4.2 paso 7). *Inyectar el valor real en el secret store sigue siendo por entorno (§1).*
-- [x] Conocido: **schemas `MARKED_FOR_DELETION` no se migran ni se verifican** (solo `ACTIVE`). Reactivación → expand/contract previo (§4.2 paso 9). Timeline de DROP = pendiente humano (F-1).
+- [x] Conocido: **schemas `MARKED_FOR_DELETION` no se migran ni se verifican** (solo `ACTIVE`). Reactivación → expand/contract previo (§4.2 paso 9). **Antes de reactivar: medición de volumen de la 108 sobre el schema** (`scripts/sql/medicion-volumen-108.sql`) — ver §4.2 paso 9. Timeline de DROP = pendiente humano (F-1).
 
 ### 0.2 Por entorno (repetir antes de ventana 1)
 
@@ -222,6 +222,8 @@ ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_
 ```
 
 9. Actualizar informe vivo: residual S-1 **cerrado** en ese entorno; anotar evidencia (conteos, paridad, fecha). La verificación estructural y de paridad cubre **solo schemas `ACTIVE`** (concern F-1): los `MARKED_FOR_DELETION` retienen sus columnas `*_hash` SHA-256 hasta que se eliminen o se reactiven (en cuyo caso pasan primero su propio expand/contract antes de servir tráfico). Un **tenant nuevo** provisionado tras la ventana 2 nace con el contract aplicado automáticamente (el provisioning resuelve el estado de la flota — N-1).
+
+> **Antes de reactivar un tenant `MARKED_FOR_DELETION`:** ejecutar sobre **su** schema la medición de volumen de la 108 (SQL v2 en `scripts/sql/medicion-volumen-108.sql`): el veredicto KEEP `transactional = true` se sostiene sobre una medición del universo `ACTIVE`, y un tenant reactivado aporta volumen que esa medición nunca vio. Si su peak en `users`, `subscribers` o `expediente_records` supera ~50 k, el expand/contract de reactivación se planifica con el orquestador antes de correrlo. Los no-ACTIVE no se migran por diseño; si quedaron rezagados en el contract, es esperado y el CLI solo lo avisa (sin fallar) — verificar su alineación de migraciones en la misma operación.
 10. Registrar la **ventana de mantenimiento real** (inicio/fin, entorno, responsable) en el informe vivo y el canal de notificación de mantenimiento acordado, y confirmar que no hay conexiones long-lived (pooler/PgBouncer) reteniendo locks DDL sobre las tablas afectadas (concern F-3).
 
 | Ventana 2 — checklist | dev | staging | prod |
