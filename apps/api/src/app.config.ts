@@ -182,17 +182,26 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     }),
     // Credencial de arranque de la consola de plataforma (MOD01 / primer ingreso).
     //
-    // Produccion la prohibe: una credencial que viaja en el fichero de entorno la
-    // conoce todo el que despliega, y el cambio forzado del primer ingreso acota
-    // esa ventana pero no la cierra. Fuera de produccion es la via normal de
-    // arranque, y la cuenta nace marcada para cambio obligatorio.
+    // Produccion y staging la prohiben: una credencial que viaja en el fichero de
+    // entorno la conoce todo el que despliega, y el cambio forzado del primer
+    // ingreso acota esa ventana pero no la cierra.
+    //
+    // `staging` entra en la prohibicion por [SEC-REVIEW] S-M01-03: un entorno de
+    // preproduccion suele cargar datos con forma de produccion —a menudo copiados
+    // de ella— y la credencial la conoce el mismo grupo que despliega. Dejar fuera
+    // a staging convertia el control en una formalidad: bastaba con que el dato
+    // real estuviera un escalon antes.
+    //
+    // Solo desarrollo lo permite; ahi es la via normal de arranque y la cuenta
+    // nace marcada para cambio obligatorio.
+    //
     // `empty('')`: una variable declarada pero vacía no es una credencial, y un
     // `.env` compartido suele arrastrarlas. Se rechaza el valor real, no el hueco.
     PLATFORM_SUPER_ADMIN_EMAIL: Joi.when('NODE_ENV', {
-      is: 'production',
+      is: Joi.valid('production', 'staging'),
       then: Joi.string().allow('').empty('').forbidden().messages({
         'any.unknown':
-          'PLATFORM_SUPER_ADMIN_EMAIL no puede definirse con NODE_ENV=production: la credencial de arranque es conocida por diseno. Cree el usuario de plataforma por el flujo de bootstrap autenticado.',
+          'PLATFORM_SUPER_ADMIN_EMAIL no puede definirse con NODE_ENV=production ni NODE_ENV=staging: la credencial de arranque es conocida por diseno. Cree el usuario de plataforma por el flujo de bootstrap autenticado.',
       }),
       // `tlds: { allow: false }`: se valida la forma del email, no que el TLD
       // este en la lista IANA. Es una variable interna de arranque y puede
@@ -203,10 +212,10 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
         .optional(),
     }),
     PLATFORM_SUPER_ADMIN_PASSWORD: Joi.when('NODE_ENV', {
-      is: 'production',
+      is: Joi.valid('production', 'staging'),
       then: Joi.string().allow('').empty('').forbidden().messages({
         'any.unknown':
-          'PLATFORM_SUPER_ADMIN_PASSWORD no puede definirse con NODE_ENV=production: la credencial de arranque es conocida por diseno. Cree el usuario de plataforma por el flujo de bootstrap autenticado.',
+          'PLATFORM_SUPER_ADMIN_PASSWORD no puede definirse con NODE_ENV=production ni NODE_ENV=staging: la credencial de arranque es conocida por diseno. Cree el usuario de plataforma por el flujo de bootstrap autenticado.',
       }),
       otherwise: Joi.string().min(10).optional(),
     }),

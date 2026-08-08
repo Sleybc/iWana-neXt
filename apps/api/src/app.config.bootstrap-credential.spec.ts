@@ -47,6 +47,14 @@ function buildProductionEnv(): Record<string, string> {
   };
 }
 
+/**
+ * Staging no exige CORS_ORIGIN ni FRONTEND_URL —esas reglas son solo de
+ * producción—, así que su perfil mínimo es el de desarrollo con otro NODE_ENV.
+ */
+function buildStagingEnv(): Record<string, string> {
+  return { ...buildDevelopmentEnv(), NODE_ENV: 'staging' };
+}
+
 function buildDevelopmentEnv(): Record<string, string> {
   return {
     NODE_ENV: 'development',
@@ -121,7 +129,87 @@ describe('createAppConfigurationSchema — credencial de arranque de plataforma'
     });
   });
 
-  describe('fuera de producción: sigue siendo la vía normal de arranque', () => {
+  // ---------------------------------------------------------------------------
+  // [SEC-REVIEW] S-M01-03 — staging quedaba fuera de la prohibición
+  // ---------------------------------------------------------------------------
+
+  describe('perfil staging: la credencial de arranque también está prohibida', () => {
+    // El `when` solo miraba 'production'. Un entorno de preproducción suele
+    // cargar datos con forma de producción y la credencial la conoce el mismo
+    // grupo que despliega: dejarlo fuera vaciaba el control de contenido.
+    it('rechaza el arranque si se define PLATFORM_SUPER_ADMIN_PASSWORD', () => {
+      const env = buildStagingEnv();
+      env['PLATFORM_SUPER_ADMIN_PASSWORD'] = BOOTSTRAP_PASSWORD_PLACEHOLDER;
+
+      const { error } = validate(env);
+
+      expect(error).toBeDefined();
+      expect(error?.message).toContain('PLATFORM_SUPER_ADMIN_PASSWORD no puede definirse');
+      expect(error?.message).toContain('NODE_ENV=staging');
+    });
+
+    it('rechaza el arranque si se define PLATFORM_SUPER_ADMIN_EMAIL', () => {
+      const env = buildStagingEnv();
+      env['PLATFORM_SUPER_ADMIN_EMAIL'] = BOOTSTRAP_EMAIL_PLACEHOLDER;
+
+      const { error } = validate(env);
+
+      expect(error).toBeDefined();
+      expect(error?.message).toContain('PLATFORM_SUPER_ADMIN_EMAIL no puede definirse');
+      expect(error?.message).toContain('NODE_ENV=staging');
+    });
+
+    it('el mensaje nunca reproduce el valor recibido', () => {
+      const env = buildStagingEnv();
+      env['PLATFORM_SUPER_ADMIN_PASSWORD'] = BOOTSTRAP_PASSWORD_PLACEHOLDER;
+
+      const { error } = validate(env);
+
+      expect(error?.message).not.toContain(BOOTSTRAP_PASSWORD_PLACEHOLDER);
+    });
+
+    it('sin las variables, el perfil de staging valida sin error', () => {
+      const { error } = validate(buildStagingEnv());
+
+      expect(error).toBeUndefined();
+    });
+
+    it('una variable declarada pero vacía no bloquea el arranque', () => {
+      const env = buildStagingEnv();
+      env['PLATFORM_SUPER_ADMIN_EMAIL'] = '';
+      env['PLATFORM_SUPER_ADMIN_PASSWORD'] = '';
+
+      const { error } = validate(env);
+
+      expect(error).toBeUndefined();
+    });
+  });
+
+  // La lista, explícita y en un solo sitio: si alguien vuelve a estrechar el
+  // `when` a un único entorno, este bloque cae por el que falte.
+  describe('entornos con datos reales: ninguno admite la credencial de arranque', () => {
+    const ENTORNOS_PROHIBIDOS = ['production', 'staging'] as const;
+    const VARIABLES = [
+      ['PLATFORM_SUPER_ADMIN_EMAIL', BOOTSTRAP_EMAIL_PLACEHOLDER],
+      ['PLATFORM_SUPER_ADMIN_PASSWORD', BOOTSTRAP_PASSWORD_PLACEHOLDER],
+    ] as const;
+
+    const casos = ENTORNOS_PROHIBIDOS.flatMap((entorno) =>
+      VARIABLES.map(([variable, valor]) => ({ entorno, variable, valor })),
+    );
+
+    it.each(casos)('NODE_ENV=$entorno rechaza $variable', ({ entorno, variable, valor }) => {
+      const env = entorno === 'production' ? buildProductionEnv() : buildStagingEnv();
+      env[variable] = valor;
+
+      const { error } = validate(env);
+
+      expect(error).toBeDefined();
+      expect(error?.message).toContain(`${variable} no puede definirse`);
+    });
+  });
+
+  describe('solo desarrollo: sigue siendo la vía normal de arranque', () => {
     it('acepta ambas variables en desarrollo', () => {
       const env = buildDevelopmentEnv();
       env['PLATFORM_SUPER_ADMIN_EMAIL'] = BOOTSTRAP_EMAIL_PLACEHOLDER;

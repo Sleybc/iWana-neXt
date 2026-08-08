@@ -801,6 +801,28 @@ export class AuthService {
       passwordResetRequired: false,
     });
 
+    // VENTANA CONOCIDA Y ACEPTADA — [SEC-REVIEW] S-M01-06.
+    //
+    // El apagado de la marca vive en Postgres y la revocacion del token en Redis:
+    // son dos sistemas y no hay transaccion que los abarque. Si el proceso muere
+    // entre la sentencia de arriba y este `set`, queda la contrasena ya cambiada,
+    // la cuenta ya desmarcada, y el access token de alcance 'password-change'
+    // todavia valido hasta que expire por su cuenta (15 min como maximo).
+    //
+    // Se acepta, y conviene decir por que en vez de dejarlo implicito:
+    //
+    // - Ese token solo alcanza POST /auth/change-password (LIMITED_SCOPES). No
+    //   abre la consola ni ninguna otra ruta.
+    // - Para usarlo hay que presentar ademas `currentPassword`, que a esas alturas
+    //   ya es la contrasena NUEVA — la que solo conoce quien acaba de fijarla. Con
+    //   la credencial de arranque, la conocida, el token no sirve para nada.
+    // - Expira solo. El peor caso es una reemision del mismo cambio por parte de
+    //   su propio dueno.
+    //
+    // Cerrarla del todo exigiria una transaccion distribuida entre Postgres y
+    // Redis (outbox, 2PC o compensacion), maquinaria con modos de fallo propios
+    // —y mas probables— que el escenario que evitaria. Si algun dia este token
+    // ampliara su alcance, la ecuacion cambia y esta decision hay que rehacerla.
     const expiresAt = actor.exp ?? 0;
     const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
 

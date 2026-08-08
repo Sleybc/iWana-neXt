@@ -47,6 +47,26 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
    */
   private static readonly PASSWORD_CHANGE_ALLOWED_PATHS = ['/api/v1/auth/change-password'];
 
+  /**
+   * Compara la ruta pedida contra una permitida ([SEC-REVIEW] S-M01-01).
+   *
+   * `requestPath.startsWith(allowed)` era coincidencia por prefijo de **cadena**,
+   * no de ruta: `/api/v1/auth/change-passwordX` la satisfacia. Se comprobo contra
+   * la API real y el guard no lo rechazo — lo freno el 404 del router, que es
+   * decir que hoy no existe tal endpoint, no que el guard lo cubra. Cualquier ruta
+   * futura bajo uno de estos prefijos quedaria alcanzable con un token cuya
+   * credencial de origen es conocida.
+   *
+   * Se acepta la igualdad exacta y los descendientes reales (`allowed + '/'`), que
+   * es lo que significa un prefijo de ruta. **No introducir aqui `startsWith` a
+   * secas**: `jwt-auth.guard.scope-path-match.spec.ts` recorre todos los alcances
+   * declarados en {@link LIMITED_SCOPES} y cae si alguno vuelve a admitir un
+   * sufijo pegado.
+   */
+  private static matchesAllowedPath(requestPath: string, allowed: string): boolean {
+    return requestPath === allowed || requestPath.startsWith(`${allowed}/`);
+  }
+
   /** Rutas permitidas por alcance limitado, y el mensaje con el que se rechaza el resto. */
   private static readonly LIMITED_SCOPES: Record<
     'mfa-setup' | 'password-change',
@@ -96,7 +116,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (limitedScope) {
       const request = context.switchToHttp().getRequest<{ url: string; path: string }>();
       const requestPath = request.path ?? request.url;
-      const isAllowed = limitedScope.paths.some((allowed) => requestPath.startsWith(allowed));
+      const isAllowed = limitedScope.paths.some((allowed) =>
+        JwtAuthGuard.matchesAllowedPath(requestPath, allowed),
+      );
 
       if (!isAllowed) {
         throw new ForbiddenException(limitedScope.message);
