@@ -401,7 +401,7 @@ pnpm encryption:reencrypt -- --verify-active-only
 1. Stash working tree (`-u`) para no perder trabajo local.  
 2. Tracking local de todas las ramas `origin/*` para reescribir refs contaminadas.  
 3. `git filter-repo --path .env.development --invert-paths --force` (vía `git-filter-repo` 2.47 / Python 3.12).  
-4. Remote `origin` eliminado por filter-repo → re-añadido `https://github.com/SleyiW/iWana-neXt.git`.  
+4. Remote `origin` eliminado por filter-repo → re-añadido `https://github.com/SleyiW/iWana-neXt.git`. **Superado el 2026-08-08:** el repositorio canónico pasó a ser `https://github.com/Sleybc/iWana-neXt.git`; ver «Migración de repositorio» más abajo.  
 5. Force-push `--force-with-lease` de ramas reescritas + `main` (main: *Everything up-to-date*).  
 6. `git reflog expire --expire=now --all` + `git gc --prune=now` (objetos huérfanos locales eliminados).  
 7. Stash pop; `git branch -u origin/main main`.
@@ -477,3 +477,31 @@ Referencia de topología: plan archive MOD01 → único `docker-compose.yml` on-
 9. Opcional lab: smoke MFA/PII lectura con el stack ya en `iwana_app`.  
 10. Avisar a desarrolladores: **re-clonar** tras purge; opt-in SEC-04 requiere re-apply (DML + ledger) si el volumen es legacy.
 11. ~~**CI gate least-privilege (GSEC-N1).**~~ **Diseño GO / working tree** (v1.5 §2.5) — confirmar verde en primera corrida GHA tras merge.
+
+---
+
+## Migración de repositorio (2026-08-08)
+
+**Repositorio canónico:** `https://github.com/Sleybc/iWana-neXt.git`
+
+El `origin` local, la autenticación de `gh` y toda la configuración operativa apuntan ahí. Verificado el 2026-08-08: **cero referencias** al repositorio anterior en `package.json`, `.github/workflows/`, `scripts/`, `.gitmodules` ni `.git/config`.
+
+### Los enlaces históricos NO se reescribieron, y es deliberado
+
+Varios informes citan PRs y ejecuciones de CI con URLs de `SleyiW/iWana-neXt`:
+
+| Documento | Qué cita |
+| --- | --- |
+| `INFORME-MOD09-CICLO-VIDA-VISITA-CAMPO-v1.0.md` | PR #4 y su run |
+| `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` | CI #112 sobre `1343d6b8` — evidencia de G6.5 |
+| `INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md` | CI #30937447358 — evidencia de G6.5 |
+| `docs/quality/evidence-fase-06-g6/README.md` | run de CI #112 |
+| `INFORME-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md`, `PROMPT-PLAT-OPS-CONVERGENCIA-NODE-v1.0.md` | menciones descriptivas |
+
+**Esos runs y PRs existen únicamente en el repositorio anterior.** Reescribir las URLs a `Sleybc` convertiría enlaces válidos en enlaces rotos y destruiría la trazabilidad de gates ya firmados: la evidencia de G6.5 de MOD11 y de la auditoría Docker son precisamente esos runs. Un enlace que apunta a otro repositorio es correcto si la evidencia está allí; uno que apunta al repositorio correcto y devuelve 404 no lo es.
+
+### Consecuencia declarada
+
+Los PRs **#1 a #7** —incluidas las discusiones donde quedaron razonadas decisiones de SEC-P1: por qué el contract se difirió, por qué S-6 quedó en suspenso, por qué la migración 023 lista siete nombres— **no viajaron con el código**. El historial de commits sí está completo en el repositorio nuevo; las revisiones y comentarios no.
+
+Quien busque el porqué de una decisión y no lo encuentre en los informes, debe consultar los PRs del repositorio anterior antes de concluir que no está documentado.
