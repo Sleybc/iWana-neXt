@@ -92,8 +92,8 @@ Viven en `docs/prompts/` como el resto, con el subtipo `PROMPT-OPERATIVO-` que l
 | Migraciones schema public | `pnpm --filter @iwana/db migration:run` |
 | Migraciones schemas tenant | `pnpm --filter @iwana/db migration:tenant:run` |
 | Revertir ultima migracion public | `pnpm --filter @iwana/db migration:revert` |
-| Jest backend individual | `cd apps/api && npx jest src/modules/auth/auth.service.spec.ts` |
-| Playwright individual | `npx playwright test e2e/tests/web-auth-dashboard.spec.ts` |
+| Jest backend individual | `pnpm --filter @iwana/api exec jest src/modules/auth/auth.service.spec.ts` |
+| Playwright individual | `pnpm exec playwright test e2e/tests/web-auth-dashboard.spec.ts` |
 
 No existe script `migration:generate`: las migraciones se escriben a mano en `packages/database/src/migrations/` (public) y `packages/database/src/migrations/tenant/` (numeradas). El paquete `@iwana/db` debe compilarse antes de ejecutar migraciones (corren contra `dist/`).
 
@@ -233,6 +233,7 @@ Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritati
 ├── packages/
 │   ├── database/         # TypeORM entities, migrations
 │   ├── shared/           # DTOs, enums, contracts
+│   ├── storage/          # Abstracción de almacenamiento local/MinIO/S3
 │   ├── ui/               # Design system, Tailwind v4
 │   └── config/           # tsconfig, eslint, prettier
 ├── e2e/                  # Playwright tests

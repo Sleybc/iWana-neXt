@@ -25,6 +25,8 @@ apps/api/storage/
 
 
 # Secretos JWT y certificados — NUNCA versionar
+secrets/*
+!secrets/.gitkeep
 secrets/*.pem
 secrets/*.key
 secrets/*.p12
@@ -34,6 +36,9 @@ secrets/*.crt
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Payload local de autenticación — puede contener credenciales o tokens.
+login-request.json
 
 # SO
 .DS_Store

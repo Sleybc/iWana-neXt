@@ -1,12 +1,8 @@
 /**
  * eslint.config.js — Configuracion ESLint v9 raiz (flat config)
  *
- * Sprint 0 — Parser TypeScript habilitado, sin reglas adicionales.
- * Reglas estrictas por dominio se configuran en Sprint 1 por paquete.
- *
- * Referencias:
- * - packages/config/.eslintrc.base.js (reglas base - migrar a flat config en Sprint 1)
- * - ADR a definir Sprint 1 (ESLint flat config por paquete)
+ * Las reglas sintácticas se aplican a todo TypeScript. Las que requieren tipos
+ * se limitan a código fuente con tsconfig para conservar los lint focalizados.
  */
 import tsParser from '@typescript-eslint/parser';
 import tsEslintPlugin from '@typescript-eslint/eslint-plugin';
@@ -35,13 +31,40 @@ export default [
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        // Sin project para evitar overhead en scaffold — proyecto real en Sprint 1
         sourceType: 'module',
       },
     },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
+  {
+    // E2E queda fuera: no tiene un tsconfig type-aware en el baseline actual.
+    files: [
+      'apps/*/src/**/*.ts',
+      'apps/*/src/**/*.tsx',
+      'packages/*/src/**/*.ts',
+      'packages/*/src/**/*.tsx',
+    ],
+    ignores: [
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.integration.spec.ts',
+    ],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // Deuda de baseline: el informe de remediación registra el rollout a error.
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-floating-promises': 'warn',
     },
   },
 ];

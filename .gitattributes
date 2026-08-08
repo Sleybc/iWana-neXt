@@ -1,4 +1,8 @@
-* text=auto
+* text=auto eol=lf
+
+# Los instaladores Windows requieren CRLF; el resto del repositorio usa LF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
 
 # Hooks y scripts deben mantenerse en LF para evitar fallos en shell.
 .husky/* text eol=lf

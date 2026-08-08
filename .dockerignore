@@ -14,6 +14,8 @@ node_modules
 
 # Ignore local Playwright MCP artifacts
 .playwright-mcp
+.pnpm-store
+.eslintcache
 
 secrets
 docs
@@ -27,6 +29,9 @@ e2e
 .github
 .husky
 tmp
+.backups
+apps/api/storage
+login-request.json
 
 **/node_modules
 **/.next
@@ -36,4 +41,8 @@ tmp
 **/playwright-report
 **/blob-report
 **/*.log
+**/*.har
+**/*.trace
+**/__pycache__/
+*.pyc
 **/*.tsbuildinfo

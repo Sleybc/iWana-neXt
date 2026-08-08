@@ -2,11 +2,12 @@
 
 **Tipo:** Runbook operativo
 **Módulo:** TRANSVERSAL — Plataforma / release / recuperación
-**Versión:** 1.1
-**Fecha:** 2026-08-02 (v1.0: 2026-07-30)
+**Versión:** 1.2
+**Fecha:** 2026-08-08 (v1.1: 2026-08-02; v1.0: 2026-07-30)
 **Autor:** AI-PLAT-OPS
 **Estado:** Documentado; **no autoriza producción**. Desde 2026-08-01 existe evidencia ejecutada de **reversibilidad de migraciones** (revert public 020 y revert tenant 099 con re-aplicación, ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md)). El ensayo de rollback por componente/imagen y las pruebas de restore global/tenant siguen pendientes.
 **Cambio v1.0 → v1.1 (2026-08-02):** reencuadre por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md). El expediente de dominio productivo y TLS pasa de **`BLOQUEADO — STOP/NO-GO`** a **`DIFERIDO — sin trabajo en curso`**: no hay decisión detenida esperando al CTO, hay una decisión tomada de no abordarlo hasta que se cumpla el disparador de reactivación. **Ningún procedimiento cambia** — §5, §6 y §8 se conservan íntegros como insumo de la reactivación.
+**Cambio v1.1 → v1.2 (2026-08-08):** el overlay productivo inyecta explícitamente las variables ya consumidas por API, worker y migrator. `api-prod` y `worker-prod` esperan tanto `migrator-prod` como el bootstrap one-shot `minio-init`; el procedimiento incorpora esa espera sin cambiar la topología Compose.
 
 > **Cómo leer este runbook hoy.** Todos sus procedimientos son correctos y ejecutables, pero **ninguno está planificado**: el programa está en construcción modular y no va a producción ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)). Lo que aquí figura como "pendiente" es **condición de un release futuro**, no trabajo atrasado. Se reactiva con el disparador de ADR-070 — en particular, y sin excepción, si se procesa PII de personas reales aunque el entorno no se llame producción.
 **R3:** R3.4
@@ -107,6 +108,7 @@ El segundo comando solo registra el SHA en el acta; no registrar el contenido de
 - Todos los secretos son inyectados por el mecanismo operativo aprobado; no están en imágenes, Compose, workflows ni logs.
 - El dominio productivo y el certificado de CA reconocida están definidos/provisionados para R3.5. El autofirmado de `scripts/generate-certs.ps1` solo es válido para desarrollo o staging cerrado.
 - `CORS_ORIGIN` y `FRONTEND_URL` están definidas en `.env.production` con el FQDN aprobado. Con `NODE_ENV=production` la API las exige y rechaza cualquier valor `localhost`/`127.0.0.1`: **`api-prod` no arranca sin ellas**, por diseño (riesgos 1 y 2 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)). El fallo es explícito en el log de arranque, no silencioso.
+- Las variables requeridas están completas en el mecanismo de inyección aprobado: `DB_BOOTSTRAP_*`/`DB_APP_*`/`DB_MIGRATOR_*`, `MINIO_ROOT_*`, `S3_*`, `TYPESENSE_*`, `JWT_*`, `PII_HASH_KEY`, `MFA_ENCRYPTION_KEY`, `EXECUTION_ORDER_IDEMPOTENCY_SECRET` y, si se entrega correo real, `SMTP_*`. Durante una rotación de cifrado, incluir temporalmente `MFA_ENCRYPTION_KEY_PREVIOUS`; retirarla al verificar el recifrado. Nunca registrar sus valores.
 - Existe un backup previo con checksum y restore verificado. Si no existe la evidencia, declarar **NO-GO**.
 - El rollback es compatible con el estado de datos. Una migración irreversible o no probada impide avanzar.
 - El responsable de datos confirma el alcance de tenants activos y el plan de restore.
@@ -140,6 +142,18 @@ docker compose --profile production --env-file .env.production \
 ```
 
 No cambiar el supuesto de tenancy: pgBouncer usa `POOL_MODE=transaction` y no conserva `search_path`; cada transacción debe aplicar `SET LOCAL search_path` mediante el código aprobado.
+
+### Paso 1.1 — Inicializar el bucket de MinIO
+
+Ejecutar el servicio one-shot y esperar su código de salida antes de migraciones o aplicaciones:
+
+```bash
+docker compose --profile production --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.prod.yml up --abort-on-container-exit \
+  --exit-code-from minio-init minio-init
+```
+
+Un resultado distinto de `0` es **NO-GO**. `minio-init` crea el bucket configurado y lo deja privado; no sustituirlo por creación manual ni continuar porque MinIO esté solamente `healthy`.
 
 ### Paso 2 — Ejecutar migraciones, primero públicas y luego tenant
 

@@ -42,6 +42,8 @@ import { SupplierProfileService } from '../../modules/inventory/services/supplie
 import { SupplierPartyPort } from '../../modules/inventory/ports/supplier-party.port';
 // —— wfm ——
 import { WfmController } from '../../modules/wfm/wfm.controller';
+import { NonRealizationCausesService } from '../../modules/wfm/services/non-realization-causes.service';
+import { NonRealizationSlaService } from '../../modules/wfm/services/non-realization-sla.service';
 import { WorkOrdersService } from '../../modules/wfm/services/work-orders.service';
 import { ScheduleEventsService } from '../../modules/wfm/services/schedule-events.service';
 import { VisitRequestsService } from '../../modules/wfm/services/visit-requests.service';
@@ -306,6 +308,8 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
         { provide: SupplierPartyPort, useValue: stubProvider() },
 
         // —— wfm: resto del controller ——
+        { provide: NonRealizationCausesService, useValue: stubProvider() },
+        { provide: NonRealizationSlaService, useValue: stubProvider() },
         { provide: ScheduleEventsService, useValue: stubProvider() },
         { provide: VisitRequestsService, useValue: stubProvider() },
         { provide: ScheduleRecommendationsService, useValue: stubProvider() },
