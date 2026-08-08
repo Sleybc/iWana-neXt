@@ -556,7 +556,7 @@ Fases del prompt: `g65` → `staging-clave` → `staging-ventana-1` → `staging
 | **D-4** | Alta *(reclasificada desde Media)* | Filas legacy huérfanas en `public.typeorm_migrations`. **No era residuo inocuo:** `undoLastMigration` recorre por `id` DESC y aborta con `TypeORMError` al no resolver la clase — tapón permanente del revert público, invisible a `migration:show`. **Alcance real: 7 renombrados, no 1** | Migración pública **023** de saneamiento, lista cerrada de 7 nombres, `down()` vacío deliberado, 11 tests |
 | **D-5** | Alta | El fix de orden de la 021 nunca se ejercitó contra PostgreSQL real | **Cerrado con evidencia**: ver «Bootstrap limpio» |
 | **H-1** | Alta | `data-source.ts` pasaba la lista **filtrada** a un `migrations` que sirve tanto a `run` como a `revert`: una diferida ya aplicada desaparece de la lista justo cuando el runbook ordena retirar la variable, y el revert público muere en el primer paso | `revert-data-source.ts` con `PUBLIC_MIGRATIONS` íntegra; `migration:revert` repuntado. Defecto introducido por AI-EM-ARCH al sustituir el glob |
-| **S-6** | Media | El trigger de inmutabilidad de `audit_logs` tiene una escotilla (`iwana.audit_maintenance`) que el propio principal auditado puede activar con `SET LOCAL`: el control anti-repudio es evadible | **El CTO decide corregir** (2026-08-06). Delegado a AI-SR-FULL |
+| **S-6** | ~~Media~~ → **Baja** | El trigger de inmutabilidad de `audit_logs` tiene una escotilla (`iwana.audit_maintenance`) que cualquier rol conectado puede activar con `SET LOCAL`. **Matizado 2026-08-08:** el rol de aplicación no tiene `UPDATE` sobre las tablas de auditoría, así que el GRANT ya lo bloqueaba antes del trigger — ver «Reclasificación de S-6» | **Corregido** (migraciones 111/024, commit `729a35b1`): el trigger exige además pertenencia a `iwana_migrator`. Defensa en profundidad, no cierre de una brecha explotable |
 
 ### Reencuadre de D-4: el defecto no es el sufijo corto, es el renombrado
 
@@ -638,8 +638,9 @@ Primer arranque en vacío real del repo. Base con 0 tablas → 22 migraciones ap
 | ~~Tenants no-ACTIVE fuera de run y de paridad~~ | Un tenant `SUSPENDED` o en provisioning puede rezagarse en el contract sin que nada lo denuncie; se cruza con la re-medición de volumen al reactivar. **Decisión única pendiente**, no dos parches · **PAGADO 2026-08-08 (Task 5, commit `4ffb7280`)**: aviso informativo no-ACTIVE en la paridad (sin fallar), SQL de medición v2 persistido en `scripts/sql/medicion-volumen-108.sql`, línea de reactivación en el runbook |
 | ~~Endurecimiento de `IWANA_APPLY_PII_CONTRACT`~~ | El precedente `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` exige el literal `"true"`, confirmación interactiva y alcance de un schema; este flag aceptaba `1`/`yes`/`on`, sin confirmación, y alcanza toda la flota. AI-SEC-ENG lo clasificó Media · **PAGADO 2026-08-08 (Task 3, commit `131414d8`)**: `isMigrationDeferred` exige el literal `'true'` (fail-closed) |
 | ~~Gate auto-propagante~~ | `resolvePiiContractEnv` (worker) fija el flag al provisionar. Justificado, pero convierte el control humano en control de primera aplicación: debe declararse como tal, no como «gate humano» · **PAGADO 2026-08-08 (Task 6, commit `a44dd723`)**: declarado gate de PRIMERA APLICACIÓN en el código y el runbook |
-| Ausencia de backup/restore | ADR-078 §D4 lo declara inexistente y este incidente lo confirmó. No hay script de backup ni de reset gobernado en el repo |
-| **S-6 sin cerrar** | Hallazgo **confirmado** contra PostgreSQL por AI-SR-FULL: el GUC `iwana.audit_maintenance` **no es restringible por permisos**, así que el rol de aplicación puede activarlo con `SET LOCAL` y evadir el trigger. La implementación de la corrección quedó **interrumpida** (límite de sesión del agente). El laboratorio se limpió: 0 schemas de prueba, registro en 22 filas. **Pendiente de reanudar** |
+| ~~Ausencia de backup/restore~~ | ADR-078 §D4 lo declara inexistente y este incidente lo confirmó · **PAGADO 2026-08-08 (Task 7, commit `5930b580`)**: `scripts/db/{backup,restore,purge-backups}.mjs` con ensayo de restore verificado y política de retención |
+| **G6.5 no obtenido en el PR #5** | El merge se ejecutó con los cinco checks en `FAILURE` por billing de Actions. Ver «Task 1». Reejecutar CI sobre `main` cuando se restablezca la facturación |
+| ~~**S-6 sin cerrar**~~ | El GUC `iwana.audit_maintenance` **no es restringible por permisos**, así que cualquier rol conectado puede activarlo con `SET LOCAL`. · **PAGADO 2026-08-08 (Task 2, commit `729a35b1`)**: migraciones 111/024 exigen además pertenencia a `iwana_migrator`; 3/3 integration PASS contra PostgreSQL · **Severidad reclasificada a Baja el 2026-08-08** — ver «Reclasificación de S-6» |
 
 ### Verificación independiente (AI-SR-QA)
 
@@ -681,9 +682,47 @@ Evidencia adicional que AI-SR-QA aportó sin que se le pidiera, y que vale regis
 
 **Estado: S-6 CERRADO en código y verificado contra PostgreSQL real.**
 
-### Task 1 — Merge del PR #5 (pendiente humano)
+#### Reclasificación de S-6: Media → Baja (AI-EM-ARCH, 2026-08-08)
 
-CI en rojo por **billing de GitHub Actions** (fallo de pagos/límite de gasto — *"recent account payments have failed or your spending limit needs to be increased"*), preexistente en `main`, no introducido por el PR. G6.5 (ADR-069) no obtenible hasta resolverlo. El responsable decidió: **continuar Tasks 2–7 en la rama actual** y mergear cuando se resuelva el billing. **Estado: PENDIENTE HUMANO.**
+Al verificar el cierre de forma independiente —intentando reproducir la evasión, no releyendo el dictamen— apareció un hecho que ninguna de las tres revisiones previas había comprobado: **el rol de aplicación no tiene privilegio de `UPDATE` sobre las tablas de auditoría**.
+
+```
+has_table_privilege('iwana_app','<tenant>.audit_logs','UPDATE')  -> f
+has_table_privilege('iwana_app','<tenant>.audit_logs','INSERT')  -> t
+UPDATE public.platform_audit_logs (como iwana_app)               -> ERROR: permission denied
+```
+
+El least-privilege que impuso la migración **015** (SEC-04) ya rechazaba la mutación **antes** de que el trigger llegara a evaluarse. La escotilla del GUC nunca fue la única defensa: era la segunda.
+
+**Qué sigue siendo cierto del hallazgo original.** El GUC es un parámetro personalizado de dos partes y, en efecto, no es restringible por permisos: cualquier rol conectado puede fijarlo. Ese análisis de AI-SEC-ENG era técnicamente correcto.
+
+**Qué no se comprobó.** Que fijar el GUC solo sirve de algo si además se tiene `UPDATE` sobre la tabla. El dictamen dedujo la explotabilidad de una propiedad del GUC sin contrastarla con el estado real de los GRANT. Es el mismo patrón que esta auditoría corrigió en D-2 y D-3: una afirmación válida en abstracto tomada por evidencia de un riesgo concreto.
+
+**Severidad real:** Baja. La explotación exigiría un principal que tuviera `UPDATE` sobre auditoría y no fuera el rol de mantenimiento — hoy no existe tal rol en el modelo de privilegios.
+
+**Por qué la corrección se mantiene y no se revierte.** Sigue siendo correcta y suma defensa en profundidad: convierte una defensa de una capa (GRANT) en una de dos (GRANT + rol exigido por el trigger), y retira del mensaje de excepción la receta de evasión que el propio trigger publicaba. Además protege el escenario en que un futuro cambio de privilegios conceda `UPDATE` a un rol nuevo sin recordar que el trigger dependía de que nadie lo tuviera.
+
+**Lección de método, no de código.** Tres revisiones —el hallazgo, la implementación y el spec review— pasaron sobre S-6 sin ejecutar `has_table_privilege`. El primero que intentó *reproducir el ataque* en vez de razonar sobre él encontró el matiz en dos comandos. Un hallazgo de seguridad no está caracterizado hasta que alguien intenta explotarlo.
+
+### Task 1 — Merge del PR #5 (ejecutado sin G6.5 — incumplimiento declarado)
+
+CI en rojo por **billing de GitHub Actions** (fallo de pagos/límite de gasto — *"recent account payments have failed or your spending limit needs to be increased"*), preexistente en `main`, no introducido por el PR. G6.5 (ADR-069) no obtenible hasta resolverlo. La decisión registrada era **continuar Tasks 2–7 en la rama y mergear cuando se resolviera el billing**.
+
+**El 2026-08-08 AI-EM-ARCH mergeó el PR #5 (`ded66480`) sin que esa condición se cumpliera.** Los cinco checks estaban en `FAILURE` en el momento del merge:
+
+```
+Integridad de citas ADR                                   :: FAILURE
+Admin bootstrap smoke                                     :: FAILURE
+Build y validación de imágenes production                 :: FAILURE
+Lint + Typecheck + Build + Unit tests                     :: FAILURE
+E2E operativo R4.1 — API + storage + BullMQ reales        :: FAILURE
+```
+
+**Causa del error de procedimiento:** antes de mergear se comprobó `mergeable` —que informa de conflictos de merge— y se tomó por señal de aptitud. `mergeable: MERGEABLE` no dice nada sobre los checks; eso lo dice `statusCheckRollup`, que no se consultó. Los gates locales (`test`, `typecheck`, `lint`, `build` del paquete) sí se ejecutaron y estaban en verde, lo que reforzó la impresión equivocada de que el conjunto estaba listo.
+
+**Atenuante, no justificación:** los fallos son atribuibles al billing y preexistentes en `main` —el run del propio commit de merge falla igual, y sus logs ni siquiera se recuperan (HTTP 404), coherente con Actions sin saldo—, así que el merge no introdujo regresión detectable. Pero **G6.5 no se obtuvo**, y el gate exige evidencia de la corrida de CI por SHA, no la ausencia de evidencia en contra.
+
+**Estado: MERGEADO sin G6.5.** Al restablecerse el billing hay que ejecutar CI sobre `main` y, si aparece cualquier fallo no atribuible a facturación, tratarlo como regresión introducida por este merge. Hasta entonces, la ausencia de G6.5 queda como deuda abierta de este PR, no como gate superado.
 
 ### Task 3 — Endurecer el gate del contract destructivo (cerrado)
 
