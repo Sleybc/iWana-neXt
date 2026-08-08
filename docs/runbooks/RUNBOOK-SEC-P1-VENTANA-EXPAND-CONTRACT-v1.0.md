@@ -53,6 +53,11 @@ Marcar cuando el ítem es verdadero **para el entorno que se va a tocar**. Los d
 - [x] Conocido: sin `PII_HASH_KEY` el bootstrap Joi **falla** (fail-fast).
 - [x] **Cableado (artefacto prod):** `PII_HASH_KEY` declarada en `api-prod`, `worker-prod` y `migrator-prod` (`docker-compose.prod.yml`). `IWANA_APPLY_PII_CONTRACT` opcional solo en `migrator-prod` (inyectar en ventana 2 §4.2 paso 3; retirar §4.2 paso 7). *Inyectar el valor real en el secret store sigue siendo por entorno (§1).*
 - [x] Conocido: **schemas `MARKED_FOR_DELETION` no se migran ni se verifican** (solo `ACTIVE`). Reactivación → expand/contract previo (§4.2 paso 9). **Antes de reactivar: medición de volumen de la 108 sobre el schema** (`scripts/sql/medicion-volumen-108.sql`) — ver §4.2 paso 9. Timeline de DROP = pendiente humano (F-1).
+- [ ] **Check de despliegue S-6 (B-1):** antes de declarar S-6 cerrado en un entorno, confirmar que el rol `iwana_migrator` existe en ese entorno. El hardening de la 111/024 solo es efectivo donde el rol existe: con `to_regrole` nulo el guard se degrada silenciosamente al modo GUC-solo (comportamiento de CI). Comando:
+  ```sql
+  SELECT to_regrole('iwana_migrator');  -- esperado: iwana_migrator
+  ```
+  *Dev: verificado 2026-08-08 (`iwana_migrator` presente).*
 
 ### 0.2 Por entorno (repetir antes de ventana 1)
 
@@ -185,6 +190,7 @@ Durante el soak (por entorno que aplique B1 — tipicamente **prod**; staging op
 | Backup restaurable verificado **el mismo día** | Sí | [ ] | [ ] |
 | `pending` criterio 6 = 0 | Sí | [ ] | [ ] |
 | Paridad migraciones OK | Sí | [ ] | [ ] |
+| S-6 activo en el entorno (`to_regrole('iwana_migrator')` no nulo — §0.1) | Sí | [ ] | [ ] |
 | Go CTO producción | Sí (prod) | N/A | [ ] |
 
 *Dev local: go/no-go histórico cumplido 2026-08-06 (ventana 2 aplicada; ver informe). No sustituye staging/prod.*
@@ -258,7 +264,12 @@ Capacidad que ADR-078 §D4 declaraba inexistente y que el plan SEC-P1 cierra con
 
 Parametrización por env (misma familia que `scripts/db/apply-least-privilege.mjs`): `POSTGRES_CONTAINER`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `BACKUP_DIR` y `DB_BACKUP_MODE` (`docker` por defecto — ejecuta pg_dump/pg_restore dentro del contenedor; `host` usa los binarios del host). Por defecto el backup usa el rol bootstrap (superuser en dev) para capturar ownership y todos los schemas; `DB_USER` lo acota si el entorno lo exige.
 
-Retención: los dumps viven en `BACKUP_DIR` (por defecto `<repo>/.backups/`, ignorado por git — un dump con PII versionado es defecto bloqueante). **La política de retención operativa (cuánto se conserva, quién custodia, cómo se purga) queda como nota fuera del alcance de este plan**; fijarla antes de operar en staging/prod.
+Retención: los dumps viven en `BACKUP_DIR` (por defecto `<repo>/.backups/`, ignorado por git — un dump con PII versionado es defecto bloqueante). **Política de retención operativa (fijada 2026-08-08, custodia PLAT-OPS):**
+- **Conservar siempre** los últimos **10 dumps** (`--keep-count`, default 10).
+- De los anteriores, **purgar** los que superen **14 días** (`--keep-days`, default 14).
+- Nunca se elimina el único dump existente.
+- **Purga:** `pnpm db:purge-backups` (dry-run por defecto; `--execute` aplica — mismo criterio fail-closed que `db:restore` con `--yes`). Retención configurable por argumento: `pnpm db:purge-backups --keep-count=20 --keep-days=30`.
+- Frecuencia sugerida: **semanal** por PLAT-OPS; la purga es idempotente y no destructiva en dry-run. Sin purga, el backup se convierte en el problema que resolvía.
 
 Seguridad: el restore es destructivo y exige confirmación tecleando el **nombre exacto del archivo** de backup con TTY (mismo patrón que `cli/tenant-revert.ts`); sin TTY requiere `--yes` explícito. `--list`/`--dry-run` no tocan la base. La ventana 2 de un entorno **no se declara cerrada** sin el drill del día (§4.1: backup restaurable verificado el mismo día).
 
@@ -285,6 +296,7 @@ Seguridad: el restore es destructivo y exige confirmación tecleando el **nombre
 | --- | --- |
 | Tras ventana 1, **antes** de ventana 2 | Revertir binario si hace falta; digests SHA-256 siguen (salvo altas post-expand). `down` de 021/108 con flag destructivo solo si hay huérfanos — ver cabeceras de migración. |
 | Tras ventana 2 | **Solo restore de backup** (`pnpm db:restore --target <base> --from <dump>` — ver §4.3). No hay reconstrucción de SHA-256 originales. |
+| **S-6 (B-2)** | **Revertir la 111/024 reabre la escotilla:** su `down()` restaura la versión anterior de `reject_audit_mutation()` (GUC-solo, la de la 075/014), que cualquier rol puede evadir con `SET LOCAL iwana.audit_maintenance='on'`. Solo está justificado durante la ventana 1 para una corrección sobre la 108; una vez cerrada la ventana 2, no revertir la 111/024 — la vía de rollback es el restore de backup. |
 
 ---
 
