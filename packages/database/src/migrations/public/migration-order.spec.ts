@@ -14,10 +14,18 @@ import { PUBLIC_MIGRATIONS, resolvePublicMigrations } from './index';
  * Un sufijo más corto que 13 dígitos se interpreta como un timestamp mucho
  * menor y manda la migración al principio de la cola: sobre una base ya migrada
  * no se nota (es la única pendiente), pero un bootstrap limpio la ejecuta antes
- * de `001_create_public_schema` y la corrida entera falla. El mismo sufijo corto
- * hace que `migration:revert` nunca la elija, porque `getLatestExecutedMigration`
- * ordena por ese mismo número. Le pasó a la 020 y a la 021; este test cierra la
- * puerta, y de paso vigila que la lista no se desincronice del directorio.
+ * de `001_create_public_schema` y la corrida entera falla. Le pasó a la 020 y a
+ * la 021; este test cierra la puerta, y de paso vigila que la lista no se
+ * desincronice del directorio.
+ *
+ * Corrección de una nota anterior de este archivo: `migration:revert` NO se
+ * guía por el sufijo. `loadExecutedMigrations` ordena por `id` DESC y
+ * `getLatestExecutedMigration` toma el primero (`MigrationExecutor.js`, 0.3.31),
+ * así que el revert sigue el orden de INSERCIÓN en el registro, no el timestamp.
+ * El daño real del sufijo corto no fue que el revert la ignorara, sino que al
+ * renombrar la clase quedó una fila registrada sin dueño: cuando el revert llega
+ * a ella, `allMigrations.find` no la resuelve y TypeORM aborta. Eso lo sanea la
+ * 023 (`023_prune_orphan_migration_registry_rows`).
  */
 
 const PUBLIC_MIGRATIONS_DIR = __dirname;
@@ -82,7 +90,7 @@ describe('orden de migraciones públicas', () => {
     );
   });
 
-  it('los timestamps son estrictamente crecientes (sin empates que hagan el orden no determinista)', () => {
+  it('no aparecen empates de timestamp nuevos (el único conocido, 018/019, queda congelado)', () => {
     const duplicated = migrations
       .map((migration) => migration.timestamp)
       .filter((timestamp, index, all) => all.indexOf(timestamp) !== index);

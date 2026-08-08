@@ -275,30 +275,58 @@ A partir del paso 4 no quedan hashes SHA-256 enumerables y el rollback vuelve a 
 
 ### Evidencia Punto 2 — lock 108 (§5.6 / G6)
 
-**Fecha:** 2026-08-06 · **Entorno:** docker `iwana_postgres_dev` / DB `dbiw` · **Método:** `pg_class.reltuples` + `relpages` (sin `COUNT(*)`, sin PII) · **Protocolo:** AI-EM-ARCH orquesta · [AI-DATA-ENG](246f9f56-1395-48df-9842-ec19b6648af3) medición · [AI-SR-FULL](2ad39600-386d-4740-9786-5bd3e993abee) factibilidad · [AI-SEC-ENG](a1008003-91f6-495b-8971-b83b148bb6f2) `[SEC-REVIEW]`
+**Fecha:** 2026-08-06 (medición inicial) · **re-medida con método corregido el 2026-08-06** tras auditoría de método de AI-EM-ARCH (defectos D-2 y D-3).
+**Entorno:** docker `iwana_postgres_dev` / DB `dbiw`.
+**Método (v2):** `ANALYZE` previo de las tablas objetivo **con verificación de post-condición** (`pg_stat_all_tables.last_analyze`) + `COUNT(*)` exacto de respaldo en toda celda con `reltuples < 0`, `relpages = 0` o `ANALYZE` sin efecto. Solo conteos y nombres de schema/tabla; sin PII.
+**Protocolo:** AI-EM-ARCH orquesta y es Accountable · [AI-DATA-ENG](246f9f56-1395-48df-9842-ec19b6648af3) Responsible del diseño de la medición · AI-SR-FULL factibilidad · AI-SEC-ENG `[SEC-REVIEW]`.
+
+#### Universo medido (declaración explícita)
+
+La medición cubre **los 10 tenants `ACTIVE`** — exactamente los que itera `runTenantMigrations`: 8 tenants e2e efímeros (`tenant_e2e_*`, creados por Playwright), `tenant_isp_demo` y `tenant_iwana`. Los **44 schemas `MARKED_FOR_DELETION` quedan fuera** por diseño: el runner no los migra.
+
+Esto **no es un perfil productivo**: es el perfil mínimo del entorno de desarrollo. La conclusión vale para este perfil de datos y solo para él.
+
+#### Resultado
 
 | Métrica | Valor |
 | --- | --- |
-| Tenants ACTIVE / totales | 10 / (perfil ADR-078 ~55 schemas; este entorno no tiene 55 ACTIVE) |
-| Tablas medidas | `users`, `subscribers`, `expediente_records` |
-| Peak `reltuples` (OK) | **4** (`users` en un tenant e2e) |
-| Peak `relpages` | **1** |
-| Celdas ≥ 50k | **0** |
-| Celdas ≥ 100k | **0** |
-| `reltuples = -1` con `relpages > 0` | **0** (nunca-analizadas con heap) |
-| `reltuples = -1` con `relpages = 0` | 18 (heap vacío; no cuentan como volumen) |
+| Tenants `ACTIVE` medidos | **10** de 54 registrados (44 `MARKED_FOR_DELETION` fuera de alcance) |
+| Tablas medidas por tenant | `users`, `subscribers`, `expediente_records` (30 celdas; 0 ausentes) |
+| **Peak de filas** | **4** (`users` en `tenant_e2e_r1_r41_ms9e3cik_6b5e4b`) |
+| Celdas ≥ 50 000 | **0** |
+| Celdas ≥ 100 000 | **0** |
+| Celdas resueltas con `COUNT(*)` exacto | 18 de 30 (rol dueño) · 30 de 30 (rol de aplicación) |
+| Celdas pobladas con `relpages = 0` | **0** — *verificado con `COUNT(*)`, no inferido* |
 
-**Umbral aplicado:** KEEP si peak ≪ 50k; SWITCH si peak > ~100k.
+**Umbral aplicado:** KEEP si el peak ≪ 50 k · zona gris 50 k–100 k → consultar orquestador · SWITCH si > ~100 k.
+
+#### Corrección de método D-3
+
+La medición original descartó 18 celdas como «heap vacío» por presentar `relpages = 0`. **Esa inferencia no es válida:** `pg_class.reltuples`/`relpages` solo se refrescan con `ANALYZE` o `VACUUM`, así que una tabla **poblada y nunca analizada** presenta exactamente `reltuples = -1, relpages = 0` — indistinguible de una vacía. El número final resultó correcto, pero lo fue por el estado del entorno, no por el método.
+
+*Nota de privilegio (hallazgo del rediseño):* `ANALYZE` exige ownership o `MAINTAIN`. Bajo el rol de aplicación (least-privilege, SEC-04) Postgres **no lanza error**: emite `WARNING: permission denied to analyze … skipping it` y continúa, de modo que un `ANALYZE` que no corrió puede pasar por corrido — y un `EXCEPTION WHEN OTHERS` no lo detecta. Por eso el script verifica la post-condición en lugar de asumirla. Es la misma clase de defecto que D-3: una operación con forma de evidencia que no la produjo.
+
+Las dos vías convergen: con `ANALYZE` efectivo (rol `iwana_migrator`) y con `ANALYZE` denegado (rol `iwana_app`), el resultado es idéntico — peak 4, 0 celdas sobre umbral.
+
+#### Qué **no** es evidencia de este riesgo (D-2)
+
+La sección «Evidencia ventana 1» registra que los 10 tenants reportaron `Done` en ~20–27 ms. **Ese dato se retira como evidencia del riesgo de lock de la 108**, porque no mide la 108: en esa corrida los 10 ACTIVE ya tenían registradas 108/109/110, así que no había pendientes. Los milisegundos corresponden a la consulta del registro y al recorrido en vacío del runner, no a la ejecución del `up` —`ALTER TABLE` + backfill + `CREATE INDEX` + `SET NOT NULL` + `UNIQUE`—, que en ese entorno **nunca se cronometró**.
+
+**El veredicto no cambia**, porque no se apoyaba en el tiempo sino en el volumen: con un peak de 4 filas la duración del lock es despreciable por construcción. Lo que se corrige es la cita — una afirmación con forma de evidencia que no respaldaba lo que decía respaldar (protocolo §7.4; misma clase de defecto que la nota de caché de Turbo en §4).
+
+Si alguna vez se necesita evidencia **de tiempo** de la 108, hay que producirla donde la migración esté realmente pendiente: base sin la 108 registrada o schema de ensayo, midiendo el `up` extremo a extremo.
+
+#### Dictámenes
 
 | Agente | Dictamen |
 | --- | --- |
-| AI-DATA-ENG | **KEEP** `transactional = true`; SWITCH no es flip de flag (ADR-066: sin DML + CONCURRENTLY en la misma migración) |
-| AI-SR-FULL | **KEEP** sin cambio de código; JSDoc de umbral (estilo 088); runner secuencial / no atómico entre tenants |
-| AI-SEC-ENG | **GO_WITH_CONCERNS** — KEEP aceptable con parada de ventana 1; concern = no rearrancar con flota mixta (`[MIGRATOR]`) |
+| AI-DATA-ENG | **KEEP** `transactional = true`, justificado por **volumen** (peak = 4, medición sin punto ciego). SWITCH no es un flip de flag: ADR-066 prohíbe DML en migración no transaccional |
+| AI-SR-FULL | **KEEP** sin cambio de código; JSDoc de umbral en la cabecera; runner secuencial y no atómico entre tenants |
+| AI-SEC-ENG | **GO_WITH_CONCERNS** — KEEP aceptable con la parada de ventana 1; concern: no rearrancar con flota mixta |
 
-**Decisión EM-ARCH:** **KEEP** — sin cambio de `transactional` ni índices CONCURRENTLY. Cabecera de `108_*` actualizada con umbral + medición. Riesgo operativo #2 **cerrado** en este perfil de datos.
+**Decisión EM-ARCH:** **KEEP** — sin cambio de `transactional` ni índices `CONCURRENTLY`. Riesgo operativo #2 **cerrado para este perfil de datos**.
 
-**Pendiente G6 restante (ops humano):** ~~aplicar migraciones en ventana 1 + SQL criterio 6~~ — **completado 2026-08-06** (ver «Evidencia ventana 1 — migraciones + SQL criterio 6 (cierre G6)»). Re-medir peak si el entorno productivo deja de ser “mínimo ADR-078”.
+**Condición de re-medición (vigente):** re-ejecutar con el SQL v2 antes de aplicar la 108 en cualquier entorno cuyo volumen no sea el aquí registrado — si se deja atrás el perfil mínimo de [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md), si algún tenant supera ~50 k filas, o **si se reactiva un tenant `MARKED_FOR_DELETION`**: esa población estuvo en uso y es la que más probabilidad tiene de traer volumen real, y la medición ACTIVE-only nunca la ve.
 
 ### Evidencia ventana 1 — migraciones + SQL criterio 6 (cierre G6)
 
@@ -309,8 +337,8 @@ A partir del paso 4 no quedan hashes SHA-256 enumerables y el rollback vuelve a 
 `pnpm db:migrate:all` (build + `migration:run` + `migration:tenant:run` + `apply-least-privilege`) → **exit 0**.
 
 - **Pública:** aplicó `PlatformUsersEmailHmac1784419209000` (renombrado de la 021). Up idempotente: `ADD COLUMN IF NOT EXISTS email_hmac`, backfill `processed=0 updated=0 skipped=0`, `SET NOT NULL`, UNIQUE condicionado por `conrelid`, índice, `DROP NOT NULL` de `email_hash` condicionado (fix A-4) y **borrado del registro legacy** `PlatformUsersEmailHmac0210000000000`. Transacción pública commit → sin estado mixto.
-- **Tenant:** `[MIGRATOR] Starting migrations for 10 tenant(s)` → los 10 `Done` en ~20–27 ms → `[MIGRATOR] All tenants migrated successfully`. Los 10 ACTIVE ya tenían registradas 108/109/110 (106 migraciones cada uno), así que no hubo pendientes ni flota mixta.
-- **Diferidas (anunciadas por el CLI, no aplicadas):** `DropPlatformUsersEmailHash1784419210000` (022) y `DropPiiSha256HashColumns1090000000000` (109) — requieren `IWANA_APPLY_PII_CONTRACT=true` (ventana 2).
+- **Tenant:** `[MIGRATOR] Starting migrations for 10 tenant(s)` → los 10 `Done` en ~20–27 ms → `[MIGRATOR] All tenants migrated successfully`. Los 10 ACTIVE ya tenían registradas 108/109/110 (106 migraciones cada uno), así que **no hubo pendientes**: la corrida no aplicó ninguna migración tenant. Esos ~20–27 ms miden la consulta del registro y el recorrido en vacío del runner, **no la ejecución de la 108** — ver la corrección D-2 en «Auditoría de método y de estado (2026-08-06)».
+- **Diferidas (anunciadas por el CLI):** `DropPlatformUsersEmailHash1784419210000` (022) y `DropPiiSha256HashColumns1090000000000` (109) — requieren `IWANA_APPLY_PII_CONTRACT=true` (ventana 2). **Matiz:** la 109 ya constaba aplicada en los 10 ACTIVE desde antes de que existiera el gate `deferredBy`, de modo que su anuncio aquí era un *falso pendiente* — el CLI lo emitía sin consultar el registro. Corregido después con `filterDeferredMigrations`. La 022 sí estaba genuinamente pendiente en este momento.
 - `apply-least-privilege: OK` (SEC-04).
 
 #### 2. SQL criterio 6 — redacción audit (conteos, nunca valores)
@@ -351,7 +379,7 @@ A partir del paso 4 no quedan hashes SHA-256 enumerables y el rollback vuelve a 
 - **C2:** chequeo de paridad post-run implementado — `assertTenantMigrationParity` (`packages/database/src/migrations/tenant/migration-parity.util.ts` + spec) comparando el conjunto de migraciones de todos los tenants ACTIVE; integrado en el CLI `cli/tenant-migrate.ts` **después** de `runTenantMigrations`, sin tocar el runner. Falla la corrida (exit ≠ 0) si la flota quedó mixta. **Validado en vivo:** `migration:tenant:run` → `[MIGRATOR] Paridad de migraciones OK: 10 tenant(s) ACTIVE con 106 migraciones idénticas`.
 - **F-2:** gobernanza de ventana 2 en el aviso de diferidas (`describeDeferredMigration`): el diferimiento no debe volverse permanente y la ventana 2 debe planificarse en el periodo de confianza del responsable del proyecto.
 
-**Ningún tenant quedó en estado mixto; los contracts 022/109 siguen diferidos.**
+**Al cierre de la ventana 1 (2026-08-06):** ningún tenant quedó en estado mixto y el contract 022 seguía diferido. *Sello temporal añadido el 2026-08-06 tras auditoría:* esta frase describía el estado **en ese instante** y quedó superada horas después por la ventana 2 (sección siguiente). Redactada en presente y sin fecha, indujo a un auditor a concluir que se había ejecutado una operación destructiva no registrada. Las afirmaciones de estado en secciones de evidencia se sellan temporalmente; no se leen como estado actual.
 
 ### Evidencia ventana 2 — contract aplicado en dev (cierre SEC-P1 en dev)
 
@@ -505,8 +533,107 @@ Fases del prompt: `g65` → `staging-clave` → `staging-ventana-1` → `staging
 
 **PLAT-OPS:** [AI-PLAT-OPS](2268bcfa-ae4e-4db2-aa60-ad2204605d0b) — nada del prompt G65 ejecutable ahora.
 
+**Reintento 2026-08-08:** `gh` sigue sin auth; sin `.env.staging`/`.env.production`; Docker Desktop **apagado** en esta máquina. G6.5 y staging **siguen NO_GO**. Se aterriza en `main` el código de la auditoría D-4/H-1 (migración 023 + `revert-data-source`) — ver sección «Auditoría de método y de estado».
+
 **F-1:** 44 `MARKED_FOR_DELETION` con digests SHA-256 — pendiente humano (no cuentan como migrados).
 
 ### Verificación
 
-`pnpm --filter @iwana/db test` → 25 suites / **156** tests PASS (139 base + `filterDeferredMigrations` + 7 de paridad por código F-2 + 5 de `envValueIsTrue`/aviso F-3 + actualización del gate de `migration-order`) · `typecheck`, `lint` y `build` limpios · gate comprobado sobre el `dist/` compilado (21 de 22 públicas sin el flag, 22 con él, y ahora `1`/`TRUE` también habilitan) · `pnpm --filter @iwana/worker test` → 15 suites / **105** PASS (N-1 + R2-1 fail-closed + R2-2 flota mixta) con typecheck/lint limpios · `pnpm --filter @iwana/api exec jest src/modules/tenant/` → 183 PASS (runner y revert incluidos) · `migration:tenant:run` con paridad por código en vivo → OK (10 ACTIVE, 106 migraciones idénticas, **alineadas con 106 del código**); con `IWANA_APPLY_PII_CONTRACT=TRUE` el aviso F-3 se emite y se limpió el env residual.
+`pnpm --filter @iwana/db test` → 28 suites / **179** tests PASS (incluye 023 prune orphans + `revert-data-source` + migration-order tenant) · `typecheck` limpio · gates locales 2026-08-08: OK. G6.5 CI Linux sigue pendiente de `gh auth`.
+
+---
+
+## Auditoría de método y de estado (2026-08-06)
+
+**Modo:** AI-EM-ARCH Orchestrator + EM + Architect · **Disparador:** el CTO ordena auditar la medición del riesgo #2 y corregir los hallazgos · **Protocolo multiagente desplegado:** AI-DATA-ENG (método de medición), AI-SR-FULL (registro y mecanismo de diferimiento), AI-SEC-ENG (`[SEC-REVIEW]`), AI-PLAT-OPS (bootstrap), AI-SR-QA (verificación cruzada).
+
+### Defectos y resolución
+
+| ID | Sev. | Defecto | Resolución |
+| --- | --- | --- | --- |
+| **D-2** | Alta | Los ~20–27 ms citados como evidencia del lock de la 108 proceden de una corrida sin pendientes: no miden la 108 | Cita retirada; veredicto KEEP re-sostenido sobre volumen. Ver «Evidencia Punto 2» |
+| **D-3** | Media | Descartar 18 celdas por `relpages = 0` es inferencia inválida (`pg_class` solo se refresca con ANALYZE/VACUUM) | SQL v2 con `ANALYZE` verificado + `COUNT(*)` de respaldo. Ninguna celda se declara vacía por inferencia |
+| **D-4** | Alta *(reclasificada desde Media)* | Filas legacy huérfanas en `public.typeorm_migrations`. **No era residuo inocuo:** `undoLastMigration` recorre por `id` DESC y aborta con `TypeORMError` al no resolver la clase — tapón permanente del revert público, invisible a `migration:show`. **Alcance real: 7 renombrados, no 1** | Migración pública **023** de saneamiento, lista cerrada de 7 nombres, `down()` vacío deliberado, 11 tests |
+| **D-5** | Alta | El fix de orden de la 021 nunca se ejercitó contra PostgreSQL real | **Cerrado con evidencia**: ver «Bootstrap limpio» |
+| **H-1** | Alta | `data-source.ts` pasaba la lista **filtrada** a un `migrations` que sirve tanto a `run` como a `revert`: una diferida ya aplicada desaparece de la lista justo cuando el runbook ordena retirar la variable, y el revert público muere en el primer paso | `revert-data-source.ts` con `PUBLIC_MIGRATIONS` íntegra; `migration:revert` repuntado. Defecto introducido por AI-EM-ARCH al sustituir el glob |
+| **S-6** | Media | El trigger de inmutabilidad de `audit_logs` tiene una escotilla (`iwana.audit_maintenance`) que el propio principal auditado puede activar con `SET LOCAL`: el control anti-repudio es evadible | **El CTO decide corregir** (2026-08-06). Delegado a AI-SR-FULL |
+
+### Reencuadre de D-4: el defecto no es el sufijo corto, es el renombrado
+
+El recorrido de `git log` sobre `migrations/public/` devolvió **siete** renombrados de clase, no el que originó el encargo:
+
+```
+SIN DELETE legacy : 012, 013, 014, 015, 018   <- invisibles al código
+CON DELETE legacy : 020, 021
+```
+
+Cinco de siete no dejaron rastro en el código, porque solo la 020 y la 021 declararon su `LEGACY_MIGRATION_NAME`. Y los cuatro primeros (012–015) responden a una causa **distinta**: su sufijo original era de 13 dígitos válidos (`1700000000012`) y se reasignaron porque invadían el rango de las migraciones tenant. Buscar «sufijo corto» nunca los habría encontrado.
+
+**Caracterización correcta:** TypeORM identifica lo aplicado por el **nombre de clase**, así que *cualquier* renombrado de una migración ya aplicada deja fila huérfana — independientemente de la forma del sufijo. La caracterización anterior («sufijo corto») es la que volvió ciego al método de búsqueda.
+
+**Exhaustividad declarada, no afirmada:** verificado que no hay renombrados de archivo ni fuentes de migración borradas, así que el método es exhaustivo respecto a la historia alcanzable. Una rama podada por `gc`, o una migración aplicada desde un working copy nunca commiteado, dejaría un residuo invisible. Queda escrito en la propia migración, junto con la instrucción de qué hacer si aparece otro: migración de saneamiento nueva, nunca editar la 023 ya aplicada.
+
+**Condición de despliegue (`[BLOQUEO]` resuelto por EM-ARCH):** AI-PLAT-OPS aplicó en el bootstrap la 023 en su versión de dos nombres. En dev es inocuo — el registro nuevo no tiene residuos y la migración es no-op. Pero **la 023 solo puede editarse mientras no se aplique en un entorno que sí los tenga**: si staging o producción la aplicaran en la versión de dos nombres, constaría aplicada, la ampliación a siete no les llegaría y haría falta una 024. **Decisión: la versión de siete nombres entra antes de cualquier corrida en staging o producción.** Prerrequisito de merge, no de despliegue.
+
+### Correcciones a la propia auditoría de AI-EM-ARCH
+
+Registradas por disciplina de trazabilidad: dos afirmaciones emitidas por este perfil resultaron falsas y fueron desmentidas por los agentes.
+
+1. **«La ventana 2 se ejecutó y no consta registrada» — falso.** El informe la documenta en sección propia. El error fue leer una sección y concluir sobre el artefacto: exactamente el defecto que el checklist §10.9 del perfil existe para impedir. Lo que sí era real es el defecto de sellado temporal, ya corregido. Desmentido por AI-SEC-ENG.
+2. **«`migration:revert` se guía por el sufijo/timestamp» — falso.** `loadExecutedMigrations` ordena por `id` DESC. El daño real del sufijo corto es (a) romper el bootstrap limpio y (b) dejar filas huérfanas que atascan el revert. Desmentido por AI-SR-FULL.
+
+Ambas premisas iban dentro de encargos delegados. Que los agentes las contradijeran en vez de construir sobre ellas es el comportamiento correcto del protocolo §7 (anti-alucinación).
+
+### Incidente — pérdida de datos en el entorno de desarrollo
+
+**Hecho.** El volumen `iwana_postgres_data_dev` fue destruido (`docker volume rm`) y recreado en vacío el 2026-08-06 ~23:13Z, durante la operación de reset autorizada por el CTO («la información no es de producción, puede ser borrada»).
+
+**Inventario de lo destruido** (capturado por AI-PLAT-OPS antes del borrado; conteos, cero PII):
+
+| Estructura | Filas |
+| --- | --- |
+| `tenant_iwana.expediente_records` | **1** — el expediente del 2026-07-25 del titular identificable del ADR-078 |
+| `tenant_iwana.subscribers` | **1** |
+| `tenant_iwana.users` | 2 |
+| `tenant_iwana.audit_logs` | 868 |
+| `public.platform_audit_logs` | 205 |
+| `tenant_iwana.consent_records` | 0 (D6 del ADR-078 ya estaba abierto) |
+| 9 tenants e2e/demo | fixtures regenerables |
+| 44 schemas `MARKED_FOR_DELETION` | 110 digests SHA-256 residuales — **su eliminación mejora la postura** |
+
+**Causa.** AI-EM-ARCH lanzó la ejecución (AI-PLAT-OPS) en la misma ola que la revisión de seguridad (AI-SEC-ENG), cuando la revisión debía ser previa y bloqueante. El `[SEC-REVIEW] NO_GO` —que exigía consentimiento informado del CTO con el inventario a la vista, más constancia previa— llegó después del `docker volume rm`. La orden de parada no alcanzó.
+
+**Contribuyente.** AI-PLAT-OPS tuvo `expediente_records = 1` en un tenant no-fixture delante, en su propia captura previa, y no lo escaló. Regla adoptada por ese perfil: un conteo distinto de cero en tabla de negocio de un tenant no-fixture detiene el borrado hasta confirmación explícita.
+
+**Decisión del CTO (2026-08-06):** ADR-078 se decide **sin esa evidencia en línea**.
+
+**Custodia abierta.** Existen dos volúmenes Docker anónimos (`b724d6a2…`, `cc2c3bf7…`) con datadir de PostgreSQL 18 fechado 2026-08-01 — posterior al expediente. **No inspeccionados**: verificar su contenido es una lectura de PII de un titular identificable. Están marcados `dangling`, de modo que **`docker volume prune` o `docker system prune` los elimina**. Mientras no haya decisión, no se ejecuta ninguno de los dos en esa máquina.
+
+### Bootstrap limpio — D-5 cerrado
+
+Primer arranque en vacío real del repo. Base con 0 tablas → 22 migraciones aplicadas en orden:
+
+```
+  1 | 1741766400000 | CreatePublicSchema1741766400000              <- primera, correcto
+ 20 | 1784419208000 | AddMediaAssetStatusAndClaim1784419208000
+ 21 | 1784419209000 | PlatformUsersEmailHmac1784419209000          <- posición correcta, no al inicio
+ 22 | 1784419211000 | PruneOrphanMigrationRegistryRows1784419211000
+ filas_timestamp_corto: 0
+```
+
+`DropPlatformUsersEmailHash1784419210000` **ausente** y anunciada como diferida sin exportar `IWANA_APPLY_PII_CONTRACT`. `platform_users.email_hash` presente y **nullable**; `email_hmac` NOT NULL con su UNIQUE — el estado «ventana 1» exacto que persigue la opción B. API healthy.
+
+**El fix de A-1 queda probado contra PostgreSQL real.** Era el objetivo de mayor valor de la operación y se obtuvo.
+
+**Limitaciones declaradas:** con 0 tenants, el camino de migraciones tenant **no quedó ejercitado** y la paridad (`0 tenant(s) ACTIVE`) es trivialmente verdadera. La rama que *borra* de la 023 tampoco se ejercitó (registro limpio → camino no-op): queda cubierta solo por spec unitario. Redis, MinIO y Typesense conservan estado de 54 schemas inexistentes: el entorno es incoherente entre Postgres y los índices/colas.
+
+**Vía alternativa no tomada:** levantar una instancia Postgres efímera en otro volumen habría producido esta misma evidencia sin destruir nada. AI-EM-ARCH no la propuso hasta después del incidente.
+
+### Deuda declarada (no implementada, con dueño)
+
+| Deuda | Detalle |
+| --- | --- |
+| Tenants no-ACTIVE fuera de run y de paridad | Un tenant `SUSPENDED` o en provisioning puede rezagarse en el contract sin que nada lo denuncie; se cruza con la re-medición de volumen al reactivar. **Decisión única pendiente**, no dos parches |
+| Endurecimiento de `IWANA_APPLY_PII_CONTRACT` | El precedente `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` exige el literal `"true"`, confirmación interactiva y alcance de un schema; este flag acepta `1`/`yes`/`on`, sin confirmación, y alcanza toda la flota. AI-SEC-ENG lo clasifica Media |
+| Gate auto-propagante | `resolvePiiContractEnv` (worker) fija el flag al provisionar. Justificado, pero convierte el control humano en control de primera aplicación: debe declararse como tal, no como «gate humano» |
+| Ausencia de backup/restore | ADR-078 §D4 lo declara inexistente y este incidente lo confirmó. No hay script de backup ni de reset gobernado en el repo |

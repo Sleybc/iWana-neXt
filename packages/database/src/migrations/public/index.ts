@@ -27,6 +27,7 @@ import { AddTenantPrincipalAdmin1784419207000 } from './019_add_tenant_principal
 import { AddMediaAssetStatusAndClaim1784419208000 } from './020_add_media_asset_status_and_claim';
 import { PlatformUsersEmailHmac1784419209000 } from './021_platform_users_email_hmac';
 import { DropPlatformUsersEmailHash1784419210000 } from './022_drop_platform_users_email_hash';
+import { PruneOrphanMigrationRegistryRows1784419211000 } from './023_prune_orphan_migration_registry_rows';
 
 /**
  * Migraciones del schema público, en orden.
@@ -64,6 +65,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddMediaAssetStatusAndClaim1784419208000,
   PlatformUsersEmailHmac1784419209000,
   DropPlatformUsersEmailHash1784419210000,
+  PruneOrphanMigrationRegistryRows1784419211000,
 ];
 
 /**

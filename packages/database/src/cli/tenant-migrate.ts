@@ -13,7 +13,27 @@ import type { DataSource } from 'typeorm';
 
 /**
  * Nombres ya registrados en `typeorm_migrations`: público + un tenant ACTIVE
- * representativo (el runner los mantiene idénticos, y la paridad ya se validó).
+ * representativo.
+ *
+ * El atajo del tenant representativo (`LIMIT 1`) es válido por una garantía
+ * INDIRECTA, y conviene dejarla escrita porque la próxima refactorización que
+ * mueva estas llamadas la rompe sin que nada falle en rojo:
+ *
+ *   `main()` encadena `runTenantMigrations` → `assertTenantMigrationParity` →
+ *   `reportDeferredMigrations` dentro del MISMO `try`. La primera lanza si algún
+ *   tenant falló; la segunda lanza si la flota ACTIVE no tiene exactamente el
+ *   mismo conjunto de migraciones. Es decir: cuando esta función llega a
+ *   ejecutarse, ya está probado que todos los tenants ACTIVE están alineados, y
+ *   por eso mirar uno equivale a mirarlos todos.
+ *
+ * Si se invierte ese orden, se saca la paridad del `try`, o se llama a
+ * `reportDeferredMigrations` desde otro sitio, el atajo pasa a ser incorrecto:
+ * un solo tenant adelantado bastaría para que el aviso F-3 dijera «retire la
+ * variable» con el resto de la flota sin el contract aplicado.
+ *
+ * Deuda declarada (registrada por AI-EM-ARCH, no se corrige aquí): la paridad
+ * solo cubre tenants ACTIVE. Uno suspendido o en provisioning queda fuera del
+ * run y de la comprobación, y puede rezagarse en el contract sin denuncia.
  */
 async function loadAppliedMigrationNames(dataSource: DataSource): Promise<Set<string>> {
   const publicRows = await dataSource.query<Array<{ name: string }>>(
