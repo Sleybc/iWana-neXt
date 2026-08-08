@@ -1,45 +1,54 @@
 #!/usr/bin/env bash
-# generate-secrets.sh — Genera par RSA JWT y clave de cifrado AES-256-GCM
+# generate-secrets.sh — Genera secretos locales para API y worker
 #
 # ADVERTENCIAS DE SEGURIDAD:
 #   - NUNCA ejecutar en produccion con los mismos valores que en desarrollo
-#   - NUNCA commitear los archivos .pem generados (están en .gitignore)
-#   - Los archivos generados son: secrets/jwt-private.pem, secrets/jwt-public.pem
-#   - La ENCRYPTION_KEY se agrega a .env.local (no versionado)
+#   - NUNCA imprime, versiona ni sobrescribe secretos existentes
+#   - API, worker y los CLI cargan .env.development.local antes de los defaults
+#   - No crea PEM persistentes bajo secrets/: JWT se escribe en las variables que
+#     ya consume Auth, con saltos de línea literales
 #
 # Uso: bash scripts/generate-secrets.sh
 # Requiere: openssl instalado en el sistema
 
-set -e
+set -euo pipefail
+umask 077
 
-SECRETS_DIR="$(dirname "$0")/../secrets"
+ROOT_DIR="${IWANA_SECRETS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+ENV_LOCAL="${ROOT_DIR}/.env.development.local"
+TEMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 
-echo "==> Generando par de claves RSA 2048-bit para JWT RS256..."
-openssl genrsa -out "${SECRETS_DIR}/jwt-private.pem" 2048
-openssl rsa -in "${SECRETS_DIR}/jwt-private.pem" -pubout -out "${SECRETS_DIR}/jwt-public.pem"
-echo "    ✓ secrets/jwt-private.pem generado"
-echo "    ✓ secrets/jwt-public.pem generado"
+touch "${ENV_LOCAL}"
+chmod 600 "${ENV_LOCAL}" 2>/dev/null || true
 
-echo "==> Generando MFA_ENCRYPTION_KEY AES-256-GCM (32 bytes hex)..."
-MFA_ENCRYPTION_KEY=$(openssl rand -hex 32)
-ENV_LOCAL="$(dirname "$0")/../.env.local"
-# No escribir si ya hay una clave (evita pisar rotaciones locales).
-if grep -q '^MFA_ENCRYPTION_KEY=.\+' "${ENV_LOCAL}" 2>/dev/null; then
-  echo "    · MFA_ENCRYPTION_KEY ya presente en .env.local — no se sobrescribe"
-  echo "    · Para rotar: docs/runbooks/RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md"
+has_value() { grep -q "^${1}=.\+" "${ENV_LOCAL}" 2>/dev/null; }
+append_value() { printf '\n# Generado localmente por scripts/generate-secrets.sh — no versionar\n%s=%s\n' "$1" "$2" >> "${ENV_LOCAL}"; }
+
+if has_value JWT_PRIVATE_KEY || has_value JWT_PUBLIC_KEY; then
+  echo "    · JWT_* ya existe en .env.development.local — no se sobrescribe"
 else
-  {
-    echo ""
-    echo "# Generada por scripts/generate-secrets.sh — NUNCA 64 ceros (SEC-02)"
-    echo "MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY}"
-    echo "# MFA_ENCRYPTION_KEY_PREVIOUS="
-  } >> "${ENV_LOCAL}"
-  echo "    ✓ MFA_ENCRYPTION_KEY agregada a .env.local"
+  echo "==> Generando par JWT RS256 local..."
+  openssl genrsa -out "${TEMP_DIR}/jwt-private.pem" 2048
+  openssl rsa -in "${TEMP_DIR}/jwt-private.pem" -pubout -out "${TEMP_DIR}/jwt-public.pem"
+  private_key="$(awk 'BEGIN { ORS="\\\\n" } { print }' "${TEMP_DIR}/jwt-private.pem")"
+  public_key="$(awk 'BEGIN { ORS="\\\\n" } { print }' "${TEMP_DIR}/jwt-public.pem")"
+  append_value JWT_PRIVATE_KEY "'${private_key}'"
+  append_value JWT_PUBLIC_KEY "'${public_key}'"
+  echo "    ✓ JWT_* agregadas a .env.development.local"
 fi
+
+for name in MFA_ENCRYPTION_KEY PII_HASH_KEY; do
+  if has_value "${name}"; then
+    echo "    · ${name} ya existe en .env.development.local — no se sobrescribe"
+  else
+    append_value "${name}" "$(openssl rand -hex 32)"
+    echo "    ✓ ${name} agregada a .env.development.local"
+  fi
+done
 
 echo ""
 echo "==> Listo. Recuerda:"
-echo "    - NUNCA commitear secrets/*.pem ni .env.local / .env*"
+echo "    - NUNCA commitear .env.development.local ni copiar sus valores a .env.example"
 echo "    - Rotación: docs/runbooks/RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md"
 echo "    - En produccion, rotar solo con go CTO (ADR-058)"
-

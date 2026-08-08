@@ -70,6 +70,21 @@ jobs:
           [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node-version.outputs.version }}
+
+      - name: Setup pnpm 10
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      # Gate sin daemon Docker: inspecciona sólo `.dockerignore` antes de los
+      # cinco builds y bloquea la entrada de datos locales sensibles y cachés.
+      - name: Auditar contexto Docker
+        run: pnpm audit:docker-context
+
       # No se publican imágenes ni se inyectan secretos: este job solo valida que
       # las cinco imágenes construyan en un runner limpio. El valor público es
       # un endpoint sintético no operativo requerido por el build de Next.js.
