@@ -2,8 +2,8 @@
 
 **Tipo:** Runbook operativo  
 **Módulo:** TRANSVERSAL — PII / hashes con clave / audit trail  
-**Versión:** 1.1  
-**Fecha:** 2026-08-06  
+**Versión:** 1.2  
+**Fecha:** 2026-08-08  
 **Autor:** AI-EM-ARCH (plan) · Ejecutor: AI-PLAT-OPS  
 **Estado del plan:** Congelado — secuencia **S1 + A1/A2 + B1** (recomendación EM-ARCH adoptada 2026-08-06)  
 **Estado de ejecución (actualizar casillas al completar cada entorno):**
@@ -61,6 +61,8 @@ Marcar cuando el ítem es verdadero **para el entorno que se va a tocar**. Los d
 | Backup/restore del entorno **probado** (drill reciente) | [x] (local ops) | [ ] | [ ] |
 | Secret store / env del entorno listo (§1) | [x] (dev) | [ ] | [ ] |
 | Binario SEC-P1 **desplegable** en el entorno (post-merge) | [x] (local) | [ ] | [ ] |
+
+> **Drill mínimo de backup/restore por entorno:** `pnpm db:backup` (dump `-Fc` de la base completa en `BACKUP_DIR`, por defecto `.backups/`) + un ensayo de restore verificado sobre base desechable con `pnpm db:restore --target <base_temporal> --from <dump>` (ver §4.3). Sin drill reciente en el entorno, la casilla no se marca: un backup sin restore ensayado no es una capacidad, es un fichero.
 
 ---
 
@@ -190,7 +192,15 @@ Durante el soak (por entorno que aplique B1 — tipicamente **prod**; staging op
 ### 4.2 Ejecución
 
 1. Detener API, web, portal y worker (recomendado; DDL + DROP).
-2. Backup fresco + smoke de restore (o evidencia de drill del día).
+2. Backup fresco + smoke de restore (drill del día):
+
+   ```bash
+   pnpm db:backup                                             # dump -Fc fresco en BACKUP_DIR
+   pnpm db:restore --list --from <ruta-del-dump>              # smoke: el dump es un -Fc valido
+   pnpm db:restore --target dbiw_restore_test --from <ruta-del-dump> --yes   # ensayo sobre base desechable
+   ```
+
+   Verificar la paridad de conteos entre `dbiw` y `dbiw_restore_test` (migraciones y tablas por schema) y **DROPEAR** `dbiw_restore_test` al terminar. Es el drill mínimo que desbloquea el go/no-go de §4.1. La base de prueba se crea y elimina en el mismo drill; el target nunca apunta a una base con datos. En prod, parametrizar los scripts por env (ver §4.3).
 3. Ejecutar con el contract activo:
    - **Host (staging/dev):** `IWANA_APPLY_PII_CONTRACT=true pnpm db:migrate:all`
    - **Contenedor (prod):** `docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile production --env-file .env.production run --rm --no-deps -e IWANA_APPLY_PII_CONTRACT=true migrator-prod`. La variable puede ir en `.env.production` durante la ventana, pero **no** debe sumarse al secret store permanente. El literal debe ser **exactamente** `true` (minúsculas): el contract es fail-closed, cualquier otro valor lo deja diferido sin error (ver paso 5).
@@ -236,6 +246,22 @@ ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_
 | Informe vivo actualizado (entorno) | [x] | [ ] | [ ] |
 | Ventana de mantenimiento registrada | [x] (dev) | [ ] | [ ] |
 
+### 4.3 Backup/restore operativo
+
+Capacidad que ADR-078 §D4 declaraba inexistente y que el plan SEC-P1 cierra con la Task 7: scripts en `scripts/db/` + ensayo verificado.
+
+| Operación | Comando |
+| --- | --- |
+| Backup completo (`-Fc`, todos los schemas) | `pnpm db:backup` |
+| Contenido del dump, sin tocar nada | `pnpm db:restore --list --from <dump>` |
+| Restore sobre una base destino explícita | `pnpm db:restore --target <base> --from <dump>` |
+
+Parametrización por env (misma familia que `scripts/db/apply-least-privilege.mjs`): `POSTGRES_CONTAINER`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `BACKUP_DIR` y `DB_BACKUP_MODE` (`docker` por defecto — ejecuta pg_dump/pg_restore dentro del contenedor; `host` usa los binarios del host). Por defecto el backup usa el rol bootstrap (superuser en dev) para capturar ownership y todos los schemas; `DB_USER` lo acota si el entorno lo exige.
+
+Retención: los dumps viven en `BACKUP_DIR` (por defecto `<repo>/.backups/`, ignorado por git — un dump con PII versionado es defecto bloqueante). **La política de retención operativa (cuánto se conserva, quién custodia, cómo se purga) queda como nota fuera del alcance de este plan**; fijarla antes de operar en staging/prod.
+
+Seguridad: el restore es destructivo y exige confirmación tecleando el **nombre exacto del archivo** de backup con TTY (mismo patrón que `cli/tenant-revert.ts`); sin TTY requiere `--yes` explícito. `--list`/`--dry-run` no tocan la base. La ventana 2 de un entorno **no se declara cerrada** sin el drill del día (§4.1: backup restaurable verificado el mismo día).
+
 ---
 
 ## 5. Qué NO hacer
@@ -258,7 +284,7 @@ ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_
 | Momento | Acción |
 | --- | --- |
 | Tras ventana 1, **antes** de ventana 2 | Revertir binario si hace falta; digests SHA-256 siguen (salvo altas post-expand). `down` de 021/108 con flag destructivo solo si hay huérfanos — ver cabeceras de migración. |
-| Tras ventana 2 | **Solo restore de backup**. No hay reconstrucción de SHA-256 originales. |
+| Tras ventana 2 | **Solo restore de backup** (`pnpm db:restore --target <base> --from <dump>` — ver §4.3). No hay reconstrucción de SHA-256 originales. |
 
 ---
 

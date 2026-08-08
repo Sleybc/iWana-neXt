@@ -11,6 +11,9 @@ build/
 # Storage local de desarrollo — uploads generados por MediaService
 apps/api/storage/
 
+# Backups de base de datos — dumps con PII jamás versionados
+.backups/
+
 # Variables de entorno — NUNCA versionar secretos
 .env
 .env.local
