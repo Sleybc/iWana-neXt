@@ -29,6 +29,14 @@ se carga con el perfil `production`.
 - Node.js y pnpm del baseline del workspace.
 - Variables de plataforma E2E disponibles en el entorno local o en
   `.env.development` (`E2E_PLATFORM_*` o `PLATFORM_SUPER_ADMIN_*`).
+- Claves de bootstrap de la API (CI las genera efímeras y enmascaradas; en
+  local el provisionador aplica defaults si faltan — no sobrescribe valores
+  ya presentes):
+  - `PII_HASH_KEY` — 64 hex (`openssl rand -hex 32`), SEC-P1, **independiente**
+    de `MFA_ENCRYPTION_KEY`.
+  - `MFA_ENCRYPTION_KEY` — 64 hex (`openssl rand -hex 32`).
+  - `EXECUTION_ORDER_IDEMPOTENCY_SECRET` — mínimo 32 caracteres
+    (`openssl rand -hex 24`).
 - No se requiere ningún secreto de CI para MinIO: el script genera credenciales
   efímeras en memoria cuando el entorno no las proporciona y no las imprime.
 
@@ -39,6 +47,12 @@ Si Docker no está disponible, el procedimiento debe terminar con:
 ```
 
 No sustituir esa condición por un mock, un skip o el adaptador `local`.
+
+**Diagnóstico — fallo de config vs Playwright:** si el log muestra
+`API E2E terminó antes del healthcheck` y la cola de la API incluye
+`PII_HASH_KEY es obligatoria`, la causa es configuración (clave SEC-P1
+ausente), no Playwright ni flakiness de tests. Corregir la inyección de
+entorno antes de reintentar la suite.
 
 ## 3. Provisionamiento y orden obligatorio
 
@@ -74,6 +88,9 @@ proceso los valores de laboratorio necesarios para:
 - Redis sin autenticación en la red local de desarrollo.
 - MinIO (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `S3_*`).
 - Typesense y referencias de imágenes fijadas.
+- Claves de API/worker: `PII_HASH_KEY`, `MFA_ENCRYPTION_KEY` y
+  `EXECUTION_ORDER_IDEMPOTENCY_SECRET` (defaults efímeros si el entorno no las
+  aporta; `worker-e2e` exige `PII_HASH_KEY` vía Compose `:?`).
 
 No registrar el entorno completo, ejecutar `docker compose config` sin
 `--quiet`, ni imprimir logs que contengan variables. Las credenciales efímeras
@@ -117,6 +134,8 @@ para la evidencia R4.1. No reintentar ocultando el fallo con skips, mocks o
 ## 7. CI
 
 El job `execution-orders-e2e` de `.github/workflows/ci.yml` instala las
-dependencias y navegadores, ejecuta el mismo provisionador y conserva los
-artefactos de Playwright aunque el job falle. El job usa Docker efímero del
-runner y no usa el perfil de producción.
+dependencias y navegadores, genera credenciales efímeras enmascaradas
+(`PLATFORM_SUPER_ADMIN_*`, `EXECUTION_ORDER_IDEMPOTENCY_SECRET`,
+`MFA_ENCRYPTION_KEY`, `PII_HASH_KEY`), ejecuta el mismo provisionador y
+conserva los artefactos de Playwright aunque el job falle. El job usa Docker
+efímero del runner y no usa el perfil de producción.
