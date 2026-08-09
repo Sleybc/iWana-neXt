@@ -77,6 +77,9 @@ services:
       TYPESENSE_HOST: typesense
       TYPESENSE_PORT: 8108
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      PII_HASH_KEY: ${PII_HASH_KEY:?PII_HASH_KEY is required}
+      EXECUTION_ORDER_IDEMPOTENCY_SECRET: ${EXECUTION_ORDER_IDEMPOTENCY_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
