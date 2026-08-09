@@ -1,54 +1,49 @@
----
-title: "PRD & Arquitectura — Plataforma Integral de Gestión ISP (Colombia)"
-version: "2.4"
-owner: "Arquitectura de Soluciones / Producto"
-date: "2026-05-19"
-status: "Aprobado — Base Definitiva del Proyecto"
-classification: "Confidencial — Uso Interno"
-previousVersion: "2.3 (2026-04-18)"
-changelog: "v2.4: Incorporación de ADR-025 al ADR-039 aprobados por CTO. Modelo Suscriptor con dos dimensiones ortogonales (personType + customerSegment). Pipeline CRM consolidado de 12 a 8 estados (ADR-026). Conversión Expediente→Subscriber two-stage por eventos de dominio (ADR-027). TaxationModule (MOD07) como catálogo centralizado de impuestos transversal (ADR-029). PartiesModule (MOD08) como maestro de identidad multi-rol (ADR-030). Rediseño tributario comercial: impuestos + reglas de aplicación + simulador (ADR-031). Retiro feature flag TAXATION_USE_CATALOG y limpieza motor legacy (ADR-032). Ciclo de vida tenant: nuevo estado MARKED_FOR_DELETION + purga diferida 30 días (ADR-033). MediaModule transversal + @iwana/storage con MinIO/StoragePort (ADR-034, ADR-035). SearchModule con Typesense para búsqueda global indexada (ADR-036). WfmModule (MOD09) con scheduling avanzado, horarios operativos y detección de conflictos (ADR-037). AssuranceModule (MOD10) con tickets, SLA, PQR CRC e integración WFM (ADR-038). Bandeja de visitas pendientes como inbox operativo WFM (ADR-039). Actualización del roadmap reflejando módulos completados y estado real del código."
----
+# PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
 
-<!-- markdownlint-configure-file {"MD060": false} -->
-
-## PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
-
-## Versión 2.4 — Base Definitiva del Proyecto
+**Version:** 2.4  
+**Estado:** ✅ **Aprobado** — Base definitiva del proyecto  
+**Fecha:** 2026-05-19  
+**Modo activo:** Product Architect + Orchestrator  
+**Autor:** Arquitectura de Soluciones / Producto  
+**Clasificación:** Confidencial — Uso interno  
+**Versión anterior:** 2.3 (2026-04-18)  
+**Changelog v2.4:** ADR-025 a ADR-039; suscriptor bidimensional; CRM 8 estados; Taxation/Parties/WFM/Assurance; Media+MinIO; Typesense — detalle en [Historial de Cambios](#historial-de-cambios)  
+**Stack validado:** [Stack_Tecnologico.md](Stack_Tecnologico.md)  
+**Gobernanza:** [AGENTS.md](../../AGENTS.md) · [Protocolo multiagente](../roles/Protocolo_Colaboracion_Multiagente_v1.md)
 
 ---
 
 ## Tabla de Contenidos
 
-PARTE 1 — FUNDAMENTOS
+- **[PARTE 1 — FUNDAMENTOS](#parte-1-fundamentos)**
+  1. [Resumen Ejecutivo](#1-resumen-ejecutivo)
+  2. [Supuestos y Restricciones](#2-supuestos-y-restricciones)
+  3. [Contexto y Antecedentes](#3-contexto-y-antecedentes)
+  4. [Personas y Casos de Uso (Jobs-to-be-Done)](#4-personas-y-casos-de-uso-jobs-to-be-done)
+  5. [Requerimientos Funcionales (por dominios)](#5-requerimientos-funcionales-por-dominios)
 
-1 Resumen Ejecutivo
-2 Supuestos y Restricciones
-3 Contexto y Antecedentes
-4 Personas y Casos de Uso
-5 Requerimientos Funcionales por Dominio
+- **[PARTE 2 — ARQUITECTURA](#parte-2-arquitectura)**
+  6. [Modelo de Datos](#6-modelo-de-datos)
+  7. [Arquitectura C4 — Diagramas Mermaid](#7-arquitectura-c4-diagramas-mermaid)
+  8. [Arquitectura Lógica y DDD](#8-arquitectura-logica-y-ddd)
+  9. [Arquitectura Técnica](#9-arquitectura-tecnica)
 
-PARTE 2 — ARQUITECTURA
-6 Modelo de Datos
-7 Arquitectura C4 — Diagramas Mermaid
-8 Arquitectura Lógica y DDD
-9 Arquitectura Técnica
+- **[PARTE 3 — IMPLEMENTACIÓN](#parte-3-implementacion)**
+  10. [Arquitectura de Despliegue — On-Premise](#10-arquitectura-de-despliegue-on-premise)
+  11. [Integraciones Prioritarias](#11-integraciones-prioritarias)
+  12. [DevEx — Monorepo, CI/CD, Estándares](#12-devex-monorepo-cicd-estandares)
+  13. [Calidad, Seguridad y Operación (NFRs)](#13-calidad-seguridad-y-operacion-nfrs)
+  14. [Roadmap — Orden de Módulos por Prioridad](#14-roadmap-orden-de-modulos-por-prioridad)
 
-PARTE 3 — IMPLEMENTACIÓN
-10 Arquitectura de Despliegue — On-Premise
-11 Integraciones Prioritarias
-12 DevEx — Monorepo, CI/CD, Estándares
-13 Calidad, Seguridad y Operación
-14 Roadmap — Orden de Módulos por Prioridad
+- **[PARTE 4 — GESTIÓN DEL PROYECTO](#parte-4-gestion-del-proyecto)**
+  15. [Plan de Migración de Datos](#15-plan-de-migracion-de-datos)
+  16. [Matriz de Riesgos](#16-matriz-de-riesgos)
+  17. [KPIs y Métricas](#17-kpis-y-metricas)
+  18. [Costeo ROM](#18-costeo-rom)
+  19. [Anexos](#19-anexos)
 
-PARTE 4 — GESTIÓN DEL PROYECTO
-15 Plan de Migración de Datos
-16 Matriz de Riesgos
-17 KPIs y Métricas
-18 Costeo ROM
-19 Anexos
-
-PARTE 5 — GOBERNANZA
-20 Framework de Gobernanza Multi-IA
+- **[PARTE 5 — GOBERNANZA](#parte-5-gobernanza)**
+  20. [Framework de Gobernanza Multi-IA](#20-framework-de-gobernanza-multi-ia)
 
 ---
 
@@ -58,23 +53,23 @@ PARTE 5 — GOBERNANZA
 
 ## 1. Resumen Ejecutivo
 
-## 1.1 Qué vamos a construir
+### 1.1 Qué vamos a construir
 
 Una plataforma unificada de gestión para ISPs colombianos que consolida OSS/BSS/NMS/EMS, aprovisionamiento, facturación electrónica DIAN, CRM omnicanal, inventario de red, helpdesk con SLA, WFM, ERP (integración), HCM, SG-SST y reportes regulatorios CRC/MinTIC en un solo sistema.
 
 La plataforma va a **producción real** desde el primer módulo habilitado. No es un piloto. Cada módulo se construye y cierra completo: PRD del módulo, HLD, prompts de ejecución por fase, Backend, Frontend, Base de Datos, Tests, documentación operativa y evidencia funcional. El cierre real del módulo ocurre únicamente cuando está desplegado y verificado en producción.
 
-## 1.2 Problema a resolver
+### 1.2 Problema a resolver
 
 Los ISPs en Colombia operan con herramientas fragmentadas: WispHub para red, AdminOLT para OLTs, Alegra/Siigo para contabilidad, UISP para equipos Ubiquiti, hojas de cálculo para inventario y WhatsApp personal para soporte. Esto genera silos de datos, incumplimientos regulatorios (CRC, DIAN, MinTrabajo), fricción operativa, baja visibilidad del suscriptor y errores de facturación.
 
 **Sistemas actuales a reemplazar:** WispHub · AdminOLT · UISP (Ubiquiti) · Siigo · Excel
 
-## 1.3 Para quién
+### 1.3 Para quién
 
 ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei · ZTE · VSOL · otras) y/o inalámbricas (MikroTik · Ubiquiti), que buscan consolidar operaciones y cumplir normativa.
 
-## 1.4 Decisiones principales
+### 1.4 Decisiones principales
 
 | Decisión                     | Elección                                                | Justificación                                                     |
 | ---------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -93,14 +88,14 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 | Identidad multi-rol          | PartiesModule (MOD08) — Party como maestro              | Un solo registro por persona/empresa con múltiples roles. Ref: ADR-030 |
 | Catálogo fiscal              | TaxationModule (MOD07) — catálogo centralizado          | Transversal para SALES, PURCHASE, BOTH. Sin duplicación. Ref: ADR-029 |
 
-## 1.5 Riesgos clave
+### 1.5 Riesgos clave
 
 1. Complejidad de integración OLT multi-marca (mitigación: IOltAdapter genérico, AdminOLT como bridge en Fase 2).
 2. Cambios regulatorios CRC/DIAN durante desarrollo (mitigación: adapters modulares, monitoring normativo mensual).
 3. Migración de datos desde múltiples sistemas (mitigación: ETL por módulo, operación paralela, corte gradual).
 4. Dependencias de instalación on-premise (mitigación: Docker autocontenido, runbooks, VPN soporte remoto).
 
-## 1.6 MVP (90 días)
+### 1.6 MVP (90 días)
 
 Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de actor autenticado), CRM core (suscriptores Natural/Jurídico con estrato, contratos, Expediente Único con pipeline de 8 estados, conversión two-stage Expediente→Subscriber), Billing + FE DIAN (vía Siigo/Alegra adapter) con Motor IVA por estrato, NMS MikroTik, Provisioning básico (PPPoE + IP Fija + DHCP), RADIUS, Portal suscriptor, Notificaciones Email, ETL migración WispHub/AdminOLT/Excel.
 
@@ -119,7 +114,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 | Búsqueda Global (Typesense) | Transversal | ✅ Implementado (ADR-036) |
 | NMS / Provisioning / Billing | MOD03–05 | 🔲 En roadmap |
 
-## 1.7 Medidas de éxito (KPI)
+### 1.7 Medidas de éxito (KPI)
 
 | KPI                             | Target                | Fuente              |
 | ------------------------------- | --------------------- | ------------------- |
@@ -134,7 +129,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 
 ## 2. Supuestos y Restricciones
 
-## 2.1 Supuestos (confirmados)
+### 2.1 Supuestos (confirmados)
 
 | #   | Supuesto                                                                            | Estado     | Fuente               |
 | --- | ----------------------------------------------------------------------------------- | ---------- | -------------------- |
@@ -153,7 +148,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 | S13 | Migración de datos desde: WispHub, AdminOLT, UISP, Siigo, Excel                     | Confirmado | ISP                  |
 | S14 | Métodos de autenticación de red: PPPoE, DHCP/IPoE, IP Fija, MAC Binding, Hotspot    | Confirmado | ISP                  |
 
-## 2.2 Restricciones
+### 2.2 Restricciones
 
 | #   | Restricción                                                                                                                                                                    | Impacto                                                  |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
@@ -171,7 +166,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 
 ## 3. Contexto y Antecedentes
 
-## 3.1 Situación actual
+### 3.1 Situación actual
 
 Los ISPs colombianos medianos operan con la combinación de sistemas que el ISP cliente usa actualmente:
 
@@ -182,11 +177,11 @@ Los ISPs colombianos medianos operan con la combinación de sistemas que el ISP 
 - **Excel:** Para todo lo demás (inventarios manuales, listados, datos varios).
 - **WhatsApp personal:** Soporte informal, sin tracking ni SLA.
 
-## 3.2 Oportunidades
+### 3.2 Oportunidades
 
 Ninguna plataforma existente cubre el ciclo completo Lead→Cash + Trouble→Resolve + ERP + HCM + SG-SST. La plataforma iWana neXt tiene la oportunidad de ser la primera solución integral para ISPs colombianos.
 
-## 3.3 Competencia y alternativas
+### 3.3 Competencia y alternativas
 
 | Plataforma | Fortaleza                          | Debilidad vs nuestro scope             |
 | ---------- | ---------------------------------- | -------------------------------------- |
@@ -200,7 +195,7 @@ Ninguna plataforma existente cubre el ciclo completo Lead→Cash + Trouble→Res
 
 ## 4. Personas y Casos de Uso (Jobs-to-be-Done)
 
-## 4.1 Tipos de usuarios del sistema
+### 4.1 Tipos de usuarios del sistema
 
 El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de actor autenticado**, cada una con portal o superficie de acceso diferenciada:
 
@@ -218,7 +213,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 > **Nota portal público:** El portal público (landing comercial, consulta de cobertura, registro de leads) se desarrolla como proyecto **externo separado**. En este sistema solo se incluye enlace externo hacia dicho portal.
 > **Nota sobre proveedores:** Los proveedores se modelan en el baseline actual como terceros del módulo de Compras/Inventario, no como usuarios autenticados del sistema. Un portal de proveedor requeriría ADR y extensión del modelo de identidad.
 
-## 4.2 Personas operativas
+### 4.2 Personas operativas
 
 | Persona               | Rol                                  | Job principal                                                       |
 | --------------------- | ------------------------------------ | ------------------------------------------------------------------- |
@@ -230,9 +225,9 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | **Contador/RRHH**     | Administración financiera y personas | Facturar DIAN, conciliar pagos, gestionar nómina, SG-SST            |
 | **Suscriptor**        | Cliente final                        | Pagar facturas, reportar fallas, ver consumo, firmar contratos      |
 
-## 4.3 Portales personalizados por tipo de usuario
+### 4.3 Portales personalizados por tipo de usuario
 
-### Portal del Cliente (Suscriptor)
+#### Portal del Cliente (Suscriptor)
 
 - Consultar y descargar facturas
 - Ver y firmar contratos digitalmente
@@ -245,7 +240,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 - Programa de referidos (Fase 2)
 - Historial de equipos ONT/router asignados
 
-### Portal del Empleado
+#### Portal del Empleado
 
 - Dashboard según rol
 - Gestión de tareas asignadas
@@ -255,7 +250,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 - Ver capacitaciones SG-SST
 - Documentos personales y directorio interno
 
-### Portal del Contratista
+#### Portal del Contratista
 
 - Órdenes de trabajo asignadas
 - Registro de asistencia y check-in/out
@@ -263,7 +258,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 - Ver pagos y anticipos
 - Documentos contractuales e historial de trabajos
 
-### Portal del Partner / Vendedor Externo
+#### Portal del Partner / Vendedor Externo
 
 - Leads asignados y pipeline de ventas
 - Dashboard de ventas realizadas
@@ -272,30 +267,30 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 - Materiales de venta (brochures, promociones)
 - Registro de nuevos leads
 
-### Portal del Auditor
+#### Portal del Auditor
 
 - Acceso de solo lectura a módulos autorizados
 - Exportar reportes de auditoría
 - Ver logs de actividad y trazabilidad de cambios
 - Generar informes de cumplimiento
 
-### Portal del Inversionista / Accionista
+#### Portal del Inversionista / Accionista
 
 - Dashboard financiero: MRR, ARR, Churn, NPS, rentabilidad
 - Reportes de ingresos y gastos
 - KPIs de negocio y crecimiento
 - **Sin acceso a datos operativos sensibles ni PII de clientes**
 
-### Portal de Soporte Técnico Externo (iWana)
+#### Portal de Soporte Técnico Externo (iWana)
 
 - Diagnóstico del sistema (health checks, estado servicios)
 - Logs de aplicación y errores
 - Métricas de rendimiento
 - **Sin acceso a datos financieros ni PII**
 
-## 4.4 Principales casos de uso
+### 4.4 Principales casos de uso
 
-### Lead-to-Cash (L2C)
+#### Lead-to-Cash (L2C)
 
 1. Vendedor registra lead con geolocalización → verifica cobertura automática
 2. Convierte lead en oportunidad → genera cotización con plan y precio
@@ -306,7 +301,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 7. Verifica QoS (speed test > 80% plan contratado)
 8. Activa contrato → inicia billing → genera primera factura FE DIAN (vía Siigo/Alegra)
 
-### Trouble-to-Resolve (T2R)
+#### Trouble-to-Resolve (T2R)
 
 1. Alerta NMS (ONU Rx power fuera de rango) / Reporte suscriptor / PQR CRC → crea ticket
 2. Clasifica: incidente / PQR / consulta → asigna SLA
@@ -319,9 +314,9 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 
 ## 5. Requerimientos Funcionales (por dominios)
 
-## 5.1 BSS / CRM / Omnicanal
+### 5.1 BSS / CRM / Omnicanal
 
-### CRM
+#### CRM
 
 | ID        | Requerimiento                                                                                                   | Prioridad |
 | --------- | --------------------------------------------------------------------------------------------------------------- | --------- |
@@ -342,7 +337,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-CRM-15 | **Pipeline CRM de 8 estados consolidados:** `NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO → DESCARTADO`. Transiciones con reglas de negocio validadas (avance/retroceso explícito). Ref: ADR-026 | MVP |
 | RF-CRM-16 | **Conversión Expediente→Subscriber en dos etapas vía domain events:** Etapa 1 en `LISTO_PARA_INSTALACION` → crea Subscriber con status `PROSPECT` (idempotente); Etapa 2 en `CLIENTE_ACTIVO` → promueve a status `ACTIVE`. Via EventEmitter2. No reversible. Subscriber adquiere: `expedienteId`, `convertedAt`, `activatedAt`. Ref: ADR-027 | MVP |
 
-### Omnicanal
+#### Omnicanal
 
 | ID        | Requerimiento                                                                | Prioridad  |
 | --------- | ---------------------------------------------------------------------------- | ---------- |
@@ -353,7 +348,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-OMN-05 | Bot WhatsApp para autogestión (consulta saldo, reporte falla)                | Fase 2     |
 | RF-OMN-06 | Base de conocimiento para autoservicio                                       | Fase 2     |
 
-## 5.2 Billing / Rating / Cobranza
+### 5.2 Billing / Rating / Cobranza
 
 | ID        | Requerimiento                                                                                                                    | Prioridad |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------- | --------- |
@@ -371,7 +366,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-BIL-12 | Cobro vía Efecty / puntos de pago presencial                                                                                     | Fase 2    |
 | RF-BIL-13 | Motor de FE DIAN propio (sin intermediario Alegra/Siigo)                                                                         | Fase 3    |
 
-## 5.3 Provisioning / Order Management
+### 5.3 Provisioning / Order Management
 
 | ID        | Requerimiento                                                                                                                                         | Prioridad |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
@@ -387,9 +382,9 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-PRV-10 | Zero-touch provisioning ONU para ZTE                                                                                                                  | Fase 2    |
 | RF-PRV-11 | Zero-touch provisioning ONU para VSOL                                                                                                                 | Fase 3    |
 
-## 5.4 Inventory / Resource Management
+### 5.4 Inventory / Resource Management
 
-### 5.4.1 IPAM y Recursos de Red
+#### 5.4.1 IPAM y Recursos de Red
 
 | ID        | Requerimiento                                                                        | Prioridad |
 | --------- | ------------------------------------------------------------------------------------ | --------- |
@@ -400,7 +395,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-INV-05 | Georreferenciación de infraestructura: cajas NAP, splitters, rutas de fibra          | Fase 2    |
 | RF-INV-06 | Conciliación inventario lógico vs físico                                             | Fase 2    |
 
-### 5.4.2 Ciclo de Vida de Activos (Bodega → Técnico → Cliente → Retorno → Baja)
+#### 5.4.2 Ciclo de Vida de Activos (Bodega → Técnico → Cliente → Retorno → Baja)
 
 El sistema gestiona el ciclo de vida completo de todo activo físico de la empresa: equipos de red (ONUs, rosetas, cable), herramientas, dotación, vehículos y elementos de seguridad. La **responsabilidad del ítem es siempre visible** en el inventario, con actas de entrega en cada transferencia.
 
@@ -452,7 +447,7 @@ COMPRA → BODEGA → TÉCNICO → CLIENTE / TRABAJO → RETORNO / BAJA
 | RF-INV-25 | Georreferenciación de infraestructura: cajas NAP, splitters, rutas de fibra                                                                                | Fase 2                                    |
 | RF-INV-26 | Conciliación inventario lógico vs físico                                                                                                                   | Fase 2                                    |
 
-### 5.4.3 Módulo de Compras (Purchase Order Management)
+#### 5.4.3 Módulo de Compras (Purchase Order Management)
 
 Flujo completo desde la solicitud interna hasta el ingreso del material a bodega.
 
@@ -472,9 +467,9 @@ Aprobación Dirección → Orden de Compra → Recepción en Bodega → Ingreso 
 | RF-PUR-07 | Notificaciones: al solicitante cuando su solicitud avanza de estado; al área de compras cuando hay solicitudes pendientes                                       | MVP       |
 | RF-PUR-08 | Historial de proveedores: precio histórico por ítem, tiempo de entrega, calificación                                                                            | Fase 2    |
 
-## 5.5 NMS/EMS / Service Assurance
+### 5.5 NMS/EMS / Service Assurance
 
-### NMS/EMS (Multi-marca desde diseño)
+#### NMS/EMS (Multi-marca desde diseño)
 
 | ID        | Requerimiento                                                                                      | Prioridad    |
 | --------- | -------------------------------------------------------------------------------------------------- | ------------ |
@@ -490,7 +485,7 @@ Aprobación Dirección → Orden de Compra → Recepción en Bodega → Ingreso 
 | RF-NMS-10 | Integración OLT VSOL (SNMP + SSH CLI)                                                              | Fase 3       |
 | RF-NMS-11 | Cálculo de disponibilidad por OLT para reportes CRC                                                | Fase 2       |
 
-### Service Assurance
+#### Service Assurance
 
 | ID        | Requerimiento                                                                   | Prioridad |
 | --------- | ------------------------------------------------------------------------------- | --------- |
@@ -504,9 +499,9 @@ Aprobación Dirección → Orden de Compra → Recepción en Bodega → Ingreso 
 | RF-ASS-08 | **Timeline de eventos inmutable por ticket:** registro de cada transición de estado, asignación, comentarios y acciones con actor y timestamp. | MVP |
 | RF-ASS-09 | **Link Ticket→WorkOrder:** asociar tickets de campo a Work Orders de WFM sin acceso directo a tablas del módulo WFM. | MVP |
 
-## 5.6 ERP / WFM / HCM / SG-SST
+### 5.6 ERP / WFM / HCM / SG-SST
 
-### ERP
+#### ERP
 
 | ID        | Requerimiento                                                                      | Prioridad |
 | --------- | ---------------------------------------------------------------------------------- | --------- |
@@ -514,7 +509,7 @@ Aprobación Dirección → Orden de Compra → Recepción en Bodega → Ingreso 
 | RF-ERP-02 | Integración bidireccional Siigo API: facturas, notas crédito, estado contable      | MVP       |
 | RF-ERP-03 | Integración bidireccional Alegra API (como alternativa a Siigo)                    | MVP       |
 
-### WFM — Hoja de Trabajo Técnico (Work Order)
+#### WFM — Hoja de Trabajo Técnico (Work Order)
 
 Cada técnico gestiona sus trabajos del día a través de **Work Orders** que registran tiempo, materiales consumidos, equipos instalados/retirados y firma del cliente. Este módulo es el puente entre el inventario del técnico y el historial del cliente.
 
@@ -579,7 +574,7 @@ Técnico cierra tarea en app →
 | RF-WFM-18 | **VisitRequest lifecycle:** Estado de solicitud de visita con transiciones: `PENDING → RECOMMENDED → SCHEDULED → COMPLETED / CANCELLED`. Asociada a Expediente. Crea `ScheduleEvent` al confirmar. | MVP |
 | RF-WFM-19 | **Sitios de operación:** Configuración de sitios con horarios laborales propios, permite resolver ventanas de operación específicas por ubicación geográfica. | MVP |
 
-### HCM
+#### HCM
 
 | ID        | Requerimiento                                                                             | Prioridad |
 | --------- | ----------------------------------------------------------------------------------------- | --------- |
@@ -590,7 +585,7 @@ Técnico cierra tarea en app →
 | RF-HCM-05 | Control jornada 42h/semana (Ley 2101/2021)                                                | Fase 3    |
 | RF-HCM-06 | Portal Empleado: nómina, certificados, vacaciones, asistencia, capacitaciones, directorio | Fase 3    |
 
-### SG-SST
+#### SG-SST
 
 | ID        | Requerimiento                                                                    | Prioridad |
 | --------- | -------------------------------------------------------------------------------- | --------- |
@@ -600,7 +595,7 @@ Técnico cierra tarea en app →
 | RF-SST-04 | Inspecciones: checklists configurables (vehículos, EPP), evidencia fotográfica   | Fase 3    |
 | RF-SST-05 | Indicadores: tasa accidentalidad, severidad, frecuencia, cumplimiento plan anual | Fase 3    |
 
-## 5.7 Seguridad, Auditoría y Cumplimiento
+### 5.7 Seguridad, Auditoría y Cumplimiento
 
 | ID        | Requerimiento                                                                                                                                          | Prioridad |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
@@ -615,7 +610,7 @@ Técnico cierra tarea en app →
 | RF-SEC-09 | Rotación de secrets cada 90 días                                                                                                                       | Fase 2    |
 | RF-SEC-10 | Pentest trimestral                                                                                                                                     | Fase 2    |
 
-## 5.9 Catálogo y Gestión Comercial (Módulo Comercial + Motor Tributario)
+### 5.9 Catálogo y Gestión Comercial (Módulo Comercial + Motor Tributario)
 
 Se establece un módulo de primer nivel dedicado a la configuración centralizada de la oferta de valor del ISP. Actúa como fuente única de verdad para Planes, Productos, Servicios, Bundles, Promociones y aplicación de impuestos.
 
@@ -656,7 +651,7 @@ Se establece un módulo de primer nivel dedicado a la configuración centralizad
 - **Estado Financiero:** Dominio Billing (saldo, facturas con snapshot inmutable del precio cobrado)
 - **Soporte Técnico:** Tickets + Órdenes de Trabajo unificados en historial de "Casos"
 
-## 5.8 Migración de Datos
+### 5.8 Migración de Datos
 
 | ID        | Requerimiento                                                                   | Prioridad |
 | --------- | ------------------------------------------------------------------------------- | --------- |
@@ -678,7 +673,7 @@ Se establece un módulo de primer nivel dedicado a la configuración centralizad
 
 ## 6. Modelo de Datos
 
-## 6.1 Modelo USER + Perfil
+### 6.1 Modelo USER + Perfil
 
 El sistema usa una **tabla central de autenticación (USER)** con perfiles diferenciados por tipo de usuario. Relación 1:1 entre USER y su perfil correspondiente.
 
@@ -719,9 +714,9 @@ USER.role = IWANA_SUPPORT
 Nota: `SYSTEM_ADMIN` e `IWANA_SUPPORT` operan como roles de plataforma en el schema público y no representan perfiles de negocio del tenant.
 ```
 
-## 6.2 Tipos de Personas y Tratamiento Fiscal
+### 6.2 Tipos de Personas y Tratamiento Fiscal
 
-### Personas Naturales
+#### Personas Naturales
 
 | Campo            | Tipo                     | Descripción                                                                    |
 | ---------------- | ------------------------ | ------------------------------------------------------------------------------ |
@@ -734,7 +729,7 @@ Nota: `SYSTEM_ADMIN` e `IWANA_SUPPORT` operan como roles de plataforma en el sch
 | `taxRegime`      | enum                     | SIMPLIFIED, COMMON                                                             |
 | `birthDate`      | date                     | Fecha de nacimiento                                                            |
 
-### Personas Jurídicas
+#### Personas Jurídicas
 
 | Campo                  | Tipo                       | Descripción                                          |
 | ---------------------- | -------------------------- | ---------------------------------------------------- |
@@ -750,7 +745,7 @@ Nota: `SYSTEM_ADMIN` e `IWANA_SUPPORT` operan como roles de plataforma en el sch
 
 > **Nota:** El campo `stratum` **NO aplica** para personas jurídicas.
 
-## 6.3 Lógica de IVA para Servicios de Internet (Colombia — CONFIRMADO)
+### 6.3 Lógica de IVA para Servicios de Internet (Colombia — CONFIRMADO)
 
 | Tipo Cliente     | Estrato            | Tratamiento IVA | Acción en Sistema                       | Base Legal                             |
 | ---------------- | ------------------ | --------------- | --------------------------------------- | -------------------------------------- |
@@ -770,7 +765,7 @@ Nota: `SYSTEM_ADMIN` e `IWANA_SUPPORT` operan como roles de plataforma en el sch
 
 > ✅ **Estado:** Confirmado por el ISP. El tratamiento de IVA para estratos 3 y 4 fue validado. Estrato 3 = EXCLUIDO, Estrato 4 = IVA 19%.
 
-## 6.4 Entidad SUBSCRIBER (Unificada) — v2.4
+### 6.4 Entidad SUBSCRIBER (Unificada) — v2.4
 
 > **Actualización v2.4 (ADR-025, ADR-027):** El modelo ahora separa dos dimensiones ortogonales en lugar del enum `SubscriberType` que las mezclaba. `personType` es la dimensión fiscal (determina IVA). `customerSegment` es la dimensión comercial (determina tarifas y políticas). Se agregan campos de conversión desde Expediente.
 
@@ -820,7 +815,7 @@ SUBSCRIBER {
 }
 ```
 
-## 6.5 Entidades de Usuarios (Tipos de Perfil)
+### 6.5 Entidades de Usuarios (Tipos de Perfil)
 
 ```text
 EMPLOYEE {
@@ -858,7 +853,7 @@ INVESTOR {
 }
 ```
 
-## 6.6 ERD Extendido — Relaciones Multi-usuario
+### 6.6 ERD Extendido — Relaciones Multi-usuario
 
 ```mermaid
 erDiagram
@@ -882,9 +877,9 @@ erDiagram
     INVOICE ||--o{ PAYMENT : receives
     SUBSCRIBER ||--o{ TICKET : creates
     TICKET ||--o{ WORK_ORDER : spawns
-```text
+```
 
-## 6.7 Estrategia Multi-Tenant — v2.4
+### 6.7 Estrategia Multi-Tenant — v2.4
 
 ```text
 PostgreSQL Instance
@@ -912,7 +907,7 @@ PostgreSQL Instance
 │   └── partner_leads, commissions
 └── tenant_isp_beta (schema futuro — cuando sea SaaS multi-ISP)
     └── ...
-```text
+```
 
 **Estados del Tenant (actualizados — ADR-033):**
 
@@ -928,9 +923,9 @@ PostgreSQL Instance
 
 > **Decisión crítica (ADR-002):** Aunque inicialmente habrá un solo tenant, la arquitectura multi-tenant por schema se implementa desde el primer sprint. El overhead es mínimo vs el costo de refactorizar después de tener datos en producción.
 
-## 6.9 Entidades Nuevas en v2.4
+### 6.9 Entidades Nuevas en v2.4
 
-### Party (MOD08 — ADR-030)
+#### Party (MOD08 — ADR-030)
 
 ```text
 PARTY {
@@ -956,11 +951,11 @@ PARTY_CONTACT {
     string value (cifrado AES-256 si PII)
     boolean isPrimary
 }
-```text
+```
 
 > **Nota:** `UserAccount` (antes User) puede vincularse opcionalmente a un Party. Los suscriptores existentes son Parties con rol `CUSTOMER`.
 
-### TaxDefinition (MOD07 — ADR-029)
+#### TaxDefinition (MOD07 — ADR-029)
 
 ```text
 TAX_DEFINITION {
@@ -974,11 +969,11 @@ TAX_DEFINITION {
     boolean active
     timestamp createdAt, timestamp updatedAt
 }
-```text
+```
 
 Presets del sistema: `IVA_19` (19%), `IVA_EXCLUIDO` (0%), `RETEFUENTE_BASE` (3.5%), `RETEIVA` (15%), `ICA_BOGOTA` (municipal).
 
-### MediaAsset (Schema Público — ADR-034, ADR-035)
+#### MediaAsset (Schema Público — ADR-034, ADR-035)
 
 ```text
 MEDIA_ASSET {
@@ -991,9 +986,9 @@ MEDIA_ASSET {
     boolean sanitized (SVG sanitizado)
     timestamp createdAt
 }
-```text
+```
 
-### VisitRequest (MOD09 — ADR-037, ADR-039)
+#### VisitRequest (MOD09 — ADR-037, ADR-039)
 
 ```text
 VISIT_REQUEST {
@@ -1008,9 +1003,9 @@ VISIT_REQUEST {
     uuid scheduleEventId FK → ScheduleEvent (nullable — asignado al confirmar)
     timestamp createdAt, timestamp updatedAt
 }
-```text
+```
 
-## 6.8 Políticas de Retención de Datos
+### 6.8 Políticas de Retención de Datos
 
 | Entidad                | Retención                    | Base Legal                                  |
 | ---------------------- | ---------------------------- | ------------------------------------------- |
@@ -1029,7 +1024,7 @@ VISIT_REQUEST {
 
 ## 7. Arquitectura C4 — Diagramas Mermaid
 
-## 7.1 Nivel 1 — Contexto
+### 7.1 Nivel 1 — Contexto
 
 ```mermaid
 C4Context
@@ -1076,7 +1071,7 @@ C4Context
     Rel(platform, buk, "REST API (Fase 3)")
 ```
 
-## 7.2 Nivel 2 — Contenedores
+### 7.2 Nivel 2 — Contenedores
 
 ```mermaid
 C4Container
@@ -1106,9 +1101,9 @@ C4Container
     Rel(api, storage, "S3 API compatible")
     Rel(api, search, "REST API Typesense")
     Rel(workers, search, "Indexación async BullMQ")
-```text
+```
 
-## 7.3 Nivel 3 — Componentes (API Backend) — v2.4
+### 7.3 Nivel 3 — Componentes (API Backend) — v2.4
 
 ```mermaid
 C4Component
@@ -1141,7 +1136,7 @@ C4Component
 
 ## 8. Arquitectura Lógica y DDD
 
-## 8.1 Bounded Contexts — v2.4
+### 8.1 Bounded Contexts — v2.4
 
 ```mermaid
 flowchart TB
@@ -1201,9 +1196,9 @@ flowchart TB
     ASS -->|"FieldServiceNeeded event"| WFM
     CRM -->|"indexar expedientes/contacts"| SEARCH
     COM -->|"indexar catálogo"| SEARCH
-```text
+```
 
-## 8.2 Mapa de contexto — Relaciones
+### 8.2 Mapa de contexto — Relaciones
 
 | Upstream          | Downstream        | Relación              | Mecanismo                                                            |
 | ----------------- | ----------------- | --------------------- | -------------------------------------------------------------------- |
@@ -1231,7 +1226,7 @@ flowchart TB
 | Tenant            | Todos             | Shared Kernel         | Schema routing middleware                                            |
 | Partner           | CRM               | Customer-Supplier     | `LeadConverted` event → comisión                                     |
 
-## 8.3 Patrones de Autenticación de Red
+### 8.3 Patrones de Autenticación de Red
 
 ```mermaid
 flowchart TB
@@ -1256,7 +1251,7 @@ flowchart TB
 
 ## 9. Arquitectura Técnica
 
-## 9.1 Stack Tecnológico (baseline objetivo alineado con latest stable)
+### 9.1 Stack Tecnológico (baseline objetivo alineado con latest stable)
 
 > Verificar versiones actuales en `docs/prds/Stack_Tecnologico.md` antes de iniciar cada módulo.
 
@@ -1277,7 +1272,7 @@ flowchart TB
 
 **Regla:** El proyecto adopta latest stable como baseline objetivo de trabajo, según `docs/prds/Stack_Tecnologico.md`. Cada sprint declara la versión exacta validada en conjunto y sus smoke tests asociados. Ninguna actualización con breaking changes entra sin validación arquitectónica.
 
-## 9.2 Estándares de API
+### 9.2 Estándares de API
 
 | Aspecto       | Estándar                                            | Implementación                                       |
 | ------------- | --------------------------------------------------- | ---------------------------------------------------- |
@@ -1289,7 +1284,7 @@ flowchart TB
 | Paginación    | Cursor-based (listas grandes) + offset (dashboards) | `?cursor=xxx&limit=20`                               |
 | Rate limiting | nestjs/throttler                                    | 100 req/min general, 10 req/min auth                 |
 
-## 9.3 Patrones Arquitectónicos Core
+### 9.3 Patrones Arquitectónicos Core
 
 **Event-Driven:**
 
@@ -1353,7 +1348,7 @@ class OltAdapterFactory {
     }
   }
 }
-```text
+```
 
 ---
 
@@ -1363,11 +1358,11 @@ class OltAdapterFactory {
 
 ## 10. Arquitectura de Despliegue — On-Premise
 
-## 10.1 Decisión de despliegue
+### 10.1 Decisión de despliegue
 
 El sistema se despliega **on-premise en servidores del ISP**. No se asumen servicios cloud. Todo el stack funciona en servidores físicos o VMs del ISP con Docker. Ref: ADR-013.
 
-## 10.2 Requisitos de Hardware Mínimos
+### 10.2 Requisitos de Hardware Mínimos
 
 | Componente           | Mínimo MVP                             | Recomendado (>2,000 suscriptores) |
 | -------------------- | -------------------------------------- | --------------------------------- |
@@ -1378,7 +1373,7 @@ El sistema se despliega **on-premise en servidores del ISP**. No se asumen servi
 | Red                  | 100 Mbps                               | 1 Gbps                            |
 | Servidores           | 1 servidor (dev/staging/prod para MVP) | 2+ servidores (separar DB)        |
 
-## 10.3 Contenedores Docker — v2.4
+### 10.3 Contenedores Docker — v2.4
 
 ```mermaid
 flowchart TB
@@ -1409,14 +1404,14 @@ flowchart TB
     WORKER --> TYPESENSE
 ```
 
-## 10.4 Conectividad y Soporte Remoto
+### 10.4 Conectividad y Soporte Remoto
 
 - VPN (WireGuard o OpenVPN) para acceso seguro al servidor del ISP
 - Portal Soporte iWana con acceso a logs y métricas (sin acceso a datos de negocio ni PII)
 - Runbooks documentados para procedimientos de mantenimiento
 - Toda sesión de soporte se registra en audit_log
 
-## 10.5 Backup y Recuperación
+### 10.5 Backup y Recuperación
 
 | Componente       | Estrategia                      | Frecuencia                | Retención                |
 | ---------------- | ------------------------------- | ------------------------- | ------------------------ |
@@ -1431,7 +1426,7 @@ flowchart TB
 
 ## 11. Integraciones Prioritarias
 
-## 11.1 Tabla de integraciones
+### 11.1 Tabla de integraciones
 
 | #   | Integración                                   | Protocolo                                | Prioridad |
 | --- | --------------------------------------------- | ---------------------------------------- | --------- |
@@ -1455,7 +1450,7 @@ flowchart TB
 | I18 | MinIO (Object Storage on-prem)                | S3-compatible REST API — `@iwana/storage` | MVP (implementado — ADR-035) |
 | I19 | Typesense (Search Engine on-prem)             | REST API local Docker — `SearchModule`   | MVP (implementado — ADR-036) |
 
-## 11.2 Detalle — Adapter Siigo/Alegra (FE DIAN)
+### 11.2 Detalle — Adapter Siigo/Alegra (FE DIAN)
 
 ```typescript
 interface IErpFEAdapter {
@@ -1469,13 +1464,13 @@ interface IErpFEAdapter {
 class SiigoAdapter implements IErpFEAdapter { ... }   // Primary — MVP
 class AlegraAdapter implements IErpFEAdapter { ... }  // Alternativa — MVP
 class DirecDIANAdapter implements IErpFEAdapter { ... } // Motor propio — Fase 3
-```text
+```
 
 ---
 
 ## 12. DevEx — Monorepo, CI/CD, Estándares
 
-## 12.1 Estructura del Monorepo Turborepo
+### 12.1 Estructura del Monorepo Turborepo
 
 ```text
 iwana-next/
@@ -1506,9 +1501,9 @@ iwana-next/
     ├── migrate.ts          # Migración para tenant específico
     ├── migrate-all-tenants.ts
     └── install-on-premise.sh  # Script de instalación automatizada
-```text
+```
 
-## 12.2 Pipeline CI/CD
+### 12.2 Pipeline CI/CD
 
 ```mermaid
 flowchart LR
@@ -1530,7 +1525,7 @@ flowchart LR
     end
 ```
 
-## 12.3 Flujo de Trabajo por Módulo — Gobernanza
+### 12.3 Flujo de Trabajo por Módulo — Gobernanza
 
 El ciclo de desarrollo de cada módulo tiene 3 fases formales:
 
@@ -1560,7 +1555,7 @@ FASE 3: INFORME Y AUDITORÍA
 > **Excepción controlada de prioridad:** El orden objetivo de módulos es secuencial, pero CTO + Engineering Manager pueden repriorizar un módulo por necesidad de negocio o ventana operativa, siempre que las dependencias técnicas mínimas estén resueltas y la decisión quede documentada en ADR o artefacto formal de gobierno.
 > **Regla de stop técnico:** Si un módulo no puede continuar por dependencia faltante, bloqueo arquitectónico, riesgo regulatorio, brecha de seguridad o imposibilidad operativa verificable, el equipo debe detener ejecución, explicar el porqué, documentar impacto, alternativas y recomendación, y esperar decisión explícita antes de retomar o mover prioridad.
 
-## 12.3.1 Artefactos obligatorios por fase
+#### 12.3.1 Artefactos obligatorios por fase
 
 | Fase               | Artefacto obligatorio                            | Responsable primario                     | Carpeta destino en docs/       | Gate de salida                               |
 | ------------------ | ------------------------------------------------ | ---------------------------------------- | ------------------------------ | -------------------------------------------- |
@@ -1574,7 +1569,7 @@ FASE 3: INFORME Y AUDITORÍA
 | Auditoría y cierre | Checklist de salida a producción                 | Engineering Manager + Architect Software | `docs/quality/`                | 100% de ítems críticos en verde              |
 | Auditoría y cierre | Decisión de bloqueo o repriorización, si aplica  | Engineering Manager + Architect Software | `docs/adrs/` o `docs/quality/` | Justificación aprobada por CTO               |
 
-## 12.3.2 Criterio de cierre de módulo
+#### 12.3.2 Criterio de cierre de módulo
 
 Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
@@ -1585,7 +1580,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 5. Documentación de fase, runbooks y evidencias archivadas en `docs/`.
 6. Despliegue realizado y validado en producción con datos de operación o consultas reales según corresponda al módulo.
 
-## 12.4 Estándares de Código
+### 12.4 Estándares de Código
 
 | Aspecto       | Estándar                                                                    | Herramienta       |
 | ------------- | --------------------------------------------------------------------------- | ----------------- |
@@ -1603,7 +1598,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
 ## 13. Calidad, Seguridad y Operación (NFRs)
 
-## 13.1 Requerimientos No Funcionales
+### 13.1 Requerimientos No Funcionales
 
 | Categoría      | NFR                     | Target                         |
 | -------------- | ----------------------- | ------------------------------ |
@@ -1621,7 +1616,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 | Mantenibilidad | Cobertura de tests      | > 80% módulos core             |
 | Mantenibilidad | Deuda técnica           | < 20% (SonarQube)              |
 
-## 13.2 Pipeline de seguridad por request
+### 13.2 Pipeline de seguridad por request
 
 ```text
 1. Rate Limiter (nestjs/throttler — por tipo de usuario y tenant)
@@ -1635,7 +1630,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 9. Audit Log (interceptor — 100% operaciones CUD)
 ```
 
-## 13.3 Permisos por tipo de usuario
+### 13.3 Permisos por tipo de usuario
 
 | Tipo de usuario | Módulos accesibles                                   | Nivel de acceso                      |
 | --------------- | ---------------------------------------------------- | ------------------------------------ |
@@ -1654,7 +1649,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 | System Admin    | Auth, Tenant, configuración global                   | CRUD configuración                   |
 | iWana Support   | Logs, métricas, health checks                        | Diagnóstico — sin datos sensibles    |
 
-## 13.4 Controles regulatorios
+### 13.4 Controles regulatorios
 
 | Regulación        | Control                                                   | Módulo       | Evidencia                   |
 | ----------------- | --------------------------------------------------------- | ------------ | --------------------------- |
@@ -1670,7 +1665,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
 ## 14. Roadmap — Orden de Módulos por Prioridad
 
-## 14.1 Principio de Priorización
+### 14.1 Principio de Priorización
 
 El orden de creación de módulos lo define el **CTO con ayuda del Engineering Manager**, evaluando:
 
@@ -1690,7 +1685,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 **Módulos fundación (obligatorios primero, orden fijo):** Auth → Users → Tenant → Audit. Sin estos, todos los demás requerirían refactorización mayor.
 
-## 14.2 Tabla de implementación — Estado Real (v2.4)
+### 14.2 Tabla de implementación — Estado Real (v2.4)
 
 | Orden | Módulo                                                                                                                         | Estado (v2.4)             | ADRs         | Fase            |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------------ | --------------- |
@@ -1720,7 +1715,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | 19    | **SG-SST**                                                                                                                     | 🔲 En roadmap            | —            | Fase 3          |
 | 20    | **Motor FE DIAN propio (sin intermediario)**                                                                                   | 🔲 En roadmap            | —            | Fase 3          |
 
-## 14.3 MVP — 0 a 90 días (Sprints 1–12)
+### 14.3 MVP — 0 a 90 días (Sprints 1–12)
 
 | Sprint | Semana | Entregable                                                                                                                                | Criterio de Done                                                    |
 | ------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -1739,7 +1734,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 **Resultado MVP:** ISP puede gestionar suscriptores (Natural + Jurídico), facturar electrónicamente vía Siigo/Alegra con motor IVA por estrato, monitorear red MikroTik, aprovisionar servicios (PPPoE + IP Fija + DHCP), ticketing con SLA, portal suscriptor con pagos, portal contratista, datos migrados.
 
-## 14.4 Fase 2 — 90 a 180 días
+### 14.4 Fase 2 — 90 a 180 días
 
 | Entregable                                                    | Prioridad |
 | ------------------------------------------------------------- | --------- |
@@ -1754,7 +1749,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | Inventory: warehouse management, georreferenciación NAPs      | Media     |
 | ETL Siigo (migración histórica contabilidad)                  | Media     |
 
-## 14.5 Fase 3 — 6 a 12 meses
+### 14.5 Fase 3 — 6 a 12 meses
 
 | Entregable                                                   | Prioridad |
 | ------------------------------------------------------------ | --------- |
@@ -1768,82 +1763,82 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | NFV básico (vCGNAT, vFirewall en Docker)                     | Baja      |
 | TR-069 (GenieACS) para gestión CPE remota                    | Baja      |
 
-## 14.6 ADRs — Decisiones Arquitectónicas
+### 14.6 ADRs — Decisiones Arquitectónicas
 
 > **⚠️ Espacio de numeración histórico (nota de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), 2026-07-19).** Las entradas ADR-001…ADR-016 de esta sección **son un registro propio de este PRD**: no existen como archivo en `docs/adrs/`, no tienen cabecera de estado y **no son los ADR del mismo número** de ese directorio (que empieza en ADR-016 y colisiona). Bajo el protocolo §7.4, una entrada sin estado declarado **no confiere autoridad normativa**: cítese como sección de este PRD (`PRD §14.6 ADR-0NN`), nunca como `docs/adrs/`. Las que siguen vigentes como decisión real están recogidas o superadas por ADRs formales; ver la nota de cada entrada superada.
 
-### ADR-001: Modulith vs Microservicios _(Confirmado)_
+#### ADR-001: Modulith vs Microservicios _(Confirmado)_
 
 - **Decisión:** Modulith (monolito modular) con NestJS modules como bounded contexts.
 - **Razones:** Transacciones ACID locales, un solo deployment, latencia inter-módulo in-process (ns vs ms), costo infra bajo con equipo pequeño.
 - **Anti-pattern evitado:** Microservicios prematuros — requiere 10–20+ devs, 6–9 meses, infra compleja.
 
-### ADR-002: Multi-tenant por Schema — Desde el Inicio _(Crítico — reforzado)_
+#### ADR-002: Multi-tenant por Schema — Desde el Inicio _(Crítico — reforzado)_
 
 - **Decisión:** Un schema de PostgreSQL por tenant desde el primer sprint, aunque haya 1 solo tenant inicial.
 - **Razones:** Aislamiento fuerte, backup granular, Habeas Data. **El overhead es mínimo vs el costo de refactorizar después de tener datos en producción.**
 - **Anti-pattern evitado:** Simplificar para single-tenant "por ahora" — este es el error más costoso posible.
 
-### ADR-003: Eventos de Dominio con EventEmitter + BullMQ _(Confirmado)_
+#### ADR-003: Eventos de Dominio con EventEmitter + BullMQ _(Confirmado)_
 
 - **Decisión:** EventEmitter2 para eventos síncronos in-process; BullMQ para eventos asincrónos durables con retry y DLQ.
 
-### ADR-004: Soft Delete + Auditoría Universal _(Confirmado)_
+#### ADR-004: Soft Delete + Auditoría Universal _(Confirmado)_
 
 - **Decisión:** Todo entity con `deletedAt` (soft delete). Interceptor global de audit log en 100% operaciones CUD.
 
-### ADR-005: Patrón Adapter/Factory para Pasarelas de Pago _(Confirmado)_
+#### ADR-005: Patrón Adapter/Factory para Pasarelas de Pago _(Confirmado)_
 
 - **Decisión:** Interface `IPaymentGateway` con implementaciones Wompi, PayU, PlacetoPay, PSE.
 
-### ADR-006: FE DIAN vía Siigo (Primary) o Alegra (Alternativa) en MVP _(Actualizado)_
+#### ADR-006: FE DIAN vía Siigo (Primary) o Alegra (Alternativa) en MVP _(Actualizado)_
 
 - **Decisión:** MVP vía Siigo API (primary — ISP ya lo usa) o Alegra API (alternativa). Fase 3: adapter propio.
 - **Interfaz:** `IErpFEAdapter` permite swap sin cambios en Billing core.
 
-### ADR-007: TypeORM como ORM _(Confirmado)_
+#### ADR-007: TypeORM como ORM _(Confirmado)_
 
 - **Decisión:** TypeORM con strict mode, migraciones versionadas, schema por tenant.
 
-### ADR-008: Outbox Pattern para Integraciones Externas _(Confirmado)_
+#### ADR-008: Outbox Pattern para Integraciones Externas _(Confirmado)_
 
 - **Decisión:** Outbox pattern garantiza entrega at-least-once a sistemas externos.
 
-### ADR-009: Saga Orquestada para Provisioning _(Confirmado)_
+#### ADR-009: Saga Orquestada para Provisioning _(Confirmado)_
 
 - **Decisión:** Saga orquestada con transacciones compensadoras para Order-to-Activate.
 
-### ADR-010: Design System iWana en packages/ui _(Confirmado)_
+#### ADR-010: Design System iWana en packages/ui _(Confirmado)_
 
 - **Decisión:** Componentes React sobre shadcn/ui con tokens de diseño iWana (azul #17163A, verde #A5C330).
 
-### ADR-011: SNMP Polling via BullMQ Repeatable Jobs _(Confirmado)_
+#### ADR-011: SNMP Polling via BullMQ Repeatable Jobs _(Confirmado)_
 
 - **Decisión:** Jobs repetibles de BullMQ para polling SNMP. Intervalo configurable por dispositivo.
 
-### ADR-012: i18n con es-CO como Locale Principal _(Confirmado)_
+#### ADR-012: i18n con es-CO como Locale Principal _(Confirmado)_
 
 - **Decisión:** Español colombiano (es-CO) como locale principal. Formato de fechas y moneda localizados.
 
-### ADR-013: Despliegue On-Premise con Docker Autocontenido _(Nuevo — v2.1)_
+#### ADR-013: Despliegue On-Premise con Docker Autocontenido _(Nuevo — v2.1)_
 
 - **Contexto:** El ISP requiere instalación en sus propios servidores, sin dependencia de cloud.
 - **Decisión:** Stack completamente autocontenido en Docker Compose. MinIO en lugar de S3. pgBackRest local.
 - **Soporte remoto:** VPN (WireGuard) + Portal iWana Support con logs/métricas.
 - **Riesgos:** Hardware deficiente. Mitigación: runbooks sizing, monitoreo hardware, backup automático.
 
-### ADR-014: NMS Multi-marca con IOltAdapter Genérico Desde Diseño _(Nuevo — v2.1)_
+#### ADR-014: NMS Multi-marca con IOltAdapter Genérico Desde Diseño _(Nuevo — v2.1)_
 
 - **Contexto:** ISP trabaja con Huawei, ZTE, VSOL y otras marcas.
 - **Decisión:** Interfaz `IOltAdapter` genérica + `OltAdapterFactory` desde diseño inicial.
 - **MVP:** Solo MikroTik (SNMP genérico). Huawei/ZTE en Fase 2. VSOL en Fase 3.
 
-### ADR-015: Soporte Multi-método de Autenticación de Red _(Nuevo — v2.1)_
+#### ADR-015: Soporte Multi-método de Autenticación de Red _(Nuevo — v2.1)_
 
 - **Contexto:** ISP usa PPPoE, DHCP/IPoE, IP Fija, MAC Binding y Hotspot.
 - **Decisión:** Strategy Pattern en el módulo de Provisioning. La orden incluye el método y el sistema selecciona la estrategia correcta.
 
-### ADR-016: Estrategia de Construcción Modular Incremental _(Nuevo — v2.1)_ — ⚠️ SUPERADO
+#### ADR-016: Estrategia de Construcción Modular Incremental _(Nuevo — v2.1)_ — ⚠️ SUPERADO
 
 > **Superado por [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md) (Aprobado 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md)).** Este número colisionaba con `docs/adrs/ADR-016-Cierre-MOD01-Produccion.md`, que es un artefacto distinto (el cierre de un módulo concreto, no la regla). **La "regla de completitud" que citan los PRDs, prompts y perfiles se ancla desde ahora en ADR-022**, que la formaliza con estado Aprobado. Esta entrada se conserva por trazabilidad histórica; no confiere autoridad.
 
@@ -1852,118 +1847,118 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 ---
 
-### ADR-017: Provisioning Schema vía BullMQ
+#### ADR-017: Provisioning Schema vía BullMQ
 
 - **Decisión:** El aprovisionamiento del schema PostgreSQL del tenant se ejecuta de forma asíncrona vía job BullMQ. Estado del tenant: `PROVISIONING → ACTIVE` al finalizar el job.
 - **Razones:** No bloquear el request HTTP de creación de tenant. Job idempotente con retry.
 
-### ADR-018: Ciclo de Vida de Tenant
+#### ADR-018: Ciclo de Vida de Tenant
 
 - **Decisión:** TenantStatus: `PROVISIONING → ACTIVE ↔ SUSPENDED ↔ INACTIVE → MARKED_FOR_DELETION`. Ver también ADR-033.
 - **Razones:** Claridad en transiciones de estado y soporte para operaciones de desactivación progresiva.
 
-### ADR-019: JWT RS256 con Refresh Rotation
+#### ADR-019: JWT RS256 con Refresh Rotation
 
 - **Decisión:** Access token RS256 (15 min) + Refresh token httpOnly cookie (7 días) con rotación automática. JTI blacklist en Redis.
 - **Razones:** Revocación instantánea sin estado compartido en API, resistente a robo de refresh.
 
-### ADR-020: Seed Inicial con Credenciales Temporales
+#### ADR-020: Seed Inicial con Credenciales Temporales
 
 - **Decisión:** El primer usuario de un tenant se crea con contraseña temporal aleatoria enviada por email. Obligado a cambiarla en el primer login.
 - **Razones:** Evitar credenciales hardcoded; cumplir principio de credenciales de un solo uso.
 
-### ADR-021 (superado): Perfil Unificado EM + Architect
+#### ADR-021 (superado): Perfil Unificado EM + Architect
 
 - **Decisión:** El rol de Architect y Engineering Manager se unifica en un único perfil para el equipo actual. Responsabilidades: diseño técnico + gobernanza de módulos + code review.
 - **Tipo:** Gobernanza de equipo — no afecta codebase directamente.
 
-### ADR-022: Política de Ejecución Modular Por Fases
+#### ADR-022: Política de Ejecución Modular Por Fases
 
 - **Decisión:** Cada sprint se ejecuta en dos fases: (1) Diseño + prueba de concepto, (2) Implementación production-ready. No se avanza a la siguiente fase sin aprobación del CTO.
 - **Razones:** Control de calidad y evitar deuda técnica acumulada.
 
-### ADR-023: Referencia TailAdmin Shell Dashboard
+#### ADR-023: Referencia TailAdmin Shell Dashboard
 
 - **Decisión:** La shell visual del dashboard administrativo (`apps/web`) se basa en patrones de TailAdmin como referencia visual. Componentes propios en `@iwana/ui` con tokens iWana. Sin copiar código de TailAdmin.
 - **Razones:** Aceleración de UX, consistencia visual SaaS, propiedad intelectual propia.
 
-### ADR-024: Migración CRM — Expediente Único
+#### ADR-024: Migración CRM — Expediente Único
 
 - **Decisión:** El módulo CRM usa `ExpedienteRecord` como entidad central del ciclo de venta (antes disperso entre múltiples entidades). Un expediente por prospecto desde el primer contacto.
 - **Razones:** Trazabilidad completa del journey de venta; base para conversión two-stage (ver ADR-027).
 
-### ADR-025: Modelo Suscriptor Dos Dimensiones _(Estado: 🔷 Propuesto — pendiente aprobación CTO)_
+#### ADR-025: Modelo Suscriptor Dos Dimensiones _(Estado: 🔷 Propuesto — pendiente aprobación CTO)_
 
 - **Decisión:** Separar `personType` (NATURAL|JURIDICA — dimensión fiscal) de `customerSegment` (RESIDENTIAL|SOHO|PYME|CORPORATE|GOVERNMENT|WHOLESALE — dimensión comercial) en la entidad Subscriber.
 - **Razones:** El enum `SubscriberType` anterior mezclaba ambas dimensiones, imposibilitando reglas tributarias correctas para PYME Natural vs PYME Jurídica.
 
-### ADR-026: Pipeline CRM — 8 Estados
+#### ADR-026: Pipeline CRM — 8 Estados
 
 - **Decisión:** El pipeline de ventas/expediente tiene exactamente 8 estados: `NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO → DESCARTADO`.
 - **Razones:** Reducción de 12 estados a 8 elimina ambigüedad. Cada estado tiene semántica y transiciones explícitas.
 
-### ADR-027: Conversión Expediente → Subscriber en Dos Etapas
+#### ADR-027: Conversión Expediente → Subscriber en Dos Etapas
 
 - **Decisión:** La conversión es un proceso de dos etapas vía EventEmitter2: Etapa 1 (`LISTO_PARA_INSTALACION`) crea Subscriber con status `PROSPECT` (idempotente). Etapa 2 (`CLIENTE_ACTIVO`) promueve a `ACTIVE`.
 - **Razones:** Permite pre-aprovisionar el suscriptor antes de la instalación. La conversión no es reversible. El Subscriber obtiene `expedienteId`, `convertedAt`, `activatedAt`.
 
-### ADR-028: Extracción CommercialModule (MOD06) de TenantModule
+#### ADR-028: Extracción CommercialModule (MOD06) de TenantModule
 
 - **Decisión:** El catálogo comercial (Planes, Productos, Servicios, Bundles, Promociones, Reglas de compatibilidad, Price History) se extrae a `CommercialModule` independiente.
 - **Razones:** TenantModule estaba creciendo fuera de su bounded context. Catálogo es un dominio propio.
 
-### ADR-029: Bounded Context Taxation — Catálogo Unificado de Impuestos (MOD07)
+#### ADR-029: Bounded Context Taxation — Catálogo Unificado de Impuestos (MOD07)
 
 - **Decisión:** `TaxationModule` es el único dueño de `tax_definitions`. El resto de módulos (Commercial, Billing) consumen impuestos vía interfaz `ITaxCatalogReadPort` únicamente.
 - **Presets del sistema:** IVA 19%, IVA excluido, Retefuente base, ReteICA, Estampillas municipales.
 - **Razones:** Single Source of Truth para definiciones fiscales. Evitar duplicación de lógica tributaria por módulo.
 
-### ADR-030: Modelo Party Multi-Rol (MOD08)
+#### ADR-030: Modelo Party Multi-Rol (MOD08)
 
 - **Decisión:** `PartiesModule` introduce la entidad `Party` como maestro de identidad con soporte multi-rol (`CUSTOMER | SUPPLIER | EMPLOYEE | CONTRACTOR | SALES_AGENT`). `UserAccount` puede vincularse opcionalmente a un Party.
 - **Razones:** Evitar duplicación de datos de persona en múltiples entidades. Un Party puede ser cliente y proveedor simultáneamente.
 
-### ADR-031: Rediseño Motor Tributario en CommercialModule
+#### ADR-031: Rediseño Motor Tributario en CommercialModule
 
 - **Decisión:** CommercialModule implementa motor de reglas de aplicación tributaria con: (1) Reglas con condiciones (segmento + personType + estrato + municipio + base mínima), (2) Prioridad configurable, (3) Simulador explicativo. UI: `TaxCatalogManager`, `TaxApplicationRulesManager`, `TaxSimulatorPanel`.
 - **Razones:** Reemplaza tabla estática de clasificaciones por motor flexible sin código.
 
-### ADR-032: Retiro Flag TAXATION_USE_CATALOG
+#### ADR-032: Retiro Flag TAXATION_USE_CATALOG
 
 - **Decisión:** Se elimina el feature flag `TAXATION_USE_CATALOG`, el servicio `TaxClassificationService`, la tabla `tax_classifications` y los endpoints legacy asociados.
 - **Razones:** Un único motor tributario activo. Simplificación. Reduce superficie de bugs.
 
-### ADR-033: Ciclo de Vida Tenant — Purga Diferida + Límites Nullables
+#### ADR-033: Ciclo de Vida Tenant — Purga Diferida + Límites Nullables
 
 - **Decisión:** Nuevo estado `MARKED_FOR_DELETION` con retención de 30 días antes de ejecutar `DROP SCHEMA`. `maxSubscribers: null` = sin límite; `0` = bloqueado; `>0` = límite explícito.
 - **Razones:** Protección contra eliminaciones accidentales. Flexibilidad en modelos de pricing (sin límite para planes premium).
 
-### ADR-034: MediaModule Transversal
+#### ADR-034: MediaModule Transversal
 
 - **Decisión:** `MediaModule` es el único punto de entrada para subir archivos al sistema. Responsabilidades: validación MIME por magic bytes, sanitización SVG, metadata en tablas públicas `media_assets` + `media_usages`.
 - **Razones:** Evitar uploads dispersos por módulo. Seguridad centralizada. Ref: OWASP file upload.
 
-### ADR-035: MinIO S3-Compatible + Patrón StoragePort
+#### ADR-035: MinIO S3-Compatible + Patrón StoragePort
 
 - **Decisión:** Nuevo paquete `@iwana/storage` con interfaz `StoragePort` y adaptador `MinioStorageAdapter` (SDK: `@aws-sdk/client-s3`). Object key: `{tenantSchema}/{usage}/{assetId}.{ext}`. URLs prefirmadas TTL 15 min.
 - **Razones:** Portabilidad a cualquier proveedor S3-compatible. Testabilidad. On-premise con MinIO.
 
-### ADR-036: Typesense para Búsqueda Global Indexada
+#### ADR-036: Typesense para Búsqueda Global Indexada
 
 - **Decisión:** `SearchModule` transversal usa Typesense para indexación full-text. Colecciones: contacts, expedientes, subscribers, catalog. Endpoint: `GET /api/v1/search/global?q=&limit=`. Indexación async BullMQ. Frontend: overlay Cmd/K con debounce.
 - **Razones:** PostgreSQL full-text search no escala para búsqueda multi-tenant en tiempo real. Typesense es on-premise y rápido.
 
-### ADR-037: WfmModule (MOD09) — Scheduling Avanzado
+#### ADR-037: WfmModule (MOD09) — Scheduling Avanzado
 
 - **Decisión:** `WfmModule` implementa gestión completa de agenda técnica: `ScheduleEvent`, `WorkOrder`, `WorkOrderTask`, `TechnicianAvailability`, `VisitRequest`, `OperatingSite`, `BusinessHours`, `HolidayBlackout`, `OperatingWindowResolver`, `ScheduleConflict`.
 - **Razones:** El WFM base (Work Orders simples) no era suficiente para operaciones de campo reales con múltiples restricciones de agenda.
 
-### ADR-038: AssuranceModule (MOD10) — Módulo de Aseguramiento de Servicio
+#### ADR-038: AssuranceModule (MOD10) — Módulo de Aseguramiento de Servicio
 
 - **Decisión:** `AssuranceModule` implementa ciclo de vida de tickets: `OPEN → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED`. Entidades: `SupportTicket`, `TicketComment`, `TicketTimelineEvent`, `TicketSlaPolicy`, `TicketPqrRecord`, `TicketWorkOrderLink`. API: `/api/v1/assurance`.
 - **Razones:** Separación clara entre CRM (ventas) y Assurance (posventa). Integración directa con WFM vía `TicketWorkOrderLink`.
 
-### ADR-039: WFM Inbox — Bandeja de Visitas Pendientes
+#### ADR-039: WFM Inbox — Bandeja de Visitas Pendientes
 
 - **Decisión:** Se agrega vista de inbox operativo para gestión de solicitudes de visita (`VisitRequest`) pendientes en el módulo WFM. Permite filtrar por técnico, estado y zona. Flujo: `PENDING → RECOMMENDED → SCHEDULED → COMPLETED/CANCELLED`.
 - **Razones:** Requerimiento operacional crítico: sin bandeja los técnicos pierden visitas no asignadas.
@@ -1976,7 +1971,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 ## 15. Plan de Migración de Datos
 
-## 15.1 Fuentes de datos existentes
+### 15.1 Fuentes de datos existentes
 
 | Sistema         | Datos principales                                              | Tipo de fuente          | Complejidad migración |
 | --------------- | -------------------------------------------------------------- | ----------------------- | --------------------- |
@@ -1986,7 +1981,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | Siigo           | Contabilidad, nómina, terceros (clientes/proveedores)          | SaaS (REST API)         | Media                 |
 | Excel           | Inventarios manuales, listados varios, datos no sistematizados | Archivos XLS/XLSX/CSV   | Alta (normalización)  |
 
-## 15.2 Mapeo de entidades por sistema fuente
+### 15.2 Mapeo de entidades por sistema fuente
 
 | Entidad destino                     | WispHub              | AdminOLT   | UISP            | Siigo       | Excel      |
 | ----------------------------------- | -------------------- | ---------- | --------------- | ----------- | ---------- |
@@ -2000,7 +1995,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | Invoices históricas                 | ✅ Facturas          | —          | —               | ✅ Facturas | ✅ Posible |
 | Employees                           | —                    | —          | —               | ✅ Nómina   | ✅ Posible |
 
-## 15.3 Fases de migración
+### 15.3 Fases de migración
 
 **La migración es por módulo, no big bang.**
 
@@ -2013,7 +2008,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | **Fase E: Corte definitivo**         | Al finalizar validación       | Desactivación del sistema antiguo para el módulo migrado                                     | Sistema viejo desactivado, sin regresión         |
 | **Fase F: Auditoría post-migración** | 1 semana post-corte           | Verificación de integridad, reportes de diferencias, reconciliación final                    | Cero inconsistencias críticas                    |
 
-## 15.4 Arquitectura ETL
+### 15.4 Arquitectura ETL
 
 ```text
 Migration Module (@iwana/migration)
@@ -2034,7 +2029,7 @@ Migration Module (@iwana/migration)
     └── ReconciliationReport  (diff origen vs destino)
 ```
 
-## 15.5 Consideraciones críticas
+### 15.5 Consideraciones críticas
 
 - Los IDs del sistema origen se preservan en campo `externalId` para trazabilidad durante operación paralela.
 - Los datos históricos (facturas antiguas, tickets) se migran como registros de solo lectura, sin activar procesos de negocio (no generar FE DIAN para facturas históricas).
@@ -2063,7 +2058,7 @@ Migration Module (@iwana/migration)
 
 ## 17. KPIs y Métricas
 
-## 17.1 KPIs de Producto
+### 17.1 KPIs de Producto
 
 | KPI                | Definición                       | Target               | Fuente             |
 | ------------------ | -------------------------------- | -------------------- | ------------------ |
@@ -2078,7 +2073,7 @@ Migration Module (@iwana/migration)
 | FE Acceptance Rate | % facturas aceptadas por DIAN    | > 99.5%              | Billing            |
 | Partner Conversion | % leads de partners convertidos  | > 15%                | CRM + Partner      |
 
-## 17.2 KPIs de Ingeniería (DORA)
+### 17.2 KPIs de Ingeniería (DORA)
 
 | KPI                   | Definición                         | Target     |
 | --------------------- | ---------------------------------- | ---------- |
@@ -2095,7 +2090,7 @@ Migration Module (@iwana/migration)
 
 > **ROM = Rough Order of Magnitude.** Estimaciones aproximadas (±40%) sujetas a revisión por el CTO. No son compromisos de precio.
 
-## 18.1 Herramientas IA (por mes)
+### 18.1 Herramientas IA (por mes)
 
 | Herramienta              | Rol                              | Plan                | Costo estimado USD/mes |
 | ------------------------ | -------------------------------- | ------------------- | ---------------------- |
@@ -2108,7 +2103,7 @@ Migration Module (@iwana/migration)
 | VsCode + DeepSeek-V3     | Sr. Dev Data Engineer            | API                 | ~$30–60                |
 | **Total estimado**       |                                  |                     | **$360–800/mes**       |
 
-## 18.2 Infraestructura On-Premise (costo único)
+### 18.2 Infraestructura On-Premise (costo único)
 
 | Componente                  | Especificación               | Costo estimado COP |
 | --------------------------- | ---------------------------- | ------------------ |
@@ -2117,7 +2112,7 @@ Migration Module (@iwana/migration)
 | Red (switch, patch cables)  | —                            | $200K – $500K COP  |
 | **Total hardware estimado** |                              | **$9M – $17M COP** |
 
-## 18.3 Servicios Externos (por mes)
+### 18.3 Servicios Externos (por mes)
 
 | Servicio       | Uso estimado             | Costo estimado                       |
 | -------------- | ------------------------ | ------------------------------------ |
@@ -2126,7 +2121,7 @@ Migration Module (@iwana/migration)
 | Wompi          | % por transacción        | Sin costo fijo (% comisión por pago) |
 | Dominio + SSL  | Let's Encrypt (gratuito) | ~$50K COP/año (dominio)              |
 
-## 18.4 Costo total estimado MVP (90 días)
+### 18.4 Costo total estimado MVP (90 días)
 
 | Concepto                     | Estimado                             |
 | ---------------------------- | ------------------------------------ |
@@ -2141,7 +2136,7 @@ Migration Module (@iwana/migration)
 
 ## 19. Anexos
 
-## 19.1 Glosario ISP/ERP/Fiscal
+### 19.1 Glosario ISP/ERP/Fiscal
 
 | Término        | Definición                                                                                   |
 | -------------- | -------------------------------------------------------------------------------------------- |
@@ -2176,7 +2171,7 @@ Migration Module (@iwana/migration)
 | FCR            | First Contact Resolution — resolución en el primer contacto                                  |
 | DORA           | DevOps Research & Assessment — métricas de madurez de ingeniería                             |
 
-## 19.2 Supuestos que requieren validación
+### 19.2 Supuestos que requieren validación
 
 | Supuesto                                                            | Área            | Responsable    | Fecha límite       |
 | ------------------------------------------------------------------- | --------------- | -------------- | ------------------ |
@@ -2186,7 +2181,7 @@ Migration Module (@iwana/migration)
 | Credenciales de acceso a WispHub/AdminOLT/UISP para ETL             | Migración       | Admin ISP      | Antes de Sprint 11 |
 | Política exacta de comisiones para Partners                         | CRM / Partner   | Gerencia ISP   | Antes de Fase 2    |
 
-## 19.3 Cumplimiento Regulatorio — Checklist
+### 19.3 Cumplimiento Regulatorio — Checklist
 
 | #   | Requisito                                                | Módulo            | Estado |
 | --- | -------------------------------------------------------- | ----------------- | ------ |
@@ -2205,7 +2200,7 @@ Migration Module (@iwana/migration)
 | R13 | Reporte Colombia TIC (MinTIC — trimestral)               | Billing, CRM, NMS | Fase 2 |
 | R14 | Reporte interrupciones CRC (>60 min)                     | NMS               | Fase 2 |
 
-## 19.4 Referencias a documentos del proyecto
+### 19.4 Referencias a documentos del proyecto
 
 | Documento                                        | Contenido principal                                                                                          |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
@@ -2228,11 +2223,11 @@ Migration Module (@iwana/migration)
 **Versión del Framework:** 2.0 — Actualización Consolidada
 **Clasificación:** Estratégico — Confidencial
 
-## 20.1 Objetivo
+### 20.1 Objetivo
 
 Diseñar un marco de gobierno integral para iWana neXt operando múltiples modelos de IA simultáneamente, asignados a distintos roles (estratégicos, operativos y técnicos). El objetivo es garantizar el control estratégico, la seguridad del código (OWASP ASVS L2), el estricto cumplimiento regulatorio (CRC, DIAN, MinTrabajo), la alineación arquitectónica Modulith y la resiliencia mediante contingencia multi-modelo.
 
-## 20.2 Principios Rectores
+### 20.2 Principios Rectores
 
 | Principio                           | Descripción                                                                                      |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -2242,11 +2237,11 @@ Diseñar un marco de gobierno integral para iWana neXt operando múltiples model
 | **Redundancia Controlada**          | Todo rol crítico cuenta con un Plan A y un Plan B (evitar lock-in).                              |
 | **Observabilidad Total**            | Las decisiones técnicas son documentadas (PRDs/ADRs) y 100% auditables.                          |
 
-## 20.3 Matriz de Roles y Gobernanza IA (Organigrama)
+### 20.3 Matriz de Roles y Gobernanza IA (Organigrama)
 
 > **Actualizado:** 24 Feb 2026. Se amplió el catálogo de modelos disponibles incluyendo GLM-5 (Z.ai, Feb 2026), MiniMax-M2.5/Text-01 (MiniMax, Feb 2026) y Grok 4.1/4.2 (xAI, Nov 2025 / Feb 2026). Se incorporan como Plan C (alternativas adicionales) y se actualiza la evaluación de capacidades.
 
-### Inventario de Modelos Evaluados (24 Feb 2026)
+#### Inventario de Modelos Evaluados (24 Feb 2026)
 
 | Modelo                | Empresa      | Fecha       | Parámetros               | Contexto      | Fortaleza Principal                                                                           | Precio API (input/output /1M) | Licencia    |
 | --------------------- | ------------ | ----------- | ------------------------ | ------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | ----------- |
@@ -2269,7 +2264,7 @@ Diseñar un marco de gobierno integral para iWana neXt operando múltiples model
 
 ---
 
-### Capa de Liderazgo y Arquitectura (Capa Estratégica)
+#### Capa de Liderazgo y Arquitectura (Capa Estratégica)
 
 _Roles que operan a nivel de diseño de alto nivel, orquestación de sprints, requerimientos y revisión técnica estructural._
 
@@ -2282,7 +2277,7 @@ _Roles que operan a nivel de diseño de alto nivel, orquestación de sprints, re
 | **Product / Project Mgr** | **GPT 5.2**         | Gemini 3.1 Pro        | **Grok 4.1** (fuerte en análisis de negocio y EQ para stakeholders)                                      | Refinamiento del Backlog, User Stories y seguimiento de cronogramas.                  |
 | **Staff Engineer**        | **GPT 5.2**         | Claude Opus 4.6       | **Grok 4.1 / Grok 4.2** cuando API esté disponible (4 agentes paralelos ideales para bloqueos complejos) | Resolución de bloqueos transversales, integraciones core y mentoría técnica.          |
 
-### Capa de Ejecución y Producción (Capa IDE/Desarrollo)
+#### Capa de Ejecución y Producción (Capa IDE/Desarrollo)
 
 _Roles ejecutados en entornos de desarrollo (Vibe Coding/Copilots) para construcción de la plataforma._
 
@@ -2292,7 +2287,7 @@ _Roles ejecutados en entornos de desarrollo (Vibe Coding/Copilots) para construc
 | **Sr. Dev Data Engineer** | VsCode + DeepSeek-V3.2   | Windsurf + GPT 5.3 Codex     | **GLM-5** (fuerte en sistemas complejos, integración OLT/RADIUS)               | SQL complejo, integración OLTs (Huawei/ZTE) y APIs MikroTik/RADIUS. |
 | **Sr. Dev Testing & QA**  | Kiro + Claude Haiku 4.5  | VsCode + Gemini 3 Flash      | **MiniMax-M2.5** (MIT, bajo costo, velocidad alta para tests masivos)          | Generación de tests masivos (Jest/Playwright) y validación CI/CD.   |
 
-### Criterios de Selección entre Plan A / B / C
+#### Criterios de Selección entre Plan A / B / C
 
 | Criterio                 | Plan A                        | Plan B                            | Plan C                                                      |
 | ------------------------ | ----------------------------- | --------------------------------- | ----------------------------------------------------------- |
@@ -2300,7 +2295,7 @@ _Roles ejecutados en entornos de desarrollo (Vibe Coding/Copilots) para construc
 | **Cuándo rotar**         | —                             | Outage o degradación Plan A       | Presupuesto IA > 20% sobre estimado                         |
 | **Autonomía para rotar** | —                             | EM puede rotar sin aprobación CTO | EM propone, CTO aprueba en revisión semanal                 |
 
-## 20.4 Protocolo de Comunicación y Flujo de Trabajo
+### 20.4 Protocolo de Comunicación y Flujo de Trabajo
 
 ```mermaid
 flowchart TD
@@ -2326,31 +2321,31 @@ flowchart TD
     DEV_D -->|"PRs para review"| ARCH_D
     DEV_Q -->|"Informes de calidad"| EM
     ARCH_S -->|"Aprobación módulo"| CTO
-```text
+```
 
-### Flujo formal por módulo
+#### Flujo formal por módulo
 
-### FASE 1: DEFINICIÓN
+#### FASE 1: DEFINICIÓN
 
 1. El EM (Gemini 3.1 Pro) recibe lineamientos del CTO humano y genera el PROMPT para Architect Software.
 2. El Architect Software (Claude Opus 4.6) genera el PRD del módulo con HLD, ADRs y contratos de API.
 3. El CTO + Engineering Manager aprueban el PRD antes de iniciar ejecución.
 
-### FASE 2: EJECUCIÓN
+#### FASE 2: EJECUCIÓN
 
 1. El EM genera el PROMPT de ejecución para los Sr. Devs.
 2. Sr. Dev Fullstack: Backend + Frontend + DB.
 3. Sr. Dev Data Engineer: Integraciones (OLT/MikroTik/RADIUS/APIs externas).
 4. Sr. Dev QA/Testing: Tests (Unit/Integration/E2E).
 
-### FASE 3: INFORME Y AUDITORÍA
+#### FASE 3: INFORME Y AUDITORÍA
 
 1. Se genera Informe de Ejecución con métricas de cobertura y deuda técnica.
 2. Cada fase es auditada por el Engineering Manager.
 3. El módulo completo es auditado por el Architect Software (ADR de aprobación).
 4. Si aprobado → **PRODUCCIÓN** → Iniciar siguiente módulo.
 
-## 20.5 Modelo de KPI por Capa
+### 20.5 Modelo de KPI por Capa
 
 | Capa            | KPIs                                                                                       | Target                                |
 | --------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- |
@@ -2359,7 +2354,7 @@ flowchart TD
 | **Técnica**     | Defectos en CI/CD, métricas DORA (Deployment Frequency, Lead Time)                         | Change Failure Rate < 5%              |
 | **Datos**       | Performance de queries (p95 < 250ms), confiabilidad transaccional                          | Zero data inconsistency en producción |
 
-## 20.6 Modelo de Madurez Multi-IA
+### 20.6 Modelo de Madurez Multi-IA
 
 | Nivel       | Estado               | Descripción                                                                                        |
 | ----------- | -------------------- | -------------------------------------------------------------------------------------------------- |
@@ -2370,7 +2365,7 @@ flowchart TD
 
 **iWana neXt opera en Nivel 3** — El Engineering Manager (Gemini 3.1 Pro) actúa como orquestador central con contexto de 2M tokens, coordinando todos los roles de IA según políticas estrictas definidas en este framework.
 
-## 20.7 Protocolo de Seguridad del Framework
+### 20.7 Protocolo de Seguridad del Framework
 
 **Reglas absolutas de zero-trust:**
 
@@ -2380,7 +2375,7 @@ flowchart TD
 4. **Auditoría de decisiones** — Toda ADR generada por el Architect Software debe ser aprobada por el CTO humano antes de implementarse.
 5. **Separación de ambientes** — Los agentes de ejecución (Sr. Devs en IDE) nunca tienen acceso directo a producción; solo a entornos de desarrollo y staging.
 
-## 20.8 Riesgos Sistémicos y Mitigaciones
+### 20.8 Riesgos Sistémicos y Mitigaciones
 
 | #        | Riesgo                                  | Mitigación                                                                          |
 | -------- | --------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -2390,7 +2385,7 @@ flowchart TD
 | R-GOV-04 | Costos impredecibles                    | Evaluación trimestral por el CTO frente al budget de operación                      |
 | R-GOV-05 | Drift arquitectónico en ejecución       | Architect Software revisa PRs con cambios en boundaries, schemas o integraciones    |
 
-## 20.9 Conclusión Estratégica
+### 20.9 Conclusión Estratégica
 
 Un sistema multi-IA sin gobernanza genera deuda técnica y riesgo operativo exponencial. Al implementar esta **separación de poderes**, donde:
 
@@ -2405,18 +2400,57 @@ iWana neXt asegura el equilibrio perfecto entre **velocidad de entrega** y **sol
 
 ## Historial de Cambios
 
-| Versión | Fecha          | Cambios                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.0     | 2026-02-11     | Release inicial — Draft con preguntas abiertas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 2.0     | 2026-02-24     | Base definitiva: respuestas a preguntas abiertas, on-premise, multi-tenant, 9 tipos de usuario, portales personalizados, tipos de persona Natural/Jurídica, estrategia migración, ADRs 013-016                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **2.1** | **2026-02-24** | **IVA confirmado (EXENTO estratos 1-2, EXCLUIDO estrato 3, IVA 19% estratos 4-6 y jurídicas), modelo USER+Perfil explícito con tabla central USER + perfiles diferenciados, flujo de trabajo por módulo formalizado (Fases 1-2-3), sección DevEx (12) con estructura monorepo y estándares de código, Costeo ROM sección 18, Framework de Gobernanza Multi-IA integrado como Parte 5 (sección 20), reorganización en 5 partes / 20 secciones, tabla de contenidos completa**                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **2.2** | **2026-02-24** | **Matriz de Roles IA ampliada con 13 modelos evaluados. Sección 5.4 Inventory ampliada con ciclo de vida completo de activos. Nueva sección 5.4.3 Módulo de Compras. Sección WFM ampliada con Hoja de Trabajo completa. Bounded Contexts actualizados. Correcciones RBAC y metadatos.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **2.3** | **2026-04-18** | **Extracción CommercialModule (MOD06) de TenantModule (ADR-028). Catálogo SCD Tipo 2, bundles, promociones, reglas de compatibilidad. Pricing por segmento de cliente. Ficha Suscriptor 360° como BFF. Evento PlanPriceUpdated. Referencia a ADR-017 a ADR-028.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **2.4** | **2026-05-19** | **Incorporación completa ADR-025 a ADR-039 (aprobados por CTO). Modelo Suscriptor dos dimensiones: `personType` (fiscal) + `customerSegment` (comercial), ADR-025. Pipeline CRM reducido a 8 estados, ADR-026. Conversión Expediente→Subscriber en dos etapas vía EventEmitter2 con `expedienteId`/`convertedAt`/`activatedAt`, ADR-027. TaxationModule (MOD07) como catálogo centralizado de impuestos y `ITaxCatalogReadPort`, ADR-029. PartiesModule (MOD08) maestro de identidad multi-rol (Party+PartyRole+PartyContact), ADR-030. Rediseño motor tributario: reglas de aplicación con condiciones multidimensionales + simulador explicativo, ADR-031. Retiro feature flag `TAXATION_USE_CATALOG` y limpieza motor legacy, ADR-032. TenantStatus `MARKED_FOR_DELETION` + purga diferida 30 días + `maxSubscribers` nullable, ADR-033. MediaModule transversal + validación MIME/SVG, ADR-034. `@iwana/storage` con `StoragePort` y `MinioStorageAdapter` (@aws-sdk/client-s3), ADR-035. SearchModule con Typesense para búsqueda global indexada multi-tenant + BullMQ, ADR-036. WfmModule (MOD09) con scheduling avanzado, `OperatingSite`, `BusinessHours`, `HolidayBlackout`, `ScheduleConflict`, ADR-037. AssuranceModule (MOD10) con ciclo completo de tickets, SLA, PQR CRC, `TicketWorkOrderLink`, ADR-038. Bandeja de visitas pendientes `VisitRequest` como inbox operativo WFM, ADR-039. Actualización C4 Nivel 2+3, Bounded Contexts, Stack Tecnológico, Docker, Integraciones, Roadmap y tabla de entidades.** |
+### 1.0 — 2026-02-11
+
+Release inicial — Draft con preguntas abiertas.
+
+### 2.0 — 2026-02-24
+
+Base definitiva: respuestas a preguntas abiertas, on-premise, multi-tenant, 9 tipos de usuario, portales personalizados, tipos de persona Natural/Jurídica, estrategia de migración, ADRs 013–016.
+
+### 2.1 — 2026-02-24
+
+- IVA confirmado (EXENTO estratos 1–2, EXCLUIDO estrato 3, IVA 19% estratos 4–6 y jurídicas).
+- Modelo USER + Perfil explícito.
+- Flujo de trabajo por módulo (Fases 1–2–3).
+- DevEx (sección 12), Costeo ROM (sección 18).
+- Framework de Gobernanza Multi-IA como Parte 5 (sección 20).
+- Reorganización en 5 partes / 20 secciones + tabla de contenidos.
+
+### 2.2 — 2026-02-24
+
+- Matriz de Roles IA ampliada (13 modelos evaluados).
+- Sección 5.4 Inventory con ciclo de vida completo de activos.
+- Nueva sección 5.4.3 Módulo de Compras.
+- WFM ampliado con Hoja de Trabajo completa.
+- Bounded Contexts actualizados; correcciones RBAC y metadatos.
+
+### 2.3 — 2026-04-18
+
+- Extracción CommercialModule (MOD06) de TenantModule (ADR-028).
+- Catálogo SCD Tipo 2, bundles, promociones, reglas de compatibilidad.
+- Pricing por segmento; Ficha Suscriptor 360° como BFF.
+- Evento `PlanPriceUpdated`; referencia ADR-017 a ADR-028.
+
+### 2.4 — 2026-05-19
+
+Incorporación ADR-025 a ADR-039 (aprobados por CTO):
+
+- Suscriptor bidimensional: `personType` + `customerSegment` (ADR-025).
+- Pipeline CRM de 8 estados (ADR-026).
+- Conversión Expediente→Subscriber en dos etapas (ADR-027).
+- TaxationModule / PartiesModule (ADR-029, ADR-030).
+- Motor tributario + retiro `TAXATION_USE_CATALOG` (ADR-031, ADR-032).
+- Tenant `MARKED_FOR_DELETION` + purga diferida (ADR-033).
+- MediaModule + `@iwana/storage` / MinIO (ADR-034, ADR-035).
+- SearchModule Typesense (ADR-036).
+- WfmModule + AssuranceModule + inbox WFM (ADR-037, ADR-038, ADR-039).
+- Actualización C4, Bounded Contexts, stack, Docker, integraciones y roadmap.
 
 ---
 
-_Documento actualizado el 19 de mayo de 2026. Versión 2.4 — Estado Real del Código._
-_Aprobado para uso como referencia de desarrollo por el CTO Humano._
-_Actualizado por: GitHub Copilot (Claude Sonnet 4.6) — Architect Software_
+_Documento actualizado el 19 de mayo de 2026. Versión 2.4 — Estado Real del Código._  
+_Aprobado para uso como referencia de desarrollo por el CTO Humano._  
+_Actualizado por: GitHub Copilot (Claude Sonnet 4.6) — Architect Software_  
 _Framework de Gobernanza Multi-IA v2.0_
+
