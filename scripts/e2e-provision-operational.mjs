@@ -270,6 +270,12 @@ if (
   process.env.JWT_PUBLIC_KEY = keyPair.publicKey;
 }
 
+// SEC-P1: la API (NODE_ENV≠test) exige PII_HASH_KEY en Joi fail-fast.
+// CI debe inyectarla; este default cubre runners locales sin .env.
+setRuntimeDefault('PII_HASH_KEY', crypto.randomBytes(32).toString('hex'));
+setRuntimeDefault('MFA_ENCRYPTION_KEY', crypto.randomBytes(32).toString('hex'));
+setRuntimeDefault('EXECUTION_ORDER_IDEMPOTENCY_SECRET', crypto.randomBytes(24).toString('hex'));
+
 const API_ROOT = (process.env.API_BASE_URL ?? 'http://127.0.0.1:3000').replace(
   /\/api\/v1\/?$/u,
   '',
