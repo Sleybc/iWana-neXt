@@ -8,6 +8,11 @@
 **Estado:** G6.5 GO — A2, D4 y D6 cerrados para merge; deuda mayor escalada; G7 diferido
 **Antecesor directo:** [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md)
 
+> **Nota de vigencia — 2026-08-08.** Este informe **sigue vigente**; la nota no cambia ninguno de sus hallazgos ni su estado de gates. Registra dos efectos del frente transversal de experiencia de arranque ([HLD](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md), [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)*, [informe consolidado](INFORME-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md)):
+>
+> 1. **B4 gana consumidor y pierde una opción de diseño.** Sigue **Delegado y abierto** en §2.1 y §7 — este frente **no lo cierra**. Pero la sonda `background` de la nueva superficie de estado de arranque leerá la marca de vida del worker, y por eso la elección de medio que `PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md` dejaba abierta **queda cerrada a favor de Redis**: la API debe leerla desde otro contenedor, y un archivo local del worker no es observable desde allí. Desempate registrado en ADR-079 *(propuesto)* §Consecuencias.
+> 2. **La condición de dependencia de `nginx-prod` cambiará, y con ella su probe.** ADR-079 *(propuesto)* Decisión 4 relaja las condiciones `service_healthy` sobre `api-prod`, `web-prod` y `portal-prod` para que el proxy pueda servir una pantalla de arranque durante las migraciones. **No es una regresión del endurecimiento que este informe respaldó**: el error 502 que aquella decisión evitaba deja de ser observable porque se sustituye por la pantalla. La relajación es inseparable de mover el healthcheck de `nginx-prod` de `/` a `/health` — sin eso, el contenedor se declararía sano sirviendo una pantalla de "arrancando".
+
 ## 1. Objetivo y alcance
 
 El informe de limpieza del 2026-08-02 cerró la higiene del daemon local y dejó

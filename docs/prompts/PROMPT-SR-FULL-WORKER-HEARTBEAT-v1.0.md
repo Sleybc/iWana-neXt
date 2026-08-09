@@ -13,6 +13,22 @@
 
 ---
 
+> ## ⚠ Nota de vigencia — 2026-08-08: la elección de medio queda cerrada
+>
+> **`[DESEMPATE]` resuelto por AI-EM-ARCH.** La instrucción 1 de §3 dejaba abierta la elección del medio de la marca de vida entre **archivo local** y **clave en Redis con TTL**, y pedía a AI-SR-FULL decidir y documentar el motivo. **Esa elección ya no está abierta: el medio es Redis.**
+>
+> **Razón — requisito nuevo, no corrección.** El frente de experiencia de arranque ([HLD](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md), [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)*) añade un consumidor que no existía cuando se emitió este prompt: la sonda `background` de `GET /api/v1/system/boot-status` debe leer la marca **desde el contenedor de la API**. Un archivo local del contenedor del worker no es observable desde allí, así que esa opción queda descartada por imposibilidad, no por preferencia.
+>
+> **Alcance de la sustitución: solo la instrucción 1.** Todo lo demás de este prompt sigue vigente y sin cambios — emisor acoplado al bucle de eventos y no a un temporizador aislado (instrucción 2), umbral configurable con default holgado (3), sustitución del probe en ambos Compose (4), `init: true` en `worker-prod` (5), tests (6) y las restricciones de §4.
+>
+> **Sigue siendo tuya la advertencia de §3.1:** un healthcheck que depende de Redis reporta `unhealthy` cuando el caído es Redis y no el worker. Ese trade-off **se acepta**, pero **debe quedar argumentado en el código** igual que pedía el texto original, y la interacción con `scripts/e2e-redis-fault.mjs` debe verificarse explícitamente.
+>
+> **Registro:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* §Consecuencias · [tablero del frente](../quality/CHECKLIST-PLATAFORMA-ARRANQUE-TABLERO-v1.0.md) §4 DES-01 · [PROMPT-PLATAFORMA-ARRANQUE-F2-v1.0.md](PROMPT-PLATAFORMA-ARRANQUE-F2-v1.0.md)
+>
+> **Quién consume tu entrega:** F2 del frente de arranque. Si ejecutas este prompt antes que F2, su sonda `background` leerá tu marca directamente. Si F2 va primero, implementará la sonda contra este contrato y la cerrará cuando publiques.
+
+---
+
 ## 0. Contexto (ya diagnosticado — no repetir el análisis)
 
 El healthcheck del worker **no verifica nada**:
