@@ -13,7 +13,7 @@ jest.mock('@iwana/ui', () => {
       </button>
     ),
     Select: ReactLib.forwardRef<HTMLSelectElement, Record<string, unknown>>(function MockSelect(
-      { id, name, value, onChange, onBlur, options = [] },
+      { id, name, value, onChange, onBlur, options = [], disabled },
       ref,
     ) {
       return (
@@ -21,6 +21,7 @@ jest.mock('@iwana/ui', () => {
           id={id as string | undefined}
           name={name as string | undefined}
           value={(value as string | undefined) ?? ''}
+          disabled={Boolean(disabled)}
           onChange={(event) =>
             (onChange as ((nextValue: string) => void) | undefined)?.(event.target.value)
           }
@@ -325,5 +326,118 @@ describe('UserManagementModal', () => {
 
     expect(usersApiMock.remove).not.toHaveBeenCalled();
     expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it('para administrador principal muestra aviso, deshabilita eliminar/rol/estado y deja guardar y generar clave', async () => {
+    const principalUser = {
+      ...baseUser,
+      role: 'ADMIN',
+      isPrincipalAdmin: true,
+    };
+    usersApiMock.getOne.mockResolvedValue(principalUser as never);
+
+    render(
+      <UserManagementModal
+        open
+        tenantSlug="acme"
+        tenantName="Acme"
+        user={principalUser as never}
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/Esta cuenta es el administrador principal de la empresa/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar usuario' })).toBeDisabled();
+    expect(screen.getByLabelText('Rol')).toBeDisabled();
+    expect(screen.getByLabelText('Estado')).toBeDisabled();
+    expect(screen.getByLabelText('Correo de acceso')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Actualizar correo de acceso' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Generar contraseña temporal' })).not.toBeDisabled();
+  });
+
+  it('tras guardar el administrador principal conserva el aviso y los controles bloqueados', async () => {
+    const principalUser = {
+      ...baseUser,
+      role: 'ADMIN',
+      firstName: 'Ana',
+      isPrincipalAdmin: true,
+    };
+    usersApiMock.getOne.mockResolvedValue(principalUser as never);
+    usersApiMock.update.mockResolvedValue({
+      ...principalUser,
+      firstName: 'Ana María',
+      isPrincipalAdmin: true,
+    } as never);
+
+    render(
+      <UserManagementModal
+        open
+        tenantSlug="acme"
+        tenantName="Acme"
+        user={principalUser as never}
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    const firstNameInput = await screen.findByLabelText('Nombres');
+    fireEvent.change(firstNameInput, { target: { value: 'Ana María' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(usersApiMock.update).toHaveBeenCalled();
+    });
+
+    expect(
+      screen.getByText(/Esta cuenta es el administrador principal de la empresa/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar usuario' })).toBeDisabled();
+    expect(screen.getByLabelText('Rol')).toBeDisabled();
+    expect(screen.getByLabelText('Estado')).toBeDisabled();
+  });
+
+  it('normaliza teléfono a E.164 y omite nombres vacíos sin cambio en el payload', async () => {
+    const userWithoutNames = {
+      ...baseUser,
+      firstName: null,
+      lastName: null,
+      phone: null,
+    };
+    usersApiMock.getOne.mockResolvedValue(userWithoutNames as never);
+    usersApiMock.update.mockResolvedValue({
+      ...userWithoutNames,
+      phone: '+573009998877',
+    } as never);
+
+    render(
+      <UserManagementModal
+        open
+        tenantSlug="acme"
+        tenantName="Acme"
+        user={userWithoutNames as never}
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    const phoneInput = await screen.findByLabelText('Teléfono (E.164)');
+    fireEvent.change(phoneInput, { target: { value: '3009998877' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(usersApiMock.update).toHaveBeenCalled();
+    });
+
+    const payload = usersApiMock.update.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(payload.phone).toBe('+573009998877');
+    expect(payload).not.toHaveProperty('firstName');
+    expect(payload).not.toHaveProperty('lastName');
   });
 });

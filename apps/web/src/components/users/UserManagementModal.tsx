@@ -19,7 +19,9 @@ import {
   getWebUserRoleLabel,
   getWebUserStatusLabel,
   WEB_USER_ROLE_OPTIONS,
+  WEB_USER_ROLES,
   WEB_USER_STATUS_OPTIONS,
+  WEB_USER_STATUSES,
 } from '@/lib/user-labels';
 import {
   BadgePlus,
@@ -34,6 +36,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_ALERT_SUCCESS_CLASS,
+  FORM_ALERT_WARNING_CLASS,
   FORM_ERROR_CLASS,
   FORM_HELP_CLASS,
   FORM_INPUT_CLASS,
@@ -42,6 +45,9 @@ import {
   FORM_SECTION_CARD_CLASS,
 } from '@/lib/form-styles';
 
+/** Alineado a USER_PHONE_E164_PATTERN del backend. */
+const USER_PHONE_E164_PATTERN = /^\+\d{7,15}$/;
+
 const DOCUMENT_TYPES = [
   { value: 'CC', label: 'Cédula de Ciudadanía (CC)' },
   { value: 'CE', label: 'Cédula de Extranjería (CE)' },
@@ -49,12 +55,45 @@ const DOCUMENT_TYPES = [
   { value: 'NIT_PERSONA', label: 'NIT Persona Natural' },
 ];
 
+function normalizePhoneE164(raw: string): string {
+  const cleaned = raw.trim().replace(/\s/g, '');
+  if (!cleaned) return '';
+  return cleaned.startsWith('+') ? cleaned : `+57${cleaned}`;
+}
+
+/**
+ * Incluye el campo en el payload solo si tiene contenido o si el usuario lo limpió
+ * (el backend interpreta '' como clear vía trim → null).
+ */
+function optionalChangedTextField(
+  next: string | undefined,
+  previous: string | null | undefined,
+): string | undefined {
+  const trimmed = next?.trim() ?? '';
+  const prev = previous?.trim() ?? '';
+  if (trimmed === prev) {
+    return trimmed ? trimmed : undefined;
+  }
+  return trimmed;
+}
+
 const updateUserSchema = z.object({
-  role: z.string().min(1),
-  status: z.string().min(1),
+  role: z.enum(WEB_USER_ROLES),
+  status: z.enum(WEB_USER_STATUSES),
   firstName: z.string().max(100).optional().or(z.literal('')),
   lastName: z.string().max(100).optional().or(z.literal('')),
-  phone: z.string().max(20, 'Máximo 20 caracteres').optional().or(z.literal('')),
+  phone: z
+    .string()
+    .max(20, 'Máximo 20 caracteres')
+    .optional()
+    .or(z.literal(''))
+    .refine(
+      (val) => {
+        if (!val?.trim()) return true;
+        return USER_PHONE_E164_PATTERN.test(normalizePhoneE164(val));
+      },
+      { message: 'Usa formato internacional, por ejemplo +573001234567' },
+    ),
   jobTitle: z.string().max(150).optional().or(z.literal('')),
   documentType: z.enum(['CC', 'CE', 'PASAPORTE', 'NIT_PERSONA']).optional().or(z.literal('')),
   documentNumber: z.string().max(30, 'Máximo 30 caracteres').optional().or(z.literal('')),
@@ -110,8 +149,8 @@ export function UserManagementModal({
   } = useForm<UpdateUserFormValues>({
     resolver: zodResolver(updateUserSchema),
     defaultValues: {
-      role: user?.role ?? 'NOC',
-      status: user?.status ?? 'ACTIVE',
+      role: user ? normalizeWebUserRole(user.role) : 'NOC',
+      status: user ? normalizeWebUserStatus(user.status) : 'ACTIVE',
       firstName: '',
       lastName: '',
       phone: '',
@@ -182,29 +221,44 @@ export function UserManagementModal({
   const fullName = firstName || lastName ? [firstName, lastName].filter(Boolean).join(' ') : null;
   const currentRole = detail?.role ?? user.role;
   const currentStatus = detail?.status ?? user.status;
+  const isPrincipalAdmin = detail?.isPrincipalAdmin === true;
 
   const handleSave = handleSubmit(async (values) => {
     setError(null);
     setSuccess(null);
     setIsSaving(true);
     try {
+      const normalizedPhone = values.phone ? normalizePhoneE164(values.phone) : '';
+      const firstNameValue = optionalChangedTextField(values.firstName, detail?.firstName);
+      const lastNameValue = optionalChangedTextField(values.lastName, detail?.lastName);
+      const jobTitleValue = optionalChangedTextField(values.jobTitle, detail?.jobTitle);
+
       const payload: UpdateUserPayload = {
         role: values.role,
         status: values.status,
-        ...(values.firstName !== undefined ? { firstName: values.firstName } : {}),
-        ...(values.lastName !== undefined ? { lastName: values.lastName } : {}),
-        ...(values.phone ? { phone: values.phone } : {}),
-        ...(values.jobTitle !== undefined ? { jobTitle: values.jobTitle } : {}),
+        ...(firstNameValue !== undefined ? { firstName: firstNameValue } : {}),
+        ...(lastNameValue !== undefined ? { lastName: lastNameValue } : {}),
+        ...(normalizedPhone ? { phone: normalizedPhone } : {}),
+        ...(jobTitleValue !== undefined ? { jobTitle: jobTitleValue } : {}),
         ...(values.documentType ? { documentType: values.documentType } : {}),
         ...(values.documentNumber ? { documentNumber: values.documentNumber } : {}),
-        ...(values.avatarUrl ? { avatarUrl: values.avatarUrl } : {}),
+        ...(values.avatarUrl?.trim() ? { avatarUrl: values.avatarUrl.trim() } : {}),
         mfaRequired: values.mfaRequired,
       };
       const updated = await usersApi.update(tenantSlug, user.id, payload, crypto.randomUUID());
-      setDetail(updated);
-      reset(mapUserToForm(updated));
+      // Conservar isPrincipalAdmin si la escritura no lo reenvía (defensa en profundidad).
+      const nextDetail: UserListItem = {
+        ...updated,
+        ...(updated.isPrincipalAdmin !== undefined
+          ? { isPrincipalAdmin: updated.isPrincipalAdmin }
+          : detail?.isPrincipalAdmin !== undefined
+            ? { isPrincipalAdmin: detail.isPrincipalAdmin }
+            : {}),
+      };
+      setDetail(nextDetail);
+      reset(mapUserToForm(nextDetail));
       setSuccess('Usuario actualizado correctamente.');
-      onSaved(updated);
+      onSaved(nextDetail);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No fue posible actualizar el usuario.');
     } finally {
@@ -357,6 +411,18 @@ export function UserManagementModal({
             </div>
           ) : (
             <form className="mt-4 space-y-4" onSubmit={handleSave}>
+              {isPrincipalAdmin && (
+                <div role="status" className={FORM_ALERT_WARNING_CLASS}>
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                  <p>
+                    Esta cuenta es el administrador principal de la empresa. Para eliminar el
+                    usuario, cambiar su correo de acceso o modificar su rol o estado, designa antes
+                    otro administrador principal. Puedes actualizar el perfil y generar una
+                    contraseña temporal.
+                  </p>
+                </div>
+              )}
+
               {/* Info de seguridad */}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className={FORM_SECTION_CARD_CLASS}>
@@ -401,49 +467,59 @@ export function UserManagementModal({
               </div>
 
               {/* Rol y Estado */}
-              <div className={`${FORM_SECTION_CARD_CLASS} grid gap-3 md:grid-cols-2`}>
-                <div>
-                  <label htmlFor="um-role" className={`block ${FORM_LABEL_CLASS}`}>
-                    Rol
-                  </label>
-                  <Controller
-                    control={control}
-                    name="role"
-                    render={({ field, fieldState }) => (
-                      <Select
-                        id="um-role"
-                        options={WEB_USER_ROLE_OPTIONS}
-                        value={field.value}
-                        name={field.name}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                        {...(fieldState.error ? { error: fieldState.error.message } : {})}
-                      />
-                    )}
-                  />
+              <div className={`${FORM_SECTION_CARD_CLASS} space-y-3`}>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="um-role" className={`block ${FORM_LABEL_CLASS}`}>
+                      Rol
+                    </label>
+                    <Controller
+                      control={control}
+                      name="role"
+                      render={({ field, fieldState }) => (
+                        <Select
+                          id="um-role"
+                          options={WEB_USER_ROLE_OPTIONS}
+                          value={field.value}
+                          name={field.name}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          disabled={isPrincipalAdmin}
+                          {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                        />
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="um-status" className={`block ${FORM_LABEL_CLASS}`}>
+                      Estado
+                    </label>
+                    <Controller
+                      control={control}
+                      name="status"
+                      render={({ field, fieldState }) => (
+                        <Select
+                          id="um-status"
+                          options={WEB_USER_STATUS_OPTIONS}
+                          value={field.value}
+                          name={field.name}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          disabled={isPrincipalAdmin}
+                          {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                        />
+                      )}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="um-status" className={`block ${FORM_LABEL_CLASS}`}>
-                    Estado
-                  </label>
-                  <Controller
-                    control={control}
-                    name="status"
-                    render={({ field, fieldState }) => (
-                      <Select
-                        id="um-status"
-                        options={WEB_USER_STATUS_OPTIONS}
-                        value={field.value}
-                        name={field.name}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                        {...(fieldState.error ? { error: fieldState.error.message } : {})}
-                      />
-                    )}
-                  />
-                </div>
+                {isPrincipalAdmin && (
+                  <p className={FORM_MICROCOPY_CLASS}>
+                    Rol y estado no se pueden cambiar mientras esta cuenta sea el administrador
+                    principal de la empresa.
+                  </p>
+                )}
               </div>
 
               {/* Seguridad */}
@@ -533,6 +609,10 @@ export function UserManagementModal({
                     placeholder="+573001234567"
                     {...register('phone')}
                   />
+                  <p className={`mt-1 ${FORM_HELP_CLASS}`}>
+                    Formato internacional con código de país. Si omites el +, se asume Colombia
+                    (+57).
+                  </p>
                   {errors.phone && <p className={FORM_ERROR_CLASS}>{errors.phone.message}</p>}
                 </div>
 
@@ -616,6 +696,7 @@ export function UserManagementModal({
                       onChange={(event) => setLoginEmailDraft(event.target.value)}
                       placeholder="usuario@empresa.com"
                       autoComplete="off"
+                      disabled={isPrincipalAdmin}
                     />
                   </div>
 
@@ -624,10 +705,16 @@ export function UserManagementModal({
                     variant="secondary"
                     onClick={handleSaveLoginEmail}
                     loading={isSavingLoginEmail}
+                    disabled={isPrincipalAdmin}
                   >
                     Actualizar correo de acceso
                   </Button>
                 </div>
+                {isPrincipalAdmin && (
+                  <p className={FORM_MICROCOPY_CLASS}>
+                    El correo de acceso del administrador principal no se puede cambiar desde aquí.
+                  </p>
+                )}
 
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
@@ -661,16 +748,24 @@ export function UserManagementModal({
 
               {/* Acciones */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-dark-border">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => setPendingConfirm('delete')}
-                  size="default"
-                  loading={isDeleting}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  Eliminar usuario
-                </Button>
+                <div className="space-y-1">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setPendingConfirm('delete')}
+                    size="default"
+                    loading={isDeleting}
+                    disabled={isPrincipalAdmin}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    Eliminar usuario
+                  </Button>
+                  {isPrincipalAdmin && (
+                    <p className={FORM_MICROCOPY_CLASS}>
+                      No se puede eliminar al administrador principal de la empresa.
+                    </p>
+                  )}
+                </div>
                 <Button type="submit" size="lg" loading={isSaving}>
                   Guardar cambios
                 </Button>
@@ -719,8 +814,8 @@ export function UserManagementModal({
 
 function mapUserToForm(user: UserListItem): UpdateUserFormValues {
   return {
-    role: user.role,
-    status: user.status,
+    role: normalizeWebUserRole(user.role),
+    status: normalizeWebUserStatus(user.status),
     firstName: user.firstName ?? '',
     lastName: user.lastName ?? '',
     phone: user.phone ?? '',
@@ -730,6 +825,18 @@ function mapUserToForm(user: UserListItem): UpdateUserFormValues {
     avatarUrl: user.avatarUrl ?? '',
     mfaRequired: user.mfaRequired ?? false,
   };
+}
+
+function normalizeWebUserRole(value: string): UpdateUserFormValues['role'] {
+  return (WEB_USER_ROLES as readonly string[]).includes(value)
+    ? (value as UpdateUserFormValues['role'])
+    : 'NOC';
+}
+
+function normalizeWebUserStatus(value: string): UpdateUserFormValues['status'] {
+  return (WEB_USER_STATUSES as readonly string[]).includes(value)
+    ? (value as UpdateUserFormValues['status'])
+    : 'ACTIVE';
 }
 
 function normalizeDocumentType(

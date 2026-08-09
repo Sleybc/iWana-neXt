@@ -1003,11 +1003,19 @@ export class UsersService {
         throw new ForbiddenException('No es posible modificar a otro administrador del tenant.');
       }
 
-      if (await this.isPrincipalAdminUser(user.tenantId, user.id)) {
-        throw new ConflictException(
-          'No es posible modificar al administrador principal de la empresa. ' +
-            'Designa primero a otro administrador principal.',
-        );
+      // E-01: barrera del principal solo ante cambio real de status/role
+      // (el FE suele reenviar role+status aunque no cambien).
+      const principalAdminUserId = await this.tenantService.getPrincipalAdminUserId(user.tenantId);
+      const isPrincipal = principalAdminUserId !== null && principalAdminUserId === user.id;
+      if (isPrincipal) {
+        const roleChanging = dto.role !== undefined && dto.role !== user.role;
+        const statusChanging = dto.status !== undefined && dto.status !== user.status;
+        if (roleChanging || statusChanging) {
+          throw new ConflictException(
+            'No es posible modificar al administrador principal de la empresa. ' +
+              'Designa primero a otro administrador principal.',
+          );
+        }
       }
 
       const oldValue = {
@@ -1054,7 +1062,8 @@ export class UsersService {
         this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id),
         'cola de busqueda upsert usuario',
       );
-      return this.toDto(user);
+      // Conservar isPrincipalAdmin en la respuesta de escritura (misma semántica que findOne).
+      return this.toDto(user, principalAdminUserId);
     });
   }
 
@@ -1397,16 +1406,10 @@ export class UsersService {
       this.assertTargetIsNotPlatformUser(user.role, actorRole);
 
       // E-01: ADMIN peer barrier — mismo modelo que remove().
+      // ADR-063 no cubre reset de clave por soporte de plataforma: SYSTEM_ADMIN puede.
       if (user.role === UserRole.ADMIN && actorRole !== PlatformRole.SYSTEM_ADMIN) {
         throw new ForbiddenException(
           'No es posible reiniciar la contraseña de otro administrador del tenant.',
-        );
-      }
-
-      if (await this.isPrincipalAdminUser(user.tenantId, user.id)) {
-        throw new ConflictException(
-          'No es posible reiniciar la contraseña del administrador principal de la empresa. ' +
-            'Designa primero a otro administrador principal.',
         );
       }
 

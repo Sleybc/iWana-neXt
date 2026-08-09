@@ -13,6 +13,11 @@
  *   no deberia existir, pero la comprobacion opera sobre el literal leido de la
  *   base y sigue siendo la red para un schema sin el CHECK de la migracion 085.
  *
+ * - E-01 (alcance corregido): en `update()` la barrera del principal aplica
+ *   solo a cambios reales de `status`/`role` (comparados con el valor actual),
+ *   no a perfil / mfaRequired / reenvio idempotente de role+status. En
+ *   `resetPassword()` no hay barrera de principal (soporte de plataforma).
+ *
  * SEGURIDAD: sin PII real — todos los datos son ficticios.
  */
 
@@ -26,6 +31,15 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { SearchQueueService } from '../../search/search-queue.service';
 import { TenantService } from '../../tenant/tenant.service';
 import { UsersService } from '../users.service';
+
+jest.mock('bcryptjs', () => {
+  const actual = jest.requireActual('bcryptjs') as Record<string, unknown>;
+  return {
+    ...actual,
+    compare: jest.fn(),
+    hash: jest.fn(async (value: string) => `hashed:${value}`),
+  };
+});
 
 const TENANT_ID = 'ten-00000000-0000-4000-a000-000000000001';
 
@@ -250,6 +264,103 @@ describe('UsersService — administrador principal y objetivos de plataforma', (
         BadRequestException,
       );
       expect(tenantServiceMock.setPrincipalAdminUserId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update() — barrera del principal (E-01 alcance corregido)', () => {
+    it('permite actualizar solo perfil del principal (SYSTEM_ADMIN)', async () => {
+      setupManager(buildUser());
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(PRINCIPAL_ID);
+
+      const result = await service.update(
+        PRINCIPAL_ID,
+        { firstName: 'Ana' },
+        ACTOR_ID,
+        PlatformRole.SYSTEM_ADMIN,
+      );
+
+      expect(result.firstName).toBe('Ana');
+      expect(result.isPrincipalAdmin).toBe(true);
+      expect(managerMock.save).toHaveBeenCalled();
+    });
+
+    it('permite reenviar el mismo role/status junto con perfil', async () => {
+      setupManager(buildUser({ role: UserRole.ADMIN, status: UserStatus.ACTIVE }));
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(PRINCIPAL_ID);
+
+      const result = await service.update(
+        PRINCIPAL_ID,
+        {
+          firstName: 'Ana',
+          role: UserRole.ADMIN,
+          status: UserStatus.ACTIVE,
+          mfaRequired: true,
+        },
+        ACTOR_ID,
+        PlatformRole.SYSTEM_ADMIN,
+      );
+
+      expect(result.firstName).toBe('Ana');
+      expect(result.mfaRequired).toBe(true);
+      expect(result.role).toBe(UserRole.ADMIN);
+      expect(result.status).toBe(UserStatus.ACTIVE);
+      expect(managerMock.save).toHaveBeenCalled();
+    });
+
+    it('rechaza cambiar status del principal a SUSPENDED', async () => {
+      setupManager(buildUser({ status: UserStatus.ACTIVE }));
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(PRINCIPAL_ID);
+
+      await expect(
+        service.update(
+          PRINCIPAL_ID,
+          { status: UserStatus.SUSPENDED },
+          ACTOR_ID,
+          PlatformRole.SYSTEM_ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(managerMock.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza cambiar role del principal', async () => {
+      setupManager(buildUser({ role: UserRole.ADMIN }));
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(PRINCIPAL_ID);
+
+      await expect(
+        service.update(PRINCIPAL_ID, { role: UserRole.NOC }, ACTOR_ID, PlatformRole.SYSTEM_ADMIN),
+      ).rejects.toThrow(ConflictException);
+
+      expect(managerMock.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword() — sin barrera de principal', () => {
+    it('permite a SYSTEM_ADMIN resetear la contraseña del principal', async () => {
+      setupManager(buildUser());
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(PRINCIPAL_ID);
+
+      const result = await service.resetPassword(
+        PRINCIPAL_ID,
+        ACTOR_ID,
+        PlatformRole.SYSTEM_ADMIN,
+        '127.0.0.1',
+      );
+
+      expect(typeof result.temporaryPassword).toBe('string');
+      expect(result.temporaryPassword).toHaveLength(32);
+      expect(managerMock.save).toHaveBeenCalled();
+    });
+
+    it('sigue bloqueando peer-ADMIN (Forbidden)', async () => {
+      setupManager(buildUser());
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(PRINCIPAL_ID);
+
+      await expect(
+        service.resetPassword(PRINCIPAL_ID, ACTOR_ID, UserRole.ADMIN, '127.0.0.1'),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(managerMock.save).not.toHaveBeenCalled();
     });
   });
 });

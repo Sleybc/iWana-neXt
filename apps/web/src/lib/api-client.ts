@@ -944,6 +944,8 @@ export interface UserListItem {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** True cuando es el administrador principal de la empresa (GET list/detail). */
+  isPrincipalAdmin?: boolean;
   // Campos de perfil (opcionales — solo presentes cuando el backend los retorna)
   firstName?: string | null;
   lastName?: string | null;
