@@ -1,7 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { existsSync, readFileSync } from 'node:fs';
@@ -21,6 +21,7 @@ import { MailerModule } from './modules/mailer/mailer.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantMiddleware } from './modules/tenant/tenant.middleware';
+import { CsrfGuard } from './modules/auth/guards/csrf.guard';
 import { CrmModule } from './modules/crm/crm.module';
 import { CommercialModule } from './modules/commercial/commercial.module';
 import { TaxationModule } from './modules/taxation/taxation.module';
@@ -236,6 +237,10 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
   ],
   controllers: [],
   providers: [
+    // CSRF global (ADR-081, C-2): exige `X-Requested-With` solo en métodos
+    // mutantes autenticados por cookie. Rutas @Public(), métodos no mutantes
+    // y auth por Bearer pasan siempre; sin estado ni endpoint nuevo.
+    { provide: APP_GUARD, useClass: CsrfGuard },
     // AuditInterceptor registrado globalmente: intercepta todas las operaciones CUD.
     // Enruta segun jwt.type: 'platform' → platform_audit_logs, 'tenant' → <schema>.audit_logs.
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },

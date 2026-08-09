@@ -115,12 +115,16 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
     document.title = resolveDashboardTitle(tenantProfile);
   }, [tenantProfile]);
 
-  if (authLoading || !user) {
+  if (authLoading && !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-dark-surface">
         <p className="text-sm text-gray-600 dark:text-gray-300">Validando sesión...</p>
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (

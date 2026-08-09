@@ -26,8 +26,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # ── builder ───────────────────────────────────────────────────────────────
 FROM base AS builder
 
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_PORTAL_API_URL
+ENV NEXT_PUBLIC_PORTAL_API_URL=$NEXT_PUBLIC_PORTAL_API_URL
 
 COPY --from=deps /app/node_modules                ./node_modules
 COPY --from=deps /app/packages/config/node_modules   ./packages/config/node_modules

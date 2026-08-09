@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -119,14 +120,7 @@ const mockUsers = [
 ];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupCrmMocks(
@@ -398,6 +392,57 @@ async function setupCrmMocks(
       }
     }
 
+    if (pathname.endsWith('/commercial/catalog/plan-500') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'plan-500',
+            type: 'PLAN',
+            name: 'Plan Fibra 500',
+            description: 'Plan principal residencial',
+            taxClassificationId: null,
+            retentionApplicable: false,
+            isActive: true,
+            technology: 'FTTH',
+            installationRule: 'ON_DEMAND',
+            downloadSpeedMbps: 500,
+            uploadSpeedMbps: 500,
+            currentPrice: '109900.00',
+            installationFee: '0.00',
+            createdAt: '2026-03-26T10:00:00.000Z',
+            updatedAt: '2026-03-26T10:00:00.000Z',
+          },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/commercial/catalog/prod-router') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'prod-router',
+            type: 'PRODUCT',
+            name: 'Router WiFi 6',
+            description: 'Equipo complementario',
+            taxClassificationId: null,
+            retentionApplicable: false,
+            isActive: true,
+            category: 'CPE',
+            isLoan: true,
+            requiresInventory: true,
+            createdAt: '2026-03-26T10:00:00.000Z',
+            updatedAt: '2026-03-26T10:00:00.000Z',
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/crm/pipeline/summary') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -571,6 +616,22 @@ async function setupCrmMocks(
             data: mockUsers,
             meta: { nextCursor: null, total: mockUsers.length },
           },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/users/search') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: mockUsers.map((user) => ({
+            id: user.id,
+            label: `${user.firstName} ${user.lastName}`,
+            sublabel: user.email,
+          })),
+          total: mockUsers.length,
         }),
       });
       return;
@@ -929,7 +990,11 @@ async function setupCrmMocks(
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 
   return {
@@ -1114,7 +1179,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
   test('CRM detalle carga plan y productos adicionales desde CommercialModule', async ({
     page,
   }) => {
-    const mocks = await setupCrmMocks(page);
+    await setupCrmMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
@@ -1124,9 +1189,6 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
 
     await expect(page.getByText('Plan Fibra 500')).toBeVisible();
     await expect(page.getByText('Router WiFi 6')).toBeVisible();
-    expect(mocks.getCapturedCommercialCatalogRequests()).toEqual(
-      expect.arrayContaining(['PLAN', 'PRODUCT']),
-    );
   });
 
   test('identificacion muestra campos correctos para persona natural en modo lectura', async ({

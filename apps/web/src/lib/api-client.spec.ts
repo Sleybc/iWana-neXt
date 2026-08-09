@@ -21,42 +21,48 @@ describe('api-client', () => {
     persistAccessToken('expired-token');
     let authMeCalls = 0;
     let refreshCalls = 0;
+    const authMeAuthHeaders: Array<string | null> = [];
 
-    (global.fetch as jest.Mock).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
+    (global.fetch as jest.Mock).mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
 
-      if (url.endsWith('/auth/me')) {
-        authMeCalls += 1;
-        if (authMeCalls <= 2) {
-          return buildJsonResponse({ code: 'UNAUTHORIZED', message: 'Token vencido' }, 401);
+        if (url.endsWith('/auth/me')) {
+          authMeCalls += 1;
+          authMeAuthHeaders.push(new Headers(init?.headers).get('Authorization'));
+          if (authMeCalls <= 2) {
+            return buildJsonResponse({ code: 'UNAUTHORIZED', message: 'Token vencido' }, 401);
+          }
+
+          return buildJsonResponse({
+            data: {
+              sub: 'platform-user-1',
+              email: 'admin@example.test',
+              role: 'SYSTEM_ADMIN',
+              tenantId: null,
+              schemaName: null,
+              jti: 'jti-1',
+              type: 'platform',
+            },
+          });
         }
 
-        return buildJsonResponse({
-          data: {
-            sub: 'platform-user-1',
-            email: 'admin@example.test',
-            role: 'SYSTEM_ADMIN',
-            tenantId: null,
-            schemaName: null,
-            jti: 'jti-1',
-            type: 'platform',
-          },
-        });
-      }
+        if (url.endsWith('/auth/refresh')) {
+          refreshCalls += 1;
+          return buildJsonResponse({ data: { accessToken: 'renewed-token' } });
+        }
 
-      if (url.endsWith('/auth/refresh')) {
-        refreshCalls += 1;
-        return buildJsonResponse({ data: { accessToken: 'renewed-token' } });
-      }
-
-      throw new Error(`URL no esperada: ${url}`);
-    });
+        throw new Error(`URL no esperada: ${url}`);
+      },
+    );
 
     await Promise.all([authApi.me(), authApi.me()]);
 
     expect(refreshCalls).toBe(1);
     expect(authMeCalls).toBe(4);
-    expect(window.localStorage.getItem('iwana.web.access-token')).toBe('renewed-token');
+    // El token renovado se re-adjunta en memoria (ADR-081): el reintento viaja
+    // con el Bearer renovado; ya no se persiste en localStorage.
+    expect(authMeAuthHeaders).toContain('Bearer renewed-token');
   });
 
   it('normaliza arrays de validación y expone un mensaje legible', async () => {

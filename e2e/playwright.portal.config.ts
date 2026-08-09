@@ -64,7 +64,16 @@ export default defineConfig({
     command:
       'pnpm --filter @iwana/portal exec node ../../scripts/next-dev.mjs --webpack --port 3002',
     url: 'http://127.0.0.1:3002',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.PW_FORCE_FRESH_SERVER && !process.env.CI,
+    // C-4 / OLA1-b: el bundle del navegador debe usar same-origin `/api/v1` para
+    // que page.route() intercepte sin CORS/CSP connect-src. Si el shell o
+    // `.env.development` definen NEXT_PUBLIC_PORTAL_API_URL absoluta (p. ej.
+    // http://127.0.0.1:3000/api/v1), Next la bakea y AuthProvider queda bloqueado
+    // por connect-src 'self'. Forzamos vacío en el webServer de la suite.
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_PORTAL_API_URL: '',
+    },
     timeout: 120_000,
   },
   projects: [

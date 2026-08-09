@@ -10,6 +10,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
@@ -51,7 +52,7 @@ function buildSubscriber(id: string, firstName: string, lastName: string) {
     documentType: 'CC',
     documentNumber: id,
     nit: null,
-    email: `${id}@prueba.local`,
+    email: `${id}@prueba.co`,
     phone: null,
     customerSegment: 'RESIDENTIAL',
     vatTreatment: 'STANDARD',
@@ -103,14 +104,7 @@ function pageEnvelope(
 }
 
 async function seedSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, tenant }: { token: string; tenant: string }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', tenant);
-    },
-    { token: MOCK_TOKEN, tenant: MOCK_TENANT },
-  );
+  await seedPortalSession(page, { token: MOCK_TOKEN, tenantSlug: MOCK_TENANT });
 }
 
 async function setupMocks(page: Page) {
@@ -141,6 +135,73 @@ async function setupMocks(page: Page) {
       return;
     }
 
+    if (url.includes('/auth/me') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: MOCK_ME }),
+      });
+      return;
+    }
+
+    if (url.includes('/users/user-admin-uuid-001') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'user-admin-uuid-001',
+            email: 'admin@tenant-prueba.co',
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            tenantId: 'tenant-uuid-001',
+            mfaEnabled: true,
+            mfaRequired: false,
+            emailVerified: true,
+            passwordResetRequired: false,
+            firstName: 'Ana',
+            lastName: 'Admin',
+            phone: null,
+            jobTitle: 'Administrador',
+            documentType: null,
+            documentNumber: null,
+            avatarUrl: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            deletedAt: null,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me') && method === 'GET' && !url.includes('/tenants/me/')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'tenant-uuid-001',
+            name: 'Tenant Prueba',
+            slug: MOCK_TENANT,
+            status: 'ACTIVE',
+            contactEmail: 'admin@tenant-prueba.co',
+            showTenantName: true,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+      return;
+    }
+
     if (url.includes('/tenants/me/summary') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -153,15 +214,6 @@ async function setupMocks(page: Page) {
             status: 'ACTIVE',
           },
         }),
-      });
-      return;
-    }
-
-    if (url.includes('/auth/me') && method === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: MOCK_ME }),
       });
       return;
     }
@@ -213,14 +265,15 @@ async function setupMocks(page: Page) {
     }
 
     await route.fulfill({
-      status: 200,
+      status: 404,
       contentType: 'application/json',
-      body: JSON.stringify({ data: null }),
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: url }),
     });
   });
 }
 
 const evidenceDir = path.join(process.cwd(), 'docs/informes/evidence/adr065-ola4-subscribers');
+mkdirSync(evidenceDir, { recursive: true });
 
 /**
  * Conteo visible del pie (CA-PAG v2-08).
@@ -229,6 +282,26 @@ const evidenceDir = path.join(process.cwd(), 'docs/informes/evidence/adr065-ola4
  */
 function visiblePagerCount(page: Page, text: string) {
   return page.locator('p:not([aria-live])').filter({ hasText: text });
+}
+
+/**
+ * Captura evidencia con reintento ante errores transitorios de escritura en
+ * Windows (open UNKNOWN). Los screenshots son artefacto de documentación, no
+ * aserciones; un fallo transitorio no debe tumbar el recorrido.
+ */
+async function captureEvidence(page: Page, filename: string, maxAttempts = 3): Promise<void> {
+  const target = path.join(evidenceDir, filename);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await page.screenshot({ path: target, fullPage: true });
+      return;
+    } catch (screenshotError) {
+      if (attempt === maxAttempts) {
+        throw screenshotError;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
 }
 
 test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
@@ -246,20 +319,14 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await expect(page.getByRole('heading', { name: 'Suscriptores' })).toBeVisible();
     await expect(page.getByText('Ana PáginaUno0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 1–20 de 45 suscriptores')).toBeVisible();
-    await page.screenshot({
-      path: path.join(evidenceDir, '1280-page1-light.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '1280-page1-light.png');
 
     await page.getByRole('button', { name: 'Siguiente' }).click();
     await expect(page).toHaveURL(/page=2/);
     await expect(page.getByText('Luis PáginaDos0')).toBeVisible();
     await expect(page.getByText('Ana PáginaUno0')).toHaveCount(0);
     await expect(visiblePagerCount(page, 'Mostrando 21–40 de 45 suscriptores')).toBeVisible();
-    await page.screenshot({
-      path: path.join(evidenceDir, '1280-page2-light.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '1280-page2-light.png');
 
     await page.goBack();
     await expect(page).not.toHaveURL(/page=2/);
@@ -276,25 +343,16 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await expect(page).toHaveURL(/status=SUSPENDED/);
     await expect(page.getByText('No hay suscriptores con estos filtros.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Limpiar filtros' })).toBeVisible();
-    await page.screenshot({
-      path: path.join(evidenceDir, '1280-empty-filtered-light.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '1280-empty-filtered-light.png');
 
     await page.getByRole('button', { name: 'Limpiar filtros' }).click();
     await page.goto('/dashboard/crm/subscribers?page=3');
     await expect(page.getByText('Eva PáginaTres0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 41–45 de 45 suscriptores')).toBeVisible();
-    await page.screenshot({
-      path: path.join(evidenceDir, '1280-page3-partial-light.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '1280-page3-partial-light.png');
 
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.screenshot({
-      path: path.join(evidenceDir, '1280-page3-partial-dark.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '1280-page3-partial-dark.png');
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.emulateMedia({ colorScheme: 'light' });
@@ -302,15 +360,9 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await expect(page.getByText('Luis PáginaDos0')).toBeVisible();
     // Exacto: el aria-live anuncia «Página 2 de 3. Mostrando…» (mismo choque H-E2E-01).
     await expect(page.getByText('Página 2 de 3', { exact: true })).toBeVisible();
-    await page.screenshot({
-      path: path.join(evidenceDir, '375-page2-light.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '375-page2-light.png');
 
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.screenshot({
-      path: path.join(evidenceDir, '375-page2-dark.png'),
-      fullPage: true,
-    });
+    await captureEvidence(page, '375-page2-dark.png');
   });
 });

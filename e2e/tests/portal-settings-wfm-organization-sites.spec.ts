@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-wfm-demo';
 const MOCK_TENANT_ID = 'tenant-wfm-demo';
@@ -35,14 +36,7 @@ function buildAccessToken(): string {
 }
 
 async function setAdminSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: buildAccessToken(), slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: buildAccessToken(), tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupFieldOperationsMocks(page: Page) {
@@ -121,6 +115,23 @@ async function setupFieldOperationsMocks(page: Page) {
           documentType: null,
           documentNumber: null,
           avatarUrl: null,
+        },
+      }),
+    });
+  });
+
+  await page.route('**/api/v1/access-control/me/effective-permissions', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          userId: MOCK_USER_ID,
+          role: 'ADMIN',
+          effectivePermissions: ['settings.read'],
+          recoveryPermissions: [],
+          profileSources: [],
         },
       }),
     });
@@ -338,7 +349,7 @@ async function setupFieldOperationsMocks(page: Page) {
 }
 
 test.describe('Portal settings field operations', () => {
-  test('ADMIN navega a operación de campo y ve sedes empresariales como unica referencia visible', async ({
+  test('ADMIN navega a operación de campo y ve la landing que dirige al Calendario operativo', async ({
     page,
   }) => {
     const { requestLog } = await setupFieldOperationsMocks(page);
@@ -351,13 +362,11 @@ test.describe('Portal settings field operations', () => {
     await page.getByRole('link', { name: 'Operación de campo' }).click();
 
     await expect(page).toHaveURL(/\/dashboard\/settings\/field-operations$/);
-    await expect(page.getByRole('heading', { name: 'Operación de campo' })).toBeVisible();
-    await expect(page.getByText('Horarios operativos')).toBeVisible();
-    await expect(page.getByText('Sedes empresariales para despacho')).toBeVisible();
-    await expect(page.getByText('Sede norte (NOR)').first()).toBeVisible();
-    await expect(page.getByText('Sede sur (SUR)').first()).toBeVisible();
-    await expect(page.getByLabel('Sede empresarial').first()).toBeVisible();
-    await expect(page.getByText('Sedes operativas')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Operaciones de campo' })).toBeVisible();
+    await expect(page.getByText('Horarios y jornadas')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Ir a Calendario operativo y jornadas →' }),
+    ).toBeVisible();
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -110,14 +111,27 @@ const mockUsers = [
 ];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+}
+
+async function pickSearchableUser(
+  page: import('@playwright/test').Page,
+  panel: ReturnType<import('@playwright/test').Page['locator']>,
+  query: string,
+  optionName: RegExp | string,
+) {
+  const input = panel.getByRole('combobox', { name: /nuevo responsable/i });
+  await input.click();
+  await input.fill(query);
+  const listbox = page.locator('#rs-user-listbox');
+  await expect(listbox).toBeVisible();
+  const option = page.getByRole('option', { name: optionName });
+  await expect(option).toBeVisible({ timeout: 10_000 });
+  await option.click();
+  if (await listbox.isVisible()) {
+    await page.keyboard.press('Escape');
+  }
+  await expect(listbox).toBeHidden();
 }
 
 async function setupMocks(page: import('@playwright/test').Page) {
@@ -292,6 +306,53 @@ async function setupMocks(page: import('@playwright/test').Page) {
       }
     }
 
+    if (pathname.endsWith('/commercial/catalog/plan-500') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'plan-500',
+            type: 'PLAN',
+            name: 'Plan Fibra 500',
+            description: null,
+            taxClassificationId: null,
+            retentionApplicable: false,
+            isActive: true,
+            technology: 'FTTH',
+            installationRule: 'ON_DEMAND',
+            downloadSpeedMbps: 500,
+            uploadSpeedMbps: 500,
+            currentPrice: '109900.00',
+            installationFee: '0.00',
+          },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/commercial/catalog/prod-router') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'prod-router',
+            type: 'PRODUCT',
+            name: 'Router WiFi 6',
+            description: null,
+            taxClassificationId: null,
+            retentionApplicable: false,
+            isActive: true,
+            category: 'CPE',
+            isLoan: true,
+            requiresInventory: true,
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/crm/pipeline/summary') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -421,11 +482,23 @@ async function setupMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    if (
-      pathname.includes('/users') &&
-      method === 'GET' &&
-      (pathname.includes('/users?') || pathname.match(/\/users$/))
-    ) {
+    if (pathname.includes('/users/search') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: mockUsers.map((user) => ({
+            id: user.id,
+            label: `${user.firstName} ${user.lastName}`,
+            sublabel: user.email,
+          })),
+          total: mockUsers.length,
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/users') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -500,7 +573,11 @@ async function setupMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 
   return { getCapturedResponsibilityPayload: () => capturedResponsibilityPayload };
@@ -656,8 +733,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
       })
       .first();
 
-    await responsibilityPanel.locator('#rs-user').click();
-    await page.getByRole('option', { name: /María López/i }).click();
+    await pickSearchableUser(page, responsibilityPanel, 'Ma', /María López/i);
     await responsibilityPanel.getByLabel('Notas (opcional)').fill('Caso reasignado a María');
     await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 
@@ -704,8 +780,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
         has: page.getByText('Reasignar responsable', { exact: true }),
       })
       .first();
-    await responsibilityPanel.locator('#rs-user').click();
-    await page.getByRole('option', { name: /María López/i }).click();
+    await pickSearchableUser(page, responsibilityPanel, 'Ma', /María López/i);
     await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 
     await page.waitForLoadState('networkidle');

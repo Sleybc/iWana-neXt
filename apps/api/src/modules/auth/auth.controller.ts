@@ -30,20 +30,40 @@ import {
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import {
+  isCookieSecure,
+  platformAccessCookieName,
+  platformRefreshCookieName,
+  tenantAccessCookieName,
+  tenantRefreshCookieName,
+} from './session-cookies.constants';
 
-/** Nombre de la cookie del refresh token */
-const REFRESH_TOKEN_COOKIE = 'refreshToken';
+/** Nombre de la cookie del refresh token del portal (audiencia tenant). */
+const REFRESH_TOKEN_COOKIE = tenantRefreshCookieName();
 
 /** Opciones de la cookie del refresh token: httpOnly, SameSite=Strict.
- *  COOKIE_SECURE=false para HTTP on-prem; cambiar a true si se agrega TLS/HTTPS en el futuro.
- *  Con HTTP sin TLS, Secure=true impide que el browser envíe la cookie → flujo de refresh roto.
+ *  `Secure` lo resuelve `isCookieSecure()`: true en producción (C-5, ADR-081),
+ *  y fuera de ella el valor real de COOKIE_SECURE (HTTP on-prem sin TLS).
  */
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env['COOKIE_SECURE'] === 'true',
+  secure: isCookieSecure(),
   sameSite: 'strict' as const,
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias en ms
   path: '/api/v1/auth',
+};
+
+/** Opciones de la cookie del access token (ADR-081, decisiones 1 y 4).
+ *  Path=/ (cubre toda la ruta del API), httpOnly y SameSite=Strict.
+ *  `Secure` lo resuelve `isCookieSecure()` (C-5). El prefijo __Host- en
+ *  producción lo resuelve el nombre de la cookie.
+ */
+const ACCESS_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isCookieSecure(),
+  sameSite: 'strict' as const,
+  maxAge: 15 * 60 * 1000, // 15 min — el mismo TTL del access token
+  path: '/',
 };
 
 /**
@@ -91,6 +111,13 @@ export class AuthController {
 
     const result = await this.authService.login(dto, ipAddress, userAgent);
 
+    // Cookie de access (ADR-081): solo cuando el login fue completo. El token
+    // de alcance limitado (mfa-setup) queda fuera de la cookie: vive en memoria
+    // en el cliente (decision 6 del ADR), nunca en almacenamiento persistente.
+    if (!result.mfaRequired && !result.mfaSetupRequired && result.accessToken) {
+      res.cookie(tenantAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
+    }
+
     if (!result.mfaRequired && result.refreshToken) {
       // Solo emitir cookie si el login fue completo (no requiere MFA)
       res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, REFRESH_COOKIE_OPTIONS);
@@ -122,11 +149,23 @@ export class AuthController {
   async platformLogin(
     @Body() dto: LoginDto,
     @Request() req: ExpressRequest,
+    @Response({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ data: AuthResponse }> {
     const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
     const result = await this.authService.loginPlatform(dto, ipAddress, userAgent);
+
+    // C-6 (ADR-081): la consola de plataforma gana ciclo de refresco. Emite la
+    // cookie de access y la de refresh solo en el login completo. El token de
+    // alcance limitado (password-change) no entra en cookies: queda en memoria.
+    if (!result.mfaRequired && !result.passwordResetRequired && result.accessToken) {
+      res.cookie(platformAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
+    }
+
+    if (!result.mfaRequired && !result.passwordResetRequired && result.refreshToken) {
+      res.cookie(platformRefreshCookieName(), result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    }
 
     return {
       data: {
@@ -156,17 +195,38 @@ export class AuthController {
     @Request() req: ExpressRequest,
     @Response({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ data: { accessToken: string } }> {
-    const rawRefreshToken = (req.cookies as Record<string, string>)?.[REFRESH_TOKEN_COOKIE];
+    const cookies = (req.cookies ?? {}) as Record<string, string>;
+    const rawRefreshToken = cookies[tenantRefreshCookieName()];
+    const rawPlatformRefreshToken = cookies[platformRefreshCookieName()];
 
-    if (!rawRefreshToken) {
+    if (!rawRefreshToken && !rawPlatformRefreshToken) {
       throw new UnauthorizedException('No se encontro el refresh token.');
     }
 
     const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
-    const result = await this.authService.refreshTokens(rawRefreshToken, ipAddress, userAgent);
+    if (rawPlatformRefreshToken) {
+      // Ciclo de refresco de la consola de plataforma (C-6, ADR-081).
+      const result = await this.authService.refreshPlatformTokens(
+        rawPlatformRefreshToken,
+        ipAddress,
+        userAgent,
+      );
 
+      // La cookie de access tambien se rota: el cliente no puede escribirla
+      // (httpOnly), asi que la emite el servidor en cada renovacion.
+      res.cookie(platformAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
+      res.cookie(platformRefreshCookieName(), result.refreshToken, REFRESH_COOKIE_OPTIONS);
+
+      return { data: { accessToken: result.accessToken } };
+    }
+
+    // Sin refresh de plataforma presente, aqui rawRefreshToken es obligatorio:
+    // el guard de arriba ya lanzo 401 si ninguna de las dos cookies venia.
+    const result = await this.authService.refreshTokens(rawRefreshToken!, ipAddress, userAgent);
+
+    res.cookie(tenantAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
     res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, REFRESH_COOKIE_OPTIONS);
 
     return { data: { accessToken: result.accessToken } };
@@ -187,12 +247,18 @@ export class AuthController {
     @Request() req: ExpressRequest,
     @Response({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ data: { message: string } }> {
-    const rawRefreshToken = (req.cookies as Record<string, string>)?.[REFRESH_TOKEN_COOKIE];
+    const cookies = (req.cookies ?? {}) as Record<string, string>;
+    const rawRefreshToken = cookies[tenantRefreshCookieName()];
+    const rawPlatformRefreshToken = cookies[platformRefreshCookieName()];
 
-    await this.authService.logout(user, rawRefreshToken);
+    await this.authService.logout(user, rawRefreshToken, rawPlatformRefreshToken);
 
-    // Limpiar la cookie del refresh token
-    res.clearCookie(REFRESH_TOKEN_COOKIE, { path: '/api/v1/auth' });
+    // Limpiar las cookies de la sesion: access (Path=/) y refresh (Path=/api/v1/auth)
+    // en ambas audiencias, para que el logout no dependa de cual estaba presente.
+    res.clearCookie(tenantRefreshCookieName(), { path: '/api/v1/auth' });
+    res.clearCookie(platformRefreshCookieName(), { path: '/api/v1/auth' });
+    res.clearCookie(tenantAccessCookieName(), { path: '/' });
+    res.clearCookie(platformAccessCookieName(), { path: '/' });
 
     return { data: { message: 'Sesion cerrada correctamente.' } };
   }

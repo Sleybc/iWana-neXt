@@ -173,7 +173,7 @@ export class AuthService {
     dto: LoginDto,
     ipAddress?: string,
     userAgent?: string,
-  ): Promise<AuthResponse> {
+  ): Promise<AuthResponse & { refreshToken?: string }> {
     const emailHash = hashEmail(dto.email);
 
     const user = await this.platformUserRepository.findOne({
@@ -266,6 +266,7 @@ export class AuthService {
     });
 
     const { accessToken } = this.signPlatformAccessToken(user);
+    const refreshToken = await this.createPlatformRefreshToken(user.id, ipAddress, userAgent);
 
     await this.platformAuditService.log({
       action: AuditAction.LOGIN,
@@ -277,7 +278,7 @@ export class AuthService {
       newValue: { mfaAplicado: user.mfaEnabled },
     });
 
-    return { accessToken };
+    return { accessToken, refreshToken };
   }
 
   /**
@@ -535,6 +536,159 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------------------
+  // REFRESH TOKEN DE PLATAFORMA (C-6, ADR-081)
+  //
+  // La consola de plataforma no tiene schema de tenant, asi que su refresh
+  // token no puede vivir en `<tenant>.refresh_tokens` (tabla inexistente en
+  // public). Se persiste en Redis con las mismas garantias que el flujo de
+  // tenant: SHA-256 del token, familia de sesion, rotacion y deteccion de
+  // reuse attack. Sin cambios de schema de base de datos (restriccion del
+  // encargo OLA1-b) y reutilizando el cliente Redis ya inyectado.
+  // ---------------------------------------------------------------------------
+
+  /** Clave Redis del registro de un refresh token de plataforma. */
+  private platformRefreshKey(tokenHash: string): string {
+    return `platform:refresh:token:${tokenHash}`;
+  }
+
+  /** Clave Redis del indice de familia (todos los hashes de una sesion). */
+  private platformRefreshFamilyKey(familyId: string): string {
+    return `platform:refresh:family:${familyId}`;
+  }
+
+  /**
+   * Crea y persiste un refresh token de plataforma. Devuelve el valor raw:
+   * solo existe en memoria y en la cookie httpOnly, nunca en logs ni Redis.
+   */
+  private async createPlatformRefreshToken(
+    userId: string,
+    ipAddress?: string,
+    userAgent?: string,
+    familyId?: string,
+  ): Promise<string> {
+    const rawToken = crypto.randomBytes(48).toString('hex');
+    const tokenHash = this.hashToken(rawToken);
+    const sessionFamilyId = familyId ?? crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000).toISOString();
+
+    await this.redis.set(
+      this.platformRefreshKey(tokenHash),
+      JSON.stringify({ userId, familyId: sessionFamilyId, expiresAt, revokedAt: null }),
+      'EX',
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+
+    await this.redis.sadd(this.platformRefreshFamilyKey(sessionFamilyId), tokenHash);
+    await this.redis.expire(
+      this.platformRefreshFamilyKey(sessionFamilyId),
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+
+    return rawToken;
+  }
+
+  /**
+   * Rota el refresh token de plataforma (C-6). Mismas reglas que el flujo de
+   * tenant: reuse attack revoca la familia completa, rotacion revoca el actual.
+   */
+  async refreshPlatformTokens(
+    rawRefreshToken: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const tokenHash = this.hashToken(rawRefreshToken);
+    const recordRaw = await this.redis.get(this.platformRefreshKey(tokenHash));
+
+    if (!recordRaw) {
+      throw new UnauthorizedException('Refresh token invalido.');
+    }
+
+    const record = JSON.parse(recordRaw) as {
+      userId: string;
+      familyId: string;
+      expiresAt: string;
+      revokedAt: string | null;
+    };
+
+    if (record.revokedAt) {
+      await this.revokePlatformRefreshFamily(record.familyId);
+      throw new UnauthorizedException(
+        'Sesion invalida detectada. Se cerraron todas las sesiones activas.',
+      );
+    }
+
+    if (new Date(record.expiresAt) < new Date()) {
+      throw new UnauthorizedException('Refresh token expirado.');
+    }
+
+    const user = await this.platformUserRepository.findOne({
+      where: { id: record.userId },
+      withDeleted: false,
+    });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Usuario no disponible.');
+    }
+
+    // Rotacion: revocar el token presentado y emitir uno nuevo de la misma familia
+    await this.redis.set(
+      this.platformRefreshKey(tokenHash),
+      JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
+      'EX',
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+
+    const { accessToken } = this.signPlatformAccessToken(user);
+    const newRawRefreshToken = await this.createPlatformRefreshToken(
+      user.id,
+      ipAddress,
+      userAgent,
+      record.familyId,
+    );
+
+    void this.platformAuditService.log({
+      action: AuditAction.REFRESH,
+      entityType: PLATFORM_USER_ENTITY_TYPE,
+      entityId: user.id,
+      userId: user.id,
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+    });
+
+    return { accessToken, refreshToken: newRawRefreshToken };
+  }
+
+  /** Revoca un refresh token de plataforma concreto (logout). */
+  private async revokePlatformRefreshToken(rawRefreshToken: string): Promise<void> {
+    const tokenHash = this.hashToken(rawRefreshToken);
+    const key = this.platformRefreshKey(tokenHash);
+    const recordRaw = await this.redis.get(key);
+
+    if (!recordRaw) {
+      return;
+    }
+
+    const record = JSON.parse(recordRaw) as { revokedAt: string | null };
+    await this.redis.set(
+      key,
+      JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
+      'EX',
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+  }
+
+  /** Revoca una familia completa de refresh tokens de plataforma (reuse attack). */
+  private async revokePlatformRefreshFamily(familyId: string): Promise<void> {
+    const familyKey = this.platformRefreshFamilyKey(familyId);
+    const members = await this.redis.smembers(familyKey);
+
+    for (const member of members) {
+      await this.redis.del(this.platformRefreshKey(member));
+    }
+
+    await this.redis.del(familyKey);
+  }
+
+  // ---------------------------------------------------------------------------
   // LOGOUT
   // ---------------------------------------------------------------------------
 
@@ -545,7 +699,11 @@ export class AuthService {
    *
    * RF-AUTH-05 (JTI blacklist), logout explícito
    */
-  async logout(jwtPayload: JwtPayload, rawRefreshToken?: string): Promise<void> {
+  async logout(
+    jwtPayload: JwtPayload,
+    rawRefreshToken?: string,
+    rawPlatformRefreshToken?: string,
+  ): Promise<void> {
     // En logout no siempre existe TenantContext (ej. tokens de plataforma).
     // Priorizamos claims firmados del JWT y usamos el contexto solo como fallback.
     const schemaName = jwtPayload.schemaName ?? TenantContext.get()?.schemaName ?? null;
@@ -569,6 +727,11 @@ export class AuthService {
           { revokedAt: new Date(), revokeReason: 'LOGOUT' },
         );
       });
+    }
+
+    // Sesion de plataforma (C-6): revocar el refresh token de Redis
+    if (rawPlatformRefreshToken) {
+      await this.revokePlatformRefreshToken(rawPlatformRefreshToken);
     }
 
     // Registrar logout en audit trail con datos del JWT (no depende de TenantContext)

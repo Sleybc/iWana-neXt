@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -96,14 +97,7 @@ const mockUsers = [
 ];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupContactSectionMocks(page: import('@playwright/test').Page) {
@@ -494,7 +488,11 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 
   return {

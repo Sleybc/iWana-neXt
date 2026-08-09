@@ -11,6 +11,11 @@ import { NextFunction, Request, Response } from 'express';
 import { TenantContext } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import {
+  platformAccessCookieName,
+  platformRefreshCookieName,
+  tenantAccessCookieName,
+} from '../auth/session-cookies.constants';
 import { PUBLIC_ROUTES_WITH_TENANT, PUBLIC_ROUTES_WITHOUT_TENANT } from './public-routes';
 import { TenantService } from './tenant.service';
 
@@ -23,9 +28,13 @@ import { TenantService } from './tenant.service';
  * Pipeline de seguridad (HLD Seccion 2):
  *   JwtAuthGuard → TenantMiddleware → RolesGuard → AbacGuard → Business Logic
  *
- * Resolucion vigente:
- * - Bearer JWT valido → tenantId + schemaName desde claims firmados
- * - Fallback transitorio para auth publico → header X-Tenant-Slug
+ * Resolucion vigente (ADR-081, C-1):
+ * - JWT verificado (cabecera Bearer durante la transicion, o cookie de access)
+ *   → tenantId + schemaName desde claims firmados
+ * - Fallback transitorio para auth publico → header X-Tenant-Slug, reservado a
+ *   las rutas publicas de PUBLIC_ROUTES_WITH_TENANT. Una peticion autenticada
+ *   de tenant NUNCA resuelve contexto por esa cabecera: el contexto sale del
+ *   token verificado, no de un valor controlado por el cliente.
  *
  * Rechaza con 404 si el tenant no existe.
  * Rechaza con 403 si el tenant esta SUSPENDED, INACTIVE o MARKED_FOR_DELETION.
@@ -83,6 +92,9 @@ export class TenantMiddleware implements NestMiddleware {
       return next();
     }
 
+    // El slug solo llega aqui cuando NO hay un JWT de tenant verificado. En una
+    // peticion autenticada (token valido en Bearer o cookie) la resolucion ya
+    // retorno arriba desde los claims; esta cabecera no puede suplantarlo.
     const tenant = await this.tenantService.findBySlug(tenantSlug);
 
     if (!tenant) {
@@ -92,23 +104,46 @@ export class TenantMiddleware implements NestMiddleware {
     return this.runWithTenantContext(tenant, next);
   }
 
+  /**
+   * Extrae y verifica el JWT del request.
+   *
+   * Fuentes, en orden: cabecera `Authorization: Bearer` (transicion) y cookie
+   * de access por audiencia (C-1). Devuelve el primer payload que verifica;
+   * ante un token invalido o expirado prueba la siguiente fuente de la lista.
+   * La lista de candidatos es de un solo elemento si hay Bearer (un Bearer
+   * invalido no cae a las cookies); sin Bearer contiene la cookie de tenant y
+   * luego la de plataforma, de modo que una cookie de tenant invalida sí
+   * prueba la de plataforma. Si ninguna fuente verifica, no resuelve contexto.
+   */
   private tryExtractJwtPayload(req: Request): JwtPayload | null {
+    for (const candidate of this.readAccessTokenCandidates(req)) {
+      if (!candidate) {
+        continue;
+      }
+
+      try {
+        return this.jwtService.verify<JwtPayload>(candidate);
+      } catch {
+        // Token invalido o expirado: probar la siguiente fuente.
+      }
+    }
+
+    return null;
+  }
+
+  /** Fuentes del access token: cabecera Bearer y cookies de access de ambas audiencias. */
+  private readAccessTokenCandidates(req: Request): Array<string | undefined> {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return null;
+
+    if (authHeader?.startsWith('Bearer ')) {
+      const bearerToken = authHeader.slice('Bearer '.length).trim();
+      if (bearerToken) {
+        return [bearerToken];
+      }
     }
 
-    const rawToken = authHeader.slice('Bearer '.length).trim();
-    if (!rawToken) {
-      return null;
-    }
-
-    try {
-      return this.jwtService.verify<JwtPayload>(rawToken);
-    } catch {
-      // El guard JWT emitira el 401 correspondiente; aqui solo resolvemos contexto.
-      return null;
-    }
+    const cookies = (req.cookies ?? {}) as Record<string, string>;
+    return [cookies[tenantAccessCookieName()], cookies[platformAccessCookieName()]];
   }
 
   private normalizeTenantSlug(rawSlug: string | undefined): string {
@@ -140,12 +175,24 @@ export class TenantMiddleware implements NestMiddleware {
    * `TenantContext`, así que sin header no puede atenderse y conviene un 400
    * explicativo en vez del 500 genérico que saldría de `getOrThrow()`.
    *
-   * Antes se condicionaba a `method === 'POST'`; se quita porque la exigencia
-   * depende de si el handler necesita tenant, no del verbo. Hoy las seis rutas
-   * de esa lista son POST, así que el comportamiento observable no cambia.
+   * Excepción (ADR-081, C-6): `/auth/refresh` con cookie de refresh de
+   * plataforma no opera sobre un tenant — la consola no tiene schema. El
+   * handler decide el flujo por la cookie presente; exigirle un slug
+   * impediría el ciclo de refresco de la sesión de plataforma.
    */
   private requiresTenantHeader(req: Request): boolean {
-    return PUBLIC_ROUTES_WITH_TENANT.includes(this.getNormalizedPath(req));
+    if (!PUBLIC_ROUTES_WITH_TENANT.includes(this.getNormalizedPath(req))) {
+      return false;
+    }
+
+    if (this.getNormalizedPath(req) === '/auth/refresh') {
+      const cookies = (req.cookies ?? {}) as Record<string, string>;
+      if (cookies[platformRefreshCookieName()]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private getNormalizedPath(req: Request): string {

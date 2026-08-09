@@ -26,11 +26,12 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # ── builder ───────────────────────────────────────────────────────────────────
 FROM base AS builder
 
-# NEXT_PUBLIC_API_URL se bake en el bundle de Next.js en tiempo de build.
-# Debe apuntar a la URL pública del API: http://10.0.0.2:${APP_PORT}/api/v1
+# NEXT_PUBLIC_WEB_API_URL se bake en el bundle de Next.js en tiempo de build.
+# C-4 (ADR-081): variable de URL del API por aplicacion — web usa la suya propia.
+# Debe apuntar a la URL publica del API: http://10.0.0.2:${APP_PORT}/api/v1
 # Pasar como ARG → ENV para que Next.js lo exponga al cliente.
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WEB_API_URL
+ENV NEXT_PUBLIC_WEB_API_URL=$NEXT_PUBLIC_WEB_API_URL
 
 COPY --from=deps /app/node_modules                ./node_modules
 COPY --from=deps /app/packages/config/node_modules   ./packages/config/node_modules

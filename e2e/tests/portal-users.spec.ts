@@ -20,6 +20,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 // ---------------------------------------------------------------------------
 // Fixtures de datos ficticios — sin PII real
@@ -169,15 +170,8 @@ async function setupAuthenticatedAdminMocks(
   page: import('@playwright/test').Page,
   opts?: { searchCapture?: (term: string) => void; statusCapture?: (status: string) => void },
 ) {
-  // Sembrar sesion sobre un origen valido del portal para evitar carreras al navegar.
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, tenant }: { token: string; tenant: string }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', tenant);
-    },
-    { token: MOCK_TOKEN, tenant: MOCK_TENANT },
-  );
+  // Sembrar sesión (cookie httpOnly + puente localStorage, OLA1-b C-9).
+  await seedPortalSession(page, { token: MOCK_TOKEN, tenantSlug: MOCK_TENANT });
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -337,7 +331,11 @@ async function setupAuthenticatedAdminMocks(
     }
 
     // Fallback — continuar con la solicitud real (assets estáticos, etc.)
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 }
 
@@ -430,8 +428,8 @@ test('caso 5 — botón "Nuevo usuario" abre el modal de creación', async ({ pa
   // El modal debe aparecer con un campo de email
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel(/correo electronico/i)).toBeVisible();
-  await expect(dialog.getByLabel('Categoría base *')).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: /correo electrónico/i })).toBeVisible();
+  await expect(dialog.getByLabel('Categoría base')).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -532,5 +530,5 @@ test('regresion ownership — /dashboard/users expone tabla editable; la asignac
   await page.getByRole('button', { name: 'Nuevo usuario' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Categoría base *')).toBeVisible();
+  await expect(dialog.getByLabel('Categoría base')).toBeVisible();
 });

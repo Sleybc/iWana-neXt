@@ -196,6 +196,9 @@ describe('AuthService', () => {
     set: jest.Mock;
     setex: jest.Mock;
     del: jest.Mock;
+    sadd: jest.Mock;
+    expire: jest.Mock;
+    smembers: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -204,6 +207,9 @@ describe('AuthService', () => {
       set: jest.fn().mockResolvedValue('OK'),
       setex: jest.fn().mockResolvedValue('OK'),
       del: jest.fn().mockResolvedValue(1),
+      sadd: jest.fn().mockResolvedValue(1),
+      expire: jest.fn().mockResolvedValue(1),
+      smembers: jest.fn().mockResolvedValue([]),
     };
     // Alias para compatibilidad con codigo anterior que usa 'redis'
     redis = mockRedis as unknown as typeof redis;
@@ -1179,6 +1185,95 @@ describe('AuthService', () => {
         expect(result.mfaRequired).toBe(true);
         expect(platformAuditLog()).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // REFRESH TOKEN DE PLATAFORMA (C-6, ADR-081)
+  //
+  // La consola de plataforma no tiene schema de tenant: su refresh token vive en
+  // Redis con las mismas garantias que el de tenant (hash, familia, rotacion,
+  // deteccion de reuse attack). Sin cambios de schema de BD.
+  // ---------------------------------------------------------------------------
+
+  describe('refreshPlatformTokens() — ciclo de refresco de la consola (C-6)', () => {
+    let platformUserRepo: { findOne: jest.Mock; update: jest.Mock };
+
+    beforeEach(() => {
+      platformUserRepo = (
+        service as unknown as {
+          platformUserRepository: { findOne: jest.Mock; update: jest.Mock };
+        }
+      ).platformUserRepository;
+    });
+
+    function platformRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        userId: 'platform-uuid-1',
+        familyId: 'family-uuid-1',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        revokedAt: null,
+        ...overrides,
+      };
+    }
+
+    it('rota el token y devuelve access + refresh nuevos', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-uuid-1',
+        status: UserStatus.ACTIVE,
+        role: 'system_admin',
+        mfaEnabled: false,
+      });
+
+      const result = await service.refreshPlatformTokens('synthetic.platform.refresh.token');
+
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.refreshToken).toBeTruthy();
+      // Rotacion: se revoca el presentado y se crea el nuevo en la misma familia
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        expect.stringContaining('platform:refresh:token:'),
+        expect.stringContaining('"revokedAt":'),
+        'EX',
+        expect.any(Number),
+      );
+      expect(mockRedis.sadd).toHaveBeenCalledWith(
+        'platform:refresh:family:family-uuid-1',
+        expect.any(String),
+      );
+    });
+
+    it('detecta reuse attack y revoca la familia completa', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify(platformRecord({ revokedAt: new Date().toISOString() })),
+      );
+      mockRedis.smembers.mockResolvedValue(['hash-1', 'hash-2']);
+
+      await expect(
+        service.refreshPlatformTokens('synthetic.platform.reused.token'),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-1');
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-2');
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:family:family-uuid-1');
+    });
+
+    it('lanza UnauthorizedException cuando el token no existe en Redis', async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await expect(service.refreshPlatformTokens('synthetic.unknown.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('lanza UnauthorizedException cuando el token esta expirado', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify(platformRecord({ expiresAt: new Date(Date.now() - 1000).toISOString() })),
+      );
+
+      await expect(service.refreshPlatformTokens('synthetic.expired.token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 

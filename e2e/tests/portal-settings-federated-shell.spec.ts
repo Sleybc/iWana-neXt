@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-shell-demo';
 const MOCK_TENANT_ID = 'tenant-shell-demo';
@@ -35,14 +36,7 @@ function buildAccessToken(): string {
 }
 
 async function setAdminSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: buildAccessToken(), slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: buildAccessToken(), tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupSettingsShellMocks(page: Page) {
@@ -102,7 +96,7 @@ async function setupSettingsShellMocks(page: Page) {
       body: JSON.stringify({
         data: {
           id: MOCK_USER_ID,
-          email: 'admin@isp-shell-demo.test',
+          email: 'admin@isp-shell-demo.co',
           role: 'ADMIN',
           status: 'ACTIVE',
           tenantId: MOCK_TENANT_ID,
@@ -149,7 +143,11 @@ async function setupSettingsShellMocks(page: Page) {
 
   await page.route('**/api/v1/tenants/me', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue();
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+      });
       return;
     }
 
@@ -163,7 +161,7 @@ async function setupSettingsShellMocks(page: Page) {
           name: 'ISP Shell Demo',
           slug: MOCK_TENANT_SLUG,
           status: 'ACTIVE',
-          contactEmail: 'admin@isp-shell-demo.test',
+          contactEmail: 'admin@isp-shell-demo.co',
           legalName: 'ISP Shell Demo S.A.S.',
           nit: '900123456',
           nitDv: '1',
@@ -261,8 +259,9 @@ async function setupSettingsShellMocks(page: Page) {
           },
           {
             key: 'billing',
-            label: 'Billing',
-            description: 'Queda reservado para el owner futuro.',
+            label: 'Facturación',
+            description:
+              'Aquí podrás revisar y ajustar la configuración de facturación cuando esta capacidad esté disponible.',
             ownerModule: 'Billing futuro',
             status: 'COMING_SOON',
             route: null,
@@ -273,7 +272,7 @@ async function setupSettingsShellMocks(page: Page) {
     });
   });
 
-  await page.route('**/api/v1/audit-logs?*', async (route) => {
+  await page.route('**/api/v1/audit-logs**', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
@@ -282,7 +281,7 @@ async function setupSettingsShellMocks(page: Page) {
     });
   });
 
-  await page.route('**/api/v1/organization/sites', async (route) => {
+  await page.route('**/api/v1/organization/sites**', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
@@ -375,7 +374,7 @@ async function setupSettingsShellMocks(page: Page) {
     });
   });
 
-  await page.route('**/api/v1/wfm/dispatch-sites', async (route) => {
+  await page.route('**/api/v1/wfm/dispatch-sites**', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
@@ -393,12 +392,12 @@ async function setupSettingsShellMocks(page: Page) {
     });
   });
 
-  await page.route('**/api/v1/wfm/business-hours/company', async (route) => {
+  await page.route('**/api/v1/wfm/business-hours/company**', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
   });
 
-  await page.route('**/api/v1/wfm/holiday-blackouts', async (route) => {
+  await page.route('**/api/v1/wfm/holiday-blackouts**', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
   });
@@ -414,41 +413,51 @@ test.describe('Portal settings federated shell', () => {
     await setAdminSession(page);
 
     await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: 'Configuración empresarial' })).toBeVisible();
-    const shellPanel = page
-      .locator('section')
-      .filter({ has: page.getByRole('heading', { name: 'Secciones de configuración' }) });
+    const shellPanel = () =>
+      page
+        .locator('section')
+        .filter({ has: page.getByRole('heading', { name: 'Secciones de configuración' }) });
 
     await expect(
-      shellPanel.getByRole('heading', { name: 'Secciones de configuración' }),
+      shellPanel().getByRole('heading', { name: 'Secciones de configuración' }),
     ).toBeVisible();
-    await expect(shellPanel.getByRole('link', { name: /Organización/i })).toBeVisible();
-    await expect(shellPanel.getByRole('link', { name: /Usuarios y acceso/i })).toBeVisible();
-    await expect(shellPanel.getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
-    await expect(shellPanel.getByRole('link', { name: /Marca/i })).toBeVisible();
-    await expect(shellPanel.getByRole('link', { name: /Operación de campo/i })).toBeVisible();
-    await expect(shellPanel.getByText('Próximamente', { exact: true })).toBeVisible();
-    await expect(shellPanel.getByText('Comercial', { exact: true })).toHaveCount(0);
-    await expect(shellPanel.getByText('Billing', { exact: true })).toBeVisible();
-    await expect(shellPanel.getByRole('link', { name: /Comercial/i })).toHaveCount(0);
-    await expect(shellPanel.getByRole('link', { name: /Billing/i })).toHaveCount(0);
-    await expect(shellPanel.getByRole('button')).toHaveCount(0);
+    await expect(shellPanel().getByRole('link', { name: /Organización/i })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /Usuarios y acceso/i })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
+    await expect(shellPanel().getByRole('link', { name: /Marca/i })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /Operación de campo/i })).toBeVisible();
+    await expect(shellPanel().getByText('Próximamente', { exact: true })).toBeVisible();
+    await expect(shellPanel().getByText('Comercial', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Facturación', { exact: true })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /Comercial/i })).toHaveCount(0);
+    await expect(shellPanel().getByRole('link', { name: /Billing|Facturación/i })).toHaveCount(0);
+    await expect(shellPanel().getByRole('button')).toHaveCount(0);
 
-    await shellPanel.getByRole('link', { name: /Organización/i }).click();
+    await shellPanel()
+      .getByRole('link', { name: /Organización/i })
+      .click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/organization$/);
     await expect(
       page.getByRole('heading', { name: 'Perfil empresarial y organización' }),
     ).toBeVisible();
 
     await page.goto('/dashboard/settings');
-    await shellPanel.getByRole('link', { name: /Usuarios y acceso/i }).click();
+    await page.waitForLoadState('networkidle');
+    await shellPanel()
+      .getByRole('link', { name: /Usuarios y acceso/i })
+      .click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
-    await expect(page.getByRole('heading', { name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Perfiles de acceso/i })).toBeVisible();
     await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
     await page.goto('/dashboard/settings');
-    await shellPanel.getByRole('link', { name: /Operación de campo/i }).click();
+    await page.waitForLoadState('networkidle');
+    await shellPanel()
+      .getByRole('link', { name: /Operación de campo/i })
+      .click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/field-operations$/);
     await expect(page.getByRole('heading', { name: 'Operaciones de campo' })).toBeVisible();
     await expect(page.getByText('Excepciones por técnico')).toHaveCount(0);
@@ -458,7 +467,8 @@ test.describe('Portal settings federated shell', () => {
     await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
     await page.goto('/dashboard/settings');
-    await shellPanel.getByRole('link', { name: /Marca/i }).click();
+    await page.waitForLoadState('networkidle');
+    await shellPanel().getByRole('link', { name: /Marca/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/branding$/);
     await expect(page.getByRole('heading', { name: 'Marca' })).toBeVisible();
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);

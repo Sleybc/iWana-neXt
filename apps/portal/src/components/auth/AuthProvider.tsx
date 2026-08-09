@@ -5,7 +5,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -18,7 +17,6 @@ import {
   ApiError,
   clearPendingTenantMfaLogin,
   getPendingTenantMfaLogin,
-  isStoredTokenValid,
   persistAccessToken,
   setPendingTenantMfaLogin,
   type JwtProfile,
@@ -97,16 +95,13 @@ async function fetchUserName(
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useLayoutEffect(() => {
-    // Reinicia el estado de bootstrap de forma sincrona al cambiar de ruta para
-    // evitar redirects prematuros desde layouts protegidos mientras se recompone
-    // la sesion sembrada en localStorage en pruebas E2E o navegaciones cliente.
-    setIsLoading(true);
-  }, [pathname]);
+  // No reiniciar isLoading en cada cambio de ruta cuando ya hay sesión:
+  // el layout del dashboard muestra «Validando sesión...» si authLoading||!user,
+  // y un reset síncrono dejaba la UI colgada aunque /auth/me ya hubiera resuelto.
 
   const refreshProfile = useCallback(async (tenantSlug?: string) => {
     try {
@@ -129,31 +124,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isAuthRoute = pathname.startsWith('/auth');
 
     const bootstrap = async () => {
-      if (mounted) {
-        // Al cambiar de ruta debemos revalidar la sesion antes de que layouts protegidos
-        // reaccionen a un estado previo de user=null e isLoading=false.
-        setIsLoading(true);
-      }
-
       try {
         if (isAuthRoute) {
           setUser(null);
           return;
         }
 
-        if (!isStoredTokenValid()) {
-          // Token ausente o expirado localmente: limpiar y no hacer round-trip innecesario.
-          persistAccessToken('');
-          return;
-        }
-
+        // La sesión vive en la cookie httpOnly y el cliente ya no puede
+        // validarla localmente (ADR-081): siempre se pregunta al servidor.
+        // Si la cookie no existe o expiró, /auth/me responde 401 y el flujo de
+        // refresh (o el estado terminal de sesión) resuelve el estado.
         const profile = await authApi.me();
         if (mounted) {
           if (profile.passwordResetRequired) {
             setUser(null);
           } else {
-            const { firstName, lastName } = await fetchUserName(profile.sub);
-            setUser(toAuthUser(profile, firstName, lastName));
+            // No bloquear el bootstrap por /users/:id (mocks E2E incompletos
+            // o latencia): la sesión queda usable y el nombre se completa async.
+            setUser(toAuthUser(profile));
+            void fetchUserName(profile.sub).then(({ firstName, lastName }) => {
+              if (!mounted || (!firstName && !lastName)) {
+                return;
+              }
+              setUser((current) =>
+                current && current.id === profile.sub
+                  ? { ...current, firstName, lastName }
+                  : current,
+              );
+            });
           }
         }
       } catch {
@@ -169,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    bootstrap();
+    void bootstrap();
 
     return () => {
       mounted = false;
@@ -225,7 +223,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return 'password_reset_required';
       }
 
-      const { firstName, lastName } = await fetchUserName(profile.sub);
+      const { firstName, lastName } = await fetchUserName(profile.sub).catch(() => ({
+        firstName: null as string | null,
+        lastName: null as string | null,
+      }));
       setUser(toAuthUser(profile, firstName, lastName));
 
       return 'authenticated';

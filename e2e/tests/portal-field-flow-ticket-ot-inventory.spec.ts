@@ -9,6 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'tenant-field-flow-demo';
 const SUPPORT_USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -237,14 +238,7 @@ function createFlowState(): FlowState {
 }
 
 async function seedPortalSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }: { token: string; slug: string }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: buildToken(), slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSessionByCookie(page, { token: buildToken(), tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function selectComboboxOption(

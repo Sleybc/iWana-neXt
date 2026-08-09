@@ -49,6 +49,11 @@ export const PUBLIC_ROUTES_WITHOUT_TENANT: readonly string[] = [
  * `TenantContext`. Esta lista no la consume el middleware: existe para que la
  * clasificación sea explícita y para que el test de deriva pueda comprobar que
  * ninguna ruta pública quedó sin decidir.
+ *
+ * Excepción (ADR-081, C-6): `/auth/refresh` no exige el header cuando la
+ * petición trae la cookie de refresh de plataforma (`webRefreshToken`) — la
+ * consola no tiene schema de tenant y el handler decide el flujo por la cookie
+ * presente. El detalle vive en `TenantMiddleware.requiresTenantHeader()`.
  */
 export const PUBLIC_ROUTES_WITH_TENANT: readonly string[] = [
   '/auth/login',

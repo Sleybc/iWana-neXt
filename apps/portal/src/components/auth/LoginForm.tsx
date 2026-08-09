@@ -105,6 +105,7 @@ export function LoginForm({
 
   return (
     <form
+      method="post"
       onSubmit={handleSubmit(onSubmit)}
       className="flex flex-col gap-6"
       noValidate

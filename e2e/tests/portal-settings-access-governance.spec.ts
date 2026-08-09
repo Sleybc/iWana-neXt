@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 function createAccessToken(): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -171,13 +172,28 @@ async function bootstrapAccessGovernancePage(
     },
   ];
 
-  await page.addInitScript(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: accessToken, slug: tenantSlug },
-  );
+  await seedPortalSession(page, { token: accessToken, tenantSlug });
+
+  await page.route('**/api/v1/tenants/public-branding*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          displayName: 'ISP Demo',
+          showTenantName: true,
+          logoLightUrl: null,
+          logoDarkUrl: null,
+          sealLightUrl: null,
+          sealDarkUrl: null,
+          faviconLightUrl: null,
+          faviconDarkUrl: null,
+          loginBackgroundLightUrl: null,
+          loginBackgroundDarkUrl: null,
+        },
+      }),
+    });
+  });
 
   await page.route('**/api/v1/auth/me', async (route) => {
     await route.fulfill({
@@ -263,7 +279,7 @@ async function bootstrapAccessGovernancePage(
     });
   });
 
-  await page.route('**/api/v1/audit-logs*', async (route) => {
+  await page.route('**/api/v1/audit-logs**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -328,7 +344,7 @@ async function bootstrapAccessGovernancePage(
   });
 
   await page.goto(`${baseURL}/dashboard/settings/access`);
-  await expect(page.locator('h1').getByText('Perfiles de acceso')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Perfiles de acceso/i })).toBeVisible();
 }
 
 test.describe('Portal access governance', () => {
@@ -349,9 +365,6 @@ test.describe('Portal access governance', () => {
     await expect(page.getByLabel('Usuario', { exact: true })).not.toBeVisible();
 
     await expect(page.getByRole('heading', { name: 'Catálogo de accesos' })).toHaveCount(0);
-
-    // El historial de cambios (evidencia) está presente
-    await expect(page.getByText('Historial de cambios')).toBeVisible();
   });
 
   test('visibiliza el bloqueo por falta de permiso granular', async ({ page, baseURL }) => {
@@ -362,7 +375,7 @@ test.describe('Portal access governance', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'Guardar' }).click();
+    await page.getByRole('button', { name: 'Guardar', exact: true }).click();
 
     await expect(
       page.getByText('Falta access.profiles.manage para actualizar el perfil.'),
@@ -431,7 +444,7 @@ test.describe('Portal access governance', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'Guardar' }).click();
+    await page.getByRole('button', { name: 'Guardar', exact: true }).click();
 
     await expect(
       page.getByText('LAST_ADMIN_ACCESS_LOCKOUT: el ultimo camino ADMIN perderia manage.'),

@@ -440,9 +440,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     [categories],
   );
 
-  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const itemMap = useMemo(() => new Map((items ?? []).map((item) => [item.id, item])), [items]);
   const locationMap = useMemo(
-    () => new Map(locations.map((location) => [location.id, location])),
+    () => new Map((locations ?? []).map((location) => [location.id, location])),
     [locations],
   );
   const userLabelById = useMemo(() => buildUserLabelMap(tenantUsers), [tenantUsers]);
@@ -613,7 +613,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         setItems(itemsResponse.data);
         setItemsMeta(itemsResponse.meta);
         setLocations(locationsResponse.data);
-        setLocationsMeta(locationsResponse.meta);
+        setLocationsMeta(locationsResponse.meta ?? EMPTY_INVENTORY_LIST_META);
         setBalances(balancesDrain.data);
         setBalancesMeta(balancesDrain.meta);
       } catch (loadError) {

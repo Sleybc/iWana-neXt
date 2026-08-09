@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -29,14 +30,7 @@ const EVIDENCE_DIR = path.join(
 );
 
 async function setAuthSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupCommercialEvidenceMocks(page: Page) {
@@ -53,6 +47,24 @@ async function setupCommercialEvidenceMocks(page: Page) {
         body: JSON.stringify(body),
       });
 
+    if (pathname.endsWith('/tenants/public-branding') && method === 'GET') {
+      await json({
+        data: {
+          displayName: 'ISP Prueba Colombia',
+          showTenantName: true,
+          logoLightUrl: null,
+          logoDarkUrl: null,
+          sealLightUrl: null,
+          sealDarkUrl: null,
+          faviconLightUrl: null,
+          faviconDarkUrl: null,
+          loginBackgroundLightUrl: null,
+          loginBackgroundDarkUrl: null,
+        },
+      });
+      return;
+    }
+
     if (pathname.endsWith('/auth/me') && method === 'GET') {
       await json({
         data: {
@@ -68,6 +80,22 @@ async function setupCommercialEvidenceMocks(page: Page) {
       return;
     }
 
+    if (pathname.match(/\/users\/[^/]+$/) && method === 'GET') {
+      await json({
+        data: {
+          id: 'user-uuid-admin-test',
+          email: 'admin@test-isp.co',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          firstName: 'Ana',
+          lastName: 'Prueba',
+          mfaEnabled: true,
+          emailVerified: true,
+        },
+      });
+      return;
+    }
+
     if (pathname.endsWith('/tenants/me') && method === 'GET') {
       await json({
         data: {
@@ -76,6 +104,33 @@ async function setupCommercialEvidenceMocks(page: Page) {
           slug: MOCK_TENANT_SLUG,
           showTenantName: true,
         },
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/audit-logs') && method === 'GET') {
+      await json({ data: [] });
+      return;
+    }
+
+    if (pathname.endsWith('/commercial/dashboard/summary') && method === 'GET') {
+      await json({
+        plansCount: 2,
+        activePlansCount: 2,
+        productsCount: 3,
+        activeProductsCount: 2,
+        servicesCount: 1,
+        activeServicesCount: 1,
+        bundlesCount: 1,
+        activeBundlesCount: 1,
+        promotionsCount: 2,
+        activePromotionsCount: 1,
+        compatibilityRulesCount: 4,
+        activeCompatibilityRulesCount: 3,
+        taxRulesCount: 5,
+        activeTaxRulesCount: 4,
+        attentionItems: [],
+        recentChanges: [],
       });
       return;
     }
@@ -220,7 +275,11 @@ async function setupCommercialEvidenceMocks(page: Page) {
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 }
 
@@ -247,11 +306,37 @@ async function captureCommercialEvidence(page: Page, viewport: 'desktop' | 'mobi
   for (const shot of shots) {
     await page.goto(shot.route);
     await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();
-    await page.screenshot({
-      path: path.join(EVIDENCE_DIR, shot.filename),
-      fullPage: true,
-    });
+    await expect(
+      page.getByRole('heading', { name: 'Comercial', exact: true }).first(),
+    ).toBeVisible();
+    if (!existsSync(EVIDENCE_DIR)) {
+      mkdirSync(EVIDENCE_DIR, { recursive: true });
+    }
+    await captureEvidenceScreenshot(page, shot.filename);
+  }
+}
+
+/**
+ * Captura evidencia con reintento ante errores transitorios de escritura en
+ * Windows (open UNKNOWN). Los screenshots son artefacto de documentación, no
+ * aserciones; un fallo transitorio no debe tumbar el recorrido.
+ */
+async function captureEvidenceScreenshot(
+  page: Page,
+  filename: string,
+  maxAttempts = 3,
+): Promise<void> {
+  const target = path.join(EVIDENCE_DIR, filename);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await page.screenshot({ path: target, fullPage: true });
+      return;
+    } catch (screenshotError) {
+      if (attempt === maxAttempts) {
+        throw screenshotError;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
   }
 }
 

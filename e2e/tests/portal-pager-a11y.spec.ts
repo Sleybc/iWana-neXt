@@ -15,6 +15,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { seedPortalSession } from './helpers/portal-session';
 
 // ────────────────────────────────────────────────────────────────
 // Fixtures de sesión
@@ -137,14 +138,7 @@ function pageEnvelope(
 // ────────────────────────────────────────────────────────────────
 
 async function seedSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, tenant }: { token: string; tenant: string }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', tenant);
-    },
-    { token: MOCK_TOKEN, tenant: MOCK_TENANT },
-  );
+  await seedPortalSession(page, { token: MOCK_TOKEN, tenantSlug: MOCK_TENANT });
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -919,8 +913,10 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     await setupMocks(page);
 
     // Mecanismo real del producto: ThemeProvider lee localStorage['iwana-theme'].
-    // Sin esto el test audita el tema claro (ver cabecera).
-    await page.evaluate(() => window.localStorage.setItem('iwana-theme', 'dark'));
+    // Sembrar ANTES de navegar (addInitScript) — evaluate en about:blank falla con SecurityError.
+    await page.addInitScript(() => {
+      window.localStorage.setItem('iwana-theme', 'dark');
+    });
     await page.emulateMedia({ colorScheme: 'dark' });
 
     await page.setViewportSize({ width: 1280, height: 800 });

@@ -219,7 +219,20 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       }),
       otherwise: Joi.string().min(10).optional(),
     }),
-    COOKIE_SECURE: Joi.boolean().default(false),
+    // C-5 (ADR-081): las cookies de sesión llevan `Secure` y `COOKIE_SECURE` no
+    // puede quedar en `false` con NODE_ENV=production — sin `Secure`, un
+    // navegador por HTTP mandaría la sesión en claro y el prefijo `__Host-`
+    // sería inválido (lo exige el estándar de cookies). El mismo cómputo se
+    // replica en runtime en `session-cookies.constants.ts` (`isCookieSecure`),
+    // porque ConfigModule no vuelca los defaults validados a `process.env`.
+    COOKIE_SECURE: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.boolean().valid(true).default(true).messages({
+        'any.only':
+          'COOKIE_SECURE debe ser true con NODE_ENV=production: las cookies de sesión llevan Secure (ADR-081 C-5).',
+      }),
+      otherwise: Joi.boolean().default(false),
+    }),
     APP_NAME: Joi.string().default('iWana neXt'),
     SMTP_HOST: Joi.string().allow('').optional(),
     SMTP_PORT: Joi.number().integer().min(1).max(65535).optional(),

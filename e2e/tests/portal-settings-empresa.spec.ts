@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const SETTINGS_SECTIONS = [
@@ -70,14 +71,7 @@ function buildAccessToken(role: string): string {
 }
 
 async function setAuthSession(page: Page, role: string) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: buildAccessToken(role), slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: buildAccessToken(role), tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
@@ -230,7 +224,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
   const activeUsers = [
     {
       id: 'user-uuid-admin-test',
-      email: 'admin@isp-demo.test',
+      email: 'admin@isp-demo.co',
       role,
       status: 'ACTIVE',
       tenantId: 'tenant-uuid-test',
@@ -255,6 +249,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
+    const pathname = new URL(url).pathname;
 
     if (/\/tenants\/[0-9a-f-]{36}/.test(url) && !url.includes('/tenants/me')) {
       requestLog.platformCalls.push(url);
@@ -293,7 +288,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
-    if (url.includes('/users/user-uuid-admin-test') && method === 'GET') {
+    if (pathname.endsWith('/users/user-uuid-admin-test') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -316,7 +311,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
-    if (url.includes('/users?limit=200&status=ACTIVE') && method === 'GET') {
+    if (pathname.endsWith('/users') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -448,7 +443,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
-    if (url.endsWith('/organization/sites') && method === 'GET') {
+    if (pathname.endsWith('/organization/sites') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -811,7 +806,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
-    if (url.includes('/tenants/me') && method === 'GET') {
+    if (pathname.endsWith('/tenants/me') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -825,7 +820,11 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 
   return { requestLog };
@@ -834,7 +833,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
 async function pickNativeSelectOption(page: Page, selectId: string, value: string) {
   const optionLabels: Record<string, Record<string, string>> = {
     timezone: {
-      'America/Guayaquil': 'America/Guayaquil (Ecuador)',
+      'America/Guayaquil': 'Ecuador (Guayaquil)',
     },
     currency: {
       USD: 'USD — Dólar estadounidense',
@@ -845,9 +844,11 @@ async function pickNativeSelectOption(page: Page, selectId: string, value: strin
   };
 
   const combobox = page.locator(`#${selectId}`);
+  await combobox.scrollIntoViewIfNeeded();
   await combobox.click();
-  await page
-    .locator(`#${selectId}-listbox`)
+  const listbox = page.locator(`#${selectId}-listbox`);
+  await expect(listbox).toBeVisible();
+  await listbox
     .getByRole('option', { name: optionLabels[selectId]?.[value] ?? value, exact: true })
     .click();
 }
@@ -903,12 +904,14 @@ test.describe('Configuración empresarial del portal', () => {
 
     await page.goto('/dashboard/settings/access');
     await page.waitForLoadState('networkidle');
-    const mfaToggle = page.getByLabel('Activar MFA obligatorio');
+    const mfaToggle = page.getByLabel('Activar verificación en dos pasos obligatoria');
     await mfaToggle.scrollIntoViewIfNeeded();
     await mfaToggle.check({ force: true });
     await page.getByRole('button', { name: 'Guardar política' }).click();
 
-    await expect(page.getByText('Política de seguridad actualizada correctamente.')).toBeVisible();
+    await expect(
+      page.getByText('Política de verificación en dos pasos actualizada correctamente.'),
+    ).toBeVisible();
     expect(requestLog.settingsPatches.at(-1)).toEqual(
       expect.objectContaining({
         features: { mfa_required_all: true },
@@ -926,15 +929,17 @@ test.describe('Configuración empresarial del portal', () => {
     await page.goto('/dashboard/settings/access');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByRole('heading', { name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Perfiles de acceso/i })).toBeVisible();
     await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
-    const mfaToggle = page.getByLabel('Activar MFA obligatorio');
+    const mfaToggle = page.getByLabel('Activar verificación en dos pasos obligatoria');
     await mfaToggle.scrollIntoViewIfNeeded();
     await mfaToggle.check({ force: true });
     await page.getByRole('button', { name: 'Guardar política' }).click();
 
-    await expect(page.getByText('Política de seguridad actualizada correctamente.')).toBeVisible();
+    await expect(
+      page.getByText('Política de verificación en dos pasos actualizada correctamente.'),
+    ).toBeVisible();
     expect(requestLog.settingsPatches.at(-1)).toEqual(
       expect.objectContaining({
         features: { mfa_required_all: true },
@@ -950,7 +955,7 @@ test.describe('Configuración empresarial del portal', () => {
 
     await page.goto('/dashboard/settings/security');
     await expect(page).toHaveURL(/\/dashboard\/settings\/access(#.*)?$/);
-    await expect(page.getByRole('heading', { name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Perfiles de acceso/i })).toBeVisible();
     await expect(page.getByText('Políticas de autenticación')).toBeVisible();
   });
 
@@ -962,18 +967,19 @@ test.describe('Configuración empresarial del portal', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('heading', { name: 'Identidad visual' }).scrollIntoViewIfNeeded();
-    await page.getByText('o pega una URL HTTPS directamente').first().click();
-    await page.getByLabel('URL HTTPS externa').first().fill('https://cdn.test-isp.co/seal.png');
+    await page
+      .getByLabel('URL HTTPS para sello compacto · variante clara')
+      .fill('https://cdn.test-isp.co/seal.png');
 
-    // Desactivar nombre en sidebar
+    await expect(page.getByRole('button', { name: 'Guardar marca' })).toBeEnabled();
     await page
       .getByRole('checkbox', {
         name: /mostrar nombre comercial junto al sello en el menú lateral/i,
       })
       .uncheck();
 
-    await page.getByRole('button', { name: 'Guardar identidad visual' }).click();
-    await expect(page.getByText('Branding empresarial actualizado correctamente.')).toBeVisible();
+    await page.getByRole('button', { name: 'Guardar marca' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Marca actualizada' })).toBeVisible();
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });
 
@@ -997,7 +1003,12 @@ test.describe('Configuración empresarial del portal', () => {
 
     await page.goto('/dashboard/settings/field-operations');
     await page.waitForLoadState('networkidle');
-    await expect(page.getByText('Modo solo lectura')).toBeVisible();
+    await expect(
+      page.getByText('Consulta los horarios y cierres en el Calendario operativo.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: /Calendario operativo y jornadas/i }),
+    ).toBeVisible();
 
     await page.goto('/dashboard/settings/security');
     await page.waitForLoadState('networkidle');
@@ -1055,31 +1066,40 @@ test.describe('Configuración empresarial del portal', () => {
 
     await page.getByRole('link', { name: /Organización/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/organization$/);
-    await expect(page.getByRole('heading', { name: 'Perfil empresarial' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Perfil empresarial y organización' }),
+    ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
 
-    await page.goto('/dashboard/settings');
+    await page.goto('/dashboard/settings', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
     await page.getByRole('link', { name: /Operación de campo/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/field-operations$/);
     await expect(page.getByRole('heading', { name: 'Operaciones de campo' })).toBeVisible();
     await expect(page.getByText('Excepciones por técnico')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toHaveCount(0);
 
-    await page.goto('/dashboard/settings');
+    await page.goto('/dashboard/settings', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
     await page.getByRole('link', { name: /Usuarios y acceso/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: /Perfiles de acceso/i }),
+    ).toBeVisible();
     await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
     await page.goto('/dashboard/settings/security');
     await expect(page).toHaveURL(/\/dashboard\/settings\/access(#.*)?$/);
     await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
-    await page.goto('/dashboard/settings');
-    await page.getByRole('link', { name: /Marca/i }).click();
+    await page.goto('/dashboard/settings', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
+    const marcaLink = page.getByRole('link', { name: /Marca/i });
+    await marcaLink.scrollIntoViewIfNeeded();
+    await marcaLink.click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/branding$/);
-    await expect(page.getByRole('heading', { name: 'Identidad visual' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Marca', level: 1 })).toBeVisible();
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });
 });

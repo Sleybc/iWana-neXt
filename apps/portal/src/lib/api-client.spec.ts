@@ -33,9 +33,11 @@ describe('api-client auth refresh handling', () => {
   });
 
   it('deduplicates refresh calls when multiple protected requests receive 401 at the same time', async () => {
+    const receivedAuthorizations: Array<string | null> = [];
     const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const authorization = new Headers(init?.headers).get('Authorization');
+      receivedAuthorizations.push(authorization);
 
       if (url.endsWith('/auth/refresh')) {
         return createJsonResponse(200, {
@@ -81,7 +83,9 @@ describe('api-client auth refresh handling', () => {
     expect(
       fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh')),
     ).toHaveLength(1);
-    expect(window.localStorage.getItem('iwana.portal.access-token')).toBe('renewed-token');
+    // El token renovado se re-adjunta en memoria (ADR-081): el reintento viaja
+    // con el Bearer renovado; ya no se persiste en localStorage.
+    expect(receivedAuthorizations).toContain('Bearer renewed-token');
   });
 
   it('stops retrying refresh after a terminal session expiration until a new token is stored', async () => {

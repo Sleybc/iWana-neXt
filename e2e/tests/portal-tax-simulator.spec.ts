@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -18,14 +19,7 @@ const MOCK_ACCESS_TOKEN =
   '.fakesig';
 
 async function setAuthSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupTaxMocks(page: Page) {
@@ -260,7 +254,11 @@ async function setupTaxMocks(page: Page) {
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 }
 
@@ -285,7 +283,7 @@ test.describe('Portal tributario — simulador', () => {
 
     await expect(page.getByText(/Resultado —/i)).toBeVisible();
     await expect(page.getByText('Regla ganadora', { exact: true })).toBeVisible();
-    await expect(page.getByText(/tax-def-iva-19/i)).toBeVisible();
+    await expect(page.getByText(/IVA general \(IVA_19\)/i)).toBeVisible();
   });
 
   test('catálogo de impuestos muestra presets SYSTEM', async ({ page }) => {

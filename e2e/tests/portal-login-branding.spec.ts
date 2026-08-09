@@ -59,7 +59,11 @@ async function setupLoginBrandingMocks(page: Page): Promise<{ requestedSlugs: st
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 
   return { requestedSlugs };

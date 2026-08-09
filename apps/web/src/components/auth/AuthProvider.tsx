@@ -9,12 +9,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   authApi,
   clearPendingPlatformMfaLogin,
   getPendingPlatformMfaLogin,
-  isStoredTokenValid,
-  persistAccessToken,
   platformUsersApi,
   setPendingPlatformMfaLogin,
   ApiError,
@@ -97,6 +96,7 @@ async function fetchPlatformProfileSafely(): Promise<PlatformUserProfile | null>
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -121,12 +121,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
-        if (!isStoredTokenValid()) {
-          // Token ausente o expirado localmente: limpiar y no hacer round-trip innecesario.
-          persistAccessToken('');
+        if (pathname.startsWith('/auth')) {
+          // Rutas públicas de autenticación: sin sesión visible en el shell.
+          setUser(null);
           return;
         }
 
+        // La sesión vive en la cookie httpOnly y el cliente ya no puede
+        // validarla localmente (ADR-081): siempre se pregunta al servidor.
+        // Si la cookie no existe o expiró, /auth/me responde 401 y el flujo de
+        // refresh (o la redirección a login) resuelve el estado.
         const profile = await authApi.me();
         if (mounted) {
           if (profile.passwordResetRequired) {
@@ -152,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     const result = await authApi.platformLogin(email, password);

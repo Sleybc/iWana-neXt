@@ -7,11 +7,11 @@
  */
 
 function resolveApiBase(): string {
-  const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+  // C-4 (ADR-081): variable por aplicación. Vacía ⇒ same-origin `/api/v1`
+  // (el rewrite de Next.js proxea al API; los mocks E2E interceptan sin CORS).
+  const configuredApiBase = process.env.NEXT_PUBLIC_WEB_API_URL?.trim();
 
   if (!configuredApiBase) {
-    // En desarrollo usamos el mismo origen del frontend y delegamos el acceso
-    // al backend al rewrite de Next.js para evitar acoplar el navegador a localhost:3000.
     return '/api/v1';
   }
 
@@ -19,7 +19,6 @@ function resolveApiBase(): string {
 }
 
 const API_BASE = resolveApiBase();
-const ACCESS_TOKEN_STORAGE_KEY = 'iwana.web.access-token';
 
 interface PendingPlatformMfaLogin {
   email: string;
@@ -28,6 +27,13 @@ interface PendingPlatformMfaLogin {
 
 let pendingPlatformMfaLogin: PendingPlatformMfaLogin | null = null;
 let refreshAccessTokenPromise: Promise<string> | null = null;
+
+/**
+ * Access token (y token limitado de primer ingreso `password-change`) en estado
+ * del cliente, en memoria. Se pierde al recargar — aceptado por diseño (ADR-081,
+ * decisión 6). El transporte de sesión es la cookie httpOnly emitida por el API.
+ */
+let inMemoryAccessToken: string | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -110,11 +116,7 @@ function isBrowser(): boolean {
 }
 
 export function getStoredAccessToken(): string {
-  if (!isBrowser()) {
-    return '';
-  }
-
-  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '';
+  return inMemoryAccessToken ?? '';
 }
 
 /**
@@ -150,22 +152,18 @@ export function isStoredTokenValid(): boolean {
 }
 
 export function persistAccessToken(token: string): void {
-  if (!isBrowser()) {
-    return;
-  }
-
-  if (!token) {
-    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-    return;
-  }
-
-  window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+  inMemoryAccessToken = token || null;
 }
 
 async function executeRefreshAccessToken(): Promise<string> {
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // C-2 (ADR-081): el refresh se autentica por la cookie httpOnly de
+      // refresh; todo método mutante cookie-autenticado exige la cabecera CSRF.
+      'X-Requested-With': 'XMLHttpRequest',
+    },
     credentials: 'include',
   });
 
@@ -215,6 +213,16 @@ async function authorizeAndFetch(path: string, options?: RequestOptions): Promis
 
   if (!options?.skipAuth && token) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  // C-2 (ADR-081): los métodos mutantes autenticados por cookie requieren una
+  // cabecera personalizada que el navegador no adjunta cross-origin sin
+  // preflight. GET/HEAD/OPTIONS y rutas públicas (skipAuth) quedan exentos.
+  const method = (options?.method ?? 'GET').toUpperCase();
+  const isMutatingMethod =
+    method === 'POST' || method === 'PATCH' || method === 'PUT' || method === 'DELETE';
+  if (isMutatingMethod && !options?.skipAuth && !headers.has('X-Requested-With')) {
+    headers.set('X-Requested-With', 'XMLHttpRequest');
   }
 
   const res = await fetch(`${API_BASE}${path}`, {

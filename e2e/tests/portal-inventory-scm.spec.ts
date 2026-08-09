@@ -8,6 +8,10 @@
  */
 
 import { expect, test } from '@playwright/test';
+import {
+  PORTAL_ACCESS_TOKEN_COOKIE,
+  seedPortalSession as seedPortalSessionByCookie,
+} from './helpers/portal-session';
 
 const LOCATION_TYPE_PREFIXES: Record<string, string> = {
   MAIN_WAREHOUSE: 'BOD',
@@ -86,14 +90,10 @@ async function seedPortalSession(
   options: { role?: 'NOC' | 'ADMIN' } = {},
 ) {
   const role = options.role ?? 'NOC';
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }: { token: string; slug: string }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: buildToken(role), slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSessionByCookie(page, {
+    token: buildToken(role),
+    tenantSlug: MOCK_TENANT_SLUG,
+  });
 }
 
 async function openPurchaseComposer(main: import('@playwright/test').Locator) {
@@ -144,15 +144,90 @@ async function openStockIssueComposer(main: import('@playwright/test').Locator) 
   await expect(main.getByRole('heading', { name: 'Nueva salida' })).toBeVisible();
 }
 
+function extractSkuTokenFromPattern(pattern: RegExp): string {
+  const tokens = pattern.source.match(/[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*/g) ?? [];
+  return tokens.at(-1) ?? 'CA';
+}
+
+async function waitForIssueSourceMaterial(main: import('@playwright/test').Locator) {
+  const composer = main.getByRole('tabpanel', { name: 'Salidas' });
+  await composer.getByRole('tab', { name: /^Con material/ }).click();
+  await expect(composer.getByRole('tab', { name: /^Con material \([1-9]/ })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
 async function addIssueCatalogItemsToDraft(
+  page: import('@playwright/test').Page,
   main: import('@playwright/test').Locator,
   productPatterns: RegExp[],
 ) {
+  const composer = main.getByRole('tabpanel', { name: 'Salidas' });
+  await composer.getByRole('tab', { name: /^Con material/ }).click();
   for (const pattern of productPatterns) {
-    await main.getByRole('checkbox', { name: pattern }).check();
+    const suggestionCheckbox = composer.getByRole('checkbox', { name: pattern }).first();
+    if (await suggestionCheckbox.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await suggestionCheckbox.check();
+      continue;
+    }
+
+    await composer.getByRole('tab', { name: /^Catálogo \(\d+\)$/ }).click();
+    const query = extractSkuTokenFromPattern(pattern).slice(0, 6);
+    await composer.getByLabel('Buscar ítem').fill(query);
+    const catalogCheckbox = composer.getByRole('checkbox', { name: pattern }).first();
+    await expect(catalogCheckbox).toBeVisible({ timeout: 10_000 });
+    await catalogCheckbox.check();
+    await composer.getByRole('tab', { name: /^Con material/ }).click();
   }
   const count = productPatterns.length;
-  await main.getByRole('button', { name: new RegExp(`Agregar ${count} producto`) }).click();
+  await composer.getByRole('button', { name: new RegExp(`Agregar ${count} producto`) }).click();
+}
+
+async function dismissOpenListbox(page: import('@playwright/test').Page) {
+  const listbox = page.getByRole('listbox');
+  if (await listbox.isVisible({ timeout: 300 }).catch(() => false)) {
+    await page.keyboard.press('Tab');
+    await expect(listbox).toBeHidden({ timeout: 3_000 });
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildPickerSearchQuery(optionLabel: string): string {
+  const withoutParens = optionLabel.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  const tokens = withoutParens
+    .split(/\s*[·—]\s*/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+  const preferred =
+    tokens.find((token) => /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(token)) ?? tokens[0] ?? withoutParens;
+  if (preferred.length >= 2) {
+    return preferred.slice(0, Math.min(preferred.length, 8));
+  }
+  return withoutParens.slice(0, 2);
+}
+
+function buildPickerOptionMatcher(optionLabel: string): RegExp | string {
+  if (!optionLabel.includes('·') && !optionLabel.includes('—') && !optionLabel.includes('(')) {
+    return optionLabel;
+  }
+
+  const withoutParens = optionLabel.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  const tokens = withoutParens
+    .split(/\s*[·—]\s*/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokens.length >= 2) {
+    const [first, second] = tokens;
+    return new RegExp(
+      `${escapeRegExp(first)}.*${escapeRegExp(second)}|${escapeRegExp(second)}.*${escapeRegExp(first)}`,
+      'i',
+    );
+  }
+
+  return new RegExp(escapeRegExp(withoutParens), 'i');
 }
 
 async function selectComboboxOption(
@@ -160,8 +235,26 @@ async function selectComboboxOption(
   combobox: import('@playwright/test').Locator,
   optionLabel: string,
 ) {
+  const optionMatcher = buildPickerOptionMatcher(optionLabel);
   await combobox.click();
-  await page.getByRole('option', { name: optionLabel }).click();
+
+  const optionLocator =
+    typeof optionMatcher === 'string'
+      ? page.getByRole('option', { name: optionMatcher, exact: true })
+      : page.getByRole('option', { name: optionMatcher });
+
+  if (
+    await optionLocator
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false)
+  ) {
+    await optionLocator.first().click();
+  } else {
+    await combobox.fill(buildPickerSearchQuery(optionLabel));
+    await expect(optionLocator.first()).toBeVisible({ timeout: 10_000 });
+    await optionLocator.first().click();
+  }
 }
 
 async function confirmIssueDispatch(
@@ -454,6 +547,87 @@ function buildLocation(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function searchLocationsForPickerMock(
+  state: InventoryMockState,
+  query: string,
+  status?: string | null,
+) {
+  const q = query.trim().toLowerCase();
+  let filtered = state.locations;
+  if (status) {
+    filtered = filtered.filter((location) => location.status === status);
+  }
+  if (q) {
+    filtered = filtered.filter(
+      (location) =>
+        String(location.name).toLowerCase().includes(q) ||
+        String(location.code).toLowerCase().includes(q),
+    );
+  }
+
+  return {
+    data: filtered.map((location) => ({
+      id: location.id,
+      label: location.name,
+      sublabel: location.code,
+    })),
+    total: filtered.length,
+  };
+}
+
+function searchItemsForPickerMock(
+  state: InventoryMockState,
+  query: string,
+  status?: string | null,
+) {
+  const q = query.trim().toLowerCase();
+  let filtered = state.catalogItems;
+  if (status) {
+    filtered = filtered.filter((item) => item.status === status);
+  }
+  if (q) {
+    filtered = filtered.filter(
+      (item) =>
+        String(item.sku).toLowerCase().includes(q) || String(item.name).toLowerCase().includes(q),
+    );
+  }
+
+  return {
+    data: filtered.map((item) => ({
+      id: item.id,
+      label: item.name,
+      sublabel: `SKU ${item.sku}`,
+    })),
+    total: filtered.length,
+  };
+}
+
+function searchAssetsForPickerMock(state: InventoryMockState, query: string) {
+  const q = query.trim().toLowerCase();
+  let filtered = state.serializedAssets;
+  if (q) {
+    filtered = filtered.filter((asset) => {
+      const item = state.catalogItems.find((entry) => entry.id === asset.inventoryItemId);
+      const serial = String(asset.serialNumber ?? '').toLowerCase();
+      const sku = String(item?.sku ?? '').toLowerCase();
+      const name = String(item?.name ?? '').toLowerCase();
+      return serial.includes(q) || sku.includes(q) || name.includes(q);
+    });
+  }
+
+  return {
+    data: filtered.map((asset) => {
+      const item = state.catalogItems.find((entry) => entry.id === asset.inventoryItemId);
+      return {
+        id: asset.id,
+        label: asset.serialNumber || asset.assetTag || `Activo ${String(asset.id).slice(0, 8)}`,
+        sublabel: item?.sku ? `SKU ${item.sku}` : null,
+      };
+    }),
+    total: filtered.length,
+  };
+}
+
 function buildBalance(overrides: Record<string, unknown> = {}) {
   return {
     id: 'bal-001',
@@ -591,8 +765,8 @@ async function createConsumableSaleIssue(
     main.getByRole('combobox', { name: 'Origen' }),
     'BOD-01 · Bodega principal (Bodega principal)',
   );
-  await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
-  await main.getByLabel('Cantidad CAB-DROP · Cable drop').fill(quantity);
+  await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*CAB-DROP/i]);
+  await main.getByLabel(/Cantidad .*CAB-DROP/i).fill(quantity);
   await main.getByLabel('Referencia comercial (opcional)').fill('REF-RESERVA-E2E');
   await main.getByRole('button', { name: 'Crear salida' }).click();
 }
@@ -645,23 +819,51 @@ function buildTenantUsersList() {
   ];
 }
 
+/**
+ * Resuelve el JWT de sesión desde el request, priorizando el header `Authorization`
+ * y cayendo a la cookie httpOnly `portalAccessToken` (contrato OLA1-b C-5). El
+ * cliente real ya no envía el header: la sesión viaja por cookie, así que el mock
+ * debe decodificar el token de la cookie para resolver actor y rol reales.
+ */
+function resolveMockSessionPayload(request: {
+  headers: () => Record<string, string>;
+}): { sub?: string; role?: 'NOC' | 'ADMIN' } | null {
+  const headers = request.headers();
+  let token: string | undefined;
+
+  const authHeader = headers['authorization'];
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else {
+    const cookieHeader = headers['cookie'];
+    const cookieMatch = cookieHeader?.match(
+      new RegExp(`(?:^|;)\\s*${PORTAL_ACCESS_TOKEN_COOKIE}=([^;]+)`),
+    );
+    token = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : undefined;
+  }
+
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) {
+      return null;
+    }
+    return JSON.parse(atob(payloadPart)) as { sub?: string; role?: 'NOC' | 'ADMIN' };
+  } catch {
+    return null;
+  }
+}
+
 function resolveMockActorUserId(
   request: { headers: () => Record<string, string> },
   sessionRole: 'NOC' | 'ADMIN',
 ): string {
-  const authHeader = request.headers()['authorization'];
-  if (authHeader?.startsWith('Bearer ')) {
-    try {
-      const payloadPart = authHeader.slice(7).split('.')[1];
-      if (payloadPart) {
-        const payload = JSON.parse(atob(payloadPart)) as { sub?: string };
-        if (payload.sub) {
-          return payload.sub;
-        }
-      }
-    } catch {
-      // fallback below
-    }
+  const payload = resolveMockSessionPayload(request);
+  if (payload?.sub) {
+    return payload.sub;
   }
 
   return sessionRole === 'ADMIN' ? ADMIN_USER_ID : NOC_USER_ID;
@@ -905,22 +1107,10 @@ async function setupInventoryMocks(
     }
 
     if (pathname.endsWith('/auth/me') && method === 'GET') {
-      const actorId = resolveMockActorUserId(request, sessionRole);
-      const authHeader = request.headers()['authorization'];
-      let role: 'NOC' | 'ADMIN' = sessionRole;
-      if (authHeader?.startsWith('Bearer ')) {
-        try {
-          const payloadPart = authHeader.slice(7).split('.')[1];
-          if (payloadPart) {
-            const payload = JSON.parse(atob(payloadPart)) as { role?: 'NOC' | 'ADMIN' };
-            if (payload.role) {
-              role = payload.role;
-            }
-          }
-        } catch {
-          // keep sessionRole fallback
-        }
-      }
+      const sessionPayload = resolveMockSessionPayload(request);
+      const actorId =
+        sessionPayload?.sub ?? (sessionRole === 'ADMIN' ? ADMIN_USER_ID : NOC_USER_ID);
+      const role: 'NOC' | 'ADMIN' = sessionPayload?.role ?? sessionRole;
 
       await route.fulfill({
         status: 200,
@@ -1114,7 +1304,10 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.categories),
+        body: JSON.stringify({
+          data: state.categories,
+          meta: { nextCursor: null, total: state.categories.length },
+        }),
       });
       return;
     }
@@ -1175,16 +1368,86 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.catalogItems),
+        body: JSON.stringify({
+          data: state.catalogItems,
+          meta: { nextCursor: null, total: state.catalogItems.length },
+        }),
       });
       return;
     }
 
     if (pathname.endsWith('/inventory/locations') && method === 'GET') {
+      let rows = state.locations;
+      const custody = url.searchParams.get('custody');
+      if (custody === 'mobile') {
+        rows = rows.filter(
+          (location) => location.type === 'MOBILE_TECHNICIAN' || location.type === 'MOBILE_CREW',
+        );
+      }
+      const type = url.searchParams.get('type');
+      if (type) {
+        rows = rows.filter((location) => location.type === type);
+      }
+      const status = url.searchParams.get('status');
+      if (status) {
+        rows = rows.filter((location) => location.status === status);
+      }
+      const search = url.searchParams.get('search')?.trim().toLowerCase();
+      if (search) {
+        rows = rows.filter(
+          (location) =>
+            String(location.name).toLowerCase().includes(search) ||
+            String(location.code).toLowerCase().includes(search),
+        );
+      }
+      if (url.searchParams.get('withStock') === 'true') {
+        const locationIdsWithStock = new Set(
+          state.balances
+            .filter((balance) => Number.parseFloat(String(balance.quantityOnHand ?? '0')) > 0)
+            .map((balance) => balance.locationId),
+        );
+        rows = rows.filter((location) => locationIdsWithStock.has(String(location.id)));
+      }
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.locations),
+        body: JSON.stringify({
+          data: rows,
+          meta: { nextCursor: null, total: rows.length },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/locations/search') && method === 'GET') {
+      const status = url.searchParams.get('status');
+      const q = url.searchParams.get('q') ?? '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(searchLocationsForPickerMock(state, q, status)),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/items/search') && method === 'GET') {
+      const status = url.searchParams.get('status');
+      const q = url.searchParams.get('q') ?? '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(searchItemsForPickerMock(state, q, status)),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/assets/search') && method === 'GET') {
+      const q = url.searchParams.get('q') ?? '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(searchAssetsForPickerMock(state, q)),
       });
       return;
     }
@@ -1359,7 +1622,10 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.serializedAssets),
+        body: JSON.stringify({
+          data: state.serializedAssets,
+          meta: { nextCursor: null, total: state.serializedAssets.length },
+        }),
       });
       return;
     }
@@ -1385,10 +1651,35 @@ async function setupInventoryMocks(
     }
 
     if (pathname.endsWith('/inventory/balances') && method === 'GET') {
+      const locationId = url.searchParams.get('locationId');
+      const itemId = url.searchParams.get('itemId');
+      let filtered = state.balances;
+      if (locationId) {
+        filtered = filtered.filter((balance) => balance.locationId === locationId);
+      }
+      if (itemId) {
+        filtered = filtered.filter((balance) => balance.itemId === itemId);
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.balances),
+        body: JSON.stringify({
+          data: filtered,
+          meta: { nextCursor: null, total: filtered.length },
+        }),
+      });
+      return;
+    }
+
+    const itemDetailMatch = pathname.match(/\/inventory\/items\/([^/]+)$/);
+    if (itemDetailMatch && method === 'GET') {
+      const item = state.catalogItems.find((entry) => entry.id === itemDetailMatch[1]);
+      await route.fulfill({
+        status: item ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          item ?? { message: 'El articulo de inventario solicitado no existe.' },
+        ),
       });
       return;
     }
@@ -1571,7 +1862,10 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.stockIssues),
+        body: JSON.stringify({
+          data: state.stockIssues,
+          meta: { nextCursor: null, total: state.stockIssues.length },
+        }),
       });
       return;
     }
@@ -1882,7 +2176,10 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(state.purchaseRequests),
+        body: JSON.stringify({
+          data: state.purchaseRequests,
+          meta: { nextCursor: null, total: state.purchaseRequests.length },
+        }),
       });
       return;
     }
@@ -3048,7 +3345,10 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(rows),
+        body: JSON.stringify({
+          data: rows,
+          meta: { nextCursor: null, total: rows.length },
+        }),
       });
       return;
     }
@@ -3232,7 +3532,11 @@ async function setupInventoryMocks(
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 }
 
@@ -3259,7 +3563,7 @@ test.describe('Portal Inventario / SCM', () => {
     await drawer.getByLabel('Nombre').fill('Patch cord 24m');
     await drawer.getByRole('button', { name: 'Crear producto' }).click();
 
-    await expect(main.getByText('Patch cord 24m')).toBeVisible();
+    await expect(main.getByText('Patch cord 24m').first()).toBeVisible();
 
     await openPurchaseComposer(main);
     await addCatalogProductToDraft(page, main, 'Patch cord', /Patch cord 24m/i);
@@ -3280,6 +3584,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
+    await expect(main.getByRole('heading', { name: 'Inventario' })).toBeVisible();
 
     await main.getByRole('tab', { name: 'Catálogo' }).click();
     await main.getByRole('tab', { name: 'Categorías' }).click();
@@ -3307,7 +3612,7 @@ test.describe('Portal Inventario / SCM', () => {
     );
     await productDrawer.getByRole('button', { name: 'Crear producto' }).click();
 
-    await expect(main.getByText('Cable fibra 12 hilos')).toBeVisible();
+    await expect(main.getByText('Cable fibra 12 hilos').first()).toBeVisible();
 
     await openPurchaseComposer(main);
     await addCatalogProductToDraft(page, main, 'Cable fibra', /Cable fibra 12 hilos/i);
@@ -3353,14 +3658,14 @@ test.describe('Portal Inventario / SCM', () => {
     const main = page.locator('main');
 
     await main.getByRole('tab', { name: 'Bodegas' }).click();
-    await expect(main.getByText('BOD-01')).toBeVisible();
+    await expect(main.getByText('BOD-01').first()).toBeVisible();
 
     await main.getByRole('tab', { name: 'Salidas' }).click();
     await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
 
     await main.getByRole('tab', { name: 'Activos' }).click();
-    await expect(main.getByText('SN-001')).toBeVisible();
-    await expect(main.getByText('Disponible')).toBeVisible();
+    await expect(main.getByText('SN-001').first()).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'Disponible' }).first()).toBeVisible();
   });
 
   test('abre ficha 360 del activo con timeline y origen de compra', async ({ page }) => {
@@ -3405,6 +3710,8 @@ test.describe('Portal Inventario / SCM', () => {
     const state = (page as unknown as { inventoryMockState: InventoryMockState })
       .inventoryMockState;
 
+    await page.goto('/dashboard/inventory');
+
     await page.evaluate(
       async ({ executionOrderId, itemId, serialNumber, subscriberId, contractRefId }) => {
         const token = window.localStorage.getItem('iwana.portal.access-token');
@@ -3440,7 +3747,6 @@ test.describe('Portal Inventario / SCM', () => {
 
     expect(state.loans.some((loan) => loan.status === 'abierto')).toBe(true);
 
-    await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
     await main.getByRole('tab', { name: 'Activos' }).click();
@@ -3451,6 +3757,10 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(loansPanel.getByText('ONT-HG8245 · SN-001')).toBeVisible();
 
     await main.getByRole('tab', { name: 'Movimientos' }).click();
+    const returnPanel = main.getByTestId('movements-workspace').getByText('Recibir devolución', {
+      exact: true,
+    });
+    await expect(returnPanel).toBeVisible();
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Producto' }).nth(1),
@@ -3467,7 +3777,7 @@ test.describe('Portal Inventario / SCM', () => {
       'BOD-01 · Bodega principal',
     );
     await main.getByLabel('Serial (opcional)').nth(1).fill('SN-001');
-    await main.getByRole('button', { name: 'Registrar retorno' }).click();
+    await main.getByRole('button', { name: 'Registrar devolución' }).click();
 
     await expect(main.getByText(/Devolución registrada/i)).toBeVisible();
     expect(state.loans.some((loan) => loan.status === 'cerrado')).toBe(true);
@@ -3552,7 +3862,7 @@ test.describe('Portal Inventario / SCM', () => {
       main.getByRole('combobox', { name: 'Destino' }),
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
-    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*ONT-HG8245/i]);
     await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
@@ -3585,7 +3895,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     const orderDrawer = page.getByRole('dialog', { name: 'Orden de compra' });
     await expect(orderDrawer.getByRole('heading', { name: 'Orden de compra' })).toBeVisible();
-    await orderDrawer.getByLabel('Proveedor').fill('Demo');
+    await orderDrawer.getByRole('combobox', { name: 'Proveedor' }).fill('Demo');
     await orderDrawer.getByRole('option', { name: /Proveedor Demo/i }).click();
 
     const itemSelect = orderDrawer.getByRole('combobox', { name: 'Producto' });
@@ -3632,7 +3942,7 @@ test.describe('Portal Inventario / SCM', () => {
       main.getByRole('combobox', { name: 'Destino' }),
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
-    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*ONT-HG8245/i]);
     await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
@@ -3660,7 +3970,7 @@ test.describe('Portal Inventario / SCM', () => {
       main.getByRole('combobox', { name: 'Bodega de destino' }),
       'BOD-01 · Bodega principal',
     );
-    await main.getByRole('button', { name: 'Registrar retorno' }).click();
+    await main.getByRole('button', { name: 'Registrar devolución' }).click();
 
     await expect(main.getByText(/Devolución registrada.*MOV-000011/i)).toBeVisible();
     expect(state.stockIssueDispatchCount).toBe(1);
@@ -3709,9 +4019,11 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Origen' }),
-      'BOD-01 · Bodega principal (Bodega principal)',
+      'Bodega principal — BOD-01',
     );
-    await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
+    await dismissOpenListbox(page);
+    await waitForIssueSourceMaterial(main);
+    await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*CAB-DROP/i]);
     await main.getByLabel('Referencia comercial (opcional)').fill('OC-VENTA-001');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
@@ -3747,12 +4059,10 @@ test.describe('Portal Inventario / SCM', () => {
       main.getByRole('combobox', { name: 'Destino' }),
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
-    await expect(main.getByRole('tab', { name: /Con material/i })).toBeVisible();
-    await expect(main.getByText(/Disponible en origen/i).first()).toBeVisible();
-    await main.getByRole('tab', { name: /^Catálogo \(\d+\)/ }).click();
-    await addIssueCatalogItemsToDraft(main, [
-      /Seleccionar ONT-HG8245 · ONT Huawei HG8245/i,
-      /Seleccionar CAB-DROP · Cable drop/i,
+    await waitForIssueSourceMaterial(main);
+    await addIssueCatalogItemsToDraft(page, main, [
+      /Seleccionar .*ONT-HG8245/i,
+      /Seleccionar .*CAB-DROP/i,
     ]);
     await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
@@ -3864,6 +4174,7 @@ test.describe('Portal Inventario / SCM', () => {
       .getByRole('listbox')
       .getByRole('option', { name: /Proveedor Demo/i })
       .click();
+    await dismissOpenListbox(page);
     await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
     await expect(workbench.getByText('Proveedor Demo')).toBeVisible();
     await expect(workbench.getByText('Invitado', { exact: true })).toBeVisible();
@@ -3911,6 +4222,7 @@ test.describe('Portal Inventario / SCM', () => {
       .getByRole('listbox')
       .getByRole('option', { name: /Proveedor Demo/i })
       .click();
+    await dismissOpenListbox(page);
     await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
 
     // El backend (mock, con paridad de enforcement) rechaza al proveedor bloqueado.
@@ -3942,7 +4254,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     const orderDrawer = page.getByRole('dialog', { name: 'Orden de compra' });
     await expect(orderDrawer.getByRole('heading', { name: 'Orden de compra' })).toBeVisible();
-    await orderDrawer.getByLabel('Proveedor').fill('Demo');
+    await orderDrawer.getByRole('combobox', { name: 'Proveedor' }).fill('Demo');
     await orderDrawer.getByRole('option', { name: /Proveedor Demo/i }).click();
 
     const itemSelect = orderDrawer.getByRole('combobox', { name: 'Producto' });
@@ -4122,8 +4434,8 @@ test.describe('Portal Inventario / Existencias', () => {
     await expect(main.getByRole('tab', { name: 'Existencias', selected: true })).toBeVisible();
     await expect(main.getByRole('heading', { name: 'Existencias' })).toBeVisible();
     await expect(main.getByRole('tab', { name: 'Por producto', selected: true })).toBeVisible();
-    await expect(main.getByText('CAB-DROP')).toBeVisible();
-    await expect(main.getByText('ONT-HG8245')).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'CAB-DROP', exact: true }).first()).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'ONT-HG8245', exact: true }).first()).toBeVisible();
   });
 
   test('redirige custody=mobile de Bodegas a Existencias y filtra matriz', async ({ page }) => {
@@ -4137,7 +4449,12 @@ test.describe('Portal Inventario / Existencias', () => {
     await expect(main.getByRole('tab', { name: 'Por bodega', selected: true })).toBeVisible();
     await expect(main.getByText('Custodia técnico')).toBeVisible();
     await expect(main.getByText('Móvil con tope')).toBeVisible();
-    await expect(main.getByText('BOD-01')).toHaveCount(0);
+    await expect(
+      main
+        .getByRole('tabpanel', { name: 'Existencias' })
+        .locator('tbody tr')
+        .filter({ hasText: 'BOD-01' }),
+    ).toHaveCount(0);
   });
 
   test('muestra kardex con movimiento seed y permite expandir líneas', async ({ page }) => {
@@ -4245,7 +4562,7 @@ test.describe('Portal Inventario / Existencias', () => {
     const main = page.locator('main');
 
     await main.getByRole('tab', { name: 'Reposición' }).click();
-    await expect(main.getByText('CAB-DROP')).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'CAB-DROP', exact: true }).first()).toBeVisible();
     await expect(main.getByText('Agotado')).toBeVisible();
 
     // Solo el crítico (out) viene preseleccionado; el ONT below-minimum no.
@@ -4302,8 +4619,8 @@ test.describe('Portal Inventario / Bodegas', () => {
     const main = page.locator('main');
 
     await expect(main.getByRole('tab', { name: 'Bodegas', selected: true })).toBeVisible();
-    await expect(main.getByRole('heading', { name: 'Bodegas' })).toBeVisible();
-    await expect(main.getByText('BOD-01')).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Bodegas', exact: true })).toBeVisible();
+    await expect(main.getByText('BOD-01').first()).toBeVisible();
   });
 
   test('crea bodega desde UI', async ({ page }) => {
@@ -4313,7 +4630,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Crear bodega' }).click();
+    await main.getByRole('button', { name: 'Crear bodega' }).first().click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Nombre de la bodega').fill('Cuarentena operativa');
     await selectComboboxOption(page, dialog.getByRole('combobox', { name: 'Tipo' }), 'En revisión');
@@ -4369,17 +4686,12 @@ test.describe('Portal Inventario / Bodegas', () => {
       main.getByRole('combobox', { name: 'Destino' }),
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
-    await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
-    await main.getByLabel('Cantidad CAB-DROP · Cable drop').fill('99');
-    await main.getByRole('button', { name: 'Crear salida' }).click();
+    await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*CAB-DROP/i]);
+    await main.getByLabel(/Cantidad .*CAB-DROP/i).fill('99');
 
-    await expect(
-      main
-        .getByRole('alert')
-        .filter({ hasText: /No hay disponible suficiente/i })
-        .first(),
-    ).toBeVisible();
-    await expect(main.getByText(/comprometidos/i).first()).toBeVisible();
+    await expect(main.getByText(/Supera el material disponible en origen/i)).toBeVisible();
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+    await expect(main.getByText(/Supera el material disponible en origen/i)).toBeVisible();
   });
 
   test('bloquea salida sin cupo en bodega móvil', async ({ page }) => {
@@ -4402,7 +4714,7 @@ test.describe('Portal Inventario / Bodegas', () => {
       main.getByRole('combobox', { name: 'Destino' }),
       'MOV-03 · Móvil con tope (Técnico en campo)',
     );
-    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*ONT-HG8245/i]);
     await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
@@ -4508,16 +4820,16 @@ test.describe('Portal Inventario / Conteos', () => {
     await expect(main.getByRole('tab', { name: 'Conteos', selected: true })).toBeVisible();
     await expect(main.getByRole('heading', { name: 'Conteos físicos' })).toBeVisible();
 
-    await main.getByRole('button', { name: 'Nuevo conteo' }).click();
+    await main.getByRole('button', { name: 'Nuevo conteo' }).first().click();
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Bodega', exact: true }),
-      'Bodega principal',
+      'Bodega principal — BOD-01',
     );
     await main.getByRole('button', { name: 'Iniciar conteo' }).click();
 
     await expect(main.getByRole('heading', { name: 'CNT-000001' })).toBeVisible();
-    await expect(main.getByText('CAB-DROP')).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'CAB-DROP', exact: true }).first()).toBeVisible();
 
     await main.getByLabel('Cantidad contada CAB-DROP').fill('7');
     await main.getByRole('button', { name: 'Guardar cantidades' }).click();
@@ -4550,11 +4862,11 @@ test.describe('Portal Inventario / Conteos', () => {
     await page.goto('/dashboard/inventory?tab=counts');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Nuevo conteo' }).click();
+    await main.getByRole('button', { name: 'Nuevo conteo' }).first().click();
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Bodega', exact: true }),
-      'Bodega principal',
+      'Bodega principal — BOD-01',
     );
     await main.getByRole('button', { name: 'Iniciar conteo' }).click();
 

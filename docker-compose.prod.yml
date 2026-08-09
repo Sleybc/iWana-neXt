@@ -3,7 +3,8 @@
 # Docker Compose interpola el documento COMPLETO antes de seleccionar servicios o
 # perfiles: un `${VAR:?}` es un requisito global, no por perfil. Mientras los
 # servicios de producción vivían en `docker-compose.yml`, sus variables
-# obligatorias (MFA_ENCRYPTION_KEY, JWT_*, S3_*, NEXT_PUBLIC_API_URL, …) bloqueaban
+# obligatorias (MFA_ENCRYPTION_KEY, JWT_*, S3_*, NEXT_PUBLIC_WEB_API_URL,
+# NEXT_PUBLIC_PORTAL_API_URL, …) bloqueaban
 # el arranque de la infraestructura de desarrollo. Por eso viven aquí.
 #
 # Invocación de producción (siempre con ambos archivos):
@@ -173,7 +174,8 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        # C-4 (ADR-081): cada aplicacion bakea su propia variable de URL del API.
+        NEXT_PUBLIC_WEB_API_URL: ${NEXT_PUBLIC_WEB_API_URL:?NEXT_PUBLIC_WEB_API_URL is required}
     container_name: iwana_web_prod
     profiles:
       - production
@@ -209,7 +211,8 @@ services:
       context: .
       dockerfile: apps/portal/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        # C-4 (ADR-081): cada aplicacion bakea su propia variable de URL del API.
+        NEXT_PUBLIC_PORTAL_API_URL: ${NEXT_PUBLIC_PORTAL_API_URL:?NEXT_PUBLIC_PORTAL_API_URL is required}
     container_name: iwana_portal_prod
     profiles:
       - production

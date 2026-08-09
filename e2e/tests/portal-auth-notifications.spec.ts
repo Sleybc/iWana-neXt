@@ -32,7 +32,7 @@ function setupPortalApiMocks() {
         return;
       }
 
-      if (url.endsWith('/auth/login') && method === 'POST') {
+      if (url.includes('/auth/login') && method === 'POST') {
         isLoggedIn = true;
         await route.fulfill({
           status: 200,
@@ -42,7 +42,7 @@ function setupPortalApiMocks() {
         return;
       }
 
-      if (url.endsWith('/auth/me') && method === 'GET') {
+      if (url.includes('/auth/me') && method === 'GET') {
         if (!isLoggedIn) {
           await route.fulfill({
             status: 401,
@@ -209,7 +209,11 @@ function setupPortalApiMocks() {
         return;
       }
 
-      await route.continue();
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+      });
     });
   };
 }
@@ -221,7 +225,7 @@ test.describe('Portal auth + notifications', () => {
     await page.goto('/auth/login');
 
     // Esperar que el formulario del portal sea visible antes de scanear
-    await expect(page.getByRole('heading', { name: /bienvenido al portal/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /bienvenido a/i })).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Validación WCAG 2.1 AA en página de login del portal
@@ -229,7 +233,7 @@ test.describe('Portal auth + notifications', () => {
     expect(loginA11y.violations).toEqual([]);
 
     await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
-    await page.getByLabel(/correo electrónico/i).fill('suscriptor@iwana.local');
+    await page.getByLabel(/correo electrónico/i).fill('admin@test-isp.co');
     await page.getByPlaceholder('••••••••').fill('Password123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -257,6 +261,6 @@ test.describe('Portal auth + notifications', () => {
     await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click();
 
     await expect(page).toHaveURL(/\/auth\/login/);
-    await expect(page.getByRole('heading', { name: /bienvenido al portal/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /bienvenido a/i })).toBeVisible();
   });
 });

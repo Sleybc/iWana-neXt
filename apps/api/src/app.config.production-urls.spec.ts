@@ -47,6 +47,10 @@ function buildProductionEnv(): Record<string, string> {
     TYPESENSE_API_KEY: 'test-only-typesense-key',
     CORS_ORIGIN: `${PRODUCTION_ORIGIN},${PORTAL_ORIGIN}`,
     FRONTEND_URL: PRODUCTION_ORIGIN,
+    // C-5 (ADR-081): en perfil producción COOKIE_SECURE no puede quedar en
+    // false — el esquema lo exige. El fixture declara el valor correcto para
+    // que el escenario de "arranque correcto" pruebe exactamente eso.
+    COOKIE_SECURE: 'true',
   };
 }
 

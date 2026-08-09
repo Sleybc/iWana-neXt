@@ -303,6 +303,8 @@ export function SearchablePicker({
   const retryRef = useRef<HTMLButtonElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const failedRetryCountRef = useRef(0);
+  /** Evita reabrir el listbox cuando el propio select/clear enfoca el input. */
+  const suppressOpenOnFocusRef = useRef(false);
   const labelsRef = useRef(labels);
   labelsRef.current = labels;
   const resourceRef = useRef(resource);
@@ -507,7 +509,11 @@ export function SearchablePicker({
     setError(false);
     abortPending();
     setLoading(false);
+    suppressOpenOnFocusRef.current = true;
     inputRef.current?.focus();
+    queueMicrotask(() => {
+      suppressOpenOnFocusRef.current = false;
+    });
   }
 
   function handleClear() {
@@ -518,7 +524,11 @@ export function SearchablePicker({
     resetLookupUi();
     setAnnouncement('');
     abortPending();
+    suppressOpenOnFocusRef.current = true;
     inputRef.current?.focus();
+    queueMicrotask(() => {
+      suppressOpenOnFocusRef.current = false;
+    });
   }
 
   function moveHighlight(delta: number) {
@@ -614,6 +624,7 @@ export function SearchablePicker({
         }
         onFocus={() => {
           if (disabled) return;
+          if (suppressOpenOnFocusRef.current) return;
           setOpen(true);
           setEditing(true);
           if (value && selectedItem && query === selectedItem.label) {

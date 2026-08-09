@@ -31,6 +31,11 @@ export default defineConfig({
     command: 'pnpm --filter @iwana/web dev',
     url: 'http://127.0.0.1:3001',
     reuseExistingServer: true,
+    // Misma razón que portal (OLA1-b C-4): same-origin `/api/v1` en E2E.
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_WEB_API_URL: '',
+    },
     timeout: 120_000,
   },
   projects: [

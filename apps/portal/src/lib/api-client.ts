@@ -149,26 +149,16 @@ export function mapPickerSearchResponse(response: PickerSearchResponse): {
  */
 
 function resolveApiBase(): string {
-  const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+  // C-4 (ADR-081): variable por aplicación. Vacía ⇒ same-origin `/api/v1`
+  // (el rewrite de Next.js proxea al API; los mocks E2E interceptan sin CORS).
+  const configuredApiBase = process.env.NEXT_PUBLIC_PORTAL_API_URL?.trim();
 
   if (configuredApiBase) {
     return configuredApiBase.replace(/\/$/, '');
   }
 
-  // Mantener mismo origen evita conexiones directas a puertos locales no disponibles
-  // y centraliza el proxy en los rewrites del portal.
   return '/api/v1';
 }
-const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
-
-/**
- * Clave localStorage para el token de alcance limitado emitido cuando un rol critico
- * (ADMIN, NOC, ACCOUNTANT) no tiene MFA configurado.
- * Solo existe durante el flujo de MFA setup. Se elimina al activar MFA.
- * HLD-MOD02-ARQUITECTURA-v1.0 ?6.3 (DA-MOD02-01)
- */
-const MFA_SETUP_TOKEN_STORAGE_KEY = 'iwana.portal.mfa-setup-token';
-
 interface PendingTenantMfaLogin {
   email: string;
   password: string;
@@ -178,6 +168,22 @@ interface PendingTenantMfaLogin {
 let pendingTenantMfaLogin: PendingTenantMfaLogin | null = null;
 let refreshAccessTokenPromise: Promise<string> | null = null;
 let terminalSessionError: ApiError | null = null;
+
+/**
+ * Access token de sesión en estado del cliente, en memoria. Se pierde al
+ * recargar — aceptado por diseño (ADR-081, decisión 6). El transporte de sesión
+ * es la cookie httpOnly emitida por el API.
+ */
+let inMemoryAccessToken: string | null = null;
+
+/**
+ * Token de alcance limitado `mfa-setup` en memoria (ADR-081, decisión 6):
+ * nunca en almacenamiento persistente. Se pierde al recargar — aceptado por
+ * diseño; el flujo de primer ingreso lo reemite.
+ * Solo existe durante el flujo de MFA setup. Se limpia al activar MFA.
+ * HLD-MOD02-ARQUITECTURA-v1.0 §6.3 (DA-MOD02-01)
+ */
+let inMemoryMfaSetupToken: string | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -193,11 +199,7 @@ export class ApiError extends Error {
 }
 
 function readStoredAccessToken(): string {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '';
+  return inMemoryAccessToken ?? '';
 }
 
 /**
@@ -237,44 +239,22 @@ export function persistAccessToken(token: string): void {
     terminalSessionError = null;
   }
 
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  if (!token) {
-    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
-    return;
-  }
-
-  window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
+  inMemoryAccessToken = token || null;
 }
 
-/** Lee el token de alcance limitado para MFA setup desde localStorage. */
+/** Lee el token de alcance limitado para MFA setup desde el estado en memoria. */
 function readMfaSetupToken(): string {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-  return window.localStorage.getItem(MFA_SETUP_TOKEN_STORAGE_KEY) ?? '';
+  return inMemoryMfaSetupToken ?? '';
 }
 
-/** Persiste el token limitado de MFA setup en localStorage. */
+/** Persiste el token limitado de MFA setup en memoria (nunca en storage). */
 function persistMfaSetupToken(token: string): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  if (!token) {
-    window.localStorage.removeItem(MFA_SETUP_TOKEN_STORAGE_KEY);
-    return;
-  }
-  window.localStorage.setItem(MFA_SETUP_TOKEN_STORAGE_KEY, token);
+  inMemoryMfaSetupToken = token || null;
 }
 
-/** Elimina el token limitado de MFA setup del localStorage. */
-function clearMfaSetupTokenFromStorage(): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.removeItem(MFA_SETUP_TOKEN_STORAGE_KEY);
+/** Elimina el token limitado de MFA setup del estado en memoria. */
+function clearMfaSetupTokenFromMemory(): void {
+  inMemoryMfaSetupToken = null;
 }
 
 interface ApiEnvelope<T> {
@@ -363,7 +343,7 @@ function getTenantSlug(tenantSlugOverride?: string): string {
   throw new ApiError(
     400,
     'TENANT_SLUG_REQUIRED',
-    'Falta la empresa. Ingresa el identificador de la empresa en el inicio de sesi?n o usa la configuraci?n global definida por tu equipo.',
+    'Falta la empresa. Ingresa el identificador de la empresa en el inicio de sesión o usa la configuración global definida por tu equipo.',
   );
 }
 
@@ -382,8 +362,12 @@ async function refreshAccessToken(tenantSlug: string): Promise<string> {
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Slug': tenantSlug,
+        // C-2 (ADR-081): el refresh se autentica por la cookie httpOnly de
+        // refresh; todo método mutante cookie-autenticado exige la cabecera CSRF.
+        'X-Requested-With': 'XMLHttpRequest',
       },
       credentials: 'include',
+      signal: AbortSignal.timeout(12_000),
     });
 
     if (!res.ok) {
@@ -391,7 +375,7 @@ async function refreshAccessToken(tenantSlug: string): Promise<string> {
       terminalSessionError = new ApiError(
         401,
         'SESSION_EXPIRED',
-        'La sesi?n expir?. Inicia sesi?n de nuevo.',
+        'La sesión expiró. Inicia sesión de nuevo.',
       );
       throw terminalSessionError;
     }
@@ -433,12 +417,26 @@ async function request<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
+  // C-2 (ADR-081): los métodos mutantes autenticados por cookie requieren una
+  // cabecera personalizada que el navegador no adjunta cross-origin sin
+  // preflight. GET/HEAD/OPTIONS y rutas públicas (skipAuth) quedan exentos.
+  const method = (options?.method ?? 'GET').toUpperCase();
+  const isMutatingMethod =
+    method === 'POST' || method === 'PATCH' || method === 'PUT' || method === 'DELETE';
+  if (isMutatingMethod && !options?.skipAuth && !headers.has('X-Requested-With')) {
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+  }
+
   const apiBase = resolveApiBase();
 
+  // Timeout duro: en E2E, `route.continue()` hacia un API caído deja el fetch
+  // colgado y AuthProvider nunca sale de «Validando sesión...». 12s cubre
+  // latencia local sin alargar el timeout de Playwright (30s).
   const res = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
     credentials: 'include',
+    signal: options?.signal ?? AbortSignal.timeout(12_000),
   });
 
   if (res.status === 401 && !options?.skipAuth && !options?.skipRefreshRetry) {
@@ -584,7 +582,7 @@ export const authApi = {
       persistAccessToken('');
       persistTenantSlug('');
       clearPendingTenantMfaLogin();
-      clearMfaSetupTokenFromStorage();
+      clearMfaSetupTokenFromMemory();
     }
   },
 
@@ -620,7 +618,8 @@ export const authApi = {
 
   /**
    * Inicia el setup de MFA: genera el QR code y el secret TOTP.
-   * Requiere el token de alcance limitado (scope='mfa-setup') almacenado en localStorage.
+   * Requiere el token de alcance limitado (scope='mfa-setup') en memoria
+   * (ADR-081, decision 6): nunca en almacenamiento persistente.
    * Solo disponible para roles criticos (ADMIN, NOC, ACCOUNTANT) sin MFA configurado.
    * HLD-MOD02-ARQUITECTURA-v1.0 ?3.1 (Paso 4)
    */
@@ -639,6 +638,9 @@ export const authApi = {
       'Content-Type': 'application/json',
       'X-Tenant-Slug': resolvedTenantSlug,
       Authorization: `Bearer ${mfaSetupToken}`,
+      // C-2 (ADR-081): método mutante con credencial en la petición; la cabecera
+      // CSRF mantiene el contrato uniforme del guard del backend.
+      'X-Requested-With': 'XMLHttpRequest',
     });
 
     const apiBase = resolveApiBase();
@@ -683,6 +685,9 @@ export const authApi = {
       'Content-Type': 'application/json',
       'X-Tenant-Slug': resolvedTenantSlug,
       Authorization: `Bearer ${mfaSetupToken}`,
+      // C-2 (ADR-081): método mutante con credencial en la petición; la cabecera
+      // CSRF mantiene el contrato uniforme del guard del backend.
+      'X-Requested-With': 'XMLHttpRequest',
     });
 
     const apiBase = resolveApiBase();
@@ -708,10 +713,10 @@ export const authApi = {
   },
 
   /**
-   * Elimina el token de alcance limitado de MFA setup del localStorage.
+   * Elimina el token de alcance limitado de MFA setup del estado en memoria.
    * Llamar despues de activar MFA exitosamente para no dejar token residual.
    */
-  clearMfaSetupToken: clearMfaSetupTokenFromStorage,
+  clearMfaSetupToken: clearMfaSetupTokenFromMemory,
 };
 
 function buildAuditLogSearchParams(params?: AuditLogQueryParams): string {

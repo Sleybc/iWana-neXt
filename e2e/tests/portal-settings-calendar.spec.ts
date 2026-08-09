@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -133,14 +134,7 @@ function buildAccessToken(): string {
 }
 
 async function setAdminSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: buildAccessToken(), slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: buildAccessToken(), tenantSlug: MOCK_TENANT_SLUG });
 }
 
 function parseInputDate(value: string): Date | null {
@@ -438,6 +432,16 @@ async function setupCalendarMocks(page: Page) {
   });
 
   // Calendar — organización horarios
+  await page.route('**/api/v1/organization/business-hours/company', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: MOCK_COMPANY_HOURS }),
+    });
+  });
+
+  // Alias legacy conservado por specs antiguas
   await page.route('**/api/v1/organization/company-hours', async (route) => {
     await assertTenantHeader(route);
     if (route.request().method() === 'PUT') {
@@ -455,21 +459,24 @@ async function setupCalendarMocks(page: Page) {
     }
   });
 
-  await page.route('**/api/v1/organization/sites', async (route) => {
+  await page.route('**/api/v1/organization/sites**', async (route) => {
     await assertTenantHeader(route);
+    const url = route.request().url();
+    if (/\/organization\/sites\/[^/?]+/.test(url)) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: MOCK_SITE_DETAIL }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: MOCK_SITES }),
-    });
-  });
-
-  await page.route('**/api/v1/organization/sites/*', async (route) => {
-    await assertTenantHeader(route);
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: MOCK_SITE_DETAIL }),
+      body: JSON.stringify({
+        data: MOCK_SITES,
+        meta: { page: 1, limit: 100, total: MOCK_SITES.length, totalPages: 1 },
+      }),
     });
   });
 
@@ -482,7 +489,7 @@ async function setupCalendarMocks(page: Page) {
     });
   });
 
-  await page.route('**/api/v1/organization/business-hours/exceptions', async (route) => {
+  await page.route('**/api/v1/organization/business-hours/exceptions**', async (route) => {
     await assertTenantHeader(route);
     if (route.request().method() === 'POST') {
       const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
@@ -573,9 +580,30 @@ async function setupCalendarMocks(page: Page) {
   });
 
   // Eventualidades operativas
-  await page.route('**/api/v1/wfm/operational-eventualities', async (route) => {
+  await page.route('**/api/v1/wfm/operational-eventualities**', async (route) => {
     await assertTenantHeader(route);
-    if (route.request().method() === 'POST') {
+    const url = route.request().url();
+    const method = route.request().method();
+    const pathname = new URL(url).pathname;
+
+    if (pathname.endsWith('/status') && method === 'PATCH') {
+      requestLog.eventualityStatusPatchCalls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { ...MOCK_EVENTUALITIES[0], status: 'confirmed' },
+        }),
+      });
+      return;
+    }
+
+    if (/\/operational-eventualities\/[^/]+$/.test(pathname) && method === 'DELETE') {
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+
+    if (method === 'POST') {
       requestLog.eventualityCreateCalls += 1;
       const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
       await route.fulfill({
@@ -600,34 +628,17 @@ async function setupCalendarMocks(page: Page) {
           },
         }),
       });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(MOCK_EVENTUALITIES),
-      });
+      return;
     }
-  });
 
-  await page.route('**/api/v1/wfm/operational-eventualities/*/status', async (route) => {
-    await assertTenantHeader(route);
-    requestLog.eventualityStatusPatchCalls += 1;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: { ...MOCK_EVENTUALITIES[0], status: 'confirmed' },
+        data: MOCK_EVENTUALITIES,
+        meta: { page: 1, limit: 20, total: MOCK_EVENTUALITIES.length, totalPages: 1 },
       }),
     });
-  });
-
-  await page.route('**/api/v1/wfm/operational-eventualities/*', async (route) => {
-    await assertTenantHeader(route);
-    if (route.request().method() === 'DELETE') {
-      await route.fulfill({ status: 204, body: '' });
-    } else {
-      await route.fulfill({ status: 404, body: '' });
-    }
   });
 
   // Bloquear endpoint legacy
@@ -754,7 +765,7 @@ test.describe('portal-settings-calendar', () => {
 
     await page.goto('/dashboard/settings/calendar');
 
-    const mondayStart = page.getByTestId('bh-opens-monday');
+    const mondayStart = page.getByTestId('calendar-shell-primary').getByTestId('bh-opens-monday');
     await expect(mondayStart).toBeVisible({ timeout: 10_000 });
 
     const triggerBox = await mondayStart.boundingBox();

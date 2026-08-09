@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 function createAccessToken(): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -210,13 +211,7 @@ test.describe('Portal settings organization and access', () => {
       },
     };
 
-    await page.addInitScript(
-      ({ token, slug }) => {
-        window.localStorage.setItem('iwana.portal.access-token', token);
-        window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-      },
-      { token: accessToken, slug: tenantSlug },
-    );
+    await seedPortalSession(page, { token: accessToken, tenantSlug });
 
     await page.route('**/api/v1/auth/me', async (route) => {
       await route.fulfill({
@@ -246,7 +241,11 @@ test.describe('Portal settings organization and access', () => {
 
     await page.route('**/api/v1/tenants/me', async (route) => {
       if (route.request().method() !== 'GET') {
-        await route.continue();
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+        });
         return;
       }
 
@@ -306,7 +305,9 @@ test.describe('Portal settings organization and access', () => {
             effectivePermissions: [
               'settings.read',
               'organization.sites.read',
+              'organization.sites.manage',
               'access.permissions.read',
+              'access.profiles.manage',
             ],
             recoveryPermissions: [],
             profileSources: [],
@@ -323,8 +324,12 @@ test.describe('Portal settings organization and access', () => {
       });
     });
 
-    await page.route('**/api/v1/organization/sites', async (route) => {
-      if (route.request().method() === 'GET') {
+    await page.route('**/api/v1/organization/sites**', async (route) => {
+      const url = new URL(route.request().url());
+      const method = route.request().method();
+      const pathname = url.pathname.replace(/\/$/, '');
+
+      if (pathname.endsWith('/organization/sites') && method === 'GET') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -336,56 +341,66 @@ test.describe('Portal settings organization and access', () => {
               capabilities: site.capabilities,
               isActive: site.isActive,
             })),
+            meta: {
+              page: 1,
+              limit: 20,
+              total: sites.length,
+              totalPages: 1,
+              hasMore: false,
+              nextCursor: null,
+              mode: 'page',
+              capabilities: { randomAccess: true, sortableFields: [] },
+            },
           }),
         });
         return;
       }
 
-      const body = route.request().postDataJSON() as Record<string, unknown>;
-      const nextSite = {
-        id: 'site-2',
-        name: body.name,
-        code: body.code,
-        capabilities: Array.isArray(body.capabilities) ? body.capabilities : [],
-        isActive: true,
-        siteType: body.siteType,
-        address: body.address ?? null,
-        municipality: body.municipality ?? null,
-        department: body.department ?? null,
-        country: 'CO',
-        latitude: null,
-        longitude: null,
-        isPrimary: Boolean(body.isPrimary),
-        businessHours: [],
-        assignments: [],
-        responsibilities: [],
-        createdAt: '2026-05-21T00:00:00.000Z',
-        updatedAt: '2026-05-21T00:00:00.000Z',
-      };
+      if (pathname.endsWith('/organization/sites') && method === 'POST') {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        const nextSite = {
+          id: 'site-2',
+          name: body.name,
+          code: body.code,
+          capabilities: Array.isArray(body.capabilities) ? body.capabilities : [],
+          isActive: true,
+          siteType: body.siteType,
+          address: body.address ?? null,
+          municipality: body.municipality ?? null,
+          department: body.department ?? null,
+          country: 'CO',
+          latitude: null,
+          longitude: null,
+          isPrimary: Boolean(body.isPrimary),
+          businessHours: [],
+          assignments: [],
+          responsibilities: [],
+          createdAt: '2026-05-21T00:00:00.000Z',
+          updatedAt: '2026-05-21T00:00:00.000Z',
+        };
 
-      sites.push(nextSite);
+        sites.push(nextSite);
 
-      await route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: nextSite }),
-      });
-    });
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: nextSite }),
+        });
+        return;
+      }
 
-    await page.route('**/api/v1/organization/sites/*/capabilities', async (route) => {
-      removedCapabilitiesRequests += 1;
+      if (pathname.includes('/capabilities') && method !== 'GET') {
+        removedCapabilitiesRequests += 1;
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Not found' }),
+        });
+        return;
+      }
 
-      await route.fulfill({
-        status: 404,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'Not found' }),
-      });
-    });
-
-    await page.route('**/api/v1/organization/sites/*', async (route) => {
-      const siteId = route.request().url().split('/').pop();
+      const siteId = pathname.split('/').pop();
       const site = sites.find((entry) => entry.id === siteId);
-
       await route.fulfill({
         status: site ? 200 : 404,
         contentType: 'application/json',
@@ -475,16 +490,24 @@ test.describe('Portal settings organization and access', () => {
 
     await page.getByRole('link', { name: /Organización/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/organization$/);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('paragraph').filter({ hasText: 'Sede centro' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Crear sede' }).click();
     const organizationDialog = page.getByRole('dialog');
-    await organizationDialog.getByLabel('Nombre').fill('Sede norte');
+    await expect(organizationDialog).toBeVisible();
+    await organizationDialog
+      .getByRole('textbox', { name: 'Nombre', exact: true })
+      .fill('Sede norte');
     await organizationDialog.getByLabel('Código').fill('NORTE');
+    await organizationDialog.getByLabel('Coordenadas').fill('4.7110, -74.0721');
+    await organizationDialog.getByLabel('Nombre de contacto').fill('Ana Admin');
+    await organizationDialog.getByLabel('Teléfono de contacto').fill('+573001112233');
     await organizationDialog.getByRole('tab', { name: 'Servicios' }).click();
     await organizationDialog.getByRole('checkbox', { name: 'Gestión administrativa' }).check();
     await organizationDialog.getByRole('button', { name: 'Crear sede' }).click();
 
-    await expect(page.getByText('Sede norte')).toBeVisible();
+    await expect(page.getByRole('paragraph').filter({ hasText: 'Sede norte' })).toBeVisible();
     await expect(
       page.locator('tr').filter({ hasText: 'Sede norte' }).getByText('Gestión administrativa'),
     ).toBeVisible();
@@ -495,7 +518,12 @@ test.describe('Portal settings organization and access', () => {
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
 
     await page.getByRole('button', { name: 'Crear perfil' }).click();
-    const accessDialog = page.getByRole('dialog');
+    const creationSelector = page.getByRole('dialog');
+    await expect(creationSelector).toBeVisible();
+    await creationSelector.getByRole('button', { name: 'Empezar desde cero' }).click();
+
+    const accessDialog = page.getByRole('dialog').filter({ hasText: 'Nombre' });
+    await expect(accessDialog).toBeVisible();
     await accessDialog.getByLabel('Nombre').fill('Perfil soporte nocturno');
     await accessDialog.getByLabel('Descripción').fill('Perfil operativo de soporte');
     await accessDialog.getByRole('button', { name: 'Crear perfil' }).click();

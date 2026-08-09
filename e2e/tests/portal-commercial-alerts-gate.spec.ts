@@ -3,6 +3,7 @@
  * No sustituye sesión humana con tenant real; valida UI real en Chromium con summary con 3 alertas.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -62,14 +63,7 @@ const summaryWithThreeAlerts = {
 };
 
 async function setAuthSession(page: Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupGateMocks(page: Page) {
@@ -86,6 +80,30 @@ async function setupGateMocks(page: Page) {
         body: JSON.stringify(body),
       });
 
+    if (pathname.endsWith('/tenants/public-branding') && method === 'GET') {
+      const slug = url.searchParams.get('slug');
+      await json(
+        slug === MOCK_TENANT_SLUG
+          ? {
+              data: {
+                displayName: 'ISP Gate Comercial',
+                showTenantName: true,
+                logoLightUrl: null,
+                logoDarkUrl: null,
+                sealLightUrl: null,
+                sealDarkUrl: null,
+                faviconLightUrl: null,
+                faviconDarkUrl: null,
+                loginBackgroundLightUrl: null,
+                loginBackgroundDarkUrl: null,
+              },
+            }
+          : { code: 'TENANT_NOT_FOUND', message: 'Tenant no encontrado' },
+        slug === MOCK_TENANT_SLUG ? 200 : 404,
+      );
+      return;
+    }
+
     if (pathname.endsWith('/auth/me') && method === 'GET') {
       await json({
         data: {
@@ -96,6 +114,22 @@ async function setupGateMocks(page: Page) {
           schemaName: 'tenant_test_isp',
           jti: 'jti-gate-1',
           type: 'tenant',
+        },
+      });
+      return;
+    }
+
+    if (pathname.match(/\/users\/[^/]+$/) && method === 'GET') {
+      await json({
+        data: {
+          id: 'user-uuid-admin-gate',
+          email: 'admin@isp-demo.co',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          firstName: 'Ana',
+          lastName: 'Gate',
+          mfaEnabled: true,
+          emailVerified: true,
         },
       });
       return;
@@ -113,13 +147,18 @@ async function setupGateMocks(page: Page) {
       return;
     }
 
+    if (pathname.endsWith('/audit-logs') && method === 'GET') {
+      await json({ data: [] });
+      return;
+    }
+
     if (pathname.endsWith('/commercial/dashboard/summary') && method === 'GET') {
       // API responde el DTO en raíz; el cliente usa returnFullResponse: true.
       await json(summaryWithThreeAlerts);
       return;
     }
 
-    // Listados vacíos para tabs de trabajo
+    // Listados vacíos para tabs de trabajo (summary ya manejado arriba)
     if (
       method === 'GET' &&
       (pathname.includes('/commercial/') ||
@@ -130,7 +169,11 @@ async function setupGateMocks(page: Page) {
       return;
     }
 
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 }
 
@@ -165,7 +208,7 @@ test.describe('Gate navegador — alertas comerciales sobre tabs (Fase F)', () =
 
     await page.getByRole('button', { name: 'Ver ofertas' }).click();
     await expect(page).toHaveURL(/tab=(bundles|promotions)/);
-    await expect(page).toHaveURL(/status=expiring/);
+    await expect(page).toHaveURL(/offerStatus=expiring|status=expiring/);
 
     // Mobile 375: tabs y contenido alcanzables con 3 alertas
     await page.setViewportSize({ width: 375, height: 812 });

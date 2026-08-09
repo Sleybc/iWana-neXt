@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
@@ -34,12 +35,7 @@ type CatalogItem = {
 };
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.getByPlaceholder('ejemplo: isp-demo').fill(MOCK_TENANT_SLUG);
-  await page.getByLabel(/correo electrónico/i).fill('admin@test-isp.co');
-  await page.getByRole('textbox', { name: /^contraseña/i }).fill('PasswordSegura123!');
-  await page.getByRole('button', { name: /ingresar/i }).click();
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 10_000 });
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 async function setupCommercialMocks(page: import('@playwright/test').Page) {
@@ -238,6 +234,8 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
           activeCompatibilityRulesCount: 0,
           taxRulesCount: 0,
           activeTaxRulesCount: 0,
+          attentionItems: [],
+          recentChanges: [],
         }),
       });
       return;
@@ -346,7 +344,11 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 
   return {
@@ -364,7 +366,9 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
     await page.goto('/dashboard/commercial');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Comercial', exact: true }).first(),
+    ).toBeVisible();
 
     await page.getByRole('tab', { name: 'Productos adicionales' }).click();
     await expect(page.getByRole('tab', { name: 'Productos adicionales' })).toHaveAttribute(
@@ -388,7 +392,7 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
     await dialog.getByRole('combobox', { name: 'Tipo de cobro' }).click();
     await page.getByRole('option', { name: 'Bajo demanda' }).click();
     await dialog.getByLabel('Precio base (COP)').fill('45000');
-    await dialog.getByLabel('Cargo de instalacion (COP)').fill('5000');
+    await dialog.getByLabel('Cargo de instalación (COP)').fill('5000');
     await dialog.getByRole('button', { name: 'Guardar' }).click();
 
     await expect(page.getByText('Visita tecnica prioritaria')).toBeVisible();

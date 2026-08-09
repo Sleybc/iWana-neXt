@@ -16,6 +16,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixtures de datos de prueba — ficticios, sin PII real
@@ -190,8 +191,23 @@ const mockAuditLogs = [
 
 async function setupDashboardMocks(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/**', async (route) => {
-    const url = route.request().url();
-    const method = route.request().method();
+    const request = route.request();
+    const url = request.url();
+    const method = request.method();
+
+    if (method === 'OPTIONS') {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': request.headers()['origin'] ?? '*',
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+          'Access-Control-Allow-Headers':
+            'Authorization, Content-Type, X-Tenant-Slug, X-Requested-With',
+        },
+      });
+      return;
+    }
 
     if (url.includes('/tenants/public-branding') && method === 'GET') {
       await route.fulfill({
@@ -319,20 +335,17 @@ async function setupDashboardMocks(page: import('@playwright/test').Page) {
     }
 
     // Cualquier otro request pasa
-    await route.continue();
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+    });
   });
 }
 
-/** Establece el estado de sesión en localStorage para simular usuario ya autenticado */
+/** Establece la sesión simulada (cookie httpOnly + puente localStorage, OLA1-b C-9). */
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
-    ({ token, slug }: { token: string; slug: string }) => {
-      window.localStorage.setItem('iwana.portal.access-token', token);
-      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -378,7 +391,11 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
       if (/\/tenants\/[0-9a-f-]{36}/.test(url) && !url.includes('/tenants/me')) {
         platformEndpointCalled.push(url);
       }
-      void route.continue();
+      void route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+      });
     });
 
     await setupDashboardMocks(page);

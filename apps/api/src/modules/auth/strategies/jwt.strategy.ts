@@ -1,8 +1,9 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
+import { Request } from 'express';
 import Redis from 'ioredis';
-import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Strategy } from 'passport-jwt';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import {
   JWT_ACCEPTED_AUDIENCES,
@@ -10,11 +11,13 @@ import {
   JWT_CLAIMS_BY_TOKEN_TYPE,
 } from '../auth.constants';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { platformAccessCookieName, tenantAccessCookieName } from '../session-cookies.constants';
 
 /**
  * Estrategia JWT RS256 para Passport.
  *
- * Valida el access token Bearer en el header Authorization.
+ * Extrae el access token de la cabecera `Authorization` o de la cookie de
+ * access por audiencia (ADR-081, C-1) y lo valida.
  * Usa la clave publica RSA (jwt-public.pem) para verificar la firma.
  *
  * Verificaciones aplicadas, en orden:
@@ -39,13 +42,37 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: JwtStrategy.extractAccessToken,
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('JWT_PUBLIC_KEY').replace(/\\n/g, '\n'),
       algorithms: ['RS256'],
       issuer: JWT_ACCEPTED_ISSUERS,
       audience: JWT_ACCEPTED_AUDIENCES,
     });
+  }
+
+  /**
+   * Fuentes del access token, en orden (ADR-081, C-1):
+   *
+   * 1. Cabecera `Authorization: Bearer` — sigue operativa durante la transición.
+   * 2. Cookie de access por audiencia (`portalAccessToken` / `webAccessToken`,
+   *    `__Host-` en producción) — el navegador la adjunta sola, httpOnly.
+   *
+   * La coherencia (`iss`, `aud`) ↔ `type` la verifica `validate()`, de modo que
+   * leer ambas cookies no abre la frontera de audiencias (ADR-061).
+   */
+  private static extractAccessToken(req: Request): string | null {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader?.startsWith('Bearer ')) {
+      const bearerToken = authHeader.slice('Bearer '.length).trim();
+      if (bearerToken) {
+        return bearerToken;
+      }
+    }
+
+    const cookies = (req.cookies ?? {}) as Record<string, string>;
+    return cookies[tenantAccessCookieName()] ?? cookies[platformAccessCookieName()] ?? null;
   }
 
   /**

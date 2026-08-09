@@ -95,14 +95,14 @@ jobs:
         run: >-
           docker build --file apps/web/Dockerfile
           --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }}
-          --build-arg NEXT_PUBLIC_API_URL=https://ci.invalid/api/v1
+          --build-arg NEXT_PUBLIC_WEB_API_URL=https://ci.invalid/api/v1
           --tag "iwana-ci/web:${GITHUB_SHA}" .
 
       - name: Build portal image
         run: >-
           docker build --file apps/portal/Dockerfile
           --build-arg NODE_VERSION=${{ steps.node-version.outputs.version }}
-          --build-arg NEXT_PUBLIC_API_URL=https://ci.invalid/api/v1
+          --build-arg NEXT_PUBLIC_PORTAL_API_URL=https://ci.invalid/api/v1
           --tag "iwana-ci/portal:${GITHUB_SHA}" .
 
       - name: Build worker image

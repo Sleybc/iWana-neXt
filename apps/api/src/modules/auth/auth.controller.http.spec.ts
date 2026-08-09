@@ -61,6 +61,7 @@ describe('AuthController HTTP', () => {
     login: jest.fn(),
     loginPlatform: jest.fn(),
     refreshTokens: jest.fn(),
+    refreshPlatformTokens: jest.fn(),
     logout: jest.fn(),
     setupMfa: jest.fn(),
     verifyMfaSetup: jest.fn(),
@@ -233,6 +234,7 @@ describe('AuthController HTTP', () => {
     expect(mockAuthService.logout).toHaveBeenCalledWith(
       expect.objectContaining({ sub: 'user-uuid-1', jti: 'jti-http-test' }),
       'refresh-token-9',
+      undefined,
     );
   });
 
@@ -375,6 +377,59 @@ describe('AuthController HTTP', () => {
         .expect(200);
 
       expect(response.body).toEqual({ data: { accessToken: '', mfaRequired: true } });
+    });
+
+    it('emite las cookies de access y refresh en el login completo (C-6)', async () => {
+      mockAuthService.loginPlatform.mockResolvedValue({
+        accessToken: 'jwt-platform-1',
+        refreshToken: 'platform-refresh-1',
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/platform/login')
+        .set('User-Agent', 'jest-supertest-platform')
+        .send({ email: 'admin@example.test', password: 'Passw0rd!!' })
+        .expect(200);
+
+      expect(response.body).toEqual({ data: { accessToken: 'jwt-platform-1' } });
+      expect(response.headers['set-cookie']).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('webAccessToken=jwt-platform-1'),
+          expect.stringContaining('webRefreshToken=platform-refresh-1'),
+        ]),
+      );
+      expect(mockAuthService.loginPlatform).toHaveBeenCalledWith(
+        { email: 'admin@example.test', password: 'Passw0rd!!' },
+        expect.any(String),
+        'jest-supertest-platform',
+      );
+    });
+
+    it('rota la sesion de consola cuando refresh llega con la cookie de plataforma (C-6)', async () => {
+      mockAuthService.refreshPlatformTokens.mockResolvedValue({
+        accessToken: 'jwt-platform-2',
+        refreshToken: 'platform-refresh-2',
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['webRefreshToken=platform-refresh-1'])
+        .set('User-Agent', 'jest-supertest-platform-refresh')
+        .expect(200);
+
+      expect(response.body).toEqual({ data: { accessToken: 'jwt-platform-2' } });
+      expect(response.headers['set-cookie']).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('webAccessToken=jwt-platform-2'),
+          expect.stringContaining('webRefreshToken=platform-refresh-2'),
+        ]),
+      );
+      expect(mockAuthService.refreshPlatformTokens).toHaveBeenCalledWith(
+        'platform-refresh-1',
+        expect.any(String),
+        'jest-supertest-platform-refresh',
+      );
+      expect(mockAuthService.refreshTokens).not.toHaveBeenCalled();
     });
   });
 });

@@ -16,6 +16,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_PUBLIC_BRANDING = {
   displayName: 'ISP Demo',
@@ -40,6 +41,20 @@ function setupAdminFirstAccessMocks() {
       const request = route.request();
       const url = request.url();
       const method = request.method();
+
+      if (method === 'OPTIONS') {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': request.headers()['origin'] ?? '*',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+            'Access-Control-Allow-Headers':
+              'Authorization, Content-Type, X-Tenant-Slug, X-Requested-With',
+          },
+        });
+        return;
+      }
 
       if (url.includes('/tenants/public-branding') && method === 'GET') {
         await route.fulfill({
@@ -200,7 +215,11 @@ function setupAdminFirstAccessMocks() {
         return;
       }
 
-      await route.continue();
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+      });
     });
   };
 }
@@ -212,13 +231,30 @@ function setupAdminFirstAccessMocks() {
 test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   test.beforeEach(setupAdminFirstAccessMocks());
 
-  async function setMfaSetupSession(page: import('@playwright/test').Page): Promise<void> {
-    // localStorage requiere un documento con origen válido; about:blank produce SecurityError.
+  async function loginToMfaSetup(page: import('@playwright/test').Page): Promise<void> {
+    // El token de alcance limitado de MFA setup vive SOLO en memoria (ADR-081,
+    // decisión 6): el cliente ya no lee claves de token de localStorage (C-3/C-9).
+    // Para sembrarlo en un E2E hay que pasar por el flujo real de login, que es
+    // lo que llama a persistMfaSetupToken() en el api-client. El mock simula:
+    // 1er login (password temporal) → passwordResetRequired → change-password;
+    // 2do login (nueva password) → mfaSetupRequired=true + accessToken limitado,
+    // que el cliente persiste en memoria y redirige a /auth/mfa/setup.
+    await seedPortalSession(page, { tenantSlug: 'isp-demo' });
+
     await page.goto('/auth/login');
-    await page.evaluate(() => {
-      localStorage.setItem('iwana.portal.mfa-setup-token', 'mock-token-mfa-setup');
-      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
-    });
+    await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
+    await page.getByPlaceholder('••••••••').fill('TempPass123!');
+    await page.getByRole('button', { name: 'Ingresar' }).click();
+    await expect(page).toHaveURL(/\/auth\/change-password/, { timeout: 10_000 });
+
+    await page.goto('/auth/login');
+    await page.waitForLoadState('networkidle');
+    await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
+    await page.getByPlaceholder('••••••••').fill('NuevoPass456!');
+    await page.getByRole('button', { name: 'Ingresar' }).click();
+    await expect(page).toHaveURL(/\/auth\/mfa\/setup/, { timeout: 10_000 });
   }
 
   test('paso 1: login con password temporal → redirect a change-password', async ({ page }) => {
@@ -264,10 +300,9 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   test('paso 4: página de MFA setup muestra cargando y luego el formulario de configuración', async ({
     page,
   }) => {
-    // Navegar a /auth/mfa/setup con sesión limitada de setup MFA simulada.
-    await setMfaSetupSession(page);
-
-    await page.goto('/auth/mfa/setup');
+    // El flujo real de login deja el token limitado en memoria y aterriza en
+    // /auth/mfa/setup (no recargar: la recarga perdería el token en memoria).
+    await loginToMfaSetup(page);
 
     // Debe mostrar el heading de la página de setup
     await expect(
@@ -281,10 +316,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   });
 
   test('página de MFA setup es accesible (WCAG 2.2 AA básico)', async ({ page }) => {
-    await setMfaSetupSession(page);
-
-    await page.goto('/auth/mfa/setup');
-    await page.waitForLoadState('networkidle');
+    await loginToMfaSetup(page);
 
     // Verificar elementos de accesibilidad básicos
     const heading = page.getByRole('heading', { name: 'Configurar autenticación segura' });
@@ -302,13 +334,6 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
-  async function setTenantSlug(page: import('@playwright/test').Page): Promise<void> {
-    await page.goto('/auth/login');
-    await page.evaluate(() => {
-      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
-    });
-  }
-
   test('ADMIN sin MFA ve la página de setup correctamente', async ({ page }) => {
     await page.route('**/api/v1/**', async (route) => {
       const url = route.request().url();
@@ -319,6 +344,19 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ data: MOCK_PUBLIC_BRANDING }),
+        });
+        return;
+      }
+
+      if (url.endsWith('/auth/login') && method === 'POST') {
+        // Login real que emite el token limitado de MFA setup: el cliente lo
+        // persiste en memoria (ADR-081, decisión 6) y redirige a /auth/mfa/setup.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: { accessToken: 'mock-limited-token', mfaSetupRequired: true },
+          }),
         });
         return;
       }
@@ -340,15 +378,24 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
         return;
       }
 
-      await route.continue();
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+      });
     });
 
-    await setTenantSlug(page);
-    await page.evaluate(() => {
-      localStorage.setItem('iwana.portal.mfa-setup-token', 'mock-limited-token');
-    });
+    await seedPortalSession(page, { tenantSlug: 'isp-demo' });
 
-    await page.goto('/auth/mfa/setup');
+    // El token limitado se siembra por el flujo real de login (memoria), no por
+    // localStorage (C-3/C-9): el cliente ya no lee claves de token de storage.
+    await page.goto('/auth/login');
+    await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
+    await page.getByPlaceholder('••••••••').fill('TempPass123!');
+    await page.getByRole('button', { name: 'Ingresar' }).click();
+
+    await expect(page).toHaveURL(/\/auth\/mfa\/setup/, { timeout: 10_000 });
     await page.waitForLoadState('networkidle');
 
     // El heading principal debe ser visible
@@ -362,7 +409,7 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
     await expect(page.getByText(/Ingresa el código de 6 dígitos/)).toBeVisible();
   });
 
-  test('sin token de MFA setup en localStorage → redirige al login', async ({ page }) => {
+  test('sin token de MFA setup en memoria → redirige al login', async ({ page }) => {
     await page.route('**/api/v1/**', async (route) => {
       const url = route.request().url();
       const method = route.request().method();
@@ -386,14 +433,15 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
         return;
       }
 
-      await route.continue();
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'E2E_UNMOCKED', message: route.request().url() }),
+      });
     });
 
-    // Sin token en localStorage — el componente debe redirigir al login
-    await setTenantSlug(page);
-    await page.evaluate(() => {
-      localStorage.removeItem('iwana.portal.mfa-setup-token');
-    });
+    // Sin token de MFA setup en memoria — el componente debe redirigir al login
+    await seedPortalSession(page, { tenantSlug: 'isp-demo' });
 
     await page.goto('/auth/mfa/setup');
     await page.waitForLoadState('networkidle');

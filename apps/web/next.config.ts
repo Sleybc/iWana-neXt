@@ -1,7 +1,10 @@
 import type { NextConfig } from 'next';
 
 function resolveWebApiProxyBase(): string {
-  const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+  // C-4 (ADR-081): variable de URL del API por aplicacion. Sin definir, el
+  // bundle del navegador resuelve mismo-origen (/api/v1) y el rewrite apunta al
+  // API local de desarrollo.
+  const configuredApiBase = process.env.NEXT_PUBLIC_WEB_API_URL?.trim();
 
   if (configuredApiBase && /^https?:\/\//.test(configuredApiBase)) {
     return configuredApiBase.replace(/\/$/, '');
@@ -26,10 +29,16 @@ function resolveWebApiProxyBase(): string {
  * Politica baseline de CSP sin nonces (documentacion oficial de Next.js para
  * apps sin proxy.ts): 'unsafe-inline' en script-src/style-src es requerido por
  * los scripts de bootstrap inline de Next y los estilos inline de React
- * (vercel/next.js#80997). Normalizada a una sola linea antes de emitirse.
+ * (vercel/next.js#80997). En desarrollo, webpack necesita ademas 'unsafe-eval'.
+ * Normalizada a una sola linea antes de emitirse.
  */
+const scriptSrcDirective =
+  process.env.NODE_ENV === 'production'
+    ? "script-src 'self' 'unsafe-inline'"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+
 const contentSecurityPolicy = `default-src 'self';
-  script-src 'self' 'unsafe-inline';
+  ${scriptSrcDirective};
   style-src 'self' 'unsafe-inline';
   img-src 'self' blob: data:;
   font-src 'self';

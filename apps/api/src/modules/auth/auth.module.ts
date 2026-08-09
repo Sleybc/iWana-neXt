@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AbacGuard } from './guards/abac.guard';
 import { PlatformOnlyGuard } from './guards/platform-only.guard';
+import { CsrfGuard } from './guards/csrf.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuditModule } from '../audit/audit.module';
 import { PlatformBootstrapService } from './platform-bootstrap.service';
@@ -72,6 +73,7 @@ import { PlatformBootstrapService } from './platform-bootstrap.service';
     RolesGuard,
     AbacGuard,
     PlatformOnlyGuard,
+    CsrfGuard,
     PlatformBootstrapService,
   ],
   exports: [
@@ -80,6 +82,7 @@ import { PlatformBootstrapService } from './platform-bootstrap.service';
     RolesGuard,
     AbacGuard,
     PlatformOnlyGuard,
+    CsrfGuard,
     JwtModule,
     // Decoradores son funciones puras — no se exportan como providers
   ],

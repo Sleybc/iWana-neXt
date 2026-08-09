@@ -123,7 +123,7 @@ Un cache miss ocurre cuando Turborepo no puede reutilizar un resultado previo.
 // Declarar variables de entorno que afectan el output
 "build": {
   "dependsOn": ["^build"],
-  "env": ["NODE_ENV", "NEXT_PUBLIC_API_URL"],
+  "env": ["NODE_ENV", "NEXT_PUBLIC_WEB_API_URL", "NEXT_PUBLIC_PORTAL_API_URL"],
   "outputs": [".next/**", "!.next/cache/**"]
 }
 ```

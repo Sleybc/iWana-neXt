@@ -3,6 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import { TenantContext, Tenant } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import { Request, Response } from 'express';
+import {
+  platformRefreshCookieName,
+  tenantAccessCookieName,
+} from '../auth/session-cookies.constants';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantService } from './tenant.service';
 
@@ -216,6 +220,131 @@ describe('TenantMiddleware', () => {
     await middleware.use(request, {} as Response, next);
 
     expect(tenantService.findById).not.toHaveBeenCalled();
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('resuelve el contexto desde la cookie de access cuando hay JWT valido (C-1)', async () => {
+    const tenant = buildTenant();
+    jwtService.verify.mockReturnValue({
+      sub: 'user-uuid-1',
+      email: 'hash-email-123',
+      role: 'tenant_admin',
+      tenantId: tenant.id,
+      schemaName: tenant.schemaName,
+      jti: 'jwt-jti-cookie',
+      type: 'tenant',
+    });
+    tenantService.findById.mockResolvedValue(tenant);
+
+    const request = buildRequest({
+      cookies: { [tenantAccessCookieName()]: 'cookie.jwt.token' },
+    });
+
+    const next = jest.fn(() => {
+      expect(TenantContext.get()).toEqual({
+        tenantId: tenant.id,
+        schemaName: tenant.schemaName,
+        tenantSlug: tenant.slug,
+      });
+    });
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(jwtService.verify).toHaveBeenCalledWith('cookie.jwt.token');
+    expect(tenantService.findById).toHaveBeenCalledWith(tenant.id);
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  // TEST DE ARQUITECTURA (C-1, BLOQUEANTE DE MERGE): una petición autenticada
+  // de tenant NUNCA resuelve contexto por `X-Tenant-Slug`, ni siquiera cuando
+  // la cabecera viaja con un valor impostor. Si este test falla, el contexto
+  // volvió a depender de un valor controlado por el cliente en rutas
+  // autenticadas: es una regresión de multi-tenancy y se bloquea el merge.
+  it('una peticion autenticada con JWT de tenant valido NUNCA resuelve contexto por X-Tenant-Slug', async () => {
+    const realTenant = buildTenant({ id: 'tenant-uuid-real', schemaName: 'tenant_real' });
+    jwtService.verify.mockReturnValue({
+      sub: 'user-uuid-1',
+      email: 'hash-email-123',
+      role: 'tenant_admin',
+      tenantId: realTenant.id,
+      schemaName: realTenant.schemaName,
+      jti: 'jwt-jti-5',
+      type: 'tenant',
+    });
+    tenantService.findById.mockResolvedValue(realTenant);
+    tenantService.findBySlug.mockResolvedValue(
+      buildTenant({ id: 'tenant-uuid-spoofed', slug: 'otro-tenant', schemaName: 'tenant_spoofed' }),
+    );
+
+    const request = buildRequest({
+      headers: {
+        authorization: 'Bearer valid.jwt.token',
+        'x-tenant-slug': 'otro-tenant',
+      },
+    });
+
+    const next = jest.fn(() => {
+      expect(TenantContext.get()).toEqual({
+        tenantId: realTenant.id,
+        schemaName: realTenant.schemaName,
+        tenantSlug: realTenant.slug,
+      });
+    });
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
+    expect(tenantService.findById).toHaveBeenCalledWith(realTenant.id);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('una peticion autenticada por cookie con X-Tenant-Slug impostor tambien resuelve por el token (C-1)', async () => {
+    const realTenant = buildTenant();
+    jwtService.verify.mockReturnValue({
+      sub: 'user-uuid-1',
+      email: 'hash-email-123',
+      role: 'tenant_admin',
+      tenantId: realTenant.id,
+      schemaName: realTenant.schemaName,
+      jti: 'jwt-jti-6',
+      type: 'tenant',
+    });
+    tenantService.findById.mockResolvedValue(realTenant);
+
+    const request = buildRequest({
+      headers: { 'x-tenant-slug': 'impostor' },
+      cookies: { [tenantAccessCookieName()]: 'cookie.jwt.token' },
+    });
+
+    const next = jest.fn(() => {
+      expect(TenantContext.get()).toEqual({
+        tenantId: realTenant.id,
+        schemaName: realTenant.schemaName,
+        tenantSlug: realTenant.slug,
+      });
+    });
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
+    expect(tenantService.findById).toHaveBeenCalledWith(realTenant.id);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('no exige X-Tenant-Slug en /auth/refresh con cookie de refresh de plataforma (C-6)', async () => {
+    const request = buildRequest({
+      method: 'POST',
+      originalUrl: '/api/v1/auth/refresh',
+      url: '/api/v1/auth/refresh',
+      cookies: { [platformRefreshCookieName()]: 'platform.refresh.token' },
+    });
+
+    const next = jest.fn();
+
+    await middleware.use(request, {} as Response, next);
+
     expect(tenantService.findBySlug).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
   });
