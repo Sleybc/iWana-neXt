@@ -1,7 +1,7 @@
 # PROMPT — Plataforma · Experiencia de arranque · Fase F5: instalador on-premise
 
 **Versión:** 1.0
-**Fecha:** 2026-08-08
+**Fecha:** 2026-08-09
 **Generado por:** AI-EM-ARCH
 **Destinatario:** AI-PLAT-OPS (ejecuta) · **AI-SEC-ENG (revisión obligatoria — el script manipula secretos)**
 **Etapa del workflow:** 5 (implementación)
@@ -36,7 +36,7 @@
 ## 2. Artefactos de entrada obligatorios
 
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §2.2 CU-03, §4.6
-- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* — Decisión 6 y Decisión 7
+- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — Decisión 6 y Decisión 7
 - **ADR:** [ADR-057](../adrs/ADR-057-Credenciales-Iniciales-Por-Tenant.md) — el invariante de que la credencial no la conoce quien despliega
 - **Código vigente:** `scripts/generate-secrets.sh`, `scripts/generate-certs.ps1`, `docker-compose.prod.yml`, `.env.production.example`, `scripts/nginx-config.test.mjs` (patrón de validación estática de configuración), `scripts/audit-docker-context.mjs` (patrón de gate)
 - **Referencia externa:** repositorio `Ubiquiti-App/UCRM`, script de instalación — referencia de **invariantes**: validar antes de empezar, preguntar solo lo necesario, mostrar la descarga, esperar a que responda, cerrar con instrucción

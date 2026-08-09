@@ -1,13 +1,13 @@
 # HLD — Experiencia de arranque e instalación de la plataforma
 
 **Versión:** 1.0
-**Estado:** Propuesto — requiere G1 del CTO (el frente emite [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)*)
-**Fecha:** 2026-08-08
+**Estado:** **Aprobado** — G1 cumplido el 2026-08-09 por el CTO al aprobar [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md), con la **Decisión 4 de ejecución diferida** (§4.4, §9)
+**Fecha:** 2026-08-09
 **Modo activo:** Architect + Product Architect + EM
 **Autor:** AI-EM-ARCH
 **Etapa del workflow:** 1
 **Módulos:** Plataforma transversal — **no es un módulo del roadmap**, no dispara la Regla de Completitud de [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)
-**ADR que lo formaliza:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)*
+**ADR que lo formaliza:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md)
 **Relacionado:** [ADR-057](../adrs/ADR-057-Credenciales-Iniciales-Por-Tenant.md) (credenciales iniciales) · [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* (bind host y PII) · [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía de gates)
 **Evidencia de estado actual:** [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) · [INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md](../informes/INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md) *(parcialmente superado)*
 
@@ -140,7 +140,7 @@ Y una tercera superficie, independiente del contrato: `scripts/install.sh`, que 
 
 ## 4. Decisiones de diseño
 
-Las seis decisiones que siguen son el contenido sustantivo del frente. [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* las formaliza para aprobación del CTO.
+Las seis decisiones que siguen son el contenido sustantivo del frente. [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) las formaliza para aprobación del CTO.
 
 ### 4.1 D1 — Un shape de estado, dos productores
 
@@ -168,7 +168,9 @@ Hoy `docker-compose.prod.yml` hace depender `nginx-prod` de `api-prod`, `web-pro
 
 > **Artefacto previo que queda superado.** El comentario que acompaña a esa condición en `docker-compose.prod.yml` justifica el endurecimiento con estas palabras: *"`service_started` solo garantizaba que el contenedor se hubiera creado: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto."* Esa razón era correcta y **queda satisfecha por otra vía**: el 502 deja de existir porque `error_page 502 503 504 = @boot` lo sustituye por la pantalla de arranque. No es una regresión, es una sustitución de mecanismo — y por eso debe registrarse en el ADR y reescribirse el comentario en el mismo acto. Revertir la condición sin tocar el comentario dejaría dos razones contradictorias vigentes.
 
-Esta decisión arrastra dos obligaciones técnicas inseparables, que el prompt de F4 debe exigir juntas:
+> **Aprobada con ejecución diferida (2026-08-09).** El CTO aprobó ADR-079 con esta decisión atada al disparador de reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md): hoy no existe entorno donde observar sus tres criterios críticos, y ejecutarla obligaría a declararlos cumplidos sin verlos. Por eso la fase se parte en **F4a** (desarrollo, ejecutable) y **F4b** (producción, cerrada). Detalle en ADR-079 §Consecuencias → *"Por qué la Decisión 4 se difiere"*.
+
+Esta decisión arrastra dos obligaciones técnicas inseparables, que el prompt de F4b debe exigir juntas:
 
 1. **Resolución dinámica de upstreams.** Con `depends_on` relajado, los nombres `api-prod`/`web-prod`/`portal-prod` pueden no resolver al cargar la configuración y nginx se negaría a arrancar. Se resuelve con `resolver` del DNS interno de Docker y `proxy_pass` por variable **sin parte de URI**, para conservar el request URI original.
 2. **El healthcheck de `nginx-prod` pasa de `/` a `/health`.** Si no, el contenedor se declara sano por el mero hecho de servir la pantalla de "arrancando", que es exactamente lo contrario de lo que un probe debe significar. Queda como regla de operación: **`/` responde 200 con la pantalla; la sonda máquina-a-máquina es `/health`.**
@@ -273,7 +275,7 @@ El componente `background` necesita una señal de vida del worker. **Esa señal 
 
 **Este frente consume ese latido; no lo redefine ni sustituye el probe.**
 
-> **[DESEMPATE] resuelto por AI-EM-ARCH, 2026-08-08.** Aquel prompt dejaba abierta la elección del medio entre **archivo local** del contenedor del worker y **clave en la caché con vencimiento**, y pedía que AI-SR-FULL decidiera y documentara el motivo. La elección **queda cerrada a favor de la caché**: F2 necesita leer la marca **desde otro contenedor**, y un archivo local del worker no es observable desde la API. Ese requisito no existía cuando se emitió aquel prompt. **La sustitución alcanza solo a la elección de medio**; el resto de aquel prompt sigue vigente sin cambios.
+> **[DESEMPATE] resuelto por AI-EM-ARCH, 2026-08-09.** Aquel prompt dejaba abierta la elección del medio entre **archivo local** del contenedor del worker y **clave en la caché con vencimiento**, y pedía que AI-SR-FULL decidiera y documentara el motivo. La elección **queda cerrada a favor de la caché**: F2 necesita leer la marca **desde otro contenedor**, y un archivo local del worker no es observable desde la API. Ese requisito no existía cuando se emitió aquel prompt. **La sustitución alcanza solo a la elección de medio**; el resto de aquel prompt sigue vigente sin cambios.
 
 Consecuencia de secuencia: si el latido no está publicado cuando arranca F2, la sonda se implementa contra su contrato y se verifica con doble. **No bloquea la fase**, pero su criterio de aceptación no se cierra hasta que el latido real exista.
 
@@ -291,16 +293,17 @@ Registrado en [DECISION-BLOQUEO-ADMIN-BOOTSTRAP-PRODUCCION-v1.0.md](../quality/D
 
 | # | Fase | Responsable | Depende de |
 |---|---|---|---|
-| F0 | Congelar contratos C1–C4 | AI-SR-FULL · AI-PROD-UX · AI-DS-OWNER · AI-SEC-ENG | Este HLD + ADR-079 *(propuesto)* |
+| F0 | Congelar contratos C1–C4 | AI-SR-FULL · AI-PROD-UX · AI-DS-OWNER · AI-SEC-ENG | Este HLD + ADR-079 |
 | F1 | Terminal de desarrollo | AI-PLAT-OPS | C2, C4 |
 | F2 | API de estado de arranque | AI-SR-FULL | C1 |
 | F3 | Pantalla de arranque | AI-FE-PLATFORM · AI-DS-OWNER · AI-PROD-UX | C1, C3 |
-| F4 | Cableado de proxy dev y producción | AI-PLAT-OPS | F3 (esqueleto) |
-| F5 | Instalador on-premise | AI-PLAT-OPS · AI-SEC-ENG | Este HLD + ADR-079 *(propuesto)* |
+| F4a | Cableado de proxy en **desarrollo** | AI-PLAT-OPS | F3 (esqueleto) |
+| **F4b** | Cableado de proxy en **producción** — Decisión 4 | AI-PLAT-OPS | **Cerrada.** Disparador de ADR-070 |
+| F5 | Instalador on-premise | AI-PLAT-OPS · AI-SEC-ENG | Este HLD + ADR-079 |
 | F6 | Calidad y evidencia | AI-SR-QA | F1–F5 |
 | F7 | Consolidación, G6.5 y cierre | AI-EM-ARCH | F6 |
 
-Camino crítico **F0 → F3 → F4 → F6**. F1, F2 y F5 caben dentro de esa ventana.
+Camino crítico **F0 → F3 → F4a → F6**. F1, F2 y F5 caben dentro de esa ventana. **F4b queda fuera del camino crítico** por diferimiento aprobado: el frente puede alcanzar G6 y G6.5 sin ella, declarando entrega parcial.
 
 ### Contratos congelables (protocolo §3bis)
 
@@ -308,8 +311,8 @@ Camino crítico **F0 → F3 → F4 → F6**. F1, F2 y F5 caben dentro de esa ven
 |---|---|---|---|---|
 | C1 | API de estado de arranque | `packages/shared/src/contracts/system/boot-status.contract.ts` | AI-SR-FULL | AI-EM-ARCH + AI-SEC-ENG |
 | C2 | Mismo shape para el archivo de estado de dev | Declarado en `PROMPT-PLATAFORMA-ARRANQUE-F1-v1.0.md` | AI-PLAT-OPS | AI-EM-ARCH |
-| C3 | Tokens y geometría del medidor no-React | `docs/specs/2026-08-08-arranque-sistema-ds-contrato.md` | AI-DS-OWNER | AI-PROD-UX |
-| C4 | Identificadores de paso y copy en español | `docs/specs/2026-08-08-arranque-sistema-ux-spec.md` | AI-PROD-UX | AI-PLAT-OPS |
+| C3 | Tokens y geometría del medidor no-React | `docs/specs/2026-08-09-arranque-sistema-ds-contrato.md` | AI-DS-OWNER | AI-PROD-UX |
+| C4 | Identificadores de paso y copy en español | `docs/specs/2026-08-09-arranque-sistema-ux-spec.md` | AI-PROD-UX | AI-PLAT-OPS |
 
 Un contrato sin artefacto localizable en `docs/` y sin declaración de congelación en el prompt de fase **no está congelado**.
 
@@ -323,10 +326,10 @@ Un contrato sin artefacto localizable en `docs/` y sin declaración de congelaci
 | CA-HLD-02 | En modo no interactivo, el arranque emite líneas planas con contador de paso y una señal periódica de que sigue vivo |
 | CA-HLD-03 | Ningún banner, log ni salida del instalador contiene el **valor** de un secreto, verificado por prueba automatizada |
 | CA-HLD-04 | La pantalla de arranque muestra el mismo porcentaje que la terminal en desarrollo |
-| CA-HLD-05 | En producción, abrir la raíz durante las migraciones devuelve 200 con la pantalla de arranque, no una conexión rechazada |
+| CA-HLD-05 | En producción, abrir la raíz durante las migraciones devuelve 200 con la pantalla de arranque, no una conexión rechazada — **diferido a F4b**, no se evalúa para el cierre del frente |
 | CA-HLD-06 | Con el sistema listo, la respuesta de estado no reporta componentes |
 | CA-HLD-07 | El instalador se detiene con mensaje legible si las referencias de imagen siguen pendientes de aprobación |
-| CA-HLD-08 | El comentario del compose que justificaba la condición anterior de `depends_on` queda reescrito en el mismo cambio que la relaja |
+| CA-HLD-08 | El comentario del compose que justificaba la condición anterior de `depends_on` queda reescrito en el mismo cambio que la relaja — **diferido a F4b** |
 | CA-HLD-09 | Ningún token usado por la pantalla puede desaparecer del design system sin que CI lo detecte |
 | CA-HLD-10 | Los gates documentales quedan en verde: ubicación de artefactos y citas de ADR sin bloqueantes |
 
@@ -334,7 +337,7 @@ Un contrato sin artefacto localizable en `docs/` y sin declaración de congelaci
 
 ## 11. Trazabilidad
 
-- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)*
+- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md)
 - **Prompts de ejecución:** `docs/prompts/PROMPT-PLATAFORMA-ARRANQUE-F{0..6}-v1.0.md`
 - **Checklists vivos:** `docs/quality/CHECKLIST-PLATAFORMA-ARRANQUE-F{0..6}-v1.0.md` y [tablero](../quality/CHECKLIST-PLATAFORMA-ARRANQUE-TABLERO-v1.0.md)
 - **Informes:** [plantilla de fase](../informes/PLANTILLA-INFORME-PLATAFORMA-ARRANQUE-FASE-v1.0.md) · [informe consolidado](../informes/INFORME-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md)

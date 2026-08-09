@@ -1,7 +1,7 @@
 # CHECKLIST — Plataforma · Experiencia de arranque · F6 calidad y evidencia
 
-**Fecha de apertura:** 2026-08-08
-**Estado:** Abierto — bloqueado por F1 a F5
+**Fecha de apertura:** 2026-08-09
+**Estado:** Abierto — bloqueado por F1, F2, F3, F4a y F5. **F4b está diferida y no entra en el alcance de verificación**
 **Prompt:** [PROMPT-PLATAFORMA-ARRANQUE-F6-v1.0.md](../prompts/PROMPT-PLATAFORMA-ARRANQUE-F6-v1.0.md)
 **Informe:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F6-v1.0.md`
 **Responsable:** AI-SR-QA
@@ -27,7 +27,9 @@
 - [ ] Matriz criterio ↔ prueba para los criterios de F1 (CA-F1-01 a 12)
 - [ ] Matriz criterio ↔ prueba para los criterios de F2 (CA-F2-01 a 14)
 - [ ] Matriz criterio ↔ prueba para los criterios de F3 (CA-F3-01 a 13)
-- [ ] Matriz criterio ↔ prueba para los criterios de F4 (CA-F4-01 a 13)
+- [ ] Matriz criterio ↔ prueba para los criterios de F4a (CA-F4A-01 a 08)
+- [ ] Criterios de F4b (CA-F4B-01 a 11) reportados como **diferidos** con su condición de apertura — **no como no cubiertos**
+- [ ] **CA-HLD-05** y **CA-HLD-08** reportados como **diferidos**: dependen de F4b
 - [ ] Matriz criterio ↔ prueba para los criterios de F5 (CA-F5-01 a 13)
 - [ ] **Ninguna fila vacía ni estimada.** Un criterio sin prueba se reporta **no cubierto** *(CA-F6-01)*
 
@@ -52,9 +54,9 @@ Cada uno se ejecuta, se registra su fallo esperado y **se revierte**.
 - [ ] Añadir un campo al DTO de estado → la prueba de forma **falla** *(CA-F6-04)*
 - [ ] Eliminar del design system un token que usa la pantalla → la prueba anti-deriva **falla** *(CA-F6-04)*
 - [ ] Introducir en el instalador una línea que emite un secreto → la prueba de higiene **falla** *(CA-F6-04)*
-- [ ] Apuntar el probe del contenedor de proxy a la raíz → la prueba de F4 **falla** *(CA-F6-04)*
+- [ ] *(Solo con F4b abierta)* Apuntar el probe del contenedor de proxy a la raíz → la prueba de F4b **falla**. Con F4b diferida, **no aplica** *(CA-F6-04)*
 - [ ] Presentar un destino de redirección de otro origen → la pantalla **no lo sigue** *(CA-F6-04)*
-- [ ] **Los cinco controles revertidos**; ninguno queda aplicado *(CA-F6-04)*
+- [ ] **Los controles aplicables revertidos**; ninguno queda aplicado *(CA-F6-04)*
 
 ## 5. Modos de ejecución
 
@@ -63,7 +65,7 @@ Cada uno se ejecuta, se registra su fallo esperado y **se revierte**.
 - [ ] Gate de referencias de imagen verificado *(CA-F6-06)*
 - [ ] Bloque de pendiente sobre el primer administrador presente *(CA-F6-06)*
 
-## 6. Resistencia del progreso — ADR-079 *(propuesto)* Decisión 7
+## 6. Resistencia del progreso — ADR-079 Decisión 7
 
 - [ ] El arranque completa con la descarga **desactivada** *(CA-F6-07)*
 - [ ] El arranque completa **sin red** *(CA-F6-07)*

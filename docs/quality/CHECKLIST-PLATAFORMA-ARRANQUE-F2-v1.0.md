@@ -1,6 +1,6 @@
 # CHECKLIST — Plataforma · Experiencia de arranque · F2 API de estado de arranque
 
-**Fecha de apertura:** 2026-08-08
+**Fecha de apertura:** 2026-08-09
 **Estado:** Abierto — bloqueado por F0 (contrato C1)
 **Prompt:** [PROMPT-PLATAFORMA-ARRANQUE-F2-v1.0.md](../prompts/PROMPT-PLATAFORMA-ARRANQUE-F2-v1.0.md)
 **Informe:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F2-v1.0.md`
@@ -50,7 +50,7 @@
 - [ ] Una sonda que vence produce degradado con pista, **nunca excepción propagada ni mensaje de driver** *(CA-F2-03)*
 - [ ] El manejador completa por debajo de un segundo con todas las sondas fallando *(CA-F2-11)*
 
-## 4. Seguridad — ADR-079 *(propuesto)* Decisión 5
+## 4. Seguridad — ADR-079 Decisión 5
 
 - [ ] Vocabulario genérico: ningún identificador nombra producto o motor *(CA-F2-05)*
 - [ ] Estados de conjunto cerrado, **sin `failed`**, sin texto libre
@@ -102,7 +102,7 @@ El latido **no pertenece a esta fase**: lo encarga [PROMPT-SR-FULL-WORKER-HEARTB
 
 ## Pendientes, bloqueos y consultas
 
-**`[DESEMPATE]` resuelto · AI-EM-ARCH · 2026-08-08**
+**`[DESEMPATE]` resuelto · AI-EM-ARCH · 2026-08-09**
 **Área RACI:** infraestructura y backend — medio de la marca de vida del worker.
 **Posiciones:** [PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md) dejaba abierta la elección entre archivo local del contenedor del worker y clave en la caché con vencimiento, y pedía que AI-SR-FULL decidiera y documentara el motivo. F2 necesita leer la marca **desde otro contenedor**.
 **Decisión:** el medio es la **caché**. Un archivo local del worker no es observable desde la API, así que la opción de archivo queda descartada.

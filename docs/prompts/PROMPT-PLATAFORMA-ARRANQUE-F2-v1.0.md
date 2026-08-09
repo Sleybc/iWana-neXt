@@ -1,7 +1,7 @@
 # PROMPT — Plataforma · Experiencia de arranque · Fase F2: API de estado de arranque
 
 **Versión:** 1.0
-**Fecha:** 2026-08-08
+**Fecha:** 2026-08-09
 **Generado por:** AI-EM-ARCH
 **Destinatario:** AI-SR-FULL · **revisión reforzada obligatoria de AI-SEC-ENG** (superficie de autenticación pública nueva)
 **Etapa del workflow:** 5 (implementación)
@@ -28,7 +28,7 @@
 - **No** sustituye el healthcheck del contenedor de trabajos en segundo plano — es alcance del otro prompt.
 - **Sí** lee la marca de vida para resolver el componente `background`.
 
-**[DESEMPATE] resuelto por AI-EM-ARCH, 2026-08-08.** El prompt del latido dejaba deliberadamente abierta la elección del medio entre **archivo local** en el contenedor del worker y **clave en la caché con vencimiento**. Esa elección **queda cerrada a favor de la caché**, por una razón que aquel prompt no podía anticipar: F2 necesita leer la marca **desde otro contenedor**, y un archivo local del worker no es observable desde la API. El resto de aquel prompt —emisor acoplado al bucle de eventos, umbral configurable, ausencia de PII, interacción verificada con la prueba de fallo de caché— sigue vigente sin cambios. Registro en el [tablero](../quality/CHECKLIST-PLATAFORMA-ARRANQUE-TABLERO-v1.0.md) §4.
+**[DESEMPATE] resuelto por AI-EM-ARCH, 2026-08-09.** El prompt del latido dejaba deliberadamente abierta la elección del medio entre **archivo local** en el contenedor del worker y **clave en la caché con vencimiento**. Esa elección **queda cerrada a favor de la caché**, por una razón que aquel prompt no podía anticipar: F2 necesita leer la marca **desde otro contenedor**, y un archivo local del worker no es observable desde la API. El resto de aquel prompt —emisor acoplado al bucle de eventos, umbral configurable, ausencia de PII, interacción verificada con la prueba de fallo de caché— sigue vigente sin cambios. Registro en el [tablero](../quality/CHECKLIST-PLATAFORMA-ARRANQUE-TABLERO-v1.0.md) §4.
 
 **Orden de ejecución:** si el latido aún no existe cuando F2 arranca, la sonda `background` se implementa contra el contrato de la marca y se verifica con doble: **no se bloquea la fase**, pero el criterio CA-F2-15 no se cierra hasta que el latido real esté publicado.
 
@@ -59,7 +59,7 @@
 ## 2. Artefactos de entrada obligatorios
 
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §4.5, §5, §6
-- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* — **Decisión 5 es normativa y no admite interpretación**
+- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — **Decisión 5 es normativa y no admite interpretación**
 - **Contrato C1** y su dictamen de AI-SEC-ENG de F0
 - **Código vigente:** `apps/api/src/modules/health/health.controller.ts` (patrón de controlador público y de degradación de telemetría), `apps/api/src/app.module.ts` (registro y límite de tasa global)
 
@@ -78,7 +78,7 @@
    - **Búsqueda:** consulta de salud del servicio.
    - **Esquema:** migraciones aplicadas frente al conteo esperado compilado. **Reporta únicamente iniciando o listo. Jamás los números, ni los nombres, ni el identificador de la última migración.**
    - **Trabajos en segundo plano:** presencia y antigüedad de la marca de vida que publica el worker en la caché, **según el contrato de [PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md)**. F2 la lee; no la emite.
-   - **Identidad:** par de claves cargado y almacén de identidad alcanzable. **Nunca consulta ni reporta si existe una cuenta de administrador** — ADR-079 *(propuesto)* Decisión 5.4.
+   - **Identidad:** par de claves cargado y almacén de identidad alcanzable. **Nunca consulta ni reporta si existe una cuenta de administrador** — ADR-079 Decisión 5.4.
 
 4. **Ejecución de sondas.** Todas en paralelo, tolerando fallos individuales, con vencimiento corto por sonda. El manejador nunca debe superar aproximadamente un segundo en total. Una sonda que vence se traduce a estado degradado con pista, **nunca a una excepción propagada**.
 
@@ -96,7 +96,7 @@
 
 ## 4. Restricciones no negociables
 
-1. **La lista de campos prohibidos de ADR-079 *(propuesto)* Decisión 5.5 es cerrada.** Ni versiones, ni nombres de producto, ni hostnames, ni puertos, ni endpoints internos, ni nombres de schema, ni identificadores o conteos de migración, ni conteos de tenant o usuario, ni marcas de tiempo de arranque, ni uptime, ni identificador de build, ni mensajes de driver, ni trazas.
+1. **La lista de campos prohibidos de ADR-079 Decisión 5.5 es cerrada.** Ni versiones, ni nombres de producto, ni hostnames, ni puertos, ni endpoints internos, ni nombres de schema, ni identificadores o conteos de migración, ni conteos de tenant o usuario, ni marcas de tiempo de arranque, ni uptime, ni identificador de build, ni mensajes de driver, ni trazas.
 2. **Ningún mensaje de error del backend llega al cuerpo de la respuesta.** Los fallos se traducen a estado degradado y pista de conjunto cerrado.
 3. **Sin contexto de tenant.** La superficie es pre-tenant: no se resuelve tenant desde el token, no se abre `search_path`, no se consulta ninguna tabla de schema tenant.
 4. **No tocar `GET /api/v1/health`** ni el healthcheck de ningún contenedor.

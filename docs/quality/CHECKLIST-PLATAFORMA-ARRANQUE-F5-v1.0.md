@@ -1,6 +1,6 @@
 # CHECKLIST — Plataforma · Experiencia de arranque · F5 instalador on-premise
 
-**Fecha de apertura:** 2026-08-08
+**Fecha de apertura:** 2026-08-09
 **Estado:** Abierto — **con bloqueo declarado abierto** sobre el cierre de la fase
 **Prompt:** [PROMPT-PLATAFORMA-ARRANQUE-F5-v1.0.md](../prompts/PROMPT-PLATAFORMA-ARRANQUE-F5-v1.0.md)
 **Informe:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F5-v1.0.md`
@@ -98,10 +98,10 @@
 
 ## Pendientes, bloqueos y consultas
 
-**`[BLOQUEO]` De: AI-EM-ARCH → A: CTO · Abierto desde 2026-08-08**
+**`[BLOQUEO]` De: AI-EM-ARCH → A: CTO · Abierto desde 2026-08-09**
 **Contexto:** creación del primer administrador de plataforma en producción.
 **Causa:** la configuración de la API rechaza por validación las variables de credencial de arranque cuando el entorno es productivo o de staging, y no existe camino alternativo. El instalador dejaría la instancia levantada y sin forma de entrar.
-**Bloqueante:** para el cierre de F5. **No bloquea F1, F2, F3, F4 ni F6.**
+**Bloqueante:** para el cierre de F5. **No bloquea F1, F2, F3, F4a ni F6.**
 **Supuesto mientras tanto:** el instalador cierra con bloque de pendiente explícito.
 **Detalle y opciones:** [DECISION-BLOQUEO-ADMIN-BOOTSTRAP-PRODUCCION-v1.0.md](DECISION-BLOQUEO-ADMIN-BOOTSTRAP-PRODUCCION-v1.0.md)
 

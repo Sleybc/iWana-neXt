@@ -1,7 +1,7 @@
 # PROMPT — Plataforma · Experiencia de arranque · Fase F3: pantalla de arranque
 
 **Versión:** 1.0
-**Fecha:** 2026-08-08
+**Fecha:** 2026-08-09
 **Generado por:** AI-EM-ARCH
 **Destinatario:** AI-FE-PLATFORM (ejecuta) · AI-DS-OWNER (verifica equivalencia visual) · AI-PROD-UX (verifica copy y accesibilidad)
 **Etapa del workflow:** 5 (implementación)
@@ -15,8 +15,8 @@
 | Id | Contrato | Ruta | Versión |
 |---|---|---|---|
 | C1 | Forma del estado de arranque | `packages/shared/src/contracts/system/boot-status.contract.ts` | 1.0 |
-| C3 | Tokens y geometría del medidor no-React | `docs/specs/2026-08-08-arranque-sistema-ds-contrato.md` | 1.0 |
-| C4 | Copy de pasos, componentes y pistas | `docs/specs/2026-08-08-arranque-sistema-ux-spec.md` | 1.0 |
+| C3 | Tokens y geometría del medidor no-React | `docs/specs/2026-08-09-arranque-sistema-ds-contrato.md` | 1.0 |
+| C4 | Copy de pasos, componentes y pistas | `docs/specs/2026-08-09-arranque-sistema-ux-spec.md` | 1.0 |
 
 Esta fase **no depende de que F2 esté terminada**: se desarrolla contra un archivo de estado de ejemplo derivado de C1. Ese es el punto de congelar contratos.
 
@@ -36,7 +36,7 @@ Esta fase **no depende de que F2 esté terminada**: se desarrolla contra un arch
 
 **Lo que no entra:**
 
-- La configuración de nginx, los montajes de volumen y el cambio de dependencias — **todo eso es F4**. Esta fase entrega archivos; F4 los cablea.
+- La configuración de nginx y los montajes de volumen — **eso es F4a**. Esta fase entrega archivos; F4a los cablea en desarrollo. El cambio de dependencias de producción es **F4b, hoy diferida**.
 - El endpoint (F2) y el archivo de estado de desarrollo (F1).
 - Cualquier ruta dentro de `apps/web` o `apps/portal`.
 - Asistentes de configuración, formularios o cualquier entrada de datos. **La pantalla no recoge información: solo informa.**
@@ -46,7 +46,7 @@ Esta fase **no depende de que F2 esté terminada**: se desarrolla contra un arch
 ## 2. Artefactos de entrada obligatorios
 
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §4.2, §4.5, §2.2 CU-02 y CU-04
-- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* — Decisión 2 y Decisión 5.7
+- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — Decisión 2 y Decisión 5.7
 - **Fuentes de diseño:** `packages/ui/src/styles/globals.css` (tokens reales) · `packages/ui/src/components/ProgressMeter.tsx` (referencia) · `docs/identity/` y `docs/prototipo/`
 - **Skills aplicables:** `iwana-identity-ui-review` (rectora), `core-components`, `wcag-audit-patterns`, `system-vocabulary-review`
 
@@ -54,7 +54,7 @@ Esta fase **no depende de que F2 esté terminada**: se desarrolla contra un arch
 
 ## 3. Instrucciones
 
-1. **Sin dependencias, sin framework, sin build.** Documento, hoja de estilo y script planos en `nginx/boot/`. **No se importa `@iwana/ui`**, no porque sea indeseable sino porque la pantalla debe renderizar cuando ningún build existe todavía. Esa duplicación está aceptada por ADR-079 *(propuesto)* y contenida por C3.
+1. **Sin dependencias, sin framework, sin build.** Documento, hoja de estilo y script planos en `nginx/boot/`. **No se importa `@iwana/ui`**, no porque sea indeseable sino porque la pantalla debe renderizar cuando ningún build existe todavía. Esa duplicación está aceptada por ADR-079 y contenida por C3.
 
 2. **Consumo del estado.** Consultar `GET /boot/status.json` con la cadencia que indica la propia respuesta. Tolerar respuesta ausente, malformada o error de red **manteniendo el último estado bueno** y mostrando que se sigue esperando — nunca una pantalla en blanco ni un error crudo.
 
@@ -82,7 +82,7 @@ Esta fase **no depende de que F2 esté terminada**: se desarrolla contra un arch
 2. **Ningún recurso externo.** Sin fuentes remotas, sin CDN, sin analítica.
 3. **No se sigue el destino de redirección sin validarlo.**
 4. **No se inventan tokens.** Si falta uno, se escala: es cambio de lenguaje visual y lo decide el CTO con propuesta de AI-DS-OWNER.
-5. **No se toca `nginx/*.conf`, `docker-compose*.yml` ni `apps/`.** Esta fase produce archivos estáticos; el cableado es F4.
+5. **No se toca `nginx/*.conf`, `docker-compose*.yml` ni `apps/`.** Esta fase produce archivos estáticos; el cableado es F4a.
 6. **Copy en español, sin enums crudos**, exactamente el de C4.
 7. **Marcar el checklist en el mismo commit que entrega cada ítem**, con evidencia citable.
 
@@ -128,7 +128,7 @@ Esta fase **no depende de que F2 esté terminada**: se desarrolla contra un arch
 **Detenerse inmediatamente si:**
 
 - C3 exige un token que no existe en `globals.css` → cambio de lenguaje visual, **escala al CTO**.
-- Cumplir la equivalencia visual exige importar código del paquete de UI → contradice ADR-079 *(propuesto)* Decisión 2; se resuelve replicando, no importando.
+- Cumplir la equivalencia visual exige importar código del paquete de UI → contradice ADR-079 Decisión 2; se resuelve replicando, no importando.
 - El copy de C4 no cubre algún estado que la respuesta puede producir → falta de contrato, se escala a AI-PROD-UX.
 
 **Documentar causa en:** el informe de fase y la sección de pendientes del checklist.

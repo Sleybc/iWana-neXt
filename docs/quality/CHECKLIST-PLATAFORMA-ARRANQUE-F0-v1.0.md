@@ -1,6 +1,6 @@
 # CHECKLIST — Plataforma · Experiencia de arranque · F0 congelar contratos
 
-**Fecha de apertura:** 2026-08-08
+**Fecha de apertura:** 2026-08-09
 **Estado:** Abierto
 **Prompt:** [PROMPT-PLATAFORMA-ARRANQUE-F0-v1.0.md](../prompts/PROMPT-PLATAFORMA-ARRANQUE-F0-v1.0.md)
 **Informe:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F0-v1.0.md`
@@ -38,7 +38,7 @@ Aplica a todos los checklists de este frente. No es orientativo.
 
 ## 2. Contrato C3 — design system del medidor no-React · AI-DS-OWNER
 
-- [ ] `docs/specs/2026-08-08-arranque-sistema-ds-contrato.md` publicado, estado **Congelado**, versión 1.0
+- [ ] `docs/specs/2026-08-09-arranque-sistema-ds-contrato.md` publicado, estado **Congelado**, versión 1.0
 - [ ] Lista **cerrada** de variables CSS autorizadas
 - [ ] Cada variable verificada una a una contra `packages/ui/src/styles/globals.css` *(CA-F0-07)*
 - [ ] Geometría del medidor especificada por equivalencia con `ProgressMeter.tsx`
@@ -50,7 +50,7 @@ Aplica a todos los checklists de este frente. No es orientativo.
 
 ## 3. Contrato C4 — UX y copy · AI-PROD-UX
 
-- [ ] `docs/specs/2026-08-08-arranque-sistema-ux-spec.md` publicado, estado **Congelado**, versión 1.0
+- [ ] `docs/specs/2026-08-09-arranque-sistema-ux-spec.md` publicado, estado **Congelado**, versión 1.0
 - [ ] Diez identificadores de paso fijados con copy en español *(CA-F0-09)*
 - [ ] Pesos de los pasos suman 100 *(CA-F0-09)*
 - [ ] Copy de los siete componentes, con **vocabulario genérico sin nombre de producto** *(CA-F0-06)*

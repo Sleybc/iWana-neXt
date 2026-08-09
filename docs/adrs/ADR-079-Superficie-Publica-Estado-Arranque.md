@@ -1,11 +1,13 @@
 # ADR-079: Superficie pública de estado de arranque y experiencia de instalación
 
-**Versión:** 1.0
-**Estado:** Propuesto
-**Fecha:** 2026-08-08
+**Versión:** 1.1
+**Estado:** Aprobado
+**Alcance de la aprobación:** seis decisiones vigentes de inmediato; la **Decisión 4 queda aprobada con ejecución diferida** al disparador de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) — ver §Estado de adopción por decisión
+**Fecha:** 2026-08-09
 **Modo activo:** Architect + EM
 **Autor:** AI-EM-ARCH
-**Aprobación requerida:** CTO
+**Aprobado por:** CTO Humano — 2026-08-09
+**Cambio v1.0 → v1.1:** aprobación del CTO registrada; se añade §Estado de adopción por decisión, que difiere la ejecución de la Decisión 4 al disparador de reactivación de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) por imposibilidad de verificación (ver §Consecuencias → "Por qué la Decisión 4 se difiere")
 **Módulos:** Plataforma transversal — no es un módulo del roadmap
 **Sucede a:** ninguno. **Sustituye una razón técnica vigente** documentada en `docker-compose.prod.yml` (ver Decisión 4 y §Consecuencias)
 **Relacionado:** [ADR-078](ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* (bind host y exposición de PII) · [ADR-057](ADR-057-Credenciales-Iniciales-Por-Tenant.md) (credenciales iniciales) · [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía de gates)
@@ -23,6 +25,26 @@ Detrás de esas tres manifestaciones hay una causa documental: **el corpus no ti
 El CTO fijó como referencia la instalación de UCRM de Ubiquiti, cuyo valor no está en el estilo del banner sino en dos invariantes: **cada fase larga tiene una señal de avance, y el cierre es accionable**.
 
 Este ADR formaliza las decisiones que hacen posible esa experiencia y —sobre todo— las **restricciones de seguridad** que impone abrir una superficie pública nueva en un producto multi-tenant. Es la parte que no puede quedar en un prompt de ejecución: una vez publicado, un endpoint anónimo es contrato con el mundo.
+
+---
+
+## Estado de adopción por decisión
+
+El CTO aprobó este ADR el 2026-08-09. **Seis de las siete decisiones entran en vigor de inmediato; la Decisión 4 queda aprobada con ejecución diferida.**
+
+| Decisión | Estado | Habilita |
+| --- | --- | --- |
+| 1 · Contrato único con dos productores | **Vigente** | F0, F1, F2, F3 |
+| 2 · La pantalla la sirve el proxy | **Vigente** | F3, F4a |
+| 3 · El defecto de proxy en desarrollo se evita | **Vigente** | F4a |
+| **4 · El proxy de producción deja de esperar** | **Aprobada — ejecución diferida** | F4b, **no arranca hasta el disparador** |
+| 5 · La superficie de estado se diseña como hostil | **Vigente** | F0, F2 |
+| 6 · El instalador no emite credenciales en v1 | **Vigente** | F5 |
+| 7 · La descarga nunca puede ser modo de fallo | **Vigente** | F1, F5, F6 |
+
+**Disparador de la Decisión 4.** Se ejecuta cuando se active el disparador de reactivación de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md), no antes y no por calendario. Mientras tanto, la fase F4 se ejecuta **solo en su mitad de desarrollo (F4a)**; la mitad de producción (F4b) permanece cerrada.
+
+**Qué no cambia por el diferimiento.** La experiencia de arranque se entrega **completa en desarrollo** —terminal y navegador— y **completa en el instalador on-premise**. Lo único que espera es la pantalla servida durante las migraciones **de un entorno productivo que todavía no existe**.
 
 ---
 
@@ -49,6 +71,8 @@ El proxy de desarrollo devuelve 502 en las rutas de API y salud porque el host d
 El diseño lo esquiva: en desarrollo la pantalla lee un archivo montado en solo lectura, sin proxy y sin CORS. Los comentarios que documentan el defecto en la configuración de nginx **se conservan íntegros**; ninguna fase puede reescribirlos como resueltos.
 
 ### 4. El proxy de producción deja de esperar a que todo esté sano
+
+> **Aprobada con ejecución diferida** al disparador de reactivación de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md). La decisión es firme; su implementación no arranca hoy. Razón en §Consecuencias → *"Por qué la Decisión 4 se difiere"*.
 
 La condición de dependencia de `nginx-prod` sobre API, web y portal pasa de `service_healthy` a una dependencia mínima sobre la base de datos, y el proxy interpreta los errores de upstream sirviendo la pantalla de arranque.
 
@@ -107,6 +131,20 @@ Es una regla de diseño, no una recomendación: **una mejora de observabilidad q
 
 **La sustitución alcanza únicamente a la elección de medio.** Todo lo demás de aquel prompt sigue vigente sin cambios: emisor acoplado al bucle de eventos y no a un temporizador aislado, umbral configurable con default holgado, ausencia de PII e identificadores de tenant en la marca, verificación explícita de la interacción con la prueba de fallo de caché, sustitución del probe en ambos Compose e `init: true` en el contenedor de producción. Nada de eso pertenece a este frente.
 
+### Por qué la Decisión 4 se difiere
+
+La decisión es correcta y queda aprobada. Lo que no existe hoy es la posibilidad de **verificarla**, y ejecutarla sin verificación produciría exactamente lo que [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) §Decisión 2 prohíbe.
+
+Tres hechos verificados el 2026-08-09:
+
+1. **No hay dónde instanciar el overlay de producción.** `docker-compose.e2e.yml` contiene únicamente base de datos, caché, almacenamiento, su inicializador y buscador. **No incluye proxy ni contenedores de aplicación**, así que no existe un entorno donde observar el arranque del proxy sin los upstreams.
+2. **La configuración de proxy de producción está deliberadamente incompleta.** Conserva los marcadores de dominio que ADR-070 §Decisión 2 ordena **mantener intactos**, y el gate de prerrequisitos de producción en integración continua hace fallar un archivo de entorno productivo real que aún los contenga. Resolverlos para poder probar sería *elegir dominio*, que es justo lo que ADR-070 difiere.
+3. **En consecuencia, tres criterios de aceptación de la fase no son verificables**: que el proxy arranque sin los contenedores de aplicación, que la raíz responda durante las migraciones, y que el contenedor no se declare sano antes de tiempo.
+
+Ejecutar la Decisión 4 hoy obligaría a marcar esos tres criterios como cumplidos sin haberlos observado. **Eso es evidencia ficticia**, y además dejaría relajada una condición de arranque de producción cuya sustitución nadie habría comprobado — la única forma en que esta decisión sí sería una regresión real.
+
+**Por tanto:** la fase se parte. **F4a** entrega la mitad de desarrollo, que es íntegramente verificable hoy y no toca producción. **F4b** entrega las tres obligaciones inseparables de la Decisión 4 y se abre con el disparador de ADR-070, momento en que existirá un entorno donde observarlas.
+
 ### Razón técnica que queda sustituida — Decisión 4
 
 `docker-compose.prod.yml` documenta hoy, en un comentario junto a la condición de dependencia del proxy, por qué esa condición se endureció:
@@ -147,7 +185,8 @@ Por eso:
 | # | Riesgo | Severidad | Mitigación |
 |---|---|---|---|
 | R1 | La superficie pública crece por conveniencia y acaba exponiendo diagnóstico | **Alta** | Prueba de contrato que asserta las claves exactas; toda ampliación exige ADR |
-| R2 | La relajación de dependencias se aplica sin mover el probe | **Alta** | Obligación 4.2 declarada inseparable; criterio de aceptación en el prompt de la fase y en su checklist |
+| R2 | La relajación de dependencias se aplica sin mover el probe | **Alta** | Obligación 4.2 declarada inseparable; criterio de aceptación en el prompt de la fase y en su checklist. **Mitigado además por el diferimiento**: F4b no arranca sin entorno donde observar el resultado |
+| R8 | La Decisión 4 se ejecuta antes de su disparador, "aprovechando" que ya está aprobada | **Alta** | El estado por decisión es explícito y F4b nace cerrada; su checklist declara la condición de apertura |
 | R3 | La visibilidad de la descarga introduce un modo de fallo | **Alta** | Decisión 7: paso opcional, análisis orientativo |
 | R4 | Deriva visual entre pantalla y design system | Media | Contrato firmado + prueba anti-deriva en CI |
 | R5 | Amplificación de carga desde superficie anónima | Media | Caché y límite de tasa como parte del contrato |
@@ -166,13 +205,16 @@ No hay migración de datos ni de esquema. La adopción es por fases, con contrat
 | F1 | Progreso en el orquestador de desarrollo | Sí — cambio local, sin efecto en producción |
 | F2 | Endpoint de estado | Sí — módulo aislado, se desmonta quitando su registro |
 | F3 | Pantalla de arranque | Sí — artefactos estáticos nuevos |
-| F4 | Cableado de proxy en desarrollo y producción | **Parcialmente**: revertir exige restaurar la condición de dependencia **y** el probe a la vez |
+| F4a | Cableado de proxy en **desarrollo** | Sí — no toca producción |
+| **F4b** | Cableado de proxy en **producción** — las tres obligaciones de la Decisión 4 | **Diferida.** Reversión acoplada: exige restaurar condición de dependencia, probe y comentario a la vez |
 | F5 | Instalador on-premise | Sí — script nuevo, no altera el camino existente |
 | F6 | Evidencia de calidad | — |
 
-**Punto de no retorno:** ninguno. F4 es la única fase con reversión acoplada, y su reversión está definida.
+**Punto de no retorno:** ninguno. F4b es la única fase con reversión acoplada, y su reversión está definida.
 
-**Gates:** este frente emite ADR, así que **G1 lo aprueba el CTO** y no se autofirma. G6, G6.5 y G7 se registran por separado en el informe de cierre, conforme a [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md).
+**Gates:** este frente emite ADR, así que **G1 lo aprueba el CTO** y no se autofirma. **G1 cumplido el 2026-08-09.** G6, G6.5 y G7 se registran por separado en el informe de cierre, conforme a [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md).
+
+**Cierre del frente sin F4b.** El frente puede alcanzar G6 y G6.5 con F4b abierta: su alcance queda declarado como **entrega parcial por diferimiento aprobado**, no como deuda. G7 no aplica — el dominio productivo sigue diferido por ADR-070.
 
 ---
 

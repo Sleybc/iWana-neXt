@@ -1,7 +1,7 @@
 # PROMPT — Plataforma · Experiencia de arranque · Fase F0: congelar contratos
 
 **Versión:** 1.0
-**Fecha:** 2026-08-08
+**Fecha:** 2026-08-09
 **Generado por:** AI-EM-ARCH (Engineering Manager + Architect)
 **Destinatarios:** AI-SR-FULL (C1) · AI-DS-OWNER (C3) · AI-PROD-UX (C4) · AI-SEC-ENG (revisión de C1)
 **Etapa del workflow:** 2 y 3 (solución + factibilidad) — produce los contratos que desbloquean F1, F2 y F3 en paralelo
@@ -17,8 +17,8 @@
 **Lo que sí entra:**
 
 - **C1** — contrato de API de estado de arranque: tipos y función de cálculo en `packages/shared/src/contracts/system/boot-status.contract.ts`, exportados desde `packages/shared/src/index.ts`, con su prueba de forma. *(AI-SR-FULL)*
-- **C3** — contrato de design system para un medidor de progreso **sin React**: lista cerrada de variables CSS que la pantalla puede usar, geometría, estados y equivalencia declarada con `packages/ui/src/components/ProgressMeter.tsx`. Artefacto: `docs/specs/2026-08-08-arranque-sistema-ds-contrato.md`. *(AI-DS-OWNER)*
-- **C4** — especificación UX del arranque: los identificadores de paso, su copy en español, los mensajes de estado por componente y el copy de cierre. Artefacto: `docs/specs/2026-08-08-arranque-sistema-ux-spec.md`. *(AI-PROD-UX)*
+- **C3** — contrato de design system para un medidor de progreso **sin React**: lista cerrada de variables CSS que la pantalla puede usar, geometría, estados y equivalencia declarada con `packages/ui/src/components/ProgressMeter.tsx`. Artefacto: `docs/specs/2026-08-09-arranque-sistema-ds-contrato.md`. *(AI-DS-OWNER)*
+- **C4** — especificación UX del arranque: los identificadores de paso, su copy en español, los mensajes de estado por componente y el copy de cierre. Artefacto: `docs/specs/2026-08-09-arranque-sistema-ux-spec.md`. *(AI-PROD-UX)*
 - Revisión de seguridad de C1 por AI-SEC-ENG **antes** de declararlo congelado.
 
 **Lo que no entra:**
@@ -31,7 +31,7 @@
 ## 2. Artefactos de entrada obligatorios
 
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) — §5 fija la forma de C1, §4.5 sus restricciones de seguridad
-- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* — Decisión 5 es normativa para C1
+- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — Decisión 5 es normativa para C1
 - **ADR relacionado:** [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* — fija por qué el defecto de proxy en desarrollo no se toca
 - **Fuentes de diseño (para C3):** `packages/ui/src/styles/globals.css` (tokens reales — manda sobre *qué existe*) · `packages/ui/src/components/ProgressMeter.tsx` (referencia de lenguaje visual) · la spec Firma iWana y `docs/identity/`
 - **Referencia externa:** repositorio `Ubiquiti-App/UCRM`, script de instalación. Referencia de **invariantes**, no de estilo tipográfico
@@ -56,7 +56,7 @@
 2. Publicar la **lista cerrada** de variables CSS autorizadas. La pantalla no puede usar ninguna fuera de esa lista, y ninguna puede ser un valor literal inventado.
 3. Especificar la geometría del medidor por equivalencia con `ProgressMeter.tsx`: altura de la barra, radio, degradado de relleno, color del track, tamaño del porcentaje y el indicador por componente en sus dos estados.
 4. Especificar el comportamiento en tema claro y oscuro.
-5. Declarar explícitamente la **equivalencia visual** con `ProgressMeter.tsx` y firmarla: es la única garantía de que la duplicación deliberada que acepta ADR-079 *(propuesto)* no derive.
+5. Declarar explícitamente la **equivalencia visual** con `ProgressMeter.tsx` y firmarla: es la única garantía de que la duplicación deliberada que acepta ADR-079 no derive.
 6. Definir el criterio de la **prueba anti-deriva** que F3 debe implementar: extraer cada `var(--x)` del CSS de la pantalla y asertar que está definida en `globals.css`.
 7. **No escribir código.** El contrato es una especificación.
 
@@ -79,7 +79,7 @@
 
    Los pesos **deben sumar 100**. Si se ajusta uno, se ajusta otro.
 
-2. Fijar el copy de los **siete componentes** de la pantalla web. Vocabulario obligatorio: genérico, sin nombre de producto (`Base de datos`, no el motor; `Búsqueda`, no el buscador). Es requisito de seguridad de ADR-079 *(propuesto)* Decisión 5, no preferencia de estilo.
+2. Fijar el copy de los **siete componentes** de la pantalla web. Vocabulario obligatorio: genérico, sin nombre de producto (`Base de datos`, no el motor; `Búsqueda`, no el buscador). Es requisito de seguridad de ADR-079 Decisión 5, no preferencia de estilo.
 3. Fijar el copy de las tres pistas (`waiting`, `slow`, `needs_operator`) para cada estado no listo. Deben orientar sin diagnosticar.
 4. Fijar el copy de cierre en terminal —qué se dice sobre las URLs y sobre dónde está la credencial de primer ingreso, **nunca su valor**— y el estado final de la pantalla antes de redirigir.
 5. Aplicar la skill `system-vocabulary-review`: es texto visible nuevo.
@@ -87,7 +87,7 @@
 
 ### 3.4 AI-SEC-ENG — revisión de C1
 
-Verificar contra ADR-079 *(propuesto)* Decisión 5, punto por punto:
+Verificar contra ADR-079 Decisión 5, punto por punto:
 
 1. Ningún componente nombra un producto o motor concreto.
 2. No existe estado `failed` ni ningún campo de texto libre.
@@ -121,8 +121,8 @@ Emitir dictamen **viable / viable con ajustes / inviable**. Sin dictamen, C1 no 
 
 ## 6. Entregables documentales obligatorios
 
-- `docs/specs/2026-08-08-arranque-sistema-ds-contrato.md` — estado **Congelado**, versión de contrato 1.0
-- `docs/specs/2026-08-08-arranque-sistema-ux-spec.md` — estado **Congelado**, versión de contrato 1.0
+- `docs/specs/2026-08-09-arranque-sistema-ds-contrato.md` — estado **Congelado**, versión de contrato 1.0
+- `docs/specs/2026-08-09-arranque-sistema-ux-spec.md` — estado **Congelado**, versión de contrato 1.0
 - Dictamen de AI-SEC-ENG registrado en el informe de fase
 - `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F0-v1.0.md` desde la [plantilla](../informes/PLANTILLA-INFORME-PLATAFORMA-ARRANQUE-FASE-v1.0.md)
 - [CHECKLIST-PLATAFORMA-ARRANQUE-F0-v1.0.md](../quality/CHECKLIST-PLATAFORMA-ARRANQUE-F0-v1.0.md) marcado en vivo
@@ -154,7 +154,7 @@ Ambas specs deben llevar la cabecera del repositorio: versión, estado, fecha, a
 
 - C3 necesita un token de marca que no existe en `globals.css` → es cambio de lenguaje visual, **escala al CTO**, no se decide en la fase.
 - AI-SEC-ENG dictamina **inviable** sobre C1.
-- La forma que fija el HLD §5 resulta insuficiente para alguna sonda **sin** violar la Decisión 5 de ADR-079 *(propuesto)*.
+- La forma que fija el HLD §5 resulta insuficiente para alguna sonda **sin** violar la Decisión 5 de ADR-079.
 
 **Documentar causa en:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F0-v1.0.md` y en la sección de pendientes del checklist.
 **Escalar a:** AI-EM-ARCH con marcador `[BLOQUEO]`. Si toca tokens de marca, AI-EM-ARCH escala al CTO.

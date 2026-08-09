@@ -8,12 +8,12 @@
 
 - **Frente:** Plataforma transversal — experiencia de arranque e instalación
 - **Fase afectada:** F5 (instalador on-premise). **No afecta a F0, F1, F2, F3, F4 ni F6**
-- **Fecha:** 2026-08-08
+- **Fecha:** 2026-08-09
 - **Emitido por:** AI-EM-ARCH
 - **Marcador:** `[ESCALACION AL CTO]`
 - **Prioridad:** Alta
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §4.6, §8
-- **ADR que lo declara:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* — Decisión 6
+- **ADR que lo declara:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — Decisión 6
 
 ---
 
@@ -23,7 +23,7 @@
 
 Esto rompe el segundo invariante que el CTO pidió replicar de la referencia externa: *el cierre es accionable*. Un instalador que termina con "el sistema está listo" pero sin decir cómo entrar, no ha terminado.
 
-**Fecha de detección:** 2026-08-08, durante el diseño técnico del frente.
+**Fecha de detección:** 2026-08-09, durante el diseño técnico del frente.
 **Severidad:** Alta. No compromete seguridad ni datos; compromete la usabilidad completa del despliegue on-premise.
 
 ---
@@ -89,7 +89,7 @@ El instalador cierra con bloque de pendiente y el alta se documenta como procedi
 
 **Justificación.** Es la única que cierra el flujo de extremo a extremo **sin tocar el invariante de ADR-057**. La Opción 2 empuja la contraseña hacia la salida estándar, que es el canal que todo el resto del frente prohíbe expresamente. La Opción 3 no resuelve el problema: lo documenta.
 
-**Requiere ADR propio**, con el siguiente número libre en el momento de emitirlo — *este documento no reserva número: una cita a un ADR inexistente no confiere autoridad y el gate de citas la bloquea*. No se resuelve dentro de ADR-079 *(propuesto)*: es una superficie de creación de credenciales en producción, que es materia de decisión del CTO por sí sola.
+**Requiere ADR propio**, con el siguiente número libre en el momento de emitirlo — *este documento no reserva número: una cita a un ADR inexistente no confiere autoridad y el gate de citas la bloquea*. No se resuelve dentro de ADR-079: es una superficie de creación de credenciales en producción, que es materia de decisión del CTO por sí sola.
 
 **Condiciones para retomar F5 hasta el cierre:**
 

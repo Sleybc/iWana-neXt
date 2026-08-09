@@ -1,6 +1,6 @@
 # CHECKLIST — Plataforma · Experiencia de arranque · F1 terminal de desarrollo
 
-**Fecha de apertura:** 2026-08-08
+**Fecha de apertura:** 2026-08-09
 **Estado:** Abierto — bloqueado por F0 (contratos C2 y C4)
 **Prompt:** [PROMPT-PLATAFORMA-ARRANQUE-F1-v1.0.md](../prompts/PROMPT-PLATAFORMA-ARRANQUE-F1-v1.0.md)
 **Informe:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F1-v1.0.md`

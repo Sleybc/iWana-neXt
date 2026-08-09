@@ -1,6 +1,6 @@
 # CHECKLIST — Plataforma · Experiencia de arranque · F3 pantalla de arranque
 
-**Fecha de apertura:** 2026-08-08
+**Fecha de apertura:** 2026-08-09
 **Estado:** Abierto — bloqueado por F0 (contratos C1, C3, C4)
 **Prompt:** [PROMPT-PLATAFORMA-ARRANQUE-F3-v1.0.md](../prompts/PROMPT-PLATAFORMA-ARRANQUE-F3-v1.0.md)
 **Informe:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F3-v1.0.md`
@@ -27,7 +27,7 @@
 - [ ] **No importa `@iwana/ui`** — debe renderizar cuando ningún build existe
 - [ ] Archivos de estado de ejemplo para las cinco fases y los cuatro estados de componente
 - [ ] Guardados donde F6 pueda reutilizarlos
-- [ ] **No se tocó `nginx/*.conf`, `docker-compose*.yml` ni `apps/`** — el cableado es F4
+- [ ] **No se tocó `nginx/*.conf`, `docker-compose*.yml` ni `apps/`** — el cableado es F4a
 
 ## 2. Consumo de estado
 

@@ -1,7 +1,7 @@
 # PLANTILLA — Informe de fase · Frente de experiencia de arranque
 
 **Versión de la plantilla:** 1.0
-**Fecha:** 2026-08-08
+**Fecha:** 2026-08-09
 **Autor de la plantilla:** AI-EM-ARCH
 **Destino de los informes derivados:** `docs/informes/INFORME-PLATAFORMA-ARRANQUE-F{n}-v1.0.md`
 
@@ -25,7 +25,7 @@
 **Prompt ejecutado:** docs/prompts/PROMPT-PLATAFORMA-ARRANQUE-F{n}-v1.0.md
 **Checklist:** docs/quality/CHECKLIST-PLATAFORMA-ARRANQUE-F{n}-v1.0.md
 **HLD:** docs/hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md
-**ADRs de referencia:** ADR-079 (propuesto) · ADR-078 (propuesto) · {los que apliquen, con marcador}
+**ADRs de referencia:** ADR-079 (Aprobado 2026-08-09, Decisión 4 de ejecución diferida) · ADR-078 (propuesto) · {los que apliquen, con marcador de estado si no están aprobados}
 **Contratos consumidos:** C{n} v{x} — ruta
 **Contratos producidos:** C{n} v{x} — ruta
 ```

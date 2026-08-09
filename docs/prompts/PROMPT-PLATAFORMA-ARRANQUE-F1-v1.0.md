@@ -1,7 +1,7 @@
 # PROMPT — Plataforma · Experiencia de arranque · Fase F1: progreso en la terminal de desarrollo
 
 **Versión:** 1.0
-**Fecha:** 2026-08-08
+**Fecha:** 2026-08-09
 **Generado por:** AI-EM-ARCH
 **Destinatario:** AI-PLAT-OPS
 **Etapa del workflow:** 5 (implementación)
@@ -15,7 +15,7 @@
 | Id | Contrato | Ruta | Versión |
 |---|---|---|---|
 | C1 | Tipos de estado de arranque | `packages/shared/src/contracts/system/boot-status.contract.ts` | 1.0 |
-| C4 | Identificadores de paso y copy | `docs/specs/2026-08-08-arranque-sistema-ux-spec.md` | 1.0 |
+| C4 | Identificadores de paso y copy | `docs/specs/2026-08-09-arranque-sistema-ux-spec.md` | 1.0 |
 
 **C2 lo produce esta fase:** el archivo de estado de desarrollo usa **el mismo shape que C1**, no uno paralelo. Se declara en el informe de fase.
 
@@ -38,7 +38,7 @@ Mientras se respeten C1 y C4 y no se toque alcance, boundary ni dependencias nue
 
 **Lo que no entra:**
 
-- El endpoint de la API (F2), la pantalla web (F3), la configuración de nginx y los montajes de volumen (F4), el instalador (F5).
+- El endpoint de la API (F2), la pantalla web (F3), la configuración de nginx y los montajes de volumen (F4a), el instalador (F5).
 - Cambiar la secuencia de arranque, el orden de los pasos o las condiciones de salud existentes.
 - Tocar `BIND_HOST` o el defecto de proxy en desarrollo — **prohibido por [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md)** *(propuesto)*.
 
@@ -47,7 +47,7 @@ Mientras se respeten C1 y C4 y no se toque alcance, boundary ni dependencias nue
 ## 2. Artefactos de entrada obligatorios
 
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §2.2 CU-01, §7.1 R1–R6
-- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) *(propuesto)* — Decisión 1 y **Decisión 7**
+- **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — Decisión 1 y **Decisión 7**
 - **Código vigente:** `scripts/dev.mjs`, `scripts/dev.test.mjs`, `scripts/lib/pii-hmac.mjs` (patrón de módulo auxiliar), `package.json` → `test:tooling`
 - **Informe de estado:** [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md)
 
@@ -78,7 +78,7 @@ Estos hechos ya están comprobados. Partir de ellos, no volver a investigarlos.
 
 4. **Descarga visible.** Añadir un **paso explícito de descarga previo al levantamiento**, con salida en streaming y análisis de sus líneas. Agregar a dos granularidades: por servicio, que es fiable, y global de capas, que es aproximado — el formato de línea de capa no lleva el nombre del servicio, así que no se puede atribuir. Mostrar servicios listos sobre total y capas completadas sobre total.
 
-5. **La descarga nunca puede tumbar el arranque (ADR-079 *(propuesto)* Decisión 7).** El paso es **opcional**: si la opción no existe en la versión instalada, o no hay red, o el formato cambia, avisa y la secuencia continúa. El análisis es orientativo: sin coincidencias, la barra queda indeterminada y las líneas siguen fluyendo a su sección. Prever una variable de entorno para omitir el paso por completo y una política que evite descargar lo ya presente.
+5. **La descarga nunca puede tumbar el arranque (ADR-079 Decisión 7).** El paso es **opcional**: si la opción no existe en la versión instalada, o no hay red, o el formato cambia, avisa y la secuencia continúa. El análisis es orientativo: sin coincidencias, la barra queda indeterminada y las líneas siguen fluyendo a su sección. Prever una variable de entorno para omitir el paso por completo y una política que evite descargar lo ya presente.
 
 6. **Cableado del dashboard.** Añadir la línea de progreso a la cabecera. **Ajustar la altura de contenido en el mismo cambio** — la cabecera crece una línea y sin el ajuste se pisa la última línea de contenido. Toda línea nueva pasa por las utilidades de truncado y padding existentes, o un cambio de tamaño de ventana corrompe el frame. Añadir el contador de paso al pie.
 
@@ -88,7 +88,7 @@ Estos hechos ya están comprobados. Partir de ellos, no volver a investigarlos.
 
 9. **Espera real de consola y portal.** Consultar por HTTP hasta obtener respuesta, aceptando cualquier código por debajo de error de servidor. **No analizar el banner del framework**: cambia entre versiones mayores. El vencimiento del plazo **no es fatal**: se informa que sigue compilando y el arranque continúa.
 
-10. **Archivo de estado (C2).** Escribir el progreso con **el mismo shape que C1**, con escritura atómica. **Crear el directorio contenedor en el primer paso**, antes de cualquier invocación al orquestador de contenedores — si no, en Windows el motor lo crea con propietario incorrecto. F4 lo montará como directorio, nunca como archivo suelto.
+10. **Archivo de estado (C2).** Escribir el progreso con **el mismo shape que C1**, con escritura atómica. **Crear el directorio contenedor en el primer paso**, antes de cualquier invocación al orquestador de contenedores — si no, en Windows el motor lo crea con propietario incorrecto. F4a lo montará como directorio, nunca como archivo suelto.
 
 11. **Modo no interactivo.** Líneas planas con contador de paso, sin secuencias de escape, sin spinner, y una señal periódica de que el proceso sigue vivo para que la integración continua no parezca colgada.
 
@@ -100,8 +100,8 @@ Estos hechos ya están comprobados. Partir de ellos, no volver a investigarlos.
 
 1. **Ningún banner, log ni salida imprime el valor de un secreto.** Se nombra la variable y el archivo, nunca el contenido. Prueba obligatoria: inyectar la contraseña de arranque en el entorno y asertar que ninguna línea del cierre la contiene.
 2. **Toda opción nueva en una función ya cubierta por pruebas es opcional con default sin efecto.** Ninguna prueba existente se edita.
-3. **La descarga es un paso opcional.** Un fallo de descarga nunca puede detener el arranque (ADR-079 *(propuesto)* Decisión 7).
-4. **No tocar `BIND_HOST`, `nginx.dev.conf` ni el defecto de proxy** — ADR-078 *(propuesto)* y alcance de F4.
+3. **La descarga es un paso opcional.** Un fallo de descarga nunca puede detener el arranque (ADR-079 Decisión 7).
+4. **No tocar `BIND_HOST`, `nginx.dev.conf` ni el defecto de proxy** — ADR-078 *(propuesto)* y alcance de F4a.
 5. **No cambiar la secuencia de arranque ni sus condiciones de salud.** Esta fase añade observabilidad, no reordena.
 6. **No introducir dependencias nuevas** en el orquestador de desarrollo. Todo con la biblioteca estándar.
 7. **Respetar la precedencia de variables de entorno** existente. No añadir un cuarto lugar donde se replique.
