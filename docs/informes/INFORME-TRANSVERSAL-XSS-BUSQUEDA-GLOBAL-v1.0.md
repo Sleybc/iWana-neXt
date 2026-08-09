@@ -1,7 +1,7 @@
 # INFORME — Corrección del XSS almacenado en la búsqueda global
 
 **Versión:** 1.0
-**Estado:** **C-7, C-7b y cierre formal cerrados y verificados** — hallazgo H-01 cerrado por AI-SEC-ENG; quedan C-8 (con dueño) y C-10 (no bloqueante)
+**Estado:** **C-7, C-7b, C-8, C-10 y cierre formal cerrados** — todos los hallazgos del frente cerrados
 **Fecha:** 2026-08-09
 **Modo activo:** EM + Orchestrator
 **Autor:** AI-EM-ARCH (consolidación)
@@ -89,11 +89,38 @@ Con el archivo restaurado: **11 de 11 en verde**. La guarda de directorio compon
 | --- | --- | --- | --- |
 | ~~**C-7b**~~ | Prueba de concepto que demuestre la cadena y su cierre | — | **Cerrado el 2026-08-09 por AI-SR-QA** — PoC en `apps/web/src/components/search/SearchXssChainPoC.spec.tsx`, 16 pruebas en verde. Evidencia `Cached: 0 cached, 2 total`. Ver §6 |
 | ~~**Cierre formal**~~ | Re-verificación del hallazgo | — | **Cerrado el 2026-08-09 por AI-SEC-ENG** — hallazgo H-01 cerrado formalmente. Ver [SECURITY-REVIEW §6](../security/SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md) |
-| **C-8** | Política de seguridad de contenido en ambas aplicaciones, como segunda capa | Alta | **Abierto, con dueño** — AI-FE-PLATFORM + AI-PLAT-OPS |
-| **C-10** | El sink equivalente del portal escapa correctamente, pero la defensa es una función local custodiando HTML crudo | Media | **Abierto**, no bloqueante |
+| ~~**C-8**~~ | Política de seguridad de contenido en ambas aplicaciones, como segunda capa | Alta | **CERRADO el 2026-08-09 por AI-SEC-ENG.** CSP vía `async headers()` en ambas `next.config.ts`; verificación de infraestructura AI-PLAT-OPS registrada (nginx no pisa ni duplica). Riesgo residual `'unsafe-inline'` aceptado. Ver §5.1 |
+| ~~**C-10**~~ | El sink equivalente del portal escapa correctamente, pero la defensa es una función local custodiando HTML crudo | Media | **CERRADO el 2026-08-09 por AI-FE-PLATFORM; re-verificado por AI-SR-QA (P1–P9 del contrato, 9/9) y cerrado formalmente por AI-SEC-ENG.** El sink del portal se eliminó; `SearchHighlight` + `SearchSnippetPill` promovidos a `@iwana/ui` con contrato congelado. Ver §5.1 |
 | **Borde cosmético** | Si un tenant escribe la cadena literal de la etiqueta de marca en un campo indexado, el parser la interpreta como delimitador y muestra ese tramo resaltado sin las etiquetas | Baja | **Confirmado en la PoC (C-7b).** Sin consecuencia de seguridad: no hay elementos de carga ni ejecución posible. Ver §6 |
 
 **Nota sobre defensa en profundidad.** Esta corrección cierra **esta** cadena. **No sustituye** a C-8, que contiene las siguientes, ni a [ADR-081](../adrs/ADR-081-Modelo-de-Sesion-Cookie-HttpOnly.md), que impide que el token sea legible por script aunque una cadena futura tenga éxito. Son tres capas distintas.
+
+### Cierre de C-8 y C-10 (2026-08-09, AI-FE-PLATFORM)
+
+Prompt ejecutado: [PROMPT-TRANSVERSAL-CSP-Y-RESALTADO-BUSQUEDA-v1.0.md](../prompts/PROMPT-TRANSVERSAL-CSP-Y-RESALTADO-BUSQUEDA-v1.0.md). Contrato congelado: [spec DS `SearchHighlight` v1.0](../specs/2026-08-09-search-highlight-ds-contrato.md).
+
+**C-8 — CSP como segunda capa.** Ambas apps emiten `Content-Security-Policy` vía `async headers()` en su `next.config.ts`, sin nonces, con el baseline que la documentación oficial de Next.js define para apps sin `proxy.ts`:
+
+- `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;`
+- El portal añade `https://www.gravatar.com` a `img-src`, consistente con su `images.remotePatterns`.
+- **Justificación de `'unsafe-inline'` en `script-src` y `style-src`:** es *requerido* por los scripts de bootstrap inline de Next.js y los estilos inline de React; sin él, las páginas estáticas no hidratan (discusión vercel/next.js#80997). Es el baseline documentado, no un debilitamiento silencioso. El hardening con nonces vía `proxy.ts` + renderizado dinámico queda registrado como mejora futura que ADR-081 (paso 2) habilitará.
+- El valor se normaliza (una sola línea) antes de emitirse. La política incluye la contención de exfiltración (`connect-src 'self'`, `object-src 'none'`) y de clickjacking (`frame-ancestors 'none'`, `base-uri 'self'`).
+- **nginx no se toca**: AI-PLAT-OPS verifica que no pisa ni duplica la cabecera (Next la emite en sus respuestas HTML y el proxy la pasa al cliente).
+- **Estado:** implementado y verificado en build de producción (cabecera presente en el HTML); pendiente de re-verificación de AI-SEC-ENG (cierre formal) y AI-PLAT-OPS (capa de infraestructura). El cierre formal de C-8 no lo firma el productor.
+
+**C-10 — resaltado del portal sin sink.** `SearchHighlight` se promovió de `apps/web/src/components/search/` a `packages/ui/src/components/SearchHighlight.tsx` (export hermano `SearchSnippetPill`, exports desde `packages/ui/src/index.ts`) siguiendo el contrato congelado v1.0 — **sin cambiar la lógica del parser ni del render**; el `<mark>` adopta el par tonal lima (spec §4.1). El consumidor del portal reemplazó el `span` con `dangerouslySetInnerHTML` por `<SearchSnippetPill snippet={highlight} />`; `highlightMatch`/`escapeHtml`/`compactHighlights` de `api-client.ts` se mantienen como productores de fragmento-dato. Cero `dangerouslySetInnerHTML` en los tres directorios declarados (verificado por `grep` y por la guarda de directorio en pruebas). El archivo local de web se eliminó.
+
+**Resolución de las consultas de DS-OWNER (spec §12).** **C-1:** se adopta el par tonal lima para el `mark` (idéntico al `Badge lime`; cambio visual menor y positivo, alineado con la identidad, AA verificado). **C-2:** se consolida `SearchSnippetPill` en `@iwana/ui` en el mismo acto (mandato anti-duplicación); ambos call sites migran a `<SearchSnippetPill snippet={…} />`. **C-3:** los tests del contrato se mantienen en las apps importando de `@iwana/ui`, con la guarda de directorio extendida a `packages/ui/src/components/`; no se crea infraestructura Jest en `packages/ui` (mejora registrada).
+
+### Cierre formal de C-8 y C-10 (2026-08-09, AI-SEC-ENG)
+
+Re-verificación independiente ejecutada por AI-SEC-ENG con suites forzadas propias. **Veredicto del gate: APROBADO CON RIESGO RESIDUAL.**
+
+- **Evidencia de ejecución propia:** `Cached: 0 cached, 3 total` — web **22 suites / 112 pruebas**; portal **172 suites / 1111 pruebas** (1 skip pre-existente). `grep dangerouslySetInnerHTML` en el workspace → 0; además `innerHTML`, `eval(`, `new Function`, `document.write`, `insertAdjacentHTML` → 0 en `apps/web/src`, `apps/portal/src`, `packages/ui/src`.
+- **C-10:** sink eliminado por construcción; control negativo del portal efectivo (payload como texto literal, sonda intacta); contrato DS P1–P9 verificado por AI-SR-QA (9/9); tokens del `mark` exactos de la spec §4.1.
+- **C-8:** política verificada con la contención esperada (`object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`, `connect-src 'self'`, `default-src 'self'`, `upgrade-insecure-requests`). **Riesgo residual aceptado:** el `'unsafe-inline'` de `script-src`/`style-src` **no impide la ejecución de script inline**; es el baseline oficial de Next.js sin `proxy.ts` (bootstrap inline). La contención real: exfiltración externa, clickjacking, plugins y `base-uri`. Hardening con nonces (`proxy.ts` + renderizado dinámico) como mejora futura habilitada por ADR-081, **no como condición de este cierre**.
+- **Capa de infraestructura (AI-PLAT-OPS):** nginx no pisa ni duplica la cabecera; `frame-ancestors 'none'` prevalece sobre el `X-Frame-Options SAMEORIGIN` redundante (redundancia benigna).
+- **Deudas registradas fuera:** hardening de CSP con nonces (AI-FE-PLATFORM, media, no bloqueante) · CSP del API vía `helmet` no alineada con la de las apps (AI-PLAT-OPS, media, pre-existente) · revisión de CSP cuando exista CDN (AI-PLAT-OPS, baja) · **ADR-081** (sesión cookie `httpOnly`) sigue siendo la capa que impide el robo de token por script aunque una cadena futura tenga éxito.
 
 ---
 
@@ -129,7 +156,7 @@ Con el archivo restaurado: **11 de 11 en verde**. La guarda de directorio compon
 | Conflictos entre agentes | 0 |
 | Desempates requeridos | 0 |
 | Deuda crítica al cierre | **0** — la deuda crítica que originó la fase queda cerrada |
-| Deuda alta al cierre | 1 (C-8, con dueño) |
+| Deuda alta al cierre | **0** — C-8 y C-10 cerrados |
 | Violaciones de boundary detectadas | 0 |
 | Ampliaciones de alcance | 0 — el ejecutor respetó los límites y señaló C-10 sin ejecutarlo |
 
@@ -137,8 +164,8 @@ Con el archivo restaurado: **11 de 11 en verde**. La guarda de directorio compon
 
 ## 8. Recomendación de gate
 
-**GO técnico sobre C-7 y C-7b, y cierre formal del hallazgo H-01.** El defecto crítico está corregido, verificado de forma independiente, protegido por control negativo y con prueba de concepto de AI-SR-QA que demuestra la cadena, su cierre, el control negativo y el borde cosmético.
+**GO técnico sobre C-7, C-7b, C-8 y C-10, y cierre formal del hallazgo H-01.** El defecto crítico está corregido, verificado de forma independiente, protegido por control negativo y con prueba de concepto de AI-SR-QA que demuestra la cadena, su cierre, el control negativo y el borde cosmético. C-8 y C-10 quedaron cerrados el 2026-08-09 con veredicto de AI-SEC-ENG **APROBADO CON RIESGO RESIDUAL** (riesgo `'unsafe-inline'` aceptado y documentado; hardening con nonces como mejora futura).
 
-**Cierre formal emitido por AI-SEC-ENG el 2026-08-09** ([SECURITY-REVIEW §6](../security/SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md)): re-verificación independiente de C-7 y validación de la PoC C-7b. El aprobador de un gate nunca es el productor del artefacto, y esta cadena la cumplió: **productor** AI-FE-PLATFORM, **PoC** AI-SR-QA, **aprobador** AI-SEC-ENG, **consolidación** AI-EM-ARCH.
+**Cierre formal emitido por AI-SEC-ENG el 2026-08-09** ([SECURITY-REVIEW §6](../security/SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md)): re-verificación independiente de C-7, validación de la PoC C-7b y cierre de C-8 y C-10. El aprobador de un gate nunca es el productor del artefacto, y esta cadena la cumplió: **productor** AI-FE-PLATFORM, **PoC y control negativo** AI-SR-QA, **capa de infraestructura** AI-PLAT-OPS, **aprobador** AI-SEC-ENG, **consolidación** AI-EM-ARCH.
 
-**Quedan abiertos, fuera de este cierre:** C-8 (CSP, con dueño AI-FE-PLATFORM + AI-PLAT-OPS) y C-10 (helper del portal, no bloqueante).
+**Pendientes fuera de este cierre (con dueño, no bloqueantes):** hardening de la CSP con nonces cuando exista `proxy.ts` (AI-FE-PLATFORM, habilitado por ADR-081) · CSP del API vía `helmet` no alineada (AI-PLAT-OPS) · revisión de CSP ante CDN futuro (AI-PLAT-OPS) · **ADR-081** (sesión cookie `httpOnly`), la capa que impide el robo de token por script.
