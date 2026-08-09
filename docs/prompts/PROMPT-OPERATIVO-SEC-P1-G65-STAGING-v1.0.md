@@ -48,7 +48,7 @@ Ejecuta (o orquesta) el **siguiente tramo operativo** de SEC-P1 tras el cierre e
 | Fase | R | C / I |
 | --- | --- | --- |
 | G6.5 (CI Linux por SHA) | AI-PLAT-OPS | AI-SR-QA (C), AI-EM-ARCH (I) |
-| Staging clave + migraciones | AI-PLAT-OPS | AI-SEC-ENG (C), AI-DATA-ENG (C si peak ≠ ADR-078) |
+| Staging clave + migraciones | AI-PLAT-OPS | AI-SEC-ENG (C), AI-DATA-ENG (C si peak ≠ ADR-078 (propuesto)) |
 | Smoke + criterio 6 | AI-SR-QA | AI-PLAT-OPS (C) |
 | G-SEC post-staging (consulta) | AI-SEC-ENG | — |
 | Consolidación informe | AI-EM-ARCH / ejecutor docs | — |
@@ -86,7 +86,7 @@ Ejecuta (o orquesta) el **siguiente tramo operativo** de SEC-P1 tras el cierre e
 
 ### Fase `staging-ventana-1`
 
-1. Preflight runbook §2.1: emails vacíos = 0; opcional `reltuples`/`relpages` si el volumen ≠ perfil mínimo ADR-078 (si peak ≥ ~100k → stop y consultar EM-ARCH).
+1. Preflight runbook §2.1: emails vacíos = 0; opcional `reltuples`/`relpages` si el volumen ≠ perfil mínimo ADR-078 (propuesto) (si peak ≥ ~100k → stop y consultar EM-ARCH).
 2. Parada de API/web/portal/worker en staging.
 3. Migrar **sin** contract:
    - Host: `pnpm db:migrate:all`

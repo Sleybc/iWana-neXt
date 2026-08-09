@@ -326,7 +326,7 @@ Si alguna vez se necesita evidencia **de tiempo** de la 108, hay que producirla 
 
 **Decisión EM-ARCH:** **KEEP** — sin cambio de `transactional` ni índices `CONCURRENTLY`. Riesgo operativo #2 **cerrado para este perfil de datos**.
 
-**Condición de re-medición (vigente):** re-ejecutar con el SQL v2 antes de aplicar la 108 en cualquier entorno cuyo volumen no sea el aquí registrado — si se deja atrás el perfil mínimo de [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md), si algún tenant supera ~50 k filas, o **si se reactiva un tenant `MARKED_FOR_DELETION`**: esa población estuvo en uso y es la que más probabilidad tiene de traer volumen real, y la medición ACTIVE-only nunca la ve.
+**Condición de re-medición (vigente):** re-ejecutar con el SQL v2 antes de aplicar la 108 en cualquier entorno cuyo volumen no sea el aquí registrado — si se deja atrás el perfil mínimo de [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) (propuesto), si algún tenant supera ~50 k filas, o **si se reactiva un tenant `MARKED_FOR_DELETION`**: esa población estuvo en uso y es la que más probabilidad tiene de traer volumen real, y la medición ACTIVE-only nunca la ve.
 
 ### Evidencia ventana 1 — migraciones + SQL criterio 6 (cierre G6)
 
@@ -592,12 +592,12 @@ Ambas premisas iban dentro de encargos delegados. Que los agentes las contradije
 
 | Estructura | Filas |
 | --- | --- |
-| `tenant_iwana.expediente_records` | **1** — el expediente del 2026-07-25 del titular identificable del ADR-078 |
+| `tenant_iwana.expediente_records` | **1** — el expediente del 2026-07-25 del titular identificable del ADR-078 (propuesto) |
 | `tenant_iwana.subscribers` | **1** |
 | `tenant_iwana.users` | 2 |
 | `tenant_iwana.audit_logs` | 868 |
 | `public.platform_audit_logs` | 205 |
-| `tenant_iwana.consent_records` | 0 (D6 del ADR-078 ya estaba abierto) |
+| `tenant_iwana.consent_records` | 0 (D6 del ADR-078 (propuesto) ya estaba abierto) |
 | 9 tenants e2e/demo | fixtures regenerables |
 | 44 schemas `MARKED_FOR_DELETION` | 110 digests SHA-256 residuales — **su eliminación mejora la postura** |
 
@@ -605,11 +605,11 @@ Ambas premisas iban dentro de encargos delegados. Que los agentes las contradije
 
 **Contribuyente.** AI-PLAT-OPS tuvo `expediente_records = 1` en un tenant no-fixture delante, en su propia captura previa, y no lo escaló. Regla adoptada por ese perfil: un conteo distinto de cero en tabla de negocio de un tenant no-fixture detiene el borrado hasta confirmación explícita.
 
-**Decisión del CTO (2026-08-06):** ADR-078 se decide **sin esa evidencia en línea**.
+**Decisión del CTO (2026-08-06):** ADR-078 (propuesto) se decide **sin esa evidencia en línea**.
 
 **Custodia abierta.** Existen dos volúmenes Docker anónimos (`b724d6a2…`, `cc2c3bf7…`) con datadir de PostgreSQL 18 fechado 2026-08-01 — posterior al expediente. **No inspeccionados**: verificar su contenido es una lectura de PII de un titular identificable. Están marcados `dangling`, de modo que **`docker volume prune` o `docker system prune` los elimina**. Mientras no haya decisión, no se ejecuta ninguno de los dos en esa máquina.
 
-**Decisión del CTO (constancia escrita 2026-08-08 ~07:10, vía sesión de cierre de deuda SEC-P1):** eliminar ambos volúmenes (`b724d6a2ffde3ec55c238b9755f172d1b61357f507e506885e931600b66f55b5`, `cc2c3bf7799777b20b3f02e6451c3f779fb96c70ee7eb982e53f442efabc69bb`) **sin inspeccionarlos**, adoptando la recomendación de AI-EM-ARCH: no queda finalidad que justifique conservarlos (ADR-078 se decide sin esa evidencia), montarlos para «ver qué hay» sería tratamiento de PII sin finalidad declarada, y conservarlos sin custodia ni purga es el peor escenario. El responsable adoptó la opción «Eliminar sin inspeccionar». **Ejecutado el 2026-08-08** (ver «Cierre de deuda — plan 2026-08-06», Task 8).
+**Decisión del CTO (constancia escrita 2026-08-08 ~07:10, vía sesión de cierre de deuda SEC-P1):** eliminar ambos volúmenes (`b724d6a2ffde3ec55c238b9755f172d1b61357f507e506885e931600b66f55b5`, `cc2c3bf7799777b20b3f02e6451c3f779fb96c70ee7eb982e53f442efabc69bb`) **sin inspeccionarlos**, adoptando la recomendación de AI-EM-ARCH: no queda finalidad que justifique conservarlos (ADR-078 (propuesto) se decide sin esa evidencia), montarlos para «ver qué hay» sería tratamiento de PII sin finalidad declarada, y conservarlos sin custodia ni purga es el peor escenario. El responsable adoptó la opción «Eliminar sin inspeccionar». **Ejecutado el 2026-08-08** (ver «Cierre de deuda — plan 2026-08-06», Task 8).
 
 ### Bootstrap limpio — D-5 cerrado
 
@@ -638,7 +638,7 @@ Primer arranque en vacío real del repo. Base con 0 tablas → 22 migraciones ap
 | ~~Tenants no-ACTIVE fuera de run y de paridad~~ | Un tenant `SUSPENDED` o en provisioning puede rezagarse en el contract sin que nada lo denuncie; se cruza con la re-medición de volumen al reactivar. **Decisión única pendiente**, no dos parches · **PAGADO 2026-08-08 (Task 5, commit `4ffb7280`)**: aviso informativo no-ACTIVE en la paridad (sin fallar), SQL de medición v2 persistido en `scripts/sql/medicion-volumen-108.sql`, línea de reactivación en el runbook |
 | ~~Endurecimiento de `IWANA_APPLY_PII_CONTRACT`~~ | El precedente `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN` exige el literal `"true"`, confirmación interactiva y alcance de un schema; este flag aceptaba `1`/`yes`/`on`, sin confirmación, y alcanza toda la flota. AI-SEC-ENG lo clasificó Media · **PAGADO 2026-08-08 (Task 3, commit `131414d8`)**: `isMigrationDeferred` exige el literal `'true'` (fail-closed) |
 | ~~Gate auto-propagante~~ | `resolvePiiContractEnv` (worker) fija el flag al provisionar. Justificado, pero convierte el control humano en control de primera aplicación: debe declararse como tal, no como «gate humano» · **PAGADO 2026-08-08 (Task 6, commit `a44dd723`)**: declarado gate de PRIMERA APLICACIÓN en el código y el runbook |
-| ~~Ausencia de backup/restore~~ | ADR-078 §D4 lo declara inexistente y este incidente lo confirmó · **PAGADO 2026-08-08 (Task 7, commit `5930b580`)**: `scripts/db/{backup,restore,purge-backups}.mjs` con ensayo de restore verificado y política de retención |
+| ~~Ausencia de backup/restore~~ | ADR-078 (propuesto) §D4 lo declara inexistente y este incidente lo confirmó · **PAGADO 2026-08-08 (Task 7, commit `5930b580`)**: `scripts/db/{backup,restore,purge-backups}.mjs` con ensayo de restore verificado y política de retención |
 | **G6.5 no obtenido en el PR #5** | El merge se ejecutó con los cinco checks en `FAILURE` por billing de Actions. Ver «Task 1». Reejecutar CI sobre `main` cuando se restablezca la facturación |
 | ~~**S-6 sin cerrar**~~ | El GUC `iwana.audit_maintenance` **no es restringible por permisos**, así que cualquier rol conectado puede activarlo con `SET LOCAL`. · **PAGADO 2026-08-08 (Task 2, commit `729a35b1`)**: migraciones 111/024 exigen además pertenencia a `iwana_migrator`; 3/3 integration PASS contra PostgreSQL · **Severidad reclasificada a Baja el 2026-08-08** — ver «Reclasificación de S-6» |
 

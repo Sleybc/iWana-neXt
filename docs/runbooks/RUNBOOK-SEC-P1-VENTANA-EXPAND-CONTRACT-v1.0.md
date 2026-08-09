@@ -82,7 +82,7 @@ Reglas:
 1. Generar **fuera** del repo; 64 hex `[0-9a-f]`.
 2. Guardar en **secret store** del entorno (mismo patrón operativo que `MFA_ENCRYPTION_KEY`).
 3. **Clave distinta** en staging y en producción. Nunca copiar.
-4. Independiente de `MFA_ENCRYPTION_KEY` (ADR-078 D-A / runbook §6bis).
+4. Independiente de `MFA_ENCRYPTION_KEY` (ADR-078 (propuesto) D-A / runbook §6bis).
 5. Inyectar en procesos que migran y en API/worker **antes** del arranque.
 6. Rechazar entropía nula / placeholders (el código ya lo hace).
 
@@ -116,7 +116,7 @@ Opcional (prod / flota grande): re-medir `reltuples`/`relpages` de `users`, `sub
 | Preflight | dev | staging | prod |
 | --- | --- | --- | --- |
 | Emails vacíos = 0 (ACTIVE) | [x] | [ ] | [ ] |
-| Peak `reltuples` revisado (si aplica) | [x] (perfil mínimo ADR-078) | [ ] | [ ] |
+| Peak `reltuples` revisado (si aplica) | [x] (perfil mínimo ADR-078 (propuesto)) | [ ] | [ ] |
 
 ### 2.2 Ejecución
 
@@ -254,7 +254,7 @@ ORDER BY 1;  -- esperado: 0 filas de búsqueda PII (email_hash, document_number_
 
 ### 4.3 Backup/restore operativo
 
-Capacidad que ADR-078 §D4 declaraba inexistente y que el plan SEC-P1 cierra con la Task 7: scripts en `scripts/db/` + ensayo verificado.
+Capacidad que ADR-078 (propuesto) §D4 declaraba inexistente y que el plan SEC-P1 cierra con la Task 7: scripts en `scripts/db/` + ensayo verificado.
 
 | Operación | Comando |
 | --- | --- |

@@ -27,7 +27,7 @@
 | `packages/database/src/migrations/tenant/111_harden_audit_maintenance_guard.integration.spec.ts` | Prueba contra PostgreSQL que el rol de aplicación NO evade y el de mantenimiento SÍ |
 | `packages/database/src/migrations/shared/deferred-migration.util.ts` | `envValueIsTrue` deja de aplicar a los flags destructivos |
 | `packages/database/src/migrations/tenant/migration-parity.util.ts` | Amplía la paridad a tenants no-ACTIVE como aviso |
-| `scripts/db-backup.mjs`, `scripts/db-restore.mjs` | Capacidad que ADR-078 §D4 declara inexistente |
+| `scripts/db-backup.mjs`, `scripts/db-restore.mjs` | Capacidad que ADR-078 (propuesto) §D4 declara inexistente |
 | `docs/runbooks/RUNBOOK-SEC-P1-VENTANA-EXPAND-CONTRACT-v1.0.md` | Medición v2, línea de reactivación, procedimiento de ventana 2 |
 
 ---
@@ -324,7 +324,7 @@ Corregir cualquier frase que presente el flag como gate humano permanente.
 
 ### Task 7: Backup y restore — la capacidad que no existe
 
-**Contexto:** ADR-078 §D4 declara que no hay backup ni restore ensayado, y el incidente del 2026-08-06 lo confirmó destruyendo un dato no reproducible. Esta tarea paga esa deuda. **No es opcional**: es la que evita que el incidente se repita.
+**Contexto:** ADR-078 (propuesto) §D4 declara que no hay backup ni restore ensayado, y el incidente del 2026-08-06 lo confirmó destruyendo un dato no reproducible. Esta tarea paga esa deuda. **No es opcional**: es la que evita que el incidente se repita.
 
 **Files:**
 - Create: `scripts/db-backup.mjs`
@@ -370,7 +370,7 @@ git commit -m "feat(ops): backup y restore con ensayo verificado"
 
 > **No ejecutar sin decisión escrita del CTO.** Contienen posiblemente PII de un titular identificable.
 
-**Recomendación de AI-EM-ARCH:** eliminarlos sin inspeccionarlos. El CTO ya resolvió que ADR-078 se decide sin esa evidencia, así que no queda finalidad que justifique conservarlos; montarlos para «ver qué hay» es en sí mismo un tratamiento de datos personales sin finalidad declarada; y conservarlos sin custodia ni fecha de purga, en una máquina sin TLS, es el peor escenario: no aportan y sí exponen.
+**Recomendación de AI-EM-ARCH:** eliminarlos sin inspeccionarlos. El CTO ya resolvió que ADR-078 (propuesto) se decide sin esa evidencia, así que no queda finalidad que justifique conservarlos; montarlos para «ver qué hay» es en sí mismo un tratamiento de datos personales sin finalidad declarada; y conservarlos sin custodia ni fecha de purga, en una máquina sin TLS, es el peor escenario: no aportan y sí exponen.
 
 - [x] **Step 1: Confirmar que la decisión del CTO consta por escrito**
 

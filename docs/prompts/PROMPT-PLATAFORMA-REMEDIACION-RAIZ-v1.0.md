@@ -48,7 +48,7 @@ Revisión obligatoria de seguridad. Confirmar que no se codifican secretos, que 
 - Preservar la modificación local en `apps/api/src/common/pagination/clamp-page-endpoints.controller.http.spec.ts`.
 - No imprimir, copiar ni cambiar valores secretos de `.env*`.
 - No borrar `.backups/`; no reescribir Git ni rotar cuentas.
-- No resolver ADR-072/ADR-074 ni introducir Docker secrets/redes nuevas.
+- No resolver ADR-072 (propuesto)/ADR-074 (propuesto) ni introducir Docker secrets/redes nuevas.
 - No usar npm o yarn; usar pnpm.
 - Cada agente entrega diff, comandos ejecutados y cualquier `[BLOQUEO]` antes de cerrar.
 

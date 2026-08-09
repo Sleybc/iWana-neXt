@@ -33,7 +33,7 @@ Rotación de clave (si aplica más tarde): runbook cifrado §6bis — **no** mez
 | --- | --- | --- |
 | Clave / infra | AI-PLAT-OPS | Secret store, inyección env, parada/arranque, backup/restore, `pnpm db:migrate:all` |
 | Smoke / criterio 6 | AI-SR-QA | Checklist del runbook §2.2–2.3; evidencia sin PII |
-| Re-medición volumen | AI-DATA-ENG | `reltuples`/`relpages` si el entorno ≠ perfil mínimo ADR-078 |
+| Re-medición volumen | AI-DATA-ENG | `reltuples`/`relpages` si el entorno ≠ perfil mínimo ADR-078 (propuesto) |
 | G-SEC | AI-SEC-ENG | Re-review post-merge y tras ventana 2; cierre residual S-1 |
 | Consolidación | AI-EM-ARCH | Actualizar informe vivo; no dejar diferimiento sin fecha |
 
