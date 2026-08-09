@@ -301,10 +301,17 @@ const workerContainer = 'iwana_worker_e2e';
 // convención de los E2E web contra entornos compartidos, donde ya hay cuentas QA
 // sembradas; tomarlas primero aquí devuelve 401 porque esa cuenta nunca se
 // provisiona. Se leen como pareja para no mezclar identidades.
-const [platformEmail, platformPassword] =
+const platformEmail =
   process.env.PLATFORM_SUPER_ADMIN_EMAIL && process.env.PLATFORM_SUPER_ADMIN_PASSWORD
-    ? [process.env.PLATFORM_SUPER_ADMIN_EMAIL, process.env.PLATFORM_SUPER_ADMIN_PASSWORD]
-    : [process.env.E2E_PLATFORM_EMAIL, process.env.E2E_PLATFORM_PASSWORD];
+    ? process.env.PLATFORM_SUPER_ADMIN_EMAIL
+    : process.env.E2E_PLATFORM_EMAIL;
+// Mutable: tras el primer ingreso (passwordResetRequired) se rota a una clave
+// efímera operativa antes de POST /tenants. El JWT de alcance password-change
+// no puede crear empresas (403 del JwtAuthGuard).
+let platformPassword =
+  process.env.PLATFORM_SUPER_ADMIN_EMAIL && process.env.PLATFORM_SUPER_ADMIN_PASSWORD
+    ? process.env.PLATFORM_SUPER_ADMIN_PASSWORD
+    : process.env.E2E_PLATFORM_PASSWORD;
 const tenantSlug = process.env.E2E_TENANT_SLUG ?? `e2e-r1-r41-${suffix}`;
 const otherTenantSlug = process.env.E2E_OTHER_TENANT_SLUG ?? `e2e-tenant-b-${suffix}`;
 const tenantAdminEmail = `e2e-admin-${suffix}@example.invalid`;
@@ -706,8 +713,53 @@ function idempotencyKey() {
   return `e2e-${suffix}-${crypto.randomUUID()}`;
 }
 
+async function loginPlatformWithPassword(password) {
+  const body = await api(
+    '/auth/platform/login',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: platformEmail, password }),
+    },
+    [200],
+  );
+
+  const data = body.data && typeof body.data === 'object' ? body.data : null;
+  const token = data && typeof data.accessToken === 'string' ? data.accessToken : undefined;
+
+  if (!token) {
+    throw new Error('El login de plataforma no devolvió accessToken.');
+  }
+
+  return {
+    token,
+    passwordResetRequired: data.passwordResetRequired === true,
+  };
+}
+
+/**
+ * Completa el primer ingreso de plataforma: el token acotado a
+ * scope=password-change solo alcanza POST /auth/change-password. Tras el
+ * cambio, un segundo login entrega la sesión completa (SYSTEM_ADMIN) necesaria
+ * para POST /tenants. Sin este paso el setup R4.1 falla con HTTP 403.
+ */
+async function completePlatformFirstAccess(scopedToken, currentPassword) {
+  const nextPassword = `E2eOp1!${crypto.randomBytes(18).toString('hex')}`;
+  await api(
+    '/auth/change-password',
+    jsonRequest(scopedToken, {
+      currentPassword,
+      newPassword: nextPassword,
+    }),
+    [200],
+  );
+  return nextPassword;
+}
+
 async function platformLogin() {
-  const bootstrap = await api(
+  // En CI el PlatformBootstrapService ya creó la cuenta (env): esperamos 409.
+  // Se conserva el intento HTTP por entornos sin bootstrap por variables.
+  await api(
     '/platform-users/bootstrap',
     {
       method: 'POST',
@@ -720,29 +772,20 @@ async function platformLogin() {
     },
     [201, 409],
   );
-  const bootstrapToken =
-    bootstrap.data && typeof bootstrap.data === 'object' ? bootstrap.data.accessToken : undefined;
-  if (typeof bootstrapToken === 'string' && bootstrapToken) {
-    return bootstrapToken;
+
+  let session = await loginPlatformWithPassword(platformPassword);
+
+  if (session.passwordResetRequired) {
+    platformPassword = await completePlatformFirstAccess(session.token, platformPassword);
+    session = await loginPlatformWithPassword(platformPassword);
+    if (session.passwordResetRequired) {
+      throw new Error(
+        'El login de plataforma sigue exigiendo passwordResetRequired tras el cambio de contraseña.',
+      );
+    }
   }
 
-  const body = await api(
-    '/auth/platform/login',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: platformEmail, password: platformPassword }),
-    },
-    [200],
-  );
-
-  const token = body.data && typeof body.data === 'object' ? body.data.accessToken : undefined;
-
-  if (typeof token !== 'string' || !token) {
-    throw new Error('El login de plataforma no devolvió accessToken.');
-  }
-
-  return token;
+  return session.token;
 }
 
 async function createTenant(token, slug, adminEmail) {

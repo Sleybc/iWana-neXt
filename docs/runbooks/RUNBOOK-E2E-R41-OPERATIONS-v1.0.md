@@ -54,6 +54,14 @@ No sustituir esa condición por un mock, un skip o el adaptador `local`.
 ausente), no Playwright ni flakiness de tests. Corregir la inyección de
 entorno antes de reintentar la suite.
 
+**Diagnóstico — `POST /tenants` HTTP 403:** si aparece
+`E2E_SETUP=FAILED|POST /tenants respondió HTTP 403` con `E2E_API_HEALTH=OK`,
+el login de plataforma entregó un JWT con `scope=password-change` (cuenta
+creada por `PlatformBootstrapService` con `passwordResetRequired=true`). Ese
+token solo alcanza `POST /auth/change-password`; no es un fallo de RBAC del
+rol SYSTEM_ADMIN ni de headers mal formados. El provisionador debe completar
+el primer ingreso y volver a autenticar antes de crear tenants.
+
 ## 3. Provisionamiento y orden obligatorio
 
 Desde la raíz del workspace:
