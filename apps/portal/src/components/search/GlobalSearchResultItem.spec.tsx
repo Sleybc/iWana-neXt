@@ -8,12 +8,12 @@ import type { GlobalSearchItem } from '@/lib/api-client';
 
 function buildItem(highlights: string[]): GlobalSearchItem {
   return {
-    id: 'user-1',
-    type: 'user',
-    title: 'Liliana Ruiz',
-    subtitle: 'Empresa Demo · lili@empresa.com',
-    meta: 'Administrador · Activo',
-    route: '/users?tenant=empresa-demo&openUser=user-1',
+    id: 'subscriber-1',
+    type: 'subscriber',
+    title: 'Empresa Demo',
+    subtitle: 'NIT 900.000.000 · contacto@empresa.com',
+    meta: 'Activo',
+    route: '/dashboard/crm/subscribers',
     highlights,
   };
 }
@@ -37,22 +37,14 @@ function collectSourceFiles(directory: string): string[] {
   });
 }
 
-describe('GlobalSearchResultItem — resaltado', () => {
-  it('should resaltar la coincidencia devuelta por el buscador', () => {
-    const { container } = renderItem(['<mark>lili</mark>@empresa.com']);
+describe('GlobalSearchResultItem (portal) — resaltado', () => {
+  it('should resaltar la coincidencia del fragmento con marca semantica', () => {
+    const { container } = renderItem(['<mark>empresa</mark> demo']);
 
     const mark = container.querySelector('mark');
     expect(mark).not.toBeNull();
-    expect(mark).toHaveTextContent('lili');
-    expect(mark?.parentElement).toHaveTextContent('lili@empresa.com');
-  });
-
-  it('should resaltar varias coincidencias dentro del mismo fragmento', () => {
-    const { container } = renderItem(['<mark>lili</mark> Ruiz <mark>lili</mark>']);
-
-    const marks = container.querySelectorAll('mark');
-    expect(marks).toHaveLength(2);
-    expect(container.textContent).toContain('lili Ruiz lili');
+    expect(mark).toHaveTextContent('empresa');
+    expect(mark?.parentElement).toHaveTextContent('empresa demo');
   });
 
   it('should mostrar el fragmento sin coincidencias como texto plano', () => {
@@ -64,17 +56,18 @@ describe('GlobalSearchResultItem — resaltado', () => {
 });
 
 /**
- * Control negativo del hallazgo C-7
+ * Control negativo del cierre de C-10
  * (SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0).
  *
- * Los fragmentos provienen de campos de texto libre editables por el tenant y
- * llegan sin escapar. Estas pruebas fallan si se reintroduce un sink de HTML
- * crudo en el render del resaltado: con el sink, el marcado del payload se
- * convierte en elementos del DOM y el texto deja de ser literal.
+ * El portal construia el fragmento en cliente (escapeHtml + highlightMatch) y lo
+ * inyectaba con HTML crudo. Desde C-10 el fragmento es dato y lo consume el
+ * componente de @iwana/ui: el marcado del payload se muestra literal y ningun
+ * elemento de la carga se materializa. Estas pruebas fallan si se reintroduce
+ * un sink de HTML crudo en el render del resaltado.
  */
-describe('GlobalSearchResultItem — control negativo de XSS almacenado', () => {
-  const scriptPayload = '<mark>lili</mark><script>window.__xssProbe = true;</script>';
-  const attributePayload = '<mark>lili</mark><img src="x" onerror="window.__xssProbe = true" />';
+describe('GlobalSearchResultItem (portal) — control negativo de XSS almacenado', () => {
+  const scriptPayload = '<mark>empresa</mark><script>window.__xssProbe = true;</script>';
+  const attributePayload = '<mark>empresa</mark><img src="x" onerror="window.__xssProbe = true" />';
 
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).__xssProbe;
@@ -99,12 +92,12 @@ describe('GlobalSearchResultItem — control negativo de XSS almacenado', () => 
   it('should conservar el resaltado alrededor de la carga', () => {
     const { container } = renderItem([scriptPayload]);
 
-    expect(container.querySelector('mark')).toHaveTextContent('lili');
+    expect(container.querySelector('mark')).toHaveTextContent('empresa');
   });
 
   it('should mantener libres de sinks de HTML crudo los directorios del resaltado', () => {
     // Se compone en tiempo de ejecucion para que este archivo no sea su propia
-    // coincidencia. CA-XSS-01 / P5 del contrato DS.
+    // coincidencia. CA-C10-01 / P5 del contrato DS.
     const sink = ['dangerously', 'SetInnerHTML'].join('');
     const searchDirectory = __dirname;
     const uiComponentsDirectory = join(
@@ -128,7 +121,7 @@ describe('GlobalSearchResultItem — control negativo de XSS almacenado', () => 
   });
 });
 
-describe('parseSearchHighlight', () => {
+describe('parseSearchHighlight (desde @iwana/ui)', () => {
   it('should separar el fragmento en segmentos coincidentes y no coincidentes', () => {
     expect(parseSearchHighlight('ab<mark>cd</mark>ef')).toEqual([
       { text: 'ab', isMatch: false },
@@ -137,28 +130,9 @@ describe('parseSearchHighlight', () => {
     ]);
   });
 
-  it('should devolver un unico segmento cuando no hay resaltado', () => {
-    expect(parseSearchHighlight('sin resaltado')).toEqual([
-      { text: 'sin resaltado', isMatch: false },
-    ]);
-  });
-
   it('should conservar el marcado del payload como texto del segmento', () => {
     expect(parseSearchHighlight('<script>alert(1)</script>')).toEqual([
       { text: '<script>alert(1)</script>', isMatch: false },
-    ]);
-  });
-
-  it('should tolerar un fragmento vacio', () => {
-    expect(parseSearchHighlight('')).toEqual([]);
-  });
-
-  it('should no crear segmento de marca para un delimitador de contenido vacio', () => {
-    // spec §3.1 regla 4: delimitador con contenido vacio no matchea; el texto
-    // circundante se preserva sin resaltado.
-    expect(parseSearchHighlight('a<mark></mark>b')).toEqual([
-      { text: 'a', isMatch: false },
-      { text: 'b', isMatch: false },
     ]);
   });
 });

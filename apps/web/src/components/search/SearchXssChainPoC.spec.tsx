@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import type { DOMAttributes, ReactElement } from 'react';
 import { render } from '@testing-library/react';
 import { GlobalSearchResultItem } from './GlobalSearchResultItem';
-import { SearchHighlight } from './SearchHighlight';
+import { SearchHighlight } from '@iwana/ui';
 import type { GlobalSearchItem } from '@/lib/api-client';
 
 /**

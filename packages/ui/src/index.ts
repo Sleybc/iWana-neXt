@@ -40,6 +40,7 @@ export * from './components/Popover';
 export * from './components/Calendar';
 export * from './components/DatePicker';
 export * from './components/MultiSelect';
+export * from './components/SearchHighlight';
 
 // Providers
 export * from './components/ThemeProvider';
