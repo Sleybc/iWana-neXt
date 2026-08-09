@@ -672,7 +672,8 @@ jobs:
       # ── Credenciales efímeras por corrida (masked) ────────────────────────
       # El provisioner exige PLATFORM_SUPER_ADMIN_EMAIL/PASSWORD (fallback
       # E2E_PLATFORM_*) y la API exige EXECUTION_ORDER_IDEMPOTENCY_SECRET
-      # (Joi min 32) y MFA_ENCRYPTION_KEY (64 hex, apps/api/src/app.config.ts).
+      # (Joi min 32), MFA_ENCRYPTION_KEY (64 hex) y PII_HASH_KEY (64 hex,
+      # SEC-P1 / apps/api/src/app.config.ts + pii-hash-key.util.ts).
       # Sin ellas el job falla en un runner limpio. Se generan por corrida y se
       # enmascaran con ::add-mask:: ANTES de escribirlas a $GITHUB_ENV. NUNCA se
       # imprimen valores, credenciales, tokens, config Compose ni envs crudos:
@@ -687,16 +688,19 @@ jobs:
           PLATFORM_PASSWORD="E2eA1!$(openssl rand -hex 18)"
           IDEMPOTENCY_SECRET="$(openssl rand -hex 24)"
           MFA_KEY="$(openssl rand -hex 32)"
+          PII_HASH_KEY="$(openssl rand -hex 32)"
 
           echo "::add-mask::${PLATFORM_EMAIL}"
           echo "::add-mask::${PLATFORM_PASSWORD}"
           echo "::add-mask::${IDEMPOTENCY_SECRET}"
           echo "::add-mask::${MFA_KEY}"
+          echo "::add-mask::${PII_HASH_KEY}"
 
           echo "PLATFORM_SUPER_ADMIN_EMAIL=${PLATFORM_EMAIL}" >> "$GITHUB_ENV"
           echo "PLATFORM_SUPER_ADMIN_PASSWORD=${PLATFORM_PASSWORD}" >> "$GITHUB_ENV"
           echo "EXECUTION_ORDER_IDEMPOTENCY_SECRET=${IDEMPOTENCY_SECRET}" >> "$GITHUB_ENV"
           echo "MFA_ENCRYPTION_KEY=${MFA_KEY}" >> "$GITHUB_ENV"
+          echo "PII_HASH_KEY=${PII_HASH_KEY}" >> "$GITHUB_ENV"
 
           echo "✅ Credenciales E2E efímeras generadas y enmascaradas (sin valores en logs)"
 
