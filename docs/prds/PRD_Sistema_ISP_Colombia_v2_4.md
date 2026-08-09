@@ -1,15 +1,30 @@
 # PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
 
-**Version:** 2.4  
-**Estado:** ✅ **Aprobado** — Base definitiva del proyecto  
-**Fecha:** 2026-05-19  
-**Modo activo:** Product Architect + Orchestrator  
-**Autor:** Arquitectura de Soluciones / Producto  
+**Version:** 2.5  
+**Estado:** Propuesto — requiere **G1 del CTO**  
+**Fecha:** 2026-08-09  
+**Modo activo:** Product Architect + Architect + Orchestrator  
+**Autor:** AI-EM-ARCH  
 **Clasificación:** Confidencial — Uso interno  
-**Versión anterior:** 2.3 (2026-04-18)  
-**Changelog v2.4:** ADR-025 a ADR-039; suscriptor bidimensional; CRM 8 estados; Taxation/Parties/WFM/Assurance; Media+MinIO; Typesense — detalle en [Historial de Cambios](#historial-de-cambios)  
+**Versión anterior:** 2.4 (2026-05-19, Aprobada)  
+**Changelog v2.5:** incorpora **ADR-040 a ADR-079**; corrige el estado real de ejecución (nada está en producción — ADR-070); añade MOD00, MOD04, MOD11 y MOD12 al roadmap; adopta la taxonomía de gates **G6 / G6.5 / G7**; incorpora las políticas de seguridad de audiencias JWT, PII en listados, credenciales iniciales y cifrado — detalle en [Historial de Cambios](#historial-de-cambios)  
+**Nombre de archivo:** el sufijo `_v2_4` del nombre es un **identificador estable**, no la versión del contenido. La versión autoritativa es el campo `Version` de esta cabecera. *(Misma convención que `Protocolo_Colaboracion_Multiagente_v1.md`. Renombrar el archivo rompería 46 documentos que lo citan; el corpus ya arrastra una cita colgante a `PRD_Sistema_ISP_Colombia_v2_3.md` por haberlo hecho antes.)*  
 **Stack validado:** [Stack_Tecnologico.md](Stack_Tecnologico.md)  
 **Gobernanza:** [AGENTS.md](../../AGENTS.md) · [Protocolo multiagente](../roles/Protocolo_Colaboracion_Multiagente_v1.md)
+
+---
+
+> ## ⚠ Nota de vigencia — 2026-08-09
+>
+> **Esta versión 2.5 está Propuesta y requiere la firma del CTO (G1).** Hasta entonces, la base aprobada sigue siendo la v2.4 — **con una excepción que no depende de esta firma**: allí donde el texto de la v2.4 contradecía un ADR **Aprobado**, el ADR ya prevalecía por la cadena de precedencia documental (`AGENTS.md` → CTO y ADRs aprobados → PRD). Esas contradicciones se corrigen aquí; no se introducen.
+>
+> **Qué motivó la revisión.** La v2.4 se fechó el 2026-05-19 y su changelog llegaba hasta ADR-039. Entre esa fecha y hoy se aprobaron **37 ADRs nuevos** (ADR-040…ADR-079, menos los cuatro aún propuestos), cerraron dos módulos con informe firmado, nacieron dos bounded contexts y se formalizó la taxonomía de gates. La §14.2 se titulaba *"Estado Real"* y llevaba **82 días** sin reflejar la realidad.
+>
+> **La corrección más grave.** La v2.4 declaraba MOD01 y MOD02 *"✅ Producción"*. **Nada de este sistema está desplegado en producción.** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado por el CTO el 2026-08-02) lo dice sin ambigüedad y difiere formalmente el dominio productivo; **G7 permanece NO-GO por diseño**. Leer el PRD anterior podía llevar a creer que había un sistema vivo con suscriptores reales.
+>
+> **Qué NO cambia esta versión.** Ninguna decisión de producto aprobada: arquitectura Modulith, multi-tenancy por schema, despliegue on-premise, stack, alcance funcional del MVP y objetivos de negocio se conservan. Lo que cambia es el **estado**, las **decisiones nuevas ya aprobadas por ADR** y la **gobernanza de cierre**.
+>
+> **Marcadores de cita.** Los ADR **no aprobados** que se citan llevan su marcador obligatorio: [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) *(propuesto)*, [ADR-073](../adrs/ADR-073-Cadena-de-Suministro-de-Imagenes.md) *(propuesto)*, [ADR-074](../adrs/ADR-074-Autenticacion-de-Redis.md) *(propuesto)*, [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)*. No confieren autoridad normativa.
 
 ---
 
@@ -88,6 +103,26 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 | Identidad multi-rol          | PartiesModule (MOD08) — Party como maestro              | Un solo registro por persona/empresa con múltiples roles. Ref: ADR-030 |
 | Catálogo fiscal              | TaxationModule (MOD07) — catálogo centralizado          | Transversal para SALES, PURCHASE, BOTH. Sin duplicación. Ref: ADR-029 |
 
+**Decisiones incorporadas en v2.5** (ADR-040…ADR-079, todos Aprobados salvo indicación):
+
+| Decisión | Elección | Justificación |
+| --- | --- | --- |
+| Puerta administrativa del tenant | MOD00 Configuración como **control plane federado** | Centraliza la experiencia (organización, sedes, acceso, módulos activos) sin absorber el ownership de los datos operativos. Ref: [ADR-040](../adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md) |
+| Frontera sede física ↔ nodo de red | `OrganizationSite` maestro administrativo; `NmsNode` entidad propia del futuro NMS | Evita el "módulo dios" y deja el NMS libre de heredar semántica administrativa. Ref: [ADR-044](../adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md) |
+| Coordinación de visita ↔ ejecución de campo | MOD09 dueño de agenda y despacho; **MOD11 dueño de la OT enriquecida** | Separar "cuándo y quién" de "qué se hizo en terreno". Ref: [ADR-046](../adrs/ADR-046-Bounded-Context-Tasks-Ejecucion-Operativa.md), [ADR-047](../adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md) |
+| Fuente canónica de la orden de ejecución | `ExecutionOrder` (MOD11) es única fuente; agenda y tareas son **proyecciones** sincronizadas por **outbox transaccional** | Elimina la doble verdad entre agenda y ejecución; entrega al menos una vez con idempotencia y sin imports cruzados. Ref: [ADR-068](../adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md) |
+| Inventario y cadena de suministro | MOD12 como bounded context propio (existencias, compras, RFQ, proveedores, activos, bajas, conteo, costeo) | El inventario de materiales es dominio propio, no un anexo de provisioning. **MOD11 no descuenta stock directamente.** Ref: [ADR-048](../adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md) |
+| Valoración de inventario | **Costeo promedio móvil** por ítem | Suficiente para operación y KPI de valor; FIFO y efectos contables DIAN quedan fuera del MVP. Ref: [ADR-059](../adrs/ADR-059-Costeo-Promedio-Movil-Valoracion-Inventario.md) |
+| Disponibilidad de stock | `disponible = on_hand − reserved`, con invariante `0 ≤ reserved ≤ on_hand` | El número que ve el operador descuenta lo comprometido. Ref: [ADR-055](../adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) |
+| Escritura cross-módulo | **Puerto de comando** `IPartyWritePort`, dual del puerto de lectura; referencias lógicas sin FK cross-module | Permite altas atómicas entre módulos sin acoplar esquemas. Ref: [ADR-052](../adrs/ADR-052-Alta-Proveedores-SupplierProfile-Puerto-Comando-Parties.md) |
+| Unicidad de trabajo de campo | Clave `(tenant, origin_context, origin_ref, work_type)` — **la unidad de origen, nunca el suscriptor** | Impide duplicar trabajo sobre el mismo expediente o ticket sin bloquear atenciones legítimas distintas. Ref: [ADR-076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md) |
+| Visita que no se realiza | Taxonomía de 8 causas, límite de 3 intentos imputables al cliente, **SLA que nunca se reinicia** | Convierte el "no se pudo" en dato operativo y protege el compromiso con el suscriptor. Ref: [ADR-077](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md) |
+| Tablas operativas | **Paginación numerada en servidor** por defecto; la degradación la declara el servidor | Ninguna pantalla materializa el universo de datos del tenant en memoria. Ref: [ADR-064](../adrs/ADR-064-Paginacion-Tablas-Operativas-Portal.md), [ADR-065](../adrs/ADR-065-Paginacion-Numerada-Tablas-Operativas.md) |
+| Consultas de listado | **Ninguna consulta carga el conjunto completo de una entidad para filtrar o paginar en memoria** | Regla normativa verificable en revisión, con bloqueo en G5. Ref: [ADR-060](../adrs/ADR-060-Control-Bajas-y-Consultas-Operativas-Inventario.md) |
+| Superposición visual | Escala semántica de tokens `--z-*` de siete capas; prohibido escribir valores de z literales | Un componente que no encaja propone una capa, no inventa un número. Ref: [ADR-075](../adrs/ADR-075-Contrato-Capas-Z-Portal.md) |
+| Dominio productivo | **Diferido formalmente** hasta el cierre del roadmap modular; G7 NO-GO por diseño | Definir topología productiva hoy congelaría opciones que dependen de módulos que aún no existen. Ref: [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) · reapertura en curso: [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* |
+| Experiencia de arranque | Contrato único de estado con dos productores; la pantalla la sirve el proxy, no el framework | El operador debe ver qué se descarga y qué se levanta, en terminal y navegador. Ref: [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) |
+
 ### 1.5 Riesgos clave
 
 1. Complejidad de integración OLT multi-marca (mitigación: IOltAdapter genérico, AdminOLT como bridge en Fase 2).
@@ -99,20 +134,30 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 
 Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de actor autenticado), CRM core (suscriptores Natural/Jurídico con estrato, contratos, Expediente Único con pipeline de 8 estados, conversión two-stage Expediente→Subscriber), Billing + FE DIAN (vía Siigo/Alegra adapter) con Motor IVA por estrato, NMS MikroTik, Provisioning básico (PPPoE + IP Fija + DHCP), RADIUS, Portal suscriptor, Notificaciones Email, ETL migración WispHub/AdminOLT/Excel.
 
-**Módulos completados a la fecha (2026-05-19):**
+**Estado de construcción al 2026-08-09.**
 
-| Módulo | Código | Estado |
-|--------|--------|--------|
-| Auth + Users + Tenant + Audit | MOD01 | ✅ Producción (ADR-016) |
-| CRM + Expedientes + Subscribers | MOD05 | ✅ Implementado |
-| Módulo Comercial (Catálogo, Bundles, Precios) | MOD06 | ✅ Implementado (ADR-028) |
-| Tributación (Catálogo centralizado de impuestos) | MOD07 | ✅ Implementado (ADR-029) |
-| Parties (Identidad multi-rol) | MOD08 | ✅ Implementado (ADR-030) |
-| WFM / Programación Técnicos | MOD09 | ✅ Implementado (ADR-037, ADR-039) |
-| Service Assurance / Mesa de Ayuda | MOD10 | ✅ Implementado (ADR-038) |
-| Media + Object Storage (MinIO) | Transversal | ✅ Implementado (ADR-034, ADR-035) |
-| Búsqueda Global (Typesense) | Transversal | ✅ Implementado (ADR-036) |
-| NMS / Provisioning / Billing | MOD03–05 | 🔲 En roadmap |
+> **Ningún módulo está desplegado en producción.** "Construido" significa código entregado y aceptado en calidad; **no** significa que exista una instancia productiva atendiendo suscriptores reales. El gate que autoriza despliegue es **G7**, y está **NO-GO por diseño** ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), aprobado). La distinción entre construido, mergeable y desplegable es la taxonomía de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) — ver §12.3.
+
+| Módulo | Código | Construido | Gate más avanzado alcanzado | Evidencia |
+|--------|--------|-----------|------------------------------|-----------|
+| Auth + Users + Tenant + Audit | MOD01 | ✅ | Cierre de módulo (previo a la taxonomía de gates) | `INFORME-MOD01-CIERRE-v1.0.md` |
+| Dashboard / Portal de empresa | MOD02 | 🔶 Parcial | **G6 NO-GO condicionado** (2026-08-04) — fase reabierta | `INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md` |
+| Configuración — Control Plane federado | MOD00 | ✅ | Fases 01–06 cerradas; **sin informe de cierre de módulo** | [ADR-040](../adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md) |
+| Usuarios internos | MOD04 | ✅ | **Cierre sin condiciones** (2026-07-22) | `INFORME-MOD04-CIERRE-MODULO-v1.0.md` |
+| CRM + Expedientes + Subscribers | MOD05 | ✅ | Fase 03 completada; sin informe de cierre de módulo | — |
+| Módulo Comercial (Catálogo, Bundles, Precios) | MOD06 | ✅ | Fase 01; sin informe de cierre de módulo | ADR-028 |
+| Tributación (catálogo centralizado de impuestos) | MOD07 | ✅ | Programa Taxation/Parties cerrado | ADR-029 |
+| Parties (identidad multi-rol) | MOD08 | ✅ | Programa Taxation/Parties cerrado | ADR-030 |
+| WFM / Programación de técnicos | MOD09 | ✅ | **G6 GO · G6.5 suspendido · G7 no evaluado**; H1/H2/V3 reabiertos | `INFORME-MOD09-CICLO-VIDA-VISITA-CAMPO-v1.0.md` |
+| Service Assurance / Mesa de ayuda | MOD10 | ✅ | Fase 01 **En revisión** | ADR-038 |
+| Ejecución operativa / Tareas | MOD11 | ✅ | **G6 GO · G6.5 GO · G7 NO-GO** (diferido) | `INFORME-MOD11-FLOW-CABLEADO-v1.0.md` §15.13 |
+| Inventario / SCM + Compras + Activos | MOD12 | ✅ | **G7 GO técnico de módulo** (CTO, 2026-07-21), alcance MVP | `INFORME-MOD12-CIERRE-MODULO-v1.0.md` |
+| Media + Object Storage (MinIO) | Transversal | ✅ | — | ADR-034, ADR-035 |
+| Búsqueda global (Typesense) | Transversal | ✅ | — | ADR-036 |
+| Notificaciones Email | Transversal | 🔶 Base | — | — |
+| **NMS · Billing · Provisioning · Portal Cliente · ETL** | — | 🔲 | **No iniciados** | §14.2 |
+
+**Lectura honesta del MVP.** De los diez bloques del párrafo anterior, están construidos **Auth+RBAC** y **CRM core**. **Billing, FE DIAN, NMS MikroTik, Provisioning, RADIUS, Portal suscriptor y ETL de migración no se han iniciado** — son cinco de los seis módulos que la §14.2 numera del 3 al 6 y del 9 al 11. En su lugar se construyeron MOD00, MOD04, MOD11 y MOD12, que no figuraban en el MVP original. El plazo de 90 días de la restricción C01 está **excedido** y el alcance real ejecutado divergió del planificado; §14.3 lo registra.
 
 ### 1.7 Medidas de éxito (KPI)
 
@@ -161,6 +206,9 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 | C07 | Cada módulo va a producción cuando Backend + Frontend + BD + Tests están completos. No big bang                                                                                | Calidad sobre velocidad de despliegue                    |
 | C08 | Módulos anteriores no pueden requerir refactorización mayor al agregar nuevos                                                                                                  | Diseñar para extensibilidad desde el inicio              |
 | C09 | Si un módulo queda técnicamente bloqueado, el equipo debe detener avance, documentar causa raíz, opciones y recomendación, y escalar decisión antes de continuar o repriorizar | Evita ocultar bloqueos y mover deuda crítica aguas abajo |
+| **C10** | **El dominio productivo está formalmente diferido** hasta el cierre del roadmap modular: no se decide FQDN, hosting, autoridad certificadora ni método de emisión de certificados, ventana operativa ni objetivos de recuperación. Ref: [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) | **G7 permanece NO-GO por diseño, no por defecto.** Ningún módulo se despliega. Prohibido producir evidencia de despliegue que no exista: los marcadores de dominio y de imagen pendientes de aprobación se conservan intactos, y la integración continua bloquea un archivo de entorno productivo que aún los contenga |
+| **C11** | **No existe entorno de staging.** El programa opera con desarrollo local y verificación en integración continua | Los criterios de Done que exigen staging (§14.3, S12) no son evaluables hoy |
+| **C12** | El sistema **procesa datos personales reales** aunque no esté en producción | Obliga a tratar la protección de PII como control activo y no como requisito de despliegue. Expediente de reapertura en curso: [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* |
 
 ---
 
@@ -1198,6 +1246,20 @@ flowchart TB
     COM -->|"indexar catálogo"| SEARCH
 ```
 
+### 8.1bis Bounded contexts incorporados en v2.5
+
+El diagrama anterior es de la v2.4 y **no incluye tres contextos que hoy existen y están construidos**. Se documentan aquí en vez de redibujarlo, para que el contraste entre lo diseñado y lo construido quede visible.
+
+| Contexto | Código | Ownership | Frontera que no cruza |
+| --- | --- | --- | --- |
+| **Configuración — Control Plane federado** | MOD00 | Organización, sedes y capacidades, acceso y perfiles, política MFA del tenant, módulos activos, calendario operativo | **Centraliza la experiencia, no el ownership.** WFM, Inventario, Billing, Comercial y Assurance conservan sus datos operativos. Ref: [ADR-040](../adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md), [ADR-042](../adrs/ADR-042-Calendario-Operativo-Jornadas.md) |
+| **Ejecución operativa / Tareas** | MOD11 | `ExecutionOrder` como **fuente canónica**, actividades de campo, resultado técnico, consumo operativo, cierre técnico | No agenda ni despacha (eso es MOD09) y **no descuenta stock** (lo solicita a MOD12 por evento). La OT terminal es **inmutable**: una corrección crea OT de seguimiento. Ref: [ADR-046](../adrs/ADR-046-Bounded-Context-Tasks-Ejecucion-Operativa.md), [ADR-047](../adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md), [ADR-068](../adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md) |
+| **Inventario / SCM** | MOD12 | Existencias y saldos, movimientos, activos serializados y comodato, compras y RFQ, proveedores, bajas, conteo físico, costeo | No aprovisiona servicio ni gestiona recursos de red (IPAM sigue sin construir). Las referencias a Parties son **lógicas, sin FK cross-module**. Ref: [ADR-048](../adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md) |
+
+**Corrección de una relación del diagrama.** El diagrama v2.4 muestra `WFM -->|"MaterialsConsumed event"| INV`. Con MOD11 ya construido, el consumo de materiales lo origina **la ejecución de campo, no la agenda**, y viaja como `InventoryConsumptionRequestedV1` que **MOD12 confirma o rechaza** — no como un hecho consumado. La relación vigente es `MOD11 → MOD12`, con MOD12 conservando la autoridad sobre su propio saldo ([ADR-068](../adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md)).
+
+**Contextos del diagrama que todavía no existen como código:** `Billing / Rating`, `Provisioning / Order Mgmt`, `NMS`, `IPAM / recursos de red` y `Omnicanal`. Aparecen en el diagrama como diseño objetivo, no como sistema construido.
+
 ### 8.2 Mapa de contexto — Relaciones
 
 | Upstream          | Downstream        | Relación              | Mecanismo                                                            |
@@ -1271,6 +1333,26 @@ flowchart TB
 | pgBouncer    | Latest stable. Connection pooling para PostgreSQL. Modo transaction pooling: usar `SET LOCAL` por TX                                               | <https://www.pgbouncer.org/>               |
 
 **Regla:** El proyecto adopta latest stable como baseline objetivo de trabajo, según `docs/prds/Stack_Tecnologico.md`. Cada sprint declara la versión exacta validada en conjunto y sus smoke tests asociados. Ninguna actualización con breaking changes entra sin validación arquitectónica.
+
+**Excepción a la regla de "latest stable" — runtime de Node.** El runtime **no** sigue latest stable: [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md) fijó **Node 24 LTS** en las cinco imágenes desplegables y **descartó Node 26**, con punto de reevaluación el **2026-10-28**. La versión exacta de patch tiene **fuente única de verdad** en `useNodeVersion` de `pnpm-workspace.yaml`, referenciada por los Dockerfiles y por la integración continua; `engines.node` conserva `>=24.0.0` como contrato mínimo, no como pin. Un runtime de aplicación se elige por soporte a largo plazo, no por novedad.
+
+**Adiciones de stack incorporadas en v2.5:**
+
+| Tecnología | Alcance | Referencia |
+| --- | --- | --- |
+| `pg_trgm` (extensión PostgreSQL) | Búsqueda difusa de usuarios con índices GIN; **retira la implementación de Levenshtein en TypeScript** — la similitud se resuelve en el motor, no en la aplicación | [ADR-062](../adrs/ADR-062-Extension-pg-trgm-Busqueda-Usuarios.md) |
+| `pdfkit` (`apps/api`) | Generación de PDF de RFQ **server-side**, sin navegador headless | [ADR-051](../adrs/ADR-051-RFQ-Solicitud-Cotizacion-Invitaciones.md) |
+| Runner de migraciones tenant | Contrato extendido con `transactional = false` para habilitar `CREATE INDEX CONCURRENTLY` | [ADR-066](../adrs/ADR-066-Migraciones-No-Transaccionales-Runner.md) |
+| nginx | Sirve la pantalla de arranque como estático **sin dependencias**; no puede importar el design system porque debe renderizar antes de que exista cualquier build | [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) |
+
+**Decisiones de stack abiertas, pendientes del CTO** — se listan porque su indefinición bloquea el despliegue real:
+
+| Asunto | Estado | Consecuencia de no decidir |
+| --- | --- | --- |
+| Destino de **pgBouncer**: consumirlo o retirarlo | [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) *(propuesto)* | Hoy se levanta y **nadie lo consume**; la justificación arquitectónica de `SET LOCAL search_path` cita un pooler que no está en la ruta real |
+| Escaneo CVE, SBOM y firma de imágenes como gate de merge | [ADR-073](../adrs/ADR-073-Cadena-de-Suministro-de-Imagenes.md) *(propuesto)* | Las cinco imágenes desplegables se publican sin verificación de cadena de suministro |
+| Autenticación de Redis en todos los entornos | [ADR-074](../adrs/ADR-074-Autenticacion-de-Redis.md) *(propuesto)* | Redis sin contraseña fuera de E2E, transportando identificadores de tenant en los payloads de la cola |
+| Versión exacta o digest de pgBouncer, MinIO y nginx | **Bloqueo abierto** | `Stack_Tecnologico.md` los registra como "latest stable" sin aprobar referencia exacta; el perfil de producción no es reproducible |
 
 ### 9.2 Estándares de API
 
@@ -1361,6 +1443,16 @@ class OltAdapterFactory {
 ### 10.1 Decisión de despliegue
 
 El sistema se despliega **on-premise en servidores del ISP**. No se asumen servicios cloud. Todo el stack funciona en servidores físicos o VMs del ISP con Docker. Ref: ADR-013.
+
+> **Estado al 2026-08-09 — no hay despliegue.** La decisión on-premise se mantiene íntegra, pero **su ejecución está diferida**: no se ha definido dominio, hosting, autoridad certificadora ni objetivos de recuperación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), restricción C10). Esta sección describe la **arquitectura objetivo**, no una instalación existente.
+>
+> **Lo que sí está en construcción** es la experiencia de instalación y primer arranque, que hasta la v2.4 **no estaba definida en ningún artefacto del corpus** — ni en este PRD ni en un HLD. [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) la formaliza:
+>
+> - **Instalador on-premise** que valida requisitos antes de empezar en lugar de fallar a mitad, muestra la descarga de imágenes y espera hasta que el sistema responde.
+> - **Pantalla de arranque** servida por el proxy —no por el framework de aplicación— para que abrir el sistema durante las migraciones informe en vez de rechazar la conexión.
+> - **Superficie pública de estado** diseñada como hostil: vocabulario genérico sin nombres de producto, estados de conjunto cerrado y **silencio en régimen estable**.
+>
+> **Limitación declarada del instalador v1:** todavía **no puede entregar la credencial del primer administrador** en un entorno productivo, porque la validación de configuración la rechaza por diseño y no existe camino alternativo. Es el precio correcto del invariante de [ADR-057](../adrs/ADR-057-Credenciales-Iniciales-Por-Tenant.md) —quien despliega no conoce la credencial— y está **escalado al CTO** con opciones y recomendación. Hasta que se resuelva, una instalación queda levantada y sin forma de entrar.
 
 ### 10.2 Requisitos de Hardware Mínimos
 
@@ -1551,7 +1643,7 @@ FASE 3: INFORME Y AUDITORÍA
 └── Si aprobado → PRODUCCIÓN → Siguiente módulo o módulo repriorizado
 ```
 
-> **Regla de completitud (ADR-016):** No se inicia el siguiente módulo hasta que el anterior esté production-ready y aprobado. El Architect Software emite el ADR de aprobación antes del deploy a producción.
+> **Regla de completitud ([ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)):** No se inicia el módulo N+1 hasta cerrar el N. *(Corrección v2.5: hasta la v2.4 esta regla se atribuía a ADR-016. **La autoridad es ADR-022**; ADR-016 es el cierre de MOD01 y no establece la política. La atribución errónea llevaba a citar como norma un ADR de alcance puntual.)*
 > **Excepción controlada de prioridad:** El orden objetivo de módulos es secuencial, pero CTO + Engineering Manager pueden repriorizar un módulo por necesidad de negocio o ventana operativa, siempre que las dependencias técnicas mínimas estén resueltas y la decisión quede documentada en ADR o artefacto formal de gobierno.
 > **Regla de stop técnico:** Si un módulo no puede continuar por dependencia faltante, bloqueo arquitectónico, riesgo regulatorio, brecha de seguridad o imposibilidad operativa verificable, el equipo debe detener ejecución, explicar el porqué, documentar impacto, alternativas y recomendación, y esperar decisión explícita antes de retomar o mover prioridad.
 
@@ -1578,7 +1670,40 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 3. Base de datos versionada, migrada y validada para el módulo.
 4. Tests unitarios, integración y E2E en verde según el gate del módulo.
 5. Documentación de fase, runbooks y evidencias archivadas en `docs/`.
-6. Despliegue realizado y validado en producción con datos de operación o consultas reales según corresponda al módulo.
+6. Despliegue realizado y validado en producción con datos de operación o consultas reales según corresponda al módulo. — **Criterio del cierre en producción, no del cierre en construcción.** Diferido mientras ADR-070 esté vigente; ver §12.3.3.
+
+> **Estados de módulo (ADR-080, aprobado 2026-08-09).** Un módulo está en uno de estos tres, y el estado se declara explícitamente:
+>
+> - **`Abierto`** — en construcción activa.
+> - **`Suspendido`** — interrumpido por una dependencia descubierta, **con causa y condición de retorno escritas**, checklist abierto y contratos congelados intactos. No es abandono: es deuda con nombre, dueño y fecha de regreso.
+> - **`Cerrado en construcción`** — criterios 1 a 5 completos con **G6 y G6.5**. Habilita abrir el módulo siguiente. El criterio 6 queda pendiente del disparador que reabra el dominio productivo.
+>
+> **Cota vigente: dos módulos funcionales** en `Abierto` o `Suspendido` a la vez. Un tercero exige decisión explícita del CTO. Los frentes transversales no cuentan.
+
+#### 12.3.3 Taxonomía de gates de cierre — G6 · G6.5 · G7 (v2.5)
+
+El criterio 6 de §12.3.2 **exige un despliegue productivo que hoy ningún módulo puede realizar**, porque el dominio productivo está formalmente diferido ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), aprobado por el CTO). Leído sin esta sección, ese criterio convertía a todo módulo en "no cerrado" o —peor— invitaba a declarar producción donde no la hay, que es exactamente el error que arrastraba la v2.4.
+
+[ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) resuelve la ambigüedad separando tres preguntas distintas. **Ninguna se obtiene por cumplir la anterior:**
+
+| Gate | Pregunta que responde | Quién aprueba | Qué autoriza |
+| --- | --- | --- | --- |
+| **G6** | ¿La calidad es aceptable? | AI-EM-ARCH, sobre evidencia de QA, seguridad, UX y design system | Nada por sí solo — habilita evaluar G6.5 |
+| **G6.5** | ¿Se puede **mergear**? | AI-EM-ARCH consolida; la ejecuta plataforma | **El merge. Nunca el despliegue.** Exige corrida de integración continua en Linux identificada **por SHA**, con artefacto resumen sanitizado — conteos, plataforma, duración, limpieza; **nunca tokens ni payloads** |
+| **G7** | ¿Se puede **desplegar**? | AI-EM-ARCH recomienda, **el CTO aprueba** | El despliegue productivo. Exige dominio productivo, TLS de autoridad reconocida, rollback por componente ensayado, y restauración global y por tenant |
+
+**Consecuencia para el criterio 6 de §12.3.2.** Mientras ADR-070 esté vigente, **el criterio 6 no es exigible** y su ausencia **no constituye deuda**: es el estado correcto y deliberado del programa. Todo informe de cierre debe registrar **G6, G6.5 y G7 por separado**, y decir cuál no aplica y por qué.
+
+**Los dos tipos de cierre.** [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) separa lo que ADR-022 §Decisión 3 mezclaba:
+
+| Cierre | Qué exige | Aprueba | Habilita |
+| --- | --- | --- | --- |
+| **En construcción** | Backend, frontend, datos, pruebas y documentación completos, con **G6 y G6.5** | AI-EM-ARCH | **Abrir el módulo siguiente.** Es el cierre exigible hoy |
+| **En producción** | Lo anterior más **G7** | **CTO** | El despliegue. **Diferido** por ADR-070; su ausencia no es deuda |
+
+**La Regla de Completitud se satisface con el cierre en construcción.** No se relaja: se hace alcanzable. ADR-022 §Decisión 3 exige *"despliegue en producción validados"* mientras ADR-070 lo prohíbe — **dos ADRs aprobados en contradicción**. Exigir lo imposible no es rigor: una regla incumplible se ignora, y eso es peor que no tenerla.
+
+**Estado del programa al 2026-08-09:** ningún módulo tiene G7 de despliegue. **G7 está NO-GO por diseño en todo el programa.** El único G7 registrado —MOD12, 2026-07-21— es un **G7 técnico de módulo en alcance MVP** aprobado por el CTO, y el propio informe de cierre precisa que **no constituye cierre en producción**.
 
 ### 12.4 Estándares de Código
 
@@ -1661,6 +1786,29 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 | Ley 1581/2012     | PII cifrada, acceso auditado, derechos ARCO ≤15 días      | CRM, Auth    | Audit log accesos PII       |
 | IVA estratos      | Motor IVA correcto por estrato/tipo (EXENTO/EXCLUIDO/19%) | Billing, CRM | Facturas emitidas           |
 
+### 13.5 Controles de seguridad incorporados en v2.5
+
+Cinco decisiones aprobadas entre 2026-07 y 2026-08 endurecen la superficie de identidad y de datos personales. Son normativas: ninguna se relaja por conveniencia de módulo.
+
+| # | Control | Qué establece | Referencia |
+| --- | --- | --- | --- |
+| **SEC-1** | **Frontera criptográfica de audiencias JWT** | Audiencias e *issuers* separados para plataforma y tenant, con coherencia obligatoria entre el par y el claim de tipo. `RolesGuard` exige **rol de plataforma ⇔ token de plataforma**. `SYSTEM_ADMIN` e `IWANA_SUPPORT` dejan de ser asignables desde el módulo de usuarios de tenant, validado en DTO **y** en servicio | [ADR-061](../adrs/ADR-061-Frontera-de-Audiencias-JWT-y-Procedencia-de-Roles.md) |
+| **SEC-2** | **Credenciales iniciales por tenant** | El ADMIN inicial **nace bloqueado** con secreto aleatorio que nadie conoce; desaparece la contraseña compartida por entorno; la credencial se emite una sola vez por un camino explícito y **no viaja por la cola de trabajos** | [ADR-057](../adrs/ADR-057-Credenciales-Iniciales-Por-Tenant.md) |
+| **SEC-3** | **Cifrado de PII y MFA con rotación** | Validación **fail-fast** de la clave AES en **todos los entornos, incluido desarrollo** — no hay excepción de conveniencia; rotación con clave previa y trabajo de recifrado idempotente y consciente del tenant | [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) |
+| **SEC-4** | **Proyección de datos personales en listados** | Documento, correo y teléfono se muestran en el listado de suscriptores con **finalidad declarada por campo**; acceso masivo trazado en el registro de auditoría (actor, rol, filtros, tamaño de página); cota de paginación **no relajable**. *"La excepción es el listado, no la regla"*: **no generaliza a otros listados** y **la exportación no está cubierta** | [ADR-067](../adrs/ADR-067-Proyeccion-PII-Listados-Operativos.md) |
+| **SEC-5** | **Admin principal explícito** | El administrador principal del tenant es una **columna explícita**, no un derivado del orden de creación; la transferencia es una operación auditada, nunca un efecto colateral de un borrado lógico; eliminar al principal falla sin sucesor | [ADR-063](../adrs/ADR-063-Admin-Principal-Explicito-MOD04.md) |
+
+**Regulatorio.** SEC-4 se apoya en la **Ley 1581 de 2012** (Habeas Data). El propio ADR-067 marca esa cita como *"requiere verificación con fuente oficial"*, y ese estado se conserva aquí: **la calificación jurídica de la finalidad declarada por campo no ha sido validada por asesoría legal**. Es la única obligación regulatoria de esta sección que no está confirmada.
+
+**Deuda de seguridad declarada y abierta** — se registra en el PRD porque condiciona el primer despliegue:
+
+| Id | Asunto | Estado |
+| --- | --- | --- |
+| RR-01 | Las acciones de `SYSTEM_ADMIN` no quedaban registradas en el registro de auditoría de plataforma como exige el requisito de auditoría de MOD01 | Atacado parcialmente; **el marcador de escalación sigue sin cerrar**. Debe resolverse **antes del primer despliegue productivo** |
+| RL-01 | El límite de tasa global del API **no está cableado**: el guard nunca se registra como guard global, y tres documentos afirmaban un control que no existía | Abierto |
+| ~~CT-01~~ | ~~`apps/portal` no declara umbral de cobertura~~ · **RESUELTO el 2026-08-04**, el mismo día de la escalación. `apps/portal/jest.config.js` declara umbral global como **trinquete fijado en el suelo medido menos un punto** (statements 55, branches 47, functions 49, lines 57) sobre 169 suites y 1080 tests. El 80% es la meta y se sube cuando la cobertura suba, nunca al revés | **Cerrado** |
+| SES-01 | La sesión usa almacenamiento local en lugar de cookie `httpOnly`; ningún componente de servidor puede autenticar | Deuda estructural declarada, sin dueño asignado |
+
 ---
 
 ## 14. Roadmap — Orden de Módulos por Prioridad
@@ -1685,26 +1833,64 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 **Módulos fundación (obligatorios primero, orden fijo):** Auth → Users → Tenant → Audit. Sin estos, todos los demás requerirían refactorización mayor.
 
-### 14.2 Tabla de implementación — Estado Real (v2.4)
+### 14.1bis Corrección — "un módulo a la vez" es cadencia de gobierno, no de trabajo
 
-| Orden | Módulo                                                                                                                         | Estado (v2.4)             | ADRs         | Fase            |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------------ | --------------- |
-| 1     | **Core: Auth + Usuarios + Tenant + Audit (MOD01, MOD02)**                                                                      | ✅ Producción             | ADR-016/018  | MVP Obligatorio |
-| 2     | **CRM: Expedientes, Subscribers, Contacts, Habeas Data (MOD05)** — Pipeline 8 estados, conversión two-stage                    | ✅ Implementado           | ADR-024/026/027 | MVP Obligatorio |
-| 2-B   | **Catálogo Comercial (MOD06):** Planes, Productos, Bundles, Promociones, Reglas, SCD T2, Pricing por segmento                  | ✅ Implementado           | ADR-028/031  | MVP Obligatorio |
-| 2-C   | **TaxationModule (MOD07):** Catálogo centralizado impuestos, `ITaxCatalogReadPort`, presets fiscales                           | ✅ Implementado           | ADR-029/032  | MVP Obligatorio |
-| 2-D   | **PartiesModule (MOD08):** Party maestro multi-rol, PartyRole, PartyContact                                                    | ✅ Implementado           | ADR-030      | MVP Obligatorio |
-| 2-E   | **MediaModule + @iwana/storage:** Upload, MIME/SVG validado, MinIO/StoragePort, media_assets                                   | ✅ Implementado           | ADR-034/035  | MVP Obligatorio |
-| 2-F   | **SearchModule (Typesense):** Búsqueda global indexada, colecciones multi-tenant, índice async BullMQ                          | ✅ Implementado           | ADR-036      | MVP Obligatorio |
-| 7     | **Service Assurance (MOD10):** Tickets, SLA, PQR CRC, Timeline, TicketWorkOrderLink                                           | ✅ Implementado           | ADR-038      | MVP Obligatorio |
-| 8     | **WFM (MOD09):** VisitRequests, WorkOrders, Scheduling, OperatingSites, HolidayBlackouts, Inbox operativo                     | ✅ Implementado           | ADR-037/039  | MVP             |
-| 3     | **NMS: MikroTik + Monitoreo básico + IOltAdapter (interfaz)**                                                                  | 🔲 En roadmap            | —            | MVP Obligatorio |
-| 4     | **Billing: Facturación + Motor IVA + Siigo/Alegra adapter**                                                                    | 🔲 En roadmap            | —            | MVP Obligatorio |
-| 5     | **Provisioning: Activación servicios multi-método (PPPoE/DHCP/IP Fija/MAC)**                                                   | 🔲 En roadmap            | —            | MVP Obligatorio |
-| 6     | **Inventory: IPAM + recursos de red + ciclo de vida activos + Módulo Compras**                                                 | 🔲 En roadmap            | —            | MVP Obligatorio |
-| 9     | **Portal Cliente**                                                                                                              | 🔲 En roadmap            | —            | MVP             |
-| 10    | **Notificaciones Email (MailerModule base: ✅)**                                                                               | 🔶 Base implementada     | —            | MVP             |
-| 11    | **ETL/Migración: WispHub + AdminOLT + UISP + Excel**                                                                           | 🔲 En roadmap            | —            | MVP             |
+La regla base de §14.1 se redactó antes de [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md) (aprobado por el CTO el 2026-07-10), que adoptó la **ejecución paralela contract-first**. Leída literalmente hoy, esa regla describe una cadencia que el programa no sigue, y su desalineación es lo que hacía que cada corte del roadmap pareciera incumplimiento.
+
+**Lectura vigente, que sustituye a la interpretación literal:**
+
+1. **La secuencia modular gobierna el compromiso de alcance, no la agenda de trabajo.** Un módulo se abre y se cierra como unidad; la Regla de Completitud de [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md) —no iniciar N+1 sin cerrar N— sigue **íntegra y no se relaja**.
+2. **Dentro de una fase, los tracks corren en paralelo contra contratos congelados** (protocolo §3bis). Congelar un contrato exige artefacto localizable en `docs/` y declaración explícita en el prompt de ejecución; un contrato verbal no cuenta.
+3. **Un cambio de contrato es el único evento que fuerza re-sincronizar los tracks**, y se coordina vía AI-EM-ARCH: se versiona y se notifica, nunca se parchea en silencio.
+4. **Los frentes transversales** (plataforma, seguridad, design system, herramienta de desarrollo) **no son módulos del roadmap** y por tanto **no disparan ADR-022**. Se gobiernan por su propio informe y su propio tablero de fases.
+
+Lo que la regla sí prohíbe, y sigue prohibiendo: abrir un módulo funcional nuevo con el anterior sin cerrar.
+
+**Dependencia descubierta — el caso que faltaba.** Lo anterior gobierna la ejecución paralela *dentro* de una fase, pero no cubre la situación más común del programa: construyendo el módulo N se constata que **N no puede terminar sin una capacidad M que no existe**. MOD00, MOD04, MOD11 y MOD12 nacieron exactamente así.
+
+Eso **no es repriorización** —que se decide antes de abrir el módulo, y ya está permitida por §14.1— sino **interrupción**. [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) la formaliza:
+
+| Regla | Contenido |
+| --- | --- |
+| **Cuándo se invoca** | Solo si la dependencia es **bloqueante, no conveniente**, y M no cabe dentro del boundary de N |
+| **Qué le pasa a N** | Pasa a estado **`Suspendido`**, con causa y condición de retorno escritas, checklist abierto y contratos congelados intactos. No "abandonado" |
+| **Cómo se vuelve** | **Pila, no cola**: al cerrar M se retoma N **antes de abrir cualquier otro módulo**. Es la regla que impide que la flexibilidad degenere en profundidad sin cierre |
+| **Cuántos a la vez** | **Máximo dos** módulos funcionales abiertos o suspendidos. Un tercero exige decisión explícita del CTO. Los frentes transversales no cuentan |
+
+**Por qué existe la cota.** Al 2026-08-09 hay **seis módulos abiertos sin cierre** (MOD00, MOD02, MOD05, MOD06, MOD09, MOD10) frente a cuatro cerrados. Ninguno se abandonó por descuido: cada uno se interrumpió por una razón concreta. Pero nadie declaró la interrupción ni fijó la condición de retorno. **El problema nunca fue construir fuera de orden — fue interrumpir sin declarar y no volver.**
+
+### 14.2 Tabla de implementación — Estado real (v2.5, corte 2026-08-09)
+
+> **Cómo leer esta tabla.** La columna **Construido** dice si el código existe y fue aceptado en calidad. La columna **Gate** dice hasta dónde llegó en la taxonomía de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md): **G6** calidad aceptable · **G6.5** mergeable · **G7** desplegable. **Ninguna fila alcanza despliegue productivo**: G7 está NO-GO por diseño en todo el programa ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)).
+>
+> El **Orden** es el del roadmap planificado y **se conserva a propósito**, aunque el orden realmente ejecutado fue otro (§14.3bis). Conservarlo hace visible la divergencia en vez de esconderla reescribiendo el plan.
+>
+> **La secuencia vigente de trabajo no es esta columna, sino la de §14.3ter** — olas aprobadas por el CTO el 2026-08-09. Esta tabla dice **qué existe**; §14.3ter dice **en qué orden se ataca lo que falta**. Están separadas a propósito: mezclarlas fue lo que produjo la deriva que esta v2.5 corrige.
+
+| Orden | Módulo | Construido | Gate | ADRs | Fase |
+| ----- | ------ | ---------- | ---- | ---- | ---- |
+| 1 | **Core: Auth + Usuarios + Tenant + Audit (MOD01)** | ✅ | Cierre de módulo previo a la taxonomía | ADR-016/018 · [057](../adrs/ADR-057-Credenciales-Iniciales-Por-Tenant.md) · [061](../adrs/ADR-061-Frontera-de-Audiencias-JWT-y-Procedencia-de-Roles.md) | MVP Obligatorio |
+| 1-B | **Dashboard / Portal de empresa (MOD02)** | 🔶 Parcial | **G6 NO-GO condicionado** — fase reabierta 2026-08-04 | [064](../adrs/ADR-064-Paginacion-Tablas-Operativas-Portal.md) · [065](../adrs/ADR-065-Paginacion-Numerada-Tablas-Operativas.md) · [075](../adrs/ADR-075-Contrato-Capas-Z-Portal.md) | MVP Obligatorio |
+| 1-C | **Configuración — Control Plane federado (MOD00)** | ✅ | Fases 01–06 cerradas; **sin informe de cierre de módulo** | [040](../adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md) · [042](../adrs/ADR-042-Calendario-Operativo-Jornadas.md) · [043](../adrs/ADR-043-Edicion-Atomica-Sede-Capacidades.md) · [044](../adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md) · [045](../adrs/ADR-045-Consolidacion-Politica-MFA-Global-en-Access.md) | MVP Obligatorio |
+| 1-D | **Usuarios internos (MOD04)** | ✅ | **Cierre sin condiciones** (2026-07-22) | [062](../adrs/ADR-062-Extension-pg-trgm-Busqueda-Usuarios.md) · [063](../adrs/ADR-063-Admin-Principal-Explicito-MOD04.md) | MVP Obligatorio |
+| 2 | **CRM: Expedientes, Subscribers, Contacts, Habeas Data (MOD05)** — pipeline 8 estados, conversión two-stage | ✅ | Fase 03 completada; sin cierre de módulo | ADR-024/026/027 · [067](../adrs/ADR-067-Proyeccion-PII-Listados-Operativos.md) | MVP Obligatorio |
+| 2-B | **Catálogo Comercial (MOD06):** planes, productos, bundles, promociones, reglas, SCD T2, pricing por segmento | ✅ | Fase 01; sin cierre de módulo | ADR-028/031 | MVP Obligatorio |
+| 2-C | **TaxationModule (MOD07):** catálogo centralizado de impuestos, `ITaxCatalogReadPort`, presets fiscales | ✅ | Programa Taxation/Parties cerrado | ADR-029/032 | MVP Obligatorio |
+| 2-D | **PartiesModule (MOD08):** Party maestro multi-rol, PartyRole, PartyContact | ✅ | Programa Taxation/Parties cerrado | ADR-030 · [052](../adrs/ADR-052-Alta-Proveedores-SupplierProfile-Puerto-Comando-Parties.md) | MVP Obligatorio |
+| 2-E | **MediaModule + @iwana/storage:** upload, MIME/SVG validado, MinIO/StoragePort, `media_assets` | ✅ | — | ADR-034/035 · [068](../adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md) | MVP Obligatorio |
+| 2-F | **SearchModule (Typesense):** búsqueda global indexada, colecciones multi-tenant, índice async BullMQ | ✅ | — | ADR-036 | MVP Obligatorio |
+| 7 | **Service Assurance (MOD10):** tickets, SLA, PQR CRC, timeline, `TicketWorkOrderLink` | ✅ | Fase 01 **En revisión** | ADR-038 | MVP Obligatorio |
+| 8 | **WFM / Programación (MOD09):** `VisitRequest`, agenda, capacidad, despacho, reprogramación | ✅ | **G6 GO · G6.5 suspendido · G7 no evaluado**; H1/H2/V3 reabiertos | ADR-037/039 · [041](../adrs/ADR-041-Retiro-Excepciones-Tecnico-WFM.md) · [047](../adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md) · [076](../adrs/ADR-076-Unicidad-Trabajo-Campo-Activo-Por-Origen.md) · [077](../adrs/ADR-077-Ciclo-Vida-Visita-No-Realizada.md) | MVP |
+| 8-B | **Ejecución operativa / Tareas (MOD11):** `ExecutionOrder` como fuente canónica, OT enriquecida, cierre técnico | ✅ | **G6 GO · G6.5 GO · G7 NO-GO** (diferido) | [046](../adrs/ADR-046-Bounded-Context-Tasks-Ejecucion-Operativa.md) · [047](../adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md) · [068](../adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md) | MVP |
+| 6 | **Inventario / SCM (MOD12):** existencias, compras, RFQ, proveedores, activos y comodato, bajas, conteo físico, costeo | ✅ | **G7 GO técnico de módulo** (CTO 2026-07-21), alcance MVP · **no desplegado** | [048](../adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md) · [050](../adrs/ADR-050-Compra-Mostrador-Ingreso-Directo.md) · [051](../adrs/ADR-051-RFQ-Solicitud-Cotizacion-Invitaciones.md) · [053](../adrs/ADR-053-Supplier-Quote-Lines.md) · [054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) · [055](../adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) · [059](../adrs/ADR-059-Costeo-Promedio-Movil-Valoracion-Inventario.md) · [060](../adrs/ADR-060-Control-Bajas-y-Consultas-Operativas-Inventario.md) | MVP Obligatorio |
+| 3 | **NMS: MikroTik + monitoreo básico + `IOltAdapter` (interfaz)** | 🔲 | **No iniciado** | [044](../adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md) fija la frontera `OrganizationSite` ↔ `NmsNode` | MVP Obligatorio |
+| 4 | **Billing: facturación + motor IVA + adapter Siigo/Alegra** | 🔲 | **No iniciado** | — | MVP Obligatorio |
+| 5 | **Provisioning: activación multi-método (PPPoE/DHCP/IP fija/MAC)** | 🔲 | **No iniciado** | — | MVP Obligatorio |
+| 6-B | **IPAM + recursos de red** — *separado de MOD12: el inventario de materiales y activos ya existe; los recursos de red (IP, VLAN, QoS) no* | 🔲 | **No iniciado** | — | MVP Obligatorio |
+| 9 | **Portal Cliente** | 🔲 | **No iniciado** | — | MVP |
+| 10 | **Notificaciones Email (MailerModule base)** | 🔶 Base | — | — | MVP |
+| 11 | **ETL/Migración: WispHub + AdminOLT + UISP + Excel** | 🔲 | **No iniciado** | — | MVP |
+| — | **Plataforma: experiencia de arranque e instalación** *(frente transversal, no módulo)* | 🔶 En curso | **G1 ✅ · G4 ✅**; ejecución habilitada | [079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) | Transversal |
 | 12    | **OLT Adapters: Huawei + ZTE (zero-touch provisioning ONU)**                                                                   | 🔲 En roadmap            | —            | Fase 2          |
 | 13    | **WFM avanzado (geofencing, app móvil técnico)**                                                                               | 🔲 En roadmap            | —            | Fase 2          |
 | 14    | **Omnicanal: WhatsApp + SMS**                                                                                                  | 🔲 En roadmap            | —            | Fase 2          |
@@ -1733,6 +1919,76 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 | S12    | 12     | Testing E2E, hardening seguridad, runbooks on-premise, deploy staging, UAT                                                                | E2E >95%, security scan clean, staging on-premise funcional         |
 
 **Resultado MVP:** ISP puede gestionar suscriptores (Natural + Jurídico), facturar electrónicamente vía Siigo/Alegra con motor IVA por estrato, monitorear red MikroTik, aprovisionar servicios (PPPoE + IP Fija + DHCP), ticketing con SLA, portal suscriptor con pagos, portal contratista, datos migrados.
+
+> **Estado de este plan al 2026-08-09 — se conserva como referencia histórica, no como plan vigente.**
+>
+> El plan de doce sprints **no se ejecutó en el orden previsto y su ventana de 90 días está excedida**. Se conserva sin reescribir porque reescribirlo borraría la evidencia de la divergencia; §14.3bis registra lo que realmente ocurrió y §14.3ter propone la secuencia siguiente.
+>
+> Contraste sprint a sprint de los criterios de Done que hoy **no se cumplen**:
+>
+> - **S5–S6 (Billing, FE DIAN, Wompi):** no iniciados. Ninguna factura se ha emitido.
+> - **S7 (NMS MikroTik), S8 (Provisioning, RADIUS), S9 (IPAM):** no iniciados.
+> - **S11 (Portal Cliente, ETL de migración):** no iniciados.
+> - **S12:** *"E2E >95%"* — la suite del portal está en torno al **80%** (≈29 fallos abiertos). *"Staging on-premise funcional"* — **no existe entorno de staging**. *"Security scan clean"* — el frente SEC-P1 alcanzó G6 pero **mergeó sin G6.5** por indisponibilidad de la integración continua.
+
+### 14.3bis Lo que se ejecutó realmente
+
+El orden ejecutado fue **MOD01 → MOD05 → MOD06 → MOD07 → MOD08 → MOD09 → MOD10 → MOD00 → MOD04 → MOD11 → MOD12**, más doce frentes transversales simultáneos (plataforma, seguridad, Docker, roles, UI).
+
+Esto se aparta de §14.1 en dos puntos, y ambos deben quedar declarados en lugar de normalizarse en silencio:
+
+| Regla de §14.1 | Qué ocurrió | Lectura |
+| --- | --- | --- |
+| *"se construye **un módulo a la vez**"* | Módulos y frentes transversales han corrido en paralelo de forma sostenida | La regla describe una cadencia que el programa **no sigue**. No es incumplimiento oculto: la ejecución paralela contract-first está aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md) y gobernada por el protocolo §3bis. **§14.1 quedó desalineada con esa decisión posterior y se corrige en §14.1bis** |
+| *"se busca respetar el orden del roadmap"* | Se construyó primero el back-office (MOD00, MOD04, MOD11, MOD12) y no la cadena de ingreso del ISP (NMS, Billing, Provisioning) | Es un cambio de prioridad real. La **excepción controlada** de §14.1 lo permite, pero exige *"aceptación explícita del CTO"* y justificación documental: **existe por módulo** (ADR-040, 046, 048 aprobados por el CTO), **no existe como decisión de secuencia del programa**. Ver §14.3ter |
+
+**Consecuencia de negocio, enunciada sin rodeos:** el sistema hoy sabe administrar la operación interna de un ISP —usuarios, catálogo, agenda de técnicos, órdenes de trabajo, inventario, compras— pero **todavía no puede facturar, ni aprovisionar un servicio, ni conectar un suscriptor a la red**. Los tres módulos que producen ingreso y activación (Billing, Provisioning, NMS) son los que siguen sin iniciar.
+
+### 14.3ter Secuencia del programa — resuelta por el CTO el 2026-08-09
+
+**Escalación cerrada.** El roadmap de §14.2 conservaba NMS, Billing y Provisioning como órdenes 3, 4 y 5, pero la ejecución real los pospuso tres meses sin que ningún artefacto registrara esa repriorización como decisión de programa. **El CTO aprobó el 2026-08-09 una secuencia por olas**, bajo el criterio explícito de *"pensar a futuro y sin tener que refactorizar"*.
+
+#### El criterio que ordena las olas
+
+No es la antigüedad de cada módulo ni el valor de negocio aislado, sino **qué decisiones sin tomar heredarán los seis módulos que faltan**. Una decisión pendiente no se queda quieta: se multiplica por cada módulo construido encima.
+
+Dos fundaciones están sin decidir y las heredan **Billing, Provisioning, NMS, IPAM, Portal Cliente y ETL**:
+
+| Fundación | Estado verificado | Coste de decidirla tarde |
+| --- | --- | --- |
+| **Topología de acceso a datos** | `api-prod`, `worker-prod` y `migrator-prod` apuntan **directo a PostgreSQL**; pgBouncer se levanta y nadie lo consume, mientras la arquitectura justifica `SET LOCAL search_path` citando un pooler que no está en la ruta real | Revisar manejo de transacciones y `search_path` en los dos módulos más intensivos en datos del programa |
+| **Modelo de sesión** | El token vive en almacenamiento local del navegador; el propio código documenta que **ningún componente de servidor puede autenticar** | Reescribir el data-fetching de toda página construida en el intervalo |
+
+#### Secuencia aprobada
+
+| Ola | Contenido | Naturaleza |
+| --- | --- | --- |
+| **0 — Desbloqueo** | Restablecer la facturación de integración continua | **No es producto.** Sin ella no cierra ni lo ya construido: G6.5 exige corrida verde por SHA |
+| **1 — Fundaciones que todo hereda** | (a) Decidir [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) *(propuesto)* · (b) Decidir el modelo de sesión · (c) Cerrar **MOD02** | Dos **decisiones**, no construcción. El único trabajo de construcción es MOD02, con cuatro bloqueantes de los que tres son de esfuerzo bajo |
+| **2 — Cierre barato** | **MOD00** y **MOD05** | Solo consolidación y evidencia; **no requieren construir nada** |
+| **3 — Cadena de ingreso** | **Billing → Provisioning → NMS**, en ese orden | Sobre fundación ya estable. Es la ola que convierte la plataforma en producto vendible |
+| **4 — Intercaladas** | **MOD06** y **MOD10** (consolidación) · **MOD09** (tiene defecto funcional abierto) | Se abren en ventanas, respetando la cota |
+
+**Encaje con la cota de [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md):** la Ola 1 deja **MOD02 abierto** y la Ola 2 **MOD00 en consolidación** — exactamente dos módulos funcionales. La secuencia converge a la cota sin forzarla.
+
+#### Lo que esta decisión cuesta, declarado
+
+**Retrasa Billing una ola más**, sobre tres meses ya transcurridos. El intercambio aceptado es **una ola de fundación contra rehacer la interfaz y revisar la capa de datos del módulo más grande que queda**.
+
+**Contraargumento evaluado y descartado:** que Billing revelará requisitos que cambien el shell del portal de todos modos, y que arreglarlo antes es especular. No aplica: los cuatro bloqueantes de MOD02 **no son sobre qué páginas existen**, sino sobre que el shell no usa las primitivas del design system y que nueve de doce roles del tenant muestran *"Panel en preparación"*. Es infraestructura del shell, independiente de qué módulo añada páginas encima.
+
+#### Dependencias abiertas de la Ola 1
+
+Ambas decisiones se resolvieron el **2026-08-09**:
+
+| Id | Decisión | Artefacto | Estado |
+| --- | --- | --- | --- |
+| **OLA1-a** | **Consumir pgBouncer — Opción A.** `api-prod` y `worker-prod` se encaminan por el pooler; el migrator queda directo a PostgreSQL, porque el DDL no debe pasar por un pooler en modo transacción | [ADR-072](../adrs/ADR-072-Destino-de-pgBouncer.md) | **Aprobado por el CTO**, con validación bajo carga como **condición de entrada, no como trabajo posterior** |
+| **OLA1-b** | **Migrar el access token a cookie `httpOnly`** y habilitar autenticación en componentes de servidor, en dos pasos desacoplados | [ADR-081](../adrs/ADR-081-Modelo-de-Sesion-Cookie-HttpOnly.md) | **Aprobado por el CTO el 2026-08-09** |
+
+**El dictamen de seguridad descartó la alternativa de conservar el patrón actual** —token en almacenamiento local— **como decisión permanente**, por tres hechos verificados: existe hoy una cadena de robo del token de plataforma sin política de seguridad de contenido que la contenga; la consola de plataforma **no tiene ciclo de refresco** y su sesión muere cada quince minutos sin renovación; y conservarlo cerraría los componentes de servidor de forma definitiva, dejando que los seis módulos pendientes hereden todo el data-fetching en cliente.
+
+**Hallazgo crítico independiente.** La misma auditoría encontró un **XSS almacenado en la búsqueda global de la consola de plataforma** que permite a un administrador de tenant robar el token de un usuario de plataforma, cruzando la frontera de audiencias que [ADR-061](../adrs/ADR-061-Frontera-de-Audiencias-JWT-y-Procedencia-de-Roles.md) protege. **No depende de OLA1-b y no espera a ella**: tiene [artefacto propio](../security/SECURITY-REVIEW-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md) y corrección inmediata. **Resuelto el 2026-08-09:** C-7 corregido por AI-FE-PLATFORM, PoC C-7b por AI-SR-QA y **cierre formal por AI-SEC-ENG** ([informe](../informes/INFORME-TRANSVERSAL-XSS-BUSQUEDA-GLOBAL-v1.0.md)). Queda abierta la CSP (**C-8**, con dueño) como segunda capa.
 
 ### 14.4 Fase 2 — 90 a 180 días
 
@@ -2211,6 +2467,22 @@ Migration Module (@iwana/migration)
 | `docs/prds/Stack_Tecnologico.md`                 | Stack con versiones latest verificadas (Feb 2026), notas de breaking changes y links a documentación oficial |
 | `Manual_de_Identidad_Iwana.pdf`                  | Identidad corporativa: logo, colorimetría, tipografía                                                        |
 
+**Artefactos de gobernanza vigentes incorporados en v2.5** — sustituyen la referencia genérica al framework de gobernanza como fuente operativa:
+
+| Documento | Qué gobierna | Precedencia |
+| --- | --- | --- |
+| `AGENTS.md` | Gobernanza maestra del workspace: dispatch de capacidades, comandos, convención documental | **Nivel 1** — por encima de este PRD |
+| `docs/adrs/` | Decisiones aprobadas por el CTO | **Nivel 2** — por encima de este PRD |
+| **Este PRD** y los HLD de módulo | Definición de producto y arquitectura | Nivel 3 |
+| `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md` | Workflow de 7 etapas y 8 gates, RACI, red de consulta, ejecución paralela contract-first | Nivel 5 |
+| `docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md` | Autoridad técnico-funcional delegada del CTO | Nivel 7 |
+
+> **Regla de precedencia, y por qué importa aquí.** Cuando este PRD contradice un ADR **aprobado**, **prevalece el ADR** — no por jerarquía formal abstracta, sino porque un ADR aprobado es una decisión del CTO posterior y más específica. Esta v2.5 existe precisamente porque la v2.4 había acumulado contradicciones de ese tipo. Un PRD desactualizado no es neutro: se cita como norma y propaga el error.
+
+**Fuentes de diseño ("Estrella Polar"), con tres dominios de autoridad distintos:** los tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; la spec de la firma visual iWana sobre *qué construir*; `docs/identity/` y el prototipo sobre *qué es la marca*. Ref: [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md).
+
+**Hueco documental declarado.** El corpus **no tiene PRD de instalación de producto** — empaquetado, licenciamiento, actualización asistida y migración entre versiones. [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) cubre la experiencia de arranque para su frente, pero deja este hueco registrado como residual de severidad baja. No se cierra en esta versión.
+
 ---
 
 ## PARTE 5 — GOBERNANZA
@@ -2447,10 +2719,38 @@ Incorporación ADR-025 a ADR-039 (aprobados por CTO):
 - WfmModule + AssuranceModule + inbox WFM (ADR-037, ADR-038, ADR-039).
 - Actualización C4, Bounded Contexts, stack, Docker, integraciones y roadmap.
 
+### 2.5 — 2026-08-09
+
+**Estado: Propuesto — requiere G1 del CTO.** Incorpora ADR-040 a ADR-079 y cierra 82 días de desfase entre el documento y el sistema.
+
+**Correcciones de hecho** — el texto anterior contradecía ADRs ya aprobados, que prevalecían por precedencia:
+
+- **§1.6 y §14.2:** se retira la declaración *"✅ Producción"* de MOD01 y MOD02. **Nada está desplegado**; G7 es NO-GO por diseño (ADR-070). Es la corrección más grave de esta versión.
+- **§14.2:** MOD12 pasa de *"en roadmap"* a **construido con G7 técnico de módulo**; se incorporan MOD00, MOD04 y MOD11, ausentes de la tabla pese a estar construidos.
+- **§1.6:** se elimina la fila *"NMS / Provisioning / Billing — MOD03–05"*, cuya codificación era errónea: MOD03 es Configuración (legacy) y MOD05 es CRM, ambos ya declarados en la misma tabla.
+- **§12.3:** la Regla de Completitud se reancla a **ADR-022**; la v2.4 la atribuía a ADR-016, que es el cierre de MOD01 y no establece política.
+- **§12.3.2 criterio 6:** el despliegue productivo deja de ser exigible mientras ADR-070 esté vigente; su ausencia no es deuda.
+
+**Incorporaciones normativas:**
+
+- **§1.4:** quince decisiones nuevas — control plane federado, frontera sede/nodo, separación agenda↔ejecución, fuente canónica con outbox, inventario como contexto propio, costeo, reservas efectivas, puerto de comando, unicidad de trabajo de campo, visita no realizada, paginación, consultas acotadas, capas de superposición, diferimiento productivo y experiencia de arranque.
+- **§8.1bis:** bounded contexts MOD00, MOD11 y MOD12, más la corrección de la relación de consumo de materiales, que va de MOD11 a MOD12 y **requiere confirmación**, no es un hecho consumado.
+- **§9.1:** Node 24 LTS como **excepción declarada** a "latest stable"; adiciones `pg_trgm`, `pdfkit`, runner no transaccional; cuatro decisiones de stack abiertas que bloquean el despliegue.
+- **§12.3.3:** taxonomía **G6 / G6.5 / G7**, con la regla de que ninguno se obtiene por cumplir el anterior.
+- **§13.5:** cinco controles de seguridad —audiencias JWT, credenciales iniciales, cifrado con rotación, proyección de PII en listados, admin principal explícito— y cuatro deudas de seguridad abiertas.
+- **§2.2:** restricciones C10 (dominio diferido), C11 (sin staging) y C12 (procesa PII real sin estar en producción).
+- **§10.1:** estado real del despliegue y la limitación declarada del instalador.
+- **§14.1bis:** *"un módulo a la vez"* se reinterpreta como cadencia de gobierno, alineada con la ejecución paralela de ADR-049; ADR-022 sigue íntegra.
+- **§14.3bis y §14.3ter:** orden realmente ejecutado, su divergencia con el plan, y la **secuencia por olas aprobada por el CTO el 2026-08-09**, ordenada por herencia de fundaciones y no por coste de cierre.
+- **§12.3.2 y §14.1bis:** estados de módulo `Abierto` / `Suspendido` / `Cerrado en construcción` y cota de dos, por [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md), que enmienda ADR-022 §Decisión 3 y 4.
+- **§19.4:** cadena de precedencia documental y hueco declarado del PRD de instalación de producto.
+
+**Lo que no cambia:** arquitectura Modulith, multi-tenancy por schema, despliegue on-premise, stack aprobado, alcance funcional del MVP, personas, requerimientos funcionales, modelo de datos y objetivos de negocio.
+
 ---
 
-_Documento actualizado el 19 de mayo de 2026. Versión 2.4 — Estado Real del Código._  
-_Aprobado para uso como referencia de desarrollo por el CTO Humano._  
-_Actualizado por: GitHub Copilot (Claude Sonnet 4.6) — Architect Software_  
-_Framework de Gobernanza Multi-IA v2.0_
+_Documento actualizado el 9 de agosto de 2026. Versión 2.5 — Propuesta, pendiente de G1 del CTO._  
+_La versión 2.4 (2026-05-19) fue la última aprobada; permanece como base hasta la firma, salvo en los puntos donde contradecía ADRs aprobados._  
+_Actualizado por: AI-EM-ARCH — modo Product Architect + Architect + Orchestrator_  
+_Gobernanza: `AGENTS.md` · Protocolo de Colaboración Multiagente_
 

@@ -1,11 +1,35 @@
 # ADR-072: Destino de pgBouncer — consumirlo o retirarlo
 
-**Versión:** 1.0
-**Estado:** Propuesto
-**Fecha:** 2026-08-03
+**Versión:** 1.1
+**Estado:** Aprobado
+**Fecha:** 2026-08-03 (decisión del CTO: 2026-08-09)
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobación requerida:** CTO Humano — afecta la topología de acceso a datos de una plataforma multi-tenant (§5 de la matriz de decisiones del perfil AI-EM-ARCH)
+**Aprobado por:** CTO Humano — 2026-08-09
+**Opción aprobada:** **A — consumir pgBouncer**, con la validación bajo carga como **condición de entrada y no como trabajo posterior**
+**Cambio v1.0 → v1.1:** registro de la decisión del CTO y de las condiciones de entrada; sin cambios en el análisis
+**Ejecución:** **OLA1-a** de la secuencia por olas aprobada el 2026-08-09 ([PRD §14.3ter](../prds/PRD_Sistema_ISP_Colombia_v2_4.md))
+
+---
+
+> ## Decisión del CTO — 2026-08-09
+>
+> **Se aprueba la Opción A: encaminar `api-prod` y `worker-prod` por pgBouncer** (`DB_HOST: pgbouncer`, `DB_PORT: 6432`), **manteniendo el migrator conectado directamente a PostgreSQL** — el DDL no debe pasar por un pooler en modo transacción.
+>
+> **Motivo de secuencia, no de preferencia:** consumir el pooler es reversible y el momento de menor coste es ahora, con el programa aún sin producción. Retirarlo también sería reversible, pero su reintroducción caería en el peor momento posible: con carga real y datos de tenants reales.
+>
+> ### Condiciones de entrada — no son trabajo posterior
+>
+> | Id | Condición | Bloquea |
+> | --- | --- | --- |
+> | **E-1** | Auditar que **no exista `SET search_path` sin `LOCAL`**, ni advisory locks de sesión, ni prepared statements con nombre que crucen transacciones. En `pool_mode: transaction` cualquier estado de sesión que no sea `SET LOCAL` se pierde entre transacciones | El encaminamiento |
+> | **E-2** | Dejar el **migrator y los scripts de `scripts/db/*` explícitamente fuera** del pooler | El encaminamiento |
+> | **E-3** | Fijar **`AUTH_TYPE`**, hoy ausente del Compose y heredado del default de la imagen, **antes** de poner pgBouncer en la ruta de datos | El encaminamiento |
+> | **E-4** | **Validación bajo carga** que demuestre el comportamiento del `search_path` por transacción con concurrencia real | El cierre de OLA1-a |
+>
+> **Consecuencia documental:** la justificación de `SET LOCAL search_path` en `AGENTS.md` y `CLAUDE.md` deja de ser una premisa que el runtime contradice y pasa a describir la topología real. **No se reescribe: se cumple.**
+>
+> **Consulta pendiente declarada:** la cabecera recomendaba consultar a **AI-DATA-ENG** sobre el comportamiento de `search_path` bajo pooling y a **AI-SR-FULL** sobre el acceso a datos. Esa consulta **sigue sin realizarse** y es parte de E-1: la aprobación de la opción no la sustituye.
 **Consulta previa recomendada:** AI-DATA-ENG (comportamiento de `search_path` bajo pooling), AI-SR-FULL (implicaciones en el acceso a datos)
 **Módulos:** Plataforma transversal — acceso a datos de API y worker
 **Relacionado:** [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) §2.2 A1

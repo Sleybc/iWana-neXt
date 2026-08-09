@@ -4,8 +4,29 @@
 **Fecha:** 2026-03-07  
 **Autor:** AI-EM-ARCH  
 **Aprobado por:** CTO Humano (2026-07-19, vía [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) — sin cambios de contenido; regulariza 91 citas y la regla de completitud que gobierna la cadencia de fases del programa)
+**Enmendado por:** [ADR-080](ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) (Aprobado por el CTO el 2026-08-09) — **§Decisión puntos 3 y 4**. El resto de este ADR sigue vigente sin cambios.
 
 ---
+
+> ## ⚠ Enmienda vigente — 2026-08-09
+>
+> **Este ADR sigue vigente. Dos de sus cinco puntos de decisión quedan enmendados** por [ADR-080](ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md). Léelos siempre junto con esa enmienda.
+>
+> ### §Decisión punto 3 — "Cierre real solo en producción"
+>
+> **Enmendado por contradicción con un ADR posterior.** Este punto exige *"despliegue en producción validados"* para cerrar un módulo. [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado, 2026-08-02) **difiere formalmente la producción** y deja G7 NO-GO por diseño. Leídos juntos y sin enmienda, ningún módulo del programa podía cerrarse nunca.
+>
+> ADR-080 §Decisión 5 separa **cierre en construcción** —backend, frontend, datos, pruebas y documentación completos, con **G6 y G6.5** ([ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md)), lo aprueba AI-EM-ARCH y **habilita abrir el módulo siguiente**— de **cierre en producción**, que añade **G7**, lo aprueba el CTO y permanece diferido.
+>
+> **La Regla de Completitud de este ADR no se relaja: se satisface con el cierre en construcción.** Su ausencia de G7 **no constituye deuda** mientras ADR-070 esté vigente.
+>
+> ### §Decisión punto 4 — "Repriorización controlada"
+>
+> **Enmendado por insuficiencia, no por error.** Este punto es correcto y sigue vigente para lo que cubre: mover el orden del roadmap **antes de abrir** un módulo, por necesidad de negocio o ventana operativa.
+>
+> No cubría el caso más frecuente del programa: constatar, **construyendo el módulo N**, que N no puede terminar sin una capacidad M que no existe. Eso no es reordenar una cola — es **interrumpir**. MOD00, MOD04, MOD11 y MOD12 nacieron así, sin que ningún artefacto lo nombrara.
+>
+> ADR-080 §Decisión 1–4 añade la **dependencia descubierta** con sus cuatro reglas: solo si es **bloqueante, no conveniente**; N pasa a estado **`Suspendido`** con causa y condición de retorno; el retorno es **pila, no cola** —al cerrar M se retoma N antes de abrir cualquier otro—; y **cota de dos** módulos funcionales abiertos, con excepción reservada al CTO.
 
 ## Contexto
 
