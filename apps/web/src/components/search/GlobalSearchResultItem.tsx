@@ -2,6 +2,7 @@
 
 import { Building2, ClipboardList, LayoutDashboard, Settings, Users } from 'lucide-react';
 import { cn } from '@iwana/ui';
+import { SearchHighlight } from './SearchHighlight';
 import type { GlobalSearchItem } from '@/lib/api-client';
 
 const moduleIconByRoute: Record<string, typeof LayoutDashboard> = {
@@ -82,8 +83,9 @@ export function GlobalSearchResultItem({
               <span
                 key={`${item.id}-${highlight}`}
                 className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
-                dangerouslySetInnerHTML={{ __html: highlight }}
-              />
+              >
+                <SearchHighlight snippet={highlight} />
+              </span>
             ))}
           </span>
         ) : null}
