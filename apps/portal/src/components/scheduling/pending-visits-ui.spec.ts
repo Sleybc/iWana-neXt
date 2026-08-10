@@ -6,6 +6,7 @@ import {
   formatVisitRequestTerritory,
   getVisitRequestOriginLabel,
   getVisitRequestRetryChip,
+  hydratePendingVisitFiltersFromSearchParams,
   requiresAttemptDecision,
 } from './pending-visits-ui';
 
@@ -46,6 +47,19 @@ describe('filterActionablePendingVisitRequests', () => {
     expect(filterActionablePendingVisitRequests([...visitRequests] as WfmVisitRequest[])).toEqual([
       expect.objectContaining({ id: 'ready' }),
     ]);
+  });
+});
+
+describe('hydratePendingVisitFiltersFromSearchParams (CA-V2-05 / I-2)', () => {
+  it('inicializa status desde la dirección y descarta inválidos', () => {
+    expect(
+      hydratePendingVisitFiltersFromSearchParams(new URLSearchParams('status=READY_TO_SCHEDULE'))
+        .status,
+    ).toBe(VisitRequestStatus.READY_TO_SCHEDULE);
+
+    expect(
+      hydratePendingVisitFiltersFromSearchParams(new URLSearchParams('status=NOPE')).status,
+    ).toBe('');
   });
 });
 

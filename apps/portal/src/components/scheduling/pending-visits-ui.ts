@@ -184,6 +184,28 @@ export function buildDefaultPendingVisitFilters(): PendingVisitFilters {
   };
 }
 
+const VISIT_REQUEST_STATUSES = new Set<string>(Object.values(VisitRequestStatus));
+
+export function parseVisitRequestStatusFromSearchParams(
+  params: URLSearchParams,
+): PendingVisitFilters['status'] {
+  const raw = params.get('status');
+  if (!raw || !VISIT_REQUEST_STATUSES.has(raw)) {
+    return '';
+  }
+  return raw as VisitRequestStatus;
+}
+
+/** Hidrata filtros de bandeja desde la dirección (CA-V2-05 / I-2). */
+export function hydratePendingVisitFiltersFromSearchParams(
+  params: URLSearchParams,
+): PendingVisitFilters {
+  return {
+    ...buildDefaultPendingVisitFilters(),
+    status: parseVisitRequestStatusFromSearchParams(params),
+  };
+}
+
 export function getVisitRequestStatusLabel(status: VisitRequestStatus): string {
   return visitRequestStatusMeta[status].label;
 }

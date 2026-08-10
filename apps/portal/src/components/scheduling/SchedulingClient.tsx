@@ -78,6 +78,7 @@ import {
   formatWfmDayLabel,
   getDefaultSchedulingViewForRole,
   getRecommendedSchedulingViewForDensity,
+  hydrateSchedulingFiltersFromSearchParams,
   isHighDensityScheduleDay,
   isScheduleEventTerminalStatus,
   toApiDateRange,
@@ -183,17 +184,12 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
-  const [filters, setFilters] = useState<SchedulingFilters>(() => {
-    const base = buildDefaultSchedulingFilters(getDefaultSchedulingViewForRole());
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const technicianId = params.get('technicianId');
-      if (technicianId) {
-        return { ...base, technicianId };
-      }
-    }
-    return base;
-  });
+  const [filters, setFilters] = useState<SchedulingFilters>(() =>
+    hydrateSchedulingFiltersFromSearchParams(
+      new URLSearchParams(searchParams.toString()),
+      buildDefaultSchedulingFilters(getDefaultSchedulingViewForRole()),
+    ),
+  );
   const [events, setEvents] = useState<WfmScheduleEvent[]>([]);
   const [summary, setSummary] = useState<WfmDashboardSummary | null>(null);
   const [technicians, setTechnicians] = useState<InternalUser[]>([]);

@@ -2,6 +2,7 @@ import {
   getDefaultExpedienteView,
   getExpedienteViewLabel,
   getOriginViewFromStatus,
+  parseExpedienteViewFromSearchParams,
 } from './expediente-list-view';
 
 describe('expediente list view', () => {
@@ -9,6 +10,14 @@ describe('expediente list view', () => {
     expect(getDefaultExpedienteView()).toBe('open');
     expect(getExpedienteViewLabel('archive')).toBe('Archivo');
     expect(getOriginViewFromStatus('CLIENTE_ACTIVO')).toBe('archive');
+  });
+
+  it('hidrata view desde searchParams (CA-V2-05 / I-7)', () => {
+    expect(parseExpedienteViewFromSearchParams(new URLSearchParams('view=open'))).toBe('open');
+    expect(parseExpedienteViewFromSearchParams(new URLSearchParams('view=converted'))).toBe(
+      'converted',
+    );
+    expect(parseExpedienteViewFromSearchParams(new URLSearchParams('view=nope'))).toBe('open');
   });
 
   it('should map all view labels correctly', () => {

@@ -11,8 +11,11 @@ import {
   getDefaultSchedulingViewForRole,
   getSchedulingViewDescription,
   hasScheduleEventCoordinates,
+  hydrateSchedulingFiltersFromSearchParams,
   isHighDensityScheduleDay,
+  parseLocalDayKey,
   parseOptionalCoordinate,
+  parseSchedulingView,
 } from './scheduling-ui';
 
 describe('scheduling-ui', () => {
@@ -148,5 +151,23 @@ describe('scheduling-ui', () => {
         longitude: '-74.0721',
       } as any),
     ).toBe('4.711, -74.0721');
+  });
+
+  it('hidrata view+fromDate desde la dirección (CA-V2-05 / I-1)', () => {
+    expect(parseSchedulingView('day')).toBe('day');
+    expect(parseSchedulingView('bogus')).toBeNull();
+    expect(parseLocalDayKey('2026-08-10')).toBe('2026-08-10');
+    expect(parseLocalDayKey('2026-02-31')).toBeNull();
+
+    const hydrated = hydrateSchedulingFiltersFromSearchParams(
+      new URLSearchParams('view=day&fromDate=2026-08-10'),
+    );
+    expect(hydrated).toEqual(
+      expect.objectContaining({
+        view: 'day',
+        fromDate: '2026-08-10',
+        toDate: '2026-08-10',
+      }),
+    );
   });
 });

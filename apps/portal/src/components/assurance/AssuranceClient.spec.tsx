@@ -313,4 +313,16 @@ describe('AssuranceClient', () => {
     expect(await screen.findByText('TK-021')).toBeInTheDocument();
     expect(screen.queryByText('TK-001')).not.toBeInTheDocument();
   });
+
+  it('hidrata slaBreachStatus=AT_RISK desde la dirección (CA-V2-05 / I-4)', async () => {
+    searchParamsMock = new URLSearchParams({ slaBreachStatus: 'AT_RISK' });
+
+    render(<AssuranceClient />);
+
+    await waitFor(() => {
+      expect(listTicketsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ slaBreachStatus: 'AT_RISK' }),
+      );
+    });
+  });
 });

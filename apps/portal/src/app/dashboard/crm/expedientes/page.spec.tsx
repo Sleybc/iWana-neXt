@@ -3,6 +3,15 @@ import ExpedientesPage from './page';
 import { crmApi, usersApi, type InternalUser } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 
+const replaceMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
+
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/dashboard/crm/expedientes',
+  useRouter: () => ({ replace: replaceMock, push: jest.fn() }),
+  useSearchParams: () => searchParamsMock,
+}));
+
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
@@ -89,6 +98,8 @@ function buildUser(overrides: Partial<InternalUser>): InternalUser {
 describe('ExpedientesPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
+    replaceMock.mockReset();
     crmApiMock.listExpedientes.mockResolvedValue({ data: [], total: 0 });
     crmApiMock.getPipelineSummary.mockResolvedValue({
       data: {
@@ -216,5 +227,18 @@ describe('ExpedientesPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Archivo' }));
     expect(await screen.findByText('Sin histórico comercial cerrado')).toBeInTheDocument();
+  });
+
+  it('hidrata view=open desde la dirección (CA-V2-05 / I-7)', async () => {
+    searchParamsMock = new URLSearchParams({ view: 'open' });
+
+    render(<ExpedientesPage />);
+
+    await waitFor(() => {
+      expect(crmApiMock.listExpedientes).toHaveBeenCalledWith(
+        expect.objectContaining({ view: 'open', limit: 100 }),
+      );
+    });
+    expect(screen.getByRole('button', { name: /Abiertas/i })).toBeInTheDocument();
   });
 });

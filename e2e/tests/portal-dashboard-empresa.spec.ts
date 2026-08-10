@@ -436,6 +436,110 @@ async function setupDashboardMocks(page: Page, options: MockOptions = {}) {
       return;
     }
 
+    // Destinos CA-V2-05 — stubs mínimos para hidratar filtros sin API real.
+    if (url.includes('/wfm/events') && method === 'GET') {
+      await json(route, {
+        data: [],
+        meta: {
+          nextCursor: null,
+          total: 0,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 100,
+          totalPages: 0,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/work-orders') && method === 'GET') {
+      await json(route, {
+        data: [],
+        meta: {
+          nextCursor: null,
+          total: 0,
+          page: 1,
+          limit: 100,
+          totalPages: 0,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/visit-requests/filter-options') && method === 'GET') {
+      await json(route, { municipalities: [], sectors: [] });
+      return;
+    }
+
+    if (url.includes('/wfm/visit-requests') && method === 'GET') {
+      await json(route, {
+        items: [],
+        meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/eligible-assignees') && method === 'GET') {
+      await json(route, []);
+      return;
+    }
+
+    if (url.includes('/wfm/operating-window') && method === 'POST') {
+      await json(route, {
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      });
+      return;
+    }
+
+    if (url.includes('/assurance/tickets') && method === 'GET') {
+      await json(route, {
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        meta: {
+          mode: 'page',
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+          hasMore: false,
+          capabilities: { randomAccess: true, sortableFields: [] },
+        },
+      });
+      return;
+    }
+
+    if (url.includes('/assurance/sla-policies') && method === 'GET') {
+      await json(route, []);
+      return;
+    }
+
+    if (url.includes('/crm/expedientes') && method === 'GET') {
+      await json(route, { data: [], total: 0 });
+      return;
+    }
+
+    if (url.includes('/users') && method === 'GET') {
+      await json(route, {
+        data: [],
+        meta: { nextCursor: null, total: 0 },
+      });
+      return;
+    }
+
     await json(route, { code: 'E2E_UNMOCKED', message: url }, 404);
   });
 }
@@ -849,5 +953,70 @@ test.describe('D-5 / D-7 · Primer viewport, responsive y firmas', () => {
       path: path.join(EVIDENCE_DIR, 'firmas-iwana-1280.png'),
       fullPage: false,
     });
+  });
+});
+
+test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
+  test('indicador → lista filtrada → recarga conserva filtro → Inicio (UX-15/16)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await setupDashboardMocks(page, { role: 'ADMIN' });
+    await setAuthSession(page, 'ADMIN');
+    await gotoDashboard(page);
+    await expectLoadedDashboard(page);
+
+    // I-4 — mesa de ayuda con slaBreachStatus (patrón I-3 ya estable)
+    await page.getByRole('link', { name: /Casos en riesgo de incumplir/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/assurance\?.*slaBreachStatus=AT_RISK/);
+    await expect(page.getByRole('heading', { name: /mesa de ayuda/i }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.reload();
+    await expect(page).toHaveURL(/slaBreachStatus=AT_RISK/);
+    await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
+    await expectLoadedDashboard(page);
+
+    // I-1 — agenda día + fromDate
+    await page.getByRole('link', { name: /Visitas de hoy/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/scheduling\/agenda\?.*view=day/);
+    await expect(page).toHaveURL(/fromDate=\d{4}-\d{2}-\d{2}/);
+    await expect(page.getByRole('button', { name: 'Día' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+      {
+        timeout: 15_000,
+      },
+    );
+    await page.reload();
+    await expect(page).toHaveURL(/view=day/);
+    await expect(page).toHaveURL(/fromDate=\d{4}-\d{2}-\d{2}/);
+    await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
+    await expectLoadedDashboard(page);
+
+    // I-2 — bandeja status
+    await page.getByRole('link', { name: /Solicitudes por programar/i }).click();
+    await expect(page).toHaveURL(
+      /\/dashboard\/scheduling\/pending-visits\?.*status=READY_TO_SCHEDULE/,
+    );
+    await expect(page.getByRole('heading', { name: /Visitas pendientes/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.reload();
+    await expect(page).toHaveURL(/status=READY_TO_SCHEDULE/);
+    await expect(page.getByRole('heading', { name: /Visitas pendientes/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
+    await expectLoadedDashboard(page);
+
+    // I-7 — oportunidades view=open
+    await page.getByRole('link', { name: /Oportunidades en seguimiento/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/crm\/expedientes\?.*view=open/);
+    await expect(page.getByRole('button', { name: /Abiertas/i })).toBeVisible({ timeout: 15_000 });
+    await page.reload();
+    await expect(page).toHaveURL(/view=open/);
+    await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
+    await expectLoadedDashboard(page);
   });
 });

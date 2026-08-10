@@ -45,7 +45,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E D-3 | Cubierto — G6-4 (baseline CA-01…06 no cuenta) |
 | CA-V2-03 | E2E D-5 + `viewport-*.png` | Cubierto — G6-4 |
 | CA-V2-04 | Unit B0–B3 + composition techo I-1…I-7 | Cubierto — G6-4 |
-| CA-V2-05 | Unit hidratación I-1/I-2/I-4/I-7 + E2E indicador→filtro→recarga→Inicio | **En curso** — FE hidrata destinos; pendiente re-dictamen G6-3 |
+| CA-V2-05 | Unit hidratación I-1/I-2/I-4/I-7 + E2E indicador→filtro→recarga→Inicio | **Hecho FE** — `ddbc22cf`+hidratación; pendiente re-dictamen G6-3 |
 | CA-V2-06 | Unit `allSettled` + E2E error WFM | Cubierto — G6-4 |
 | CA-V2-07/11 | E2E axe + unit null | **NO-GO G6-4** — axe light `color-contrast` 4/4 fallan (descripción muted sobre `danger`) · null unit OK |
 | CA-V2-08 | E2E D-4 | Cubierto — G6-4 |
@@ -89,8 +89,8 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Media | Axe residual: eyebrow muted sobre accent `danger` (~4,45:1) | AI-DS-OWNER → AI-FE-PLATFORM | **Cerrado eyebrow** — DS v1.1 §1.7 + `portalMetricEyebrowClassName` |
 | Media | Axe residual: `text-iwana-primary` sin `dark:text-*` en CTAs secundarios / «Ver más» | AI-FE-PLATFORM | **Cerrado** — `portalInlineTextLinkClassName` + header dark |
 | Media | Axe residual: badge error + `opacity-80` en métrica «Actualizando» | AI-FE-PLATFORM | **Cerrado** — sin `opacity-80`; señal por texto/`aria-live` |
-| Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **En curso** — hidratación FE + E2E; pendiente re-dictamen G6-3 |
-| Alta | Axe `color-contrast` tema light: descripción `text-gray-500` (#6a7282) sobre shell `danger` (#fef3f3) ≈ **4,45:1** | AI-DS-OWNER + AI-FE-PLATFORM | **En curso FE** — DS v1.2 `5f4d1b15` + `portalMetricMutedTextClassName`; pendiente re-medir G6-4 |
+| Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **Hecho FE** — hidrata I-1/I-2/I-4/I-7 + E2E; pendiente re-dictamen G6-3 |
+| Alta | Axe `color-contrast` tema light: descripción `text-gray-500` (#6a7282) sobre shell `danger` (#fef3f3) ≈ **4,45:1** | AI-DS-OWNER + AI-FE-PLATFORM | **Hecho FE** — DS v1.2 `5f4d1b15` + `portalMetricMutedTextClassName` `ddbc22cf`; pendiente re-medir G6-4 |
 
 ## 7. Gates (registro separado — ADR-069)
 
@@ -123,7 +123,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | G6-3 | AI-PROD-UX | **NO-GO** | HEAD `eb5851d0` (≥ `1014990f`) · UX spec v1.0 · HLD CA-V2-01…12 | Experiencia: 11/12 CA OK; **CA-V2-05 falla** (filtros outbound sin hidratación en destino). Ver §9. |
 | 2026-08-10 | G6-4 | AI-SR-QA | **NO-GO** | HEAD `7ea22066` · re-verify post `1014990f` · jest 76/76 cov ≥80% · E2E 21/25 | Filtros axe retirados OK; **CA-V2-07** falla (descripción muted×danger light); CA-V2-05 sin aserción destino/Atrás. Ver §9. |
 | 2026-08-10 | DS-v1.2 | AI-DS-OWNER | Hecho | contrato §1.7 · adenda prompt G4 | Re-sync DS v1.2: description (+ muted cuerpo) × accent danger/warning → `text-gray-700 dark:text-gray-200`. FE aplica · QA re-mide. Carril rápido; sin CTO/ADR. |
-| 2026-08-10 | CA-V2-05 + DS-v1.2-FE | AI-FE-PLATFORM | En curso | hidratación I-1/I-2/I-4/I-7 · `portalMetricMutedTextClassName` · E2E destino | Aplica contraste description v1.2; hidrata filtros destino; E2E indicador→filtro→recarga→Inicio. Re-dictamen G6-3/G6-4 pendiente. |
+| 2026-08-10 | CA-V2-05 + DS-v1.2-FE | AI-FE-PLATFORM | Hecho | `ddbc22cf` contraste · hidratación I-1/I-2/I-4/I-7 · E2E CA-V2-05 pass | Description muted on-tint; destinos hidratan URL; E2E indicador→filtro→recarga→Inicio. Re-dictamen G6-3/G6-4 pendiente. |
 | 2026-08-10 | G6-1 | AI-PLAT-OPS | **NO-GO técnico** | SHA probado `eb5851d0` · E2E 21/25 exit 1 · audits BLOQUEANTE 0 | Gates ejecutados; no dictamen G6 consolidado. Ver §9 G6-1. |
 
 ---

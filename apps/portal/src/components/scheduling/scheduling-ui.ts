@@ -592,6 +592,59 @@ export function buildDefaultSchedulingFilters(view: SchedulingView = 'day'): Sch
   };
 }
 
+const SCHEDULING_VIEWS = new Set<SchedulingView>(['day', 'week', 'month', 'list']);
+const LOCAL_DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseSchedulingView(raw: string | null | undefined): SchedulingView | null {
+  if (!raw) {
+    return null;
+  }
+  return SCHEDULING_VIEWS.has(raw as SchedulingView) ? (raw as SchedulingView) : null;
+}
+
+/** Valida `YYYY-MM-DD` local real (rechaza 2026-02-31 y basura). */
+export function parseLocalDayKey(raw: string | null | undefined): string | null {
+  if (!raw || !LOCAL_DAY_KEY_PATTERN.test(raw)) {
+    return null;
+  }
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || toLocalDayKey(date) !== raw) {
+    return null;
+  }
+  return raw;
+}
+
+/**
+ * Hidrata filtros de agenda desde la dirección (CA-V2-05 / I-1).
+ * Lee `view`, `fromDate` y `technicianId`; ignora valores inválidos.
+ */
+export function hydrateSchedulingFiltersFromSearchParams(
+  params: URLSearchParams,
+  base: SchedulingFilters = buildDefaultSchedulingFilters(),
+): SchedulingFilters {
+  const view = parseSchedulingView(params.get('view'));
+  const fromDate = parseLocalDayKey(params.get('fromDate'));
+  const technicianId = params.get('technicianId')?.trim() ?? '';
+
+  let next: SchedulingFilters = { ...base };
+  if (technicianId) {
+    next = { ...next, technicianId };
+  }
+  if (view) {
+    next = {
+      ...next,
+      ...buildSchedulingRangeForView(view, fromDate ?? next.fromDate),
+      view,
+    };
+  } else if (fromDate) {
+    next = {
+      ...next,
+      ...buildSchedulingRangeForView(next.view, fromDate),
+    };
+  }
+  return next;
+}
+
 export function buildSchedulingFiltersForViewSwitch(
   filters: SchedulingFilters,
   nextView: SchedulingView,

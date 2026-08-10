@@ -328,4 +328,17 @@ describe('PendingVisitRequestsView', () => {
     ).not.toBeInTheDocument();
     expect(replaceMock).toHaveBeenCalledWith('/dashboard/scheduling/pending-visits');
   });
+
+  it('hidrata status=READY_TO_SCHEDULE desde la dirección (CA-V2-05 / I-2)', async () => {
+    searchParamsMock = new URLSearchParams({ status: 'READY_TO_SCHEDULE' });
+
+    render(<PendingVisitRequestsView />);
+
+    expect(await screen.findByText('Pendiente por agendar')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(wfmApi.visitRequests.list).toHaveBeenCalledWith(
+        expect.objectContaining({ status: VisitRequestStatus.READY_TO_SCHEDULE }),
+      );
+    });
+  });
 });

@@ -881,4 +881,29 @@ describe('SchedulingClient', () => {
     expect(await screen.findByText('Crear solicitud manual')).toBeInTheDocument();
     expect(screen.queryByText('Agendar tarea')).not.toBeInTheDocument();
   });
+
+  it('hidrata view=day y fromDate desde la dirección (CA-V2-05 / I-1)', async () => {
+    searchParamsMock = new URLSearchParams({
+      view: 'day',
+      fromDate: '2026-08-10',
+    });
+
+    render(<SchedulingClient surface="agenda" />);
+
+    expect(await screen.findByRole('button', { name: 'Día' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await waitFor(() => {
+      expect(wfmApiMock.events.list).toHaveBeenCalled();
+    });
+    const listArgs = wfmApiMock.events.list.mock.calls[0]?.[0] as {
+      from?: string;
+      to?: string;
+    };
+    expect(listArgs.from).toBeTruthy();
+    expect(listArgs.to).toBeTruthy();
+    // Mismo día local hidratado: el rango API cae en 2026-08-10 (ISO con offset).
+    expect(`${listArgs.from} ${listArgs.to}`).toMatch(/2026-08-10/);
+  });
 });

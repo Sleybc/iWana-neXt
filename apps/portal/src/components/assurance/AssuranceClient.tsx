@@ -62,7 +62,7 @@ import { AssuranceSectionCard } from './assurance-ui';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 
 const USERS_PAGE_SIZE = 100;
-const TICKET_FILTER_KEYS = ['status', 'priority', 'type', 'queueName'] as const;
+const TICKET_FILTER_KEYS = ['status', 'priority', 'type', 'queueName', 'slaBreachStatus'] as const;
 const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
 
 function mapAssuranceError(error: unknown): string {
@@ -200,6 +200,10 @@ function AssuranceClientInner() {
     }
     if (urlFilters.queueName) {
       next.queueName = urlFilters.queueName as ListAssuranceTicketsParams['queueName'];
+    }
+    if (urlFilters.slaBreachStatus) {
+      next.slaBreachStatus =
+        urlFilters.slaBreachStatus as ListAssuranceTicketsParams['slaBreachStatus'];
     }
     return next;
   }, [page, pageSize, urlFilters]);
@@ -629,6 +633,7 @@ function AssuranceClientInner() {
                 priority: nextFilters.priority ?? null,
                 type: nextFilters.type ?? null,
                 queueName: nextFilters.queueName ?? null,
+                slaBreachStatus: nextFilters.slaBreachStatus ?? null,
               });
             }}
             onSearchChange={setSearchValue}
@@ -639,6 +644,7 @@ function AssuranceClientInner() {
                 priority: null,
                 type: null,
                 queueName: null,
+                slaBreachStatus: null,
               });
             }}
             onPageChange={setPage}

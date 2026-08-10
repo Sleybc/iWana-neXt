@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
 import { AcquisitionChannel } from '@iwana/shared';
 import {
@@ -37,9 +38,9 @@ import {
   formatMunicipio,
 } from '@/components/crm/expedientes/expediente-ui';
 import {
-  getDefaultExpedienteView,
   getExpedienteViewLabel,
   getOriginViewFromStatus,
+  parseExpedienteViewFromSearchParams,
 } from '@/components/crm/expedientes/expediente-list-view';
 
 const OPEN_STATUSES = [
@@ -106,10 +107,15 @@ function formatApiError(error: ApiError): string {
 }
 
 export default function ExpedientesPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [expedientes, setExpedientes] = useState<ExpedienteRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<ExpedienteListView>(getDefaultExpedienteView());
+  const [activeView, setActiveView] = useState<ExpedienteListView>(() =>
+    parseExpedienteViewFromSearchParams(new URLSearchParams(searchParams.toString())),
+  );
   const [globalSearchEnabled, setGlobalSearchEnabled] = useState(false);
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [search, setSearch] = useState('');
@@ -431,6 +437,12 @@ export default function ExpedientesPage() {
                   onClick={() => {
                     setActiveView(view);
                     setGlobalSearchEnabled(false);
+                    const nextParams = new URLSearchParams(searchParams.toString());
+                    nextParams.set('view', view);
+                    const nextQuery = nextParams.toString();
+                    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+                      scroll: false,
+                    });
                   }}
                   className={`flex items-center gap-2 rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
                     isActive ? portalTabActiveClassName : portalTabInactiveClassName

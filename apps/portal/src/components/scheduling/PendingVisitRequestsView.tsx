@@ -30,6 +30,7 @@ import {
   buildDefaultPendingVisitFilters,
   canAccessPendingVisits,
   formatVisitRequestLocationLabel,
+  hydratePendingVisitFiltersFromSearchParams,
   requiresAttemptDecision,
   type PendingVisitFilters,
 } from './pending-visits-ui';
@@ -265,7 +266,7 @@ export function PendingVisitRequestsView() {
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
   const [filters, setFilters] = useState<PendingVisitFilters>(() =>
-    buildDefaultPendingVisitFilters(),
+    hydratePendingVisitFiltersFromSearchParams(new URLSearchParams(searchParams.toString())),
   );
   const [response, setResponse] = useState<ListWfmVisitRequestsResponse | null>(null);
   /** Selección fuera del buffer de página (no derivar con `items.find` al paginar). */
@@ -1089,6 +1090,14 @@ export function PendingVisitRequestsView() {
           onFiltersChange={(next) => {
             setFeedback(null);
             setFilters(next);
+            const nextParams = new URLSearchParams(searchParams.toString());
+            if (next.status) {
+              nextParams.set('status', next.status);
+            } else {
+              nextParams.delete('status');
+            }
+            const nextQuery = nextParams.toString();
+            router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
           }}
           onLoadMore={() => {
             setFeedback(null);
