@@ -35,7 +35,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | A — backend | AI-SR-FULL | A-1…A-4 | Hecho | `e4f93324` · jest `tenant-self.spec.ts` 17/17 · typecheck `@iwana/api` exit 0 · C-1/C-2/C-3 |
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
 | C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 `b8517caa` · Task 4 `3aaa217a` · shell ver Track Shell |
-| Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Hecho | `0156a49b` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 |
+| Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 |
 | D — calidad | AI-SR-QA | D-1…D-7 | Pendiente | — |
 
 ## 4. Matriz criterio ↔ test
@@ -102,4 +102,4 @@ Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recompo
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 · `DashboardSummaryTenantDto` · mfaCoverage real · fiber default 50 | Track A cerrado; sin endpoints nuevos ni ampliación `@Roles`; MFA 0 usuarios → ratio `1` |
 | 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 · sync A-3 `e4f93324` | Composition 12 roles; fan-out `allSettled`; sin `RoleRestrictedView`; `DashboardSummaryTenant` 13 campos |
 | 2026-08-10 | C-8…C-13 | AI-FE-PLATFORM | Hecho | `3aaa217a` · jest 61/61 · typecheck 0 · audit-ui 0 · MetricCard/DashboardPanel gone | Jerarquía B0–B3; PortalNavListRow; vocabulario historial; Assurance migrado |
-| 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `0156a49b` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert+foco; barra lima; Buscar <1024 misma GlobalSearch; z ADR-075; lienzo neutral-50 |
+| 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert+foco; barra lima; Buscar <1024 misma GlobalSearch; z ADR-075; lienzo neutral-50 |

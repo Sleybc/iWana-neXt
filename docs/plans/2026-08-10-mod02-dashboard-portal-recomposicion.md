@@ -750,4 +750,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | 2026-08-10 | PLAN | AI-EM-ARCH | Hecho | Este documento | Plan canónico emitido para ejecución multiagente |
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 | C-1/C-2/C-3: fiber default, mfaCoverage real, tenant DTO 13 campos, OpenAPI |
 | 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 | Composition + fan-out; sync A-3; sin gate binario |
-| 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `0156a49b` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert; barra lima; Buscar móvil 1× GlobalSearch; z ADR-075; lienzo neutral-50 |
+| 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert; barra lima; Buscar móvil 1× GlobalSearch; z ADR-075; lienzo neutral-50 |
