@@ -20,7 +20,7 @@ Los cuatro artefactos siguientes están **congelados**. Un track solo se detiene
 | Contrato | Ruta | Versión / estado | Dueño |
 | --- | --- | --- | --- |
 | **HLD del módulo** | [`docs/hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md`](../hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md) | **v2.0.1 — G1 firmado** por AI-SR-FULL y AI-PROD-UX | AI-EM-ARCH |
-| **Contrato de componente** | [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) | **v1.1 — Congelado** (adenda 2026-08-10) | AI-DS-OWNER |
+| **Contrato de componente** | [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) | **v1.2 — Congelado** (adenda 2026-08-10) | AI-DS-OWNER |
 | **UX spec** | [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md) | **v1.0 — Congelada** | AI-PROD-UX |
 | **Auditoría de origen** | [`docs/informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md) | v1.0 — Vigente | AI-EM-ARCH |
 
@@ -214,3 +214,7 @@ Escribe contra criterios y contratos desde el inicio; corre al integrar.
 ## Adenda — contrato DS v1.1 (2026-08-10, AI-DS-OWNER / EM-ARCH)
 
 **Re-sync:** [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.1** — §1.7 matriz eyebrow×`accent` (`danger`/`warning` → `text-gray-700 dark:text-gray-200`). Tracks afectados: **AI-FE-PLATFORM** (aplica) · **AI-SR-QA** (re-mide). Carril rápido; sin CTO/ADR.
+
+## Adenda — contrato DS v1.2 (2026-08-10, AI-DS-OWNER / EM-ARCH)
+
+**Re-sync:** mismo artefacto **v1.2** — §1.7 extiende escalón a `description` (+ muted de cuerpo) × `accent` (`danger`/`warning` → `text-gray-700 dark:text-gray-200`; `neutral`/`primary` gray-500/400). Cierra gap G6-4 axe light. Tracks: **AI-FE-PLATFORM** · **AI-SR-QA**. Carril rápido; sin CTO/ADR.

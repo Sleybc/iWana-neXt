@@ -1,19 +1,26 @@
 # Contrato DS — recomposición del `/dashboard` del portal
 
-**Versión:** 1.1
-**Estado:** **Congelado** (v1.0 el 2026-08-04; **re-sync v1.1** el 2026-08-10 — protocolo §3bis: cambio post-congelación versionado y notificado a AI-FE-PLATFORM y AI-SR-QA vía AI-EM-ARCH)
+**Versión:** 1.2
+**Estado:** **Congelado** (v1.0 el 2026-08-04; **re-sync v1.1** el 2026-08-10; **re-sync v1.2** el 2026-08-10 — protocolo §3bis: cambio post-congelación versionado y notificado a AI-FE-PLATFORM y AI-SR-QA vía AI-EM-ARCH)
 **Fecha:** 2026-08-10
 **Autor:** AI-DS-OWNER
 **Ejecuta:** AI-FE-PLATFORM · **Verifica:** AI-SR-QA · **Orquesta:** AI-EM-ARCH
 
-### Changelog v1.1 (único delta vs v1.0)
+### Changelog v1.2 (único delta vs v1.1)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **§1.7** — misma física de escalón que el eyebrow: ranura `description` (y todo texto muted de cuerpo sobre shell tintado) con `accent` ∈ {`danger`,`warning`} pasa de `text-gray-500 dark:text-gray-400` a `text-gray-700 dark:text-gray-200`; `neutral`/`primary` conservan gray-500/400 | Anatomía, API, estados, lima-como-predicado, sombras, lienzo, capas z, matriz eyebrow de v1.1 |
+| Rationale: G6-4 axe light NO-GO — `description` muted sobre shell `danger` ≈ **4,45:1** (misma física que el gap eyebrow) + atenuados §3.3 | Cero tokens nuevos; cero hex; **prohibido** lima / `opacity-*` |
+
+> **Carril rápido (EM-ARCH):** remedia contraste no-marca sin ADR/CTO. FE aplica la receta de §1.7 (eyebrow + description) contra este artefacto; QA re-mide.
+
+### Changelog v1.1 (delta vs v1.0 — histórico)
 
 | Qué cambia | Qué no cambia |
 | --- | --- |
 | **§1.7** — matriz eyebrow × `accent`: en shells tintados `danger` y `warning`, el color del eyebrow pasa de `text-gray-500 dark:text-gray-400` a `text-gray-700 dark:text-gray-200` (misma tipografía de `.portal-eyebrow-muted`) | Anatomía, API, estados, lima-como-predicado, sombras, lienzo, capas z, checklist salvo ítem A de contraste eyebrow |
 | Rationale: hallazgo QA post-Task 6 (~**4,45:1** eyebrow muted sobre acento `danger`) + contrato de atenuados §3.3 (escalón de token, cero opacidad) | Cero tokens nuevos; cero hex; **prohibido** lima (`.portal-eyebrow` / `secondary-*`) sobre rose/amber |
-
-> **Carril rápido (EM-ARCH):** remedia contraste no-marca sin ADR/CTO. FE aplica la receta de §1.7 contra este artefacto; QA re-mide.
 
 **Entradas leídas antes de redactar (protocolo §7.4 — todas abiertas, ninguna citada de memoria):**
 
@@ -29,7 +36,7 @@
 - `apps/portal/src/components/shared/portal-ui.tsx` — inventario de primitives, líneas verificadas una a una.
 - Skills aplicadas: `iwana-identity-ui-review` (`tokens.md`, `firma-elements.md`, `component-recipes.md`), `core-components`, `tailwind-patterns`.
 
-> **Versión de contrato:** 1.1 — congelada (re-sync). Cualquier modificación posterior se versiona como v1.2+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
+> **Versión de contrato:** 1.2 — congelada (re-sync). Cualquier modificación posterior se versiona como v1.3+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
 
 > **Deslinde de dominio:** este documento fija **tokens, API de componente y estados requeridos**. No fija flujo, jerarquía de información, política de refresco ni qué bloque va dónde: eso es de AI-PROD-UX, que trabaja en paralelo sobre el mismo HLD. Donde este contrato roza el producto, lo hace como restricción ("si se renderiza X, cumple Y"), nunca como prescripción de contenido.
 
@@ -100,11 +107,11 @@ Extiende `PortalMetricCard` (`apps/portal/src/components/shared/portal-ui.tsx:37
 │  [eyebrow]                                    [ícono, opcional]  │  ← tipografía `.portal-eyebrow-muted` + color por §1.7
 │  1.284 / 1.500                                                   │  ← ranura de cifra (mono, tabular)
 │  Visitas de hoy                                     [delta]      │  ← rótulo + badge tonal
-│  Programadas para la jornada en curso                            │  ← descripción, opcional
+│  Programadas para la jornada en curso                            │  ← descripción: tipografía cuerpo + color por §1.7
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Cinco ranuras, en este orden y sin excepción: **eyebrow → cifra → rótulo → delta → descripción**. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5). El color del eyebrow **depende de `accent`** (§1.7); no es siempre el gris de `.portal-eyebrow-muted` a secas.
+Cinco ranuras, en este orden y sin excepción: **eyebrow → cifra → rótulo → delta → descripción**. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5). El color del eyebrow **y** de la descripción (texto muted de cuerpo) **dependen de `accent`** (§1.7); no son siempre el gris-500/400 a secas.
 
 ### 1.2 API pública
 
@@ -145,7 +152,7 @@ interface PortalDashboardMetricProps {
   /** Override de formato. Default: agrupación de miles del portal, sin decimales. */
   formatValue?: (value: number) => string;
 
-  /** Ranura 5. */
+  /** Ranura 5 — tipografía `text-sm leading-6`; color por matriz §1.7 (description × accent). */
   description?: ReactNode;
 
   /** Superficie del acento. Default 'neutral'. Sin casilla lima, por contrato (§4). */
@@ -259,45 +266,64 @@ El ícono es opcional, decorativo y `aria-hidden="true"`. Su tono **se deriva de
 
 `delta.label` es texto ya legible en español, sentence case. **Prohibido** exponer enums, y prohibido que el delta sea el único portador de la señal (SC 1.4.1): el badge lleva siempre texto, no solo color.
 
-### 1.7 Eyebrow × `accent` — contraste sobre shells tintados (v1.1)
+### 1.7 Texto atenuado × `accent` — contraste sobre shells tintados (v1.2)
 
-**Problema cerrado:** AI-SR-QA midió el eyebrow con `.portal-eyebrow-muted` (`text-gray-500 dark:text-gray-400`) sobre el shell `accent='danger'` (superficie rose tintada) en **~4,45:1** — bajo el piso AA 4,5:1 (SC 1.4.3). El hallazgo vive en el informe vivo §6 como residual Axe post-Task 6.
+**Problema cerrado (v1.1 — eyebrow):** AI-SR-QA midió el eyebrow con `.portal-eyebrow-muted` (`text-gray-500 dark:text-gray-400`) sobre el shell `accent='danger'` (superficie rose tintada) en **~4,45:1** — bajo el piso AA 4,5:1 (SC 1.4.3).
 
-**Remedio (carril rápido, EM-ARCH):** conservar la **tipografía** de `.portal-eyebrow-muted` (tamaño, peso, `uppercase`, `tracking-widest`); **no** usar `.portal-eyebrow` lima sobre rose/amber; **no** hex; **no** `opacity-*`. Sobre shells tintados `danger` y `warning`, subir un escalón de token al par ya medido en §1.3 para «sin dato» / atenuados §3.3: `text-gray-700 dark:text-gray-200` (≥ **9,7:1** en el peor caso claro documentado en §1.3).
+**Problema cerrado (v1.2 — description):** G6-4 axe light midió la ranura `description` con `text-gray-500` sobre el mismo shell `danger` en **≈4,45:1** — **misma física** que el gap del eyebrow. El residual vive en el informe vivo §6 / dictamen G6-4.
 
-#### Matriz vinculante
+**Remedio (carril rápido, EM-ARCH):** un único escalón de token para **todo** texto muted secundario de la métrica sobre shells tintados `danger`/`warning`: `text-gray-700 dark:text-gray-200` (≥ **9,7:1** en el peor caso claro documentado en §1.3). Sobre `neutral`/`primary` se conserva `text-gray-500 dark:text-gray-400`. **No** lima; **no** hex; **no** `opacity-*`.
+
+Alcance de ranuras: **eyebrow** (tipografía `.portal-eyebrow-muted` intacta) · **`description`** (tipografía de cuerpo `text-sm leading-6` intacta) · **cualquier otro muted de cuerpo** en la misma cáscara de métrica (p. ej. sufijos `text-sm font-normal text-gray-500` adyacentes al valor). El **rótulo** (`title`) no es muted: no entra en esta matriz.
+
+#### Matriz vinculante — eyebrow
 
 | `accent` | Tipografía | Color (claro / oscuro) | Notas |
 | --- | --- | --- | --- |
 | `neutral` | `.portal-eyebrow-muted` | `text-gray-500` / `dark:text-gray-400` (clase íntegra) | Sin cambio vs v1.0 |
-| `primary` | `.portal-eyebrow-muted` | `text-gray-500` / `dark:text-gray-400` (clase íntegra) | Sin cambio vs v1.0; superficie `iwana-primary-50*` no exige escalón extra para gray-500 secundario |
+| `primary` | `.portal-eyebrow-muted` | `text-gray-500` / `dark:text-gray-400` (clase íntegra) | Sin cambio vs v1.0 |
 | `warning` | Tipografía de `.portal-eyebrow-muted` | **`text-gray-700 dark:text-gray-200`** | Override de color; **prohibido** lima |
-| `danger` | Tipografía de `.portal-eyebrow-muted` | **`text-gray-700 dark:text-gray-200`** | Cierra el gap ~4,45:1; **prohibido** lima |
+| `danger` | Tipografía de `.portal-eyebrow-muted` | **`text-gray-700 dark:text-gray-200`** | Cerrado en v1.1; **prohibido** lima |
+
+#### Matriz vinculante — `description` (y muted de cuerpo en shell)
+
+| `accent` | Tipografía | Color (claro / oscuro) | Notas |
+| --- | --- | --- | --- |
+| `neutral` | `text-sm leading-6` (cuerpo) | `text-gray-500` / `dark:text-gray-400` | Sin cambio vs v1.0/v1.1 |
+| `primary` | `text-sm leading-6` (cuerpo) | `text-gray-500` / `dark:text-gray-400` | Sin cambio vs v1.0/v1.1 |
+| `warning` | `text-sm leading-6` (cuerpo) | **`text-gray-700 dark:text-gray-200`** | Mismo escalón que eyebrow; **prohibido** lima |
+| `danger` | `text-sm leading-6` (cuerpo) | **`text-gray-700 dark:text-gray-200`** | Cierra gap G6-4 ≈4,45:1; **prohibido** lima |
 
 #### Receta CSS/token para AI-FE-PLATFORM
 
 ```tsx
-// Pseudocódigo de contrato — tipografía fija; color por accent
-const eyebrowColorClass =
+// Pseudocódigo de contrato — color muted por accent (eyebrow + description + muted de cuerpo)
+const mutedOnTintClass =
   accent === 'danger' || accent === 'warning'
     ? 'text-gray-700 dark:text-gray-200'
-    : null; // null → color de .portal-eyebrow-muted
+    : null; // null → muted por defecto gray-500 / dark:gray-400
 
+// Eyebrow
+className={cn('portal-eyebrow-muted', mutedOnTintClass)}
+
+// Description (y cualquier muted de cuerpo en la cáscara)
 className={cn(
-  'portal-eyebrow-muted',
-  eyebrowColorClass, // Tailwind: la utilidad de color gana al @apply de la clase
+  'mt-1 text-sm leading-6',
+  mutedOnTintClass ?? 'text-gray-500 dark:text-gray-400',
 )}
 ```
 
-**Alternativa equivalente (si FE prefiere modificador nombrado en `globals.css`):** declarar `.portal-eyebrow-muted-on-tint` con la misma tipografía + `text-gray-700 dark:text-gray-200`, y usarla **solo** cuando `accent` ∈ {`warning`,`danger`}. No es token de marca nuevo; es atajo de composición. La matriz de arriba manda en cualquier caso.
+Helper recomendado (paridad con `portalMetricEyebrowClassName`): `portalMetricMutedTextClassName(accent)` que devuelve `text-gray-700 dark:text-gray-200` si `accent` ∈ {`warning`,`danger`}, else `text-gray-500 dark:text-gray-400`. Aplicarlo a `description` y a muted de cuerpo en `PortalMetricCard` / `PortalDashboardMetric`.
 
-**Prohibiciones explícitas en esta ranura:**
+**Alternativa equivalente (si FE prefiere modificador nombrado en `globals.css`):** declarar `.portal-eyebrow-muted-on-tint` / clase de cuerpo on-tint con el mismo par de color, y usarla **solo** cuando `accent` ∈ {`warning`,`danger`}. No es token de marca nuevo; es atajo de composición. Las matrices de arriba mandan en cualquier caso.
+
+**Prohibiciones explícitas en estas ranuras:**
 
 1. `.portal-eyebrow` / `text-iwana-secondary-*` sobre shell `danger` o `warning` (lima sobre rose/amber = adorno + riesgo de contraste).
-2. `opacity-*` o grises más claros que el escalón contratado (`gray-400`/`gray-500` sobre tint danger/warning).
+2. `opacity-*` o grises más claros que el escalón contratado (`gray-400`/`gray-500` sobre tint danger/warning) en eyebrow, `description` o muted de cuerpo.
 3. Hex crudos o rampas ajenas (`slate-*`, etc.).
 
-**Verificación QA:** re-medir eyebrow en los cuatro acentos × dos temas; umbral ≥ 4,5:1. Peor caso esperado en `danger`/`warning` con el escalón v1.1: ≥ 9,7:1 (misma familia de medición §1.3).
+**Verificación QA:** re-medir **eyebrow y `description`** en los cuatro acentos × dos temas; umbral ≥ 4,5:1. Peor caso esperado en `danger`/`warning` con el escalón: ≥ 9,7:1 (misma familia de medición §1.3). G6-4 axe light sin filtros debe pasar CA-V2-07 tras aplicar FE.
 
 ---
 
@@ -681,6 +707,7 @@ No alteran alcance, contrato de datos, boundary ni tokens de marca:
 | 9 | Corrección del comentario de ratio en `globals.css:22-23` y `:55` (§0.3) | Cambia un comentario, ningún valor. Se notifica por tocar la fuente de tokens |
 | 10 | Eliminación del mapa de severidad local de `OnboardingAlerts.tsx:11-36` | Sustitución por primitive con superficie ya normada |
 | 11 | **v1.1** — matriz eyebrow × `accent` (§1.7): escalón `gray-700`/`gray-200` en shells `danger`/`warning` | Cierra residual QA ~4,45:1; tipografía muted intacta; **sin** lima ni tokens de marca nuevos. Notificado a FE + QA |
+| 12 | **v1.2** — matriz `description` × `accent` (§1.7): mismo escalón en shells `danger`/`warning` (y muted de cuerpo) | Cierra gap G6-4 axe light ≈4,45:1; **sin** lima ni tokens de marca nuevos. Carril rápido; notificado a FE + QA |
 
 ### 8.2 Escala a AI-EM-ARCH
 
@@ -718,6 +745,8 @@ AI-FE-PLATFORM completa todos los ítems antes de entregar. AI-SR-QA valida de f
 - [ ] 🔍 Con `value: null`, contraste ≥ 4,5:1 en **los cuatro acentos** y **los dos temas**. Peor caso esperado: 9,72:1.
 - [ ] Eyebrow: tipografía `.portal-eyebrow-muted`; con `accent` ∈ {`warning`,`danger`} color `text-gray-700 dark:text-gray-200` (§1.7). **Sin** lima sobre rose/amber.
 - [ ] 🔍 Eyebrow contraste ≥ 4,5:1 en **los cuatro acentos** × **dos temas** (cierra residual ~4,45:1 sobre `danger`).
+- [ ] `description` (y muted de cuerpo en shell): con `accent` ∈ {`warning`,`danger`} color `text-gray-700 dark:text-gray-200`; con `neutral`/`primary` `text-gray-500 dark:text-gray-400` (§1.7 v1.2). **Sin** lima ni `opacity-*`.
+- [ ] 🔍 `description` contraste ≥ 4,5:1 en **los cuatro acentos** × **dos temas** (cierra G6-4 axe light ≈4,45:1 sobre `danger`).
 - [ ] La cifra conserva `font-mono` y `tabular-nums`.
 - [ ] `state='error'` **no desmonta** la tarjeta: eyebrow y rótulo siguen en pantalla.
 - [ ] `state='loading'` sustituye solo la ranura de cifra por `SkeletonBlock`, con `aria-busy="true"` en la tarjeta.

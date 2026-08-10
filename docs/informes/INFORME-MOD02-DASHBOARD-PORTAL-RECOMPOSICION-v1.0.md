@@ -24,7 +24,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | --- | --- | --- |
 | HLD | `docs/hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md` | v2.0.1 G1 firmado |
 | UX spec | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md` | v1.0 |
-| DS contrato | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md` | **v1.1** (re-sync 2026-08-10) |
+| DS contrato | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md` | **v1.2** (re-sync 2026-08-10) |
 | ADR capas z | `docs/adrs/ADR-075-Contrato-Capas-Z-Portal.md` | Aprobado |
 
 ## 3. Estado por track
@@ -89,7 +89,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Media | Axe residual: `text-iwana-primary` sin `dark:text-*` en CTAs secundarios / «Ver más» | AI-FE-PLATFORM | **Cerrado** — `portalInlineTextLinkClassName` + header dark |
 | Media | Axe residual: badge error + `opacity-80` en métrica «Actualizando» | AI-FE-PLATFORM | **Cerrado** — sin `opacity-80`; señal por texto/`aria-live` |
 | Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **Abierto — bloquea G6-3/G6-4** · hidratar `view`/`fromDate`, `status`, `slaBreachStatus`, `view=open`; prueba E2E indicador→filtro→recarga→Atrás |
-| Alta | Axe `color-contrast` tema light: descripción `text-gray-500` (#6a7282) sobre shell `danger` (#fef3f3) ≈ **4,45:1** | AI-DS-OWNER + AI-FE-PLATFORM | **Abierto — bloquea G6-4** · ranura `description` de `PortalDashboardMetric`/`PortalMetricCard` no aplica escalón §1.7 (solo eyebrow); filtros axe E2E ya retirados |
+| Alta | Axe `color-contrast` tema light: descripción `text-gray-500` (#6a7282) sobre shell `danger` (#fef3f3) ≈ **4,45:1** | AI-DS-OWNER + AI-FE-PLATFORM | **Cerrado contrato** — DS v1.2 §1.7 description×accent; **pendiente FE** aplicar helper muted on-tint + re-medir G6-4 |
 
 ## 7. Gates (registro separado — ADR-069)
 
@@ -121,6 +121,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | G6-2 | AI-DS-OWNER | **GO** | HEAD `eb5851d0` · base a11y `1014990f` · DS v1.1 `9937c7d7` · audit-ui P0/P1=0 | Dictamen identidad: sin P0/P1; firmas, sombras duales, primitives canónicas, §1.7. Residual P2 no bloqueante: punto lima en historial. Ver §9. |
 | 2026-08-10 | G6-3 | AI-PROD-UX | **NO-GO** | HEAD `eb5851d0` (≥ `1014990f`) · UX spec v1.0 · HLD CA-V2-01…12 | Experiencia: 11/12 CA OK; **CA-V2-05 falla** (filtros outbound sin hidratación en destino). Ver §9. |
 | 2026-08-10 | G6-4 | AI-SR-QA | **NO-GO** | HEAD `7ea22066` · re-verify post `1014990f` · jest 76/76 cov ≥80% · E2E 21/25 | Filtros axe retirados OK; **CA-V2-07** falla (descripción muted×danger light); CA-V2-05 sin aserción destino/Atrás. Ver §9. |
+| 2026-08-10 | DS-v1.2 | AI-DS-OWNER | Hecho | contrato §1.7 · adenda prompt G4 | Re-sync DS v1.2: description (+ muted cuerpo) × accent danger/warning → `text-gray-700 dark:text-gray-200`. FE aplica · QA re-mide. Carril rápido; sin CTO/ADR. |
 
 ---
 
