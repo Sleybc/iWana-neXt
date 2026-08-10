@@ -187,7 +187,7 @@ export function RecentActivityPanel() {
           {entries.map((entry) => (
             <li key={entry.id} className="flex min-h-11 items-start gap-3 text-sm">
               <div
-                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-iwana-secondary-700"
+                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500"
                 aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
