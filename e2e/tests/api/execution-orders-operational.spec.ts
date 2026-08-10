@@ -1595,14 +1595,16 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
 
     test('5d. Coordinador con supervise puede asignar', async ({ page }, testInfo) => {
       expect(OPERATIONAL_SITE_ID, 'El fixture debe provisionar una sede operativa').toBeTruthy();
+      // anchorScheduleIso (no nowIso) para evitar solapamiento con la ventana
+      // del test 1a (anchorScheduleIso(60..180)) cuando CI corre en UTC nocturno.
       const createRes = await authedPost(
         page,
         '/wfm/events',
         {
           type: 'SUPPORT',
           title: 'E2E Supervisión - OT reasignable',
-          scheduledStartAt: nowIso(900 + testInfo.retry * RETRY_WINDOW_SHIFT_MINUTES),
-          scheduledEndAt: nowIso(930 + testInfo.retry * RETRY_WINDOW_SHIFT_MINUTES),
+          scheduledStartAt: anchorScheduleIso(900 + testInfo.retry * RETRY_WINDOW_SHIFT_MINUTES),
+          scheduledEndAt: anchorScheduleIso(930 + testInfo.retry * RETRY_WINDOW_SHIFT_MINUTES),
           assignedUserId: ctx.techUserId,
           organizationSiteId: OPERATIONAL_SITE_ID,
           address: 'Calle de prueba 5',
