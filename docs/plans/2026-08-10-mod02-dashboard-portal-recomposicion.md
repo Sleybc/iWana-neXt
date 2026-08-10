@@ -137,19 +137,25 @@ Expected: ambos comandos terminan con código 0 y ningún bloqueante.
 - Modify: `apps/api/src/modules/tenant/tenant.controller.ts`
 - Test: `apps/api/src/modules/tenant/tenant-self.spec.ts`
 
-- [ ] **A-1 · Escribir pruebas del umbral de instalación**
+- [x] **A-1 · Escribir pruebas del umbral de instalación**
 
 Añadir una prueba que compare `fiberInstallationThresholdMeters` en el resumen y la configuración del mismo tenant.
 
-- [ ] **A-2 · Escribir pruebas de cobertura MFA**
+> Evidencia: `tenant-self.spec.ts` · A-1 · default 50 y valor persistido 120 · paridad con mapper de settings · 2026-08-10
+
+- [x] **A-2 · Escribir pruebas de cobertura MFA**
 
 Cubrir tenant con usuarios, tenant sin usuarios y fallo del conteo. `null` significa fallo de fuente; cero usuarios produce una cobertura definida según el HLD.
 
-- [ ] **A-3 · Estrechar el tipo de `tenant`**
+> Evidencia: ratio `mfaEnabled/ACTIVE` · 0 usuarios → `1` · fallo de conteo → `null` · 2026-08-10
+
+- [x] **A-3 · Estrechar el tipo de `tenant`**
 
 Definir un DTO propio con los 13 campos realmente servidos. `TenantSelfResponseDto` permanece intacto y la marca no forma parte del resumen.
 
-- [ ] **A-4 · Publicar metadata OpenAPI y ejecutar pruebas**
+> Evidencia: `DashboardSummaryTenantDto` (13 campos) · sin branding · `TenantSelfResponseDto` intacto · 2026-08-10
+
+- [x] **A-4 · Publicar metadata OpenAPI y ejecutar pruebas**
 
 Run:
 
@@ -160,7 +166,9 @@ pnpm --filter @iwana/api typecheck
 
 Expected: suites en verde, contrato estricto y ningún permiso ampliado.
 
-- [ ] **A-DONE · Registrar SHA y evidencia en el informe vivo**
+> Evidencia: jest 17/17 PASS · typecheck exit 0 · `@ApiOkResponse` + `@ApiProperty` en resumen · sin ampliación `@Roles` · 2026-08-10
+
+- [x] **A-DONE · Registrar SHA y evidencia en el informe vivo**
 
 Commit sugerido:
 
@@ -168,6 +176,8 @@ Commit sugerido:
 git add apps/api/src/modules/tenant docs/informes/INFORME-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md
 git commit -m "fix(api): align tenant dashboard summary contract"
 ```
+
+> Evidencia: Track A cerrado en informe vivo · SHA en bitácora tras commit · 2026-08-10
 
 ---
 
@@ -711,3 +721,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | Fecha/hora | ID | Agente | Estado | Evidencia/SHA | Nota |
 | --- | --- | --- | --- | --- | --- |
 | 2026-08-10 | PLAN | AI-EM-ARCH | Hecho | Este documento | Plan canónico emitido para ejecución multiagente |
+| 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | jest 17/17 · typecheck 0 · fix(api) dashboard summary | C-1/C-2/C-3: fiber default, mfaCoverage real, tenant DTO 13 campos, OpenAPI |

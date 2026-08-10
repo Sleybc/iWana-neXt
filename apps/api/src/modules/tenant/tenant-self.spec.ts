@@ -1,5 +1,6 @@
 /**
- * Tests de integración para los contratos self-service del tenant autenticado.
+ * Tests de integración para los contratos self-service del tenant autenticado
+ * y unitarios del DashboardSummaryService (Track A — C-1/C-2/C-3).
  *
  * Verifica:
  * - GET /api/v1/tenants/me retorna datos del tenant del JWT
@@ -7,22 +8,37 @@
  * - GET /api/v1/tenants/me/summary retorna summary (solo ADMIN)
  * - Isolation: un rol de plataforma (SYSTEM_ADMIN) no puede usar estos endpoints
  *   sin tenantId válido en el JWT
+ * - A-1: fiberInstallationThresholdMeters paridad summary ↔ settings mapper
+ * - A-2: mfaCoverage real (con usuarios, sin usuarios, fallo de fuente)
+ * - A-3: tenant del summary sin campos de marca
  *
  * BT-DE-13 — HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2
+ * HLD-MOD02-DASHBOARD-EMPRESA-v2.0 §4.3
  */
-
-import { Test, TestingModule } from '@nestjs/testing';
-import { TenantController } from './tenant.controller';
-import { TenantService } from './tenant.service';
-import { TenantProvisioningService } from './tenant-provisioning.service';
-import { DashboardSummaryService } from './dashboard-summary.service';
-import { AuthService } from '../auth/auth.service';
-import { UserRole } from '@iwana/shared';
-import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 jest.mock('../auth/auth.service', () => ({
   AuthService: class AuthService {},
 }));
+
+jest.mock('@iwana/db', () => {
+  const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
+  return {
+    ...actual,
+    runInTenantSchema: jest.fn(),
+  };
+});
+
+import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
+import { AuditLog, runInTenantSchema, Tenant, User } from '@iwana/db';
+import { TenantStatus, UserRole, UserStatus } from '@iwana/shared';
+import { AuthService } from '../auth/auth.service';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { DashboardSummaryService } from './dashboard-summary.service';
+import { TenantController } from './tenant.controller';
+import { TenantProvisioningService } from './tenant-provisioning.service';
+import { TenantService } from './tenant.service';
 
 describe('TenantController — contratos self-service del tenant', () => {
   let controller: TenantController;
@@ -71,15 +87,30 @@ describe('TenantController — contratos self-service del tenant', () => {
     currency: 'COP',
     language: 'es-CO',
     country: 'CO',
+    fiberInstallationThresholdMeters: 50,
     features: { billing: false, mfa_required_all: false },
   };
 
   const dashboardSummaryData = {
-    tenant: tenantSelfData,
+    tenant: {
+      id: tenantSelfData.id,
+      name: tenantSelfData.name,
+      slug: tenantSelfData.slug,
+      status: tenantSelfData.status,
+      contactEmail: tenantSelfData.contactEmail,
+      legalName: tenantSelfData.legalName,
+      nit: tenantSelfData.nit,
+      city: tenantSelfData.city,
+      department: tenantSelfData.department,
+      countryCode: tenantSelfData.countryCode,
+      phone: tenantSelfData.phone,
+      website: tenantSelfData.website,
+      createdAt: tenantSelfData.createdAt,
+    },
     settings: tenantSelfSettings,
     metrics: {
       configuredUsers: 3,
-      mfaCoverage: null,
+      mfaCoverage: 2 / 3,
       pendingAlerts: 2,
       auditEventsLast7d: 15,
     },
@@ -249,6 +280,247 @@ describe('TenantController — contratos self-service del tenant', () => {
       // Null está permitido — nunca datos inventados
       expect(result.data.metrics.configuredUsers).toBeNull();
       expect(result.data.metrics.mfaCoverage).toBeNull();
+    });
+  });
+});
+
+describe('DashboardSummaryService — contrato del resumen (A-1…A-3)', () => {
+  let service: DashboardSummaryService;
+  let tenantRepo: { findOne: jest.Mock };
+  const mockedRunInTenantSchema = runInTenantSchema as jest.MockedFunction<
+    typeof runInTenantSchema
+  >;
+
+  const tenantId = 'tenant-uuid-summary-1';
+  const schemaName = 'tenant_empresa_summary';
+
+  function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
+    return {
+      id: tenantId,
+      name: 'Empresa Summary',
+      slug: 'empresa-summary',
+      schemaName,
+      status: TenantStatus.ACTIVE,
+      settings: {},
+      contactEmail: 'ops@empresa-summary.test',
+      adminEmail: null,
+      principalAdminUserId: null,
+      maxSubscribers: 100,
+      legalName: null,
+      nit: null,
+      nitDv: null,
+      companyType: null,
+      address: null,
+      city: 'Medellín',
+      department: 'Antioquia',
+      countryCode: 'CO',
+      postalCode: null,
+      coordinates: null,
+      phone: null,
+      website: null,
+      economicSector: null,
+      logoLightUrl: 'https://cdn.example.test/logo-light.svg',
+      logoDarkUrl: null,
+      sealLightUrl: null,
+      sealDarkUrl: null,
+      faviconLightUrl: null,
+      faviconDarkUrl: null,
+      loginBackgroundLightUrl: null,
+      loginBackgroundDarkUrl: null,
+      logoLightAssetId: null,
+      logoDarkAssetId: null,
+      sealLightAssetId: null,
+      sealDarkAssetId: null,
+      faviconLightAssetId: null,
+      faviconDarkAssetId: null,
+      loginBackgroundLightAssetId: null,
+      loginBackgroundDarkAssetId: null,
+      showTenantName: true,
+      brandingProductName: 'Marca fantasma',
+      brandingSurfaceName: null,
+      brandingMetadataTitle: null,
+      brandingMetadataDescription: null,
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+      deletedAt: null,
+      ...overrides,
+    } as Tenant;
+  }
+
+  /** Replica la fórmula de TenantService.toSelfSettingsDto para fiber. */
+  function settingsMapperFiberThreshold(settings: Record<string, unknown>): number {
+    return Number(settings['fiberInstallationThresholdMeters'] ?? 50);
+  }
+
+  type UserCountScenario = {
+    activeTotal: number;
+    mfaEnabled: number;
+  };
+
+  function mockSchemaQueries(users: UserCountScenario, auditCount = 7): void {
+    mockedRunInTenantSchema.mockImplementation(async (_ds, _schema, work) => {
+      const userRepo = {
+        count: jest.fn(async (opts?: { where?: Record<string, unknown> }) => {
+          const where = opts?.where ?? {};
+          if (where['mfaEnabled'] === true) {
+            return users.mfaEnabled;
+          }
+          if (where['status'] === UserStatus.ACTIVE) {
+            return users.activeTotal;
+          }
+          return 0;
+        }),
+      };
+      const auditRepo = {
+        count: jest.fn().mockResolvedValue(auditCount),
+      };
+      const qr = {
+        manager: {
+          getRepository: (entity: unknown) => {
+            if (entity === User) return userRepo;
+            if (entity === AuditLog) return auditRepo;
+            throw new Error('Repositorio inesperado en mock de summary');
+          },
+        },
+      };
+      return work(qr as never);
+    });
+  }
+
+  beforeEach(async () => {
+    tenantRepo = { findOne: jest.fn() };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        DashboardSummaryService,
+        { provide: getRepositoryToken(Tenant), useValue: tenantRepo },
+        { provide: getDataSourceToken(), useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get(DashboardSummaryService);
+    mockedRunInTenantSchema.mockReset();
+  });
+
+  describe('A-1 · fiberInstallationThresholdMeters', () => {
+    it('coincide con el mapper de settings cuando el campo no existe (default 50)', async () => {
+      const tenant = buildTenant({ settings: { timezone: 'America/Bogota' } });
+      tenantRepo.findOne.mockResolvedValue(tenant);
+      mockSchemaQueries({ activeTotal: 2, mfaEnabled: 1 });
+
+      const summary = await service.getSummary(tenantId, schemaName);
+      const fromSettingsMapper = settingsMapperFiberThreshold(
+        tenant.settings as Record<string, unknown>,
+      );
+
+      expect(summary.settings.fiberInstallationThresholdMeters).toBe(50);
+      expect(summary.settings.fiberInstallationThresholdMeters).toBe(fromSettingsMapper);
+    });
+
+    it('coincide con el mapper de settings cuando el tenant tiene umbral persistido', async () => {
+      const tenant = buildTenant({
+        settings: { fiberInstallationThresholdMeters: 120, currency: 'COP' },
+      });
+      tenantRepo.findOne.mockResolvedValue(tenant);
+      mockSchemaQueries({ activeTotal: 2, mfaEnabled: 2 });
+
+      const summary = await service.getSummary(tenantId, schemaName);
+      const fromSettingsMapper = settingsMapperFiberThreshold(
+        tenant.settings as Record<string, unknown>,
+      );
+
+      expect(summary.settings.fiberInstallationThresholdMeters).toBe(120);
+      expect(summary.settings.fiberInstallationThresholdMeters).toBe(fromSettingsMapper);
+    });
+  });
+
+  describe('A-2 · mfaCoverage', () => {
+    it('calcula el ratio mfaEnabled/ACTIVE cuando hay usuarios', async () => {
+      tenantRepo.findOne.mockResolvedValue(buildTenant());
+      mockSchemaQueries({ activeTotal: 4, mfaEnabled: 1 });
+
+      const summary = await service.getSummary(tenantId, schemaName);
+
+      expect(summary.metrics.configuredUsers).toBe(4);
+      expect(summary.metrics.mfaCoverage).toBe(0.25);
+    });
+
+    it('con cero usuarios ACTIVE produce cobertura definida (1), no null', async () => {
+      tenantRepo.findOne.mockResolvedValue(buildTenant());
+      mockSchemaQueries({ activeTotal: 0, mfaEnabled: 0 });
+
+      const summary = await service.getSummary(tenantId, schemaName);
+
+      expect(summary.metrics.configuredUsers).toBe(0);
+      expect(summary.metrics.mfaCoverage).toBe(1);
+      expect(summary.metrics.mfaCoverage).not.toBeNull();
+    });
+
+    it('retorna null en mfaCoverage y configuredUsers cuando falla el conteo', async () => {
+      tenantRepo.findOne.mockResolvedValue(buildTenant());
+      mockedRunInTenantSchema.mockImplementation(async (_ds, _schema, work) => {
+        const qr = {
+          manager: {
+            getRepository: (entity: unknown) => {
+              if (entity === User) {
+                return {
+                  count: jest.fn().mockRejectedValue(new Error('schema unavailable')),
+                };
+              }
+              if (entity === AuditLog) {
+                return { count: jest.fn().mockResolvedValue(3) };
+              }
+              throw new Error('unexpected entity');
+            },
+          },
+        };
+        return work(qr as never);
+      });
+
+      const summary = await service.getSummary(tenantId, schemaName);
+
+      expect(summary.metrics.configuredUsers).toBeNull();
+      expect(summary.metrics.mfaCoverage).toBeNull();
+      expect(summary.metrics.auditEventsLast7d).toBe(3);
+    });
+  });
+
+  describe('A-3 · tenant estrecho sin marca', () => {
+    it('expone exactamente los 13 campos servidos y omite branding', async () => {
+      tenantRepo.findOne.mockResolvedValue(buildTenant());
+      mockSchemaQueries({ activeTotal: 1, mfaEnabled: 1 });
+
+      const summary = await service.getSummary(tenantId, schemaName);
+      const keys = Object.keys(summary.tenant).sort();
+
+      expect(keys).toEqual(
+        [
+          'city',
+          'contactEmail',
+          'countryCode',
+          'createdAt',
+          'department',
+          'id',
+          'legalName',
+          'name',
+          'nit',
+          'phone',
+          'slug',
+          'status',
+          'website',
+        ].sort(),
+      );
+      expect(summary.tenant).not.toHaveProperty('logoLightUrl');
+      expect(summary.tenant).not.toHaveProperty('brandingProductName');
+      expect(summary.tenant).not.toHaveProperty('nitDv');
+      expect(summary.tenant).not.toHaveProperty('showTenantName');
+    });
+
+    it('lanza NotFoundException si el tenant no existe', async () => {
+      tenantRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.getSummary(tenantId, schemaName)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

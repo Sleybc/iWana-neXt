@@ -7,17 +7,25 @@ import {
   DashboardAlertDto,
   DashboardMetricsDto,
   DashboardSummaryResponseDto,
-  TenantSelfResponseDto,
+  DashboardSummaryTenantDto,
   TenantSelfSettingsResponseDto,
 } from './dto/tenant-self.dto';
+
+/** Default alineado con TenantService.toSelfSettingsDto. */
+const DEFAULT_FIBER_INSTALLATION_THRESHOLD_METERS = 50;
+
+type UsersMetrics = {
+  configuredUsers: number;
+  mfaCoverage: number;
+};
 
 /**
  * Servicio de summary del dashboard empresarial.
  *
  * Agrega en una sola respuesta:
- *   - Datos base del tenant autenticado (schema público).
- *   - Configuración operativa del tenant.
- *   - Métricas iniciales: usuarios configurados, cobertura MFA, audit events 7d.
+ *   - Datos base del tenant autenticado (schema público) — 13 campos, sin marca.
+ *   - Configuración operativa del tenant (incluye fiberInstallationThresholdMeters).
+ *   - Métricas: usuarios configurados, cobertura MFA real, audit events 7d.
  *   - Alertas de onboarding generadas a partir del estado real del tenant.
  *
  * Decisión arquitectónica: Opción A confirmada por CTO.
@@ -25,6 +33,7 @@ import {
  * No se crea un módulo nuevo — el summary es una query facade dentro de TenantModule.
  *
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2, §3.3, §3.4
+ * HLD-MOD02-DASHBOARD-EMPRESA-v2.0 §4.3 (C-1/C-2/C-3)
  */
 @Injectable()
 export class DashboardSummaryService {
@@ -51,17 +60,18 @@ export class DashboardSummaryService {
     }
 
     // Resolver métricas desde el schema del tenant en paralelo para reducir latencia
-    const [configuredUsers, auditEventsLast7d] = await Promise.allSettled([
-      this.countActiveUsers(schemaName),
+    const [usersMetricsResult, auditEventsLast7d] = await Promise.allSettled([
+      this.countUsersMetrics(schemaName),
       this.countAuditEventsLast7d(schemaName),
     ]);
 
-    const usersCount = configuredUsers.status === 'fulfilled' ? configuredUsers.value : null;
+    const usersMetrics =
+      usersMetricsResult.status === 'fulfilled' ? usersMetricsResult.value : null;
     const auditCount = auditEventsLast7d.status === 'fulfilled' ? auditEventsLast7d.value : null;
 
-    if (configuredUsers.status === 'rejected') {
+    if (usersMetricsResult.status === 'rejected') {
       this.logger.warn(
-        `No se pudo contar usuarios para tenant ${tenantId}: ${String(configuredUsers.reason)}`,
+        `No se pudo contar usuarios/MFA para tenant ${tenantId}: ${String(usersMetricsResult.reason)}`,
       );
     }
     if (auditEventsLast7d.status === 'rejected') {
@@ -70,18 +80,19 @@ export class DashboardSummaryService {
       );
     }
 
+    const usersCount = usersMetrics?.configuredUsers ?? null;
     const settings = this.resolveSettings(tenant);
     const alerts = this.buildOnboardingAlerts(tenant, usersCount);
     const metrics: DashboardMetricsDto = {
       configuredUsers: usersCount,
-      mfaCoverage: null, // Requiere módulo de usuarios con MFA por usuario — no disponible aún
+      mfaCoverage: usersMetrics?.mfaCoverage ?? null,
       pendingAlerts: alerts.filter((a) => a.severity === 'warning' || a.severity === 'error')
         .length,
       auditEventsLast7d: auditCount,
     };
 
     return {
-      tenant: this.toTenantSelfDto(tenant),
+      tenant: this.toSummaryTenantDto(tenant),
       settings,
       metrics,
       alerts,
@@ -89,14 +100,24 @@ export class DashboardSummaryService {
   }
 
   /**
-   * Cuenta usuarios activos en el schema del tenant.
-   * Retorna null si el schema aún no existe o la tabla no está disponible.
+   * Cuenta usuarios ACTIVE y cobertura MFA en una sola transacción de schema.
+   * Cobertura = mfaEnabled / ACTIVE. Sin usuarios ACTIVE → 1 (vacuamente cumplida).
+   * `null` solo cuando la fuente falla (rechazo de la promesa en getSummary).
    */
-  private async countActiveUsers(schemaName: string): Promise<number | null> {
+  private async countUsersMetrics(schemaName: string): Promise<UsersMetrics> {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const repo = qr.manager.getRepository(User);
-      const count = await repo.count({ where: { status: UserStatus.ACTIVE } });
-      return count;
+      const configuredUsers = await repo.count({ where: { status: UserStatus.ACTIVE } });
+      if (configuredUsers === 0) {
+        return { configuredUsers: 0, mfaCoverage: 1 };
+      }
+      const mfaEnabledUsers = await repo.count({
+        where: { status: UserStatus.ACTIVE, mfaEnabled: true },
+      });
+      return {
+        configuredUsers,
+        mfaCoverage: mfaEnabledUsers / configuredUsers,
+      };
     });
   }
 
@@ -203,9 +224,9 @@ export class DashboardSummaryService {
     return alerts;
   }
 
-  /** Mapea Tenant a TenantSelfResponseDto — solo campos visibles en panel empresarial. */
-  private toTenantSelfDto(tenant: Tenant): TenantSelfResponseDto {
-    const dto = new TenantSelfResponseDto();
+  /** Mapea Tenant al DTO estrecho del resumen — 13 campos, sin marca. */
+  private toSummaryTenantDto(tenant: Tenant): DashboardSummaryTenantDto {
+    const dto = new DashboardSummaryTenantDto();
     dto.id = tenant.id;
     dto.name = tenant.name;
     dto.slug = tenant.slug;
@@ -222,7 +243,7 @@ export class DashboardSummaryService {
     return dto;
   }
 
-  /** Normaliza la configuración operativa del tenant aplicando defaults. */
+  /** Normaliza la configuración operativa del tenant aplicando defaults (paridad con /me/settings). */
   private resolveSettings(tenant: Tenant): TenantSelfSettingsResponseDto {
     const settings = this.asRecord(tenant.settings);
     const features = this.asRecord(settings['features']);
@@ -231,6 +252,9 @@ export class DashboardSummaryService {
     dto.currency = String(settings['currency'] ?? 'COP');
     dto.language = String(settings['language'] ?? 'es-CO');
     dto.country = String(settings['country'] ?? 'CO');
+    dto.fiberInstallationThresholdMeters = Number(
+      settings['fiberInstallationThresholdMeters'] ?? DEFAULT_FIBER_INSTALLATION_THRESHOLD_METERS,
+    );
     dto.features = {
       billing: Boolean(features['billing'] ?? false),
       mfa_required_all: Boolean(features['mfa_required_all'] ?? false),

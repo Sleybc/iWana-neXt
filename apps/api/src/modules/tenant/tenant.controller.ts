@@ -24,6 +24,7 @@ import {
   ApiBody,
   ApiConsumes,
   ApiHeader,
+  ApiOkResponse,
   ApiOperation,
   ApiQuery,
   ApiResponse,
@@ -387,7 +388,13 @@ export class TenantController {
   @Get('me/summary')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Obtener summary del dashboard empresarial (solo ADMIN)' })
-  @ApiResponse({ status: 200, description: 'Summary del dashboard.' })
+  @ApiOkResponse({
+    description: 'Summary del dashboard (tenant estrecho sin marca, settings y métricas).',
+    type: DashboardSummaryResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Rol no autorizado (solo ADMIN).' })
+  @ApiResponse({ status: 404, description: 'Tenant no encontrado.' })
   async getMeSummary(
     @CurrentUser() user: JwtPayload,
   ): Promise<{ data: DashboardSummaryResponseDto }> {
