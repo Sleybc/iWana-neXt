@@ -122,6 +122,65 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
 ## 9. Dictámenes G6 (append-only)
 
+### G6-2 · Identidad — AI-DS-OWNER
+
+**Fecha:** 2026-08-10  
+**Modo:** review (código) — skill `iwana-identity-ui-review`  
+**Contrato:** [`2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.1** · Firma iWana · ADR-075  
+**HEAD auditado:** `eb5851d0` (ancestro de `1014990f` a11y y `9937c7d7` DS v1.1: sí)
+
+#### Veredicto: **GO**
+
+Cero hallazgos P0/P1 de identidad en el alcance del home `/dashboard` + shell de layout. G6 consolidado sigue pendiente de G6-1/G6-3/G6-4/G6-5.
+
+#### Script
+
+```text
+node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs \
+  apps/portal/src/components/shared/portal-ui.tsx \
+  apps/portal/src/components/dashboard \
+  apps/portal/src/components/layout \
+  apps/portal/src/app/dashboard/layout.tsx
+```
+
+**Resultado:** P0: 0 · P1: 0 · P2: 1 heurístico `[revisar]` · P3: 0.
+
+| Hallazgo script | Veredicto manual |
+| --- | --- |
+| `portal-ui.tsx:363` `bg-iwana-secondary-50` en `portalFilterChipClassName` activo | **Descartado** — acento de chip activo (predicado de interacción), no fondo base de panel; fondo suave del sistema permanece `iwana-surface-soft` |
+
+**Puntaje derivado (alcance G6-2):** 97/100 (P0: 0, P1: 0, P2: 1 residual no reportado por el script, P3: 0) — banda alineada.
+
+#### Evidencia de cumplimiento (checklist identidad)
+
+| Check | Evidencia |
+| --- | --- |
+| Sombras duales | `portalMetricCardShellClassName` → `shadow-iwana-soft`; interactivo → `hover:shadow-iwana-active`; `PortalPanel` / `PageHeader` → `shadow-iwana-soft`; menú flotante del home → `shadow-iwana-lg` (nivel flotante autorizado) |
+| Tokens (sin hex de marca / sin `tailwind.config`) | Sin `text-[#` / `bg-[#` en dashboard+layout del alcance; lienzo `bg-iwana-neutral-50` en `layout.tsx`; capas sticky/overlay/drawer vía `z-(--z-*)` (ADR-075) |
+| Firma barra lima | `Sidebar.tsx` ítem activo: `span` `aria-hidden` con `bg-iwana-secondary dark:bg-iwana-secondary-400` (E2E D-7 + spec §5.1) |
+| Sin primitives paralelas | `MetricCard.tsx` / `DashboardPanel.tsx` **ausentes**; consumidores usan `PortalDashboardMetric` + `PortalPanel` |
+| Eyebrow §1.7 | `portalMetricEyebrowClassName`: tipografía `portal-eyebrow-muted` + override `text-gray-700 dark:text-gray-200` en `danger`/`warning`; test `portal-dashboard-metric.spec.tsx`; **sin** lima sobre rose/amber |
+| Lima como predicado (núcleo) | `PortalMetricCardAccent` sin casilla lima; única puerta lima en métrica = `delta.tone === 'progress'` → `Badge variant="lime"`; «Actualizando» = avance; highlight comercial post I-6 = señal de aterrizaje (UX §3.4 sin href), no acento de urgencia |
+| Acento de riesgo en KPI | I-4/I-5/I-6 usan `danger`/`warning` en composition — no lima |
+
+#### Residual no bloqueante (P2)
+
+| ID | Severidad | Evidencia | Impacto | Recomendación | Esfuerzo |
+| --- | --- | --- | --- | --- | --- |
+| ID-R1 | P2 | `RecentActivityPanel.tsx` — `bg-iwana-secondary-700` en viñeta de cada fila del historial (`aria-hidden`) | Lima sin predicado de completitud/avance/interacción (contrato §4.1 / prueba operativa «sustituir por gris») | Sustituir por `bg-gray-400 dark:bg-gray-500` (o token neutro de lista); no abrir casilla lima | S |
+
+**Fuera de conteo bloqueante (shell legacy, no home metrics):** `NotificationBell` eyebrow con `tracking-[0.22em]` ad hoc; `DropdownUser` `shadow-lg` en lugar de `shadow-iwana-lg`. No elevan a P1; consolidación diferible.
+
+#### Hallazgos P0 / P1
+
+Ninguno.
+
+#### Notas al orquestador
+
+- Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
+- Residual ID-R1 puede remediarse en carril rápido FE sin reabrir contrato DS v1.1.
+- Re-medir contraste eyebrow danger/warning queda en track QA (G6-4), no en este acto.
+
 ### G6-3 · Experiencia — AI-PROD-UX
 
 **Fecha:** 2026-08-10  
@@ -181,62 +240,3 @@ Tras SHA de remediación: reabrir **G6-3** (no parchear este dictamen en silenci
 - Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
 - No se exige cambio de alcance funcional ni de UX spec v1.0: el gap es implementación incompleta de §3.5 ya declarado en la spec.
 - Baseline E2E CA-01…06 (v1) permanece útil como regresión, pero **no** cuenta como evidencia CA-V2.
-
-### G6-2 · Identidad — AI-DS-OWNER
-
-**Fecha:** 2026-08-10  
-**Modo:** review (código) — skill `iwana-identity-ui-review`  
-**Contrato:** [`2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.1** · Firma iWana · ADR-075  
-**HEAD auditado:** `eb5851d0` (ancestro de `1014990f` a11y y `9937c7d7` DS v1.1: sí)
-
-#### Veredicto: **GO**
-
-Cero hallazgos P0/P1 de identidad en el alcance del home `/dashboard` + shell de layout. G6 consolidado sigue pendiente de G6-1/G6-3/G6-4/G6-5.
-
-#### Script
-
-```text
-node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs \
-  apps/portal/src/components/shared/portal-ui.tsx \
-  apps/portal/src/components/dashboard \
-  apps/portal/src/components/layout \
-  apps/portal/src/app/dashboard/layout.tsx
-```
-
-**Resultado:** P0: 0 · P1: 0 · P2: 1 heurístico `[revisar]` · P3: 0.
-
-| Hallazgo script | Veredicto manual |
-| --- | --- |
-| `portal-ui.tsx:363` `bg-iwana-secondary-50` en `portalFilterChipClassName` activo | **Descartado** — acento de chip activo (predicado de interacción), no fondo base de panel; fondo suave del sistema permanece `iwana-surface-soft` |
-
-**Puntaje derivado (alcance G6-2):** 97/100 (P0: 0, P1: 0, P2: 1 residual no reportado por el script, P3: 0) — banda alineada.
-
-#### Evidencia de cumplimiento (checklist identidad)
-
-| Check | Evidencia |
-| --- | --- |
-| Sombras duales | `portalMetricCardShellClassName` → `shadow-iwana-soft`; interactivo → `hover:shadow-iwana-active`; `PortalPanel` / `PageHeader` → `shadow-iwana-soft`; menú flotante del home → `shadow-iwana-lg` (nivel flotante autorizado) |
-| Tokens (sin hex de marca / sin `tailwind.config`) | Sin `text-[#` / `bg-[#` en dashboard+layout del alcance; lienzo `bg-iwana-neutral-50` en `layout.tsx`; capas sticky/overlay/drawer vía `z-(--z-*)` (ADR-075) |
-| Firma barra lima | `Sidebar.tsx` ítem activo: `span` `aria-hidden` con `bg-iwana-secondary dark:bg-iwana-secondary-400` (E2E D-7 + spec §5.1) |
-| Sin primitives paralelas | `MetricCard.tsx` / `DashboardPanel.tsx` **ausentes**; consumidores usan `PortalDashboardMetric` + `PortalPanel` |
-| Eyebrow §1.7 | `portalMetricEyebrowClassName`: tipografía `portal-eyebrow-muted` + override `text-gray-700 dark:text-gray-200` en `danger`/`warning`; test `portal-dashboard-metric.spec.tsx`; **sin** lima sobre rose/amber |
-| Lima como predicado (núcleo) | `PortalMetricCardAccent` sin casilla lima; única puerta lima en métrica = `delta.tone === 'progress'` → `Badge variant="lime"`; «Actualizando» = avance; highlight comercial post I-6 = señal de aterrizaje (UX §3.4 sin href), no acento de urgencia |
-| Acento de riesgo en KPI | I-4/I-5/I-6 usan `danger`/`warning` en composition — no lima |
-
-#### Residual no bloqueante (P2)
-
-| ID | Severidad | Evidencia | Impacto | Recomendación | Esfuerzo |
-| --- | --- | --- | --- | --- | --- |
-| ID-R1 | P2 | `RecentActivityPanel.tsx` — `bg-iwana-secondary-700` en viñeta de cada fila del historial (`aria-hidden`) | Lima sin predicado de completitud/avance/interacción (contrato §4.1 / prueba operativa «sustituir por gris») | Sustituir por `bg-gray-400 dark:bg-gray-500` (o token neutro de lista); no abrir casilla lima | S |
-
-**Fuera de conteo bloqueante (shell legacy, no home metrics):** `NotificationBell` eyebrow con `tracking-[0.22em]` ad hoc; `DropdownUser` `shadow-lg` en lugar de `shadow-iwana-lg`. No elevan a P1; consolidación diferible.
-
-#### Hallazgos P0 / P1
-
-Ninguno.
-
-#### Notas al orquestador
-
-- Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
-- Residual ID-R1 puede remediarse en carril rápido FE sin reabrir contrato DS v1.1.
-- Re-medir contraste eyebrow danger/warning queda en track QA (G6-4), no en este acto.
