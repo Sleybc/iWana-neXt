@@ -9,11 +9,12 @@ export const metadata = {
 /**
  * FE-12 (Ola C / post H-05): no precarga en Server Component.
  *
- * Tras H-05 la búsqueda SQL ya escala, pero el token de sesión del portal sigue
- * en `localStorage` (`iwana.portal.access-token`). El Server Component no puede
- * autenticar `usersApi.list` sin canal server-side (cookie httpOnly). Forzar
- * precarga RSC hoy rompería el contrato de auth. Las props `initialUsers` /
- * `initialMeta` permanecen retiradas hasta auth RSC.
+ * Tras H-05 la búsqueda SQL ya escala, y el token de sesión del portal vive en
+ * cookie httpOnly (`portalAccessToken`, ADR-081) — no en `localStorage`. El
+ * Server Component aún no implementa el canal server-side de auth (leer y
+ * verificar la cookie y autenticar `usersApi.list` con contexto), por lo que
+ * forzar precarga RSC hoy rompería el contrato de auth. Las props
+ * `initialUsers` / `initialMeta` permanecen retiradas hasta auth RSC.
  */
 export default function UsersPage() {
   return <UsersClient />;

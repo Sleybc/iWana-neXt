@@ -174,7 +174,7 @@ El encargo instruía: *"si la spec depende de sembrar un token de alcance limita
 
 ### 7.2 `[BLOQUEO]` para el retiro del soporte antiguo — **RESUELTO**
 
-**C-9 no se podía declarar en verde** con el working tree de ese momento: la suite fallaba en masa (78 fallos) por causas ajenas a la migración (tracks 1-2 aterrizando en paralelo). 
+**C-9 no se podía declarar en verde** con el working tree de ese momento: la suite fallaba en masa (78 fallos) por causas ajenas a la migración (tracks 1-2 aterrizando en paralelo).
 
 - **NO retirar el soporte antiguo** (no eliminar `C3-BACKUP-READ` ni el puente del helper) hasta que la app volviera a un estado en el que `/auth/me` resuelva en el lifecycle de los mocks E2E.
 - **Condición de desbloqueo:** con los cambios de tracks 1-2 commiteados y estables, re-correr `pnpm test:e2e:portal` completo; las 22 specs debían quedar en verde (o con los únicos fallos documentados y aceptados por AI-EM-ARCH) con corrida real antes de retirar el soporte.

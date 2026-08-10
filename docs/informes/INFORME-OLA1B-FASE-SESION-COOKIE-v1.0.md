@@ -66,6 +66,19 @@ EXIT=0
 
 Nota sobre `Cached: 5` en typecheck: corresponde a paquetes sin cambios; las apps `web`/`portal`/`api` re-compilaron (sus fuentes cambiaron). Ninguna evidencia de caché invalida los resultados de los tracks.
 
+### 3.3 Consolidación CI Linux por SHA (G6.5) — corrida 31395607153
+
+La declaración de cierre de esta fase (2026-08-09) se emitió con evidencia local (`Cached: 0`, §3.1–§3.2). La **evidencia de CI Linux por SHA en `main` (G6.5)** quedó confirmada el **2026-08-10** con la corrida [31395607153](https://github.com/Sleybc/iWana-neXt/actions/runs/31395607153) sobre el SHA corregido `66e9ce41`:
+
+| Job | Resultado |
+| --- | --- |
+| E2E operativo R4.1 — API + storage + BullMQ reales | ✅ success |
+| Lint + Typecheck + Build + Unit tests | ✅ success |
+| Integridad de citas ADR | ✅ success |
+| Build y validación de imágenes production | ✅ success |
+
+**No conformidad de secuencia (registrada):** la fase se declaró CERRADA con evidencia local **antes** de contar con la verificación de CI Linux por SHA en `main`. El merge a `main` (`9bf776c`) disparó la corrida 31338427530, cuyo job E2E R4.1 falló por un **flake dependiente de la hora de ejecución** en el test 5d — solapamiento de ventanas de agenda entre el test 1a (`anchorScheduleIso(60..180)`) y el test 5d (`nowIso(900..930)`) cuando CI corre en UTC nocturno → `400` del `ScheduleConflictService`, no un defecto de la migración. Se corrigió post-cierre con el commit `66e9ce41` (`nowIso` → `anchorScheduleIso` en el test 5d) y la corrida 31395607153 quedó **completamente verde**, con el artefacto sanitizado `e2e-r41-summary` (693 B, expira 2026-11-08).
+
 ---
 
 ## 4. Re-verificación independiente AI-SEC-ENG (Track 5) — condiciones de merge
@@ -133,4 +146,5 @@ Con la suite E2E en verde (159/159) se retiró el soporte de lectura de tokens d
 - **Decisión rectora:** [ADR-081](../adrs/ADR-081-Modelo-de-Sesion-Cookie-HttpOnly.md)
 - **Informes de tracks:** [Track 3 — Configuración](INFORME-PLAT-OPS-OLA1B-TRACK3-CONFIGURACION-v1.0.md) · [Track 4 — E2E](INFORME-OLA1B-E2E-SESION-COOKIE-v1.0.md) · Track 5 — re-verificación SEC-ENG (evidencia resumida en §4)
 - **Logs de corrida (no versionados):** `e2e-portal-full4.log`, `test-ola1b.log`, `typecheck-ola1b.log`, `lint-ola1b.log`
+- **Evidencia CI Linux por SHA (G6.5):** corrida [31395607153](https://github.com/Sleybc/iWana-neXt/actions/runs/31395607153) sobre `66e9ce41` — los 4 jobs en verde; artefacto sanitizado `e2e-r41-summary` (693 B, expira 2026-11-08). Detalle y no conformidad de secuencia en §3.3
 - **Changelog del programa:** actualizado en [INFORME-PROGRAMA-REGULARIZACION-MODULOS-v1.0.md](INFORME-PROGRAMA-REGULARIZACION-MODULOS-v1.0.md)

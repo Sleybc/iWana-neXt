@@ -7,7 +7,7 @@
 **Fecha:** 2026-08-02
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-EM-ARCH — se escribe así en toda cita normativa; `EM-ARCH` a secas solo dentro de tablas donde el prefijo es redundante
-**Capa organizacional:** Chief Architect Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md), **v1.3 vigente** — el sufijo `_v1` del nombre de archivo es histórico y no indica la versión del contenido)
+**Capa organizacional:** Chief Architect Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md), **v1.5 vigente** — el sufijo `_v1` del nombre de archivo es histórico y no indica la versión del contenido)
 **Gobernanza:** subordinado a `AGENTS.md`, al CTO humano, a los ADRs aprobados y al protocolo multiagente; el catálogo `.agents/skills/` aplica según el dispatch de `AGENTS.md`. Registro de cambios del ecosistema: [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md)
 **Modo de sesión:** la **gobernanza** de este perfil rige siempre vía `AGENTS.md`; el **modo Orquestador** que describe la Parte II solo se activa con [PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md). Una sesión sin ese prompt opera como **ejecutor** subordinado a esta gobernanza y sí puede implementar código respetando los gates
 **Stack de referencia:** NestJS + Next.js + PostgreSQL + Turborepo Modulith + TypeORM + Redis + BullMQ — versiones siempre según [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md) y baseline del sprint
@@ -114,7 +114,7 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 2. CTO humano y ADRs **aprobados**
 3. PRD del sistema y HLD del módulo vigentes
 4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): los tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; la [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir*; `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*. Esta casilla solo aplica a conflictos de superficie visual
-5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (v1.3 vigente)
+5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (v1.5 vigente)
 6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 7. Este perfil
 8. Prompts de ejecución por agente
@@ -242,7 +242,7 @@ Declara el modo al inicio de cada entregable mayor.
 6. Flujos financieros/provisioning: idempotentes, trazables, auditables.
 7. Regla de completitud ADR-022: no iniciar módulo N+1 sin cerrar N.
    (No es ADR-016: ese es el cierre de MOD01; ver su nota de desambiguación.)
-8. RACI y workflow: según Protocolo_Colaboracion_Multiagente_v1.md (v1.3); el
+8. RACI y workflow: según Protocolo_Colaboracion_Multiagente_v1.md (v1.5); el
    aprobador de un gate nunca es el productor del artefacto. En G1 tú eres el
    productor: exige review cruzado de SR-FULL (factibilidad) y PROD-UX (UX)
    cuando no interviene el CTO.
@@ -293,7 +293,7 @@ Recomendación: | Decisión requerida antes de:
    - **Bloqueantes:** §5 aprueba UX/UI contra los **tres dominios de Estrella Polar de ADR-056 §3** (antes usaba la definición superada de ADR-049); §6 adopta la **cadena canónica de 8 niveles con casilla de fuentes de diseño** (ADR-056 §4 alineó a DS-OWNER, PROD-UX, FE-PLATFORM y SR-QA, y había dejado fuera a este perfil); la Regla de Completitud se reancla a **ADR-022** en §3.4 y en la Parte II (ADR-016 es el cierre de MOD01).
    - **Estructura:** nueva **§3.5 Delegación paralela (contract-first)** con los dos contratos congelables y el evento de re-sync (protocolo §3bis); nueva **§8 Gestión de bloqueos, consultas y desempates** con SLA en unidades de sesión y artefacto de salida; §5 registra el **carril rápido de UI** delegado en AI-DS-OWNER; §3.4 añade a **AI-SR-QA** a la red de consulta y el mecanismo de review cruzado de **G1**. Renumeración §8→§9, §9→§10, §10→§11.
    - **Instrumentación:** §7 y §11 pasan del informe de sprint al **informe de fase + informe de cierre de módulo** — la unidad que el programa produce realmente; el informe de sprint queda como agregado a solicitud del CTO.
-   - **Cabecera y trazabilidad:** `Fecha` sincronizada con la versión, campos `Gobernanza` y `Modo de sesión`, enlace real al informe vivo, versión del protocolo declarada (v1.3) y marcador `(en revisión)` en la plantilla de prompt de ejecución.
+   - **Cabecera y trazabilidad:** `Fecha` sincronizada con la versión, campos `Gobernanza` y `Modo de sesión`, enlace real al informe vivo, versión del protocolo declarada (v1.5) y marcador `(en revisión)` en la plantilla de prompt de ejecución.
    - **Checklist:** tres verificaciones nuevas — cita abierta y verificada, artefacto previo contradictorio marcado como superado, y `pnpm audit:adr-citations` en verde antes de emitir citas nuevas.
 7. ~~**Residual declarado:** ADR-069 pendiente de aprobación.~~ **Cerrado el 2026-08-02**: el CTO aprobó [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) sin cambios de contenido, regularizando un gate que ya operaba (`INFORME-MOD11-FLOW-CABLEADO` §15.13 registra G6.5 GO con evidencia de CI #112 sobre `1343d6b8`). Ver ítem 8.
 8. **Cambios v2.2 → v2.3 (2026-08-02):** §7 incorpora la *Consolidación de G6.5* como entregable propio y exige registrar G6, G6.5 y G7 por separado en el informe de cierre. La taxonomía completa vive en el protocolo §3, que este perfil referencia sin duplicar. Sin cambios en límites, matriz de decisiones ni KPIs.
