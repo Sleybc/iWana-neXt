@@ -759,4 +759,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 | Composition + fan-out; sync A-3; sin gate binario |
 | 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert; barra lima; Buscar móvil 1× GlobalSearch; z ADR-075; lienzo neutral-50 |
 | 2026-08-10 | D-1…D-7 | AI-SR-QA | Hecho | Task 6 · jest dashboard 76 pass · cobertura ≥80% · E2E portal-dashboard-empresa 25/25 | Axe claro/oscuro; null honesto; 12 roles unit + 4 E2E; teclado 375; capturas; residuales [CONSULTA] DS/FE |
-| 2026-08-10 | A11Y-R1…3 | AI-FE-PLATFORM | Hecho | sobre `9937c7d7` · DS v1.1 §1.7 | Eyebrow gray-700 en danger/warning; CTAs dark; sin opacity-80; filtros axe retirados |
+| 2026-08-10 | A11Y-R1…3 | AI-FE-PLATFORM | Hecho | `1014990f` · base `9937c7d7` · DS v1.1 §1.7 | Eyebrow gray-700 en danger/warning; CTAs dark; sin opacity-80; filtros axe retirados |
