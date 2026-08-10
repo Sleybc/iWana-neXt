@@ -485,27 +485,27 @@ git commit -m "feat(portal): compose dashboard by tenant role"
 - Modify: `apps/portal/src/components/dashboard/TenantSummaryCard.tsx`
 - Modify: `apps/portal/src/components/layout/PageHeader.tsx`
 
-- [ ] **C-8 · Escribir pruebas de métricas y accesos**
+- [x] **C-8 · Escribir pruebas de métricas y accesos**
 
 Cubrir valor `null`, loading, error, navegación filtrada por rol, ausencia de “Reportes/Fase siguiente” y targets accesibles.
 
-- [ ] **C-9 · Sustituir primitives locales**
+- [x] **C-9 · Sustituir primitives locales**
 
 Migrar consumidores a las primitives compartidas y eliminar `MetricCard.tsx`/`DashboardPanel.tsx` cuando `rg` confirme cero imports.
 
-- [ ] **C-10 · Implementar bandas B0–B3**
+- [x] **C-10 · Implementar bandas B0–B3**
 
 El primer viewport debe mostrar una acción operativa y al menos dos indicadores aplicables a 375, 768 y 1280 px. La ficha empresarial queda subordinada.
 
-- [ ] **C-11 · Corregir accesos rápidos estructuralmente**
+- [x] **C-11 · Corregir accesos rápidos estructuralmente**
 
 Usar una lista de una columna con `PortalNavListRow`. No parchear el desbordamiento con `truncate`; retirar badge, contador y celdas deshabilitadas.
 
-- [ ] **C-12 · Traducir actividad y estados**
+- [x] **C-12 · Traducir actividad y estados**
 
 Mapear `action` y `entityType` a vocabulario amigable. Los vacíos deben indicar siguiente acción y los errores deben tener reintento por bloque.
 
-- [ ] **C-13 · Ejecutar pruebas focalizadas**
+- [x] **C-13 · Ejecutar pruebas focalizadas**
 
 Run:
 
@@ -514,6 +514,8 @@ pnpm --filter @iwana/portal exec jest src/components/dashboard --runInBand
 ```
 
 Expected: todos los componentes tocados en verde y cero referencias a las primitives eliminadas.
+
+**Cierre Task 4:** jest dashboard 5 suites / 61 pass · typecheck `@iwana/portal` exit 0 · `audit-ui` P0/P1: 0 · `MetricCard`/`DashboardPanel` eliminados (cero imports).
 
 Commit sugerido:
 
@@ -720,7 +722,7 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 ## 7. Definition of Done
 
 - [ ] A-1…A-4 cerrados con evidencia.
-- [ ] B-1…B-3 y C-1…C-13 cerrados sin primitives paralelas.
+- [x] B-1…B-3 y C-1…C-13 cerrados sin primitives paralelas.
 - [ ] D-1…D-7 en verde y cobertura ≥80% del núcleo tocado.
 - [ ] CA-V2-01…12 y UX-01…16 trazados a pruebas.
 - [ ] Cero P0/P1 de identidad, accesibilidad o experiencia.

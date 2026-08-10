@@ -34,7 +34,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | DOC | AI-EM-ARCH | DOC-1…DOC-4 | Hecho | Adenda prompt · §10ter auditoría · este informe · audits `BLOQUEANTE: 0` |
 | A — backend | AI-SR-FULL | A-1…A-4 | Hecho | `e4f93324` · jest `tenant-self.spec.ts` 17/17 · typecheck `@iwana/api` exit 0 · C-1/C-2/C-3 |
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
-| C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 C-1…C-7 `b8517caa` · sync A-3 `e4f93324` · composition + fan-out |
+| C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 `b8517caa` · Task 4 `3aaa217a` · shell pendiente |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Pendiente | — |
 | D — calidad | AI-SR-QA | D-1…D-7 | Pendiente | — |
 
@@ -44,12 +44,12 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | --- | --- | --- |
 | CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E roles | Parcial — unit 12 roles (Task 3); E2E pendiente |
 | CA-V2-03 | Capturas 375/768/1280 | Pendiente |
-| CA-V2-04 | Bandas B0–B3 / métricas | Parcial — estructura B0–B3 en `DashboardClient` (Task 3); polish Task 4 |
+| CA-V2-04 | Bandas B0–B3 / métricas | Parcial — B0–B3 + ficha subordinada (Task 4); capturas 375/768/1280 pendientes |
 | CA-V2-05 | Navegación indicador→filtro + Atrás | Parcial — hrefs + caché R-5 unit (Task 3) |
 | CA-V2-06 | `Promise.allSettled` degradación | Hecho unit (`DashboardClient.spec`) |
-| CA-V2-07/11 | Axe claro/oscuro + `null` honesto | Pendiente |
+| CA-V2-07/11 | Axe claro/oscuro + `null` honesto | Parcial — null/loading/error unit (Task 4); axe pendiente |
 | CA-V2-08 | Drawer teclado 375 px | Pendiente |
-| CA-V2-09/10 | Vocabulario + vacíos accionables | Parcial — labels composición (Task 3) |
+| CA-V2-09/10 | Vocabulario + vacíos accionables | Parcial — historial + vacíos con siguiente acción (Task 4) |
 | CA-V2-12 | Firmas iWana (barra lima + tokens) | Pendiente |
 | UX-15/16 | Recarga silenciosa / Atrás sin fetch extra | Hecho unit (Task 3) |
 
@@ -64,6 +64,9 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | 2026-08-10 | `pnpm --filter @iwana/api typecheck` | exit 0 |
 | 2026-08-10 | Task 3 · jest composition + DashboardClient | 2 suites · 48 pass · exit 0 |
 | 2026-08-10 | Task 3 · `pnpm --filter @iwana/portal typecheck` | exit 0 |
+| 2026-08-10 | Task 4 · jest `src/components/dashboard` | 5 suites · 61 pass · exit 0 |
+| 2026-08-10 | Task 4 · typecheck `@iwana/portal` | exit 0 |
+| 2026-08-10 | Task 4 · `audit-ui` dashboard+PageHeader | sin hallazgos |
 
 Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
@@ -98,3 +101,4 @@ Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recompo
 | 2026-08-10 | B-1…B-6 | AI-FE-PLATFORM | Hecho | `1db59f19` · portal-dashboard-metric.spec + suite portal · auditor P0/P1=0 | Contrato DS §1 (no API simplificada del plan). Tokens `--z-*` + contraste lima 4,76:1 en globals.css. `[CONSULTA]` API plan vs contrato DS. |
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 · `DashboardSummaryTenantDto` · mfaCoverage real · fiber default 50 | Track A cerrado; sin endpoints nuevos ni ampliación `@Roles`; MFA 0 usuarios → ratio `1` |
 | 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 · sync A-3 `e4f93324` | Composition 12 roles; fan-out `allSettled`; sin `RoleRestrictedView`; `DashboardSummaryTenant` 13 campos |
+| 2026-08-10 | C-8…C-13 | AI-FE-PLATFORM | Hecho | `3aaa217a` · jest 61/61 · typecheck 0 · audit-ui 0 · MetricCard/DashboardPanel gone | Jerarquía B0–B3; PortalNavListRow; vocabulario historial; Assurance migrado |
