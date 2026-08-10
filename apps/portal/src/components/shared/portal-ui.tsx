@@ -22,7 +22,16 @@ import {
   Info,
   Search,
 } from 'lucide-react';
-import { Button, Input, Select, SkeletonBlock, cn, interactiveFocusClassName } from '@iwana/ui';
+import Link from 'next/link';
+import {
+  Badge,
+  Button,
+  Input,
+  Select,
+  SkeletonBlock,
+  cn,
+  interactiveFocusClassName,
+} from '@iwana/ui';
 import { PORTAL_DEFAULT_PAGE_SIZE, PORTAL_PAGE_SIZE_OPTIONS } from '@/lib/portal-page-size';
 import type { PortalSortDirection } from '@/lib/use-table-query-state';
 
@@ -303,7 +312,7 @@ export const portalModuleTabTriggerClassName = cn(
 export type PortalMetricCardAccent = 'neutral' | 'primary' | 'warning' | 'danger';
 
 export const portalMetricCardShellClassName =
-  'flex h-full flex-col rounded-3xl border px-4 py-4 shadow-sm';
+  'flex h-full flex-col rounded-3xl border px-4 py-4 shadow-iwana-soft';
 
 export function portalMetricCardAccentClassName(
   accent: PortalMetricCardAccent,
@@ -418,24 +427,234 @@ export function PortalMetricCard({
   return <article className={shellClassName}>{body}</article>;
 }
 
-export interface PortalNavListRowProps {
+export type PortalDashboardMetricState = 'idle' | 'loading' | 'error';
+
+/** Tono del delta. `progress` es la ÚNICA puerta al lima en este componente. */
+export type PortalDashboardMetricDeltaTone = 'progress' | 'neutral' | 'warning' | 'danger';
+
+export interface PortalDashboardMetricDelta {
+  /** Texto ya legible. Nunca un enum ni un signo suelto. */
+  label: string;
+  tone: PortalDashboardMetricDeltaTone;
+}
+
+interface PortalDashboardMetricBaseProps {
+  /** Ranura 1 — categoría del indicador. */
+  eyebrow: string;
+  /** Ranura 3 — rótulo legible; nombre accesible. */
+  label: string;
+  /**
+   * Ranura 2. `null` = no hay fuente para este número.
+   * NUNCA se sustituye por 0 ni por un guion.
+   */
+  value: number | null;
+  /** Denominador opcional. Si `value` es null, no se renderiza. */
+  total?: number | null;
+  /** Texto de la ranura de cifra cuando `value === null`. */
+  emptyLabel?: string;
+  /** Override de formato. Default: miles es-CO sin decimales. */
+  formatValue?: (value: number) => string;
+  /** Ranura 5. */
+  description?: ReactNode;
+  /** Superficie del acento. Sin casilla lima. */
+  accent?: PortalMetricCardAccent;
+  /** Ranura 4 — badge tonal. */
+  delta?: PortalDashboardMetricDelta;
+  /** Ciclo de vida del bloque. */
+  state?: PortalDashboardMetricState;
+  /** Texto visible en la cifra cuando `state === 'error'`. */
+  errorLabel?: string;
+  /** Acción de recuperación. Solo con `state === 'error'`. */
+  onRetry?: () => void;
+  /** Ícono decorativo; tono derivado de `accent`. */
+  icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  className?: string;
+}
+
+export type PortalDashboardMetricProps = PortalDashboardMetricBaseProps &
+  (
+    | { href: string; onClick?: never }
+    | { onClick: () => void; href?: never }
+    | { href?: never; onClick?: never }
+  );
+
+const portalDashboardMetricIconToneClassName: Record<PortalMetricCardAccent, string> = {
+  neutral: 'bg-white text-gray-500 dark:bg-dark-surface-4 dark:text-gray-300',
+  primary:
+    'bg-iwana-primary-50 text-iwana-primary dark:bg-iwana-primary-800/40 dark:text-iwana-primary-200',
+  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+  danger: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
+};
+
+const portalDashboardMetricDeltaBadgeVariant: Record<
+  PortalDashboardMetricDeltaTone,
+  'lime' | 'neutral' | 'warning' | 'error'
+> = {
+  progress: 'lime',
+  neutral: 'neutral',
+  warning: 'warning',
+  danger: 'error',
+};
+
+const defaultPortalDashboardMetricFormat = (value: number) =>
+  new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value);
+
+/** Indicador del home del portal — contrato DS §1 (sin acento lima). */
+export function PortalDashboardMetric({
+  eyebrow,
+  label,
+  value,
+  total,
+  emptyLabel = 'Sin dato disponible',
+  formatValue = defaultPortalDashboardMetricFormat,
+  description,
+  accent = 'neutral',
+  delta,
+  href,
+  onClick,
+  state = 'idle',
+  errorLabel = 'No disponible',
+  onRetry,
+  icon: Icon,
+  className,
+}: PortalDashboardMetricProps) {
+  const isInteractive = Boolean(href || onClick);
+  const isLoading = state === 'loading';
+  const isError = state === 'error';
+
+  const shellClassName = cn(
+    portalMetricCardShellClassName,
+    'min-h-[148px]',
+    portalMetricCardAccentClassName(accent),
+    isInteractive && interactiveFocusClassName,
+    isInteractive && 'transition-shadow hover:shadow-iwana-active',
+    className,
+  );
+
+  let valueSlot: ReactNode;
+  if (isLoading) {
+    valueSlot = <SkeletonBlock className="mt-2 h-8 w-28 rounded-lg" />;
+  } else if (isError) {
+    valueSlot = (
+      <div className="mt-2 space-y-2">
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{errorLabel}</p>
+        {onRetry ? (
+          <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+            Reintentar
+          </Button>
+        ) : null}
+      </div>
+    );
+  } else if (value === null) {
+    valueSlot = (
+      <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-200">{emptyLabel}</p>
+    );
+  } else {
+    valueSlot = (
+      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
+        {formatValue(value)}
+        {total !== undefined && total !== null ? (
+          <span className="ml-1 text-sm font-normal text-gray-500 dark:text-gray-400">
+            / {formatValue(total)}
+          </span>
+        ) : null}
+      </p>
+    );
+  }
+
+  const body = (
+    <div className="relative flex h-full flex-col">
+      {Icon ? (
+        <span
+          className={cn(
+            'absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-2xl',
+            portalDashboardMetricIconToneClassName[accent],
+          )}
+        >
+          <Icon className="h-4 w-4" aria-hidden={true} />
+        </span>
+      ) : null}
+      <p className={cn('portal-eyebrow-muted', Icon && 'pr-11')}>{eyebrow}</p>
+      {valueSlot}
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
+        {delta ? (
+          <Badge variant={portalDashboardMetricDeltaBadgeVariant[delta.tone]}>{delta.label}</Badge>
+        ) : null}
+      </div>
+      {description ? (
+        <div className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{description}</div>
+      ) : null}
+    </div>
+  );
+
+  if (href && !(isError && onRetry)) {
+    return (
+      <Link
+        href={href}
+        aria-label={label}
+        aria-busy={isLoading || undefined}
+        className={cn(shellClassName, 'block w-full text-left')}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  if (onClick && !(isError && onRetry)) {
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        aria-busy={isLoading || undefined}
+        className={cn(shellClassName, 'w-full text-left')}
+        onClick={onClick}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <article aria-busy={isLoading || undefined} className={shellClassName}>
+      {body}
+    </article>
+  );
+}
+
+interface PortalNavListRowBaseProps {
   title: ReactNode;
   meta?: ReactNode;
   trailing?: ReactNode;
-  onClick?: () => void;
   disabled?: boolean;
   className?: string;
   'aria-label'?: string;
 }
 
-export const portalNavListRowClassName =
-  'flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 dark:border-dark-border';
+export type PortalNavListRowProps = PortalNavListRowBaseProps &
+  (
+    | { href: string; onClick?: never }
+    | { onClick: () => void; href?: never }
+    | { href?: never; onClick?: never }
+  );
+
+export const portalNavListRowClassName = cn(
+  'flex min-h-11 items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5',
+  'dark:border-dark-border',
+);
+
+const portalNavListRowInteractiveClassName = cn(
+  'hover:border-iwana-primary hover:bg-iwana-primary-50',
+  'dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10',
+  interactiveFocusClassName,
+);
 
 export function PortalNavListRow({
   title,
   meta,
   trailing,
   onClick,
+  href,
   disabled = false,
   className,
   'aria-label': ariaLabel,
@@ -456,6 +675,23 @@ export function PortalNavListRow({
     </>
   );
 
+  if (href && !disabled) {
+    return (
+      <Link
+        href={href}
+        aria-label={ariaLabel}
+        className={cn(
+          portalNavListRowClassName,
+          portalNavListRowInteractiveClassName,
+          'w-full text-left',
+          className,
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+
   if (onClick) {
     return (
       <button
@@ -464,8 +700,8 @@ export function PortalNavListRow({
         disabled={disabled}
         className={cn(
           portalNavListRowClassName,
+          portalNavListRowInteractiveClassName,
           'w-full text-left',
-          interactiveFocusClassName,
           disabled && portalDisabledControlClassName,
           className,
         )}
@@ -1219,7 +1455,7 @@ export function PortalSidePeek({
 }
 
 const panelBaseClassName =
-  'rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2';
+  'rounded-2xl border border-gray-200 bg-white shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2';
 
 type PortalAlertVariant = 'error' | 'warning' | 'success' | 'info';
 
@@ -1232,6 +1468,8 @@ interface PortalPanelProps {
   className?: string | undefined;
   headerClassName?: string | undefined;
   contentClassName?: string | undefined;
+  /** Carga del bloque: cabecera permanece; el consumidor sustituye hijos por esqueleto. */
+  busy?: boolean | undefined;
   children: ReactNode;
 }
 
@@ -1340,12 +1578,13 @@ export function PortalPanel({
   className,
   headerClassName,
   contentClassName,
+  busy = false,
   children,
 }: PortalPanelProps) {
   const Component = as;
 
   return (
-    <Component className={cn(panelBaseClassName, 'p-5', className)}>
+    <Component className={cn(panelBaseClassName, 'p-5', className)} aria-busy={busy || undefined}>
       {(eyebrow || title || description || actions) && (
         <div
           className={cn(

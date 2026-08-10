@@ -33,7 +33,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | --- | --- | --- | --- | --- |
 | DOC | AI-EM-ARCH | DOC-1…DOC-4 | Hecho | Adenda prompt · §10ter auditoría · este informe · audits `BLOQUEANTE: 0` |
 | A — backend | AI-SR-FULL | A-1…A-4 | Hecho | `e4f93324` · jest `tenant-self.spec.ts` 17/17 · typecheck `@iwana/api` exit 0 · C-1/C-2/C-3 |
-| B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Pendiente | — |
+| B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | SHA pendiente commit Track B · tests portal 1121 pass · auditor P0/P1: 0 |
 | C — dashboard | AI-FE-PLATFORM | C-1…C-13 | Pendiente | Sync A-3 → C-5/C-6 pendiente |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Pendiente | — |
 | D — calidad | AI-SR-QA | D-1…D-7 | Pendiente | — |
@@ -58,6 +58,8 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | Fecha | Comando / artefacto | Resultado |
 | --- | --- | --- |
 | 2026-08-10 | Apertura de informe + DOC | En progreso |
+| 2026-08-10 | Track B · `pnpm --filter @iwana/portal test -- --runInBand` | 174 suites · 1121 pass · 1 skip · exit 0 |
+| 2026-08-10 | Track B · `audit-ui.mjs` shared+dashboard+layout | P0: 0 · P1: 0 · P2: 3 (hex MetricCard/TopHeader + lime-50 chip; Task 4/shell) |
 | 2026-08-10 | `pnpm --filter @iwana/api exec jest src/modules/tenant/tenant-self.spec.ts --runInBand` | PASS 17/17 (Cached: N/A · corrida forzada) |
 | 2026-08-10 | `pnpm --filter @iwana/api typecheck` | exit 0 |
 
@@ -87,4 +89,5 @@ Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recompo
 | --- | --- | --- | --- | --- | --- |
 | 2026-08-10 | PLAN | AI-EM-ARCH | Hecho | plan canónico | Plan emitido |
 | 2026-08-10 | DOC-1…4 | AI-EM-ARCH | Hecho | adenda prompt · §10ter · informe · audits OK | Task 0 cerrada; rama `feat/mod02-dashboard-portal-recomposicion` |
+| 2026-08-10 | B-1…B-6 | AI-FE-PLATFORM | Hecho | portal-dashboard-metric.spec + suite portal · auditor P0/P1=0 | Contrato DS §1 (no API simplificada del plan). Tokens `--z-*` + contraste lima 4,76:1 en globals.css. `[CONSULTA]` API plan vs contrato DS. |
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 · `DashboardSummaryTenantDto` · mfaCoverage real · fiber default 50 | Track A cerrado; sin endpoints nuevos ni ampliación `@Roles`; MFA 0 usuarios → ratio `1` |

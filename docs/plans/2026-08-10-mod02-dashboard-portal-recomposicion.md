@@ -193,47 +193,43 @@ git commit -m "fix(api): align tenant dashboard summary contract"
 - Modify: `packages/ui/src/styles/globals.css`
 - Test: specs estructurales de `apps/portal/src/components/shared/`
 
-- [ ] **B-1 · Escribir pruebas de las nuevas interfaces**
+- [x] **B-1 · Escribir pruebas de las nuevas interfaces**
 
 Las pruebas deben exigir `href` navegable, foco visible, valor nulo accesible y estados `idle`, `loading` y `error`.
 
-- [ ] **B-2 · Implementar `PortalDashboardMetric`**
+> B-1 · AI-FE-PLATFORM · Hecho · `portal-dashboard-metric.spec.tsx` · 2026-08-10
 
-La interfaz pública debe coincidir con el contrato congelado:
+- [x] **B-2 · Implementar `PortalDashboardMetric`**
 
-```typescript
-import type { ReactNode } from 'react';
-
-type PortalDashboardMetricState = 'idle' | 'loading' | 'error';
-
-interface PortalDashboardMetricProps {
-  label: string;
-  value: number | null;
-  emptyLabel: string;
-  description?: string;
-  accent: 'primary' | 'neutral' | 'success' | 'warning' | 'error';
-  icon: ReactNode;
-  delta?: { label: string; variant: 'neutral' | 'success' | 'warning' | 'error' };
-  href?: string;
-  state: PortalDashboardMetricState;
-}
-```
+La interfaz pública debe coincidir con el contrato congelado DS §1
+(`eyebrow`, `accent: PortalMetricCardAccent`, `delta.tone`, `icon` ComponentType,
+exclusión `href`/`onClick`). La API simplificada del plan (accent success/error)
+difiere del contrato — se implementó el contrato DS y se emitió `[CONSULTA]`.
 
 Usar figuras tabulares para valores, texto accesible para `null` y ningún acento lima decorativo.
 
-- [ ] **B-3 · Extender `PortalNavListRow`**
+> B-2 · AI-FE-PLATFORM · Hecho · `portal-ui.tsx` PortalDashboardMetric · 2026-08-10
+
+- [x] **B-3 · Extender `PortalNavListRow`**
 
 Mantener compatibilidad con `onClick` y añadir navegación por `href`, foco normado y targets de al menos 44 px.
 
-- [ ] **B-4 · Sustituir estados locales por primitives compartidas**
+> B-3 · AI-FE-PLATFORM · Hecho · href + min-h-11 + disabled sin enlace · 2026-08-10
 
-Adoptar `PortalPanel`, `PortalAlert`, `PortalEmptyState` y `PortalSkeletonBlock`. Los errores usan región viva y no desmontan el resto del dashboard.
+- [x] **B-4 · Sustituir estados locales por primitives compartidas**
 
-- [ ] **B-5 · Declarar tokens de capas y corregir documentación de contraste**
+Adoptar `PortalPanel` (`busy`+`shadow-iwana-soft`), `PortalAlert` (live),
+`PortalEmptyState` y `PortalSkeletonBlock`. Cableado completo de consumidores = Task 4.
+
+> B-4 · AI-FE-PLATFORM · Hecho · primitives listas/exportadas · 2026-08-10
+
+- [x] **B-5 · Declarar tokens de capas y corregir documentación de contraste**
 
 Aplicar exactamente los siete niveles aprobados por ADR-075. Corregir las cifras documentales del lima sin cambiar el valor de color.
 
-- [ ] **B-6 · Ejecutar pruebas y auditor mecánico**
+> B-5 · AI-FE-PLATFORM · Hecho · `--z-base`…`--z-toast` + 4,76:1 en globals.css · 2026-08-10
+
+- [x] **B-6 · Ejecutar pruebas y auditor mecánico**
 
 Run:
 
@@ -243,6 +239,8 @@ node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/sr
 ```
 
 Expected: pruebas en verde, cero hex nuevos y cero hallazgos P0/P1.
+
+> B-6 · AI-FE-PLATFORM · Hecho · 1121 pass · auditor P0:0 P1:0 P2:3 heredados · 2026-08-10
 
 Commit sugerido:
 

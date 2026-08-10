@@ -20,7 +20,9 @@
    Design Tokens iWana neXt — @theme Tailwind 4
    NOTA ACCESIBILIDAD: --color-iwana-secondary (#A5C330) NO pasa
    WCAG AA sobre blanco. Para texto usar --color-iwana-secondary-700
-   (#6A7A1C) con contraste 6.2:1.
+   (#6A7A1C) con contraste 4,76:1 sobre blanco (cumple AA).
+   Prohibido como texto sobre iwana-primary-50 (4,49:1 — falla AA);
+   como ícono aria-hidden sí (umbral SC 1.4.11 = 3:1).
    ================================================================ */
 @theme {
   /* Tipografia — Exo 2 Bold/Thin segun Manual Identidad Corporativa iWana */
@@ -52,7 +54,8 @@
   --color-iwana-secondary-400: #B2D93C;
   --color-iwana-secondary-500: #A5C330;
   --color-iwana-secondary-600: #8BA020;
-  /* Texto accesible sobre blanco — contraste 6.2:1 (WCAG AA) */
+  /* Texto accesible sobre blanco — contraste 4,76:1 (WCAG AA).
+     Sobre iwana-surface-soft: 4,53:1. Sobre iwana-primary-50: 4,49:1 (falla como texto). */
   --color-iwana-secondary-700: #6A7A1C;
   --color-iwana-secondary-800: #55621C;
   --color-iwana-secondary-900: #48531D;
@@ -135,6 +138,19 @@
   --shadow-iwana-soft:   0 10px 40px -10px rgba(23, 22, 58, 0.08);
   --shadow-iwana-active: 0 8px 30px -5px rgba(23, 22, 58, 0.12);
   --shadow-iwana-card:   0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
+
+  /* Capas de superposición — ADR-075. Fuente de verdad de los valores.
+     Separación de 100 entre escalones: 99 huecos libres para una capa
+     intermedia no prevista, sin renumerar las existentes.
+     Consumo: z-(--z-modal) o zIndex: 'var(--z-modal)'. Prohibido z literal. */
+  --z-base:    0;
+  --z-sticky:  100;
+  --z-overlay: 200;
+  --z-drawer:  300;
+  --z-modal:   400;
+  /* Flotantes anclados que deben superar modal/cajón (Select, Popover, menús). */
+  --z-popover: 500;
+  --z-toast:   600;
 }
 
 /* ================================================================
