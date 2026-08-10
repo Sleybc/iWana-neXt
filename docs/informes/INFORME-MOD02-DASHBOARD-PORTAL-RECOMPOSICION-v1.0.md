@@ -45,7 +45,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E roles | Hecho — unit 12 roles; E2E ADMIN/NOC/SALES/TECHNICIAN |
 | CA-V2-03 | Capturas 375/768/1280 | Hecho — `viewport-*.png` + E2E D-5 |
 | CA-V2-04 | Bandas B0–B3 / métricas | Hecho unit (Task 4) + E2E indicadores |
-| CA-V2-05 | Navegación indicador→filtro + Atrás | Hecho unit hrefs/caché R-5 (Task 3) |
+| CA-V2-05 | Navegación indicador→filtro + Atrás | **NO-GO G6-3** — hrefs/caché R-5 OK; destinos I-1/I-2/I-4/I-7 no hidratan filtro (UX §3.5) |
 | CA-V2-06 | `Promise.allSettled` degradación | Hecho unit + E2E error WFM |
 | CA-V2-07/11 | Axe claro/oscuro + `null` honesto | Hecho — E2E D-1/D-2; residuales a11y **cerrados** (DS v1.1 + FE) |
 | CA-V2-08 | Drawer teclado 375 px | Hecho — E2E D-4 |
@@ -70,6 +70,8 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | 2026-08-10 | Task 6 · `pnpm --filter @iwana/portal exec jest --coverage --collectCoverageFrom=components/dashboard/**/*.{ts,tsx} --testPathPattern=components/dashboard --runInBand` | 7 suites · 76 pass · stmts **81,89%** · lines **84,97%** · Cached: N/A (corrida forzada) |
 | 2026-08-10 | Task 6 · `pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashboard-empresa` | **25/25** pass · ~53 s |
 | 2026-08-10 | Capturas D-5/D-7 | `evidencias/portal-dashboard-recomposicion/viewport-{375,768,1280}.png` · `firmas-iwana-1280.png` |
+| 2026-08-10 | G6-2 · `audit-ui.mjs` shared+dashboard+layout+dashboard/layout | P0: 0 · P1: 0 · P2 heurístico 1 descartado (chip activo) · dictamen **GO** · HEAD `eb5851d0` |
+| 2026-08-10 | G6-3 · dictamen experiencia AI-PROD-UX | **NO-GO** · HEAD `eb5851d0` · CA-V2-05 insatisfactorio (hidratar filtros en 4 destinos) · ver §9 |
 
 Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
@@ -84,6 +86,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Media | Axe residual: eyebrow muted sobre accent `danger` (~4,45:1) | AI-DS-OWNER → AI-FE-PLATFORM | **Cerrado** — DS v1.1 §1.7 + `portalMetricEyebrowClassName` |
 | Media | Axe residual: `text-iwana-primary` sin `dark:text-*` en CTAs secundarios / «Ver más» | AI-FE-PLATFORM | **Cerrado** — `portalInlineTextLinkClassName` + header dark |
 | Media | Axe residual: badge error + `opacity-80` en métrica «Actualizando» | AI-FE-PLATFORM | **Cerrado** — sin `opacity-80`; señal por texto/`aria-live` |
+| Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **Abierto — bloquea G6-3** · hidratar `view`/`fromDate`, `status`, `slaBreachStatus`, `view=open`; prueba E2E indicador→filtro→recarga→Atrás |
 
 ## 7. Gates (registro separado — ADR-069)
 
@@ -112,3 +115,128 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | D-1…D-7 | AI-SR-QA | Hecho | jest dashboard 76/76 · cov ≥80% · E2E 25/25 · evidencias PNG | Task 6 cerrada; 3 [CONSULTA] residuales a11y a DS/FE; no bloquea D-* (filtrados con evidencia) |
 | 2026-08-10 | A11Y-R1…3 | AI-FE-PLATFORM | Hecho | `1014990f` · base DS `9937c7d7` · jest 86/86 · typecheck 0 · audit-ui P0/P1=0 | §1.7 eyebrow danger/warning; CTAs `dark:text-iwana-primary-300`; sin `opacity-80` Actualizando; filtros axe E2E retirados |
 | 2026-08-10 | DS-v1.1 | AI-DS-OWNER | Hecho | contrato §1.7 · adenda prompt | Re-sync contrato DS v1.1 (eyebrow×accent danger/warning → `text-gray-700 dark:text-gray-200`). Tracks notificados: AI-FE-PLATFORM (aplica) · AI-SR-QA (re-mide). Carril rápido EM-ARCH; sin CTO/ADR. |
+| 2026-08-10 | G6-2 | AI-DS-OWNER | **GO** | HEAD `eb5851d0` · base a11y `1014990f` · DS v1.1 `9937c7d7` · audit-ui P0/P1=0 | Dictamen identidad: sin P0/P1; firmas, sombras duales, primitives canónicas, §1.7. Residual P2 no bloqueante: punto lima en historial. Ver §9. |
+| 2026-08-10 | G6-3 | AI-PROD-UX | **NO-GO** | HEAD `eb5851d0` (≥ `1014990f`) · UX spec v1.0 · HLD CA-V2-01…12 | Experiencia: 11/12 CA OK; **CA-V2-05 falla** (filtros outbound sin hidratación en destino). Ver §9. |
+
+---
+
+## 9. Dictámenes G6 (append-only)
+
+### G6-3 · Experiencia — AI-PROD-UX
+
+**Fecha:** 2026-08-10  
+**Modo:** review (experiencia) — perfil AI-PROD-UX · UX spec v1.0 congelada  
+**Contratos:** [`2026-08-04-portal-dashboard-recomposicion-ux-spec.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md) v1.0 · [`HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md`](../hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md) CA-V2-01…12 · plan §5  
+**HEAD auditado:** `eb5851d0` (ancestro de `1014990f`: sí)
+
+#### Veredicto: **NO-GO**
+
+Once criterios de experiencia se cumplen con evidencia nueva (unit Task 3/4 + E2E Task 6 + capturas). **CA-V2-05 no se satisface:** el home emite hrefs con filtro (§3.2), pero cuatro destinos «Debe añadirse» (UX §3.5) **no hidratan** ese filtro desde la dirección. C-6 se cerró solo con hrefs + caché R-5; eso no verifica «el destino conserva el filtro al recargar». Tests baseline v1 (CA-01…06) no se cuentan como aserción nueva de CA-V2.
+
+G6 consolidado sigue pendiente de remediación FE + re-dictamen G6-3 y de G6-1/G6-4/G6-5.
+
+#### Chequeos de composición (plan G6-3)
+
+| Check | Resultado | Evidencia |
+| --- | --- | --- |
+| Bandas B0–B3 | **OK** | `DashboardClient.tsx` B0 encabezado → B1 indicadores → B2/B2b → B3 subordinado; unit `B0–B3…`; capturas sin ficha empresa en primer viewport |
+| Tareas por rol | **OK** | `dashboard-role-composition` 12/12 roles; techo ≠ composición; E2E D-3 ADMIN/NOC/SALES/TECHNICIAN |
+| Primer viewport | **OK** | E2E D-5 375/768/1280: acción operable + ≥2 indicadores; `viewport-*.png` |
+| Destinos / filtros | **FALLA** | Outbound OK (unit C-6); inbound I-1/I-2/I-4/I-7 sin lectura de URL (detalle abajo) |
+| Estados | **OK** | Loading / vacío / error / `null` / actualizando · E2E D-1/D-2 + unit métricas |
+| Sin gate binario | **OK** | `RoleRestrictedView` ausente en portal; unit + E2E sin «Panel en preparación» |
+| Accesos rápidos filtrados | **OK** | `QuickActionsPanel.spec.tsx` por rol; sin Reportes / Fase siguiente |
+
+#### Matriz CA-V2-01…12
+
+| Criterio | Veredicto | Evidencia (aserciones nuevas de esta fase) |
+| --- | --- | --- |
+| CA-V2-01 | **OK** | Unit `dashboard-role-composition.spec.ts`: 12 roles con identidad B3 + quick-actions + acción primaria; E2E D-3 sin «Panel en preparación» (ADMIN/NOC/SALES/TECHNICIAN) |
+| CA-V2-02 | **OK** | Unit: composición ⊆ techo de autorización por rol; destinos de registro tipado `/dashboard/*`; sin ampliación de permisos |
+| CA-V2-03 | **OK** | E2E D-5: control de acción dentro del viewport + ≥2 indicadores a 375/768/1280; capturas `viewport-{375,768,1280}.png` |
+| CA-V2-04 | **OK** | Registro I-1…I-7 (techo 7 ≤ 9); ADMIN 7; ACCOUNTANT 1; TECHNICIAN/base 0; unit B0–B3; métricas de cuenta fuera de B1 |
+| CA-V2-05 | **NO-GO** | Hrefs unit OK (I-1…I-5, I-7; I-6 excepción onClick). **Falta hidratación en destino:** (1) agenda solo lee `technicianId`, ignora `view`/`fromDate`; (2) bandeja inicia con `buildDefaultPendingVisitFilters()` (`status: ''`), ignora `status=READY_TO_SCHEDULE`; (3) mesa: `TICKET_FILTER_KEYS` sin `slaBreachStatus` → I-4 ignorado; (4) expedientes: `useState(getDefaultExpedienteView())` sin `searchParams` → `view=open` no es filtro URL. I-3/I-5 sí leen URL. Sin E2E indicador→lista filtrada→recarga→Atrás. Contradice UX §3.3/§3.5 y HLD «destino conserva el filtro» |
+| CA-V2-06 | **OK** | Unit `Promise.allSettled` + fallo WFM conserva assurance/accesos; E2E error de fuente |
+| CA-V2-07 | **OK** | E2E D-1/D-2 axe claro/oscuro en cargado, vacío, error, `null`, loading, actualizando; residuales a11y cerrados `1014990f` |
+| CA-V2-08 | **OK** | E2E D-4 375 px: drawer `inert`, Tab no entra al menú cerrado, Escape restaura foco |
+| CA-V2-09 | **OK** | `RecentActivityPanel` / `TenantSummaryCard` mapean enums a vocabulario; unit vocabulario |
+| CA-V2-10 | **OK** | Vacíos con siguiente acción (`Sin avisos de campo` → agenda; configuración al día); E2E vacío operativo |
+| CA-V2-11 | **OK** | Unit + E2E: `null` → «Sin dato disponible», no cifra `0`; contraste AA post §1.7 |
+| CA-V2-12 | **OK** | E2E D-7: barra lima + `aria-current` en Inicio; sombra soft en métrica; `firmas-iwana-1280.png`; lima no usada para urgencia |
+
+#### Remediación mínima (desbloquea re-dictamen)
+
+Dueño: **AI-FE-PLATFORM** (sin contrato nuevo ni ampliación `@Roles`).
+
+1. Agenda (`SchedulingClient`): hidratar `view` + `fromDate` desde `searchParams` (I-1).
+2. Bandeja (`PendingVisitRequestsView`): hidratar `status` (p. ej. `READY_TO_SCHEDULE`) desde URL (I-2).
+3. Mesa (`AssuranceClient`): incluir `slaBreachStatus` en `TICKET_FILTER_KEYS` + `listFilters` (I-4).
+4. Expedientes CRM: leer/escribir `view` en la dirección (I-7).
+5. Prueba E2E nueva: clic indicador → URL con filtro → recarga conserva conjunto → Atrás vuelve al home (caché R-5).
+
+Tras SHA de remediación: reabrir **G6-3** (no parchear este dictamen en silencio).
+
+#### Notas al orquestador
+
+- Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
+- No se exige cambio de alcance funcional ni de UX spec v1.0: el gap es implementación incompleta de §3.5 ya declarado en la spec.
+- Baseline E2E CA-01…06 (v1) permanece útil como regresión, pero **no** cuenta como evidencia CA-V2.
+
+### G6-2 · Identidad — AI-DS-OWNER
+
+**Fecha:** 2026-08-10  
+**Modo:** review (código) — skill `iwana-identity-ui-review`  
+**Contrato:** [`2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.1** · Firma iWana · ADR-075  
+**HEAD auditado:** `eb5851d0` (ancestro de `1014990f` a11y y `9937c7d7` DS v1.1: sí)
+
+#### Veredicto: **GO**
+
+Cero hallazgos P0/P1 de identidad en el alcance del home `/dashboard` + shell de layout. G6 consolidado sigue pendiente de G6-1/G6-3/G6-4/G6-5.
+
+#### Script
+
+```text
+node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs \
+  apps/portal/src/components/shared/portal-ui.tsx \
+  apps/portal/src/components/dashboard \
+  apps/portal/src/components/layout \
+  apps/portal/src/app/dashboard/layout.tsx
+```
+
+**Resultado:** P0: 0 · P1: 0 · P2: 1 heurístico `[revisar]` · P3: 0.
+
+| Hallazgo script | Veredicto manual |
+| --- | --- |
+| `portal-ui.tsx:363` `bg-iwana-secondary-50` en `portalFilterChipClassName` activo | **Descartado** — acento de chip activo (predicado de interacción), no fondo base de panel; fondo suave del sistema permanece `iwana-surface-soft` |
+
+**Puntaje derivado (alcance G6-2):** 97/100 (P0: 0, P1: 0, P2: 1 residual no reportado por el script, P3: 0) — banda alineada.
+
+#### Evidencia de cumplimiento (checklist identidad)
+
+| Check | Evidencia |
+| --- | --- |
+| Sombras duales | `portalMetricCardShellClassName` → `shadow-iwana-soft`; interactivo → `hover:shadow-iwana-active`; `PortalPanel` / `PageHeader` → `shadow-iwana-soft`; menú flotante del home → `shadow-iwana-lg` (nivel flotante autorizado) |
+| Tokens (sin hex de marca / sin `tailwind.config`) | Sin `text-[#` / `bg-[#` en dashboard+layout del alcance; lienzo `bg-iwana-neutral-50` en `layout.tsx`; capas sticky/overlay/drawer vía `z-(--z-*)` (ADR-075) |
+| Firma barra lima | `Sidebar.tsx` ítem activo: `span` `aria-hidden` con `bg-iwana-secondary dark:bg-iwana-secondary-400` (E2E D-7 + spec §5.1) |
+| Sin primitives paralelas | `MetricCard.tsx` / `DashboardPanel.tsx` **ausentes**; consumidores usan `PortalDashboardMetric` + `PortalPanel` |
+| Eyebrow §1.7 | `portalMetricEyebrowClassName`: tipografía `portal-eyebrow-muted` + override `text-gray-700 dark:text-gray-200` en `danger`/`warning`; test `portal-dashboard-metric.spec.tsx`; **sin** lima sobre rose/amber |
+| Lima como predicado (núcleo) | `PortalMetricCardAccent` sin casilla lima; única puerta lima en métrica = `delta.tone === 'progress'` → `Badge variant="lime"`; «Actualizando» = avance; highlight comercial post I-6 = señal de aterrizaje (UX §3.4 sin href), no acento de urgencia |
+| Acento de riesgo en KPI | I-4/I-5/I-6 usan `danger`/`warning` en composition — no lima |
+
+#### Residual no bloqueante (P2)
+
+| ID | Severidad | Evidencia | Impacto | Recomendación | Esfuerzo |
+| --- | --- | --- | --- | --- | --- |
+| ID-R1 | P2 | `RecentActivityPanel.tsx` — `bg-iwana-secondary-700` en viñeta de cada fila del historial (`aria-hidden`) | Lima sin predicado de completitud/avance/interacción (contrato §4.1 / prueba operativa «sustituir por gris») | Sustituir por `bg-gray-400 dark:bg-gray-500` (o token neutro de lista); no abrir casilla lima | S |
+
+**Fuera de conteo bloqueante (shell legacy, no home metrics):** `NotificationBell` eyebrow con `tracking-[0.22em]` ad hoc; `DropdownUser` `shadow-lg` en lugar de `shadow-iwana-lg`. No elevan a P1; consolidación diferible.
+
+#### Hallazgos P0 / P1
+
+Ninguno.
+
+#### Notas al orquestador
+
+- Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
+- Residual ID-R1 puede remediarse en carril rápido FE sin reabrir contrato DS v1.1.
+- Re-medir contraste eyebrow danger/warning queda en track QA (G6-4), no en este acto.
