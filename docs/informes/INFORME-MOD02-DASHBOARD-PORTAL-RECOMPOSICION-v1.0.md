@@ -36,7 +36,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
 | C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 `b8517caa` · Task 4 `3aaa217a` · shell ver Track Shell |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 |
-| D — calidad | AI-SR-QA | D-1…D-7 | Hecho (Task 6) · **G6-4 NO-GO** | Task 6 cov OK · re-verify G6-4: jest 76/76 · stmts **81,89%** / lines **84,97%** · E2E **21/25** (4 axe light fail) · filtros axe retirados `1014990f` · ver §9 G6-4 |
+| D — calidad | AI-SR-QA | D-1…D-7 | Hecho (Task 6) · **G6-4-R1 GO** | Task 6 cov OK · re-dictamen G6-4-R1: jest **77/77** · stmts **81,89%** / lines **84,97%** · E2E **26/26** · axe light OK · CA-V2-05 destino OK · ver §9 G6-4-R1 |
 
 ## 4. Matriz criterio ↔ test
 
@@ -45,9 +45,9 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E D-3 | Cubierto — G6-4 (baseline CA-01…06 no cuenta) |
 | CA-V2-03 | E2E D-5 + `viewport-*.png` | Cubierto — G6-4 |
 | CA-V2-04 | Unit B0–B3 + composition techo I-1…I-7 | Cubierto — G6-4 |
-| CA-V2-05 | Unit hidratación I-1/I-2/I-4/I-7 + E2E indicador→filtro→recarga→Inicio | **GO G6-3** — `d4ee265a` hidrata I-1/I-2/I-4/I-7 · E2E CA-V2-05 · ver §9 re-dictamen |
+| CA-V2-05 | Unit hidratación I-1/I-2/I-4/I-7 + E2E indicador→filtro→recarga→Inicio | **OK G6-4-R1** — `d4ee265a` + E2E destino · ver §9 G6-4-R1 |
 | CA-V2-06 | Unit `allSettled` + E2E error WFM | Cubierto — G6-4 |
-| CA-V2-07/11 | E2E axe + unit null | **NO-GO G6-4** — axe light `color-contrast` 4/4 fallan (descripción muted sobre `danger`) · null unit OK |
+| CA-V2-07/11 | E2E axe + unit null | **OK G6-4-R1** — axe light 4/4 pass post `ddbc22cf` · null unit OK |
 | CA-V2-08 | E2E D-4 | Cubierto — G6-4 |
 | CA-V2-09/10 | Unit vocabulario + vacíos + E2E vacío | Cubierto — G6-4 |
 | CA-V2-12 | E2E D-7 + unit sombra soft | Cubierto — G6-4 |
@@ -76,6 +76,9 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | 2026-08-10 | G6-4 · Playwright `portal-dashboard-empresa` (re-verify, sin filtros axe) | **21/25** · 4 fail axe `color-contrast` tema light · dark OK · ver §9 G6-4 |
 | 2026-08-10 | G6-1 · gates técnicos AI-PLAT-OPS | SHA `eb5851d0` (≥ `1014990f`) · lint/typecheck/test monorepo/audits OK · E2E **21/25** exit 1 · ver §9 G6-1 |
 | 2026-08-10 | G6-3-R1 · re-dictamen experiencia AI-PROD-UX | **GO** · HEAD `9fc1ca7f` (≥ `d4ee265a`+`ddbc22cf`) · CA-V2-05 OK · ver §9 G6-3-R1 |
+| 2026-08-10 | G6-1-R1 · re-verify light AI-PLAT-OPS | SHA `9fc1ca7f` (≥ `d4ee265a`) · E2E **26/26** exit 0 · audit-ui exit 0 · ver §9 G6-1-R1 |
+| 2026-08-10 | G6-4-R1 · jest dashboard coverage (re-verify post remediación) | 7 suites · **77** pass · stmts **81,89%** · lines **84,97%** · funcs 82,14% · branches 71,33% · Cached: N/A |
+| 2026-08-10 | G6-4-R1 · Playwright `portal-dashboard-empresa` (re-verify) | **26/26** pass · axe light+dark OK · CA-V2-05 hidratación destino OK · ~67 s · ver §9 G6-4-R1 |
 
 Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
@@ -91,14 +94,14 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Media | Axe residual: `text-iwana-primary` sin `dark:text-*` en CTAs secundarios / «Ver más» | AI-FE-PLATFORM | **Cerrado** — `portalInlineTextLinkClassName` + header dark |
 | Media | Axe residual: badge error + `opacity-80` en métrica «Actualizando» | AI-FE-PLATFORM | **Cerrado** — sin `opacity-80`; señal por texto/`aria-live` |
 | Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **Cerrado G6-3 GO** — `d4ee265a` + E2E hidratación; residual menor: E2E usa Inicio sidebar (no `goBack`) |
-| Alta | Axe `color-contrast` tema light: descripción `text-gray-500` (#6a7282) sobre shell `danger` (#fef3f3) ≈ **4,45:1** | AI-DS-OWNER + AI-FE-PLATFORM | **Hecho FE** — DS v1.2 `5f4d1b15` + `portalMetricMutedTextClassName` `ddbc22cf`; pendiente re-medir G6-4 |
+| Alta | Axe `color-contrast` tema light: descripción muted × shell `danger` | AI-DS-OWNER + AI-FE-PLATFORM | **Cerrado G6-4-R1** — DS v1.2 `5f4d1b15` + `ddbc22cf` · axe light 4/4 pass |
 
 ## 7. Gates (registro separado — ADR-069)
 
 | Gate | Estado | Evidencia |
 | --- | --- | --- |
 | G4 | Cumplido | Prompt v1.0 emitido 2026-08-04 |
-| G6 | NO-GO | G6-1 **NO-GO técnico** (E2E axe light) · G6-2 GO · G6-3 **GO** (re-dictamen post CA-V2-05) · G6-4 NO-GO (CA-V2-07; CA-V2-05 heredado cerrado) · falta G6-5 · consolidación EM-ARCH |
+| G6 | NO-GO | G6-1-R1 **OK light** (E2E 26/26; no es GO consolidado) · G6-2 GO · G6-3-R1 GO · G6-4 ver SR-QA · falta G6-5 · consolidación EM-ARCH |
 | G6.5 | No iniciado | Requiere CI Linux por SHA |
 | G7 | No iniciado | Requiere recomendación AI-EM-ARCH + CTO |
 
@@ -127,6 +130,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | CA-V2-05 + DS-v1.2-FE | AI-FE-PLATFORM | Hecho | `ddbc22cf` contraste · `d4ee265a` hidratación · E2E CA-V2-05 pass | Description muted on-tint; destinos hidratan URL; E2E indicador→filtro→recarga→Inicio. Re-dictamen G6-3/G6-4 pendiente. |
 | 2026-08-10 | G6-1 | AI-PLAT-OPS | **NO-GO técnico** | SHA probado `eb5851d0` · E2E 21/25 exit 1 · audits BLOQUEANTE 0 | Gates ejecutados; no dictamen G6 consolidado. Ver §9 G6-1. |
 | 2026-08-10 | G6-3-R1 | AI-PROD-UX | **GO** | HEAD `9fc1ca7f` (≥ `d4ee265a`+`ddbc22cf`) · UX §3.2/§3.5 · HLD CA-V2-01…12 | Re-dictamen: CA-V2-05 satisfecho (hidratación + E2E). Ver §9 G6-3-R1. |
+| 2026-08-10 | G6-1-R1 | AI-PLAT-OPS | **OK light** | SHA `9fc1ca7f` (≥ `d4ee265a`) · E2E 26/26 exit 0 · audit-ui exit 0 | Re-verify acotado post remediación; **no** G6 GO. Ver §9 G6-1-R1. |
 
 ---
 
@@ -366,6 +370,26 @@ Causa: Playwright `portal-dashboard-empresa` **exit 1** (21 pass / 4 fail). Audi
 
 - Este acto **solo** registra evidencia de plataforma/CI local; **no** sustituye G6-2…G6-5 ni declara GO/NO-GO de G6 consolidado.
 - Re-ejecutar G6-1 tras SHA de remediación axe + hidratación CA-V2-05 si EM-ARCH lo exige antes de G6.5.
+
+### G6-1-R1 · Re-verify light — AI-PLAT-OPS (post remediación)
+
+**Fecha:** 2026-08-10  
+**Modo:** re-verify acotado (solo Playwright + audit-ui; no suite completa de gates)  
+**SHA al inicio:** `9fc1ca7f` (`git rev-parse --short HEAD`) · ≥ `d4ee265a`: sí · rama `feat/mod02-dashboard-portal-recomposicion`
+
+#### Resultado técnico (alcance light): **OK**
+
+E2E `portal-dashboard-empresa` **26/26** exit **0**. `audit-ui.mjs` exit **0** (P0: 0 · P1: 0 · P2: 1 heurístico · P3: 0). **AI-PLAT-OPS no declara G6 GO consolidado.**
+
+| Comando | Exit | Notas |
+| --- | --- | --- |
+| `pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashboard-empresa` | **0** | **26/26** pass · ~1,2 min |
+| `node …/audit-ui.mjs` (portal-ui + dashboard + layout) | **0** | P0/P1: 0 · P2: 1 `[revisar]` lime-50-surface |
+
+#### Notas al orquestador
+
+- Alcance **light** únicamente; no re-ejecuta lint/typecheck/`pnpm test`/audits ADR.
+- No sustituye G6-4 re-medir, G6-5 ni consolidación EM-ARCH de G6.
 
 ### G6-3-R1 · Re-dictamen experiencia — AI-PROD-UX (post CA-V2-05)
 
