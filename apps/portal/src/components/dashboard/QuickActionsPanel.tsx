@@ -1,6 +1,11 @@
 import { UserRole } from '@iwana/shared';
 import { ArrowRight } from 'lucide-react';
-import { PortalEmptyState, PortalNavListRow, PortalPanel } from '@/components/shared/portal-ui';
+import {
+  PortalEmptyState,
+  PortalNavListRow,
+  PortalPanel,
+  portalInlineTextLinkClassName,
+} from '@/components/shared/portal-ui';
 import Link from 'next/link';
 
 interface QuickAccessDefinition {
@@ -107,10 +112,7 @@ export function QuickActionsPanel({ role }: QuickActionsPanelProps) {
           title="Sin destinos disponibles"
           description="Tu perfil no tiene accesos rápidos en el inicio. Revisa tu perfil para continuar."
           action={
-            <Link
-              href="/dashboard/profile"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-            >
+            <Link href="/dashboard/profile" className={portalInlineTextLinkClassName}>
               Ir a mi perfil
             </Link>
           }

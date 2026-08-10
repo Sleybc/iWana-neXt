@@ -138,6 +138,48 @@ describe('PortalDashboardMetric', () => {
       /secondary-50|bg-iwana-secondary(?!-)/,
     );
   });
+
+  it('en danger/warning el eyebrow usa escalón AA gray-700 (DS §1.7)', () => {
+    const { rerender } = render(
+      <PortalDashboardMetric
+        eyebrow="Crítico"
+        label="Casos abiertos"
+        value={4}
+        accent="danger"
+        icon={Calendar}
+      />,
+    );
+
+    expect(screen.getByText('Crítico')).toHaveClass('portal-eyebrow-muted');
+    expect(screen.getByText('Crítico')).toHaveClass('text-gray-700');
+    expect(screen.getByText('Crítico')).toHaveClass('dark:text-gray-200');
+
+    rerender(
+      <PortalDashboardMetric
+        eyebrow="Atención"
+        label="Pendientes"
+        value={2}
+        accent="warning"
+        icon={Calendar}
+      />,
+    );
+
+    expect(screen.getByText('Atención')).toHaveClass('portal-eyebrow-muted');
+    expect(screen.getByText('Atención')).toHaveClass('text-gray-700');
+
+    rerender(
+      <PortalDashboardMetric
+        eyebrow="Agenda"
+        label="Visitas de hoy"
+        value={12}
+        accent="neutral"
+        icon={Calendar}
+      />,
+    );
+
+    expect(screen.getByText('Agenda')).toHaveClass('portal-eyebrow-muted');
+    expect(screen.getByText('Agenda')).not.toHaveClass('text-gray-700');
+  });
 });
 
 describe('PortalNavListRow', () => {

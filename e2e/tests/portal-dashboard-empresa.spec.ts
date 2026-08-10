@@ -461,38 +461,8 @@ async function expectLoadedDashboard(page: Page) {
 async function runAxe(page: Page, label: string) {
   const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
 
-  // Residuales documentados (no se corrigen en esta tarea QA):
-  // 1) eyebrow/descripcion muted sobre accent danger (rose) ≈ 4,45:1 — [CONSULTA] AI-DS-OWNER
-  // 2) `text-iwana-primary` (#17163a) sin `dark:text-*` en CTAs del encabezado/Ver más
-  //    sobre superficies oscuras ≈ 1,0:1 — [CONSULTA] AI-FE-PLATFORM
-  const violations = result.violations
-    .map((violation) => ({
-      ...violation,
-      nodes: violation.nodes.filter((node) => {
-        if (violation.id !== 'color-contrast') return true;
-        const targets = node.target.map(String).join(' ');
-        if (targets.includes('border-rose-200') || targets.includes('border-rose-500')) {
-          return false;
-        }
-        const hasPrimaryOnDark = node.any.some((check) => {
-          const data = check.data as { fgColor?: string; bgColor?: string } | undefined;
-          return data?.fgColor === '#17163a';
-        });
-        if (hasPrimaryOnDark) return false;
-
-        // Residual 3: badge error en oscuro bajo opacity-80 de «Actualizando»
-        // — [CONSULTA] AI-FE-PLATFORM (no atenuar con opacity).
-        if (
-          node.html.includes('dark:text-error-400') ||
-          targets.includes('bg-error-50') ||
-          targets.includes('dark\\:bg-error-500')
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    }))
-    .filter((violation) => violation.nodes.length > 0);
+  // Residuales post-Task 6 cerrados por FE sobre contrato DS v1.1 (§1.7) + CTAs dark + sin opacity-80.
+  const violations = result.violations;
 
   if (violations.length > 0) {
     console.log(

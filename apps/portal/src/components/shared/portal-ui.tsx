@@ -334,6 +334,18 @@ export function portalMetricCardAccentClassName(
   );
 }
 
+/** Eyebrow de métrica — tipografía muted; color por matriz DS §1.7 (v1.1). */
+export function portalMetricEyebrowClassName(accent: PortalMetricCardAccent = 'neutral'): string {
+  return cn(
+    'portal-eyebrow-muted',
+    (accent === 'danger' || accent === 'warning') && 'text-gray-700 dark:text-gray-200',
+  );
+}
+
+/** Enlace de texto secundario del portal (CTAs «Ver más») — par dark AA. */
+export const portalInlineTextLinkClassName =
+  'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300';
+
 /** Campo de formulario canónico del portal (input/select surface + foco). */
 export const portalFieldClassName = cn(
   'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
@@ -400,7 +412,7 @@ export function PortalMetricCard({
 
   const body = (
     <>
-      <p className="portal-eyebrow-muted">{eyebrow}</p>
+      <p className={portalMetricEyebrowClassName(accent)}>{eyebrow}</p>
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
         {value}
         {total !== undefined && total !== null && (
@@ -574,7 +586,7 @@ export function PortalDashboardMetric({
           <Icon className="h-4 w-4" aria-hidden={true} />
         </span>
       ) : null}
-      <p className={cn('portal-eyebrow-muted', Icon && 'pr-11')}>{eyebrow}</p>
+      <p className={cn(portalMetricEyebrowClassName(accent), Icon && 'pr-11')}>{eyebrow}</p>
       {valueSlot}
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>

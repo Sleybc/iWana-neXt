@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { Badge, Button } from '@iwana/ui';
 import type { DashboardAlert } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
+  portalInlineTextLinkClassName,
+} from '@/components/shared/portal-ui';
 
 interface OnboardingAlertsProps {
   alerts: DashboardAlert[];
@@ -27,10 +32,7 @@ export function OnboardingAlerts({ alerts }: OnboardingAlertsProps) {
           action={
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="lime">Al día</Badge>
-              <Link
-                href="/dashboard/settings"
-                className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-              >
+              <Link href="/dashboard/settings" className={portalInlineTextLinkClassName}>
                 Ver configuración
               </Link>
             </div>
@@ -74,7 +76,7 @@ export function OnboardingAlerts({ alerts }: OnboardingAlertsProps) {
 
         {rest.length > 0 ? (
           <details className="rounded-xl border border-gray-100 px-3 py-2 dark:border-dark-border">
-            <summary className="cursor-pointer text-sm font-medium text-iwana-primary">
+            <summary className="cursor-pointer text-sm font-medium text-iwana-primary dark:text-iwana-primary-300">
               Ver los {rest.length} pendientes restantes
             </summary>
             <div className="mt-3 space-y-3">

@@ -10,6 +10,7 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  portalInlineTextLinkClassName,
 } from '@/components/shared/portal-ui';
 
 /**
@@ -174,10 +175,7 @@ export function RecentActivityPanel() {
           title="Sin cambios recientes"
           description="Cuando tu equipo cree o actualice registros, verás el historial aquí. Mientras tanto, revisa la configuración de la empresa."
           action={
-            <Link
-              href="/dashboard/settings"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-            >
+            <Link href="/dashboard/settings" className={portalInlineTextLinkClassName}>
               Ir a configuración
             </Link>
           }

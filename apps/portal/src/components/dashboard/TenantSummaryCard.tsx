@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Badge } from '@iwana/ui';
 import type { DashboardSummaryTenant, TenantSelfSettings } from '@/lib/api-client';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
-import { PortalPanel } from '@/components/shared/portal-ui';
+import { PortalPanel, portalInlineTextLinkClassName } from '@/components/shared/portal-ui';
 
 interface TenantSummaryCardProps {
   tenant: DashboardSummaryTenant;
@@ -60,10 +60,7 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={statusVariant(tenant.status)}>{statusLabel(tenant.status)}</Badge>
-          <Link
-            href="/dashboard/settings"
-            className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
+          <Link href="/dashboard/settings" className={portalInlineTextLinkClassName}>
             Ver en configuración
           </Link>
         </div>

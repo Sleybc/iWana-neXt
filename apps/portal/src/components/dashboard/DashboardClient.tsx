@@ -12,6 +12,7 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  portalInlineTextLinkClassName,
 } from '@/components/shared/portal-ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
@@ -303,11 +304,7 @@ function BlockError({
         title={message}
         live="polite"
         action={
-          <button
-            type="button"
-            onClick={onRetry}
-            className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
+          <button type="button" onClick={onRetry} className={portalInlineTextLinkClassName}>
             Reintentar
           </button>
         }
@@ -344,7 +341,7 @@ function DashboardHeaderActions({
       {secondary ? (
         <Link
           href={secondary.href}
-          className={`${headerActionClassName} hidden border border-iwana-primary text-iwana-primary hover:bg-iwana-primary-50 md:inline-flex dark:hover:bg-iwana-primary/10`}
+          className={`${headerActionClassName} hidden border border-iwana-primary text-iwana-primary hover:bg-iwana-primary-50 md:inline-flex dark:border-iwana-primary-300 dark:text-iwana-primary-300 dark:hover:bg-iwana-primary/10`}
         >
           {secondary.label}
         </Link>
@@ -390,7 +387,7 @@ function DashboardHeaderActions({
                 <Link
                   role="menuitem"
                   href={secondary.href}
-                  className={`${headerActionClassName} w-full justify-start border border-iwana-primary text-iwana-primary`}
+                  className={`${headerActionClassName} w-full justify-start border border-iwana-primary text-iwana-primary dark:border-iwana-primary-300 dark:text-iwana-primary-300`}
                   onClick={() => setMenuOpen(false)}
                 >
                   {secondary.label}
@@ -464,10 +461,7 @@ function FieldAttentionBlock({
           title="Sin avisos de campo"
           description="No hay avisos pendientes en operaciones de campo. Revisa la agenda si necesitas programar visitas."
           action={
-            <Link
-              href="/dashboard/scheduling/agenda"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-            >
+            <Link href="/dashboard/scheduling/agenda" className={portalInlineTextLinkClassName}>
               Ver la agenda de hoy
             </Link>
           }
@@ -523,10 +517,7 @@ function HelpDeskBlock({
           title="Sin casos pendientes"
           description="No hay casos abiertos ahora. Entra a la mesa de ayuda para registrar uno nuevo si hace falta."
           action={
-            <Link
-              href="/dashboard/assurance"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-            >
+            <Link href="/dashboard/assurance" className={portalInlineTextLinkClassName}>
               Ver la mesa de ayuda
             </Link>
           }
@@ -536,10 +527,7 @@ function HelpDeskBlock({
           <p>
             {openCount} casos abiertos · {state.data?.atRiskCount ?? 0} en riesgo
           </p>
-          <Link
-            href="/dashboard/assurance?status=OPEN"
-            className="inline-flex min-h-11 items-center font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
+          <Link href="/dashboard/assurance?status=OPEN" className={portalInlineTextLinkClassName}>
             Revisar casos abiertos
           </Link>
         </div>
@@ -605,7 +593,7 @@ function CommercialAttentionBlock({
             action={
               <Link
                 href="/dashboard/commercial?tab=plans"
-                className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+                className={portalInlineTextLinkClassName}
               >
                 Crear el primer plan
               </Link>
@@ -616,10 +604,7 @@ function CommercialAttentionBlock({
             title="Tu catálogo está completo"
             description="No hay ofertas que requieran atención ahora. Puedes revisar el catálogo cuando quieras."
             action={
-              <Link
-                href="/dashboard/commercial"
-                className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-              >
+              <Link href="/dashboard/commercial" className={portalInlineTextLinkClassName}>
                 Ver el catálogo
               </Link>
             }
@@ -681,10 +666,7 @@ function PipelineBlock({
           title="Aún no hay oportunidades"
           description="Registra la primera oportunidad para empezar a seguir el embudo comercial."
           action={
-            <Link
-              href="/dashboard/crm/expedientes"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-            >
+            <Link href="/dashboard/crm/expedientes" className={portalInlineTextLinkClassName}>
               Registrar la primera oportunidad
             </Link>
           }
@@ -696,7 +678,7 @@ function PipelineBlock({
           </p>
           <Link
             href="/dashboard/crm/expedientes?view=open"
-            className="inline-flex min-h-11 items-center font-medium text-iwana-primary underline-offset-4 hover:underline"
+            className={portalInlineTextLinkClassName}
           >
             Ver oportunidades
           </Link>
@@ -740,10 +722,7 @@ function InventoryBlock({
           title="Aún no hay productos en inventario"
           description="Registra el primer producto operativo para ver existencias y valor estimado aquí."
           action={
-            <Link
-              href="/dashboard/inventory"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-            >
+            <Link href="/dashboard/inventory" className={portalInlineTextLinkClassName}>
               Registrar el primer producto
             </Link>
           }
@@ -1101,7 +1080,6 @@ export function DashboardClient() {
                         },
                       }
                     : {}),
-                  ...(status === 'updating' ? { className: 'opacity-80' } : {}),
                 };
 
                 if (href) {
@@ -1141,7 +1119,7 @@ export function DashboardClient() {
                 <button
                   type="button"
                   onClick={() => setFoldedOpen((open) => !open)}
-                  className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+                  className={portalInlineTextLinkClassName}
                   aria-expanded={foldedOpen}
                 >
                   {foldedOpen ? 'Ocultar bloques adicionales' : 'Ver más'}
