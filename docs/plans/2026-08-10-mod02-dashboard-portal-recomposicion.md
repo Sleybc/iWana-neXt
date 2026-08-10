@@ -721,4 +721,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | Fecha/hora | ID | Agente | Estado | Evidencia/SHA | Nota |
 | --- | --- | --- | --- | --- | --- |
 | 2026-08-10 | PLAN | AI-EM-ARCH | Hecho | Este documento | Plan canónico emitido para ejecución multiagente |
-| 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | jest 17/17 · typecheck 0 · fix(api) dashboard summary | C-1/C-2/C-3: fiber default, mfaCoverage real, tenant DTO 13 campos, OpenAPI |
+| 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 | C-1/C-2/C-3: fiber default, mfaCoverage real, tenant DTO 13 campos, OpenAPI |
