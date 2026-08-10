@@ -171,4 +171,35 @@ describe('Dashboard metrics states (D-1/D-2/D-7)', () => {
     expect(header.className).not.toMatch(/\bshadow-sm\b/);
     expect(header.className).not.toMatch(/shadow-iwana-card/);
   });
+
+  it('description sobre accent danger/warning usa escalón muted v1.2 (CA-V2-07)', () => {
+    const { rerender } = render(
+      <PortalDashboardMetric
+        eyebrow="Mesa de ayuda"
+        label="Casos en riesgo de incumplir"
+        value={2}
+        description="Acuerdo de servicio en riesgo"
+        accent="danger"
+      />,
+    );
+
+    const dangerDescription = screen.getByText('Acuerdo de servicio en riesgo');
+    expect(dangerDescription.className).toMatch(/text-gray-700/);
+    expect(dangerDescription.className).toMatch(/dark:text-gray-200/);
+    expect(dangerDescription.className).not.toMatch(/text-gray-500/);
+
+    rerender(
+      <PortalDashboardMetric
+        eyebrow="Comercial"
+        label="Planes sin precio vigente"
+        value={1}
+        description="Catálogo incompleto para facturar"
+        accent="primary"
+      />,
+    );
+
+    const primaryDescription = screen.getByText('Catálogo incompleto para facturar');
+    expect(primaryDescription.className).toMatch(/text-gray-500/);
+    expect(primaryDescription.className).toMatch(/dark:text-gray-400/);
+  });
 });

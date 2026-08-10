@@ -334,12 +334,22 @@ export function portalMetricCardAccentClassName(
   );
 }
 
-/** Eyebrow de métrica — tipografía muted; color por matriz DS §1.7 (v1.1). */
+/** Eyebrow de métrica — tipografía muted; color por matriz DS §1.7. */
 export function portalMetricEyebrowClassName(accent: PortalMetricCardAccent = 'neutral'): string {
   return cn(
     'portal-eyebrow-muted',
     (accent === 'danger' || accent === 'warning') && 'text-gray-700 dark:text-gray-200',
   );
+}
+
+/**
+ * Texto muted de cuerpo en métrica (description y afines) — DS §1.7 v1.2.
+ * Mismo escalón que el eyebrow sobre shells `danger`/`warning`.
+ */
+export function portalMetricMutedTextClassName(accent: PortalMetricCardAccent = 'neutral'): string {
+  return accent === 'danger' || accent === 'warning'
+    ? 'text-gray-700 dark:text-gray-200'
+    : 'text-gray-500 dark:text-gray-400';
 }
 
 /** Enlace de texto secundario del portal (CTAs «Ver más») — par dark AA. */
@@ -416,14 +426,16 @@ export function PortalMetricCard({
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
         {value}
         {total !== undefined && total !== null && (
-          <span className="ml-1 text-sm font-normal text-gray-500 dark:text-gray-400">
+          <span className={cn('ml-1 text-sm font-normal', portalMetricMutedTextClassName(accent))}>
             / {total}
           </span>
         )}
       </p>
       <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{title}</p>
       {description ? (
-        <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{description}</p>
+        <p className={cn('mt-1 text-sm leading-6', portalMetricMutedTextClassName(accent))}>
+          {description}
+        </p>
       ) : null}
     </>
   );
@@ -566,7 +578,7 @@ export function PortalDashboardMetric({
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
         {formatValue(value)}
         {total !== undefined && total !== null ? (
-          <span className="ml-1 text-sm font-normal text-gray-500 dark:text-gray-400">
+          <span className={cn('ml-1 text-sm font-normal', portalMetricMutedTextClassName(accent))}>
             / {formatValue(total)}
           </span>
         ) : null}
@@ -595,7 +607,9 @@ export function PortalDashboardMetric({
         ) : null}
       </div>
       {description ? (
-        <div className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{description}</div>
+        <div className={cn('mt-1 text-sm leading-6', portalMetricMutedTextClassName(accent))}>
+          {description}
+        </div>
       ) : null}
     </div>
   );
