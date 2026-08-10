@@ -34,7 +34,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | DOC | AI-EM-ARCH | DOC-1…DOC-4 | Hecho | Adenda prompt · §10ter auditoría · este informe · audits `BLOQUEANTE: 0` |
 | A — backend | AI-SR-FULL | A-1…A-4 | Hecho | `e4f93324` · jest `tenant-self.spec.ts` 17/17 · typecheck `@iwana/api` exit 0 · C-1/C-2/C-3 |
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
-| C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 C-1…C-7 · sync A-3 `e4f93324` · composition + fan-out |
+| C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 C-1…C-7 `b8517caa` · sync A-3 `e4f93324` · composition + fan-out |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Pendiente | — |
 | D — calidad | AI-SR-QA | D-1…D-7 | Pendiente | — |
 
@@ -97,4 +97,4 @@ Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recompo
 | 2026-08-10 | DECISIÓN-MFA-0 | AI-EM-ARCH | Hecho | ratio `1` | 0 usuarios ACTIVE → cobertura definida `1` (vacua); `null` solo fallo de fuente |
 | 2026-08-10 | B-1…B-6 | AI-FE-PLATFORM | Hecho | `1db59f19` · portal-dashboard-metric.spec + suite portal · auditor P0/P1=0 | Contrato DS §1 (no API simplificada del plan). Tokens `--z-*` + contraste lima 4,76:1 en globals.css. `[CONSULTA]` API plan vs contrato DS. |
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 · `DashboardSummaryTenantDto` · mfaCoverage real · fiber default 50 | Track A cerrado; sin endpoints nuevos ni ampliación `@Roles`; MFA 0 usuarios → ratio `1` |
-| 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | pending SHA · jest 48/48 · typecheck 0 · sync A-3 `e4f93324` | Composition 12 roles; fan-out `allSettled`; sin `RoleRestrictedView`; `DashboardSummaryTenant` 13 campos |
+| 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 · sync A-3 `e4f93324` | Composition 12 roles; fan-out `allSettled`; sin `RoleRestrictedView`; `DashboardSummaryTenant` 13 campos |
