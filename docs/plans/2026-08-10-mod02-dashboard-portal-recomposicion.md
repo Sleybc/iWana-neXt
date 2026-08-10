@@ -667,36 +667,25 @@ git commit -m "test(portal): verify dashboard recomposition criteria"
 - Modify: `docs/informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md`
 - Modify only after gate: `docs/prds/PRD_Sistema_ISP_Colombia_v2_4.md`
 
-- [ ] **G6-1 · Ejecutar gates técnicos**
+- [x] **G6-1 · Ejecutar gates técnicos**
 
-Run:
+> G6-1 · AI-PLAT-OPS · Hecho (R1 OK) · E2E 26/26 · lint/typecheck/test monorepo 0 · `4aa226bc` / `c527636c` · 2026-08-10
 
-```powershell
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:e2e:portal
-pnpm audit:adr-citations
-pnpm audit:doc-locations
-```
+- [x] **G6-2 · Obtener dictamen de identidad**
 
-Expected: códigos 0, `BLOQUEANTE: 0`, sin violaciones de boundary y sin PII.
+> G6-2 · AI-DS-OWNER · **GO** · P0/P1=0 · `8ed02260` · 2026-08-10
 
-- [ ] **G6-2 · Obtener dictamen de identidad**
+- [x] **G6-3 · Obtener dictamen de experiencia**
 
-AI-DS-OWNER verifica contrato DS, sombras, tokens, firmas, contraste y ausencia de primitives paralelas. Resultado requerido: sin P0/P1.
+> G6-3-R1 · AI-PROD-UX · **GO** · CA-V2-01…12 · `05425960` · 2026-08-10
 
-- [ ] **G6-3 · Obtener dictamen de experiencia**
+- [x] **G6-4 · Obtener dictamen QA**
 
-AI-PROD-UX verifica bandas, tareas por rol, primer viewport, destinos y estados. Resultado requerido: CA-V2-01…12 satisfechos.
+> G6-4-R1 · AI-SR-QA · **GO** · E2E 26/26 · cov ≥80% · `b8e76630` · 2026-08-10
 
-- [ ] **G6-4 · Obtener dictamen QA**
+- [x] **G6-5 · Consolidar informe vivo**
 
-AI-SR-QA enlaza cada criterio con prueba y evidencia reproducible. Tests heredados sin aserción nueva no cuentan.
-
-- [ ] **G6-5 · Consolidar informe vivo**
-
-Registrar SHAs, comandos, evidencias, deuda residual y decisión G6. Cambiar a `Completado` solo si no queda trabajo requerido.
+> G6-5 · AI-EM-ARCH · **GO** · informe Completado (G6) · G6.5/G7 abiertos · 2026-08-10
 
 - [ ] **G6.5 · Registrar merge readiness por separado**
 
@@ -741,14 +730,14 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 
 ## 7. Definition of Done
 
-- [ ] A-1…A-4 cerrados con evidencia.
+- [x] A-1…A-4 cerrados con evidencia.
 - [x] B-1…B-3 y C-1…C-13 cerrados sin primitives paralelas.
 - [x] D-1…D-7 en verde y cobertura ≥80% del núcleo tocado.
-- [ ] CA-V2-01…12 y UX-01…16 trazados a pruebas.
-- [ ] Cero P0/P1 de identidad, accesibilidad o experiencia.
-- [ ] Informe vivo completo y auditoría revalidada.
-- [ ] G6 documentado sin anticipar G6.5 ni G7.
-- [ ] `pnpm audit:adr-citations` y `pnpm audit:doc-locations` sin bloqueantes.
+- [x] CA-V2-01…12 y UX-01…16 trazados a pruebas.
+- [x] Cero P0/P1 de identidad, accesibilidad o experiencia.
+- [x] Informe vivo completo y auditoría revalidada.
+- [x] G6 documentado sin anticipar G6.5 ni G7.
+- [x] `pnpm audit:adr-citations` y `pnpm audit:doc-locations` sin bloqueantes.
 
 ## 8. Bitácora viva
 
@@ -760,3 +749,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert; barra lima; Buscar móvil 1× GlobalSearch; z ADR-075; lienzo neutral-50 |
 | 2026-08-10 | D-1…D-7 | AI-SR-QA | Hecho | Task 6 · jest dashboard 76 pass · cobertura ≥80% · E2E portal-dashboard-empresa 25/25 | Axe claro/oscuro; null honesto; 12 roles unit + 4 E2E; teclado 375; capturas; residuales [CONSULTA] DS/FE |
 | 2026-08-10 | A11Y-R1…3 | AI-FE-PLATFORM | Hecho | `1014990f` · base `9937c7d7` · DS v1.1 §1.7 | Eyebrow gray-700 en danger/warning; CTAs dark; sin opacity-80; filtros axe retirados |
+| 2026-08-10 | G6-5 | AI-EM-ARCH | **GO** | tip `b8e76630` · G6-1-R1 + G6-2 + G6-3-R1 + G6-4-R1 | G6 consolidado; G6.5/G7 no anticipados (ADR-069) |

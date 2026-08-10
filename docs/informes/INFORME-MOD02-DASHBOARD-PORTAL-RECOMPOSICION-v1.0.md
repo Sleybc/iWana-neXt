@@ -3,20 +3,21 @@
 ## Informe vivo — recomposición del `/dashboard` del portal
 
 **Versión:** 1.0  
-**Estado:** En progreso  
+**Estado:** Completado (G6 GO) — pendiente G6.5 / G7  
 **Fecha:** 2026-08-10  
 **Modo activo:** EM + Orchestrator ([perfil AI-EM-ARCH v2.4](../roles/Perfil_IA_EM_Architect_Unificado_v2.md))  
 **Autor consolidación:** AI-EM-ARCH  
 **Plan canónico (checklist):** [`docs/plans/2026-08-10-mod02-dashboard-portal-recomposicion.md`](../plans/2026-08-10-mod02-dashboard-portal-recomposicion.md)  
 **Prompt G4:** [`PROMPT-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md)  
 **Rama:** `feat/mod02-dashboard-portal-recomposicion`  
-**HEAD al abrir informe:** `39a7bbc6`
+**HEAD al abrir informe:** `39a7bbc6`  
+**SHA consolidación G6:** `b8e76630` (ancestros código `d4ee265a` / `ddbc22cf` / `e09ffa9a` / `e4f93324`)
 
 ---
 
 ## 1. Resumen
 
-Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil para los 12 roles, alineado a identidad iWana, accesible y verificable, **sin** endpoints nuevos ni ampliación de permisos. Gate de entrada G4 cumplido; **G6 NO-GO** hasta cerrar tracks A–D con evidencia.
+Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil para los 12 roles, alineado a identidad iWana, accesible y verificable, **sin** endpoints nuevos ni ampliación de permisos. Gate de entrada G4 cumplido. **G6 GO** consolidado el 2026-08-10 (G6-1-R1 + G6-2 + G6-3-R1 + G6-4-R1). **G6.5 y G7 no se anticipan** (ADR-069).
 
 ## 2. Contratos congelados
 
@@ -34,7 +35,7 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | DOC | AI-EM-ARCH | DOC-1…DOC-4 | Hecho | Adenda prompt · §10ter auditoría · este informe · audits `BLOQUEANTE: 0` |
 | A — backend | AI-SR-FULL | A-1…A-4 | Hecho | `e4f93324` · jest `tenant-self.spec.ts` 17/17 · typecheck `@iwana/api` exit 0 · C-1/C-2/C-3 |
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
-| C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 `b8517caa` · Task 4 `3aaa217a` · shell ver Track Shell |
+| C — dashboard | AI-FE-PLATFORM | C-1…C-13 | Hecho | Task 3 `b8517caa` · Task 4 `3aaa217a` · hidratación `d4ee265a` · contraste v1.2 `ddbc22cf` |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 |
 | D — calidad | AI-SR-QA | D-1…D-7 | Hecho (Task 6) · **G6-4-R1 GO** | Task 6 cov OK · re-dictamen G6-4-R1: jest **77/77** · stmts **81,89%** / lines **84,97%** · E2E **26/26** · axe light OK · CA-V2-05 destino OK · ver §9 G6-4-R1 |
 
@@ -101,9 +102,9 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Gate | Estado | Evidencia |
 | --- | --- | --- |
 | G4 | Cumplido | Prompt v1.0 emitido 2026-08-04 |
-| G6 | Pendiente consolidación | G6-1-R1 **OK light** (E2E 26/26; no es GO consolidado) · G6-2 GO · G6-3-R1 GO · G6-4-R1 **GO** · falta G6-5 · consolidación EM-ARCH |
-| G6.5 | No iniciado | Requiere CI Linux por SHA |
-| G7 | No iniciado | Requiere recomendación AI-EM-ARCH + CTO |
+| G6 | **GO** | Consolidación EM-ARCH 2026-08-10 · ver §9 G6-5 · SHA tip `b8e76630` |
+| G6.5 | No iniciado | Requiere corrida Linux de CI **por SHA** (ADR-069) — no se infiere de G6 |
+| G7 | No iniciado | Requiere recomendación AI-EM-ARCH + aprobación CTO — no se infiere de G6.5 |
 
 ## 8. Bitácora (append-only)
 
@@ -132,6 +133,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | G6-3-R1 | AI-PROD-UX | **GO** | HEAD `9fc1ca7f` (≥ `d4ee265a`+`ddbc22cf`) · UX §3.2/§3.5 · HLD CA-V2-01…12 | Re-dictamen: CA-V2-05 satisfecho (hidratación + E2E). Ver §9 G6-3-R1. |
 | 2026-08-10 | G6-1-R1 | AI-PLAT-OPS | **OK light** | SHA `9fc1ca7f` (≥ `d4ee265a`) · E2E 26/26 exit 0 · audit-ui exit 0 | Re-verify acotado post remediación; **no** G6 GO. Ver §9 G6-1-R1. |
 | 2026-08-10 | G6-4-R1 | AI-SR-QA | **GO** | HEAD `05425960` (≥ `d4ee265a`+`ddbc22cf`+`9fc1ca7f`) · jest 77/77 cov ≥80% · E2E 26/26 | Re-dictamen: CA-V2-07 axe light OK · CA-V2-05 destino OK. Ver §9 G6-4-R1. |
+| 2026-08-10 | G6-5 | AI-EM-ARCH | **GO** | tip `b8e76630` · G6-1-R1 + G6-2 + G6-3-R1 + G6-4-R1 | Consolidación fase: G6 cumplido; G6.5/G7 abiertos. Ver §9 G6-5. |
 
 ---
 
@@ -503,3 +505,26 @@ pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashbo
 - Delta E2E: **21/25 → 26/26** (+1 escenario CA-V2-05; 4 axe light recuperados).
 - Delta jest dashboard: **76 → 77** pass; cobertura stmts/lines sin cambio material (≥80%).
 - SHA de este commit documental: el de `docs(mod02): re-dictamen G6-4 SR-QA after remediacion`.
+
+### G6-5 · Consolidación — AI-EM-ARCH
+
+**Modo:** EM + Orchestrator  
+**Fecha:** 2026-08-10  
+**SHA tip al consolidar:** `b8e76630`
+
+#### Veredicto G6: **GO**
+
+| Sub-gate | Dictamen | SHA evidencia |
+| --- | --- | --- |
+| G6-1 técnico | **OK** tras R1 (lint/typecheck/test monorepo verdes en `eb5851d0`; E2E **26/26** + audit-ui en `9fc1ca7f`) | `c527636c` · `4aa226bc` |
+| G6-2 identidad | **GO** (P0/P1 = 0; P2 viñeta lima cerrado en `7ea22066`) | `8ed02260` |
+| G6-3 experiencia | **GO** tras R1 (CA-V2-01…12) | `05425960` |
+| G6-4 calidad | **GO** tras R1 (cov ≥80%; E2E 26/26; CA-V2-05/07 OK) | `b8e76630` |
+
+**Impacto:** multi-tenant sin cambio de aislamiento; seguridad sin ampliación de `@Roles`/endpoints; escala sin fachada agregadora; regulación N/A UI.
+
+**Deuda residual aceptada (no bloquea G6):** E2E CA-V2-05 usa navegación «Inicio» del sidebar en lugar de `page.goBack()`; contrato tenant en `@iwana/shared` y rate-limit global fuera de fase.
+
+**G6.5:** no iniciado — exige corrida Linux de CI identificada por SHA.  
+**G7:** no iniciado — exige recomendación explícita + CTO.  
+Ninguno se infiere de este GO (ADR-069).
