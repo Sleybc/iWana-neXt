@@ -2,11 +2,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
 import { ExpedienteStatus, UserRole } from '@iwana/shared';
-import { RefreshCw } from 'lucide-react';
+import { MoreHorizontal, RefreshCw } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { PortalDashboardMetric } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalDashboardMetric,
+  PortalEmptyState,
+  PortalPanel,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
 import {
@@ -34,7 +40,6 @@ import { TenantSummaryCard } from './TenantSummaryCard';
 import { OnboardingAlerts } from './OnboardingAlerts';
 import { RecentActivityPanel } from './RecentActivityPanel';
 import { QuickActionsPanel } from './QuickActionsPanel';
-import { DashboardPanel } from './DashboardPanel';
 import {
   getDashboardRoleComposition,
   isUserRole,
@@ -43,6 +48,7 @@ import {
   resolveDashboardDataSources,
   resolveDashboardMetric,
   toLocalDayKey,
+  type DashboardActionDefinition,
   type DashboardBlockId,
   type DashboardDataSourceId,
   type DashboardMetricId,
@@ -262,15 +268,9 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
 
 function MetricsSkeleton({ count }: { count: number }) {
   return (
-    <div
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-      aria-busy="true"
-    >
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true">
       {Array.from({ length: Math.max(count, 1) }).map((_, i) => (
-        <div
-          key={i}
-          className="h-[148px] animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3"
-        />
+        <PortalSkeletonBlock key={i} className="h-[148px] rounded-3xl" />
       ))}
     </div>
   );
@@ -279,19 +279,11 @@ function MetricsSkeleton({ count }: { count: number }) {
 function IdentityOnlyCard({ branding }: { branding: TenantPublicBranding | null }) {
   const name = branding?.displayName ?? branding?.productName ?? 'Tu empresa';
   return (
-    <section
-      aria-label="Estado de la empresa"
-      className="rounded-2xl border border-gray-200 bg-white px-6 py-5 dark:border-dark-border dark:bg-dark-surface-2"
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-300">
-        Empresa
+    <PortalPanel title={name} description="Identidad visible de tu organización">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        El detalle operativo vive en Configuración cuando tu perfil lo permita.
       </p>
-      <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{name}</p>
-      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        Identidad visible de tu organización. El detalle operativo vive en Configuración cuando tu
-        perfil lo permita.
-      </p>
-    </section>
+    </PortalPanel>
   );
 }
 
@@ -305,18 +297,136 @@ function BlockError({
   onRetry: () => void;
 }) {
   return (
-    <DashboardPanel title={title}>
-      <div className="space-y-2">
-        <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
+    <PortalPanel title={title}>
+      <PortalAlert
+        variant="error"
+        title={message}
+        live="polite"
+        action={
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Reintentar
+          </button>
+        }
+      />
+    </PortalPanel>
+  );
+}
+
+const headerActionClassName =
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium';
+
+function DashboardHeaderActions({
+  primary,
+  secondary,
+  onRefresh,
+}: {
+  primary: DashboardActionDefinition;
+  secondary: DashboardActionDefinition | null;
+  onRefresh: () => void;
+}) {
+  const menuId = useId();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 md:justify-end">
+      <button
+        type="button"
+        onClick={onRefresh}
+        className={`${headerActionClassName} hidden border border-gray-200 text-gray-700 hover:bg-gray-50 md:inline-flex dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-surface-3`}
+      >
+        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        Actualizar
+      </button>
+      {secondary ? (
+        <Link
+          href={secondary.href}
+          className={`${headerActionClassName} hidden border border-iwana-primary text-iwana-primary hover:bg-iwana-primary-50 md:inline-flex dark:hover:bg-iwana-primary/10`}
+        >
+          {secondary.label}
+        </Link>
+      ) : null}
+      <Link
+        href={primary.href}
+        className={`${headerActionClassName} bg-iwana-primary text-white hover:bg-iwana-primary-600`}
+      >
+        {primary.label}
+      </Link>
+      <div className="relative md:hidden">
         <button
           type="button"
-          onClick={onRetry}
-          className="text-sm font-medium text-iwana-primary underline decoration-iwana-primary/30 underline-offset-4 hover:no-underline"
+          className={`${headerActionClassName} border border-gray-200 text-gray-700 dark:border-dark-border dark:text-gray-200`}
+          aria-expanded={menuOpen}
+          aria-controls={menuId}
+          aria-haspopup="menu"
+          aria-label="Más acciones del inicio"
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          Reintentar
+          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
         </button>
+        {menuOpen ? (
+          <div
+            id={menuId}
+            role="menu"
+            className="absolute right-0 z-20 mt-2 min-w-[220px] rounded-2xl border border-gray-200 bg-white p-2 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2"
+          >
+            <div role="none" className="flex flex-col gap-1">
+              <button
+                type="button"
+                role="menuitem"
+                className={`${headerActionClassName} w-full justify-start border border-gray-200 text-gray-700 dark:border-dark-border dark:text-gray-200`}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onRefresh();
+                }}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Actualizar
+              </button>
+              {secondary ? (
+                <Link
+                  role="menuitem"
+                  href={secondary.href}
+                  className={`${headerActionClassName} w-full justify-start border border-iwana-primary text-iwana-primary`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {secondary.label}
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
-    </DashboardPanel>
+    </div>
+  );
+}
+
+function BlockLoading({ title, rows = 3 }: { title: string; rows?: number }) {
+  return (
+    <PortalPanel title={title} busy>
+      <div className="space-y-3">
+        {Array.from({ length: rows }).map((_, i) => (
+          <PortalSkeletonBlock key={i} className="h-12 rounded-xl" />
+        ))}
+      </div>
+    </PortalPanel>
+  );
+}
+
+function BlockEmpty({
+  title,
+  description,
+  action,
+}: {
+  title?: string;
+  description: string;
+  action: ReactNode;
+}) {
+  return (
+    <PortalEmptyState title={title ?? 'Sin pendientes'} description={description} action={action} />
   );
 }
 
@@ -330,18 +440,7 @@ function FieldAttentionBlock({
   const state = sources.wfm;
   const title = resolveDashboardBlock('field-attention').title;
   if (state.status === 'loading' && !state.data) {
-    return (
-      <DashboardPanel title={title}>
-        <div className="space-y-3" aria-busy="true">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-12 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
-            />
-          ))}
-        </div>
-      </DashboardPanel>
-    );
+    return <BlockLoading title={title} rows={3} />;
   }
   if (state.status === 'error' && !state.data) {
     return (
@@ -354,22 +453,25 @@ function FieldAttentionBlock({
   }
   const alerts = state.data?.alerts ?? [];
   return (
-    <DashboardPanel title={title}>
+    <PortalPanel title={title}>
       {state.status === 'updating' ? (
         <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
           Actualizando
         </p>
       ) : null}
       {alerts.length === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-700 dark:text-gray-300">Sin avisos de campo pendientes</p>
-          <Link
-            href="/dashboard/scheduling/agenda"
-            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
-            Ver la agenda de hoy
-          </Link>
-        </div>
+        <BlockEmpty
+          title="Sin avisos de campo"
+          description="No hay avisos pendientes en operaciones de campo. Revisa la agenda si necesitas programar visitas."
+          action={
+            <Link
+              href="/dashboard/scheduling/agenda"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+            >
+              Ver la agenda de hoy
+            </Link>
+          }
+        />
       ) : (
         <ul className="space-y-3">
           {alerts.slice(0, 5).map((alert) => (
@@ -383,7 +485,7 @@ function FieldAttentionBlock({
           ))}
         </ul>
       )}
-    </DashboardPanel>
+    </PortalPanel>
   );
 }
 
@@ -397,18 +499,7 @@ function HelpDeskBlock({
   const state = sources.assurance;
   const title = resolveDashboardBlock('help-desk').title;
   if (state.status === 'loading' && !state.data) {
-    return (
-      <DashboardPanel title={title}>
-        <div className="space-y-3" aria-busy="true">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-12 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
-            />
-          ))}
-        </div>
-      </DashboardPanel>
-    );
+    return <BlockLoading title={title} rows={3} />;
   }
   if (state.status === 'error' && !state.data) {
     return (
@@ -421,22 +512,25 @@ function HelpDeskBlock({
   }
   const openCount = state.data?.openCount ?? 0;
   return (
-    <DashboardPanel title={title}>
+    <PortalPanel title={title}>
       {state.status === 'updating' ? (
         <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
           Actualizando
         </p>
       ) : null}
       {openCount === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-700 dark:text-gray-300">Sin casos pendientes</p>
-          <Link
-            href="/dashboard/assurance"
-            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
-            Ver la mesa de ayuda
-          </Link>
-        </div>
+        <BlockEmpty
+          title="Sin casos pendientes"
+          description="No hay casos abiertos ahora. Entra a la mesa de ayuda para registrar uno nuevo si hace falta."
+          action={
+            <Link
+              href="/dashboard/assurance"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+            >
+              Ver la mesa de ayuda
+            </Link>
+          }
+        />
       ) : (
         <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
           <p>
@@ -444,13 +538,13 @@ function HelpDeskBlock({
           </p>
           <Link
             href="/dashboard/assurance?status=OPEN"
-            className="font-medium text-iwana-primary underline-offset-4 hover:underline"
+            className="inline-flex min-h-11 items-center font-medium text-iwana-primary underline-offset-4 hover:underline"
           >
             Revisar casos abiertos
           </Link>
         </div>
       )}
-    </DashboardPanel>
+    </PortalPanel>
   );
 }
 
@@ -468,18 +562,7 @@ function CommercialAttentionBlock({
   const state = sources.commercial;
   const title = resolveDashboardBlock('commercial-attention').title;
   if (state.status === 'loading' && !state.data) {
-    return (
-      <DashboardPanel title={title}>
-        <div className="space-y-3" aria-busy="true">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-12 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
-            />
-          ))}
-        </div>
-      </DashboardPanel>
-    );
+    return <BlockLoading title={title} rows={5} />;
   }
   if (state.status === 'error' && !state.data) {
     return (
@@ -503,7 +586,7 @@ function CommercialAttentionBlock({
   items = items.slice(0, 5);
 
   return (
-    <DashboardPanel title={title}>
+    <PortalPanel title={title}>
       {highlight ? (
         <p className="mb-3 text-xs font-medium text-iwana-secondary-700 dark:text-iwana-secondary-300">
           Ofertas en riesgo — detalle en esta lista
@@ -515,38 +598,40 @@ function CommercialAttentionBlock({
         </p>
       ) : null}
       {items.length === 0 ? (
-        <div className="space-y-2">
-          {(state.data?.catalogActiveCount ?? 0) === 0 ? (
-            <>
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                Aún no has creado tu catálogo
-              </p>
+        (state.data?.catalogActiveCount ?? 0) === 0 ? (
+          <BlockEmpty
+            title="Aún no has creado tu catálogo"
+            description="Crea el primer plan para empezar a vender y facturar sin huecos."
+            action={
               <Link
                 href="/dashboard/commercial?tab=plans"
-                className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+                className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
               >
                 Crear el primer plan
               </Link>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-gray-700 dark:text-gray-300">Tu catálogo está completo</p>
+            }
+          />
+        ) : (
+          <BlockEmpty
+            title="Tu catálogo está completo"
+            description="No hay ofertas que requieran atención ahora. Puedes revisar el catálogo cuando quieras."
+            action={
               <Link
                 href="/dashboard/commercial"
-                className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+                className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
               >
                 Ver el catálogo
               </Link>
-            </>
-          )}
-        </div>
+            }
+          />
+        )
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (
             <li key={item.id}>
               <Link
                 href={`/dashboard/commercial?tab=${encodeURIComponent(item.destinoTab)}&focus=${encodeURIComponent(item.id)}`}
-                className="block rounded-xl border border-gray-100 px-4 py-3 transition-colors hover:border-iwana-primary dark:border-dark-border-2"
+                className="block min-h-11 rounded-xl border border-gray-100 px-4 py-3 transition-colors hover:border-iwana-primary dark:border-dark-border-2"
               >
                 <p className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</p>
                 <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
@@ -557,7 +642,7 @@ function CommercialAttentionBlock({
           ))}
         </ul>
       )}
-    </DashboardPanel>
+    </PortalPanel>
   );
 }
 
@@ -571,14 +656,7 @@ function PipelineBlock({
   const state = sources.crm;
   const title = resolveDashboardBlock('pipeline').title;
   if (state.status === 'loading' && !state.data) {
-    return (
-      <DashboardPanel title={title}>
-        <div
-          className="h-24 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
-          aria-busy="true"
-        />
-      </DashboardPanel>
-    );
+    return <BlockLoading title={title} rows={2} />;
   }
   if (state.status === 'error' && !state.data) {
     return (
@@ -592,22 +670,25 @@ function PipelineBlock({
   const total = state.data?.total ?? 0;
   const open = openPipelineCount(state.data) ?? 0;
   return (
-    <DashboardPanel title={title}>
+    <PortalPanel title={title}>
       {state.status === 'updating' ? (
         <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
           Actualizando
         </p>
       ) : null}
       {total === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-700 dark:text-gray-300">Aún no hay oportunidades</p>
-          <Link
-            href="/dashboard/crm/expedientes"
-            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
-            Registrar la primera oportunidad
-          </Link>
-        </div>
+        <BlockEmpty
+          title="Aún no hay oportunidades"
+          description="Registra la primera oportunidad para empezar a seguir el embudo comercial."
+          action={
+            <Link
+              href="/dashboard/crm/expedientes"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+            >
+              Registrar la primera oportunidad
+            </Link>
+          }
+        />
       ) : (
         <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
           <p>
@@ -615,13 +696,13 @@ function PipelineBlock({
           </p>
           <Link
             href="/dashboard/crm/expedientes?view=open"
-            className="font-medium text-iwana-primary underline-offset-4 hover:underline"
+            className="inline-flex min-h-11 items-center font-medium text-iwana-primary underline-offset-4 hover:underline"
           >
             Ver oportunidades
           </Link>
         </div>
       )}
-    </DashboardPanel>
+    </PortalPanel>
   );
 }
 
@@ -635,14 +716,7 @@ function InventoryBlock({
   const state = sources.inventory;
   const title = resolveDashboardBlock('inventory').title;
   if (state.status === 'loading' && !state.data) {
-    return (
-      <DashboardPanel title={title}>
-        <div
-          className="h-20 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
-          aria-busy="true"
-        />
-      </DashboardPanel>
-    );
+    return <BlockLoading title={title} rows={2} />;
   }
   if (state.status === 'error' && !state.data) {
     return (
@@ -655,24 +729,25 @@ function InventoryBlock({
   }
   const itemsCount = state.data?.itemsCount ?? 0;
   return (
-    <DashboardPanel title={title}>
+    <PortalPanel title={title}>
       {state.status === 'updating' ? (
         <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
           Actualizando
         </p>
       ) : null}
       {itemsCount === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            Aún no hay productos en inventario
-          </p>
-          <Link
-            href="/dashboard/inventory"
-            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
-          >
-            Registrar el primer producto
-          </Link>
-        </div>
+        <BlockEmpty
+          title="Aún no hay productos en inventario"
+          description="Registra el primer producto operativo para ver existencias y valor estimado aquí."
+          action={
+            <Link
+              href="/dashboard/inventory"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+            >
+              Registrar el primer producto
+            </Link>
+          }
+        />
       ) : (
         <dl className="grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -695,7 +770,7 @@ function InventoryBlock({
           </div>
         </dl>
       )}
-    </DashboardPanel>
+    </PortalPanel>
   );
 }
 
@@ -705,12 +780,14 @@ function renderDashboardBlock({
   composition,
   highlightCommercial,
   onRetrySource,
+  role,
 }: {
   blockId: DashboardBlockId;
   sources: DashboardSourcesState;
   composition: DashboardRoleComposition;
   highlightCommercial: boolean;
   onRetrySource: (sourceId: DashboardDataSourceId) => void;
+  role: UserRole;
 }) {
   switch (blockId) {
     case 'field-attention':
@@ -768,7 +845,7 @@ function renderDashboardBlock({
     case 'quick-actions':
       return (
         <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
-          <QuickActionsPanel />
+          <QuickActionsPanel role={role} />
         </section>
       );
     default: {
@@ -975,30 +1052,7 @@ export function DashboardClient() {
           </span>
         }
         actions={
-          <>
-            <button
-              type="button"
-              onClick={refreshAll}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-surface-3"
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Actualizar
-            </button>
-            {secondary ? (
-              <Link
-                href={secondary.href}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-iwana-primary px-4 py-2 text-sm font-medium text-iwana-primary hover:bg-iwana-primary-50 dark:hover:bg-iwana-primary/10"
-              >
-                {secondary.label}
-              </Link>
-            ) : null}
-            <Link
-              href={primary.href}
-              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600"
-            >
-              {primary.label}
-            </Link>
-          </>
+          <DashboardHeaderActions primary={primary} secondary={secondary} onRefresh={refreshAll} />
         }
       />
 
@@ -1008,7 +1062,7 @@ export function DashboardClient() {
           {firstLoadPending ? (
             <MetricsSkeleton count={composition.metricIds.length} />
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {composition.metricIds.map((metricId) => {
                 const def = resolveDashboardMetric(metricId);
                 const status = metricSourceStatus(metricId, sources);
@@ -1080,13 +1134,14 @@ export function DashboardClient() {
               composition,
               highlightCommercial,
               onRetrySource: retrySource,
+              role,
             })}
             {foldedIds.length > 0 ? (
               <div className="space-y-4">
                 <button
                   type="button"
                   onClick={() => setFoldedOpen((open) => !open)}
-                  className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+                  className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
                   aria-expanded={foldedOpen}
                 >
                   {foldedOpen ? 'Ocultar bloques adicionales' : 'Ver más'}
@@ -1099,6 +1154,7 @@ export function DashboardClient() {
                         composition,
                         highlightCommercial,
                         onRetrySource: retrySource,
+                        role,
                       }),
                     )
                   : null}
@@ -1117,11 +1173,9 @@ export function DashboardClient() {
               composition,
               highlightCommercial,
               onRetrySource: retrySource,
+              role,
             }),
           )}
-          {!composition.dominantBlockId && foldedIds.length === 0 && supportIds.length === 0
-            ? null
-            : null}
         </div>
       </div>
 

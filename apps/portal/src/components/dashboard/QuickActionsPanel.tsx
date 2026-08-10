@@ -1,119 +1,142 @@
-// apps/portal/src/components/dashboard/QuickActionsPanel.tsx
+import { UserRole } from '@iwana/shared';
+import { ArrowRight } from 'lucide-react';
+import { PortalEmptyState, PortalNavListRow, PortalPanel } from '@/components/shared/portal-ui';
 import Link from 'next/link';
-import { Settings, Users, BarChart3, ArrowRight, Zap, HandCoins } from 'lucide-react';
-import { DashboardPanel } from './DashboardPanel';
 
-interface QuickAction {
+interface QuickAccessDefinition {
+  id: string;
   label: string;
   description: string;
   href: string;
-  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
-  available: boolean;
+  roles: readonly UserRole[];
 }
 
 /**
- * Accesos rápidos del dashboard empresarial.
- *
- * Ítems disponibles en MVP: /dashboard/settings, /dashboard/commercial.
- * Módulos futuros marcados como no disponibles — no generan 404.
- *
- * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §2.2 (BT-DE-11)
+ * Accesos rápidos del inicio — mapa estático UX §4.14.
+ * Filtrado por rol (techo de autorización), sin celdas deshabilitadas ni «Fase siguiente».
  */
-const quickActions: QuickAction[] = [
+const QUICK_ACCESSES: readonly QuickAccessDefinition[] = [
   {
+    id: 'commercial',
     label: 'Comercial',
-    description: 'Catálogo comercial, precios vigentes y reglas operativas',
+    description: 'Catálogo, precios vigentes y reglas comerciales',
     href: '/dashboard/commercial',
-    icon: HandCoins,
-    available: true,
+    roles: [UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.NOC, UserRole.ACCOUNTANT],
   },
   {
-    label: 'Configuración',
-    description: 'Zona horaria, moneda y datos de empresa',
-    href: '/dashboard/settings',
-    icon: Settings,
-    available: true,
+    id: 'scheduling',
+    label: 'Programación',
+    description: 'Agenda y solicitudes de operaciones de campo',
+    href: '/dashboard/scheduling',
+    roles: [
+      UserRole.ADMIN,
+      UserRole.NOC,
+      UserRole.SUPPORT,
+      UserRole.TECHNICIAN,
+      UserRole.CONTRACTOR,
+    ],
   },
   {
-    label: 'Usuarios',
-    description: 'Gestión de usuarios y roles del equipo',
+    id: 'assurance',
+    label: 'Mesa de ayuda',
+    description: 'Casos abiertos y seguimiento de servicio',
+    href: '/dashboard/assurance',
+    roles: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
+  },
+  {
+    id: 'inventory',
+    label: 'Inventario',
+    description: 'Existencias y productos operativos',
+    href: '/dashboard/inventory',
+    roles: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
+  },
+  {
+    id: 'opportunities',
+    label: 'Oportunidades',
+    description: 'Embudo comercial y seguimiento',
+    href: '/dashboard/crm/expedientes',
+    roles: [UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT],
+  },
+  {
+    id: 'users',
+    label: 'Usuarios y accesos',
+    description: 'Cuentas del equipo y perfiles de acceso',
     href: '/dashboard/users',
-    icon: Users,
-    available: true,
+    roles: [UserRole.ADMIN],
   },
   {
-    label: 'Reportes',
-    description: 'Métricas operativas y reportes gerenciales',
-    href: '/reports',
-    icon: BarChart3,
-    available: false,
+    id: 'settings',
+    label: 'Configuración',
+    description: 'Zona horaria, moneda y datos de la empresa',
+    href: '/dashboard/settings',
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: 'profile',
+    label: 'Mi perfil',
+    description: 'Datos de tu cuenta y verificación en dos pasos',
+    href: '/dashboard/profile',
+    roles: [
+      UserRole.ADMIN,
+      UserRole.NOC,
+      UserRole.SUPPORT,
+      UserRole.SALES,
+      UserRole.ACCOUNTANT,
+      UserRole.TECHNICIAN,
+      UserRole.CONTRACTOR,
+      UserRole.AUDITOR,
+      UserRole.HR,
+      UserRole.SUBSCRIBER,
+      UserRole.PARTNER,
+      UserRole.INVESTOR,
+    ],
   },
 ];
 
-export function QuickActionsPanel() {
+interface QuickActionsPanelProps {
+  role: UserRole;
+}
+
+export function QuickActionsPanel({ role }: QuickActionsPanelProps) {
+  const items = QUICK_ACCESSES.filter((access) => access.roles.includes(role));
+
   return (
-    <DashboardPanel title="Accesos rápidos">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {quickActions.map((action) => {
-          if (action.available) {
-            return (
-              <Link
-                key={action.href}
-                href={action.href}
-                className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-4 text-sm transition-all hover:-translate-y-0.5 hover:border-iwana-primary hover:bg-iwana-primary-50 dark:border-dark-border dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10"
-              >
-                <span className="flex items-center gap-3">
-                  <action.icon
-                    className="w-4 h-4 text-iwana-secondary-700 dark:text-iwana-secondary shrink-0"
-                    aria-hidden={true}
-                  />
-                  <span className="min-w-0">
-                    <span className="block font-medium text-gray-800 dark:text-white">
-                      {action.label}
-                    </span>
-                    <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {action.description}
-                    </span>
-                  </span>
-                </span>
-                <ArrowRight className="w-4 h-4 text-gray-400 shrink-0 ml-2" aria-hidden={true} />
-              </Link>
-            );
-          }
-
-          // Módulos futuros — no navegables, visualmente deshabilitados
-          return (
-            <div
-              key={action.href}
-              className="flex items-center justify-between rounded-xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 text-sm dark:border-dark-border dark:bg-dark-surface-3"
-              aria-disabled="true"
+    <PortalPanel title="Accesos rápidos">
+      {items.length === 0 ? (
+        <PortalEmptyState
+          title="Sin destinos disponibles"
+          description="Tu perfil no tiene accesos rápidos en el inicio. Revisa tu perfil para continuar."
+          action={
+            <Link
+              href="/dashboard/profile"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
             >
-              <span className="flex items-center gap-3">
-                <action.icon className="w-4 h-4 text-gray-400 shrink-0" aria-hidden={true} />
-                <span className="min-w-0">
-                  <span className="block font-medium text-gray-700 dark:text-gray-200">
-                    {action.label}
-                  </span>
-                  <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {action.description}
-                  </span>
-                </span>
-              </span>
-              <span className="ml-2 shrink-0 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:border-dark-border-2 dark:bg-dark-surface-2 dark:text-gray-300">
-                Fase siguiente
-              </span>
-            </div>
-          );
-        })}
+              Ir a mi perfil
+            </Link>
+          }
+        />
+      ) : (
+        <ul className="flex flex-col gap-2" aria-label="Accesos rápidos">
+          {items.map((access) => (
+            <li key={access.id}>
+              <PortalNavListRow
+                href={access.href}
+                title={access.label}
+                meta={access.description}
+                trailing={<ArrowRight className="h-4 w-4" aria-hidden={true} />}
+                aria-label={access.label}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </PortalPanel>
+  );
+}
 
-        <div className="mt-4 flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-          <Zap
-            className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
-            aria-hidden="true"
-          />
-          {quickActions.filter((action) => action.available).length} accesos disponibles hoy
-        </div>
-      </div>
-    </DashboardPanel>
+/** Exportado para pruebas: mapa §4.14 sin destinos deshabilitados. */
+export function __listQuickAccessLabelsForRole(role: UserRole): string[] {
+  return QUICK_ACCESSES.filter((access) => access.roles.includes(role)).map(
+    (access) => access.label,
   );
 }

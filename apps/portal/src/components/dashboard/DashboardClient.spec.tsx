@@ -85,7 +85,9 @@ jest.mock('@/lib/api-client', () => {
 });
 
 jest.mock('./QuickActionsPanel', () => ({
-  QuickActionsPanel: () => <div data-testid="quick-actions">Accesos rápidos</div>,
+  QuickActionsPanel: ({ role }: { role: string }) => (
+    <div data-testid="quick-actions">Accesos rápidos · {role}</div>
+  ),
 }));
 
 jest.mock('./RecentActivityPanel', () => ({
@@ -392,5 +394,23 @@ describe('DashboardClient', () => {
     expect(commercialGetSummary).toHaveBeenCalled();
     expect(crmPipelineSummary).toHaveBeenCalled();
     expect(within(document.body).queryByText(/Panel en preparación/i)).not.toBeInTheDocument();
+  });
+
+  it('B0–B3: acción primaria, indicadores y ficha empresarial subordinada', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Indicadores núcleo')).toBeInTheDocument();
+    expect(screen.getByText('Visitas de hoy')).toBeInTheDocument();
+    expect(screen.getByText('Casos abiertos')).toBeInTheDocument();
+
+    const companySection = screen.getByLabelText('Estado de la empresa');
+    expect(companySection).toBeInTheDocument();
+    expect(within(companySection).getByText(/Ver en configuración/i)).toBeInTheDocument();
+    expect(within(companySection).queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 });

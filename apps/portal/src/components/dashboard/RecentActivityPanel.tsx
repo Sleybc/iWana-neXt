@@ -1,21 +1,22 @@
-// apps/portal/src/components/dashboard/RecentActivityPanel.tsx
 'use client';
-import { useEffect, useState } from 'react';
-import { Activity, CheckCircle2, CircleAlert, Clock } from 'lucide-react';
+
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Clock } from 'lucide-react';
+import { Button } from '@iwana/ui';
 import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
-import { DashboardPanel } from './DashboardPanel';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 
 /**
- * Panel de actividad reciente del tenant autenticado.
- *
- * Solo visible para ADMIN — el AuditController del backend ya restringe el acceso.
- * Si el usuario no es ADMIN, el componente no se renderiza (decisión del caller).
- * Los datos vienen de GET /audit-logs?limit=8 — contrato ya existente.
- *
- * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §5.3 (BT-DE-10)
+ * Historial de cambios del inicio (ADMIN).
+ * Vocabulario amigable para `action` y `entityType` — system-vocabulary-review.
  */
 
-/** Formatea una fecha ISO a texto relativo legible */
 function formatRelativeTime(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) return 'reciente';
@@ -29,26 +30,95 @@ function formatRelativeTime(isoDate: string): string {
   return `hace ${Math.floor(diffHours / 24)}d`;
 }
 
-/** Mapea la acción del audit a etiqueta legible */
-function actionLabel(action: string): string {
+/** Mapea la acción del historial a etiqueta legible (sin enums crudos). */
+export function auditActionLabel(action: string): string {
   const labels: Record<string, string> = {
     CREATE: 'Creación',
     UPDATE: 'Actualización',
     DELETE: 'Eliminación',
     LOGIN: 'Inicio de sesión',
     LOGOUT: 'Cierre de sesión',
-    MFA_SETUP: 'Configuración MFA',
-    MFA_VERIFIED: 'Verificación MFA',
+    LOGIN_FAILED: 'Intento de acceso fallido',
+    ACCOUNT_LOCKED: 'Cuenta bloqueada',
     PASSWORD_CHANGED: 'Cambio de contraseña',
     PASSWORD_RESET_REQUESTED: 'Solicitud de restablecimiento',
+    PASSWORD_RESET_COMPLETED: 'Contraseña restablecida',
+    MFA_ENABLED: 'Verificación en dos pasos activada',
+    MFA_DISABLED: 'Verificación en dos pasos desactivada',
+    MFA_SETUP_INITIATED: 'Inicio de verificación en dos pasos',
+    MFA_SETUP: 'Configuración de verificación en dos pasos',
+    MFA_VERIFIED: 'Verificación en dos pasos confirmada',
+    TENANT_PROVISIONED: 'Empresa aprovisionada',
+    TENANT_SUSPENDED: 'Empresa suspendida',
+    TENANT_ACTIVATED: 'Empresa activada',
+    REFRESH: 'Renovación de sesión',
+    EMAIL_VERIFIED: 'Correo verificado',
+    LIST_ACCESS: 'Consulta de listado',
   };
-  return labels[action] ?? action;
+  return labels[action] ?? 'Cambio registrado';
+}
+
+/** Mapea el tipo de entidad a vocabulario de producto. */
+export function auditEntityTypeLabel(entityType: string): string {
+  const normalized = entityType.trim();
+  const labels: Record<string, string> = {
+    User: 'usuario',
+    user: 'usuario',
+    Tenant: 'empresa',
+    tenant: 'empresa',
+    TenantSettings: 'configuración de la empresa',
+    tenant_settings: 'configuración de la empresa',
+    Settings: 'configuración',
+    AccessProfile: 'perfil de acceso',
+    access_profile: 'perfil de acceso',
+    Role: 'categoría base',
+    AuditLog: 'historial',
+    Session: 'sesión',
+    InventoryItem: 'producto operativo',
+    inventory_item: 'producto operativo',
+    CommercialPlan: 'plan comercial',
+    Plan: 'plan comercial',
+    AssuranceTicket: 'caso de mesa de ayuda',
+    Ticket: 'caso de mesa de ayuda',
+    WorkOrder: 'orden de campo',
+    Visit: 'visita',
+    Expediente: 'oportunidad',
+    Subscriber: 'suscriptor',
+  };
+  return labels[normalized] ?? 'registro';
+}
+
+function buildActivitySummary(entry: AuditLogEntry): string {
+  const action = auditActionLabel(entry.action);
+  const entity = auditEntityTypeLabel(entry.entityType);
+  return `${action} en ${entity}`;
 }
 
 export function RecentActivityPanel() {
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+
+    auditApi
+      .list({ limit: 8 })
+      .then((data) => {
+        setEntries(data);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 403) {
+          setEntries([]);
+          return;
+        }
+        setError('No pudimos cargar el historial de cambios. Reintenta en unos minutos.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -61,10 +131,9 @@ export function RecentActivityPanel() {
       .catch((err: unknown) => {
         if (!mounted) return;
         if (err instanceof ApiError && err.status === 403) {
-          // 403 esperado para roles no autorizados — fallback silencioso
           setEntries([]);
         } else {
-          setError('No fue posible cargar la actividad reciente.');
+          setError('No pudimos cargar el historial de cambios. Reintenta en unos minutos.');
         }
       })
       .finally(() => {
@@ -77,74 +146,65 @@ export function RecentActivityPanel() {
   }, []);
 
   return (
-    <DashboardPanel title="Actividad reciente">
-      <div>
-        {isLoading && (
-          <div className="space-y-3" aria-busy="true" aria-label="Cargando actividad">
-            {Array.from({ length: 4 }).map((_, i) => (
+    <PortalPanel title="Historial de cambios" busy={isLoading}>
+      {isLoading ? (
+        <div className="space-y-3" aria-label="Cargando historial">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <PortalSkeletonBlock key={i} className="h-10 rounded-xl" />
+          ))}
+        </div>
+      ) : null}
+
+      {!isLoading && error ? (
+        <PortalAlert
+          variant="error"
+          title="No pudimos cargar el historial"
+          description={error}
+          live="polite"
+          action={
+            <Button type="button" variant="ghost" size="sm" onClick={load}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : null}
+
+      {!isLoading && !error && entries.length === 0 ? (
+        <PortalEmptyState
+          title="Sin cambios recientes"
+          description="Cuando tu equipo cree o actualice registros, verás el historial aquí. Mientras tanto, revisa la configuración de la empresa."
+          action={
+            <Link
+              href="/dashboard/settings"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+            >
+              Ir a configuración
+            </Link>
+          }
+        />
+      ) : null}
+
+      {!isLoading && !error && entries.length > 0 ? (
+        <ul className="space-y-3" aria-label="Cambios recientes">
+          {entries.map((entry) => (
+            <li key={entry.id} className="flex min-h-11 items-start gap-3 text-sm">
               <div
-                key={i}
-                className="h-10 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-iwana-secondary-700"
+                aria-hidden="true"
               />
-            ))}
-          </div>
-        )}
-
-        {!isLoading && error && (
-          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{error}</p>
-          </div>
-        )}
-
-        {!isLoading && !error && entries.length === 0 && (
-          <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] px-4 py-4 text-sm text-gray-600 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-            <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-              aria-hidden="true"
-            />
-            <div>
-              <p className="font-medium text-gray-800 dark:text-white">Actividad bajo control</p>
-              <p className="mt-1">No hay actividad registrada en esta empresa todavía.</p>
-            </div>
-          </div>
-        )}
-
-        {!isLoading && !error && entries.length > 0 && (
-          <ul className="space-y-3" aria-label="Eventos recientes">
-            {entries.map((entry) => (
-              <li key={entry.id} className="flex items-start gap-3 text-sm">
-                <div
-                  className="w-2 h-2 rounded-full bg-iwana-secondary-700 shrink-0 mt-2"
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-gray-800 dark:text-white">
-                    {actionLabel(entry.action)}{' '}
-                    <span className="font-normal text-gray-600 dark:text-gray-300">
-                      en {entry.entityType}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
-                    <Clock className="w-3 h-3 shrink-0" aria-hidden="true" />
-                    {formatRelativeTime(entry.createdAt)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {!isLoading && !error && entries.length > 0 && (
-          <div className="mt-4 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
-            <Activity
-              className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
-              aria-hidden="true"
-            />
-            {entries.length} eventos visibles en el corte actual
-          </div>
-        )}
-      </div>
-    </DashboardPanel>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-gray-800 dark:text-white">
+                  {buildActivitySummary(entry)}
+                </p>
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
+                  <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  {formatRelativeTime(entry.createdAt)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </PortalPanel>
   );
 }

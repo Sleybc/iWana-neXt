@@ -1,102 +1,106 @@
-// apps/portal/src/components/dashboard/OnboardingAlerts.tsx
 import Link from 'next/link';
-import { AlertTriangle, Info, XCircle, ArrowRight } from 'lucide-react';
+import { Badge, Button } from '@iwana/ui';
 import type { DashboardAlert } from '@/lib/api-client';
-import { DashboardPanel } from './DashboardPanel';
+import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
 
 interface OnboardingAlertsProps {
   alerts: DashboardAlert[];
 }
 
-const severityConfig = {
-  info: {
-    icon: Info,
-    containerClass: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20',
-    iconClass: 'text-blue-600 dark:text-blue-400',
-    titleClass: 'text-blue-800 dark:text-blue-300',
-    textClass: 'text-blue-700 dark:text-blue-400',
-    linkClass: 'text-blue-700 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-200',
-  },
-  warning: {
-    icon: AlertTriangle,
-    containerClass: 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20',
-    iconClass: 'text-amber-600 dark:text-amber-400',
-    titleClass: 'text-amber-800 dark:text-amber-300',
-    textClass: 'text-amber-700 dark:text-amber-400',
-    linkClass: 'text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200',
-  },
-  error: {
-    icon: XCircle,
-    containerClass: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20',
-    iconClass: 'text-red-600 dark:text-red-400',
-    titleClass: 'text-red-800 dark:text-red-300',
-    textClass: 'text-red-700 dark:text-red-400',
-    linkClass: 'text-red-700 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200',
-  },
-};
+function alertVariant(severity: DashboardAlert['severity']): 'info' | 'warning' | 'error' {
+  if (severity === 'error') return 'error';
+  if (severity === 'warning') return 'warning';
+  return 'info';
+}
 
 /**
- * Panel de alertas de onboarding del dashboard empresarial.
- * Muestra alertas generadas por el backend basadas en el estado real del tenant.
- * Si no hay alertas, renderiza un mensaje positivo — nunca un panel vacío sin contexto.
- *
- * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §2.2 (BT-DE-09)
+ * Próximo paso de configuración (B2b).
+ * Sin mapa de severidad local: `PortalAlert` aporta contraste medido (DS §3.1).
  */
 export function OnboardingAlerts({ alerts }: OnboardingAlertsProps) {
   if (alerts.length === 0) {
     return (
-      <DashboardPanel title="Estado de configuración">
-        <div className="flex items-center gap-3">
-          <Info
-            className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-medium text-green-800 dark:text-green-300">
-            Tu empresa está correctamente configurada. No hay alertas pendientes.
-          </p>
-        </div>
-      </DashboardPanel>
+      <PortalPanel title="Estado de configuración">
+        <PortalEmptyState
+          title="Configuración al día"
+          description="Tu empresa no tiene pasos pendientes. Puedes revisar el detalle cuando lo necesites."
+          action={
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant="lime">Al día</Badge>
+              <Link
+                href="/dashboard/settings"
+                className="inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+              >
+                Ver configuración
+              </Link>
+            </div>
+          }
+        />
+      </PortalPanel>
     );
   }
 
-  return (
-    <DashboardPanel title="Configuración pendiente" contentClassName="space-y-3">
-      <div className="space-y-3" role="list" aria-label="Alertas de configuración">
-        {alerts.map((alert) => {
-          const config = severityConfig[alert.severity];
-          const AlertIcon = config.icon;
+  const next = alerts[0]!;
+  const rest = alerts.slice(1);
+  const pendingCount = alerts.length;
 
-          return (
-            <div
-              key={alert.id}
-              role="listitem"
-              className={`rounded-xl border p-4 ${config.containerClass}`}
-            >
-              <div className="flex items-start gap-3">
-                <AlertIcon
-                  className={`mt-0.5 h-5 w-5 shrink-0 ${config.iconClass}`}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-semibold ${config.titleClass}`}>{alert.title}</p>
-                  <p className={`mt-1 text-sm leading-6 ${config.textClass}`}>
-                    {alert.description}
-                  </p>
-                  {alert.href && (
-                    <Link
-                      href={alert.href}
-                      className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide ${config.linkClass}`}
-                    >
-                      Ir a configuración
-                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
-                    </Link>
-                  )}
+  return (
+    <PortalPanel
+      title="Próximo paso de configuración"
+      description={
+        pendingCount > 1
+          ? `${pendingCount} pendientes · empieza por el paso destacado`
+          : 'Un paso pendiente para completar la configuración'
+      }
+    >
+      <div className="space-y-3" role="list" aria-label="Pasos de configuración">
+        <div role="listitem">
+          <PortalAlert
+            variant={alertVariant(next.severity)}
+            title={next.title}
+            description={next.description}
+            live="polite"
+            action={
+              next.href ? (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={next.href} className="inline-flex min-h-11 items-center">
+                    Ir a configuración
+                  </Link>
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
+
+        {rest.length > 0 ? (
+          <details className="rounded-xl border border-gray-100 px-3 py-2 dark:border-dark-border">
+            <summary className="cursor-pointer text-sm font-medium text-iwana-primary">
+              Ver los {rest.length} pendientes restantes
+            </summary>
+            <div className="mt-3 space-y-3">
+              {rest.map((alert) => (
+                <div key={alert.id} role="listitem">
+                  <PortalAlert
+                    variant={alertVariant(alert.severity)}
+                    title={alert.title}
+                    description={alert.description}
+                    live="off"
+                    action={
+                      alert.href ? (
+                        <Button asChild variant="ghost" size="sm">
+                          <Link href={alert.href} className="inline-flex min-h-11 items-center">
+                            Ir a configuración
+                          </Link>
+                        </Button>
+                      ) : undefined
+                    }
+                  />
                 </div>
-              </div>
+              ))}
             </div>
-          );
-        })}
+          </details>
+        ) : null}
       </div>
-    </DashboardPanel>
+    </PortalPanel>
   );
 }

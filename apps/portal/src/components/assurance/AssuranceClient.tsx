@@ -41,9 +41,13 @@ import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-m
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { MetricCard } from '@/components/dashboard/MetricCard';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalDashboardMetric,
+  PortalEmptyState,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 import { AssuranceCreateTicketForm } from './AssuranceCreateTicketForm';
 import type { AssuranceCreateTicketSubmitPayload } from './AssuranceCreateTicketForm';
 import { AssuranceTicketDrawer } from './AssuranceTicketDrawer';
@@ -476,32 +480,37 @@ function AssuranceClientInner() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
+            <PortalDashboardMetric
+              eyebrow="Mesa de ayuda"
               label="Abiertos"
               value={summary?.openCount ?? null}
               icon={Ticket}
               description="Casos sin cierre definitivo en la empresa."
+              accent="primary"
             />
-            <MetricCard
+            <PortalDashboardMetric
+              eyebrow="Mesa de ayuda"
               label="En progreso"
               value={summary?.inProgressCount ?? null}
               icon={Workflow}
               description="Casos actualmente gestionados por soporte o técnico."
-              tone="warning"
+              accent="warning"
             />
-            <MetricCard
-              label="En riesgo SLA"
+            <PortalDashboardMetric
+              eyebrow="Mesa de ayuda"
+              label="En riesgo de incumplir"
               value={summary?.atRiskCount ?? null}
               icon={TimerReset}
-              description="Tickets que requieren atención prioritaria inmediata."
-              tone="secondary"
+              description="Casos que requieren atención prioritaria inmediata."
+              accent="danger"
             />
-            <MetricCard
+            <PortalDashboardMetric
+              eyebrow="Mesa de ayuda"
               label="Trabajo de campo"
               value={summary?.fieldServicePendingCount ?? null}
               icon={Wrench}
               description="Casos ya escalados hacia visita o ejecución externa."
-              tone="warning"
+              accent="warning"
             />
           </div>
 
