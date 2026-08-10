@@ -20,7 +20,7 @@ Los cuatro artefactos siguientes están **congelados**. Un track solo se detiene
 | Contrato | Ruta | Versión / estado | Dueño |
 | --- | --- | --- | --- |
 | **HLD del módulo** | [`docs/hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md`](../hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md) | **v2.0.1 — G1 firmado** por AI-SR-FULL y AI-PROD-UX | AI-EM-ARCH |
-| **Contrato de componente** | [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) | **v1.0 — Congelado** | AI-DS-OWNER |
+| **Contrato de componente** | [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) | **v1.1 — Congelado** (adenda 2026-08-10) | AI-DS-OWNER |
 | **UX spec** | [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md) | **v1.0 — Congelada** | AI-PROD-UX |
 | **Auditoría de origen** | [`docs/informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md) | v1.0 — Vigente | AI-EM-ARCH |
 
@@ -208,3 +208,9 @@ Escribe contra criterios y contratos desde el inicio; corre al integrar.
 **Evidencia P1 — desbordamiento en accesos rápidos:** el hallazgo de grilla/contador como quinta celda y celdas deshabilitadas en `QuickActionsPanel` (auditoría H-05/H-07 y revalidación 2026-08-10) se corrige estructuralmente en el plan Task 4 (C-11): lista de una columna con `PortalNavListRow`, sin `truncate` como parche, sin badge/contador ni celdas deshabilitadas.
 
 **Sincronización A-3 → C-5/C-6:** el track C arranca con mocks tipados; solo sustituye el tipo real de `tenant` tras SHA publicado de A-3 (custodia AI-EM-ARCH).
+
+---
+
+## Adenda — contrato DS v1.1 (2026-08-10, AI-DS-OWNER / EM-ARCH)
+
+**Re-sync:** [`docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](../specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.1** — §1.7 matriz eyebrow×`accent` (`danger`/`warning` → `text-gray-700 dark:text-gray-200`). Tracks afectados: **AI-FE-PLATFORM** (aplica) · **AI-SR-QA** (re-mide). Carril rápido; sin CTO/ADR.

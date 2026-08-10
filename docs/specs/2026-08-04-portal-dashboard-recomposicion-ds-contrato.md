@@ -1,10 +1,19 @@
 # Contrato DS — recomposición del `/dashboard` del portal
 
-**Versión:** 1.0
-**Estado:** **Congelado** el 2026-08-04 (protocolo §3bis — condición de `[DESEMPATE] D-1`: la spec se congela **antes** de tocar código)
-**Fecha:** 2026-08-04
+**Versión:** 1.1
+**Estado:** **Congelado** (v1.0 el 2026-08-04; **re-sync v1.1** el 2026-08-10 — protocolo §3bis: cambio post-congelación versionado y notificado a AI-FE-PLATFORM y AI-SR-QA vía AI-EM-ARCH)
+**Fecha:** 2026-08-10
 **Autor:** AI-DS-OWNER
 **Ejecuta:** AI-FE-PLATFORM · **Verifica:** AI-SR-QA · **Orquesta:** AI-EM-ARCH
+
+### Changelog v1.1 (único delta vs v1.0)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **§1.7** — matriz eyebrow × `accent`: en shells tintados `danger` y `warning`, el color del eyebrow pasa de `text-gray-500 dark:text-gray-400` a `text-gray-700 dark:text-gray-200` (misma tipografía de `.portal-eyebrow-muted`) | Anatomía, API, estados, lima-como-predicado, sombras, lienzo, capas z, checklist salvo ítem A de contraste eyebrow |
+| Rationale: hallazgo QA post-Task 6 (~**4,45:1** eyebrow muted sobre acento `danger`) + contrato de atenuados §3.3 (escalón de token, cero opacidad) | Cero tokens nuevos; cero hex; **prohibido** lima (`.portal-eyebrow` / `secondary-*`) sobre rose/amber |
+
+> **Carril rápido (EM-ARCH):** remedia contraste no-marca sin ADR/CTO. FE aplica la receta de §1.7 contra este artefacto; QA re-mide.
 
 **Entradas leídas antes de redactar (protocolo §7.4 — todas abiertas, ninguna citada de memoria):**
 
@@ -20,7 +29,7 @@
 - `apps/portal/src/components/shared/portal-ui.tsx` — inventario de primitives, líneas verificadas una a una.
 - Skills aplicadas: `iwana-identity-ui-review` (`tokens.md`, `firma-elements.md`, `component-recipes.md`), `core-components`, `tailwind-patterns`.
 
-> **Versión de contrato:** 1.0 — congelada. Cualquier modificación posterior se versiona como v1.1+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
+> **Versión de contrato:** 1.1 — congelada (re-sync). Cualquier modificación posterior se versiona como v1.2+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
 
 > **Deslinde de dominio:** este documento fija **tokens, API de componente y estados requeridos**. No fija flujo, jerarquía de información, política de refresco ni qué bloque va dónde: eso es de AI-PROD-UX, que trabaja en paralelo sobre el mismo HLD. Donde este contrato roza el producto, lo hace como restricción ("si se renderiza X, cumple Y"), nunca como prescripción de contenido.
 
@@ -88,14 +97,14 @@ Extiende `PortalMetricCard` (`apps/portal/src/components/shared/portal-ui.tsx:37
 
 ```
 ┌ shell: portalMetricCardShellClassName + acento + sombra ─────────┐
-│  [eyebrow]                                    [ícono, opcional]  │  ← .portal-eyebrow-muted
+│  [eyebrow]                                    [ícono, opcional]  │  ← tipografía `.portal-eyebrow-muted` + color por §1.7
 │  1.284 / 1.500                                                   │  ← ranura de cifra (mono, tabular)
 │  Visitas de hoy                                     [delta]      │  ← rótulo + badge tonal
 │  Programadas para la jornada en curso                            │  ← descripción, opcional
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Cinco ranuras, en este orden y sin excepción: **eyebrow → cifra → rótulo → delta → descripción**. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5).
+Cinco ranuras, en este orden y sin excepción: **eyebrow → cifra → rótulo → delta → descripción**. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5). El color del eyebrow **depende de `accent`** (§1.7); no es siempre el gris de `.portal-eyebrow-muted` a secas.
 
 ### 1.2 API pública
 
@@ -115,7 +124,7 @@ interface PortalDashboardMetricDelta {
 }
 
 interface PortalDashboardMetricProps {
-  /** Ranura 1 — categoría del indicador. Rinde en `.portal-eyebrow-muted`. */
+  /** Ranura 1 — categoría del indicador. Tipografía `.portal-eyebrow-muted`; color por matriz §1.7. */
   eyebrow: string;
 
   /** Ranura 3 — rótulo legible del indicador. Obligatorio: es el nombre accesible. */
@@ -249,6 +258,46 @@ El ícono es opcional, decorativo y `aria-hidden="true"`. Su tono **se deriva de
 | `danger` | `error` | Incumplimiento | — |
 
 `delta.label` es texto ya legible en español, sentence case. **Prohibido** exponer enums, y prohibido que el delta sea el único portador de la señal (SC 1.4.1): el badge lleva siempre texto, no solo color.
+
+### 1.7 Eyebrow × `accent` — contraste sobre shells tintados (v1.1)
+
+**Problema cerrado:** AI-SR-QA midió el eyebrow con `.portal-eyebrow-muted` (`text-gray-500 dark:text-gray-400`) sobre el shell `accent='danger'` (superficie rose tintada) en **~4,45:1** — bajo el piso AA 4,5:1 (SC 1.4.3). El hallazgo vive en el informe vivo §6 como residual Axe post-Task 6.
+
+**Remedio (carril rápido, EM-ARCH):** conservar la **tipografía** de `.portal-eyebrow-muted` (tamaño, peso, `uppercase`, `tracking-widest`); **no** usar `.portal-eyebrow` lima sobre rose/amber; **no** hex; **no** `opacity-*`. Sobre shells tintados `danger` y `warning`, subir un escalón de token al par ya medido en §1.3 para «sin dato» / atenuados §3.3: `text-gray-700 dark:text-gray-200` (≥ **9,7:1** en el peor caso claro documentado en §1.3).
+
+#### Matriz vinculante
+
+| `accent` | Tipografía | Color (claro / oscuro) | Notas |
+| --- | --- | --- | --- |
+| `neutral` | `.portal-eyebrow-muted` | `text-gray-500` / `dark:text-gray-400` (clase íntegra) | Sin cambio vs v1.0 |
+| `primary` | `.portal-eyebrow-muted` | `text-gray-500` / `dark:text-gray-400` (clase íntegra) | Sin cambio vs v1.0; superficie `iwana-primary-50*` no exige escalón extra para gray-500 secundario |
+| `warning` | Tipografía de `.portal-eyebrow-muted` | **`text-gray-700 dark:text-gray-200`** | Override de color; **prohibido** lima |
+| `danger` | Tipografía de `.portal-eyebrow-muted` | **`text-gray-700 dark:text-gray-200`** | Cierra el gap ~4,45:1; **prohibido** lima |
+
+#### Receta CSS/token para AI-FE-PLATFORM
+
+```tsx
+// Pseudocódigo de contrato — tipografía fija; color por accent
+const eyebrowColorClass =
+  accent === 'danger' || accent === 'warning'
+    ? 'text-gray-700 dark:text-gray-200'
+    : null; // null → color de .portal-eyebrow-muted
+
+className={cn(
+  'portal-eyebrow-muted',
+  eyebrowColorClass, // Tailwind: la utilidad de color gana al @apply de la clase
+)}
+```
+
+**Alternativa equivalente (si FE prefiere modificador nombrado en `globals.css`):** declarar `.portal-eyebrow-muted-on-tint` con la misma tipografía + `text-gray-700 dark:text-gray-200`, y usarla **solo** cuando `accent` ∈ {`warning`,`danger`}. No es token de marca nuevo; es atajo de composición. La matriz de arriba manda en cualquier caso.
+
+**Prohibiciones explícitas en esta ranura:**
+
+1. `.portal-eyebrow` / `text-iwana-secondary-*` sobre shell `danger` o `warning` (lima sobre rose/amber = adorno + riesgo de contraste).
+2. `opacity-*` o grises más claros que el escalón contratado (`gray-400`/`gray-500` sobre tint danger/warning).
+3. Hex crudos o rampas ajenas (`slate-*`, etc.).
+
+**Verificación QA:** re-medir eyebrow en los cuatro acentos × dos temas; umbral ≥ 4,5:1. Peor caso esperado en `danger`/`warning` con el escalón v1.1: ≥ 9,7:1 (misma familia de medición §1.3).
 
 ---
 
@@ -631,6 +680,7 @@ No alteran alcance, contrato de datos, boundary ni tokens de marca:
 | 8 | Lienzo `iwana-neutral-50` y su regla de borde (§6) | Ejecuta una decisión del CTO ya tomada |
 | 9 | Corrección del comentario de ratio en `globals.css:22-23` y `:55` (§0.3) | Cambia un comentario, ningún valor. Se notifica por tocar la fuente de tokens |
 | 10 | Eliminación del mapa de severidad local de `OnboardingAlerts.tsx:11-36` | Sustitución por primitive con superficie ya normada |
+| 11 | **v1.1** — matriz eyebrow × `accent` (§1.7): escalón `gray-700`/`gray-200` en shells `danger`/`warning` | Cierra residual QA ~4,45:1; tipografía muted intacta; **sin** lima ni tokens de marca nuevos. Notificado a FE + QA |
 
 ### 8.2 Escala a AI-EM-ARCH
 
@@ -666,6 +716,8 @@ AI-FE-PLATFORM completa todos los ítems antes de entregar. AI-SR-QA valida de f
 - [ ] No existe ninguna prop `tone`, `iconTone`, `iconClassName` ni `valueClassName`.
 - [ ] `value === null` rinde `text-gray-700 dark:text-gray-200`, sin `font-mono` y sin `uppercase`.
 - [ ] 🔍 Con `value: null`, contraste ≥ 4,5:1 en **los cuatro acentos** y **los dos temas**. Peor caso esperado: 9,72:1.
+- [ ] Eyebrow: tipografía `.portal-eyebrow-muted`; con `accent` ∈ {`warning`,`danger`} color `text-gray-700 dark:text-gray-200` (§1.7). **Sin** lima sobre rose/amber.
+- [ ] 🔍 Eyebrow contraste ≥ 4,5:1 en **los cuatro acentos** × **dos temas** (cierra residual ~4,45:1 sobre `danger`).
 - [ ] La cifra conserva `font-mono` y `tabular-nums`.
 - [ ] `state='error'` **no desmonta** la tarjeta: eyebrow y rótulo siguen en pantalla.
 - [ ] `state='loading'` sustituye solo la ranura de cifra por `SkeletonBlock`, con `aria-busy="true"` en la tarjeta.
