@@ -188,3 +188,23 @@ Escribe contra criterios y contratos desde el inicio; corre al integrar.
 ---
 
 **Emitido por AI-EM-ARCH el 2026-08-04.** Cualquier cambio a un contrato congelado durante la fase llega por adenda a este prompt, citando ruta y versión nueva y nombrando los tracks afectados. Un track no afectado no se detiene.
+
+---
+
+## Adenda operativa — 2026-08-10 (AI-EM-ARCH)
+
+**Propósito:** enlazar el plan canónico de ejecución sin alterar el alcance v1.0 de este prompt (G4 permanece cumplido; no se reabre boundary).
+
+| Artefacto | Ruta | Rol |
+| --- | --- | --- |
+| Plantilla base (en revisión) | [`docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md`](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) | Formato de referencia; la obligatoriedad de destino la respalda `AGENTS.md` |
+| Plan canónico (checklist vivo) | [`docs/plans/2026-08-10-mod02-dashboard-portal-recomposicion.md`](../plans/2026-08-10-mod02-dashboard-portal-recomposicion.md) | Única fuente de avance por ID; estados `Pendiente` / `En curso` / `Bloqueado` / `Hecho` / `No aplica` |
+| Informe vivo de recomposición | [`docs/informes/INFORME-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md) | Resultados, evidencia, deuda y gates; no replica todas las casillas del plan |
+
+**Reglas del checklist (plan §3):** cada agente edita solo las casillas de su track; AI-EM-ARCH custodia dependencias, bitácora append-only y gates; `Hecho` exige prueba ejecutada + ruta de evidencia + SHA o PR; tests heredados del baseline v1 no cierran track.
+
+**Responsables:** AI-SR-FULL (A) · AI-DS-OWNER (contrato B) / AI-FE-PLATFORM (código B+C+shell) · AI-SR-QA (D) · AI-EM-ARCH (documentación y consolidación G6).
+
+**Evidencia P1 — desbordamiento en accesos rápidos:** el hallazgo de grilla/contador como quinta celda y celdas deshabilitadas en `QuickActionsPanel` (auditoría H-05/H-07 y revalidación 2026-08-10) se corrige estructuralmente en el plan Task 4 (C-11): lista de una columna con `PortalNavListRow`, sin `truncate` como parche, sin badge/contador ni celdas deshabilitadas.
+
+**Sincronización A-3 → C-5/C-6:** el track C arranca con mocks tipados; solo sustituye el tipo real de `tenant` tras SHA publicado de A-3 (custodia AI-EM-ARCH).

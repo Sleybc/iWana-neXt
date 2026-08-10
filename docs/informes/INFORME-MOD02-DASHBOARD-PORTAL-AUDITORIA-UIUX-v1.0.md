@@ -526,6 +526,44 @@ Los cuatro salieron de agentes que fueron a **verificar** una afirmación en lug
 
 ---
 
+## 10ter. Revalidación multiagente — 2026-08-10 (append-only)
+
+**Modo:** Architect + Orchestrator · **Autor:** AI-EM-ARCH  
+**Disparador:** emisión del plan canónico [`docs/plans/2026-08-10-mod02-dashboard-portal-recomposicion.md`](../plans/2026-08-10-mod02-dashboard-portal-recomposicion.md) y arranque de ejecución bajo protocolo §3bis.  
+**HEAD auditado al emitir esta sección:** `39a7bbc6` (rama de trabajo `feat/mod02-dashboard-portal-recomposicion`).
+
+### Hallazgos vigentes que siguen abiertos
+
+Los bloqueantes y P1 de §4–§5 de este informe **no se dan por cerrados**. La recomposición los ataca por tracks del plan; el cierre exige evidencia en el [informe vivo](INFORME-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md), no esta nota.
+
+### Pruebas heredadas (baseline v1)
+
+| Suite | Qué certifica | Limitación para G6 |
+| --- | --- | --- |
+| `e2e/tests/portal-dashboard-empresa.spec.ts` | CA-01…CA-06 del dashboard v1, mockeado | Selectores por texto numérico frágiles; **cero** aserción en tema oscuro; no cubre composición de 12 roles ni estados CA-V2-07 |
+| Unitarios `QuickActionsPanel` / `Sidebar` / `layout` | Comportamiento parcial del shell y atajos | No certifican primitives compartidas ni drawer `inert` |
+| Cobertura focal portal | Trinquete local existente | No sustituye matriz criterio↔test del HLD v2 §10 |
+
+**Regla:** un agente no cierra su track con estas suites sin aserción nueva.
+
+### Hallazgos actuales al revalidar (sin reescritura de §4)
+
+| ID | Severidad | Nota |
+| --- | --- | --- |
+| H-03…H-13 (auditoría) | P0/P1 según §4 | Siguen en alcance del plan Tasks 2–6 |
+| Desbordamiento accesos rápidos | P1 estructural | Grilla + contador como celda; plan C-11 |
+| ADR-075 | — | Corrección a §10bis fila 2: ADR-075 quedó **Aprobado** el 2026-08-04 (prompt G4 adenda); ya no está «pendiente de aprobación» |
+
+### Limitación de autenticación del navegador
+
+La revalidación documental **no** repite login interactivo ni captura live autenticada del portal en esta sesión de gobierno. La evidencia visual y axe de la recomposición la produce AI-SR-QA (plan Task 6) bajo E2E con `page.route()` / fixtures sin PII. Cualquier gap de entorno (credenciales, tenant seed) se registra como `[BLOQUEO]` en el informe vivo, no se inventa.
+
+### Gate G6
+
+**Veredicto al 2026-08-10: G6 NO-GO.** Condición de entrada del plan cumplida (G4); condición de salida G6 pendiente de Tasks 1–7 y dictámenes DS-OWNER / PROD-UX / SR-QA. G6.5 y G7 no se anticipan (ADR-069).
+
+---
+
 ## 10. Referencias verificadas
 
 Todas abiertas y comprobadas antes de citarse (protocolo §7.4, ADR-056 §5).
