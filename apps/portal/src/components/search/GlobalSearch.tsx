@@ -7,12 +7,19 @@ import { GlobalSearchOverlay } from './GlobalSearchOverlay';
 import { useGlobalSearch } from './useGlobalSearch';
 import type { GlobalSearchItem } from '@/lib/api-client';
 
-export function GlobalSearch() {
+export type GlobalSearchProps = {
+  /** Incrementar para pedir apertura desde un disparador externo (p. ej. móvil). */
+  openRequestId?: number;
+  onOpenChange?: (open: boolean) => void;
+};
+
+export function GlobalSearch({ openRequestId = 0, onOpenChange }: GlobalSearchProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const lastOpenRequestId = useRef(openRequestId);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -23,6 +30,27 @@ export function GlobalSearch() {
     () => (results?.groups ?? []).flatMap((group) => group.items),
     [results?.groups],
   );
+
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
+
+  useEffect(() => {
+    if (openRequestId === lastOpenRequestId.current) {
+      return;
+    }
+
+    lastOpenRequestId.current = openRequestId;
+    if (openRequestId <= 0) {
+      return;
+    }
+
+    setIsOpen(true);
+    queueMicrotask(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }, [openRequestId]);
 
   useEffect(() => {
     if (!isOpen) {

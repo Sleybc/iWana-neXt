@@ -117,7 +117,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
 
   if (authLoading && !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-dark-surface">
+      <div className="flex min-h-screen items-center justify-center bg-iwana-neutral-50 dark:bg-dark-surface">
         <p className="text-sm text-gray-600 dark:text-gray-300">Validando sesión...</p>
       </div>
     );
@@ -132,7 +132,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
       {/* OVERLAY para mobile — cierra el drawer al hacer click externo */}
       {sidebarMobileOpen && (
         <div
-          className="fixed inset-0 z-35 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-(--z-overlay) bg-black/50 lg:hidden"
           onClick={() => setSidebarMobileOpen(false)}
           aria-hidden="true"
         />
@@ -158,7 +158,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
         />
 
         {/* CONTENIDO DE LA PÁGINA */}
-        <main className="flex-1 bg-slate-50 dark:bg-dark-surface lg:rounded-3xl">
+        <main className="flex-1 bg-iwana-neutral-50 dark:bg-dark-surface lg:rounded-3xl">
           <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>

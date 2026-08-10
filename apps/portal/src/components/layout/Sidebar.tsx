@@ -1,6 +1,6 @@
 // apps/portal/src/components/layout/Sidebar.tsx
 'use client';
-import React, { Suspense, useEffect, useRef, type ComponentType } from 'react';
+import React, { Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { UserRole } from '@iwana/shared';
@@ -17,7 +17,7 @@ import {
   Package,
   X,
 } from 'lucide-react';
-import { cn } from '@iwana/ui';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { TenantSeal } from './TenantSeal';
 import type { TenantSelf } from '@/lib/api-client';
@@ -46,6 +46,7 @@ interface NavGroup {
 }
 
 const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
+const MOBILE_DRAWER_QUERY = '(max-width: 1023px)';
 
 function resolveTenantDisplayName(profile?: TenantSelf | null): string {
   const brandingProductName = profile?.brandingProductName?.trim();
@@ -162,7 +163,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                       <span
                         title={desktopCollapsed ? item.label : undefined}
                         className={cn(
-                          'flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 dark:text-gray-500',
+                          'flex min-h-11 cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 dark:text-gray-500',
                           desktopCollapsed && 'lg:justify-center lg:px-2',
                         )}
                         aria-disabled="true"
@@ -192,14 +193,21 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                       href={item.href}
                       title={desktopCollapsed ? item.label : undefined}
                       className={cn(
-                        'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
+                        'group flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
+                        interactiveFocusClassName,
                         isActive
-                          ? 'bg-iwana-primary-50 font-medium text-iwana-primary-700 dark:bg-iwana-primary-800/30 dark:text-iwana-primary-200'
+                          ? 'relative bg-iwana-primary-50 font-medium text-iwana-primary-700 dark:bg-iwana-primary-800/30 dark:text-iwana-primary-200'
                           : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5',
                         desktopCollapsed && 'lg:justify-center lg:px-2',
                       )}
                       aria-current={isActive ? 'page' : undefined}
                     >
+                      {isActive && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-iwana-secondary dark:bg-iwana-secondary-400"
+                        />
+                      )}
                       <item.icon
                         className={cn(
                           'h-5 w-5 shrink-0',
@@ -236,7 +244,10 @@ export const Sidebar = ({
   profile,
 }: SidebarProps) => {
   const sidebar = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const tenantDisplayName = resolveTenantDisplayName(profile);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const drawerInert = isMobileViewport && !mobileOpen;
 
   // Persistir estado desktop en localStorage — solo al montar
   const setDesktopCollapsedRef = useRef(setDesktopCollapsed);
@@ -245,6 +256,18 @@ export const Sidebar = ({
     const stored = localStorage.getItem(DESKTOP_STORAGE_KEY);
     if (stored === 'true') setDesktopCollapsedRef.current(true);
     else if (stored === 'false') setDesktopCollapsedRef.current(false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(MOBILE_DRAWER_QUERY);
+    const update = () => setIsMobileViewport(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener('change', update);
+    return () => mediaQuery.removeEventListener('change', update);
   }, []);
 
   // Cerrar drawer mobile con tecla Escape
@@ -256,13 +279,22 @@ export const Sidebar = ({
     return () => document.removeEventListener('keydown', keyHandler);
   }, [mobileOpen, setMobileOpen]);
 
+  // Al abrir el drawer, el foco entra al panel (botón cerrar)
+  useEffect(() => {
+    if (mobileOpen && isMobileViewport) {
+      closeButtonRef.current?.focus();
+    }
+  }, [mobileOpen, isMobileViewport]);
+
   return (
     <aside
       id="sidebar"
       ref={sidebar}
       aria-label="Navegación principal"
+      inert={drawerInert || undefined}
+      aria-hidden={drawerInert ? true : undefined}
       className={cn(
-        'fixed left-0 top-0 z-40 flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-all duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
+        'fixed left-0 top-0 z-(--z-drawer) flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-all duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
         'lg:static lg:translate-x-0',
         desktopCollapsed ? 'lg:w-[90px]' : 'lg:w-[290px]',
         mobileOpen ? 'translate-x-0 w-[290px]' : 'max-lg:-translate-x-full w-[290px]',
@@ -278,7 +310,11 @@ export const Sidebar = ({
         {/* Marca del tenant — expandido */}
         <Link
           href="/dashboard"
-          className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
+          className={cn(
+            'flex min-h-11 items-center gap-3 min-w-0',
+            interactiveFocusClassName,
+            desktopCollapsed && 'lg:hidden',
+          )}
         >
           <TenantSeal
             sealLightUrl={profile?.sealLightUrl ?? null}
@@ -297,7 +333,11 @@ export const Sidebar = ({
         {/* Sello solo — colapsado desktop */}
         <Link
           href="/dashboard"
-          className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
+          className={cn(
+            'hidden min-h-11 min-w-11 items-center justify-center',
+            interactiveFocusClassName,
+            desktopCollapsed && 'lg:flex',
+          )}
           aria-label="Ir al dashboard"
         >
           <TenantSeal
@@ -310,12 +350,16 @@ export const Sidebar = ({
 
         {/* Botón cerrar — solo mobile */}
         <button
+          ref={closeButtonRef}
           type="button"
           onClick={() => setMobileOpen(false)}
           aria-label="Cerrar menú"
-          className="shrink-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white lg:hidden"
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white lg:hidden',
+            interactiveFocusClassName,
+          )}
         >
-          <X className="w-5 h-5" />
+          <X className="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
 
