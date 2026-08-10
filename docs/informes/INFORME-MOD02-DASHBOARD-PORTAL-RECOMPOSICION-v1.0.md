@@ -101,7 +101,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Gate | Estado | Evidencia |
 | --- | --- | --- |
 | G4 | Cumplido | Prompt v1.0 emitido 2026-08-04 |
-| G6 | NO-GO | G6-1-R1 **OK light** (E2E 26/26; no es GO consolidado) · G6-2 GO · G6-3-R1 GO · G6-4 ver SR-QA · falta G6-5 · consolidación EM-ARCH |
+| G6 | Pendiente consolidación | G6-1-R1 **OK light** (E2E 26/26; no es GO consolidado) · G6-2 GO · G6-3-R1 GO · G6-4-R1 **GO** · falta G6-5 · consolidación EM-ARCH |
 | G6.5 | No iniciado | Requiere CI Linux por SHA |
 | G7 | No iniciado | Requiere recomendación AI-EM-ARCH + CTO |
 
@@ -131,6 +131,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | G6-1 | AI-PLAT-OPS | **NO-GO técnico** | SHA probado `eb5851d0` · E2E 21/25 exit 1 · audits BLOQUEANTE 0 | Gates ejecutados; no dictamen G6 consolidado. Ver §9 G6-1. |
 | 2026-08-10 | G6-3-R1 | AI-PROD-UX | **GO** | HEAD `9fc1ca7f` (≥ `d4ee265a`+`ddbc22cf`) · UX §3.2/§3.5 · HLD CA-V2-01…12 | Re-dictamen: CA-V2-05 satisfecho (hidratación + E2E). Ver §9 G6-3-R1. |
 | 2026-08-10 | G6-1-R1 | AI-PLAT-OPS | **OK light** | SHA `9fc1ca7f` (≥ `d4ee265a`) · E2E 26/26 exit 0 · audit-ui exit 0 | Re-verify acotado post remediación; **no** G6 GO. Ver §9 G6-1-R1. |
+| 2026-08-10 | G6-4-R1 | AI-SR-QA | **GO** | HEAD `05425960` (≥ `d4ee265a`+`ddbc22cf`+`9fc1ca7f`) · jest 77/77 cov ≥80% · E2E 26/26 | Re-dictamen: CA-V2-07 axe light OK · CA-V2-05 destino OK. Ver §9 G6-4-R1. |
 
 ---
 
@@ -443,3 +444,62 @@ Los cuatro destinos «Debe añadirse» de UX §3.5 **hidratan** el filtro desde 
 - Desbloquea formalmente el track experiencia; G6-4 debe re-medir axe light post `ddbc22cf` y puede retirar el NO-GO heredado de CA-V2-05.
 - Baseline E2E CA-01…06 (v1) sigue sin contar como evidencia CA-V2.
 - SHA de este commit documental: el de `docs(mod02): re-dictamen G6-3 PROD-UX after CA-V2-05 fix`.
+
+### G6-4-R1 · Re-dictamen calidad — AI-SR-QA (post remediación)
+
+**Fecha:** 2026-08-10  
+**Modo:** re-dictamen (calidad) — perfil AI-SR-QA · re-verify post `ddbc22cf` + `d4ee265a`  
+**Contratos:** HLD CA-V2-01…12 · UX-15/16 · plan §5 G6-4  
+**HEAD auditado:** `05425960` (ancestro de `d4ee265a` hidratación: sí · `ddbc22cf` contraste v1.2: sí · docs `9fc1ca7f`: sí)  
+**Dictamen previo:** G6-4 **NO-GO** (`7ea22066`) — CA-V2-07 axe light description×danger + CA-V2-05 sin aserción destino
+
+#### Veredicto: **GO**
+
+Cobertura dashboard core ≥80% (stmts **81,89%** / lines **84,97%**). Jest dashboard **77/77**. Playwright `portal-dashboard-empresa` **26/26** (incluye D-1/D-2 axe light+dark + test CA-V2-05 hidratación destino). Filtros axe residuales **no** reintroducidos. Spot-check unit de helpers de hidratación: I-1 `scheduling-ui.spec.ts` / `SchedulingClient.spec.tsx`; I-2 `pending-visits-ui.spec.ts` / `PendingVisitRequestsView.spec.tsx`; I-4 `AssuranceClient.spec.tsx`; I-7 `expediente-list-view.spec.ts`. **CA-V2-05** y **CA-V2-07** pasan a OK. Baseline E2E CA-01…06 **no cuenta**.
+
+Sin `[BLOQUEO]` de producto en este acto. G6 consolidado sigue pendiente de G6-5 + consolidación EM-ARCH (G6-1 light OK no sustituye GO consolidado).
+
+#### Comandos re-verify
+
+```text
+pnpm --filter @iwana/portal exec jest --coverage --collectCoverageFrom="components/dashboard/**/*.{ts,tsx}" --testPathPattern=components/dashboard --runInBand
+# → 7 suites · 77 pass · stmts 81,89% · lines 84,97% · funcs 82,14% · branches 71,33%
+
+pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashboard-empresa
+# → 26 passed · 0 failed · ~67 s
+```
+
+#### Axe / filtros
+
+| Check | Resultado |
+| --- | --- |
+| Filtros residuales Task 6 | **Ausentes** — `runAxe` → `expect(violations).toEqual([])` sin `nodes.filter` |
+| Light (4 estados) | **PASS** — cargado / null / vacío / error |
+| Dark (4 estados) + loading + actualizando | **PASS** |
+
+#### Matriz CA-V2-01…12 + UX-15/16 ↔ test (deltas vs G6-4 NO-GO)
+
+| Criterio | Antes (G6-4) | Ahora (G6-4-R1) | Evidencia |
+| --- | --- | --- | --- |
+| CA-V2-01…04 | OK | **OK** | Sin regresión |
+| CA-V2-05 | **NO-GO** | **OK** | Unit hidratación I-1/I-2/I-4/I-7 + E2E `indicador → lista filtrada → recarga conserva filtro → Inicio` (`portal-dashboard-empresa.spec.ts`) |
+| CA-V2-06 | OK | **OK** | Sin regresión |
+| CA-V2-07 | **NO-GO** | **OK** | E2E D-1/D-2 axe light 4/4 pass post `ddbc22cf` / DS v1.2 |
+| CA-V2-08…12 | OK | **OK** | Sin regresión |
+| UX-15/16 | OK | **OK** | Sin regresión; E2E CA-V2-05 usa Inicio sidebar (no `goBack`) — residual no bloqueante alineado a G6-3-R1 |
+
+#### Cobertura (núcleo `components/dashboard`)
+
+| Métrica | Valor | Umbral |
+| --- | --- | --- |
+| Statements | **81,89%** | ≥80% |
+| Lines | **84,97%** | ≥80% |
+| Functions | 82,14% | informativo |
+| Branches | 71,33% | informativo |
+
+#### Notas al orquestador
+
+- Este re-dictamen **cierra el bloqueante de calidad G6-4** (CA-V2-07 + CA-V2-05). **No** cierra G6 consolidado ni anticipa G6.5/G7.
+- Delta E2E: **21/25 → 26/26** (+1 escenario CA-V2-05; 4 axe light recuperados).
+- Delta jest dashboard: **76 → 77** pass; cobertura stmts/lines sin cambio material (≥80%).
+- SHA de este commit documental: el de `docs(mod02): re-dictamen G6-4 SR-QA after remediacion`.
