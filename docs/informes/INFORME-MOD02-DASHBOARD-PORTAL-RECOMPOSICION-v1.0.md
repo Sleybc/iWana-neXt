@@ -11,7 +11,7 @@
 **Prompt G4:** [`PROMPT-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md)  
 **Rama:** `feat/mod02-dashboard-portal-recomposicion`  
 **HEAD al abrir informe:** `39a7bbc6`  
-**SHA consolidación G6:** `b8e76630` (ancestros código `d4ee265a` / `ddbc22cf` / `e09ffa9a` / `e4f93324`)
+**SHA consolidación G6:** `53c1a3d9` (dictámenes tip `b8e76630`; código `d4ee265a` / `ddbc22cf` / `e09ffa9a` / `e4f93324`)
 
 ---
 
@@ -102,7 +102,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Gate | Estado | Evidencia |
 | --- | --- | --- |
 | G4 | Cumplido | Prompt v1.0 emitido 2026-08-04 |
-| G6 | **GO** | Consolidación EM-ARCH 2026-08-10 · ver §9 G6-5 · SHA tip `b8e76630` |
+| G6 | **GO** | Consolidación EM-ARCH 2026-08-10 · ver §9 G6-5 · SHA `53c1a3d9` |
 | G6.5 | No iniciado | Requiere corrida Linux de CI **por SHA** (ADR-069) — no se infiere de G6 |
 | G7 | No iniciado | Requiere recomendación AI-EM-ARCH + aprobación CTO — no se infiere de G6.5 |
 
