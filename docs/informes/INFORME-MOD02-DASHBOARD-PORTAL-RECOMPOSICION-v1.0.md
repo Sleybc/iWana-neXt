@@ -36,22 +36,22 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
 | C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 `b8517caa` · Task 4 `3aaa217a` · shell ver Track Shell |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 |
-| D — calidad | AI-SR-QA | D-1…D-7 | Hecho | Task 6 · jest `components/dashboard` 7 suites / 76 pass · cobertura stmts **81,89%** / lines **84,97%** · E2E `portal-dashboard-empresa` **25/25** · evidencias `docs/informes/evidencias/portal-dashboard-recomposicion/` |
+| D — calidad | AI-SR-QA | D-1…D-7 | Hecho (Task 6) · **G6-4 NO-GO** | Task 6 cov OK · re-verify G6-4: jest 76/76 · stmts **81,89%** / lines **84,97%** · E2E **21/25** (4 axe light fail) · filtros axe retirados `1014990f` · ver §9 G6-4 |
 
 ## 4. Matriz criterio ↔ test
 
 | Criterio | Test previsto | Estado |
 | --- | --- | --- |
-| CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E roles | Hecho — unit 12 roles; E2E ADMIN/NOC/SALES/TECHNICIAN |
-| CA-V2-03 | Capturas 375/768/1280 | Hecho — `viewport-*.png` + E2E D-5 |
-| CA-V2-04 | Bandas B0–B3 / métricas | Hecho unit (Task 4) + E2E indicadores |
-| CA-V2-05 | Navegación indicador→filtro + Atrás | **NO-GO G6-3** — hrefs/caché R-5 OK; destinos I-1/I-2/I-4/I-7 no hidratan filtro (UX §3.5) |
-| CA-V2-06 | `Promise.allSettled` degradación | Hecho unit + E2E error WFM |
-| CA-V2-07/11 | Axe claro/oscuro + `null` honesto | Hecho — E2E D-1/D-2; residuales a11y **cerrados** (DS v1.1 + FE) |
-| CA-V2-08 | Drawer teclado 375 px | Hecho — E2E D-4 |
-| CA-V2-09/10 | Vocabulario + vacíos accionables | Hecho unit (Task 4) + E2E vacío |
-| CA-V2-12 | Firmas iWana (barra lima + tokens) | Hecho — E2E D-7 + `firmas-iwana-1280.png` |
-| UX-15/16 | Recarga silenciosa / Atrás sin fetch extra | Hecho unit (Task 3) + E2E actualizando |
+| CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E D-3 | Cubierto — G6-4 (baseline CA-01…06 no cuenta) |
+| CA-V2-03 | E2E D-5 + `viewport-*.png` | Cubierto — G6-4 |
+| CA-V2-04 | Unit B0–B3 + composition techo I-1…I-7 | Cubierto — G6-4 |
+| CA-V2-05 | Hrefs unit C-6; falta E2E hidratación destino | **NO-GO** — G6-3 + G6-4 (sin aserción Atrás/recarga destino) |
+| CA-V2-06 | Unit `allSettled` + E2E error WFM | Cubierto — G6-4 |
+| CA-V2-07/11 | E2E axe + unit null | **NO-GO G6-4** — axe light `color-contrast` 4/4 fallan (descripción muted sobre `danger`) · null unit OK |
+| CA-V2-08 | E2E D-4 | Cubierto — G6-4 |
+| CA-V2-09/10 | Unit vocabulario + vacíos + E2E vacío | Cubierto — G6-4 |
+| CA-V2-12 | E2E D-7 + unit sombra soft | Cubierto — G6-4 |
+| UX-15/16 | Unit recarga silenciosa + R-5 remount; E2E Actualizando | Cubierto — G6-4 (sin E2E browser Atrás; R-5 unit) |
 
 ## 5. Evidencia acumulada
 
@@ -72,6 +72,8 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | 2026-08-10 | Capturas D-5/D-7 | `evidencias/portal-dashboard-recomposicion/viewport-{375,768,1280}.png` · `firmas-iwana-1280.png` |
 | 2026-08-10 | G6-2 · `audit-ui.mjs` shared+dashboard+layout+dashboard/layout | P0: 0 · P1: 0 · P2 heurístico 1 descartado (chip activo) · dictamen **GO** · HEAD `eb5851d0` |
 | 2026-08-10 | G6-3 · dictamen experiencia AI-PROD-UX | **NO-GO** · HEAD `eb5851d0` · CA-V2-05 insatisfactorio (hidratar filtros en 4 destinos) · ver §9 |
+| 2026-08-10 | G6-4 · jest dashboard coverage (re-verify) | 7 suites · 76 pass · stmts **81,89%** · lines **84,97%** · branches 71,33% · Cached: N/A |
+| 2026-08-10 | G6-4 · Playwright `portal-dashboard-empresa` (re-verify, sin filtros axe) | **21/25** · 4 fail axe `color-contrast` tema light · dark OK · ver §9 G6-4 |
 
 Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
@@ -83,17 +85,18 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | Alta | Rate limit global API no cableado | AI-SEC-ENG / AI-PLAT-OPS | Escalado CTO |
 | Media | Ampliar auditoría al rol AUDITOR (historial completo) | AI-SEC-ENG + producto | Tras aprobación seguridad |
 | Media | Cookie httpOnly / RSC de datos | Ola sesión | Fuera de alcance |
-| Media | Axe residual: eyebrow muted sobre accent `danger` (~4,45:1) | AI-DS-OWNER → AI-FE-PLATFORM | **Cerrado** — DS v1.1 §1.7 + `portalMetricEyebrowClassName` |
+| Media | Axe residual: eyebrow muted sobre accent `danger` (~4,45:1) | AI-DS-OWNER → AI-FE-PLATFORM | **Cerrado eyebrow** — DS v1.1 §1.7 + `portalMetricEyebrowClassName` |
 | Media | Axe residual: `text-iwana-primary` sin `dark:text-*` en CTAs secundarios / «Ver más» | AI-FE-PLATFORM | **Cerrado** — `portalInlineTextLinkClassName` + header dark |
 | Media | Axe residual: badge error + `opacity-80` en métrica «Actualizando» | AI-FE-PLATFORM | **Cerrado** — sin `opacity-80`; señal por texto/`aria-live` |
-| Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **Abierto — bloquea G6-3** · hidratar `view`/`fromDate`, `status`, `slaBreachStatus`, `view=open`; prueba E2E indicador→filtro→recarga→Atrás |
+| Alta | CA-V2-05: destinos no leen filtros de URL (I-1, I-2, I-4, I-7) | AI-FE-PLATFORM | **Abierto — bloquea G6-3/G6-4** · hidratar `view`/`fromDate`, `status`, `slaBreachStatus`, `view=open`; prueba E2E indicador→filtro→recarga→Atrás |
+| Alta | Axe `color-contrast` tema light: descripción `text-gray-500` (#6a7282) sobre shell `danger` (#fef3f3) ≈ **4,45:1** | AI-DS-OWNER + AI-FE-PLATFORM | **Abierto — bloquea G6-4** · ranura `description` de `PortalDashboardMetric`/`PortalMetricCard` no aplica escalón §1.7 (solo eyebrow); filtros axe E2E ya retirados |
 
 ## 7. Gates (registro separado — ADR-069)
 
 | Gate | Estado | Evidencia |
 | --- | --- | --- |
 | G4 | Cumplido | Prompt v1.0 emitido 2026-08-04 |
-| G6 | NO-GO | Pendiente Tasks 1–7 y dictámenes |
+| G6 | NO-GO | G6-2 GO · G6-3 NO-GO (CA-V2-05) · G6-4 NO-GO (CA-V2-07 axe light + CA-V2-05 sin prueba destino) · faltan G6-1/G6-5 |
 | G6.5 | No iniciado | Requiere CI Linux por SHA |
 | G7 | No iniciado | Requiere recomendación AI-EM-ARCH + CTO |
 
@@ -117,6 +120,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | DS-v1.1 | AI-DS-OWNER | Hecho | contrato §1.7 · adenda prompt | Re-sync contrato DS v1.1 (eyebrow×accent danger/warning → `text-gray-700 dark:text-gray-200`). Tracks notificados: AI-FE-PLATFORM (aplica) · AI-SR-QA (re-mide). Carril rápido EM-ARCH; sin CTO/ADR. |
 | 2026-08-10 | G6-2 | AI-DS-OWNER | **GO** | HEAD `eb5851d0` · base a11y `1014990f` · DS v1.1 `9937c7d7` · audit-ui P0/P1=0 | Dictamen identidad: sin P0/P1; firmas, sombras duales, primitives canónicas, §1.7. Residual P2 no bloqueante: punto lima en historial. Ver §9. |
 | 2026-08-10 | G6-3 | AI-PROD-UX | **NO-GO** | HEAD `eb5851d0` (≥ `1014990f`) · UX spec v1.0 · HLD CA-V2-01…12 | Experiencia: 11/12 CA OK; **CA-V2-05 falla** (filtros outbound sin hidratación en destino). Ver §9. |
+| 2026-08-10 | G6-4 | AI-SR-QA | **NO-GO** | HEAD `7ea22066` · re-verify post `1014990f` · jest 76/76 cov ≥80% · E2E 21/25 | Filtros axe retirados OK; **CA-V2-07** falla (descripción muted×danger light); CA-V2-05 sin aserción destino/Atrás. Ver §9. |
 
 ---
 
@@ -240,3 +244,75 @@ Tras SHA de remediación: reabrir **G6-3** (no parchear este dictamen en silenci
 - Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
 - No se exige cambio de alcance funcional ni de UX spec v1.0: el gap es implementación incompleta de §3.5 ya declarado en la spec.
 - Baseline E2E CA-01…06 (v1) permanece útil como regresión, pero **no** cuenta como evidencia CA-V2.
+
+### G6-4 · Calidad — AI-SR-QA
+
+**Fecha:** 2026-08-10  
+**Modo:** re-verify post a11y `1014990f` — perfil AI-SR-QA  
+**Contratos:** HLD CA-V2-01…12 · UX-15/16 · plan §5 G6-4  
+**HEAD auditado (pre-commit dictamen):** `7ea22066` (incluye `1014990f`)
+
+#### Veredicto: **NO-GO**
+
+Cobertura dashboard core ≥80% (stmts **81,89%** / lines **84,97%**). Filtros axe de residuales Task 6 **retirados** en `1014990f` (`runAxe` usa `result.violations` sin `nodes.filter`). E2E sin filtros: **21/25** — 4 fallos `color-contrast` en tema **light** (cargado / null / vacío / error). Tema dark y D-3/D-4/D-5/D-7 en verde. **No es bug de test:** el nodo fallante es la ranura `description` con `text-gray-500` (#6a7282) sobre shell `accent='danger'` (#fef3f3) ≈ **4,45:1**; §1.7 solo escaló el eyebrow. CA-V2-05 sigue sin aserción de hidratación destino + Atrás (heredado G6-3). Baseline E2E CA-01…06 **no cuenta**.
+
+`[BLOQUEO]` producto → AI-DS-OWNER + AI-FE-PLATFORM (contraste descripción×danger/warning) y AI-FE-PLATFORM (CA-V2-05 hidratación + E2E). Sin cambio de código de feature en este acto QA.
+
+#### Comandos re-verify
+
+```text
+pnpm --filter @iwana/portal exec jest --coverage --collectCoverageFrom="components/dashboard/**/*.{ts,tsx}" --testPathPattern=components/dashboard --runInBand
+# → 7 suites · 76 pass · stmts 81,89% · lines 84,97% · funcs 82,14% · branches 71,33%
+
+pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashboard-empresa
+# → 21 passed · 4 failed (axe color-contrast light) · ~62 s
+```
+
+#### Axe / filtros
+
+| Check | Resultado |
+| --- | --- |
+| Filtros residuales Task 6 eliminados | **Sí** — diff `1014990f` retira `nodes.filter` / exclusiones color-contrast |
+| `runAxe` actual | `AxeBuilder.withTags(['wcag2a','wcag2aa']).analyze()` → `expect(violations).toEqual([])` |
+| Light (4 estados) | **FAIL** — 1 nodo `color-contrast` serio: `…text-gray-500…` «Acuerdo de servicio en riesgo» sobre `.border-rose-200` |
+| Dark (4 estados) + loading + actualizando | **PASS** |
+
+#### Matriz CA-V2-01…12 + UX-15/16 ↔ test (aserciones de fase)
+
+| Criterio | Veredicto | Test con path |
+| --- | --- | --- |
+| CA-V2-01 | **OK** | `apps/portal/src/components/dashboard/dashboard-role-composition.spec.ts` — 12 roles + identidad/acción; `DashboardClient.spec.tsx` «Panel en preparación»; `e2e/tests/portal-dashboard-empresa.spec.ts` D-3 |
+| CA-V2-02 | **OK** | `dashboard-role-composition.spec.ts` — techo autorización + destinos tipados `/dashboard/*` (no baseline CA-02) |
+| CA-V2-03 | **OK** | `e2e/tests/portal-dashboard-empresa.spec.ts` D-5 viewport 375/768/1280 |
+| CA-V2-04 | **OK** | `dashboard-role-composition.spec.ts` I-1…I-7 + techo; `DashboardClient.spec.tsx` «B0–B3…» |
+| CA-V2-05 | **NO-GO** | Solo outbound: `DashboardClient.spec.tsx` «navega indicadores con filtros de URL (C-6)». **Sin** test que aserte hidratación en destino ni Atrás→home (criterio incompleto) |
+| CA-V2-06 | **OK** | `DashboardClient.spec.tsx` «contiene fallos parciales…»; E2E «error de fuente…» |
+| CA-V2-07 | **NO-GO** | E2E D-1/D-2 axe light **falla** (4 tests). Dark OK. Unit tokens AA en `dashboard-metrics-states.spec.tsx` no sustituye axe de página |
+| CA-V2-08 | **OK** | `e2e/tests/portal-dashboard-empresa.spec.ts` D-4 drawer inert / Tab / Escape |
+| CA-V2-09 | **OK** | `RecentActivityPanel.spec.tsx` «helpers de vocabulario…»; `TenantSummaryCard.spec.tsx` «traduce estados sin enums crudos…» |
+| CA-V2-10 | **OK** | `OnboardingAlerts.spec.tsx` / `RecentActivityPanel.spec.tsx` vacíos accionables; E2E «vacío operativo» |
+| CA-V2-11 | **OK** | `dashboard-metrics-states.spec.tsx` «value null…»; `DashboardClient.spec.tsx` «métrica nula…»; E2E null + «Sin dato disponible» (aserción de valor; axe light fallido va a CA-V2-07) |
+| CA-V2-12 | **OK** | E2E D-7 firmas; `dashboard-metrics-states.spec.tsx` sombra soft/active |
+| UX-15 | **OK** | `DashboardClient.spec.tsx` «recarga silenciosa…»; E2E «estado actualizando…» |
+| UX-16 | **OK** | `DashboardClient.spec.tsx` «al remontar con caché de sesión no vuelve a pedir red (R-5)» (sin E2E browser Atrás dedicado) |
+
+#### Cobertura (núcleo `components/dashboard`)
+
+| Métrica | Valor | Umbral |
+| --- | --- | --- |
+| Statements | **81,89%** | ≥80% |
+| Lines | **84,97%** | ≥80% |
+| Functions | 82,14% | informativo |
+| Branches | 71,33% | informativo |
+
+#### Remediación mínima (desbloquea re-dictamen G6-4)
+
+1. **AI-DS-OWNER / AI-FE-PLATFORM:** aplicar escalón AA a la ranura `description` (y cualquier muted) sobre shells `danger`/`warning` en `portal-ui.tsx` (`PortalMetricCard` / `PortalDashboardMetric` ~L426/L598), o extender contrato DS §1.7 a descripción; re-medir axe light sin filtros.
+2. **AI-FE-PLATFORM:** cerrar hidratación CA-V2-05 (ítems G6-3) + E2E indicador→filtro→recarga→Atrás.
+3. Reabrir **G6-4** (y G6-3) tras SHA de remediación — no reintroducir filtros axe.
+
+#### Notas al orquestador
+
+- Este dictamen **no** cierra G6 ni anticipa G6.5/G7.
+- G6-3 marcó CA-V2-07 OK con confianza en `1014990f`; la re-medición G6-4 **revoca** ese OK para contraste de página en light.
+- SHA del commit de este dictamen documental: el de `docs(mod02): record G6-4 SR-QA quality dictamen` (posterior a `7ea22066`).
