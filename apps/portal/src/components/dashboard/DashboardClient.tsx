@@ -1,222 +1,1145 @@
 // apps/portal/src/components/dashboard/DashboardClient.tsx
 'use client';
+
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { Users, Activity, AlertTriangle } from 'lucide-react';
+import { ExpedienteStatus, UserRole } from '@iwana/shared';
+import { RefreshCw } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PortalDashboardMetric } from '@/components/shared/portal-ui';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { resolveTenantSlug } from '@/lib/tenant-resolution';
+import {
+  ApiError,
+  assuranceApi,
+  auditApi,
+  commercialApi,
+  crmApi,
+  dashboardApi,
+  inventoryApi,
+  tenantSelfApi,
+  wfmApi,
+  type AssuranceDashboardSummary,
+  type AuditLogEntry,
+  type CommercialDashboardSummary,
+  type DashboardSummary,
+  type DashboardSummaryTenant,
+  type InventoryDashboardSummary,
+  type TenantPublicBranding,
+  type TenantSelf,
+  type TenantSelfSettings,
+  type WfmDashboardSummary,
+} from '@/lib/api-client';
 import { TenantSummaryCard } from './TenantSummaryCard';
-import { MetricCard } from './MetricCard';
 import { OnboardingAlerts } from './OnboardingAlerts';
 import { RecentActivityPanel } from './RecentActivityPanel';
 import { QuickActionsPanel } from './QuickActionsPanel';
-import { dashboardApi, ApiError, type DashboardSummary } from '@/lib/api-client';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { DashboardPanel } from './DashboardPanel';
+import {
+  getDashboardRoleComposition,
+  isUserRole,
+  resolveDashboardAction,
+  resolveDashboardBlock,
+  resolveDashboardDataSources,
+  resolveDashboardMetric,
+  toLocalDayKey,
+  type DashboardBlockId,
+  type DashboardDataSourceId,
+  type DashboardMetricId,
+  type DashboardRoleComposition,
+} from './dashboard-role-composition';
 
-/**
- * Componente cliente del dashboard empresarial del tenant.
- *
- * Responsabilidades:
- * - Cargar el summary del dashboard desde GET /tenants/me/summary.
- * - Componer la UI role-aware: ADMIN ve todos los bloques; otros roles ven vista reducida.
- * - Manejar estados: loading, error, datos reales y datos null controlados.
- *
- * Boundary: solo consume contratos self-service del tenant — nunca endpoints de plataforma.
- * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §2.2 (BT-DE-07)
- */
+type LoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
-function mapError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    if (error.status === 403) return 'No tienes permisos para ver el resumen del dashboard.';
-    return error.message;
-  }
-  return 'No fue posible cargar el dashboard. Intenta de nuevo.';
+interface SourceState<T> {
+  status: LoadStatus;
+  data: T | null;
+  error: string | null;
 }
 
-/** Skeleton de carga para las métricas */
-function MetricsSkeleton() {
+type CrmPipelineSummary = { data: Record<string, number>; total: number };
+
+interface DashboardSourcesState {
+  'public-branding': SourceState<TenantPublicBranding>;
+  'tenant-summary': SourceState<DashboardSummary>;
+  'tenant-me': SourceState<{ tenant: TenantSelf; settings: TenantSelfSettings }>;
+  wfm: SourceState<WfmDashboardSummary>;
+  assurance: SourceState<AssuranceDashboardSummary>;
+  commercial: SourceState<CommercialDashboardSummary>;
+  inventory: SourceState<InventoryDashboardSummary>;
+  crm: SourceState<CrmPipelineSummary>;
+  audit: SourceState<AuditLogEntry[]>;
+}
+
+const CLOSED_PIPELINE_STATUSES = new Set<string>([
+  ExpedienteStatus.CLIENTE_ACTIVO,
+  ExpedienteStatus.DESCARTADO,
+]);
+
+const TAB_REFRESH_MS = 5 * 60 * 1000;
+
+function emptySource<T>(): SourceState<T> {
+  return { status: 'idle', data: null, error: null };
+}
+
+function createInitialSources(): DashboardSourcesState {
+  return {
+    'public-branding': emptySource(),
+    'tenant-summary': emptySource(),
+    'tenant-me': emptySource(),
+    wfm: emptySource(),
+    assurance: emptySource(),
+    commercial: emptySource(),
+    inventory: emptySource(),
+    crm: emptySource(),
+    audit: emptySource(),
+  };
+}
+
+function assignSource(
+  state: DashboardSourcesState,
+  id: DashboardDataSourceId,
+  value: { status: LoadStatus; data: unknown; error: string | null },
+): void {
+  // Indexación heterogénea del fan-out: el discriminante es `id`.
+  (state as Record<DashboardDataSourceId, SourceState<unknown>>)[id] = value;
+}
+
+function mapSourceError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
+    if (error.status === 403) return 'No tienes permisos para este bloque.';
+    return error.message || fallback;
+  }
+  return fallback;
+}
+
+function formatLastReadAt(iso: string | null): string {
+  if (!iso) return 'Sin lectura aún';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Sin lectura aún';
+  return new Intl.DateTimeFormat('es-CO', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function toSummaryTenant(tenant: TenantSelf): DashboardSummaryTenant {
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    status: tenant.status,
+    contactEmail: tenant.contactEmail,
+    legalName: tenant.legalName,
+    nit: tenant.nit,
+    city: tenant.city,
+    department: tenant.department,
+    countryCode: tenant.countryCode,
+    phone: tenant.phone,
+    website: tenant.website,
+    createdAt: tenant.createdAt,
+  };
+}
+
+function commercialAttentionReasonLabel(reason: string): string {
+  const labels: Record<string, string> = {
+    expiring_soon: 'Vence pronto',
+    near_use_limit: 'Cerca del cupo de usos',
+    missing_current_price: 'Sin precio vigente',
+    bundle_inactive_items: 'Combo con elementos inactivos',
+    tax_rules_coverage_gap: 'Cobertura tributaria incompleta',
+  };
+  return labels[reason] ?? 'Requiere revisión';
+}
+
+function openPipelineCount(pipeline: CrmPipelineSummary | null): number | null {
+  if (!pipeline) return null;
+  let sum = 0;
+  for (const [status, count] of Object.entries(pipeline.data)) {
+    if (!CLOSED_PIPELINE_STATUSES.has(status)) {
+      sum += count;
+    }
+  }
+  return sum;
+}
+
+function metricValue(metricId: DashboardMetricId, sources: DashboardSourcesState): number | null {
+  switch (metricId) {
+    case 'I-1':
+      return sources.wfm.data?.todayCount ?? null;
+    case 'I-2':
+      return sources.wfm.data?.pendingInbox.readyToScheduleCount ?? null;
+    case 'I-3':
+      return sources.assurance.data?.openCount ?? null;
+    case 'I-4':
+      return sources.assurance.data?.atRiskCount ?? null;
+    case 'I-5':
+      return sources.commercial.data?.missingCurrentPriceCount ?? null;
+    case 'I-6':
+      return sources.commercial.data?.offersAtRiskCount ?? null;
+    case 'I-7':
+      return openPipelineCount(sources.crm.data);
+    default: {
+      const _exhaustive: never = metricId;
+      return _exhaustive;
+    }
+  }
+}
+
+function metricDelta(
+  metricId: DashboardMetricId,
+  sources: DashboardSourcesState,
+): { label: string; tone: 'warning' | 'danger' | 'neutral' } | undefined {
+  if (metricId === 'I-1') {
+    const overdue = sources.wfm.data?.overdueCount ?? 0;
+    if (overdue > 0) return { label: `${overdue} vencidas`, tone: 'danger' };
+  }
+  if (metricId === 'I-2') {
+    const overdueSla = sources.wfm.data?.pendingInbox.overdueSlaCount ?? 0;
+    if (overdueSla > 0) return { label: `${overdueSla} con atención vencida`, tone: 'warning' };
+  }
+  if (metricId === 'I-4') {
+    const breached = sources.assurance.data?.breachedCount ?? 0;
+    if (breached > 0) return { label: `${breached} incumplidos`, tone: 'danger' };
+  }
+  return undefined;
+}
+
+function metricSourceStatus(
+  metricId: DashboardMetricId,
+  sources: DashboardSourcesState,
+): LoadStatus {
+  const def = resolveDashboardMetric(metricId);
+  const statuses = def.sources.map((id) => sources[id].status);
+  if (statuses.some((s) => s === 'error')) return 'error';
+  if (statuses.some((s) => s === 'loading')) return 'loading';
+  if (statuses.some((s) => s === 'updating')) return 'updating';
+  if (statuses.every((s) => s === 'success' || s === 'idle')) return 'success';
+  return 'loading';
+}
+
+interface DashboardCacheEntry {
+  role: UserRole;
+  slug: string;
+  sources: DashboardSourcesState;
+  lastFetchedAt: string;
+}
+
+let dashboardSessionCache: DashboardCacheEntry | null = null;
+
+async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promise<unknown> {
+  switch (sourceId) {
+    case 'public-branding':
+      return tenantSelfApi.getPublicBranding(slug);
+    case 'tenant-summary':
+      return dashboardApi.getSummary(slug);
+    case 'tenant-me': {
+      const [tenant, settings] = await Promise.all([
+        tenantSelfApi.getMe(slug),
+        tenantSelfApi.getSettings(slug),
+      ]);
+      return { tenant, settings };
+    }
+    case 'wfm':
+      return wfmApi.dashboard.getSummary(slug);
+    case 'assurance':
+      return assuranceApi.dashboard.getSummary(slug);
+    case 'commercial':
+      return commercialApi.getDashboardSummary(slug);
+    case 'inventory':
+      return inventoryApi.dashboard(slug);
+    case 'crm':
+      return crmApi.getPipelineSummary(slug);
+    case 'audit':
+      return auditApi.list({ limit: 8 }, slug);
+    default: {
+      const _exhaustive: never = sourceId;
+      return _exhaustive;
+    }
+  }
+}
+
+function MetricsSkeleton({ count }: { count: number }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
-      {Array.from({ length: 3 }).map((_, i) => (
+    <div
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      aria-busy="true"
+    >
+      {Array.from({ length: Math.max(count, 1) }).map((_, i) => (
         <div
           key={i}
-          className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3"
+          className="h-[148px] animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3"
         />
       ))}
     </div>
   );
 }
 
-/** Vista reducida para roles sin acceso al summary completo */
-function RoleRestrictedView() {
+function IdentityOnlyCard({ branding }: { branding: TenantPublicBranding | null }) {
+  const name = branding?.displayName ?? branding?.productName ?? 'Tu empresa';
+  return (
+    <section
+      aria-label="Estado de la empresa"
+      className="rounded-2xl border border-gray-200 bg-white px-6 py-5 dark:border-dark-border dark:bg-dark-surface-2"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-300">
+        Empresa
+      </p>
+      <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{name}</p>
+      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        Identidad visible de tu organización. El detalle operativo vive en Configuración cuando tu
+        perfil lo permita.
+      </p>
+    </section>
+  );
+}
+
+function BlockError({
+  title,
+  message,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <DashboardPanel title={title}>
+      <div className="space-y-2">
+        <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="text-sm font-medium text-iwana-primary underline decoration-iwana-primary/30 underline-offset-4 hover:no-underline"
+        >
+          Reintentar
+        </button>
+      </div>
+    </DashboardPanel>
+  );
+}
+
+function FieldAttentionBlock({
+  sources,
+  onRetry,
+}: {
+  sources: DashboardSourcesState;
+  onRetry: () => void;
+}) {
+  const state = sources.wfm;
+  const title = resolveDashboardBlock('field-attention').title;
+  if (state.status === 'loading' && !state.data) {
+    return (
+      <DashboardPanel title={title}>
+        <div className="space-y-3" aria-busy="true">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-12 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+            />
+          ))}
+        </div>
+      </DashboardPanel>
+    );
+  }
+  if (state.status === 'error' && !state.data) {
+    return (
+      <BlockError
+        title={title}
+        message="No pudimos cargar el resumen de operaciones de campo. Reintenta en unos minutos."
+        onRetry={onRetry}
+      />
+    );
+  }
+  const alerts = state.data?.alerts ?? [];
+  return (
+    <DashboardPanel title={title}>
+      {state.status === 'updating' ? (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          Actualizando
+        </p>
+      ) : null}
+      {alerts.length === 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-700 dark:text-gray-300">Sin avisos de campo pendientes</p>
+          <Link
+            href="/dashboard/scheduling/agenda"
+            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Ver la agenda de hoy
+          </Link>
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {alerts.slice(0, 5).map((alert) => (
+            <li
+              key={alert.id}
+              className="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-border-2"
+            >
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{alert.title}</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">{alert.description}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DashboardPanel>
+  );
+}
+
+function HelpDeskBlock({
+  sources,
+  onRetry,
+}: {
+  sources: DashboardSourcesState;
+  onRetry: () => void;
+}) {
+  const state = sources.assurance;
+  const title = resolveDashboardBlock('help-desk').title;
+  if (state.status === 'loading' && !state.data) {
+    return (
+      <DashboardPanel title={title}>
+        <div className="space-y-3" aria-busy="true">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-12 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+            />
+          ))}
+        </div>
+      </DashboardPanel>
+    );
+  }
+  if (state.status === 'error' && !state.data) {
+    return (
+      <BlockError
+        title={title}
+        message="No pudimos cargar el resumen de la mesa de ayuda. Reintenta en unos minutos."
+        onRetry={onRetry}
+      />
+    );
+  }
+  const openCount = state.data?.openCount ?? 0;
+  return (
+    <DashboardPanel title={title}>
+      {state.status === 'updating' ? (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          Actualizando
+        </p>
+      ) : null}
+      {openCount === 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-700 dark:text-gray-300">Sin casos pendientes</p>
+          <Link
+            href="/dashboard/assurance"
+            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Ver la mesa de ayuda
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+          <p>
+            {openCount} casos abiertos · {state.data?.atRiskCount ?? 0} en riesgo
+          </p>
+          <Link
+            href="/dashboard/assurance?status=OPEN"
+            className="font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Revisar casos abiertos
+          </Link>
+        </div>
+      )}
+    </DashboardPanel>
+  );
+}
+
+function CommercialAttentionBlock({
+  sources,
+  onRetry,
+  highlight,
+  accountantOnly,
+}: {
+  sources: DashboardSourcesState;
+  onRetry: () => void;
+  highlight?: boolean;
+  accountantOnly?: boolean;
+}) {
+  const state = sources.commercial;
+  const title = resolveDashboardBlock('commercial-attention').title;
+  if (state.status === 'loading' && !state.data) {
+    return (
+      <DashboardPanel title={title}>
+        <div className="space-y-3" aria-busy="true">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-12 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+            />
+          ))}
+        </div>
+      </DashboardPanel>
+    );
+  }
+  if (state.status === 'error' && !state.data) {
+    return (
+      <BlockError
+        title={title}
+        message="No pudimos cargar la atención comercial. Reintenta en unos minutos."
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  const priceReasons = new Set([
+    'missing_current_price',
+    'tax_rules_coverage_gap',
+    'bundle_inactive_items',
+  ]);
+  let items = state.data?.attentionItems ?? [];
+  if (accountantOnly) {
+    items = items.filter((item) => priceReasons.has(item.reason));
+  }
+  items = items.slice(0, 5);
+
+  return (
+    <DashboardPanel title={title}>
+      {highlight ? (
+        <p className="mb-3 text-xs font-medium text-iwana-secondary-700 dark:text-iwana-secondary-300">
+          Ofertas en riesgo — detalle en esta lista
+        </p>
+      ) : null}
+      {state.status === 'updating' ? (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          Actualizando
+        </p>
+      ) : null}
+      {items.length === 0 ? (
+        <div className="space-y-2">
+          {(state.data?.catalogActiveCount ?? 0) === 0 ? (
+            <>
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                Aún no has creado tu catálogo
+              </p>
+              <Link
+                href="/dashboard/commercial?tab=plans"
+                className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+              >
+                Crear el primer plan
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-700 dark:text-gray-300">Tu catálogo está completo</p>
+              <Link
+                href="/dashboard/commercial"
+                className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+              >
+                Ver el catálogo
+              </Link>
+            </>
+          )}
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Link
+                href={`/dashboard/commercial?tab=${encodeURIComponent(item.destinoTab)}&focus=${encodeURIComponent(item.id)}`}
+                className="block rounded-xl border border-gray-100 px-4 py-3 transition-colors hover:border-iwana-primary dark:border-dark-border-2"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</p>
+                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                  {commercialAttentionReasonLabel(item.reason)}
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DashboardPanel>
+  );
+}
+
+function PipelineBlock({
+  sources,
+  onRetry,
+}: {
+  sources: DashboardSourcesState;
+  onRetry: () => void;
+}) {
+  const state = sources.crm;
+  const title = resolveDashboardBlock('pipeline').title;
+  if (state.status === 'loading' && !state.data) {
+    return (
+      <DashboardPanel title={title}>
+        <div
+          className="h-24 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+          aria-busy="true"
+        />
+      </DashboardPanel>
+    );
+  }
+  if (state.status === 'error' && !state.data) {
+    return (
+      <BlockError
+        title={title}
+        message="No pudimos cargar el embudo de oportunidades. Reintenta en unos minutos."
+        onRetry={onRetry}
+      />
+    );
+  }
+  const total = state.data?.total ?? 0;
+  const open = openPipelineCount(state.data) ?? 0;
+  return (
+    <DashboardPanel title={title}>
+      {state.status === 'updating' ? (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          Actualizando
+        </p>
+      ) : null}
+      {total === 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-700 dark:text-gray-300">Aún no hay oportunidades</p>
+          <Link
+            href="/dashboard/crm/expedientes"
+            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Registrar la primera oportunidad
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+          <p>
+            {open} en seguimiento · {total} en total
+          </p>
+          <Link
+            href="/dashboard/crm/expedientes?view=open"
+            className="font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Ver oportunidades
+          </Link>
+        </div>
+      )}
+    </DashboardPanel>
+  );
+}
+
+function InventoryBlock({
+  sources,
+  onRetry,
+}: {
+  sources: DashboardSourcesState;
+  onRetry: () => void;
+}) {
+  const state = sources.inventory;
+  const title = resolveDashboardBlock('inventory').title;
+  if (state.status === 'loading' && !state.data) {
+    return (
+      <DashboardPanel title={title}>
+        <div
+          className="h-20 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+          aria-busy="true"
+        />
+      </DashboardPanel>
+    );
+  }
+  if (state.status === 'error' && !state.data) {
+    return (
+      <BlockError
+        title={title}
+        message="No pudimos cargar el estado del almacén. Reintenta en unos minutos."
+        onRetry={onRetry}
+      />
+    );
+  }
+  const itemsCount = state.data?.itemsCount ?? 0;
+  return (
+    <DashboardPanel title={title}>
+      {state.status === 'updating' ? (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          Actualizando
+        </p>
+      ) : null}
+      {itemsCount === 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-700 dark:text-gray-300">
+            Aún no hay productos en inventario
+          </p>
+          <Link
+            href="/dashboard/inventory"
+            className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+          >
+            Registrar el primer producto
+          </Link>
+        </div>
+      ) : (
+        <dl className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <dt className="text-gray-500 dark:text-gray-400">Existencias</dt>
+            <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+              {state.data?.totalOnHand ?? 'Sin dato disponible'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500 dark:text-gray-400">Valor estimado</dt>
+            <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+              {state.data
+                ? new Intl.NumberFormat('es-CO', {
+                    style: 'currency',
+                    currency: 'COP',
+                    maximumFractionDigits: 0,
+                  }).format(state.data.estimatedTotalValue)
+                : 'Sin dato disponible'}
+            </dd>
+          </div>
+        </dl>
+      )}
+    </DashboardPanel>
+  );
+}
+
+function renderDashboardBlock({
+  blockId,
+  sources,
+  composition,
+  highlightCommercial,
+  onRetrySource,
+}: {
+  blockId: DashboardBlockId;
+  sources: DashboardSourcesState;
+  composition: DashboardRoleComposition;
+  highlightCommercial: boolean;
+  onRetrySource: (sourceId: DashboardDataSourceId) => void;
+}) {
+  switch (blockId) {
+    case 'field-attention':
+      return (
+        <FieldAttentionBlock key={blockId} sources={sources} onRetry={() => onRetrySource('wfm')} />
+      );
+    case 'help-desk':
+      return (
+        <HelpDeskBlock key={blockId} sources={sources} onRetry={() => onRetrySource('assurance')} />
+      );
+    case 'commercial-attention':
+      return (
+        <CommercialAttentionBlock
+          key={blockId}
+          sources={sources}
+          highlight={highlightCommercial}
+          accountantOnly={composition.primaryActionId === 'review-plans-without-price'}
+          onRetry={() => onRetrySource('commercial')}
+        />
+      );
+    case 'pipeline':
+      return <PipelineBlock key={blockId} sources={sources} onRetry={() => onRetrySource('crm')} />;
+    case 'inventory':
+      return (
+        <InventoryBlock
+          key={blockId}
+          sources={sources}
+          onRetry={() => onRetrySource('inventory')}
+        />
+      );
+    case 'next-configuration': {
+      const summary = sources['tenant-summary'];
+      if (summary.status === 'error' && !summary.data) {
+        return (
+          <BlockError
+            key={blockId}
+            title={resolveDashboardBlock(blockId).title}
+            message="No pudimos cargar el próximo paso de configuración. Reintenta en unos minutos."
+            onRetry={() => onRetrySource('tenant-summary')}
+          />
+        );
+      }
+      return (
+        <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
+          <OnboardingAlerts alerts={summary.data?.alerts ?? []} />
+        </section>
+      );
+    }
+    case 'change-history':
+      return (
+        <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
+          <RecentActivityPanel />
+        </section>
+      );
+    case 'quick-actions':
+      return (
+        <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
+          <QuickActionsPanel />
+        </section>
+      );
+    default: {
+      const _exhaustive: never = blockId;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Cliente del inicio empresarial del portal.
+ * Composición por rol + fan-out `Promise.allSettled` con degradación por bloque.
+ * HLD-MOD02-DASHBOARD-EMPRESA-v2.0 §4.4 / §5 · UX spec §4 / §9
+ */
+export function DashboardClient() {
+  const { user } = useAuth();
+  const role = isUserRole(user?.role) ? user.role : null;
+  const composition = role ? getDashboardRoleComposition(role) : null;
+
+  const [sources, setSources] = useState<DashboardSourcesState>(() => createInitialSources());
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [highlightCommercial, setHighlightCommercial] = useState(false);
+  const [foldedOpen, setFoldedOpen] = useState(false);
+
+  const loadSources = useCallback(
+    async (options: {
+      sourceIds: readonly DashboardDataSourceId[];
+      silent: boolean;
+      slug: string;
+      role: UserRole;
+    }) => {
+      const { sourceIds, silent, slug, role: loadRole } = options;
+      if (sourceIds.length === 0) {
+        setInitialLoadDone(true);
+        return;
+      }
+
+      setSources((prev) => {
+        const next: DashboardSourcesState = { ...prev };
+        for (const id of sourceIds) {
+          const current = prev[id];
+          const patch = {
+            data: current.data,
+            error: null,
+            status: (silent && current.data ? 'updating' : 'loading') as LoadStatus,
+          };
+          assignSource(next, id, patch);
+        }
+        return next;
+      });
+
+      const settled = await Promise.allSettled(
+        sourceIds.map(async (id) => ({ id, data: await fetchSource(id, slug) })),
+      );
+
+      const fetchedAt = new Date().toISOString();
+      setSources((prev) => {
+        const next: DashboardSourcesState = { ...prev };
+        for (let i = 0; i < settled.length; i++) {
+          const result = settled[i]!;
+          const sourceId = sourceIds[i]!;
+          if (result.status === 'fulfilled') {
+            assignSource(next, sourceId, {
+              status: 'success',
+              data: result.value.data,
+              error: null,
+            });
+          } else {
+            const previous = prev[sourceId];
+            assignSource(next, sourceId, {
+              status: 'error',
+              data: previous.data,
+              error: mapSourceError(
+                result.reason,
+                'No pudimos cargar este bloque. Reintenta en unos minutos.',
+              ),
+            });
+          }
+        }
+        // R-5 · snapshot de sesión para volver con «Atrás» sin refetch.
+        dashboardSessionCache = {
+          role: loadRole,
+          slug,
+          sources: next,
+          lastFetchedAt: fetchedAt,
+        };
+        return next;
+      });
+
+      setLastFetchedAt(fetchedAt);
+      setInitialLoadDone(true);
+    },
+    [],
+  );
+
+  const retrySource = useCallback(
+    (sourceId: DashboardDataSourceId) => {
+      if (!role) return;
+      const slug = resolveTenantSlug().slug;
+      if (!slug) return;
+      void loadSources({ sourceIds: [sourceId], silent: true, slug, role });
+    },
+    [loadSources, role],
+  );
+
+  const refreshAll = useCallback(() => {
+    if (!role) return;
+    const slug = resolveTenantSlug().slug;
+    if (!slug) return;
+    const sourceIds = resolveDashboardDataSources(role);
+    void loadSources({ sourceIds, silent: true, slug, role });
+  }, [loadSources, role]);
+
+  useEffect(() => {
+    if (!role) {
+      setInitialLoadDone(true);
+      return;
+    }
+
+    const slug = resolveTenantSlug().slug;
+    if (!slug) {
+      setInitialLoadDone(true);
+      return;
+    }
+
+    const cached = dashboardSessionCache;
+    if (cached && cached.role === role && cached.slug === slug) {
+      // R-5 · restaurar último estado leído; no disparar red.
+      setSources(cached.sources);
+      setLastFetchedAt(cached.lastFetchedAt);
+      setInitialLoadDone(true);
+      return;
+    }
+
+    const sourceIds = resolveDashboardDataSources(role);
+    void loadSources({ sourceIds, silent: false, slug, role });
+  }, [loadSources, role]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible' || !role || !lastFetchedAt) return;
+      const elapsed = Date.now() - new Date(lastFetchedAt).getTime();
+      if (elapsed < TAB_REFRESH_MS) return;
+      const slug = resolveTenantSlug().slug;
+      if (!slug) return;
+      const operational = resolveDashboardDataSources(role).filter(
+        (id) => id !== 'public-branding' && id !== 'tenant-summary' && id !== 'tenant-me',
+      );
+      if (operational.length === 0) return;
+      void loadSources({ sourceIds: operational, silent: true, slug, role });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [lastFetchedAt, loadSources, role]);
+
+  if (!user || !role || !composition) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Inicio" subtitle="No pudimos determinar tu perfil de acceso." />
+      </div>
+    );
+  }
+
+  const primary = resolveDashboardAction(composition.primaryActionId);
+  const secondary = composition.secondaryActionId
+    ? resolveDashboardAction(composition.secondaryActionId)
+    : null;
+
+  const branding = sources['public-branding'].data;
+  const summaryTenant = sources['tenant-summary'].data?.tenant;
+  const meTenant = sources['tenant-me'].data
+    ? toSummaryTenant(sources['tenant-me'].data.tenant)
+    : null;
+  const operationalTenant = summaryTenant ?? meTenant;
+  const operationalSettings =
+    sources['tenant-summary'].data?.settings ?? sources['tenant-me'].data?.settings ?? null;
+
+  const companyTitle =
+    operationalTenant?.name ?? branding?.displayName ?? branding?.productName ?? 'Inicio';
+
+  const firstLoadPending = !initialLoadDone;
+  const today = toLocalDayKey();
+
+  const supportIds = composition.supportBlockIds;
+  const foldedIds = composition.foldedBlockIds;
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Panel empresarial" subtitle="Vista según tus permisos de acceso" />
+      {/* B0 · Encabezado */}
+      <PageHeader
+        title={companyTitle}
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>Última lectura: {formatLastReadAt(lastFetchedAt)}</span>
+            {Object.values(sources).some((s) => s.status === 'updating') ? (
+              <span
+                className="text-iwana-secondary-700 dark:text-iwana-secondary-300"
+                aria-live="polite"
+              >
+                Actualizando
+              </span>
+            ) : null}
+          </span>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-surface-3"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Actualizar
+            </button>
+            {secondary ? (
+              <Link
+                href={secondary.href}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-iwana-primary px-4 py-2 text-sm font-medium text-iwana-primary hover:bg-iwana-primary-50 dark:hover:bg-iwana-primary/10"
+              >
+                {secondary.label}
+              </Link>
+            ) : null}
+            <Link
+              href={primary.href}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600"
+            >
+              {primary.label}
+            </Link>
+          </>
+        }
+      />
+
+      {/* B1 · Indicadores núcleo */}
+      {composition.metricIds.length > 0 ? (
+        <section aria-label="Indicadores núcleo">
+          {firstLoadPending ? (
+            <MetricsSkeleton count={composition.metricIds.length} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {composition.metricIds.map((metricId) => {
+                const def = resolveDashboardMetric(metricId);
+                const status = metricSourceStatus(metricId, sources);
+                const value = metricValue(metricId, sources);
+                const delta = metricDelta(metricId, sources);
+                const href = def.buildHref(today);
+                const metricState =
+                  status === 'loading'
+                    ? 'loading'
+                    : status === 'error' && value == null
+                      ? 'error'
+                      : 'idle';
+
+                const description =
+                  status === 'updating' ? (
+                    <span aria-live="polite">Actualizando · {def.description}</span>
+                  ) : (
+                    def.description
+                  );
+
+                const common = {
+                  eyebrow: def.eyebrow,
+                  label: def.label,
+                  value,
+                  description,
+                  accent: def.accent,
+                  state: metricState as 'idle' | 'loading' | 'error',
+                  icon: def.icon,
+                  ...(delta ? { delta } : {}),
+                  ...(metricState === 'error'
+                    ? {
+                        onRetry: () => {
+                          for (const sourceId of def.sources) {
+                            retrySource(sourceId);
+                          }
+                        },
+                      }
+                    : {}),
+                  ...(status === 'updating' ? { className: 'opacity-80' } : {}),
+                };
+
+                if (href) {
+                  return <PortalDashboardMetric key={metricId} {...common} href={href} />;
+                }
+
+                return (
+                  <PortalDashboardMetric
+                    key={metricId}
+                    {...common}
+                    onClick={() => {
+                      setHighlightCommercial(true);
+                      setFoldedOpen(true);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {/* B2 / B2b */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-8 rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-dark-border dark:bg-dark-surface-2">
-          <Activity className="mx-auto mb-3 h-10 w-10 text-gray-400" aria-hidden="true" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-            Rol en expansión
-          </p>
-          <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Panel en preparación
-          </p>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            El dashboard para tu rol estará disponible próximamente.
-          </p>
-        </div>
-        <div className="xl:col-span-4">
-          <QuickActionsPanel />
+        {composition.dominantBlockId ? (
+          <div className="xl:col-span-8 flex flex-col gap-6">
+            {renderDashboardBlock({
+              blockId: composition.dominantBlockId,
+              sources,
+              composition,
+              highlightCommercial,
+              onRetrySource: retrySource,
+            })}
+            {foldedIds.length > 0 ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setFoldedOpen((open) => !open)}
+                  className="text-sm font-medium text-iwana-primary underline-offset-4 hover:underline"
+                  aria-expanded={foldedOpen}
+                >
+                  {foldedOpen ? 'Ocultar bloques adicionales' : 'Ver más'}
+                </button>
+                {foldedOpen
+                  ? foldedIds.map((blockId) =>
+                      renderDashboardBlock({
+                        blockId,
+                        sources,
+                        composition,
+                        highlightCommercial,
+                        onRetrySource: retrySource,
+                      }),
+                    )
+                  : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div
+          className={`flex flex-col gap-6 ${composition.dominantBlockId ? 'xl:col-span-4' : 'xl:col-span-12'}`}
+        >
+          {supportIds.map((blockId) =>
+            renderDashboardBlock({
+              blockId,
+              sources,
+              composition,
+              highlightCommercial,
+              onRetrySource: retrySource,
+            }),
+          )}
+          {!composition.dominantBlockId && foldedIds.length === 0 && supportIds.length === 0
+            ? null
+            : null}
         </div>
       </div>
+
+      {/* B3 · Estado de la empresa */}
+      {composition.showOperationalTenantCard ? (
+        <section aria-label="Estado de la empresa">
+          {operationalTenant && operationalSettings ? (
+            <TenantSummaryCard tenant={operationalTenant} settings={operationalSettings} />
+          ) : (
+            <IdentityOnlyCard branding={branding} />
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
 
-export function DashboardClient() {
-  const { user } = useAuth();
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const isAdmin = user?.role === 'ADMIN';
-
-  const loadSummary = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await dashboardApi.getSummary();
-      setSummary(data);
-    } catch (err: unknown) {
-      setError(mapError(err));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Solo cargar el summary completo si el usuario es ADMIN
-    if (isAdmin) {
-      void loadSummary();
-    } else {
-      setIsLoading(false);
-    }
-  }, [isAdmin, loadSummary]);
-
-  // Vista reducida para roles no ADMIN
-  if (!isAdmin) {
-    return <RoleRestrictedView />;
-  }
-
-  // Estado de carga
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Panel empresarial" subtitle="Cargando datos de tu empresa..." />
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="xl:col-span-8 space-y-6">
-            <div className="h-40 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-            <MetricsSkeleton />
-          </div>
-          <div className="xl:col-span-4 space-y-6">
-            <div className="h-52 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-            <div className="h-64 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Error de carga
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Panel empresarial" subtitle="Error al cargar el dashboard" />
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="xl:col-span-8 rounded-2xl border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] p-6 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20">
-            <div className="flex items-start gap-3">
-              <AlertTriangle
-                className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400"
-                aria-hidden="true"
-              />
-              <div>
-                <p className="text-sm font-medium text-red-800 dark:text-red-300">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => void loadSummary()}
-                  className="mt-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-400"
-                >
-                  Reintentar
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="xl:col-span-4">
-            <QuickActionsPanel />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Sin datos (no debería ocurrir si no hay error, pero manejo defensivo)
-  if (!summary) return null;
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title={`Bienvenido, ${summary.tenant.name}`}
-        subtitle="Panel de administración empresarial"
-      />
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-8 flex flex-col gap-6">
-          <section aria-label="Métricas operativas">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <MetricCard
-                label="Usuarios activos"
-                value={summary.metrics.configuredUsers}
-                icon={Users}
-                emptyLabel="Sin datos"
-                description="Usuarios con acceso activo al portal"
-                tone="primary"
-              />
-              <MetricCard
-                label="Eventos de auditoría"
-                value={summary.metrics.auditEventsLast7d}
-                icon={Activity}
-                emptyLabel="Sin datos"
-                description="Últimos 7 días"
-                tone="secondary"
-              />
-              <MetricCard
-                label="Alertas pendientes"
-                value={summary.metrics.pendingAlerts}
-                icon={AlertTriangle}
-                description="Configuraciones requeridas"
-                tone="warning"
-              />
-            </div>
-          </section>
-
-          <section aria-label="Resumen de la empresa">
-            <TenantSummaryCard tenant={summary.tenant} settings={summary.settings} />
-          </section>
-        </div>
-
-        <div className="xl:col-span-4 flex flex-col gap-6">
-          <section aria-label="Alertas de configuración pendiente">
-            <OnboardingAlerts alerts={summary.alerts} />
-          </section>
-
-          <section aria-label="Actividad reciente">
-            <RecentActivityPanel />
-          </section>
-
-          <section aria-label="Accesos rápidos a módulos">
-            <QuickActionsPanel />
-          </section>
-        </div>
-      </div>
-    </div>
-  );
+/** Expone limpieza de caché de sesión para pruebas. */
+export function __resetDashboardSessionCacheForTests(): void {
+  dashboardSessionCache = null;
 }

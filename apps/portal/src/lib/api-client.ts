@@ -1662,7 +1662,30 @@ export interface DashboardAlert {
   href?: string;
 }
 
-/** M?tricas iniciales del dashboard ? los campos opcionales son null si la fuente no existe */
+/**
+ * Subconjunto del tenant en GET /tenants/me/summary (A-3 · e4f93324).
+ * 13 campos — sin marca ni nitDv. No duplicar TenantSelf aquí.
+ */
+export interface DashboardSummaryTenant {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  contactEmail: string;
+  legalName: string | null;
+  nit: string | null;
+  city: string | null;
+  department: string | null;
+  countryCode: string | null;
+  phone: string | null;
+  website: string | null;
+  createdAt: string;
+}
+
+/**
+ * Métricas del resumen de empresa.
+ * `null` = fallo de fuente. MFA con 0 usuarios ACTIVE → ratio 1 (vacua).
+ */
 export interface DashboardMetrics {
   configuredUsers: number | null;
   mfaCoverage: number | null;
@@ -1672,7 +1695,7 @@ export interface DashboardMetrics {
 
 /** Respuesta completa del summary del dashboard empresarial */
 export interface DashboardSummary {
-  tenant: TenantSelf;
+  tenant: DashboardSummaryTenant;
   settings: TenantSelfSettings;
   metrics: DashboardMetrics;
   alerts: DashboardAlert[];
@@ -2488,11 +2511,11 @@ export const commercialApi = {
 
 /**
  * API del dashboard empresarial del portal.
- * El summary agrega datos del tenant, m?tricas y alertas de onboarding.
- * Solo disponible para el rol ADMIN ? otros roles ven fallback controlado.
+ * GET /tenants/me/summary — guard ADMIN; el home hace fan-out por rol
+ * a los demás contratos de HLD §4.2 (no es fachada agregadora).
  */
 export const dashboardApi = {
-  /** Retorna el summary completo del dashboard (solo ADMIN). */
+  /** Resumen de empresa (tenant 13 campos + settings + métricas + alertas). */
   getSummary: (tenantSlug?: string) =>
     request<DashboardSummary>('/tenants/me/summary', undefined, tenantSlug),
 };

@@ -1,16 +1,18 @@
 // apps/portal/src/components/dashboard/TenantSummaryCard.tsx
 import { Badge, Card, CardContent } from '@iwana/ui';
 import { Building2, MapPin, Globe } from 'lucide-react';
-import type { TenantSelf, TenantSelfSettings } from '@/lib/api-client';
+import type { DashboardSummaryTenant, TenantSelfSettings } from '@/lib/api-client';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 interface TenantSummaryCardProps {
-  tenant: TenantSelf;
+  tenant: DashboardSummaryTenant;
   settings: TenantSelfSettings;
 }
 
 /** Mapea el estado del tenant a variante visual de Badge */
-function statusVariant(status: TenantSelf['status']): 'success' | 'warning' | 'error' | 'neutral' {
+function statusVariant(
+  status: DashboardSummaryTenant['status'],
+): 'success' | 'warning' | 'error' | 'neutral' {
   if (status === 'ACTIVE') return portalActiveBadgeVariant;
   if (status === 'SUSPENDED') return 'error';
   if (status === 'PROVISIONING') return 'warning';
@@ -19,8 +21,8 @@ function statusVariant(status: TenantSelf['status']): 'success' | 'warning' | 'e
   return 'neutral';
 }
 
-function statusLabel(status: TenantSelf['status']): string {
-  const labels: Record<TenantSelf['status'], string> = {
+function statusLabel(status: DashboardSummaryTenant['status']): string {
+  const labels: Record<DashboardSummaryTenant['status'], string> = {
     ACTIVE: 'Activo',
     SUSPENDED: 'Suspendido',
     INACTIVE: 'Inactivo',
@@ -31,7 +33,7 @@ function statusLabel(status: TenantSelf['status']): string {
   return labels[status] ?? status;
 }
 
-function resolveLocation(tenant: TenantSelf): string {
+function resolveLocation(tenant: DashboardSummaryTenant): string {
   const parts = [tenant.city, tenant.department].filter(Boolean);
   if (parts.length === 0) {
     return tenant.countryCode ?? 'No disponible';
@@ -40,7 +42,7 @@ function resolveLocation(tenant: TenantSelf): string {
   return `${parts.join(', ')}${tenant.countryCode ? ` · ${tenant.countryCode}` : ''}`;
 }
 
-function resolveWebsite(tenant: TenantSelf): string {
+function resolveWebsite(tenant: DashboardSummaryTenant): string {
   return tenant.website?.trim() || 'No disponible';
 }
 

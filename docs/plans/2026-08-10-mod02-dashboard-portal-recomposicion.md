@@ -264,11 +264,13 @@ git commit -m "feat(ui): add portal dashboard primitives"
 - Create or modify: `apps/portal/src/components/dashboard/DashboardClient.spec.tsx`
 - Modify: `apps/portal/src/lib/api-client.ts`
 
-- [ ] **C-1 · Escribir la prueba de los 12 roles**
+- [x] **C-1 · Escribir la prueba de los 12 roles**
 
 La tabla debe cubrir `Object.values(UserRole)` y verificar para cada rol: bloque de identidad, al menos una tarea o destino útil y ausencia de accesos no autorizados.
 
-- [ ] **C-2 · Definir composición tipada**
+> C-1 · AI-FE-PLATFORM · Hecho · `dashboard-role-composition.spec.ts` · 12 roles · 2026-08-10
+
+- [x] **C-2 · Definir composición tipada**
 
 Usar un contrato interno exhaustivo. Los IDs se resuelven mediante registros tipados de acciones y bloques; las rutas exactas son las verificadas en UX spec §5.3 y en el inventario real de `apps/portal/src/app/dashboard/`:
 
@@ -420,23 +422,33 @@ const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleComposition> = {
 
 No usar `default` que oculte roles sin mapear; TypeScript debe fallar si el enum crece. `AUDITOR` conserva la vista base hasta que exista la aprobación de seguridad y un destino de historial completo verificable.
 
-- [ ] **C-3 · Eliminar el gate binario**
+> C-2 · AI-FE-PLATFORM · Hecho · `dashboard-role-composition.ts` · Record exhaustivo · 2026-08-10
+
+- [x] **C-3 · Eliminar el gate binario**
 
 Retirar `RoleRestrictedView` y `const isAdmin`. Renderizar bandas B0–B3 según la composición tipada.
 
-- [ ] **C-4 · Implementar fan-out y degradación por bloque**
+> C-3 · AI-FE-PLATFORM · Hecho · `DashboardClient.tsx` sin gate ADMIN · 2026-08-10
+
+- [x] **C-4 · Implementar fan-out y degradación por bloque**
 
 Usar `Promise.allSettled`; cada resultado actualiza solo su bloque. La recarga conserva cifras previas y expone estado “Actualizando”.
 
-- [ ] **C-5 · Sincronizar el contrato real de A-3**
+> C-4 · AI-FE-PLATFORM · Hecho · fan-out por fuente + “Actualizando” · 2026-08-10
+
+- [x] **C-5 · Sincronizar el contrato real de A-3**
 
 Reemplazar mocks del tipo de tenant solo después de que A-3 publique SHA. No ampliar la respuesta del backend ni duplicar el DTO completo.
 
-- [ ] **C-6 · Deduplicar peticiones y persistir filtros URL**
+> C-5 · AI-FE-PLATFORM · Hecho · `DashboardSummaryTenant` 13 campos sync `e4f93324` · 2026-08-10
+
+- [x] **C-6 · Deduplicar peticiones y persistir filtros URL**
 
 Los indicadores accionables navegan a los destinos/filtros definidos en UX spec. Atrás restaura el dashboard sin una recarga de red innecesaria.
 
-- [ ] **C-7 · Ejecutar pruebas focalizadas**
+> C-6 · AI-FE-PLATFORM · Hecho · hrefs §3.2 + caché sesión R-5 · 2026-08-10
+
+- [x] **C-7 · Ejecutar pruebas focalizadas**
 
 Run:
 
@@ -446,6 +458,8 @@ pnpm --filter @iwana/portal typecheck
 ```
 
 Expected: 12 roles cubiertos, fallos parciales contenidos y typecheck en verde.
+
+> C-7 · AI-FE-PLATFORM · Hecho · jest 48/48 · typecheck 0 · 2026-08-10
 
 Commit sugerido:
 
@@ -720,3 +734,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | --- | --- | --- | --- | --- | --- |
 | 2026-08-10 | PLAN | AI-EM-ARCH | Hecho | Este documento | Plan canónico emitido para ejecución multiagente |
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 | C-1/C-2/C-3: fiber default, mfaCoverage real, tenant DTO 13 campos, OpenAPI |
+| 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | pending SHA · jest 48/48 · typecheck 0 | Composition + fan-out; sync A-3; sin gate binario |
