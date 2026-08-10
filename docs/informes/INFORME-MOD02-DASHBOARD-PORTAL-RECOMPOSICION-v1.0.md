@@ -123,7 +123,7 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | G6-3 | AI-PROD-UX | **NO-GO** | HEAD `eb5851d0` (≥ `1014990f`) · UX spec v1.0 · HLD CA-V2-01…12 | Experiencia: 11/12 CA OK; **CA-V2-05 falla** (filtros outbound sin hidratación en destino). Ver §9. |
 | 2026-08-10 | G6-4 | AI-SR-QA | **NO-GO** | HEAD `7ea22066` · re-verify post `1014990f` · jest 76/76 cov ≥80% · E2E 21/25 | Filtros axe retirados OK; **CA-V2-07** falla (descripción muted×danger light); CA-V2-05 sin aserción destino/Atrás. Ver §9. |
 | 2026-08-10 | DS-v1.2 | AI-DS-OWNER | Hecho | contrato §1.7 · adenda prompt G4 | Re-sync DS v1.2: description (+ muted cuerpo) × accent danger/warning → `text-gray-700 dark:text-gray-200`. FE aplica · QA re-mide. Carril rápido; sin CTO/ADR. |
-| 2026-08-10 | CA-V2-05 + DS-v1.2-FE | AI-FE-PLATFORM | Hecho | `ddbc22cf` contraste · hidratación I-1/I-2/I-4/I-7 · E2E CA-V2-05 pass | Description muted on-tint; destinos hidratan URL; E2E indicador→filtro→recarga→Inicio. Re-dictamen G6-3/G6-4 pendiente. |
+| 2026-08-10 | CA-V2-05 + DS-v1.2-FE | AI-FE-PLATFORM | Hecho | `ddbc22cf` contraste · `d4ee265a` hidratación · E2E CA-V2-05 pass | Description muted on-tint; destinos hidratan URL; E2E indicador→filtro→recarga→Inicio. Re-dictamen G6-3/G6-4 pendiente. |
 | 2026-08-10 | G6-1 | AI-PLAT-OPS | **NO-GO técnico** | SHA probado `eb5851d0` · E2E 21/25 exit 1 · audits BLOQUEANTE 0 | Gates ejecutados; no dictamen G6 consolidado. Ver §9 G6-1. |
 
 ---
