@@ -153,6 +153,8 @@ function mockAdminApis() {
     loginBackgroundDarkUrl: null,
   });
   getSummary.mockResolvedValue(narrowedSummary);
+  getMe.mockResolvedValue(narrowedSummary.tenant);
+  getSettings.mockResolvedValue(narrowedSummary.settings);
   wfmGetSummary.mockResolvedValue({
     todayCount: 3,
     overdueCount: 1,
@@ -412,5 +414,88 @@ describe('DashboardClient', () => {
     expect(companySection).toBeInTheDocument();
     expect(within(companySection).getByText(/Ver en configuración/i)).toBeInTheDocument();
     expect(within(companySection).queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('NOC compone acción operativa e indicadores sin paneles de preparación (D-3)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'NOC' },
+      isLoading: false,
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Programar visita/i })).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('Indicadores núcleo')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Casos abiertos/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Panel en preparación/i)).not.toBeInTheDocument();
+    expect(commercialGetSummary).not.toHaveBeenCalled();
+  });
+
+  it('métrica nula muestra sustituto AA y no cifra cero (D-2)', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: null,
+      overdueCount: 0,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 0,
+        readyToScheduleCount: null,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      },
+      alerts: [],
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
+    });
+
+    const visits = screen.getByRole('link', { name: /Visitas de hoy/i });
+    expect(within(visits).getByText('Sin dato disponible')).toBeInTheDocument();
+    expect(within(visits).queryByText('0')).not.toBeInTheDocument();
+    expect(within(visits).getByText('Sin dato disponible').className).toMatch(/text-gray-700/);
+  });
+
+  it('error de fuente anuncia PortalAlert sin gradiente lineal (D-1 backgroundImage)', async () => {
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
+
+    const { container } = render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No pudimos cargar el resumen de operaciones de campo/i),
+      ).toBeInTheDocument();
+    });
+
+    const alert = screen.getByRole('status');
+    expect(alert.className).not.toMatch(/bg-\[linear-gradient/);
+    expect(alert.className).toMatch(/dark:bg-red-950/);
+    expect(container.innerHTML).not.toMatch(/bg-\[linear-gradient/);
+    expect(screen.getByRole('link', { name: /Casos abiertos/i })).toBeInTheDocument();
+  });
+
+  it('abre bloques plegados con Ver más (cobertura B2b)', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver más/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Ver más/i }));
+    expect(screen.getByText(/Casos de la mesa de ayuda/i)).toBeInTheDocument();
+    expect(screen.getByText(/Estado del almacén/i)).toBeInTheDocument();
   });
 });

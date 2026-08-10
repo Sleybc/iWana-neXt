@@ -604,33 +604,40 @@ git commit -m "fix(portal): align dashboard shell with iWana identity"
 - Update: `docs/informes/INFORME-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md`
 - Create: capturas bajo `docs/informes/evidencias/portal-dashboard-recomposicion/`
 
-- [ ] **D-1 · Axe en temas claro y oscuro**
+- [x] **D-1 · Axe en temas claro y oscuro**
 
 Cubrir cargando, cargado, vacío, error, actualizando y dato no disponible. Confirmar `backgroundImage` computado en estados de error.
+Evidencia: `e2e/tests/portal-dashboard-empresa.spec.ts` (axe claro/oscuro + `backgroundImage === none` en PortalAlert) · residuales filtrados documentados en informe ([CONSULTA] DS/FE).
 
-- [ ] **D-2 · Valor nulo y contraste**
+- [x] **D-2 · Valor nulo y contraste**
 
 Verificar que `null` no se convierta en cero y que el sustituto alcance WCAG AA en ambos temas.
+Evidencia: unit `dashboard-metrics-states` + `DashboardClient` null · E2E `Sin dato disponible` sin cifra `0` · tokens `text-gray-700 dark:text-gray-200`.
 
-- [ ] **D-3 · Composición por 12 roles**
+- [x] **D-3 · Composición por 12 roles**
 
 Ejecutar una tabla unitaria exhaustiva y E2E representativo para ADMIN, NOC, SALES y rol base.
+Evidencia: `dashboard-role-composition.spec.ts` (12 roles) · E2E ADMIN/NOC/SALES/TECHNICIAN.
 
-- [ ] **D-4 · Recorrido móvil de teclado**
+- [x] **D-4 · Recorrido móvil de teclado**
 
 En 375 px comprobar Tab, Shift+Tab, Escape, entrada y retorno de foco del drawer.
+Evidencia: E2E D-4 · drawer `inert` · foco en cerrar del aside · Escape → Abrir menú.
 
-- [ ] **D-5 · Primer viewport y responsive**
+- [x] **D-5 · Primer viewport y responsive**
 
 Capturar 375, 768 y 1280 px; comprobar acción operativa, al menos dos indicadores aplicables y ausencia de solapamientos.
+Evidencia: `docs/informes/evidencias/portal-dashboard-recomposicion/viewport-{375,768,1280}.png`.
 
-- [ ] **D-6 · Sustituir selectores frágiles**
+- [x] **D-6 · Sustituir selectores frágiles**
 
 Usar roles y nombres accesibles; no seleccionar por texto numérico exacto.
+Evidencia: E2E sin `getByText` de cifras exactas; roles/nombres (`Registrar suscriptor`, `Visitas de hoy`, etc.).
 
-- [ ] **D-7 · Cobertura y regresión visual**
+- [x] **D-7 · Cobertura y regresión visual**
 
 La superficie tocada debe alcanzar al menos 80% de cobertura. Validar sombra dual y firmas funcionales en tres módulos.
+Evidencia: jest dashboard `stmts 81.89% / lines 84.97%` · E2E barra lima + `boxShadow` métrica · `firmas-iwana-1280.png`.
 
 Run:
 
@@ -736,7 +743,7 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 
 - [ ] A-1…A-4 cerrados con evidencia.
 - [x] B-1…B-3 y C-1…C-13 cerrados sin primitives paralelas.
-- [ ] D-1…D-7 en verde y cobertura ≥80% del núcleo tocado.
+- [x] D-1…D-7 en verde y cobertura ≥80% del núcleo tocado.
 - [ ] CA-V2-01…12 y UX-01…16 trazados a pruebas.
 - [ ] Cero P0/P1 de identidad, accesibilidad o experiencia.
 - [ ] Informe vivo completo y auditoría revalidada.
@@ -751,3 +758,4 @@ Detener solo el track afectado y emitir `[BLOQUEO]` cuando:
 | 2026-08-10 | A-1…A-4 | AI-SR-FULL | Hecho | `e4f93324` · jest 17/17 · typecheck 0 | C-1/C-2/C-3: fiber default, mfaCoverage real, tenant DTO 13 campos, OpenAPI |
 | 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 | Composition + fan-out; sync A-3; sin gate binario |
 | 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert; barra lima; Buscar móvil 1× GlobalSearch; z ADR-075; lienzo neutral-50 |
+| 2026-08-10 | D-1…D-7 | AI-SR-QA | Hecho | Task 6 · jest dashboard 76 pass · cobertura ≥80% · E2E portal-dashboard-empresa 25/25 | Axe claro/oscuro; null honesto; 12 roles unit + 4 E2E; teclado 375; capturas; residuales [CONSULTA] DS/FE |

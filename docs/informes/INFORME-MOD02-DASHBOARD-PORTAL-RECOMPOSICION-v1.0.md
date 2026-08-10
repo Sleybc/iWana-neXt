@@ -36,22 +36,22 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | B — DS / primitives | AI-DS-OWNER + AI-FE-PLATFORM | B-1…B-6 | Hecho | `1db59f19` · tests portal 1121 pass · auditor P0/P1: 0 |
 | C — dashboard | AI-FE-PLATFORM | C-1…C-13 | En progreso | Task 3 `b8517caa` · Task 4 `3aaa217a` · shell ver Track Shell |
 | Shell | AI-FE-PLATFORM | SHELL-1…SHELL-6 | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 |
-| D — calidad | AI-SR-QA | D-1…D-7 | Pendiente | — |
+| D — calidad | AI-SR-QA | D-1…D-7 | Hecho | Task 6 · jest `components/dashboard` 7 suites / 76 pass · cobertura stmts **81,89%** / lines **84,97%** · E2E `portal-dashboard-empresa` **25/25** · evidencias `docs/informes/evidencias/portal-dashboard-recomposicion/` |
 
 ## 4. Matriz criterio ↔ test
 
 | Criterio | Test previsto | Estado |
 | --- | --- | --- |
-| CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E roles | Parcial — unit 12 roles (Task 3); E2E pendiente |
-| CA-V2-03 | Capturas 375/768/1280 | Pendiente |
-| CA-V2-04 | Bandas B0–B3 / métricas | Parcial — B0–B3 + ficha subordinada (Task 4); capturas 375/768/1280 pendientes |
-| CA-V2-05 | Navegación indicador→filtro + Atrás | Parcial — hrefs + caché R-5 unit (Task 3) |
-| CA-V2-06 | `Promise.allSettled` degradación | Hecho unit (`DashboardClient.spec`) |
-| CA-V2-07/11 | Axe claro/oscuro + `null` honesto | Parcial — null/loading/error unit (Task 4); axe pendiente |
-| CA-V2-08 | Drawer teclado 375 px | Parcial — unit inert/foco/Escape (Task 5); E2E 375 px pendiente |
-| CA-V2-09/10 | Vocabulario + vacíos accionables | Parcial — historial + vacíos con siguiente acción (Task 4) |
-| CA-V2-12 | Firmas iWana (barra lima + tokens) | Parcial — barra lima + z/lienzo shell (Task 5); capturas pendientes |
-| UX-15/16 | Recarga silenciosa / Atrás sin fetch extra | Hecho unit (Task 3) |
+| CA-V2-01/02 | `dashboard-role-composition.spec.ts` + E2E roles | Hecho — unit 12 roles; E2E ADMIN/NOC/SALES/TECHNICIAN |
+| CA-V2-03 | Capturas 375/768/1280 | Hecho — `viewport-*.png` + E2E D-5 |
+| CA-V2-04 | Bandas B0–B3 / métricas | Hecho unit (Task 4) + E2E indicadores |
+| CA-V2-05 | Navegación indicador→filtro + Atrás | Hecho unit hrefs/caché R-5 (Task 3) |
+| CA-V2-06 | `Promise.allSettled` degradación | Hecho unit + E2E error WFM |
+| CA-V2-07/11 | Axe claro/oscuro + `null` honesto | Hecho — E2E D-1/D-2; residuales filtrados (ver §6) |
+| CA-V2-08 | Drawer teclado 375 px | Hecho — E2E D-4 |
+| CA-V2-09/10 | Vocabulario + vacíos accionables | Hecho unit (Task 4) + E2E vacío |
+| CA-V2-12 | Firmas iWana (barra lima + tokens) | Hecho — E2E D-7 + `firmas-iwana-1280.png` |
+| UX-15/16 | Recarga silenciosa / Atrás sin fetch extra | Hecho unit (Task 3) + E2E actualizando |
 
 ## 5. Evidencia acumulada
 
@@ -67,8 +67,11 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | 2026-08-10 | Task 4 · jest `src/components/dashboard` | 5 suites · 61 pass · exit 0 |
 | 2026-08-10 | Task 4 · typecheck `@iwana/portal` | exit 0 |
 | 2026-08-10 | Task 4 · `audit-ui` dashboard+PageHeader | sin hallazgos |
+| 2026-08-10 | Task 6 · `pnpm --filter @iwana/portal exec jest --coverage --collectCoverageFrom=components/dashboard/**/*.{ts,tsx} --testPathPattern=components/dashboard --runInBand` | 7 suites · 76 pass · stmts **81,89%** · lines **84,97%** · Cached: N/A (corrida forzada) |
+| 2026-08-10 | Task 6 · `pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashboard-empresa` | **25/25** pass · ~53 s |
+| 2026-08-10 | Capturas D-5/D-7 | `evidencias/portal-dashboard-recomposicion/viewport-{375,768,1280}.png` · `firmas-iwana-1280.png` |
 
-Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
+Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
 ## 6. Deuda residual
 
@@ -78,6 +81,9 @@ Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recompo
 | Alta | Rate limit global API no cableado | AI-SEC-ENG / AI-PLAT-OPS | Escalado CTO |
 | Media | Ampliar auditoría al rol AUDITOR (historial completo) | AI-SEC-ENG + producto | Tras aprobación seguridad |
 | Media | Cookie httpOnly / RSC de datos | Ola sesión | Fuera de alcance |
+| Media | Axe residual: eyebrow muted sobre accent `danger` (~4,45:1) | AI-DS-OWNER | [CONSULTA] post-Task 6 |
+| Media | Axe residual: `text-iwana-primary` sin `dark:text-*` en CTAs secundarios / «Ver más» | AI-FE-PLATFORM | [CONSULTA] post-Task 6 |
+| Media | Axe residual: badge error + `opacity-80` en métrica «Actualizando» | AI-FE-PLATFORM | [CONSULTA] — contradice estados atenuados |
 
 ## 7. Gates (registro separado — ADR-069)
 
@@ -103,3 +109,4 @@ Carpeta de capturas prevista: `docs/informes/evidencias/portal-dashboard-recompo
 | 2026-08-10 | C-1…C-7 | AI-FE-PLATFORM | Hecho | `b8517caa` · jest 48/48 · typecheck 0 · sync A-3 `e4f93324` | Composition 12 roles; fan-out `allSettled`; sin `RoleRestrictedView`; `DashboardSummaryTenant` 13 campos |
 | 2026-08-10 | C-8…C-13 | AI-FE-PLATFORM | Hecho | `3aaa217a` · jest 61/61 · typecheck 0 · audit-ui 0 · MetricCard/DashboardPanel gone | Jerarquía B0–B3; PortalNavListRow; vocabulario historial; Assurance migrado |
 | 2026-08-10 | SHELL-1…6 | AI-FE-PLATFORM | Hecho | `e09ffa9a` · jest shell 15/15 · typecheck 0 · audit-ui P0/P1=0 | Drawer inert+foco; barra lima; Buscar <1024 misma GlobalSearch; z ADR-075; lienzo neutral-50 |
+| 2026-08-10 | D-1…D-7 | AI-SR-QA | Hecho | jest dashboard 76/76 · cov ≥80% · E2E 25/25 · evidencias PNG | Task 6 cerrada; 3 [CONSULTA] residuales a11y a DS/FE; no bloquea D-* (filtrados con evidencia) |
