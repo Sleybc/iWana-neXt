@@ -48,6 +48,28 @@ describe('TopHeader', () => {
     jest.clearAllMocks();
   });
 
+  it('expone targets táctiles ≥ 44 px en hamburger, home mobile y buscar', () => {
+    render(
+      <TopHeader
+        desktopCollapsed={false}
+        setDesktopCollapsed={jest.fn()}
+        mobileOpen={false}
+        setMobileOpen={jest.fn()}
+      />,
+    );
+
+    const openMenu = screen.getByRole('button', { name: 'Abrir menú' });
+    expect(openMenu.className).toMatch(/h-11/);
+    expect(openMenu.className).toMatch(/w-11/);
+
+    const home = screen.getByRole('link', { name: 'Ir al dashboard' });
+    expect(home.className).toMatch(/min-h-11/);
+    expect(home.className).toMatch(/min-w-11/);
+
+    const searchTrigger = screen.getByRole('button', { name: 'Buscar' });
+    expect(searchTrigger.className).toMatch(/h-11|min-h-11/);
+  });
+
   it('expone un control táctil Buscar bajo 1024 px que abre la misma instancia de GlobalSearch', async () => {
     const user = userEvent.setup();
 

@@ -4,9 +4,10 @@ import { Suspense, useEffect, useRef, type ComponentType } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, ClipboardList, LayoutDashboard, Settings, Users, X } from 'lucide-react';
-import { cn } from '@iwana/ui';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { PlatformBrandMark } from './PlatformBrandMark';
 
 interface SidebarProps {
   desktopCollapsed: boolean;
@@ -79,11 +80,12 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                     href={item.href}
                     title={desktopCollapsed ? item.label : undefined}
                     className={cn(
-                      'group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
+                      'group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
                       isActive
-                        ? 'relative bg-iwana-surface-soft text-iwana-primary shadow-[var(--shadow-iwana-card)] ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:text-white dark:ring-dark-border-2'
+                        ? 'relative bg-iwana-surface-soft text-iwana-primary dark:bg-dark-surface-3 dark:text-white'
                         : 'text-gray-600 hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-gray-100',
                       desktopCollapsed && 'lg:justify-center lg:px-2',
+                      interactiveFocusClassName,
                     )}
                     aria-current={isActive ? 'page' : undefined}
                   >
@@ -169,11 +171,13 @@ export const Sidebar = ({
       >
         <Link
           href="/dashboard"
-          className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
+          className={cn(
+            'flex min-h-11 min-w-0 items-center gap-3',
+            desktopCollapsed && 'lg:hidden',
+            interactiveFocusClassName,
+          )}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-iwana-surface-soft ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:ring-dark-border-2">
-            <img src={logoUrl} alt="" className="h-6 w-6 object-contain" aria-hidden="true" />
-          </div>
+          <PlatformBrandMark logoUrl={logoUrl} />
           <span className="min-w-0">
             <span className="portal-eyebrow-muted block">{PLATFORM_UI_COPY.shell.workspace}</span>
             <span className="block truncate text-sm font-semibold text-iwana-primary dark:text-white">
@@ -184,20 +188,25 @@ export const Sidebar = ({
 
         <Link
           href="/dashboard"
-          className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
+          className={cn(
+            'hidden min-h-11 items-center justify-center',
+            desktopCollapsed && 'lg:flex',
+            interactiveFocusClassName,
+          )}
           aria-label={PLATFORM_UI_COPY.shell.goHome}
           title={`${branding.productName} - ${PLATFORM_UI_COPY.navigation.home}`}
         >
-          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-iwana-surface-soft ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:ring-dark-border-2">
-            <img src={logoUrl} alt="" className="h-6 w-6 object-contain" aria-hidden="true" />
-          </div>
+          <PlatformBrandMark logoUrl={logoUrl} />
         </Link>
 
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
           aria-label={PLATFORM_UI_COPY.shell.closeMenu}
-          className="shrink-0 text-gray-500 transition-colors hover:text-iwana-primary dark:text-gray-400 dark:hover:text-white lg:hidden"
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center text-gray-500 transition-colors hover:text-iwana-primary dark:text-gray-400 dark:hover:text-white lg:hidden',
+            interactiveFocusClassName,
+          )}
         >
           <X className="w-5 h-5" />
         </button>

@@ -154,7 +154,7 @@ export function NotificationBell() {
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          'relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:bg-iwana-surface-soft hover:text-gray-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white',
+          'relative flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:bg-iwana-surface-soft hover:text-gray-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white',
           interactiveFocusClassName,
         )}
       >

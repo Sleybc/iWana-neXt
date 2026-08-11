@@ -105,7 +105,10 @@ export const TopHeader = ({
           </button>
 
           <Link
-            className={cn('flex shrink-0 lg:hidden', interactiveFocusClassName)}
+            className={cn(
+              'flex min-h-11 min-w-11 shrink-0 items-center justify-center lg:hidden',
+              interactiveFocusClassName,
+            )}
             href="/dashboard"
             aria-label="Ir al dashboard"
           >

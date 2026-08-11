@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { cn } from '@iwana/ui';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 import type { TenantListItem } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
@@ -27,7 +27,9 @@ export function PlatformTenantPicker({
 
   const selectedTenantName =
     tenants.find((tenant) => tenant.slug === value)?.name ??
-    (isDisabled ? PLATFORM_UI_COPY.shared.noTenantsAvailable : PLATFORM_UI_COPY.shared.chooseTenant);
+    (isDisabled
+      ? PLATFORM_UI_COPY.shared.noTenantsAvailable
+      : PLATFORM_UI_COPY.shared.chooseTenant);
 
   const handleToggle = () => {
     if (isDisabled) {
@@ -83,11 +85,11 @@ export function PlatformTenantPicker({
         disabled={isDisabled}
         onClick={handleToggle}
         className={cn(
-          'inline-flex h-11 min-w-[220px] items-center justify-between gap-3 rounded-2xl border px-4 text-sm shadow-[var(--shadow-iwana-card)] transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary/20',
-          'border-gray-200 bg-white text-gray-700 hover:border-iwana-primary-200 hover:bg-iwana-surface-soft',
+          'portal-input-surface inline-flex h-11 min-w-[220px] items-center justify-between gap-3 border px-4 text-sm transition-colors',
+          'text-gray-700 hover:bg-iwana-surface-soft dark:text-gray-200 dark:hover:bg-dark-surface-4',
           'disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400',
-          'dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4',
           'dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
+          interactiveFocusClassName,
         )}
       >
         <span className="truncate">{selectedTenantName}</span>
@@ -122,7 +124,7 @@ export function PlatformTenantPicker({
                 className={cn(
                   'w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
                   tenant.slug === value
-                    ? 'bg-iwana-surface-soft font-medium text-iwana-primary ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:text-white dark:ring-dark-border-2'
+                    ? 'bg-iwana-surface-soft font-medium text-iwana-primary dark:bg-dark-surface-3 dark:text-white'
                     : 'text-gray-700 hover:bg-iwana-surface-soft dark:text-gray-300 dark:hover:bg-dark-surface-3',
                 )}
               >

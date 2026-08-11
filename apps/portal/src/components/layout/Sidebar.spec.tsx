@@ -199,4 +199,21 @@ describe('Sidebar', () => {
     expect(sidebar).not.toHaveAttribute('inert');
     expect(screen.getByRole('link', { name: 'Inicio' })).toBeInTheDocument();
   });
+
+  it('targets táctiles del shell: cierre h-11 w-11 y filas/marca min-h-11', () => {
+    mockMatchMedia(true);
+    renderSidebar({ mobileOpen: true });
+
+    const closeBtn = screen.getByRole('button', { name: 'Cerrar menú' });
+    expect(closeBtn.className).toMatch(/h-11/);
+    expect(closeBtn.className).toMatch(/w-11/);
+
+    const brand = screen
+      .getAllByRole('link', { name: /./ })
+      .find((el) => el.getAttribute('href') === '/dashboard');
+    expect(brand?.className).toMatch(/min-h-11/);
+
+    const homeNav = screen.getByRole('link', { name: 'Inicio' });
+    expect(homeNav.className).toMatch(/min-h-11/);
+  });
 });

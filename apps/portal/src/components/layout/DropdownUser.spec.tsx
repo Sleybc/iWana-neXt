@@ -1,8 +1,8 @@
 /**
- * Tests de DropdownUser (consola plataforma) + UserAvatar / platformRoleToLabel.
+ * Tests de DropdownUser (portal empresarial).
  *
- * CA-S1-12-R / CA-S1-13-R / asChild: ejercen el SUT real (sin mock de DropdownUser
- * ni de @iwana/ui). Solo se mockean dependencias externas (auth, navigation, Link).
+ * CA-S1-12-R / CA-S1-13-R / CA-S1-ROV / asChild: ejercen el SUT real (sin mock
+ * de DropdownUser ni de @iwana/ui). Solo dependencias externas (auth, navigation, Link).
  *
  * SEGURIDAD: sin PII real ni credenciales — datos ficticios de prueba.
  */
@@ -10,7 +10,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DropdownUser, platformRoleToLabel, UserAvatar } from './DropdownUser';
+import { DropdownUser } from './DropdownUser';
 
 const logoutMock = jest.fn().mockResolvedValue(undefined);
 const pushMock = jest.fn();
@@ -35,8 +35,8 @@ jest.mock('next/link', () => ({
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => ({
     user: {
-      displayName: 'Operador Prueba',
-      role: 'SYSTEM_ADMIN',
+      displayName: 'Operador Portal',
+      subtitle: 'Administrador',
     },
     logout: logoutMock,
   }),
@@ -51,30 +51,15 @@ async function openUserMenu(user: ReturnType<typeof userEvent.setup>) {
   return trigger;
 }
 
-describe('UserAvatar', () => {
-  it('muestra la inicial en mayúsculas del displayName', () => {
-    render(<UserAvatar displayName="Juan Pérez" />);
-    expect(screen.getByText('J')).toBeInTheDocument();
-  });
+function getMenuItems() {
+  return {
+    profile: screen.getByRole('menuitem', { name: /Mi perfil/i }),
+    settings: screen.getByRole('menuitem', { name: /Configuración/i }),
+    logout: screen.getByRole('menuitem', { name: /Cerrar sesión/i }),
+  };
+}
 
-  it('muestra "U" como fallback cuando displayName está vacío', () => {
-    render(<UserAvatar displayName="" />);
-    expect(screen.getByText('U')).toBeInTheDocument();
-  });
-});
-
-describe('platformRoleToLabel', () => {
-  it('mapea roles de plataforma a labels visibles en español', () => {
-    expect(platformRoleToLabel('SYSTEM_ADMIN')).toBe('Administrador de plataforma');
-    expect(platformRoleToLabel('IWANA_SUPPORT')).toBe('Soporte iWana');
-  });
-
-  it('conserva roles desconocidos para no ocultar datos inesperados', () => {
-    expect(platformRoleToLabel('CUSTOM_ROLE')).toBe('CUSTOM_ROLE');
-  });
-});
-
-describe('DropdownUser (CA-S1-12-R / CA-S1-13-R / CA-S1-ROV / asChild)', () => {
+describe('DropdownUser portal (CA-S1-12-R / CA-S1-13-R / CA-S1-ROV / asChild)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -122,13 +107,12 @@ describe('DropdownUser (CA-S1-12-R / CA-S1-13-R / CA-S1-ROV / asChild)', () => {
     render(<DropdownUser />);
 
     await openUserMenu(user);
-    const profile = screen.getByRole('menuitem', { name: /Editar perfil/i });
-    const settings = screen.getByRole('menuitem', { name: /Configuración/i });
-    const logout = screen.getByRole('menuitem', { name: /Cerrar sesión/i });
+    const { profile, settings, logout } = getMenuItems();
 
     profile.focus();
     expect(profile).toHaveFocus();
 
+    // Roving vive en la primitiva DropdownMenu (listener document).
     fireEvent.keyDown(document, { key: 'ArrowDown' });
     expect(settings).toHaveFocus();
 
@@ -150,15 +134,12 @@ describe('DropdownUser (CA-S1-12-R / CA-S1-13-R / CA-S1-ROV / asChild)', () => {
     render(<DropdownUser />);
 
     await openUserMenu(user);
-
-    const profile = screen.getByRole('menuitem', { name: /Editar perfil/i });
-    const settings = screen.getByRole('menuitem', { name: /Configuración/i });
-    const logout = screen.getByRole('menuitem', { name: /Cerrar sesión/i });
+    const { profile, settings, logout } = getMenuItems();
 
     expect(profile.tagName).toBe('A');
-    expect(profile).toHaveAttribute('href', '/profile');
+    expect(profile).toHaveAttribute('href', '/dashboard/profile');
     expect(settings.tagName).toBe('A');
-    expect(settings).toHaveAttribute('href', '/settings');
+    expect(settings).toHaveAttribute('href', '/dashboard/settings');
     expect(logout.tagName).toBe('BUTTON');
   });
 });

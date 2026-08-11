@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Menu, Search, X } from 'lucide-react';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
 import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { PlatformBrandMark } from './PlatformBrandMark';
 
 interface TopHeaderProps {
   desktopCollapsed: boolean;
@@ -124,7 +126,10 @@ export const TopHeader = ({
               e.stopPropagation();
               setDesktopCollapsed(!desktopCollapsed);
             }}
-            className="portal-input-surface hidden h-10 w-10 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary lg:flex dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+            className={cn(
+              'portal-input-surface hidden h-10 w-10 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white lg:flex',
+              interactiveFocusClassName,
+            )}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -136,19 +141,20 @@ export const TopHeader = ({
               e.stopPropagation();
               setMobileOpen(!mobileOpen);
             }}
-            className="portal-input-surface flex h-10 w-10 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white lg:hidden"
+            className={cn(
+              'portal-input-surface flex h-10 w-10 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white lg:hidden',
+              interactiveFocusClassName,
+            )}
           >
             <Menu className="w-5 h-5" />
           </button>
 
           <Link
-            className="flex shrink-0 lg:hidden"
+            className={cn('flex shrink-0 lg:hidden', interactiveFocusClassName)}
             href="/dashboard"
             aria-label={PLATFORM_UI_COPY.shell.goHome}
           >
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-iwana-surface-soft ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:ring-dark-border-2">
-              <img src={logoUrl} alt="" className="h-6 w-6 object-contain" aria-hidden="true" />
-            </div>
+            <PlatformBrandMark logoUrl={logoUrl} />
           </Link>
 
           <div className="hidden min-w-0 xl:block">
@@ -176,7 +182,10 @@ export const TopHeader = ({
             aria-expanded={mobileSearchOpen}
             aria-controls="mobile-global-search"
             onClick={() => setMobileSearchOpen(true)}
-            className="portal-input-surface flex h-11 w-11 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white lg:hidden"
+            className={cn(
+              'portal-input-surface flex h-11 w-11 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white lg:hidden',
+              interactiveFocusClassName,
+            )}
           >
             <Search className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -200,7 +209,10 @@ export const TopHeader = ({
               type="button"
               aria-label="Cerrar búsqueda"
               onClick={() => setMobileSearchOpen(false)}
-              className="portal-input-surface flex h-11 w-11 shrink-0 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+              className={cn(
+                'portal-input-surface flex h-11 w-11 shrink-0 items-center justify-center text-gray-500 transition-colors hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white',
+                interactiveFocusClassName,
+              )}
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>

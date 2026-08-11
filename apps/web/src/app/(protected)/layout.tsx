@@ -60,8 +60,8 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
           setMobileOpen={setSidebarMobileOpen}
         />
 
-        {/* Área de contenido gris — redondeada en su esquina superior izquierda para separarse visualmente del sidebar */}
-        <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl">
+        {/* Canvas: separación del sidebar solo por contraste de superficie (sin radio). */}
+        <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface">
           <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>
