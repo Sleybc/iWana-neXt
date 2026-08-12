@@ -167,6 +167,8 @@ Capturas (sin PII): [`docs/quality/evidence-web-empresas-directorio/375.png`](..
 
 **Cerrada 2026-08-11 (identidad):** los chips leen un listado de parque sin `status`/`search`; la tabla sigue filtrada. NotificationBell usa `labelForTenantStatus` (Con error / En configuración), sin slug ni «Configuración fallida».
 
+**Cerrada 2026-08-11 (campana):** la campana del directorio ya no lista empresas Activa/Inactiva como avisos. Empty canónico: `No hay avisos por ahora.` Ver [`INFORME-WEB-CAMPANA-AVISOS-v1.0.md`](INFORME-WEB-CAMPANA-AVISOS-v1.0.md).
+
 **Cerrada 2026-08-11 (chrome K):** se retiró `Volver al centro de control` y la cáscara extra del pulso. Quedan 3 chips sueltos.
 
 **Cerrada 2026-08-11 (CTA):** `Nueva empresa` pasó del PageHeader al chrome de la tabla. Empty de primera vez intacto. Pager ADR-065 sigue fuera.

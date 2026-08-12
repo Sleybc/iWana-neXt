@@ -51,3 +51,9 @@ export function variantForTenantStatus(status: TenantStatus): TenantStatusBadgeV
       return 'neutral';
   }
 }
+
+/** Aviso del directorio: solo estados que conviene revisar ahora (warning/error). */
+export function tenantNeedsDirectoryReview(status: TenantStatus): boolean {
+  const variant = variantForTenantStatus(status);
+  return variant === 'warning' || variant === 'error';
+}

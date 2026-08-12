@@ -5,7 +5,11 @@ import Link from 'next/link';
 import { Bell } from 'lucide-react';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
-import { labelForTenantStatus, variantForTenantStatus } from '@/lib/tenant-status-label';
+import {
+  labelForTenantStatus,
+  tenantNeedsDirectoryReview,
+  variantForTenantStatus,
+} from '@/lib/tenant-status-label';
 import { cn, headerIconControlClassName, interactiveFocusClassName } from '@iwana/ui';
 
 type NotificationTone = 'error' | 'warning' | 'info' | 'success';
@@ -79,7 +83,9 @@ export function NotificationBell() {
   const loadNotifications = useCallback(async () => {
     try {
       const tenants = await tenantApi.list({ limit: 100, offset: 0 });
+      // Copy: «Empresas que conviene revisar ahora.» Activa/inactiva no son avisos.
       const nextNotifications = tenants
+        .filter((tenant) => tenantNeedsDirectoryReview(tenant.status))
         .map(toNotification)
         .sort((left, right) => {
           const priorityDelta = TONE_PRIORITY[right.tone] - TONE_PRIORITY[left.tone];
@@ -136,6 +142,7 @@ export function NotificationBell() {
     const onEsc = (event: KeyboardEvent) => {
       if (open && event.key === 'Escape') {
         setOpen(false);
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
       }
     };
 
