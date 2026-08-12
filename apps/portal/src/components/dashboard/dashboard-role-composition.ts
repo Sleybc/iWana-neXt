@@ -13,7 +13,9 @@ import {
   CalendarClock,
   ClipboardList,
   HandCoins,
+  LifeBuoy,
   Package,
+  Timer,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -28,6 +30,8 @@ export type DashboardActionId =
   | 'view-profile';
 
 export type DashboardMetricId = 'I-1' | 'I-2' | 'I-3' | 'I-4' | 'I-5' | 'I-6' | 'I-7';
+
+export type DashboardMetricSourceStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
 export type DashboardBlockId =
   | 'field-attention'
@@ -156,10 +160,10 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
     blockIds: ['quick-actions'],
     actionIds: ['view-today-agenda', 'view-profile'],
   },
-  // Historial completo pendiente de aprobación de seguridad (UX §4.9).
+  // D-SEC-01 / C-13: listado aprobado (SEC GO condicionado); sin página «ver todo».
   [UserRole.AUDITOR]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    blockIds: ['change-history', 'quick-actions'],
     actionIds: ['view-profile'],
   },
   [UserRole.HR]: {
@@ -250,7 +254,7 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
     label: 'Casos abiertos',
     description: 'Casos en atención',
     accent: 'primary',
-    icon: AlertTriangle,
+    icon: LifeBuoy,
     buildHref: () => '/dashboard/assurance?status=OPEN',
     sources: ['assurance'],
   },
@@ -280,7 +284,7 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
     label: 'Ofertas en riesgo',
     description: 'Vencen pronto o cerca del cupo',
     accent: 'warning',
-    icon: HandCoins,
+    icon: Timer,
     // Excepción UX §3.4: no hay filtro único en destino.
     buildHref: () => null,
     sources: ['commercial'],
@@ -409,7 +413,8 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     secondaryActionId: null,
     metricIds: [],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    // UX §4.9 B2b — historial minimizado (últimos N, sin «ver todo»).
+    supportBlockIds: ['change-history', 'quick-actions'],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -530,6 +535,130 @@ export function listCompositionBlockIds(
   ids.push(...composition.supportBlockIds);
   ids.push(...composition.foldedBlockIds);
   return ids;
+}
+
+/** Dominios canónicos de B1 (Adenda UX §A · prompt delta v1.2). */
+export type DashboardMetricDomainId = 'field-ops' | 'help-desk' | 'commercial' | 'opportunities';
+
+export interface DashboardMetricDomainDefinition {
+  id: DashboardMetricDomainId;
+  label: string;
+  metricIds: readonly DashboardMetricId[];
+}
+
+export const DASHBOARD_METRIC_DOMAIN_ORDER: readonly DashboardMetricDomainId[] = [
+  'field-ops',
+  'help-desk',
+  'commercial',
+  'opportunities',
+] as const;
+
+export const DASHBOARD_METRIC_DOMAIN_REGISTRY: Record<
+  DashboardMetricDomainId,
+  DashboardMetricDomainDefinition
+> = {
+  'field-ops': {
+    id: 'field-ops',
+    label: 'Operaciones de campo',
+    metricIds: ['I-1', 'I-2'],
+  },
+  'help-desk': {
+    id: 'help-desk',
+    label: 'Mesa de ayuda',
+    metricIds: ['I-3', 'I-4'],
+  },
+  commercial: {
+    id: 'commercial',
+    label: 'Comercial',
+    metricIds: ['I-5', 'I-6'],
+  },
+  opportunities: {
+    id: 'opportunities',
+    label: 'Oportunidades',
+    metricIds: ['I-7'],
+  },
+};
+
+export interface DashboardMetricDomainGroup {
+  domainId: DashboardMetricDomainId;
+  label: string;
+  metricIds: readonly DashboardMetricId[];
+}
+
+/**
+ * Agrupa métricas del rol por dominio.
+ * Orden de grupos = primera aparición de un miembro en `metricIds` (respeta SUPPORT).
+ * Dentro del grupo se conserva el orden de composición.
+ */
+export function groupDashboardMetricsByDomain(
+  metricIds: readonly DashboardMetricId[],
+): readonly DashboardMetricDomainGroup[] {
+  const present = new Set(metricIds);
+  const orderIndex = new Map(metricIds.map((id, index) => [id, index]));
+  const groups: DashboardMetricDomainGroup[] = [];
+
+  for (const domainId of DASHBOARD_METRIC_DOMAIN_ORDER) {
+    const domain = DASHBOARD_METRIC_DOMAIN_REGISTRY[domainId];
+    const members = domain.metricIds
+      .filter((id) => present.has(id))
+      .sort((a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0));
+    if (members.length === 0) continue;
+    groups.push({
+      domainId,
+      label: domain.label,
+      metricIds: members,
+    });
+  }
+
+  groups.sort((a, b) => {
+    const aMin = Math.min(
+      ...a.metricIds.map((id) => orderIndex.get(id) ?? Number.MAX_SAFE_INTEGER),
+    );
+    const bMin = Math.min(
+      ...b.metricIds.map((id) => orderIndex.get(id) ?? Number.MAX_SAFE_INTEGER),
+    );
+    return aMin - bMin;
+  });
+
+  return groups;
+}
+
+/**
+ * Bloques plegados que salen del pliegue cuando su KPI de B1 es > 0
+ * (Adenda UX §B · «Ver más» inteligente).
+ */
+export function resolvePromotedFoldedBlockIds(options: {
+  foldedBlockIds: readonly DashboardBlockId[];
+  metricValues: Partial<Record<DashboardMetricId, number | null>>;
+  metricStatuses?: Partial<Record<DashboardMetricId, DashboardMetricSourceStatus>>;
+}): {
+  promotedBlockIds: readonly DashboardBlockId[];
+  remainingFoldedBlockIds: readonly DashboardBlockId[];
+} {
+  const { foldedBlockIds, metricValues, metricStatuses } = options;
+  const hasCurrentPositiveValue = (metricId: DashboardMetricId) => {
+    const value = metricValues[metricId];
+    const status = metricStatuses?.[metricId];
+    if (value == null || value <= 0) return false;
+    if (status === undefined) return true;
+    return status === 'success' || status === 'updating';
+  };
+  const helpDeskKpi = hasCurrentPositiveValue('I-3') || hasCurrentPositiveValue('I-4');
+  const commercialKpi = hasCurrentPositiveValue('I-5') || hasCurrentPositiveValue('I-6');
+
+  const promoteOrder: DashboardBlockId[] = [];
+  if (commercialKpi && foldedBlockIds.includes('commercial-attention')) {
+    promoteOrder.push('commercial-attention');
+  }
+  if (helpDeskKpi && foldedBlockIds.includes('help-desk')) {
+    promoteOrder.push('help-desk');
+  }
+
+  const promoted = new Set(promoteOrder);
+  return {
+    promotedBlockIds: promoteOrder,
+    remainingFoldedBlockIds: foldedBlockIds.filter((id) => !promoted.has(id)),
+  };
 }
 
 /** Icono decorativo de identidad (B3) — no es acción. */

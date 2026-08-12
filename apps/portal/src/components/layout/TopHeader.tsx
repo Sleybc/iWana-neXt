@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { Menu, Search, X } from 'lucide-react';
-import { cn, interactiveFocusClassName } from '@iwana/ui';
+import { cn, headerIconControlClassName, interactiveFocusClassName } from '@iwana/ui';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
@@ -80,10 +80,7 @@ export const TopHeader = ({
               e.stopPropagation();
               setDesktopCollapsed(!desktopCollapsed);
             }}
-            className={cn(
-              'hidden h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:flex dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4',
-              interactiveFocusClassName,
-            )}
+            className={cn(headerIconControlClassName, interactiveFocusClassName, 'hidden lg:flex')}
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -96,10 +93,7 @@ export const TopHeader = ({
               e.stopPropagation();
               setMobileOpen(!mobileOpen);
             }}
-            className={cn(
-              'flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:hidden dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4',
-              interactiveFocusClassName,
-            )}
+            className={cn(headerIconControlClassName, interactiveFocusClassName, 'lg:hidden')}
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -135,10 +129,7 @@ export const TopHeader = ({
                 type="button"
                 aria-label="Cerrar"
                 onClick={closeMobileSearch}
-                className={cn(
-                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4',
-                  interactiveFocusClassName,
-                )}
+                className={cn(headerIconControlClassName, interactiveFocusClassName)}
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
@@ -164,10 +155,7 @@ export const TopHeader = ({
             aria-label="Buscar"
             aria-expanded={searchOpen}
             onClick={requestMobileSearchOpen}
-            className={cn(
-              'flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:hidden dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4',
-              interactiveFocusClassName,
-            )}
+            className={cn(headerIconControlClassName, interactiveFocusClassName, 'lg:hidden')}
           >
             <Search className="h-5 w-5" aria-hidden="true" />
           </button>

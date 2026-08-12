@@ -4029,7 +4029,7 @@ const PORTAL_SEARCH_MODULES: PortalSearchModule[] = [
   },
   {
     id: 'scheduling',
-    title: 'Programacion',
+    title: 'Programación',
     description: 'Agenda operativa, eventos t?cnicos y work orders del tenant',
     keywords: ['programacion', 'agenda', 'wfm', 'ordenes de trabajo', 'tecnicos'],
     route: '/dashboard/scheduling',

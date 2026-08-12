@@ -4,6 +4,7 @@ import { Brackets, DataSource } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
 import { AuditActorResolver } from './audit-actor.resolver';
+import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditLogListResponseDto, AuditLogResponseDto } from './dto/audit-log-response.dto';
 import {
   AUDIT_EXPORT_MAX_ROWS,
@@ -180,6 +181,7 @@ export class AuditQueryService {
       ? (actors.get(entry.userId) ?? this.auditActorResolver.unknownActor(entry.userId))
       : this.auditActorResolver.systemActor();
 
+    // Defensa en profundidad: re-sanitizar en lectura por registros legacy pre-política.
     return {
       id: entry.id,
       tenantId: entry.tenantId,
@@ -188,8 +190,8 @@ export class AuditQueryService {
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId,
-      oldValue: entry.oldValue,
-      newValue: entry.newValue,
+      oldValue: sanitizeAuditPayload(entry.oldValue),
+      newValue: sanitizeAuditPayload(entry.newValue),
       ipAddress: entry.ipAddress,
       userAgent: entry.userAgent,
       requestId: entry.requestId,

@@ -5,30 +5,24 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { changePasswordSchema, type ChangePasswordFormValues } from '@iwana/shared';
-import { Button, Input, OtpInput } from '@iwana/ui';
+import { Alert, AlertDescription, Button, Input, OtpInput } from '@iwana/ui';
 import { ApiError, authApi, platformUsersApi } from '@/lib/api-client';
-import {
-  FORM_ALERT_ERROR_CLASS,
-  FORM_ALERT_INFO_CLASS,
-  FORM_ALERT_SUCCESS_CLASS,
-  FORM_HELP_CLASS,
-  FORM_MICROCOPY_CLASS,
-} from '@/lib/form-styles';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { settingsSectionPanelClassName } from './settings-shell';
 
 interface MfaState {
   enabled: boolean;
   qrCodeBase64?: string;
-  otpauthUri?: string;
   pendingVerification?: boolean;
 }
 
-const securityPanelClass =
-  'rounded-2xl border border-gray-100 bg-white p-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
-const securityInnerSectionClass =
-  'space-y-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-border dark:bg-dark-surface-3/60';
+const copy = PLATFORM_UI_COPY.settings.security;
+
+const sectionIconClass =
+  'rounded-2xl bg-iwana-surface-soft p-2 text-iwana-primary dark:bg-dark-surface-3 dark:text-white';
 
 export function SecuritySettings() {
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mfaState, setMfaState] = useState<MfaState>({ enabled: false });
   const [mfaSetupCode, setMfaSetupCode] = useState('');
@@ -66,9 +60,9 @@ export function SecuritySettings() {
     try {
       await authApi.changePassword(values.currentPassword, values.newPassword);
       reset();
-      setMessage('Contraseña cambiada. Se recomienda cerrar sesión y volver a ingresar.');
+      setMessage({ type: 'success', text: copy.passwordSuccess });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No fue posible cambiar la contraseña.');
+      setError(err instanceof ApiError ? err.message : copy.passwordError);
     }
   };
 
@@ -81,11 +75,10 @@ export function SecuritySettings() {
         enabled: false,
         pendingVerification: true,
         qrCodeBase64: setup.qrCodeBase64,
-        otpauthUri: setup.otpauthUri,
       });
-      setMessage('Escanea el QR en tu app Authenticator y confirma el primer código TOTP.');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No fue posible iniciar configuración MFA.');
+      setMessage({ type: 'info', text: copy.mfaPostSetup });
+    } catch {
+      setError(copy.mfaErrorSetup);
     }
   };
 
@@ -96,9 +89,9 @@ export function SecuritySettings() {
       const result = await authApi.mfaVerifySetup(mfaSetupCode);
       setMfaState({ enabled: result.mfaEnabled, pendingVerification: false });
       setMfaSetupCode('');
-      setMessage('MFA habilitado correctamente.');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No fue posible verificar el código MFA.');
+      setMessage({ type: 'success', text: copy.mfaSuccessOn });
+    } catch {
+      setError(copy.mfaErrorVerify);
     }
   };
 
@@ -110,9 +103,9 @@ export function SecuritySettings() {
       setMfaState({ enabled: false, pendingVerification: false });
       setMfaDisablePassword('');
       setMfaDisableCode('');
-      setMessage('MFA deshabilitado correctamente.');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No fue posible deshabilitar MFA.');
+      setMessage({ type: 'success', text: copy.mfaSuccessOff });
+    } catch {
+      setError(copy.mfaErrorDisable);
     }
   };
 
@@ -125,23 +118,33 @@ export function SecuritySettings() {
 
   return (
     <div className="space-y-5">
-      {error && (
-        <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
-          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{error}</p>
-        </div>
-      )}
-      {message && (
-        <div role="alert" className={FORM_ALERT_SUCCESS_CLASS}>
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{message}</p>
-        </div>
-      )}
+      {error ? (
+        <Alert variant="error" icon={<CircleAlert className="h-5 w-5" />}>
+          <AlertDescription className="mt-0">{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {message ? (
+        <Alert
+          variant={message.type === 'info' ? 'info' : 'success'}
+          icon={
+            message.type === 'info' ? (
+              <QrCode className="h-5 w-5" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5" />
+            )
+          }
+        >
+          <AlertDescription className="mt-0">{message.text}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      <div className={securityPanelClass}>
-        <section aria-labelledby="security-password-heading">
-          <div className="mb-5 flex items-start gap-3">
-            <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+        <section
+          aria-labelledby="security-password-heading"
+          className={`flex h-full flex-col space-y-4 ${settingsSectionPanelClassName}`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={sectionIconClass}>
               <KeyRound className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
@@ -149,33 +152,33 @@ export function SecuritySettings() {
                 id="security-password-heading"
                 className="text-lg font-semibold text-iwana-primary dark:text-white"
               >
-                Cambiar contraseña
+                {copy.passwordTitle}
               </h2>
-              <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-                Actualiza la credencial principal del administrador de plataforma con la misma
-                política aplicada en el flujo de primer ingreso.
-              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{copy.passwordHelp}</p>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit(onChangePassword)} className="space-y-4">
-            <div className="max-w-[440px] space-y-4">
+          <form
+            onSubmit={handleSubmit(onChangePassword)}
+            className="flex flex-1 flex-col space-y-4"
+          >
+            <div className="space-y-4">
               <Input
-                label="Contraseña actual"
+                label={copy.currentPassword}
                 type="password"
                 autoComplete="current-password"
                 error={errors.currentPassword?.message}
                 {...register('currentPassword')}
               />
               <Input
-                label="Nueva contraseña"
+                label={copy.newPassword}
                 type="password"
                 autoComplete="new-password"
                 error={errors.newPassword?.message}
                 {...register('newPassword')}
               />
               <Input
-                label="Confirmar nueva contraseña"
+                label={copy.confirmPassword}
                 type="password"
                 autoComplete="new-password"
                 error={errors.confirmPassword?.message}
@@ -183,19 +186,20 @@ export function SecuritySettings() {
               />
             </div>
 
-            <div className="flex max-w-[440px] justify-end">
+            <div className="mt-auto flex justify-end">
               <Button type="submit" loading={isSubmitting}>
-                Actualizar contraseña
+                {copy.passwordCta}
               </Button>
             </div>
           </form>
         </section>
 
-        <hr className="my-5 border-gray-100 dark:border-dark-border" />
-
-        <section aria-labelledby="security-mfa-heading">
-          <div className="mb-5 flex items-start gap-3">
-            <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
+        <section
+          aria-labelledby="security-mfa-heading"
+          className={`flex h-full flex-col space-y-4 ${settingsSectionPanelClassName}`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={sectionIconClass}>
               <ShieldCheck className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
@@ -203,61 +207,55 @@ export function SecuritySettings() {
                 id="security-mfa-heading"
                 className="text-lg font-semibold text-iwana-primary dark:text-white"
               >
-                Autenticación de dos factores (MFA)
+                {copy.mfaTitle}
               </h2>
-              <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-                Gestiona el segundo factor del acceso administrativo y confirma la activación con un
-                código TOTP válido.
-              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{copy.mfaHelp}</p>
             </div>
           </div>
 
           <div className="space-y-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex min-h-11 flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {isLoadingMfa
-                    ? 'Verificando estado MFA…'
-                    : `Estado actual: ${mfaState.enabled ? 'Habilitado' : 'Deshabilitado'}`}
-                </p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Gestiona el segundo factor para el acceso del administrador de plataforma.
-                </p>
+                {isLoadingMfa ? (
+                  <p
+                    role="status"
+                    aria-busy="true"
+                    className="flex min-h-11 items-center text-sm text-gray-600 dark:text-gray-300"
+                  >
+                    {copy.mfaLoading}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {copy.mfaStatusLabel}: {mfaState.enabled ? copy.mfaStatusOn : copy.mfaStatusOff}
+                  </p>
+                )}
               </div>
 
-              {!isLoadingMfa && !mfaState.enabled && !mfaState.pendingVerification && (
+              {!isLoadingMfa && !mfaState.enabled && !mfaState.pendingVerification ? (
                 <Button type="button" size="lg" onClick={onMfaSetup}>
-                  Configurar MFA
+                  {copy.mfaSetupCta}
                 </Button>
-              )}
+              ) : null}
             </div>
 
-            {qrCodeSrc && (
-              <div className={FORM_ALERT_INFO_CLASS}>
-                <QrCode className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <div className="space-y-3">
-                  <p className="font-semibold">Código QR para configuración MFA</p>
-                  <img
-                    src={qrCodeSrc}
-                    alt="QR de configuración MFA"
-                    className="h-44 w-44 rounded-2xl border border-gray-200 bg-white"
-                  />
-                  {mfaState.otpauthUri && (
-                    <p className={`break-all ${FORM_MICROCOPY_CLASS}`}>{mfaState.otpauthUri}</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {mfaState.pendingVerification && (
-              <div className={securityInnerSectionClass}>
-                <h3 className="text-sm font-semibold text-iwana-primary dark:text-white">
-                  Confirmar configuración inicial
-                </h3>
-                <p className={FORM_MICROCOPY_CLASS}>
-                  Ingresa el primer código generado por tu app autenticadora para completar la
-                  activación.
+            {qrCodeSrc ? (
+              <div className="space-y-3">
+                <p className="font-semibold text-iwana-primary dark:text-white">
+                  {copy.mfaQrTitle}
                 </p>
+                <img
+                  src={qrCodeSrc}
+                  alt={copy.mfaQrAlt}
+                  className="h-44 w-44 rounded-2xl border border-gray-200 bg-white"
+                />
+              </div>
+            ) : null}
+
+            {mfaState.pendingVerification ? (
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-iwana-primary dark:text-white">
+                  {copy.mfaConfirmTitle}
+                </h3>
                 <OtpInput value={mfaSetupCode} onChange={setMfaSetupCode} length={6} />
                 <div className="flex justify-end">
                   <Button
@@ -266,31 +264,28 @@ export function SecuritySettings() {
                     onClick={onMfaVerifySetup}
                     disabled={mfaSetupCode.length !== 6}
                   >
-                    Verificar MFA
+                    {copy.mfaConfirmCta}
                   </Button>
                 </div>
               </div>
-            )}
+            ) : null}
 
-            {mfaState.enabled && (
-              <div className={securityInnerSectionClass}>
+            {mfaState.enabled ? (
+              <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-iwana-primary dark:text-white">
-                  Deshabilitar MFA
+                  {copy.mfaDisableTitle}
                 </h3>
-                <p className={FORM_MICROCOPY_CLASS}>
-                  Para deshabilitar MFA debes confirmar tu contraseña actual y un código activo de
-                  tu autenticador.
-                </p>
-                <div className="grid max-w-[640px] gap-3 md:grid-cols-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{copy.mfaDisableHelp}</p>
+                <div className="grid gap-3">
                   <Input
-                    label="Contraseña actual"
+                    label={copy.currentPassword}
                     type="password"
                     autoComplete="current-password"
                     value={mfaDisablePassword}
                     onChange={(e) => setMfaDisablePassword(e.target.value)}
                   />
                   <Input
-                    label="Código MFA"
+                    label={copy.mfaCodeLabel}
                     type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"
@@ -300,11 +295,11 @@ export function SecuritySettings() {
                 </div>
                 <div className="flex justify-end">
                   <Button type="button" size="lg" variant="destructive" onClick={onMfaDisable}>
-                    Deshabilitar MFA
+                    {copy.mfaDisableCta}
                   </Button>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </section>
       </div>

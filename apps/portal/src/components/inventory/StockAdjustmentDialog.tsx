@@ -189,7 +189,9 @@ export function StockAdjustmentDialog({
           />
 
           <label className="block space-y-1">
-            <span className="text-sm text-iwana-secondary-700">Nota</span>
+            <span className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Nota
+            </span>
             <textarea
               className={portalTextareaClassName}
               value={notes}

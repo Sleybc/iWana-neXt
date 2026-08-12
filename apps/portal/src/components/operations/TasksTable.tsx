@@ -64,43 +64,43 @@ export function TasksTable({
               <tr>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Número
                 </th>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Título
                 </th>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Tipo
                 </th>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Estado
                 </th>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Prioridad
                 </th>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Destinatario
                 </th>
                 <th
                   scope="col"
-                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700"
+                  className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
                 >
                   Creada
                 </th>

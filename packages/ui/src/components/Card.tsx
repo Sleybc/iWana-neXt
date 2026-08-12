@@ -16,7 +16,7 @@ const Card = React.forwardRef<
     className={cn(
       'rounded-2xl',
       variant === 'default' &&
-        'bg-white shadow-iwana-card dark:bg-dark-surface-2 dark:shadow-none dark:border dark:border-dark-border',
+        'bg-white shadow-iwana-card dark:bg-dark-surface-2 dark:shadow-none dark:border dark:border-dark-border-2',
       variant === 'glass' && 'bg-white/10 backdrop-blur-md border border-white/20',
       className,
     )}

@@ -15,7 +15,7 @@ export * from './tokens';
 
 // Utilidades
 export * from './lib/utils';
-export { interactiveFocusClassName } from './focus';
+export { headerIconControlClassName, interactiveFocusClassName } from './focus';
 export { SkeletonBlock } from './skeleton';
 export type { SkeletonBlockProps } from './skeleton';
 
@@ -43,6 +43,7 @@ export * from './components/MultiSelect';
 export * from './components/SearchHighlight';
 
 // Providers
+export * from './theme-bootstrap';
 export * from './components/ThemeProvider';
 
 // Shell compartido

@@ -137,7 +137,7 @@ export function PurchaseProductSearch({
           <span className="font-medium text-gray-900 dark:text-white">
             {buildCatalogBulkRowLabel(option)}
           </span>
-          <span className="shrink-0 text-xs text-iwana-secondary-700">
+          <span className="shrink-0 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
             {resolveCatalogSupplierLabel(option, supplierLabels)}
           </span>
         </button>

@@ -3,6 +3,7 @@
 import {
   type ComponentType,
   type ReactNode,
+  type Ref,
   type ThHTMLAttributes,
   useCallback,
   useEffect,
@@ -463,8 +464,11 @@ export interface PortalDashboardMetricDelta {
 }
 
 interface PortalDashboardMetricBaseProps {
-  /** Ranura 1 — categoría del indicador. */
-  eyebrow: string;
+  /**
+   * Ranura 1 — categoría del indicador (opcional, DS v1.3 / B-1).
+   * Omitida o vacía → no se renderiza la ranura; el resto del orden se mantiene.
+   */
+  eyebrow?: string;
   /** Ranura 3 — rótulo legible; nombre accesible. */
   label: string;
   /**
@@ -586,6 +590,11 @@ export function PortalDashboardMetric({
     );
   }
 
+  const iconClearanceClassName = Icon ? 'pr-11' : undefined;
+
+  const eyebrowText = eyebrow?.trim() ?? '';
+  const showEyebrow = eyebrowText.length > 0;
+
   const body = (
     <div className="relative flex h-full flex-col">
       {Icon ? (
@@ -598,8 +607,12 @@ export function PortalDashboardMetric({
           <Icon className="h-4 w-4" aria-hidden={true} />
         </span>
       ) : null}
-      <p className={cn(portalMetricEyebrowClassName(accent), Icon && 'pr-11')}>{eyebrow}</p>
-      {valueSlot}
+      {showEyebrow ? (
+        <p className={cn(portalMetricEyebrowClassName(accent), iconClearanceClassName)}>
+          {eyebrowText}
+        </p>
+      ) : null}
+      <div className={cn(!showEyebrow && iconClearanceClassName)}>{valueSlot}</div>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
         {delta ? (
@@ -1487,6 +1500,7 @@ type PortalAlertVariant = 'error' | 'warning' | 'success' | 'info';
 
 interface PortalPanelProps {
   as?: 'div' | 'section';
+  id?: string | undefined;
   eyebrow?: string | undefined;
   title?: string | undefined;
   description?: string | undefined;
@@ -1494,6 +1508,9 @@ interface PortalPanelProps {
   className?: string | undefined;
   headerClassName?: string | undefined;
   contentClassName?: string | undefined;
+  /** Destino de foco estable (p. ej. retorno tras reintento o ancla de bloque). */
+  titleTabIndex?: number | undefined;
+  titleRef?: Ref<HTMLHeadingElement> | undefined;
   /** Carga del bloque: cabecera permanece; el consumidor sustituye hijos por esqueleto. */
   busy?: boolean | undefined;
   children: ReactNode;
@@ -1597,6 +1614,7 @@ const alertVariantStyles: Record<
 
 export function PortalPanel({
   as = 'section',
+  id,
   eyebrow,
   title,
   description,
@@ -1604,13 +1622,19 @@ export function PortalPanel({
   className,
   headerClassName,
   contentClassName,
+  titleTabIndex,
+  titleRef,
   busy = false,
   children,
 }: PortalPanelProps) {
   const Component = as;
 
   return (
-    <Component className={cn(panelBaseClassName, 'p-5', className)} aria-busy={busy || undefined}>
+    <Component
+      id={id}
+      className={cn(panelBaseClassName, 'p-5', className)}
+      aria-busy={busy || undefined}
+    >
       {(eyebrow || title || description || actions) && (
         <div
           className={cn(
@@ -1623,9 +1647,12 @@ export function PortalPanel({
             {eyebrow && <p className="portal-eyebrow">{eyebrow}</p>}
             {title && (
               <h2
+                ref={titleRef}
+                tabIndex={titleTabIndex}
                 className={cn(
                   'text-base font-semibold text-gray-900 dark:text-white',
                   eyebrow && 'mt-1',
+                  titleTabIndex === -1 ? interactiveFocusClassName : null,
                 )}
               >
                 {title}

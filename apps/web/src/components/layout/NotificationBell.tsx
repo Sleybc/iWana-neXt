@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Bell } from 'lucide-react';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
-import { cn, interactiveFocusClassName } from '@iwana/ui';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { labelForTenantStatus, variantForTenantStatus } from '@/lib/tenant-status-label';
+import { cn, headerIconControlClassName, interactiveFocusClassName } from '@iwana/ui';
 
 type NotificationTone = 'error' | 'warning' | 'info' | 'success';
 
@@ -18,22 +20,11 @@ interface OperationalNotification {
   updatedAt: string;
 }
 
-const STATUS_LABELS: Record<TenantListItem['status'], string> = {
-  ACTIVE: 'Activa',
-  PROVISIONING: 'Configuración en curso',
-  PROVISIONING_FAILED: 'Configuración fallida',
-  SUSPENDED: 'Suspendida',
-  INACTIVE: 'Inactiva',
-  MARKED_FOR_DELETION: 'En eliminación',
-};
-
-const STATUS_TONE: Record<TenantListItem['status'], NotificationTone> = {
-  ACTIVE: 'success',
-  PROVISIONING: 'warning',
-  PROVISIONING_FAILED: 'error',
-  SUSPENDED: 'warning',
-  INACTIVE: 'info',
-  MARKED_FOR_DELETION: 'error',
+const VARIANT_TONE: Record<ReturnType<typeof variantForTenantStatus>, NotificationTone> = {
+  success: 'success',
+  warning: 'warning',
+  error: 'error',
+  neutral: 'info',
 };
 
 const TONE_PRIORITY: Record<NotificationTone, number> = {
@@ -66,15 +57,15 @@ function formatUpdatedAt(value: string): string {
 }
 
 function toNotification(tenant: TenantListItem): OperationalNotification {
-  const statusLabel = STATUS_LABELS[tenant.status];
+  const statusLabel = labelForTenantStatus(tenant.status, { form: 'singular' });
 
   return {
     id: tenant.id,
     href: `/tenants/${tenant.id}/settings`,
     title: tenant.name,
-    detail: `${statusLabel} · ${tenant.slug}`,
-    meta: `Actualizada ${formatUpdatedAt(tenant.updatedAt)}`,
-    tone: STATUS_TONE[tenant.status],
+    detail: statusLabel,
+    meta: `${PLATFORM_UI_COPY.tenants.notificationsUpdated} ${formatUpdatedAt(tenant.updatedAt)}`,
+    tone: VARIANT_TONE[variantForTenantStatus(tenant.status)],
     updatedAt: tenant.updatedAt,
   };
 }
@@ -105,9 +96,9 @@ export function NotificationBell() {
       setNotifications([
         {
           id: 'notifications-load-error',
-          title: 'No fue posible cargar notificaciones',
-          detail: 'Revisa la conexión con la API de plataforma.',
-          meta: 'Intento reciente',
+          title: PLATFORM_UI_COPY.tenants.notificationsError,
+          detail: PLATFORM_UI_COPY.dashboard.retry,
+          meta: PLATFORM_UI_COPY.tenants.notificationsUpdated,
           tone: 'error',
           updatedAt: new Date().toISOString(),
         },
@@ -176,15 +167,12 @@ export function NotificationBell() {
       <button
         ref={triggerRef}
         type="button"
-        aria-label="Notificaciones"
+        aria-label={PLATFORM_UI_COPY.tenants.notificationsTitle}
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls="notifications-menu"
         onClick={() => setOpen((current) => !current)}
-        className={cn(
-          'relative flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white',
-          interactiveFocusClassName,
-        )}
+        className={cn('relative', headerIconControlClassName, interactiveFocusClassName)}
       >
         {worstAlertTone && (
           <span
@@ -200,7 +188,7 @@ export function NotificationBell() {
       <div
         id="notifications-menu"
         ref={dropdownRef}
-        aria-label="Notificaciones operativas"
+        aria-label={PLATFORM_UI_COPY.tenants.notificationsTitle}
         className={cn(
           'absolute right-0 mt-3 w-80 rounded-xl border border-gray-200 bg-white shadow-iwana-lg dark:border-dark-border-2 dark:bg-dark-surface-3',
           open ? 'block' : 'hidden',
@@ -208,17 +196,17 @@ export function NotificationBell() {
       >
         <div className="border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
           <p className="text-sm font-semibold text-gray-800 dark:text-white">
-            Notificaciones operativas
+            {PLATFORM_UI_COPY.tenants.notificationsTitle}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Basadas en estado real de empresas
+            {PLATFORM_UI_COPY.tenants.notificationsSubtitle}
           </p>
         </div>
 
         <ul className="max-h-72 overflow-auto py-2">
           {count === 0 ? (
             <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-              Sin empresas registradas.
+              {PLATFORM_UI_COPY.tenants.notificationsEmpty}
             </li>
           ) : (
             notifications.map((notification) => (
@@ -226,7 +214,10 @@ export function NotificationBell() {
                 {notification.href ? (
                   <Link
                     href={notification.href}
-                    className="flex gap-3 rounded-lg px-3 py-2 hover:bg-gray-100 dark:hover:bg-dark-surface-4"
+                    className={cn(
+                      'flex gap-3 rounded-lg px-3 py-2 hover:bg-gray-100 dark:hover:bg-dark-surface-4',
+                      interactiveFocusClassName,
+                    )}
                     onClick={() => setOpen(false)}
                   >
                     <span
@@ -243,7 +234,7 @@ export function NotificationBell() {
                       <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
                         {notification.detail}
                       </span>
-                      <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">
+                      <span className="mt-1 block text-xs font-mono tabular-nums text-gray-400 dark:text-gray-400">
                         {notification.meta}
                       </span>
                     </span>
@@ -264,7 +255,7 @@ export function NotificationBell() {
                       <span className="block text-xs text-gray-500 dark:text-gray-400">
                         {notification.detail}
                       </span>
-                      <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">
+                      <span className="mt-1 block text-xs font-mono tabular-nums text-gray-400 dark:text-gray-400">
                         {notification.meta}
                       </span>
                     </span>

@@ -59,7 +59,7 @@ const COUNTRY_OPTIONS = [
 
 // Clases consistentes con el patrón de formularios del admin (TenantCreateForm)
 const INPUT_CLASS =
-  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
+  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white';
 const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300';
 const ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';
 const SUBSECTION_LABEL =
@@ -136,7 +136,7 @@ export function OperationalSettingsForm({
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                   {ORGANIZATION_SETTINGS_COPY.operationalTimezoneLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -144,7 +144,7 @@ export function OperationalSettingsForm({
                 </span>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                   {ORGANIZATION_SETTINGS_COPY.operationalCountryLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -161,7 +161,7 @@ export function OperationalSettingsForm({
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                   {ORGANIZATION_SETTINGS_COPY.operationalLanguageLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -169,7 +169,7 @@ export function OperationalSettingsForm({
                 </span>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                   {ORGANIZATION_SETTINGS_COPY.operationalCurrencyLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -178,7 +178,7 @@ export function OperationalSettingsForm({
               </div>
             </div>
 
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-gray-400 dark:text-gray-400">
               {ORGANIZATION_SETTINGS_COPY.operationalReadOnlyHint}
             </p>
           </div>
@@ -315,7 +315,7 @@ export function OperationalSettingsForm({
 
             {/* Footer y CTA */}
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-gray-400 dark:text-gray-400">
                 {ORGANIZATION_SETTINGS_COPY.operationalEditableHint}
               </p>
               <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>

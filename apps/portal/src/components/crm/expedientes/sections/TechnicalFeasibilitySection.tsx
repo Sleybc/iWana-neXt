@@ -281,7 +281,7 @@ export function TechnicalFeasibilitySection({
               className="h-full w-full"
               aria-label="Mapa OpenStreetMap de ubicación técnica"
             />
-            <p className="border-t border-gray-100 px-2 py-1 text-[10px] text-gray-400 dark:border-dark-border dark:text-gray-500">
+            <p className="border-t border-gray-100 px-2 py-1 text-[10px] text-gray-400 dark:border-dark-border dark:text-gray-400">
               <a
                 href="https://www.openstreetmap.org/copyright"
                 target="_blank"
@@ -294,8 +294,8 @@ export function TechnicalFeasibilitySection({
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-gray-50 dark:bg-dark-surface-2">
-            <MapPin className="h-7 w-7 text-gray-300 dark:text-gray-600" />
-            <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
+            <MapPin className="h-7 w-7 text-gray-300 dark:text-gray-400" />
+            <p className="text-[11px] font-medium text-gray-400 dark:text-gray-400">
               {lat !== '' && lng !== '' && !hasCoords
                 ? 'Coordenadas fuera de rango — lat [-90, 90] / lng [-180, 180]'
                 : 'Ingresa coordenadas para visualizar el mapa'}
@@ -308,7 +308,7 @@ export function TechnicalFeasibilitySection({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
               {FIELD_LABELS.candidateTechnologies}
             </p>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -409,7 +409,7 @@ export function TechnicalFeasibilitySection({
       <div>
         <label
           htmlFor="technical-technicalObservations"
-          className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500"
+          className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400"
         >
           <Info className="h-3 w-3" />
           {FIELD_LABELS.technicalObservations}

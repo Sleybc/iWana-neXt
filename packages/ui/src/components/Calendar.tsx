@@ -140,7 +140,7 @@ function Calendar({
         // month_grid ocupa las 3 columnas del grid
         month_grid: 'col-span-3 w-full border-collapse',
         weekdays: 'flex',
-        weekday: 'w-9 text-center text-[0.72rem] font-normal text-gray-400 dark:text-gray-500',
+        weekday: 'w-9 text-center text-[0.72rem] font-normal text-gray-400 dark:text-gray-400',
         weeks: 'w-full',
         week: 'flex w-full mt-1',
 
@@ -158,9 +158,9 @@ function Calendar({
         selected:
           '[&>button]:bg-iwana-primary [&>button]:text-white [&>button]:rounded-lg [&>button]:hover:bg-iwana-primary',
         today: '[&>button]:font-bold [&>button]:text-iwana-primary',
-        outside: '[&>button]:text-gray-300 dark:[&>button]:text-gray-600',
+        outside: '[&>button]:text-gray-300 dark:[&>button]:text-gray-400',
         disabled: '[&>button]:opacity-30 [&>button]:cursor-not-allowed',
-        range_middle: 'bg-gray-100 dark:bg-gray-800',
+        range_middle: 'bg-gray-100 dark:bg-dark-surface-3',
         range_end: 'rounded-r-lg',
         range_start: 'rounded-l-lg',
         hidden: 'invisible',

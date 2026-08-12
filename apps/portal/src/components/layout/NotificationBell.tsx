@@ -2,41 +2,44 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellRing } from 'lucide-react';
-import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
-import { cn } from '@iwana/ui';
+import { cn, headerIconControlClassName } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   PortalAlert,
   PortalEmptyState,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
+import { loadAuditFeed, subscribeAuditFeed, type AuditFeedSnapshot } from '@/lib/audit-feed-cache';
+import { auditFeedSummary } from '@/lib/audit-vocabulary';
 
-// Mapea el action crudo del audit log a texto español legible
-function formatAuditAction(action: string): string {
-  const MAP: Record<string, string> = {
-    CREATE: 'Nuevo registro',
-    UPDATE: 'Actualización',
-    DELETE: 'Eliminación',
-    LOGIN: 'Inicio de sesión',
-    LOGOUT: 'Cierre de sesión',
-  };
-  return MAP[action.toUpperCase()] ?? action;
-}
+type NotificationTone = 'error' | 'warning' | 'info';
 
-// Mapea el entityType crudo a nombre legible en español
-function formatAuditEntity(entityType: string): string {
-  const MAP: Record<string, string> = {
-    ExpedienteRecord: 'Oportunidad',
-    ContactAttempt: 'Intento de contacto',
-    Expediente: 'Oportunidad',
-    User: 'Usuario',
-    Tenant: 'Empresa',
-    Contract: 'Contrato',
-    Quote: 'Cotización',
-    Opportunity: 'Oportunidad',
-    Contact: 'Contacto',
-  };
-  return MAP[entityType] ?? entityType;
+const ERROR_ACTIONS = new Set([
+  'DELETE',
+  'ACCOUNT_LOCKED',
+  'MFA_DISABLED',
+  'TENANT_SUSPENDED',
+  'LOGIN_FAILED',
+]);
+
+const WARNING_ACTIONS = new Set([
+  'MFA_ENABLED',
+  'MFA_SETUP_INITIATED',
+  'PASSWORD_CHANGED',
+  'PASSWORD_RESET_REQUESTED',
+  'PASSWORD_RESET_COMPLETED',
+  'TENANT_PROVISIONED',
+]);
+
+function toneForAction(action: string): NotificationTone {
+  const normalized = action.trim().toUpperCase();
+  if (ERROR_ACTIONS.has(normalized)) {
+    return 'error';
+  }
+  if (WARNING_ACTIONS.has(normalized)) {
+    return 'warning';
+  }
+  return 'info';
 }
 
 function formatRelativeDate(value: string): string {
@@ -59,11 +62,23 @@ function formatRelativeDate(value: string): string {
   return `${Math.floor(diffHours / 24)}d`;
 }
 
+function renderBellTime(value: string) {
+  const date = new Date(value);
+  const label = formatRelativeDate(value);
+  if (Number.isNaN(date.getTime())) {
+    return label;
+  }
+  return (
+    <time dateTime={value} className="font-mono tabular-nums">
+      {label}
+    </time>
+  );
+}
+
 export function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<AuditFeedSnapshot | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const canViewAuditNotifications = new Set(['ADMIN', 'SYSTEM_ADMIN']).has(user?.role ?? '');
@@ -74,38 +89,22 @@ export function NotificationBell() {
     }
   }, []);
 
-  const loadNotifications = useCallback(async () => {
-    if (!canViewAuditNotifications) {
-      setError(null);
-      setEntries([]);
-      return;
-    }
-
-    try {
-      setError(null);
-      const logs = await auditApi.list({ limit: 10 });
-      setEntries(logs.slice(0, 5));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        setError('Sin permisos para ver auditoría.');
-      } else {
-        setError('No fue posible cargar notificaciones.');
-      }
-      setEntries([]);
-    }
-  }, [canViewAuditNotifications]);
-
   useEffect(() => {
     if (!canViewAuditNotifications) {
-      setError(null);
-      setEntries([]);
+      setSnapshot(null);
       return;
     }
 
-    loadNotifications();
-    const intervalId = window.setInterval(loadNotifications, 60_000);
-    return () => window.clearInterval(intervalId);
-  }, [canViewAuditNotifications, loadNotifications]);
+    const unsubscribe = subscribeAuditFeed(setSnapshot);
+    void loadAuditFeed().catch(() => undefined);
+    const intervalId = window.setInterval(() => {
+      void loadAuditFeed({ force: true }).catch(() => undefined);
+    }, 60_000);
+    return () => {
+      unsubscribe();
+      window.clearInterval(intervalId);
+    };
+  }, [canViewAuditNotifications]);
 
   useEffect(() => {
     const onClickOutside = (event: MouseEvent) => {
@@ -138,11 +137,28 @@ export function NotificationBell() {
     return () => document.removeEventListener('keydown', onEsc);
   }, [closePopover, open]);
 
+  const entries = (snapshot?.entries ?? []).slice(0, 5);
+  const error = snapshot?.error ?? null;
   const count = entries.length;
-  const tone = useMemo(
-    () => (count > 0 ? 'text-iwana-secondary-700 dark:text-iwana-secondary' : ''),
-    [count],
-  );
+  // Peor tono presente — urgencia usa warning/error; lima no significa «hay avisos».
+  const worstAlertTone = useMemo<'error' | 'warning' | null>(() => {
+    if (error) {
+      return 'error';
+    }
+    if (entries.some((entry) => toneForAction(entry.action) === 'error')) {
+      return 'error';
+    }
+    if (entries.some((entry) => toneForAction(entry.action) === 'warning')) {
+      return 'warning';
+    }
+    return null;
+  }, [entries, error]);
+  const iconTone =
+    worstAlertTone === 'error'
+      ? 'text-error-600 dark:text-error-400'
+      : worstAlertTone === 'warning'
+        ? 'text-amber-600 dark:text-amber-400'
+        : '';
 
   return (
     <div className="relative">
@@ -153,17 +169,17 @@ export function NotificationBell() {
         aria-controls="portal-notifications-menu"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className={cn(
-          'relative flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:bg-iwana-surface-soft hover:text-gray-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white',
-          interactiveFocusClassName,
-        )}
+        className={cn('relative', headerIconControlClassName, interactiveFocusClassName)}
       >
-        {count > 0 && (
-          <span className="absolute -top-1 -right-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-iwana-secondary px-1 text-[10px] font-bold text-iwana-primary">
-            {Math.min(count, 9)}
-          </span>
+        {worstAlertTone && (
+          <span
+            className={cn(
+              'absolute top-1 right-1 h-2 w-2 rounded-full',
+              worstAlertTone === 'error' ? 'bg-error-500' : 'bg-amber-500',
+            )}
+          />
         )}
-        <Bell className={cn('w-5 h-5', tone)} />
+        <Bell className={cn('w-5 h-5', iconTone)} />
       </button>
 
       <div
@@ -184,7 +200,7 @@ export function NotificationBell() {
             Notificaciones del portal
           </p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Basadas en eventos de auditoría
+            Basadas en el historial de cambios
           </p>
         </div>
 
@@ -210,11 +226,10 @@ export function NotificationBell() {
               <li key={entry.id} className="px-4 py-2">
                 <div className="rounded-2xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                   <p className="text-sm font-semibold text-gray-800 dark:text-white">
-                    {formatAuditAction(entry.action)} · {formatAuditEntity(entry.entityType)}
+                    {auditFeedSummary(entry.action, entry.entityType)}
                   </p>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {formatRelativeDate(entry.createdAt)} · ID:{' '}
-                    {entry.entityId.slice(0, 8).toUpperCase()}
+                    {renderBellTime(entry.createdAt)}
                   </p>
                 </div>
               </li>

@@ -242,7 +242,7 @@ body {
 
   /* Campo operativo iWana para busquedas y filtros compactos */
   .portal-input-surface {
-    @apply rounded-2xl border-gray-200 bg-white shadow-sm hover:border-iwana-primary-200 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3;
+    @apply rounded-2xl border-gray-200 bg-white shadow-sm hover:border-iwana-primary-200 focus-visible:ring-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3;
   }
 }
 

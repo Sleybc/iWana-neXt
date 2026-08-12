@@ -1,22 +1,39 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Clock } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@iwana/ui';
-import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
+import type { AuditLogEntry } from '@/lib/api-client';
+import { auditActionLabel, auditEntityTypeLabel } from '@/lib/audit-vocabulary';
 import {
   PortalAlert,
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
-  portalInlineTextLinkClassName,
+  interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 
 /**
- * Historial de cambios del inicio (ADMIN).
+ * Historial de cambios del inicio (ADMIN / AUDITOR).
  * Vocabulario amigable para `action` y `entityType` — system-vocabulary-review.
+ * C-7: consume datos del padre (fuente `audit`); no dispara fetch propio.
+ * C-13 / SEC: solo acción, tipo entidad, actor (`displayName`) y tiempo —
+ * nunca oldValue/newValue, ipAddress, userAgent ni requestId; sin «ver todo» ni export.
  */
+
+type ActivityLoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
+
+export interface RecentActivityPanelProps {
+  entries?: AuditLogEntry[] | null;
+  status?: ActivityLoadStatus;
+  error?: string | null;
+  onRetry?: () => void;
+  /**
+   * Vista minimizada (AUDITOR): sin CTA a configuración ni «ver todo».
+   * Mismo panel/shell; solo cambia el vacío y la ausencia de destinos amplios.
+   */
+  minimized?: boolean;
+}
 
 function formatRelativeTime(isoDate: string): string {
   const date = new Date(isoDate);
@@ -31,62 +48,41 @@ function formatRelativeTime(isoDate: string): string {
   return `hace ${Math.floor(diffHours / 24)}d`;
 }
 
-/** Mapea la acción del historial a etiqueta legible (sin enums crudos). */
-export function auditActionLabel(action: string): string {
-  const labels: Record<string, string> = {
-    CREATE: 'Creación',
-    UPDATE: 'Actualización',
-    DELETE: 'Eliminación',
-    LOGIN: 'Inicio de sesión',
-    LOGOUT: 'Cierre de sesión',
-    LOGIN_FAILED: 'Intento de acceso fallido',
-    ACCOUNT_LOCKED: 'Cuenta bloqueada',
-    PASSWORD_CHANGED: 'Cambio de contraseña',
-    PASSWORD_RESET_REQUESTED: 'Solicitud de restablecimiento',
-    PASSWORD_RESET_COMPLETED: 'Contraseña restablecida',
-    MFA_ENABLED: 'Verificación en dos pasos activada',
-    MFA_DISABLED: 'Verificación en dos pasos desactivada',
-    MFA_SETUP_INITIATED: 'Inicio de verificación en dos pasos',
-    MFA_SETUP: 'Configuración de verificación en dos pasos',
-    MFA_VERIFIED: 'Verificación en dos pasos confirmada',
-    TENANT_PROVISIONED: 'Empresa aprovisionada',
-    TENANT_SUSPENDED: 'Empresa suspendida',
-    TENANT_ACTIVATED: 'Empresa activada',
-    REFRESH: 'Renovación de sesión',
-    EMAIL_VERIFIED: 'Correo verificado',
-    LIST_ACCESS: 'Consulta de listado',
-  };
-  return labels[action] ?? 'Cambio registrado';
+function renderRelativeTime(isoDate: string) {
+  const date = new Date(isoDate);
+  const label = formatRelativeTime(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return label;
+  }
+  return (
+    <time dateTime={isoDate} className="font-mono tabular-nums">
+      {label}
+    </time>
+  );
 }
 
-/** Mapea el tipo de entidad a vocabulario de producto. */
-export function auditEntityTypeLabel(entityType: string): string {
+export { auditActionLabel, auditEntityTypeLabel } from '@/lib/audit-vocabulary';
+
+/**
+ * Deep link solo a rutas de detalle existentes en el portal (C-12 / D-QW-07).
+ * Sin ruta segura → null (fila no enlazada).
+ */
+export function resolveAuditEntityHref(
+  entityType: string,
+  entityId: string | null | undefined,
+): string | null {
+  if (!entityId || entityId.trim().length === 0) return null;
   const normalized = entityType.trim();
-  const labels: Record<string, string> = {
-    User: 'usuario',
-    user: 'usuario',
-    Tenant: 'empresa',
-    tenant: 'empresa',
-    TenantSettings: 'configuración de la empresa',
-    tenant_settings: 'configuración de la empresa',
-    Settings: 'configuración',
-    AccessProfile: 'perfil de acceso',
-    access_profile: 'perfil de acceso',
-    Role: 'categoría base',
-    AuditLog: 'historial',
-    Session: 'sesión',
-    InventoryItem: 'producto operativo',
-    inventory_item: 'producto operativo',
-    CommercialPlan: 'plan comercial',
-    Plan: 'plan comercial',
-    AssuranceTicket: 'caso de mesa de ayuda',
-    Ticket: 'caso de mesa de ayuda',
-    WorkOrder: 'orden de campo',
-    Visit: 'visita',
-    Expediente: 'oportunidad',
-    Subscriber: 'suscriptor',
+  const builders: Record<string, (id: string) => string> = {
+    Expediente: (id) => `/dashboard/crm/expedientes/${encodeURIComponent(id)}`,
+    expediente: (id) => `/dashboard/crm/expedientes/${encodeURIComponent(id)}`,
+    ExpedienteRecord: (id) => `/dashboard/crm/expedientes/${encodeURIComponent(id)}`,
+    expedienterecord: (id) => `/dashboard/crm/expedientes/${encodeURIComponent(id)}`,
+    Subscriber: (id) => `/dashboard/crm/subscribers/${encodeURIComponent(id)}`,
+    subscriber: (id) => `/dashboard/crm/subscribers/${encodeURIComponent(id)}`,
   };
-  return labels[normalized] ?? 'registro';
+  const build = builders[normalized];
+  return build ? build(entityId) : null;
 }
 
 function buildActivitySummary(entry: AuditLogEntry): string {
@@ -95,112 +91,103 @@ function buildActivitySummary(entry: AuditLogEntry): string {
   return `${action} en ${entity}`;
 }
 
-export function RecentActivityPanel() {
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function actorDisplayName(entry: AuditLogEntry): string | null {
+  const name = entry.actor?.displayName?.trim();
+  return name && name.length > 0 ? name : null;
+}
 
-  const load = useCallback(() => {
-    setIsLoading(true);
-    setError(null);
-
-    auditApi
-      .list({ limit: 8 })
-      .then((data) => {
-        setEntries(data);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 403) {
-          setEntries([]);
-          return;
-        }
-        setError('No pudimos cargar el historial de cambios. Reintenta en unos minutos.');
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    auditApi
-      .list({ limit: 8 })
-      .then((data) => {
-        if (mounted) setEntries(data);
-      })
-      .catch((err: unknown) => {
-        if (!mounted) return;
-        if (err instanceof ApiError && err.status === 403) {
-          setEntries([]);
-        } else {
-          setError('No pudimos cargar el historial de cambios. Reintenta en unos minutos.');
-        }
-      })
-      .finally(() => {
-        if (mounted) setIsLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
+export function RecentActivityPanel({
+  entries = null,
+  status = 'idle',
+  error = null,
+  onRetry,
+  minimized = false,
+}: RecentActivityPanelProps) {
+  const isLoading = (status === 'loading' || status === 'idle') && !entries;
+  const isUpdating = status === 'updating';
+  const showError = status === 'error';
+  const list = entries ?? [];
 
   return (
     <PortalPanel title="Historial de cambios" busy={isLoading}>
       {isLoading ? (
-        <div className="space-y-3" aria-label="Cargando historial">
+        <div className="space-y-3" role="status" aria-label="Cargando historial">
           {Array.from({ length: 4 }).map((_, i) => (
             <PortalSkeletonBlock key={i} className="h-10 rounded-xl" />
           ))}
         </div>
       ) : null}
 
-      {!isLoading && error ? (
+      {isUpdating ? (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          Actualizando
+        </p>
+      ) : null}
+
+      {showError ? (
         <PortalAlert
           variant="error"
           title="No pudimos cargar el historial"
-          description={error}
+          description={
+            error ?? 'No pudimos cargar el historial de cambios. Reintenta en unos minutos.'
+          }
           live="polite"
           action={
-            <Button type="button" variant="ghost" size="sm" onClick={load}>
-              Reintentar
-            </Button>
+            onRetry ? (
+              <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+                Reintentar
+              </Button>
+            ) : null
           }
         />
       ) : null}
 
-      {!isLoading && !error && entries.length === 0 ? (
+      {!isLoading && !showError && list.length === 0 ? (
         <PortalEmptyState
           title="Sin cambios recientes"
-          description="Cuando tu equipo cree o actualice registros, verás el historial aquí. Mientras tanto, revisa la configuración de la empresa."
-          action={
-            <Link href="/dashboard/settings" className={portalInlineTextLinkClassName}>
-              Ir a configuración
-            </Link>
+          description={
+            minimized
+              ? 'Cuando tu equipo cree o actualice registros, verás los movimientos recientes aquí.'
+              : 'Cuando tu equipo cree o actualice registros, verás el historial aquí.'
           }
         />
       ) : null}
 
-      {!isLoading && !error && entries.length > 0 ? (
+      {!isLoading && !showError && list.length > 0 ? (
         <ul className="space-y-3" aria-label="Cambios recientes">
-          {entries.map((entry) => (
-            <li key={entry.id} className="flex min-h-11 items-start gap-3 text-sm">
-              <div
-                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500"
-                aria-hidden="true"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-gray-800 dark:text-white">
-                  {buildActivitySummary(entry)}
-                </p>
-                <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
-                  <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  {formatRelativeTime(entry.createdAt)}
-                </p>
-              </div>
-            </li>
-          ))}
+          {list.map((entry) => {
+            const href = resolveAuditEntityHref(entry.entityType, entry.entityId);
+            const summary = buildActivitySummary(entry);
+            const actor = actorDisplayName(entry);
+            return (
+              <li key={entry.id} className="flex min-h-11 items-start gap-3 text-sm">
+                <div
+                  className="mt-2 h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  {href ? (
+                    <Link
+                      href={href}
+                      className={`font-medium text-gray-800 underline-offset-4 hover:underline dark:text-white ${interactiveFocusClassName}`}
+                    >
+                      {summary}
+                    </Link>
+                  ) : (
+                    <p className="font-medium text-gray-800 dark:text-white">{summary}</p>
+                  )}
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-gray-600 dark:text-gray-300">
+                    {actor ? <span>{actor}</span> : null}
+                    {actor ? <span aria-hidden="true">·</span> : null}
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      {renderRelativeTime(entry.createdAt)}
+                    </span>
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </PortalPanel>

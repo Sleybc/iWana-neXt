@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // Fuente única del piso del vertical R4.1 (tests 4a/4b/4c/4d/4e).
-const REQUIRED_OPERATIONAL_E2E_PASSED = 29;
+const REQUIRED_OPERATIONAL_E2E_PASSED = 30;
 
 function collectOperationalMarkers(logContents) {
   const markers = new Map();
@@ -139,13 +139,49 @@ function expectMarkerGateFailure(logContents, caseName) {
 }
 
 function validateOperationalMarkerLogic() {
+  validateApiPortDerivation();
+
   const pass = verifyOperationalMarkers(markerFixture());
   if (pass.passed !== REQUIRED_OPERATIONAL_E2E_PASSED || pass.flaky !== 0) {
-    throw new Error('Caso PASS no conservó passed=29 y flaky=0');
+    throw new Error('Caso PASS no conservó passed=30 y flaky=0');
   }
 
-  expectMarkerGateFailure(markerFixture({ passed: 28 }), 'passed=28');
+  expectMarkerGateFailure(markerFixture({ passed: 29 }), 'passed=29');
   expectMarkerGateFailure(markerFixture({ flaky: 1 }), 'flaky=1');
+}
+
+function deriveApiPort(apiRoot) {
+  let parsed;
+  try {
+    parsed = new URL(apiRoot);
+  } catch {
+    throw new Error(`API_BASE_URL inválida: ${apiRoot}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`API_BASE_URL debe usar http o https: ${apiRoot}`);
+  }
+
+  const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+  const numericPort = Number(port);
+  if (!Number.isInteger(numericPort) || numericPort < 1 || numericPort > 65_535) {
+    throw new Error(`API_BASE_URL contiene un puerto inválido: ${port}`);
+  }
+
+  return String(numericPort);
+}
+
+function validateApiPortDerivation() {
+  const cases = [
+    ['http://127.0.0.1:3005', '3005'],
+    ['https://api.example.invalid', '443'],
+  ];
+
+  for (const [apiRoot, expectedPort] of cases) {
+    if (deriveApiPort(apiRoot) !== expectedPort) {
+      throw new Error(`Derivación de PORT incorrecta para ${apiRoot}.`);
+    }
+  }
 }
 
 const verifyMarkersArgumentIndex = process.argv.indexOf('--verify-playwright-markers');
@@ -173,7 +209,7 @@ if (verifyMarkersArgumentIndex !== -1) {
 if (process.argv.includes('--validate-playwright-markers')) {
   try {
     validateOperationalMarkerLogic();
-    console.log('✅ Parser E2E validado: 29/0/0/0/0 PASS; 28 y flaky>0 FAIL.');
+    console.log('✅ Parser E2E validado: 30/0/0/0/0 PASS; 29 y flaky>0 FAIL.');
     process.exit(0);
   } catch (error) {
     console.error(
@@ -280,6 +316,11 @@ const API_ROOT = (process.env.API_BASE_URL ?? 'http://127.0.0.1:3000').replace(
   /\/api\/v1\/?$/u,
   '',
 );
+// API_BASE_URL es la autoridad del runner: el API host debe escuchar en el
+// mismo puerto que usa el healthcheck y las requests E2E, incluso si el shell
+// heredó otro PORT (p. ej. una instancia local en 3000).
+const API_PORT = deriveApiPort(API_ROOT);
+process.env.PORT = API_PORT;
 const API_PREFIX = `${API_ROOT}/api/v1`;
 const composeFiles = ['docker-compose.yml', 'docker-compose.e2e.yml'];
 const e2eComposeProject = 'iwana-e2e-r41';
@@ -322,6 +363,8 @@ const coordinatorEmail = process.env.E2E_COORDINATOR_RO_EMAIL ?? `coord-ro@${ten
 const nocPassword = process.env.E2E_NOC_PASSWORD ?? `E2eNoc-${suffix}!`;
 const techPassword = process.env.E2E_TECH_PASSWORD ?? `E2eTech-${suffix}!`;
 const coordinatorPassword = process.env.E2E_COORDINATOR_RO_PASSWORD ?? `E2eCoord-${suffix}!`;
+const auditorEmail = `auditor-${suffix}@example.invalid`;
+const auditorPassword = `E2eAuditor-${suffix}!`;
 const cleanupEnabled = process.env.E2E_CLEANUP !== 'false';
 const postgresContainer = process.env.E2E_POSTGRES_CONTAINER ?? 'iwana_postgres_e2e';
 // `pnpm db:migrate:all` termina en `db:apply-least-privilege`, y ese script hace
@@ -868,7 +911,21 @@ async function tenantLogin(email, password, slug) {
     throw new Error(`El JWT del tenant ${slug} no contiene sub.`);
   }
 
-  return { token, userId };
+  return { token, userId, passwordResetRequired: payload.passwordResetRequired === true };
+}
+
+/** Completa el primer ingreso de una cuenta admin tenant creada por provisioning. */
+async function completeTenantFirstAccess(scopedToken, currentPassword) {
+  const nextPassword = `E2eTenant1!${crypto.randomBytes(18).toString('hex')}`;
+  await api(
+    '/auth/change-password',
+    jsonRequest(scopedToken, {
+      currentPassword,
+      newPassword: nextPassword,
+    }),
+    [200],
+  );
+  return nextPassword;
 }
 
 async function createUser(token, payload) {
@@ -1385,6 +1442,7 @@ function runPlaywright(env) {
         'playwright',
         'test',
         'e2e/tests/api/execution-orders-operational.spec.ts',
+        'e2e/tests/api/audit-logs-tenant-isolation.spec.ts',
         '--config',
         'e2e/playwright.api.config.ts',
         '--retries',
@@ -1488,9 +1546,32 @@ try {
   await waitForActive(platformToken, tenantId, tenantSlug);
   await waitForActive(platformToken, otherTenantId, otherTenantSlug);
 
-  const tenantAdminPassword = await regenerateAdminCredentials(platformToken, tenantId);
-  const otherTenantAdminPassword = await regenerateAdminCredentials(platformToken, otherTenantId);
-  const tenantAdmin = await tenantLogin(tenantAdminEmail, tenantAdminPassword, tenantSlug);
+  let tenantAdminPassword = await regenerateAdminCredentials(platformToken, tenantId);
+  let otherTenantAdminPassword = await regenerateAdminCredentials(platformToken, otherTenantId);
+  let tenantAdmin = await tenantLogin(tenantAdminEmail, tenantAdminPassword, tenantSlug);
+  if (tenantAdmin.passwordResetRequired) {
+    tenantAdminPassword = await completeTenantFirstAccess(tenantAdmin.token, tenantAdminPassword);
+    tenantAdmin = await tenantLogin(tenantAdminEmail, tenantAdminPassword, tenantSlug);
+  }
+  // El token se emite durante el provisioning y se entrega solo al proceso
+  // Playwright. Así la prueba de aislamiento no depende de un segundo login
+  // del administrador B después de la ráfaga de autenticaciones del suite.
+  let otherTenantAdmin = await tenantLogin(
+    otherTenantAdminEmail,
+    otherTenantAdminPassword,
+    otherTenantSlug,
+  );
+  if (otherTenantAdmin.passwordResetRequired) {
+    otherTenantAdminPassword = await completeTenantFirstAccess(
+      otherTenantAdmin.token,
+      otherTenantAdminPassword,
+    );
+    otherTenantAdmin = await tenantLogin(
+      otherTenantAdminEmail,
+      otherTenantAdminPassword,
+      otherTenantSlug,
+    );
+  }
 
   const noc = await createUser(tenantAdmin.token, {
     email: nocEmail,
@@ -1517,11 +1598,20 @@ try {
     lastName: 'Coordinator',
     jobTitle: 'E2E coordinator',
   });
+  const auditor = await createUser(tenantAdmin.token, {
+    email: auditorEmail,
+    role: 'AUDITOR',
+    password: auditorPassword,
+    firstName: 'E2E',
+    lastName: 'Auditor',
+    jobTitle: 'E2E auditor',
+  });
 
   if (
     typeof noc.id !== 'string' ||
     typeof technician.id !== 'string' ||
-    typeof coordinator.id !== 'string'
+    typeof coordinator.id !== 'string' ||
+    typeof auditor.id !== 'string'
   ) {
     throw new Error('El provisioning E2E no devolvió IDs de usuarios.');
   }
@@ -1529,10 +1619,12 @@ try {
   await activateUser(tenantAdmin.token, noc.id);
   await activateUser(tenantAdmin.token, technician.id);
   await activateUser(tenantAdmin.token, coordinator.id);
+  await activateUser(tenantAdmin.token, auditor.id);
   await assignProfiles(tenantAdmin.token, [
     { userId: noc.id, role: 'NOC' },
     { userId: technician.id, role: 'TECHNICIAN' },
     { userId: coordinator.id, role: 'NOC' },
+    { userId: auditor.id, role: 'AUDITOR' },
     { userId: tenantAdmin.userId, role: 'ADMIN' },
   ]);
   await provisionCoordinatorSupervisionProfile(tenantAdmin.token, coordinator.id);
@@ -1599,11 +1691,14 @@ try {
     E2E_TECH_PASSWORD: techPassword,
     E2E_COORDINATOR_RO_EMAIL: coordinatorEmail,
     E2E_COORDINATOR_RO_PASSWORD: coordinatorPassword,
+    E2E_AUDITOR_EMAIL: auditorEmail,
+    E2E_AUDITOR_PASSWORD: auditorPassword,
     E2E_OPERATIONAL_SITE_ID: operationalSiteId,
     E2E_HAPPY_PATH_TEMPLATE_ID: happyPathTemplateId,
     E2E_OTHER_TENANT_SLUG: otherTenantSlug,
     E2E_OTHER_TENANT_EMAIL: otherTenantAdminEmail,
     E2E_OTHER_TENANT_PASSWORD: otherTenantAdminPassword,
+    E2E_OTHER_TENANT_ADMIN_TOKEN: otherTenantAdmin.token,
   });
 } catch (error) {
   console.error(`E2E_SETUP=FAILED|${error instanceof Error ? error.message : String(error)}`);

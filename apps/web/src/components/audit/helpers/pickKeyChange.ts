@@ -8,11 +8,11 @@ const PRIORITY_GROUPS = [
   ['slug', 'schemaName', 'plan'],
 ];
 
-/** Campos de auditoría interna que no se muestran como cambio clave */
-const SKIP_FIELDS = new Set(['updatedAt', 'createdAt', 'lastLoginAt', 'id']);
+/** Campos de auditoría interna / internos de producto que no se muestran como cambio clave */
+const SKIP_FIELDS = new Set(['updatedAt', 'createdAt', 'lastLoginAt', 'id', 'slug', 'schemaName']);
 
 /** Campos de identidad para CREATE/DELETE */
-const IDENTITY_FIELDS = ['email', 'name', 'firstName', 'slug'];
+const IDENTITY_FIELDS = ['email', 'name', 'firstName'];
 
 export interface KeyChange {
   field: string;

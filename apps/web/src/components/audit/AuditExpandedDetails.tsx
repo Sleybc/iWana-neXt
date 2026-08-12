@@ -1,7 +1,6 @@
 'use client';
 
-// Panel expandido compartido entre modo Básico y Técnico — muestra diff completo
-// y metadata técnica del evento de auditoría
+// Panel expandido — diffs de producto; metadata solo en modo Detalle (CA-AUD-10).
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import {
@@ -10,6 +9,8 @@ import {
   formatFieldName,
   abbreviateUserAgent,
 } from './helpers/computeDiff';
+import { shouldOmitAuditFieldInReading } from '@/lib/platform-audit-vocabulary';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 
 interface AuditExpandedDetailsProps {
   id: string;
@@ -22,9 +23,11 @@ interface AuditExpandedDetailsProps {
   createdAt: string;
   oldValue: Record<string, unknown> | null;
   newValue: Record<string, unknown> | null;
+  /** Solo en modo Detalle: IP, UUID, UTC, etc. */
+  showTechnicalMeta?: boolean;
+  fieldMode?: 'reading' | 'detail';
 }
 
-/** Botón que copia texto al portapapeles y muestra confirmación visual */
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -42,7 +45,10 @@ function CopyButton({ text }: { text: string }) {
         void handleCopy(e);
       }}
       aria-label="Copiar al portapapeles"
-      className="ml-1 inline-flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+      className={cn(
+        'ml-1 inline-flex items-center text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200',
+        interactiveFocusClassName,
+      )}
     >
       {copied ? (
         <Check className="h-3 w-3 text-green-500" aria-hidden="true" />
@@ -53,7 +59,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Fila de metadata técnica con etiqueta + valor + botón de copia opcional */
 function MetaRow({
   label,
   value,
@@ -68,12 +73,12 @@ function MetaRow({
   if (!value || value === '—') return null;
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="min-w-[100px] text-gray-500 dark:text-gray-400 shrink-0">{label}</span>
+      <span className="min-w-[100px] shrink-0 text-gray-500 dark:text-gray-400">{label}</span>
       <span
-        className={`text-gray-800 dark:text-gray-200 break-all ${mono ? 'font-mono text-[11px]' : ''}`}
+        className={`break-all text-gray-800 dark:text-gray-200 ${mono ? 'font-mono text-xs' : ''}`}
       >
         {value}
-        {copyable && <CopyButton text={value} />}
+        {copyable ? <CopyButton text={value} /> : null}
       </span>
     </div>
   );
@@ -90,37 +95,46 @@ export function AuditExpandedDetails({
   createdAt,
   oldValue,
   newValue,
+  showTechnicalMeta = false,
+  fieldMode = 'detail',
 }: AuditExpandedDetailsProps) {
-  const diff = computeDiff(oldValue, newValue);
+  const rawDiff = computeDiff(oldValue, newValue);
+  const diff =
+    fieldMode === 'reading'
+      ? rawDiff.filter((d) => !shouldOmitAuditFieldInReading(d.field))
+      : rawDiff;
 
   return (
-    <div className="px-6 py-4 space-y-4">
-      {/* Sección: Cambios del evento */}
+    <div className="space-y-4 px-6 py-4">
       {action === 'UPDATE' ? (
         <div>
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
+          <p className="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
             Cambios ({diff.length} campo{diff.length !== 1 ? 's' : ''} modificado
             {diff.length !== 1 ? 's' : ''})
           </p>
           {diff.length > 0 ? (
             <div className="space-y-1.5">
-              {diff.map(({ field, old: oldVal, new: newVal }) => (
-                <div
-                  key={field}
-                  className="flex items-center gap-3 text-xs bg-white dark:bg-dark-surface-2 rounded-lg px-3 py-2"
-                >
-                  <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[130px]">
-                    {formatFieldName(field)}
-                  </span>
-                  <span className="text-red-500 dark:text-red-400 line-through max-w-[180px] truncate">
-                    {renderValue(oldVal)}
-                  </span>
-                  <span className="text-gray-400 shrink-0">→</span>
-                  <span className="text-green-600 dark:text-green-400 max-w-[180px] truncate">
-                    {renderValue(newVal)}
-                  </span>
-                </div>
-              ))}
+              {diff.map(({ field, old: oldVal, new: newVal }) => {
+                const label = formatFieldName(field, { mode: fieldMode });
+                if (!label) return null;
+                return (
+                  <div
+                    key={field}
+                    className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 text-xs dark:bg-dark-surface-2"
+                  >
+                    <span className="min-w-[130px] font-medium text-gray-700 dark:text-gray-300">
+                      {label}
+                    </span>
+                    <span className="max-w-[180px] truncate text-red-500 line-through dark:text-red-400">
+                      {renderValue(oldVal)}
+                    </span>
+                    <span className="shrink-0 text-gray-400">→</span>
+                    <span className="max-w-[180px] truncate text-green-600 dark:text-green-400">
+                      {renderValue(newVal)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="text-xs text-gray-400 italic">Sin cambios detectados</p>
@@ -128,67 +142,79 @@ export function AuditExpandedDetails({
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          {oldValue && (
+          {oldValue ? (
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
+              <p className="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
                 Valor anterior
               </p>
-              <div className="bg-white dark:bg-dark-surface-2 rounded-lg p-3 text-xs space-y-1">
+              <div className="space-y-1 rounded-lg bg-white p-3 text-xs dark:bg-dark-surface-2">
                 {Object.entries(oldValue)
+                  .filter(([k]) =>
+                    fieldMode === 'reading' ? !shouldOmitAuditFieldInReading(k) : true,
+                  )
                   .slice(0, 12)
-                  .map(([k, v]) => (
-                    <div key={k} className="flex gap-2">
-                      <span className="font-medium text-gray-600 dark:text-gray-400 min-w-[100px]">
-                        {formatFieldName(k)}:
-                      </span>
-                      <span className="text-gray-800 dark:text-gray-200">{renderValue(v)}</span>
-                    </div>
-                  ))}
+                  .map(([k, v]) => {
+                    const label = formatFieldName(k, { mode: fieldMode });
+                    if (!label) return null;
+                    return (
+                      <div key={k} className="flex gap-2">
+                        <span className="min-w-[100px] font-medium text-gray-600 dark:text-gray-400">
+                          {label}:
+                        </span>
+                        <span className="text-gray-800 dark:text-gray-200">{renderValue(v)}</span>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
-          )}
-          {newValue && (
+          ) : null}
+          {newValue ? (
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
+              <p className="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
                 Valor nuevo
               </p>
-              <div className="bg-white dark:bg-dark-surface-2 rounded-lg p-3 text-xs space-y-1">
+              <div className="space-y-1 rounded-lg bg-white p-3 text-xs dark:bg-dark-surface-2">
                 {Object.entries(newValue)
+                  .filter(([k]) =>
+                    fieldMode === 'reading' ? !shouldOmitAuditFieldInReading(k) : true,
+                  )
                   .slice(0, 12)
-                  .map(([k, v]) => (
-                    <div key={k} className="flex gap-2">
-                      <span className="font-medium text-gray-600 dark:text-gray-400 min-w-[100px]">
-                        {formatFieldName(k)}:
-                      </span>
-                      <span className="text-gray-800 dark:text-gray-200">{renderValue(v)}</span>
-                    </div>
-                  ))}
+                  .map(([k, v]) => {
+                    const label = formatFieldName(k, { mode: fieldMode });
+                    if (!label) return null;
+                    return (
+                      <div key={k} className="flex gap-2">
+                        <span className="min-w-[100px] font-medium text-gray-600 dark:text-gray-400">
+                          {label}:
+                        </span>
+                        <span className="text-gray-800 dark:text-gray-200">{renderValue(v)}</span>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
-      {/* Sección: Metadata técnica del evento */}
-      <div className="border-t border-gray-100 dark:border-dark-border pt-3">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
-          Metadata técnica
-        </p>
-        <div className="space-y-1">
-          <MetaRow label="ID de registro" value={id} mono copyable />
-          <MetaRow label="ID de solicitud" value={requestId ?? '—'} mono copyable />
-          <MetaRow label="ID de entidad" value={entityId ?? '—'} mono copyable />
-          <MetaRow
-            label="ID de actor"
-            value={userId ?? 'Sistema'}
-            mono
-            copyable={Boolean(userId)}
-          />
-          <MetaRow label="IP" value={ipAddress ?? '—'} />
-          <MetaRow label="Cliente" value={abbreviateUserAgent(userAgent)} />
-          <MetaRow label="Timestamp UTC" value={new Date(createdAt).toISOString()} mono />
+      {showTechnicalMeta ? (
+        <div className="border-t border-gray-100 pt-3 dark:border-dark-border">
+          <div className="space-y-1">
+            <MetaRow label="ID de registro" value={id} mono copyable />
+            <MetaRow label="ID de solicitud" value={requestId ?? '—'} mono copyable />
+            <MetaRow label="ID de entidad" value={entityId ?? '—'} mono copyable />
+            <MetaRow
+              label="ID de persona"
+              value={userId ?? 'Sistema'}
+              mono
+              copyable={Boolean(userId)}
+            />
+            <MetaRow label="IP" value={ipAddress ?? '—'} />
+            <MetaRow label="Cliente" value={abbreviateUserAgent(userAgent)} />
+            <MetaRow label="Fecha UTC" value={new Date(createdAt).toISOString()} mono />
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

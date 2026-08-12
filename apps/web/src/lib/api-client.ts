@@ -1094,7 +1094,8 @@ function appendAuditFilterParams(
 ): void {
   if (!params) return;
   if ('limit' in params && params.limit !== undefined) {
-    searchParams.set('limit', String(params.limit));
+    const limit = Math.min(Math.max(1, Math.trunc(params.limit)), 100);
+    searchParams.set('limit', String(Number.isFinite(limit) ? limit : 50));
   }
   if ('cursor' in params && params.cursor) {
     searchParams.set('cursor', params.cursor);

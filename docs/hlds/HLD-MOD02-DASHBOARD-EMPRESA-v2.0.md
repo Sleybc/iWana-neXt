@@ -97,7 +97,7 @@ Complementarios, con su guard real verificado por AI-SR-FULL:
 | --- | --- | --- |
 | `GET /tenants/me` | ADMIN, NOC, ACCOUNTANT, SUPPORT | Ficha operativa completa de la empresa |
 | `GET /tenants/public-branding` | **Público** | Identidad visible y marca. Sin estado, ubicación ni configuración |
-| `GET /audit-logs` | ADMIN (autorizado a nivel de clase) | Actividad reciente |
+| `GET /audit-logs` | ADMIN, **AUDITOR** (listado; export acotado ADMIN/SYSTEM_ADMIN — dictamen SEC 2026-08-11) | Actividad reciente |
 | `GET /access-control/me/effective-permissions` | 9 roles — **excluye** suscriptor, aliado e inversionista | Ruta literal; la anterior redacción `/access-control/.../effective` era imprecisa |
 
 > **Hecho verificado que acota el diseño:** los roles **suscriptor** e **inversionista** no aparecen en el guard de **ningún** controlador del API. Para ellos, ningún contrato autenticado del tenant es accesible. Es un dato de arquitectura, no una omisión a corregir desde la capa de presentación.
@@ -153,7 +153,7 @@ Derivada de los guards de §4.2, no de una preferencia de diseño. **La matriz e
 | Embudo de CRM | Sí | No | Sí | Sí | No | No | No | No |
 | Alertas de configuración del tenant | Sí | No | No | No | No | No | No | No |
 | Señales de calidad comercial (catálogo incompleto, precios faltantes) | Sí | Sí | Sí | Sí | Sí | No | No | No |
-| Actividad reciente | Sí | No | No | No | No | No | **Por decidir** | No |
+| Actividad reciente | Sí | No | No | No | No | No | **Sí** | No |
 | Accesos rápidos | Filtrados por autorización — nunca se ofrece un destino que devolverá un error de permisos |
 
 \* `TECHNICIAN` no está en el guard de trabajo de campo. Ve **su propia agenda** por la vía que ya usa la pantalla de programación (`GET /wfm/events` y `GET /assurance/tickets`, donde sí está autorizado), no el resumen agregado. Si el resumen debiera abrirse a ese rol, es decisión de seguridad y **no se asume aquí**.
@@ -162,7 +162,7 @@ Derivada de los guards de §4.2, no de una preferencia de diseño. **La matriz e
 
 **Por qué no se amplían permisos.** AI-SR-FULL ofreció como opción ampliar el guard de `GET /tenants/me` a todos los roles del tenant. **Se descarta.** Ese contrato expone correo de contacto, NIT, dígito de verificación y razón social — campos que la revisión de seguridad transversal clasifica como sensibles. Ampliarlos a suscriptor o aliado sería una decisión de seguridad tomada desde la capa de presentación, que es exactamente lo que HLD-DE-06 prohíbe y lo que esta corrección viene a reparar. La identidad de empresa se resuelve por el contrato público, que no requiere tocar ni un permiso.
 
-**Decisión pendiente registrada:** ampliar la consulta de auditoría al rol `AUDITOR` cambia un permiso de backend. No se fuerza desde una decisión de UI — `[CONSULTA]` a AI-SEC-ENG antes de incluirlo.
+**Decisión AUDITOR / actividad reciente (2026-08-11):** `[CONSULTA]` a AI-SEC-ENG en delta UX v1.2 → **GO condicionado**. Casilla §5.2 pasa a **Sí**. Controles: list +`UserRole.AUDITOR`; export sin AUDITOR salvo justificación; re-sanitize en lectura; FE home minimizado sin «ver todo»; tests de autorización/tenancy. Cierra HLD-DE-06 para este caso (alineación a PRD-MOD01, no privilegio inventado por UI). Trazabilidad: `PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md` §2bis · informe recomposición §10 · agente SEC `986c06de-ce31-42a5-a4ea-7bb9cde5a34d`.
 
 ### 5.3 Vista base
 

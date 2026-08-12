@@ -463,7 +463,7 @@ export default function ExpedientesPage() {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_auto_auto] lg:items-end">
             <div className="relative">
               <span
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400"
                 aria-hidden="true"
               >
                 <Search className="h-4 w-4" />

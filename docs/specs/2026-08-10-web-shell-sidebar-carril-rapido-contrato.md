@@ -113,23 +113,31 @@ className={cn(
 <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl">
 ```
 
-### Después (autorizado)
+### Después (autorizado 2026-08-10 · **superado 2026-08-11**)
 
 ```tsx
 <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface">
 ```
 
+### Restaurado por el operador (2026-08-11)
+
+El canto sidebar ↔ dashboard debe verse **ovalado**. **CA-SB-02 queda superado.** Clase vigente:
+
+```tsx
+<main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl">
+```
+
+Misma receta que el portal (`apps/portal/src/app/dashboard/layout.tsx`). Desktop (`lg:`); en mobile el sidebar es drawer.
+
 ### Regla de separación shell
 
-- Separación sidebar ↔ canvas **solo** por contraste de superficie:
-  - Sidebar: `bg-white/95` (light) / `dark:bg-dark-surface-2/95`
-  - Canvas: `bg-iwana-surface-soft` / `dark:bg-dark-surface`
-- **Prohibido** en el `<main>` del layout protegido: `lg:rounded-3xl`, `rounded-3xl`, `rounded-[*]`, u otro radio que recree la “mordida” junto al sidebar.
+- Contraste de superficie se mantiene (sidebar blanco / canvas `iwana-surface-soft`).
+- Radio del canvas: `lg:rounded-3xl` (token `--radius-3xl`).
 - Radios de **contenido interno** (cards, paneles) no se tocan.
 
-### Clases canónicas P2
+### Clases canónicas P2 (vigentes)
 
-`flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface`
+`flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl`
 
 ---
 
@@ -228,7 +236,7 @@ absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-iwana-seconda
 | ID | Criterio | Verifica |
 | --- | --- | --- |
 | CA-SB-01 | Todo `<Link>` de nav del sidebar, los dos links de marca (expandido/colapsado) y el botón cerrar mobile incluyen `interactiveFocusClassName` | SR-QA |
-| CA-SB-02 | El `<main>` del layout protegido **no** incluye `lg:rounded-3xl` ni clase de radio equivalente en el canvas del shell | SR-QA |
+| CA-SB-02 | **Superado 2026-08-11.** El `<main>` del layout protegido **incluye** `lg:rounded-3xl` (canto ovalado con el sidebar). | Operador |
 | CA-SB-03 | Contenedor isotipo sidebar: `h-10 w-11 rounded-xl`; img `h-7 w-7 object-contain`; sin ring claro en light (ni ring dark decorativo) | SR-QA |
 | CA-SB-04 | Proporciones del PNG intactas (`object-contain`); sin `object-cover` ni stretch | SR-QA |
 | CA-SB-05 | Sidebar colapsado (`lg:w-[90px]`): squircle 44×40 no desborda ni corta el isotipo | SR-QA |

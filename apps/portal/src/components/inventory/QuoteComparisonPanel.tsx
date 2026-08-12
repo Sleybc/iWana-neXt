@@ -70,10 +70,12 @@ export function QuoteComparisonPanel({
                 <p className="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
                   {formatInventoryCurrency(total)}
                 </p>
-                <p className="text-xs text-iwana-secondary-700">Total con envío</p>
+                <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                  Total con envío
+                </p>
               </div>
             </div>
-            <dl className="mt-3 grid gap-1 text-xs text-iwana-secondary-700 sm:grid-cols-2">
+            <dl className="mt-3 grid gap-1 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400 sm:grid-cols-2">
               <div className="flex justify-between gap-2 sm:block">
                 <dt>Productos</dt>
                 <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
@@ -88,7 +90,7 @@ export function QuoteComparisonPanel({
               </div>
             </dl>
             {quote.lines && quote.lines.length > 0 ? (
-              <ul className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs text-iwana-secondary-700 dark:border-dark-border">
+              <ul className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400 dark:border-dark-border">
                 {quote.lines.map((line) => (
                   <li key={line.id} className="flex flex-wrap justify-between gap-2">
                     <span>

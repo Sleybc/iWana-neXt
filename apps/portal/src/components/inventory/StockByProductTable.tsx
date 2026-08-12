@@ -161,7 +161,7 @@ export function StockByProductTable({
             ]}
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-iwana-secondary-700">
+        <label className="flex items-center gap-2 text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
           <input
             type="checkbox"
             checked={onlyBelowMinimum}
@@ -274,7 +274,7 @@ export function StockByProductTable({
         </div>
       )}
 
-      <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+      <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
         {STOCK_RESERVED_HELP_TEXT}
       </p>
     </div>

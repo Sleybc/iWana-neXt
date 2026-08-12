@@ -1,11 +1,13 @@
 'use client';
 
-// Fila de auditoría en modo Básico — narrativa clara en voz pasiva con sujeto afectado
+// Fila de historial en modo Lectura — frase con verbo; un control de expansión (CA-AUD-07).
 import React from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { actionVerb, actionLabel, AUTH_ACTIONS } from './helpers/actionLabel';
-import { entityLabel, entityArticle } from './helpers/entityLabel';
-import { formatActorFull, isSystemActor } from './helpers/formatActor';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
+import { actionLabel, AUTH_ACTIONS } from './helpers/actionLabel';
+import { entityLabel } from './helpers/entityLabel';
+import { describePlatformActivityLine } from '@/lib/platform-audit-vocabulary';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { pickKeyChange } from './helpers/pickKeyChange';
 import { deriveSeverity, severityClasses, severityLabel } from './helpers/deriveSeverity';
 import { computeDiff, renderValue, formatFieldName } from './helpers/computeDiff';
@@ -38,11 +40,10 @@ interface AuditRowBasicProps {
   entry: AuditBasicEntry;
   expanded: boolean;
   onToggle: () => void;
-  /** Nombre de la empresa para mostrar en el pie de fila (opcional) */
   companyName?: string | undefined;
+  showTechnicalMeta?: boolean;
 }
 
-/** Determina el color del badge de acción */
 function actionBadgeClass(action: string): string {
   if (action === 'CREATE')
     return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
@@ -54,116 +55,39 @@ function actionBadgeClass(action: string): string {
   return 'bg-gray-100 text-gray-700 dark:bg-dark-surface-3 dark:text-gray-300';
 }
 
-/**
- * Extrae el identificador legible del registro afectado desde los datos del evento.
- * Prioriza: email > nombre > slug — para mostrar en la narrativa en lugar de un UUID.
- */
-function extractSubjectId(
-  oldValue: Record<string, unknown> | null,
-  newValue: Record<string, unknown> | null,
-): string | null {
-  const data = newValue ?? oldValue;
-  if (!data || typeof data !== 'object') return null;
-  const d = data as Record<string, unknown>;
-  const candidate = d.email ?? d.name ?? d.firstName ?? d.slug ?? d.companyName ?? d.legalName;
-  if (candidate && typeof candidate === 'string') return candidate;
-  return null;
-}
-
-/**
- * Construye la frase narrativa del evento en voz pasiva.
- * Formato: "Se actualizó el usuario john@example.com"
- * El actor (quién lo hizo) se muestra en los metadatos, no en la narrativa principal,
- * para no contaminar el texto con fragmentos de UUID.
- */
-function buildNarrative(entry: AuditBasicEntry): string {
-  const verb = actionVerb(entry.action);
-  const entity = entityLabel(entry.entityType);
-  const article = entityArticle(entry.entityType);
-  const subject = extractSubjectId(entry.oldValue, entry.newValue);
-  const subjectStr = subject ? ` ${subject}` : '';
-
-  // Sesión propia — el sujeto es el actor, no hace falta objeto
-  if (['LOGIN', 'LOGOUT', 'REFRESH'].includes(entry.action)) {
-    const cap = verb.charAt(0).toUpperCase() + verb.slice(1);
-    return cap;
-  }
-
-  // Fallos de acceso / bloqueos
-  if (entry.action === 'LOGIN_FAILED') return 'Fallo de acceso';
-  if (entry.action === 'ACCOUNT_LOCKED') return `Cuenta bloqueada${subjectStr}`;
-
-  // Acciones con verbo orientado al objeto (incluyen artículo implícito)
-  if (
-    [
-      'PASSWORD_CHANGED',
-      'PASSWORD_RESET_REQUESTED',
-      'PASSWORD_RESET_COMPLETED',
-      'MFA_ENABLED',
-      'MFA_DISABLED',
-      'MFA_SETUP_INITIATED',
-      'EMAIL_VERIFIED',
-    ].includes(entry.action)
-  ) {
-    const cap = verb.charAt(0).toUpperCase() + verb.slice(1);
-    return subject ? `${cap} ${subject}` : cap;
-  }
-
-  // Acciones de tenant con nombre de empresa
-  if (['TENANT_PROVISIONED', 'TENANT_SUSPENDED', 'TENANT_ACTIVATED'].includes(entry.action)) {
-    const cap = verb.charAt(0).toUpperCase() + verb.slice(1);
-    return subject ? `${cap} ${subject}` : cap;
-  }
-
-  // CRUD general: "Se actualizó el usuario john@example.com"
-  return `Se ${verb} ${article} ${entity}${subjectStr}`;
-}
-
-export function AuditRowBasic({ entry, expanded, onToggle, companyName }: AuditRowBasicProps) {
+export function AuditRowBasic({
+  entry,
+  expanded,
+  onToggle,
+  companyName,
+  showTechnicalMeta = false,
+}: AuditRowBasicProps) {
   const diff = computeDiff(entry.oldValue, entry.newValue);
   const severity = deriveSeverity(entry.action, entry.entityType, diff);
   const sc = severityClasses(severity);
   const keyChange = pickKeyChange(entry.oldValue, entry.newValue, entry.action);
-  const narrative = buildNarrative(entry);
-  const actorFull = formatActorFull(entry.userId);
-  const systemActor = isSystemActor(entry.userId);
-  const actorDisplayName = entry.actor?.displayName ?? actorFull.slice(0, 8);
-  const actorTooltip = entry.actor
-    ? `Actor: ${entry.actor.displayName}${entry.actor.role ? ` · ${entry.actor.role}` : ''}${entry.userId ? ` · ID ${entry.userId}` : ''}`
-    : `Actor: ${actorFull}`;
+  const narrative = describePlatformActivityLine(entry);
+  const actorDisplayName =
+    entry.actor?.displayName?.trim() ||
+    (entry.userId ? PLATFORM_UI_COPY.audit.actorFallback : 'Sistema');
+  const fieldLabel = keyChange ? formatFieldName(keyChange.field, { mode: 'reading' }) : '';
 
   return (
     <>
-      {/* Fila principal */}
-      <tr
-        onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-        tabIndex={0}
-        role="button"
-        aria-expanded={expanded}
-        className="border-t border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
-      >
+      <tr className="border-t border-gray-100 transition-colors hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3">
         <td className="px-4 py-3" colSpan={1}>
           <div className="flex items-start gap-3">
-            {/* Punto de criticidad */}
             <span
               className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${sc.dot}`}
               title={severityLabel(severity)}
-              aria-label={`Criticidad: ${severityLabel(severity)}`}
+              aria-hidden="true"
             />
 
-            <div className="flex-1 min-w-0 space-y-1">
-              {/* Frase narrativa — voz pasiva, sin UUID en el texto */}
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-sm leading-snug font-semibold text-gray-900 dark:text-gray-100">
                 {narrative}
               </p>
 
-              {/* Fila única: badges + actor + tiempo + criticidad + toggle */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${actionBadgeClass(entry.action)}`}
@@ -174,58 +98,45 @@ export function AuditRowBasic({ entry, expanded, onToggle, companyName }: AuditR
                   {entityLabel(entry.entityType)}
                 </span>
 
-                <span className="text-gray-300 dark:text-gray-600">·</span>
+                <span className="text-gray-300 dark:text-gray-400">·</span>
+                <span className="text-gray-500 dark:text-gray-400">{actorDisplayName}</span>
 
-                {/* Actor — pill de ID corto con tooltip del UUID, sin icono */}
-                {systemActor ? (
-                  <span className="text-gray-500 dark:text-gray-400">Sistema</span>
-                ) : (
-                  <span
-                    className="text-gray-500 dark:text-gray-400 cursor-help"
-                    title={actorTooltip}
-                  >
-                    {actorDisplayName}
-                  </span>
-                )}
-
-                <span className="text-gray-300 dark:text-gray-600">·</span>
-
+                <span className="text-gray-300 dark:text-gray-400">·</span>
                 <time
                   dateTime={entry.createdAt}
                   title={new Date(entry.createdAt).toLocaleString('es-CO')}
-                  className="text-gray-400 dark:text-gray-500"
+                  className="font-mono tabular-nums text-gray-500 dark:text-gray-400"
                 >
                   {timeAgo(entry.createdAt)}
                 </time>
 
-                {companyName && (
+                {companyName ? (
                   <>
-                    <span className="text-gray-300 dark:text-gray-600">·</span>
-                    <span className="text-gray-400 dark:text-gray-500">{companyName}</span>
+                    <span className="text-gray-300 dark:text-gray-400">·</span>
+                    <span className="text-gray-400 dark:text-gray-400">{companyName}</span>
                   </>
-                )}
+                ) : null}
 
-                {AUTH_ACTIONS.has(entry.action) && entry.ipAddress && (
-                  <>
-                    <span className="text-gray-300 dark:text-gray-600">·</span>
-                    <span className="text-gray-400 dark:text-gray-500">IP: {entry.ipAddress}</span>
-                  </>
-                )}
-
-                <span className={`rounded-full px-1.5 py-0.5 font-medium text-[10px] ${sc.badge}`}>
-                  {severityLabel(severity)}
-                </span>
+                {severity !== 'info' ? (
+                  <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${sc.badge}`}>
+                    {severityLabel(severity)}
+                  </span>
+                ) : null}
 
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggle();
-                  }}
-                  className="ml-auto flex items-center gap-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                  aria-label={expanded ? 'Colapsar detalles' : 'Ver detalles'}
+                  onClick={onToggle}
+                  aria-expanded={expanded}
+                  className={cn(
+                    'ml-auto flex min-h-11 items-center gap-0.5 rounded-lg px-2 text-gray-500 transition-colors hover:text-gray-700 dark:hover:text-gray-300',
+                    interactiveFocusClassName,
+                  )}
                 >
-                  <span className="text-[10px]">{expanded ? 'Ocultar' : 'Detalles'}</span>
+                  <span className="text-xs">
+                    {expanded
+                      ? PLATFORM_UI_COPY.audit.collapseDetail
+                      : PLATFORM_UI_COPY.audit.expandDetail}
+                  </span>
                   {expanded ? (
                     <ChevronUp className="h-3 w-3" aria-hidden="true" />
                   ) : (
@@ -234,12 +145,11 @@ export function AuditRowBasic({ entry, expanded, onToggle, companyName }: AuditR
                 </button>
               </div>
 
-              {/* Cambio clave */}
-              {keyChange && (
+              {keyChange && fieldLabel ? (
                 <p className="text-xs text-gray-600 dark:text-gray-400">
                   {keyChange.newVal === null ? (
                     <>
-                      <span className="font-medium">{formatFieldName(keyChange.field)}:</span>{' '}
+                      <span className="font-medium">{fieldLabel}:</span>{' '}
                       <span className="text-red-500 dark:text-red-400">
                         {renderValue(keyChange.oldVal)}
                       </span>{' '}
@@ -247,39 +157,38 @@ export function AuditRowBasic({ entry, expanded, onToggle, companyName }: AuditR
                     </>
                   ) : keyChange.oldVal === null ? (
                     <>
-                      <span className="font-medium">{formatFieldName(keyChange.field)}:</span>{' '}
+                      <span className="font-medium">{fieldLabel}:</span>{' '}
                       <span className="text-green-600 dark:text-green-400">
                         {renderValue(keyChange.newVal)}
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="font-medium">{formatFieldName(keyChange.field)}:</span>{' '}
-                      <span className="line-through text-gray-400">
+                      <span className="font-medium">{fieldLabel}:</span>{' '}
+                      <span className="text-gray-400 line-through">
                         {renderValue(keyChange.oldVal)}
                       </span>
                       {' → '}
                       <span className="text-gray-900 dark:text-gray-100">
                         {renderValue(keyChange.newVal)}
                       </span>
-                      {keyChange.extraCount > 0 && (
+                      {keyChange.extraCount > 0 ? (
                         <span className="ml-1 text-gray-400">+{keyChange.extraCount} más</span>
-                      )}
+                      ) : null}
                     </>
                   )}
                 </p>
-              )}
+              ) : null}
             </div>
           </div>
         </td>
       </tr>
 
-      {/* Panel expandido */}
-      {expanded && (
+      {expanded ? (
         <tr key={`${entry.id}-expanded`}>
           <td
             colSpan={1}
-            className="bg-gray-50 dark:bg-white/[0.03] border-t border-gray-100 dark:border-dark-border"
+            className="border-t border-gray-100 bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3"
           >
             <AuditExpandedDetails
               id={entry.id}
@@ -292,10 +201,12 @@ export function AuditRowBasic({ entry, expanded, onToggle, companyName }: AuditR
               createdAt={entry.createdAt}
               oldValue={entry.oldValue}
               newValue={entry.newValue}
+              showTechnicalMeta={showTechnicalMeta}
+              fieldMode="reading"
             />
           </td>
         </tr>
-      )}
+      ) : null}
     </>
   );
 }

@@ -90,7 +90,7 @@ export function PanelCard({
                     onClick={() => onRowClick(row.label)}
                     className={cn(
                       'flex w-full items-center justify-between border-b border-gray-100 py-3 text-left last:border-0 dark:border-dark-border',
-                      'cursor-pointer rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.03]',
+                      'cursor-pointer rounded-lg hover:bg-gray-50 dark:hover:bg-dark-surface-3',
                       rowFocusClassName,
                     )}
                   >
@@ -133,7 +133,7 @@ export function PanelCard({
             <a
               href={footerHref}
               className={cn(
-                'flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-white/5',
+                'flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4',
                 interactiveFocusClassName,
               )}
             >
@@ -144,7 +144,7 @@ export function PanelCard({
               type="button"
               onClick={onFooterClick}
               className={cn(
-                'flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-white/5',
+                'flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4',
                 interactiveFocusClassName,
               )}
             >

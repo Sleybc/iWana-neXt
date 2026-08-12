@@ -264,7 +264,7 @@ export function UsersTable({
                     users.map((user) => (
                       <tr
                         key={user.id}
-                        className="transition-colors hover:bg-iwana-surface-soft/70 dark:hover:bg-white/[0.03]"
+                        className="transition-colors hover:bg-iwana-surface-soft/70 dark:hover:bg-dark-surface-3"
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">

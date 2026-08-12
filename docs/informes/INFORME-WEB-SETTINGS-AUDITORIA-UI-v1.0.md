@@ -1,163 +1,355 @@
-# INFORME — Auditoria UI/UX y Accesibilidad — `/settings` apps/web
+# Review UI — Plataforma / settings (`apps/web` `/settings`)
 
-**Version:** 1.0  
-**Estado:** Activo  
-**Fecha:** 2026-06-12  
-**Modo activo:** Mixto (AI-SR-UI-SYS + AI-EM-ARCH)  
-**Modulo:** MOD00 Configuracion Control Plane — superficie web `/settings`  
-**ADR rector:** ADR-040, ADR-045  
-**PRD rector:** `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` (v1.5)  
-**HLD rector:** `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` (v1.6)  
-**Plan de correccion:** `docs/plans/2026-06-12-web-settings-ui-audit-fixes.md`  
-**Informe vivo MOD00:** `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` (v1.52)
+**Versión:** 1.0  
+**Estado:** Activo — auditoría pre-G2 reconciliada A+B (2026-08-11)  
+**Fecha:** 2026-08-11  
+**Emite:** protocolo v1.5 · Track A AI-PROD-UX · Track B AI-DS-OWNER  
+**Prompt:** [`PROMPT-WEB-SETTINGS-AUDITORIA-UI-v1.0.md`](../prompts/PROMPT-WEB-SETTINGS-AUDITORIA-UI-v1.0.md)  
+**Supersede:** cierre de remediación 2026-06-12 (tabs `@iwana/ui`, `Input`/`OtpInput`, `role="alert"`, Dialog de borrado). Ese trabajo sigue en código; esta revisión mide alineación Firma iWana / vocabulario / DS frente al baseline vivo (Empresas, Historial, centro de control).  
+**Reconciliación:** Track B fijó formato DS + hallazgos Identidad/Primitives/Accesibilidad (puntaje 67). Track A enriquece matriz copy, separa P1/P2 de vocabulario y completa CA-SET-09…12 **sin borrar** hallazgos DS de B.
 
 ---
 
-## 1. Contexto
+## Resumen ejecutivo
 
-Auditoria visual, de accesibilidad y de deuda tecnica de la pagina de configuracion de la consola administrativa (`apps/web`, ruta `/settings`). La auditoria se realizo en dos capas:
+Pantalla de **configuración** (settings): el operador administra identidad visual de la consola y su propia seguridad de acceso (contraseña + verificación en dos pasos). La cáscara (`PageHeader` + `Card` + `Tabs` de `@iwana/ui`) y el dark (`dark-surface-*`) están en regla; el script mecánico sale limpio. El daño combinado es **vocabulario técnico** (MFA/TOTP/Authenticator; chrome «Gobierno»; «Superficie»/metadata/slot/fallback; errores «No fue posible…»), **doble cáscara** Seguridad dentro del Card de página, **Alert ad hoc** (`FORM_ALERT_*`) frente a `Alert` ya usado en Empresas/tenant forms, y **foco / loading** del slot de activos.
 
-1. **Capa visual (AI-SR-UI-SYS):** analisis contra el perfil Senior UI Systems Designer y los principios de diseno de iWana neXt (minimalismo funcional, consistencia sistemica, WCAG 2.2 AA).
-2. **Capa arquitectonica (AI-EM-ARCH):** analisis de profundidad de codigo, inconsistencias en el uso del design system `@iwana/ui`, cobertura de tests y deuda tecnica estructural.
-
-**Metodo:** navegacion en browser autenticado + snapshot a11y + analisis de codigo fuente de `page.tsx`, `SecuritySettings.tsx`, `PlatformBrandingSettings.tsx`, `form-styles.ts` y componentes de `@iwana/ui` (Tabs, Input, OtpInput, Dialog, Card).
-
----
-
-## 2. Alcance auditado
-
-| Archivo | Descripcion |
-|---|---|
-| `apps/web/src/app/(protected)/settings/page.tsx` | Shell de la pagina: tabs, layout y tab General |
-| `apps/web/src/components/settings/SecuritySettings.tsx` | Cambio de contrasena + setup/disable MFA |
-| `apps/web/src/components/settings/PlatformBrandingSettings.tsx` | Subida de activos, nombres e identidad de plataforma |
-| `apps/web/src/lib/form-styles.ts` | Constantes de estilos de formularios |
-| `apps/web/src/app/(protected)/settings/page.spec.tsx` | Tests de la pagina |
-| `packages/ui/src/components/` (Tabs, Input, OtpInput, Dialog, Card) | Referencia del design system |
+**Modo:** código  
+**Script:** `audit-ui.mjs` sobre `apps/web/src/app/(protected)/settings` + `apps/web/src/components/settings` → **0 deterministas, 0 heurísticos**. No cubre copy, Alert vs FORM_ALERT, card-in-card ni foco custom.  
+**Puntaje:** **44/100** (P0: 0, P1: 4, P2: 5, P3: 1)  
+**Banda:** &lt; 50 — no cumple calidad mínima de vocabulario + identidad hasta remediación; carril rápido sigue viable (0 primitives nuevas).  
+**Delta vs B solo-DS (67):** −23 por 2 P1 vocab + 1 P2 copy añadidos en reconciliación A (fórmula skill).
 
 ---
 
-## 3. Resumen de hallazgos
+## Hallazgos críticos (P0)
 
-| Severidad | ID | Descripcion | Archivo | Lineas |
-|---|---|---|---|---|
-| **Bloqueante** | B-1 | Tabs custom sin ARIA: sin `role="tablist"`, `role="tab"`, `aria-selected`, `aria-controls`, `role="tabpanel"` — lectores de pantalla no anuncian la estructura | `page.tsx` | 34–52 |
-| **Bloqueante** | B-2 | Inputs de contrasena en SecuritySettings sin `aria-invalid` ni `aria-describedby` vinculado al mensaje de error | `SecuritySettings.tsx` | 167–209 |
-| **Bloqueante** | B-3 | Campo TOTP sin `id`, sin `<label>`, sin `aria-label`, sin `inputMode="numeric"` — uso incorrecto del `<OtpInput>` disponible en `@iwana/ui` | `SecuritySettings.tsx` | 286–293 |
-| **Bloqueante** | B-4 | Bloques de exito sin `role="alert"` en ambos componentes — los lectores de pantalla no anuncian el exito de operaciones criticas (cambio de contrasena, guardado de branding) | `SecuritySettings.tsx:135`, `PlatformBrandingSettings.tsx:576` | |
-| **Bloqueante** | B-5 | Shadow hardcodeada `shadow-[0_4px_24px_rgba(0,0,0,0.06)]` en lugar del token `shadow-iwana-soft` — sombra inconsistente con el sistema (negra pura vs azul noche del token) | `page.tsx:57`, `SecuritySettings.tsx:29` | |
-| **Importante** | I-1 | Duplicacion de class strings equivalentes a `FORM_PANEL_CLASS` (radio 24px vs token 28px, shadow distinta) | `page.tsx:57`, `SecuritySettings.tsx:28` | |
-| **Importante** | I-2 | Inputs de contrasena sin `autoComplete` — gestores de contrasenas no pueden distinguir contrasena actual de nueva | `SecuritySettings.tsx` | 167–208 |
-| **Importante** | I-3 | Link a directorio `/brand/` en BrandingSlotCard expone ruta interna sin valor practico para URLs locales | `PlatformBrandingSettings.tsx` | 307–320 |
-| **Importante** | I-4 | Formulario de branding operable durante carga inicial con `defaultValues` hardcodeados — el usuario puede guardar valores del codigo fuente en vez de los datos reales | `PlatformBrandingSettings.tsx` | 383–412, 371–380 |
-| **Importante** | I-5 | Carga del estado MFA inicial sin indicador visible — el boton "Configurar MFA" aparece antes de confirmar que MFA no esta activo | `SecuritySettings.tsx` | 41–52 |
-| **Importante** | I-6 | Eliminacion de imagen de branding sin dialogo de confirmacion — accion destructiva irreversible sin advertencia | `PlatformBrandingSettings.tsx` | 334–350 |
-| **Importante** | I-7 | Mezcla sistematica de `<Input>` de `@iwana/ui` con `<input>` nativo en SecuritySettings — los inputs nativos no heredan toggle de contrasena, estados de error integrados ni accesibilidad del design system | `SecuritySettings.tsx` | 167–209, 286–347 |
-| **Importante** | I-8 | `SecuritySettings` sin archivo de tests — cero cobertura para cambio de contrasena, MFA setup, MFA disable, validacion de formulario y estado inicial | — | — |
-| **Importante** | I-9 | Tests faltantes en `page.spec.tsx`: Restaurar base, error de API en carga, tab Seguridad, tab General, estado de carga | `page.spec.tsx` | — |
-| **Menor** | M-1 | `CardTitle` en `@iwana/ui` usa color hardcodeado `text-[#17163A]` en lugar del token `text-iwana-primary` | `packages/ui/src/components/Card.tsx:40` | |
-| **Menor** | M-2 | Tres valores de radio de borde distintos (8px, 16px, 24px, 28px) sin sistema semantico de tres niveles | multiple | |
-| **Menor** | M-3 | `<input type="file">` oculto en `BrandingSlotCard` sin `aria-label` ni `id` | `PlatformBrandingSettings.tsx` | 290–301 |
-| **Menor** | M-4 | `<details>`/`<summary>` para URL alternativa sin indicador de estado abierto/cerrado accesible en AT limitados | `PlatformBrandingSettings.tsx` | 323–332 |
-| **Menor** | M-5 | `ProtectedLayout` spinner "Validando sesion..." sin `role="status"` ni `aria-live` | `layout.tsx` | 27–31 |
-| **Menor** | M-6 | Overlay de upload "Subiendo..." sin `role="status"` — lectores de pantalla no anuncian el estado de carga | `PlatformBrandingSettings.tsx` | 282–286 |
-| **Menor** | M-7 | `form-styles.ts` no usa tokens semanticos de `@iwana/ui/tokens` — duplicacion de valores de color literales | `form-styles.ts` | — |
-| **Menor** | M-8 | `<h2>` del tab General sin `id` para `aria-labelledby` en la seccion | `page.tsx` | 58 |
-| **Menor** | M-9 | `defaultValues` de branding con strings de producto reales como fallback — riesgo de guardar valores del codigo fuente | `PlatformBrandingSettings.tsx` | 371–380 |
-| **Menor** | M-10 | Tab General placeholder sin `// TODO` ni referencia a issue o ADR — deuda silenciosa | `page.tsx` | 56–66 |
+Ninguno.
 
 ---
 
-## 4. Aciertos a preservar
+## Hallazgos
 
-| ID | Descripcion |
-|---|---|
-| A-1 | Vista previa en vivo de identidad de branding (`productName`, `surfaceName`) — feedback inmediato excelente para herramientas operativas |
-| A-2 | Validacion de assets del lado del cliente (`validateFileAgainstRule`) con dimensiones, peso, aspecto ratio y MIME — evita uploads fallidos de forma preventiva |
-| A-3 | Feedback de error con `role="alert"` e icono + color — correcto en el bloque de error (falta aplicar el mismo patron al bloque de exito) |
-| A-4 | Estados `isUploading` e `isRemoving` en `BrandingSlotCard` con overlay contextual — feedback operativo claro durante acciones asincronas |
+### [P1][Vocabulario] Jerga MFA / TOTP / Authenticator en UI
+
+- **Evidencia:** `SecuritySettings.tsx:206-210` («Autenticación de dos factores (MFA)», «código TOTP»); `:86` («app Authenticator»); `:99-115` / `:230` / `:239` / `:269` / `:278-303` (rótulos, estados y CTAs con «MFA»); `:220` («Verificando estado MFA…»). Canon vivo: `platform-ui-copy.ts:141,161-165,197-201` («Verificación en dos pasos» en Historial).
+- **Impacto:** El operador recibe jerga de implementación en la tarea de seguridad personal; rompe el canon y la continuidad con el historial de cambios.
+- **Recomendación:** Matriz copy → `PLATFORM_UI_COPY.settings.security*`. Título «Verificación en dos pasos»; «aplicación autenticadora»; «código de verificación»; CTAs Activar / Confirmar / Desactivar. (Branding/chrome → hallazgos P1 siguientes.)
+- **Esfuerzo:** S–M  
+- **Track:** A (PROD-UX)
+
+### [P1][Vocabulario] Chrome «Gobierno…» + subtítulo branding/parámetros
+
+- **Evidencia:** `page.tsx:21-22` — H1 `Plataforma` (coherente con `PLATFORM_UI_COPY.navigation.settings`) + subtítulo «Administra branding, seguridad global y parámetros compartidos de la consola interna.»; `:27` — CardTitle `Gobierno y configuración global`; `:40-52` — tab General: prosa «decisiones globales de plataforma», «branding», «parámetros compartidos» sin controles.
+- **Impacto:** Tono de control plane interno; el subtítulo y el CardTitle no describen la tarea (identidad + seguridad de acceso). El tab General añade carga cognitiva sin acción.
+- **Recomendación:** Subtítulo corto orientado a tarea (ej. «Identidad de la consola y seguridad de tu acceso.»). Quitar o reemplazar CardTitle («Configuración» / solo H1). Preferir **dos tabs** (Identidad | Seguridad) y absorber el deslinde a Empresas en el subtítulo; si se mantiene General, una frase + enlace, no tres párrafos.
+- **Esfuerzo:** S  
+- **Track:** A
+
+### [P1][Vocabulario] «Superficie», metadata y anglicismos del formulario de identidad
+
+- **Evidencia:**
+  - Tab `Branding` — `page.tsx:34`; H2 `Branding de plataforma` — `PlatformBrandingSettings.tsx:616-620`.
+  - Label + preview `Superficie` — `:759-761`, `:784-787`; Zod `:51` («La superficie debe…»).
+  - Help favicon «metadata pública» — `:695`; help nombres «superficies públicas del navegador» — `:748`.
+  - Feedback «Branding…», «activo de branding», «fallback base», «slot» — `:428,493,497,508,512,543,547,584,589`.
+- **Impacto:** «Superficie» / «metadata» / «slot» / «fallback» / «activo» / «branding» son jerga DS o anglicismos; el operador necesita nombres de consola y pestaña.
+- **Recomendación:** Tab/H2 `Identidad` (o «Identidad visual»). Labels: `Producto` (ok), `Nombre en la consola`, `Título de pestaña`, `Descripción corta`. Feedback sin branding/slot/fallback.
+- **Esfuerzo:** S–M  
+- **Track:** A
+
+### [P1][Accesibilidad] Slot de activo sin anillo de foco visible
+
+- **Evidencia:** `PlatformBrandingSettings.tsx:270-274` — `<button>` de vista previa/subida con hover de borde y overlay `group-focus-visible:opacity-100`, **sin** `interactiveFocusClassName` ni `focus-visible:ring-*`.
+- **Impacto:** Control primario del flujo de logo/favicon/fondos: el teclado no recibe anillo de foco (regla dura iWana / WCAG 2.4.7).
+- **Recomendación:** Añadir `interactiveFocusClassName` de `@iwana/ui` al botón del slot (y, si se mantiene, al `<summary>` de opciones avanzadas `:323-325`).
+- **Esfuerzo:** S  
+- **Track:** B → remediación FE
+
+### [P2][Copy] Errores «No fue posible…» y éxitos «…correctamente»
+
+- **Evidencia:**
+  - Seguridad: `SecuritySettings.tsx:71,88,101,115` — «No fue posible…»; `:99,113` — «MFA habilitado/deshabilitado correctamente.»; `:69` — éxito de contraseña con recomendación larga.
+  - Branding: `PlatformBrandingSettings.tsx:428,497,512,547,589,652` — «No fue posible cargar/guardar/…».
+  - Canon vivo: `PLATFORM_UI_COPY` Empresas/Historial — `No pudimos… Reintenta en unos minutos.`; éxitos breves (`Empresa suspendida.`).
+- **Impacto:** Misma consola, dos gramáticas de fallo; «No fue posible» no orienta el siguiente paso.
+- **Recomendación:** Fallbacks en `PLATFORM_UI_COPY.settings`; éxitos `Contraseña actualizada.` / `Verificación en dos pasos activada.` / `Identidad guardada.` Primitive visual → hallazgo Alert (B).
+- **Esfuerzo:** S  
+- **Track:** A
+
+### [P2][Identidad] Card dentro de card en Seguridad (sombra dual duplicada)
+
+- **Evidencia:** `page.tsx:25-28` — `Card` (trae `shadow-iwana-card` + `rounded-2xl`); `SecuritySettings.tsx:25-26` / `:141` — `securityPanelClass` = otro `rounded-2xl` + `border` + `shadow-iwana-soft` + `bg-white` anidado.
+- **Impacto:** Doble profundidad en la misma vista; diluye la sombra dual como única técnica de elevación y densifica sin ganar tarea.
+- **Recomendación:** Una sola cáscara. Quitar panel exterior de Seguridad (solo `space-y` + secciones) **o** montar Seguridad sin Card de página en ese tab. Iconos de sección: sustituir `shadow-sm` (`:144`, `:198`) por reposo sin sombra o `shadow-iwana-soft` si hace falta elevación.
+- **Esfuerzo:** S  
+- **Track:** B
+
+### [P2][Primitives] Feedback con `FORM_ALERT_*` en vez de `Alert`
+
+- **Evidencia:** `SecuritySettings.tsx:128-138` + `FORM_ALERT_*` desde `form-styles.ts:18-25` (gradientes `linear-gradient(...)`, `rounded-[24px]`); `PlatformBrandingSettings.tsx:600-610`, `:633`. Canónico vivo: `TenantSettingsForm.tsx` / `TenantCreateForm.tsx` / dashboard usan `Alert` de `@iwana/ui` (`rounded-2xl`, tokens semánticos, sin gradiente local).
+- **Impacto:** Dos pieles de alerta en la misma consola; radios y fondos arbitrarios fuera del set de superficie.
+- **Recomendación:** `Alert` + `variant="error|success|info"` + icono Lucide. No crear primitive nueva. (Copy de mensajes → Track A / matriz.)
+- **Esfuerzo:** S  
+- **Track:** B
+
+### [P2][Identidad] Superficies de apoyo `gray-50` / `rounded-lg` vs `iwana-surface-soft` / `rounded-2xl`
+
+- **Evidencia:** `PlatformBrandingSettings.tsx:266` (`BrandingSlotCard`: `rounded-lg … bg-gray-50/80`); `:742` (sección «Nombres e identidad», mismo patrón); `SecuritySettings.tsx:27-28` (`securityInnerSectionClass`: `bg-gray-50/60`). Contraste positivo en la misma página: tab General `page.tsx:41` ya usa `rounded-2xl` + `bg-iwana-surface-soft/70` + `dark:bg-dark-surface-3/70`.
+- **Impacto:** Misma familia settings, dos gramáticas de pozo; radios `lg` en superficie operativa (canon: `2xl` superficie / `xl` control).
+- **Recomendación:** Unificar a `iwana-surface-soft` (o `FORM_SECTION_CARD_CLASS` alineado a soft + `rounded-2xl`) y dark `dark-surface-3`. Controles de dropzone: `rounded-xl`.
+- **Esfuerzo:** S  
+- **Track:** B
+
+### [P2][Estados] Carga sin skeleton con forma; campos editables durante fetch
+
+- **Evidencia:** `PlatformBrandingSettings.tsx:625-628` — solo texto «Cargando branding…»; el `<form>` (`:664+`) permanece montado con campos editables (solo CTAs `disabled={isLoadingData}` en `:813-821`). `SecuritySettings.tsx:219-221` — «Verificando estado MFA…» sin reserva de layout. Referencia viva: `TenantSettingsForm.tsx` ~`:241` skeleton `h-11 animate-pulse`.
+- **Impacto:** Layout shift y sensación de formulario vacío editable; no es spinner bloqueante (P3), pero incumple “skeleton con forma” en vista con datos remotos.
+- **Recomendación:** Skeleton de grilla de slots + campos (o `fieldset disabled` / `aria-busy` mientras `isLoadingData`); MFA: placeholder de estado con altura fija. Sin primitive nueva.
+- **Esfuerzo:** S–M  
+- **Track:** B
+
+### [P3][Identidad] Eyebrow ad hoc en vista previa
+
+- **Evidencia:** `PlatformBrandingSettings.tsx:778-798` — `text-xs uppercase tracking-[0.12em] text-gray-400` en `<dt>` de preview.
+- **Impacto:** Letter-spacing arbitrario; el sistema ya expone `.portal-eyebrow` / `.portal-eyebrow-muted` en `globals.css`.
+- **Recomendación:** Clase de eyebrow del sistema; sin `tracking-[…]` local.
+- **Esfuerzo:** S  
+- **Track:** B
+
+**Agregado (fuera de presupuesto P2/P3 detallado):** URI `otpauth` visible en camino feliz (`SecuritySettings.tsx:245-247`); ayudas MIME/`Reglas:` en slots (`PlatformBrandingSettings.tsx:87-106`, `:319`); help contraseña con «credencial»/«política» (`SecuritySettings.tsx:154-156`) — cubiertos en matriz + CA-SET-09/10/12.
 
 ---
 
-## 5. Checklist de review visual (Perfil AI-SR-UI-SYS, Seccion 13)
+## Hallazgos de identidad / DS (Track B — AI-DS-OWNER)
 
-| Criterio | Estado | Notas |
-|---|---|---|
-| Patrones aprobados, sin estilos aislados | ⚠️ Parcial | SecuritySettings no usa `<Input>` de `@iwana/ui` |
-| Accion primaria clara | ✅ | Guardar cambios / Actualizar contrasena son las CTA primarias claras |
-| Estados loading/empty/error/disabled definidos | ⚠️ Parcial | Branding: carga sin deshabilitar formulario; Seguridad: carga MFA invisible |
-| Responsive sin romper jerarquia ni acciones | ⚠️ Parcial | Tabs con scroll horizontal indeseado en viewports medios sin @iwana/ui |
-| Contraste WCAG 2.2 AA | ✅ | Tokens `iwana-primary` son accesibles |
-| Foco visible en controles interactivos | ⚠️ Parcial | Present en Tabs de @iwana/ui; inputs nativos de SecuritySettings tienen `focus:ring-2` pero no `focus-visible:ring-2` |
-| Texto visible en espanol, sentence case | ✅ | Correcto en toda la pagina |
-| Sin enums crudos ni labels tecnicos internos | ✅ | Correcto |
-| Sin PII innecesaria | ✅ | Correcto |
-| Densidad visual escaneable | ⚠️ Parcial | Tab General desperdicia espacio vertical con solo texto informativo |
-| Diseno no depende de decoracion para comunicar estructura | ⚠️ Parcial | Tres radios de borde distintos introducen inconsistencia decorativa |
+| Tema | Veredicto | Notas |
+| --- | --- | --- |
+| Script `audit-ui.mjs` | OK | 0 hallazgos; dark sin `dark:bg-gray-{700-950}` |
+| Tokens de marca | OK | Sin hex de marca en settings; `text-iwana-primary` en títulos |
+| Dark | OK | `dark-surface-*` / `dark-border` en page, branding y seguridad |
+| PageHeader + Tabs `@iwana/ui` | OK | Cáscara alineada post-remediación 2026-06 |
+| Lima / urgencia | OK | Sin lima como alerta |
+| Shadow dual | Deuda P2 | Bien en Card; mal duplicada en panel Seguridad; `shadow-sm` en iconos |
+| Superficies | Deuda P2 | General = soft; branding/seguridad interna = `gray-50` + `rounded-lg` |
+| Alert | Deuda P2 | `FORM_ALERT_*` paralelo a `Alert` |
+| Foco | Deuda P1 | Slot de upload sin ring |
+| Loading | Deuda P2 | Texto plano; sin skeleton |
+| Primitives nuevas | **0 esperadas** | Remediación = composición de `Alert`, `interactiveFocusClassName`, tokens soft/2xl, skeleton local |
+| Contrato DS congelado | **No** en este prompt | G2 siguiente |
 
----
-
-## 6. Analisis documental — documentos a actualizar o crear
-
-### 6.1 Documentos existentes a actualizar
-
-| Documento | Version actual | Accion requerida | Prioridad |
-|---|---|---|---|
-| `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | 1.51 → 1.52 (hecho) | Registro de auditoria y hallazgos — entrada v1.52 agregada | Alta |
-| `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | 1.5 | Actualizar seccion de criterios UI/frontend: documentar que los tabs deben usar `@iwana/ui/Tabs` con ARIA completo; documentar el tab General como deuda funcional pendiente de contenido real con referencia al TODO inline | Media |
-| `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | 1.6 | Verificar y actualizar la lista de componentes de `@iwana/ui` usados en la superficie web; añadir `OtpInput` y `Dialog` como componentes activos; actualizar seccion de accesibilidad si existe | Media |
-| `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` | 1.1 | Agregar criterios de accesibilidad UI especificos: tabs con ARIA correcto, inputs con aria-describedby, role="alert" en feedbacks, role="status" en cargas, confirmacion de acciones destructivas | Media |
-
-### 6.2 Documentos nuevos a crear
-
-| Documento propuesto | Tipo | Justificacion | Prioridad | Requiere aprobacion |
-|---|---|---|---|---|
-| `docs/plans/2026-06-12-web-settings-ui-audit-fixes.md` | Plan | Plan ejecutable con 8 tasks y ~30 pasos para corregir todos los hallazgos bloqueantes e importantes — **creado** | Alta | No (plan de ejecucion) |
-| `docs/informes/INFORME-WEB-SETTINGS-AUDITORIA-UI-v1.0.md` | Informe | Este documento — trazabilidad standalone de la auditoria | Alta | No |
-| `docs/adrs/ADR-046-Normalizacion-Tokens-Visuales-Settings.md` | ADR (propuesto) | Formalizar: (1) uso de tokens de sombra semanticos (`shadow-iwana-*`) en toda la codebase; (2) radio de borde semantico de tres niveles en `@iwana/ui` y `form-styles.ts`; (3) decision sobre `CardTitle` con color hardcodeado. Requiere escalacion EM-ARCH → CTO | Media | Si — EM-ARCH / CTO |
-| `docs/quality/CHECKLIST-TRANSVERSAL-WEB-UI-ACCESIBILIDAD-v1.0.md` | Checklist | Checklist reutilizable para auditorias de accesibilidad WCAG 2.2 AA en `apps/web` y `apps/portal`: ARIA, contraste, foco, navegacion por teclado, estados de carga, feedbacks accesibles | Media | No |
-
-### 6.3 Documentos que NO requieren accion en este ciclo
-
-| Documento | Justificacion |
-|---|---|
-| `docs/adrs/ADR-040` y `ADR-045` | No hay conflicto con lo auditado; la auditoria es coherente con sus decisiones |
-| `docs/specs/2026-05-30-mod00-settings-hub-redesign-design.md` | El rediseno del hub de configuracion empresarial es del portal (`apps/portal`), no de `apps/web` |
-| `docs/prompts/PROMPT-MOD00-*` | Los prompts de ejecucion de fases anteriores no se modifican — son artefactos historicos de fases ya cerradas |
-| `docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md` | Aplica al portal, no a la superficie web auditada |
+**ui-ux-pro-max (subordinada):** se adoptan foco visible, target ≥44px (`min-h-11` vía `Button`/`size="lg"`) y feedback de carga; se descartan paletas/estilos genéricos ajenos a Firma iWana.
 
 ---
 
-## 7. Deuda documentada — pendiente de proxima fase o ADR
+## Quick wins
 
-| ID | Hallazgo | Accion recomendada | Escala |
-|---|---|---|---|
-| D-1 | Link a directorio `/brand/` en BrandingSlotCard | Analizar si aplica solo a rutas locales; si hay CDN, mostrar URL completa sin enlace | EM-ARCH |
-| D-2 | `CardTitle` con `text-[#17163A]` hardcodeado en `@iwana/ui` | Incluir en ADR-046 de normalizacion de tokens | EM-ARCH / CTO |
-| D-3 | `form-styles.ts` sin tokens semanticos | Incluir en ADR-046; refactor coordinado con @iwana/ui | EM-ARCH / CTO |
-| D-4 | `<details>`/`<summary>` del campo URL alternativa | Backlog de UX — deuda aceptable, no bloquea funcionalidad | Backlog |
-| D-5 | `ProtectedLayout` spinner sin `role="status"` | Deuda transversal — afecta todos los modulos, no solo settings | Siguiente sprint transversal |
-| D-6 | Tab General sin contenido real | Definir en proxima fase de MOD00 (perfil del usuario administrador, preferencias operativas) | EM-ARCH — PRD-MOD00 seccion 4.3 |
+1. `interactiveFocusClassName` en botón de `BrandingSlotCard` (+ summary si aplica).
+2. Sustituir `FORM_ALERT_*` → `Alert` en Seguridad y Branding.
+3. Eliminar `securityPanelClass` anidado (una cáscara).
+4. Pozos branding/MFA → `iwana-surface-soft` + `rounded-2xl`.
+5. Copy MFA / chrome / Superficie / errores → matriz A / `PLATFORM_UI_COPY.settings`.
 
 ---
 
-## 8. Estado final del plan de correccion
+## Mejoras estratégicas
 
-| Task | Descripcion | Estado |
-|---|---|---|
-| Task 1 | Migrar tabs a `@iwana/ui/Tabs` con ARIA completo | **Completado** |
-| Task 2 | Migrar SecuritySettings inputs + TOTP + role="alert" + carga MFA | **Completado** |
-| Task 3 | PlatformBrandingSettings: deshabilitar durante carga, Dialog confirmacion, role="alert", tokens | **Completado** |
-| Task 4 | Normalizar shadow y Card-in-Card en `page.tsx` | **Completado** |
-| Task 5 | Normalizar shadow en `SecuritySettings.tsx` | **Completado** |
-| Task 6 | Crear `SecuritySettings.spec.tsx` (16 tests) | **Completado** |
-| Task 7 | Completar `page.spec.tsx` (11 tests, incluye Dialog de confirmacion) | **Completado** |
-| Task 8 | Verificacion final (typecheck limpio, lint limpio, 27/27 tests, smoke visual browser) | **Completado** |
+- Consolidar `FORM_ALERT_*` de `apps/web/src/lib/form-styles.ts` hacia `Alert` en auth y settings (transversal; no bloquea carril rápido de `/settings`).
+- No promover primitive nueva de “settings panel”: sobra con `Card` + secciones soft.
+- Decidir tab General (preferencia A: retirar; deslinde en subtítulo).
+- **No** congelar contrato DS en este informe (prompt: solo auditoría).
 
-**Evidencia de cierre (2026-06-12):**
-- `pnpm --filter @iwana/web typecheck` — 0 errores
-- `pnpm --filter @iwana/web lint` — 0 errores
-- Tests settings: 27/27 en verde (11 page.spec + 16 SecuritySettings.spec)
-- Smoke visual: tabs con role="tab" + selected confirmados en a11y tree; Dialog de confirmacion activo con focus trap; inputs de contrasena con toggle show/hide; sin errores en consola del browser
+---
 
-**Estado del informe:** Cerrado v1.0 — 2026-06-12
+## Matriz de copy (Track A — reconciliada)
+
+| Zona | Actual (evidencia) | Propuesto | Notas |
+| --- | --- | --- | --- |
+| **Nav** | Plataforma (`platform-ui-copy.ts:7`) | Sin cambio | Ya canónico |
+| **PageHeader title** | Plataforma (`page.tsx:21`) | Plataforma (leer de `navigation.settings`) | OK vs nav |
+| **PageHeader subtitle** | Administra branding, seguridad global y parámetros compartidos… (`page.tsx:22`) | Identidad de la consola y seguridad de tu acceso. | Quitar branding/parámetros |
+| **CardTitle** | Gobierno y configuración global (`page.tsx:27`) | Configuración · o eliminar (H1 basta) | «Gobierno» = jerga interna |
+| **Tab General** | General (`page.tsx:33`) + prosa `:42-52` | Retirar tab · o «Resumen» solo con acciones | Preferencia A: 2 tabs |
+| **Tab Branding** | Branding (`page.tsx:34`) | Identidad | Evitar anglicismo crudo |
+| **Tab Seguridad** | Seguridad (`page.tsx:35`) | Seguridad | OK |
+| **General body** | Decisiones globales… branding… parámetros… (`page.tsx:42-52`) | Absorber: «La configuración de cada empresa está en Empresas.» | Sin «tenant» |
+| **Branding H2** | Branding de plataforma (`PlatformBrandingSettings.tsx:616`) | Identidad de la consola | |
+| **Branding help** | …sin mezclar este branding… (`:618-620`) | Logo, fondos de acceso y nombres públicos. No cambia la identidad de cada empresa. | |
+| **Carga branding** | Cargando branding… (`:627`) | Cargando identidad de la consola… | + skeleton (B) |
+| **Sección assets** | Activos visuales principales (`:669`) | Imágenes de la consola | |
+| **Logo** | Logo de consola (`:679`) | Logo de consola | OK |
+| **Favicon help** | …login y metadata pública. (`:695`) | …pestañas del navegador y pantalla de acceso. | Sin «metadata» |
+| **Fondos** | Fondo de login — modo claro/oscuro (`:709-725`) | Fondo de acceso — modo claro/oscuro | Preferir «acceso» |
+| **Producto** | Producto (`:754`) | Producto | OK |
+| **Superficie** | Superficie (`:759`, preview `:784`, Zod `:51`) | Nombre en la consola | Evitar «superficie» técnico |
+| **Título público** | Título público (`:764`) | Título de pestaña | |
+| **Descripción pública** | Descripción pública (`:769`) | Descripción corta | |
+| **Preview dt** | Superficie / Título en navegador (`:784-791`) | Nombre en la consola / Título de pestaña | Sentence case; eyebrow sistema (B) |
+| **Opciones avanzadas** | Opciones avanzadas del activo (`:326`) | Opciones avanzadas de la imagen | |
+| **Dialog eliminar** | …fallback base de la plataforma… (`:355-356`) | Se usará la imagen por defecto de la plataforma. | |
+| **CTA eliminar** | Eliminar imagen / Sí, eliminar (`:348,374`) | Sin cambio de sentido | OK |
+| **Restaurar** | Restaurar base (`:816`) | Restaurar valores por defecto | |
+| **Guardar** | Guardar cambios (`:824`) | Guardar cambios | OK |
+| **Éxito guardar** | Branding de plataforma actualizado. (`:493`) | Identidad guardada. | Sin «correctamente» |
+| **Éxito reset** | Branding base restaurado. (`:508`) | Valores por defecto restaurados. | |
+| **Éxito upload** | Activo subido y aplicado al branding. (`:543`) | Imagen aplicada. | |
+| **Éxito remove** | …fallback base… (`:584`) | Imagen eliminada. Se usa la imagen por defecto. | |
+| **Error carga** | No fue posible cargar el branding… (`:428`, `:652`) | No pudimos cargar la identidad de la consola. Reintenta en unos minutos. | Patrón Empresas |
+| **Error guardar** | No fue posible guardar el branding… (`:497`) | No pudimos guardar la identidad. Reintenta en unos minutos. | |
+| **Error upload** | No fue posible subir el activo… (`:547`) | No pudimos subir la imagen. Reintenta en unos minutos. | |
+| **Error slot** | …imagen del slot. (`:589`) | No pudimos eliminar la imagen. Reintenta en unos minutos. | Sin «slot» |
+| **Ayuda MIME** | Reglas: PNG/JPG… + MIME en error (`:87-106`, `:178`, `:319`) | PNG, JPG o WEBP · máx. 1 MB · mín. 240×60. | Sin MIME IANA al usuario |
+| **Seguridad H2 password** | Cambiar contraseña (`:152`) | Cambiar contraseña | OK |
+| **Help password** | credencial… política… primer ingreso (`:154-156`) | Cambia la contraseña con la que entras a la consola. | |
+| **CTA password** | Actualizar contraseña (`:188`) | Actualizar contraseña | OK |
+| **Éxito password** | Contraseña cambiada. Se recomienda… (`:69`) | Contraseña actualizada. | Breve |
+| **Error password** | No fue posible cambiar la contraseña. (`:71`) | No pudimos cambiar la contraseña. Reintenta en unos minutos. | |
+| **Seguridad H2 MFA** | Autenticación de dos factores (MFA) (`:206`) | Verificación en dos pasos | Canon |
+| **Help MFA** | segundo factor… TOTP (`:208-210`) | Añade un código de tu teléfono al iniciar sesión. | Una sola ayuda |
+| **Estado MFA** | Habilitado / Deshabilitado / Verificando estado MFA (`:219-221`) | Activada / Desactivada / Comprobando verificación en dos pasos… | |
+| **CTA setup** | Configurar MFA (`:230`) | Activar verificación en dos pasos | |
+| **Mensaje post-setup** | Authenticator… TOTP (`:86`) | Escanea el código QR con tu app de autenticación e ingresa el primer código. | |
+| **QR title / alt** | …MFA (`:239,242`) | Código QR para la app de autenticación | |
+| **URI otpauth** | Visible en claro (`:245-247`) | Solo en opciones avanzadas · o ocultar | Camino feliz = QR |
+| **Confirmar** | Verificar MFA (`:269`) | Confirmar código | |
+| **Disable H3 / CTA** | Deshabilitar MFA (`:278,303`) | Desactivar verificación en dos pasos | |
+| **Label código** | Código MFA (`:293`) | Código de verificación | |
+| **Help disable** | Para deshabilitar MFA… (`:280-282`) | Confirma tu contraseña y un código de tu app de autenticación. | |
+| **Éxito MFA on/off** | MFA … correctamente. (`:99,113`) | Verificación en dos pasos activada. / …desactivada. | |
+| **Errores MFA** | No fue posible … MFA (`:88,101,115`) | No pudimos… Reintenta en unos minutos. | |
+
+---
+
+## Criterios de aceptación (si se remedia)
+
+| ID | Criterio |
+| --- | --- |
+| **CA-SET-01** | Cero «MFA», «TOTP», «Authenticator» y «branding» crudo en copy visible de `/settings`. |
+| **CA-SET-02** | Feedback success/error/info usa `Alert` de `@iwana/ui` (no `FORM_ALERT_*` en esta superficie). |
+| **CA-SET-03** | Una sola cáscara con sombra: sin panel `shadow-iwana-*` anidado bajo el `Card` de página. |
+| **CA-SET-04** | Pozos de apoyo = `iwana-surface-soft` (+ dark-surface); superficies `rounded-2xl`; controles `rounded-xl`. |
+| **CA-SET-05** | Botón de slot de activo con `interactiveFocusClassName` (foco visible teclado). |
+| **CA-SET-06** | Carga inicial de branding: skeleton con forma o formulario no editable (`disabled`/`aria-busy`); sin solo texto suelto. |
+| **CA-SET-07** | Eyebrows de preview con `.portal-eyebrow` / muted; sin `tracking-[…]` local. |
+| **CA-SET-08** | Copy de pantalla en `PLATFORM_UI_COPY` (o helper settings); nav permanece «Plataforma». |
+| **CA-SET-09** | Cero «Gobierno y configuración global»; subtítulo sin «parámetros»/«branding»; tab General retirado o sin prosa triple. |
+| **CA-SET-10** | Cero «Superficie», «metadata», «slot», «fallback» en labels/mensajes de producto; tab sin anglicismo Branding. |
+| **CA-SET-11** | Errores recuperables: `No pudimos… Reintenta en unos minutos.`; éxitos breves sin «correctamente». |
+| **CA-SET-12** | Tests unitarios de settings esperan el vocabulario nuevo (CA-SET-01, 09–11); URI `otpauth` fuera del camino feliz. |
+
+---
+
+## Deslinde
+
+| Superficie | En alcance |
+| --- | --- |
+| `apps/web` `/settings` | **Sí** |
+| `apps/portal` settings | **No** |
+| `apps/web` `/tenants/[id]/settings` | **No** (salvo mención: `TenantSettingsForm` es referencia de `Alert` + skeleton) |
+| Sidebar / shell | **No** |
+
+---
+
+## Por verificar
+
+1. Contraste runtime del overlay `bg-black/40` + texto blanco en slot (AA en hover/focus) — no medido en browser en este track.
+2. ~~Si Track A añade P1 de jerarquía / vocabulario: recalcular puntaje~~ — **hecho** en reconciliación A (44/100); hallazgos DS de B intactos.
+3. `OtpInput`: a11y interna de `@iwana/ui` — no re-auditar si el primitive ya cubre label/ARIA.
+
+---
+
+## Veredicto
+
+**Aprobada con cambios.**
+
+No requiere rediseño de información: la tarea (identidad + seguridad personal) está en el lugar correcto. Bloqueantes de cierre: **CA-SET-01**, **CA-SET-05**, **CA-SET-09**, **CA-SET-10**, **CA-SET-11**; resto quick wins del mismo ajuste.
+
+### Remediación posterior viable por carril rápido: **SÍ**
+
+- No altera alcance de producto, contrato de datos, boundaries ni tokens de marca.
+- **0 primitives nuevas esperadas** — solo composición: `Alert`, `interactiveFocusClassName`, tokens `iwana-surface-soft` / `rounded-2xl`, skeleton local ya visto en tenant settings.
+- Copy → Track A (matriz arriba); implementación → FE-PLATFORM bajo prompt G2→G4 (contrato DS aún **no** congelado).
+- Sin `[BLOQUEO]`.
+
+---
+
+## Tracks
+
+| Rol | Dictamen |
+| --- | --- |
+| AI-PROD-UX (A) | Owner INFORME + matriz copy. Reconciliación: +2 P1 vocab (chrome, Superficie) + 1 P2 copy (errores); MFA P1 acotado; CA-SET-09…12. DS de B **intacto**. |
+| AI-DS-OWNER (B) | GO carril rápido. Firma no rota (dark/script OK). Deuda: Alert, card-in-card, soft vs gray-50, foco slot, loading. |
+| Siguiente (EM-ARCH) | Tras score: prompt alineación G2→G4 si se exige; congelar UX/DS specs **después** de este informe. |
+
+## Puntaje (fórmula skill)
+
+`Puntaje = max(0, 100 − 20·P0 − 10·P1 − 3·P2 − 1·P3)`
+
+| Conteo | Valor |
+| --- | --- |
+| P0 | 0 |
+| P1 | 4 (MFA · chrome Gobierno · Superficie/branding form · foco slot) |
+| P2 | 5 (errores copy · card-in-card · FORM_ALERT · gray-50/lg · loading) |
+| P3 | 1 (eyebrow preview) |
+
+`100 − 0 − 40 − 15 − 1` = **44/100**
+
+| Referencia | Puntaje |
+| --- | --- |
+| B solo-DS (prev reconciliación) | 67/100 (P0:0, P1:2, P2:4, P3:1) |
+| A+B reconciliado | **44/100** (P0:0, P1:4, P2:5, P3:1) |
+
+---
+
+## Adenda G6 — GO/NO-GO alineación (Track D · AI-SR-QA)
+
+**Fecha:** 2026-08-11  
+**Agente:** AI-SR-QA  
+**Prompt:** [`PROMPT-WEB-SETTINGS-ALINEACION-v1.0.md`](../prompts/PROMPT-WEB-SETTINGS-ALINEACION-v1.0.md)  
+**Specs:** UX Settings v1.0 Congelado · DS Settings v1.0 Congelado (carril rápido GO)  
+**Alcance:** solo `apps/web` `/settings`. Sin portal/API. Sin commit.  
+**Código contrastado:** `page.tsx` · `SecuritySettings.tsx` · `PlatformBrandingSettings.tsx` · `PLATFORM_UI_COPY.settings`
+
+> Conserva la auditoría pre-remediación (44/100) intacta arriba. Esta adenda dictamina **solo** el cierre G6 de CA-SET-01…12 tras implementación Track C.
+
+### Matriz CA-SET ↔ evidencia
+
+| ID | Criterio | Evidencia | Estado |
+| --- | --- | --- | --- |
+| **CA-SET-01** | Cero MFA / TOTP / Authenticator / branding crudo en copy visible | Jest `SecuritySettings` vocabulario · `page.spec` `queryByText(/branding/i)` · grep fuente: solo claves/imports internos (`mfa*`, `branding` var, path `@/components/branding`) · valores `PLATFORM_UI_COPY.settings` sin esos términos | **PASS** |
+| **CA-SET-02** | Feedback con `Alert` `@iwana/ui` (no `FORM_ALERT_*`) | `SecuritySettings` + `PlatformBrandingSettings` importan `Alert`/`AlertDescription`; grep `FORM_ALERT_` en `components/settings` = **0** | **PASS** |
+| **CA-SET-03** | Una sola cáscara con sombra | `page.tsx`: un `Card`; `SecuritySettings` sin `securityPanelClass` / sin `shadow-iwana-*` anidado; iconos sin `shadow-sm` | **PASS** |
+| **CA-SET-04** | Pozos soft + `rounded-2xl`; dropzone `rounded-xl` | `settingsWellClass` / `securityWellClass` = `bg-iwana-surface-soft` + `rounded-2xl` + dark-surface-3; slot button `rounded-xl`; grep `bg-gray-50`/`rounded-lg` en settings = **0** | **PASS** |
+| **CA-SET-05** | Slot con `interactiveFocusClassName` | `BrandingSlotCard` botón upload + `<summary>` avanzadas usan `interactiveFocusClassName` | **PASS** |
+| **CA-SET-06** | Carga: skeleton / no editable + `aria-busy` | `IdentityLoadingSkeleton` (`SkeletonBlock` + `aria-busy`) · form `disabled`/`aria-busy` · Jest «skeleton mientras API pendiente» | **PASS** |
+| **CA-SET-07** | Eyebrows `.portal-eyebrow(-muted)`; sin `tracking-[…]` | Preview `<dt className="portal-eyebrow-muted">`; grep `tracking-[` en settings = **0** | **PASS** |
+| **CA-SET-08** | Copy en `PLATFORM_UI_COPY.settings`; nav «Plataforma» | Bloque `settings` en `platform-ui-copy.ts`; H1 = `navigation.settings` = «Plataforma»; `page.tsx` lee `copy.*` | **PASS** |
+| **CA-SET-09** | Sin «Gobierno…»; subtítulo sin parámetros/branding; General retirado | `page.tsx`: 2 tabs Identidad\|Seguridad; subtítulo canónico + deslinde Empresas; Jest chrome + `queryByRole('tab', { name: 'General' })` ausente | **PASS** |
+| **CA-SET-10** | Sin Superficie / metadata / slot / fallback en labels; tab ≠ Branding | Labels `Nombre en la consola` / `Título de pestaña`; tab `Identidad`; Jest `superficie`/`metadata` ausentes; claves Zod `metadataTitle` no renderizadas como label | **PASS** |
+| **CA-SET-11** | Errores `No pudimos… Reintenta…`; éxitos sin «correctamente» | Copy `settings.identity`/`security` alineado a matriz; Jest éxito guardar/reset/MFA/password; MFA swallows ApiError message → copy canónica | **PASS** |
+| **CA-SET-12** | Tests vocabulario nuevo; `otpauth` fuera del camino feliz | Suites abajo; `SecuritySettings` «otpauth queda oculto»; `otpauthUri` del API no se pinta en DOM | **PASS** |
+
+### Evidencia de comandos (fresca · 2026-08-11)
+
+| Gate | Comando | Resultado |
+| --- | --- | --- |
+| Jest settings | `pnpm --filter @iwana/web exec jest --runInBand --testPathPattern="settings/page.spec\|SecuritySettings\|PlatformBranding" --no-coverage` | **2 suites · 29/29 PASS** · exit **0** (`page.spec` + `SecuritySettings.spec`; Branding cubierto vía page) |
+| audit-ui | `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs "apps/web/src/app/(protected)/settings" "apps/web/src/components/settings"` | **sin hallazgos** · exit **0** |
+| Grep sample | MFA/TOTP/Authenticator/branding/Gobierno/Superficie en fuentes settings (excl. specs) | Solo internos no renderizados (vars/API keys/import path). `Gobierno` vive en `navigationGroups.governance` (fuera de esta superficie). |
+
+### Hallazgos / residuales (no bloquean)
+
+| Sev | Hallazgo | Dictamen |
+| --- | --- | --- |
+| — | Ningún CA-SET en FAIL | — |
+| Observación | Warnings `act(...)` en `page.spec` al resolver `platformBrandingApi.get` (ruido React 19; no fallan assertions) | **Aceptable** · no NO-GO |
+| Residual | `getErrorMessage` / `changePassword` pueden reenviar `ApiError.message` del backend si no es genérico; MFA setup/verify/disable ya fuerza copy canónica | Follow-up FE opcional · no bloquea G6 |
+| Fuera de CA | Contraste overlay `bg-black/40` + texto blanco del slot — no medido en browser (ítem «Por verificar» de la auditoría) | Fuera de CA-SET · no NO-GO |
+
+### Skills aplicadas (lectura)
+
+`verification-before-completion` · `testing-patterns` (+ `iwana-identity-ui-review` vía `audit-ui.mjs`).
+
+### Dictamen
+
+**GO.** CA-SET-01…12 **PASS** con evidencia Jest + audit-ui + contraste de código/copy. Specs UX/DS Congeladas respetadas. Sin tests de barrera adicionales requeridos. Sin commit. Sin portal/API.

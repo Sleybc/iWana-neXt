@@ -717,7 +717,7 @@ export function BulkImportUsersModal({
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
                   Arrastra un CSV o selecciona un archivo para importar hasta {MAX_USERS} usuarios.
                 </p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Máximo {MAX_USERS} usuarios · 1 MB · columnas requeridas: email, role
                 </p>
               </div>

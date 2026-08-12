@@ -1413,7 +1413,9 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
     test('4c. Aislamiento por actor: agotar al coordinador no afecta al técnico', async ({
       page,
     }, testInfo) => {
-      await waitForReadRateLimitReset(ctx, testInfo.retry);
+      // 4a consume el mismo bucket del coordinador de forma intencional;
+      // 4c necesita una ventana contractual nueva también en el primer pase.
+      await waitForReadRateLimitReset(ctx, testInfo.retry, true);
       const responses = [];
       for (let offset = 0; offset < RAPID_COUNT; offset += BURST_SIZE) {
         const batch = await Promise.all(
@@ -1451,6 +1453,7 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
     test('4d. Aislamiento por tenant: ráfaga del inquilino B no toca el bucket de A', async ({
       page,
     }, testInfo) => {
+      const tenantBurstSize = 5;
       await waitForReadRateLimitReset(ctx, testInfo.retry);
 
       const otherSlug = process.env.E2E_OTHER_TENANT_SLUG || 'e2e-tenant-b';
@@ -1479,9 +1482,9 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       // 120 lecturas del inquilino B sobre un recurso de A: todas 404 (BOLA),
       // ninguna 429, porque el bucket de B es independiente (tenantId propio).
       const otherResponses = [];
-      for (let offset = 0; offset < RAPID_COUNT - 1; offset += BURST_SIZE) {
+      for (let offset = 0; offset < RAPID_COUNT - 1; offset += tenantBurstSize) {
         const batch = await Promise.all(
-          Array.from({ length: Math.min(BURST_SIZE, RAPID_COUNT - 1 - offset) }, () =>
+          Array.from({ length: Math.min(tenantBurstSize, RAPID_COUNT - 1 - offset) }, () =>
             authedGet(page, `/tasks/execution-orders/${ctx.executionOrderId}`, otherToken),
           ),
         );

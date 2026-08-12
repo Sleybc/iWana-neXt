@@ -1,3 +1,5 @@
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+
 /** Nivel de criticidad de un evento de auditoría */
 export type Severity = 'critical' | 'medium' | 'info';
 
@@ -84,11 +86,11 @@ export function severityClasses(severity: Severity): { dot: string; badge: strin
 export function severityLabel(severity: Severity): string {
   switch (severity) {
     case 'critical':
-      return 'Crítico';
+      return PLATFORM_UI_COPY.audit.severityCritical;
     case 'medium':
-      return 'Medio';
+      return PLATFORM_UI_COPY.audit.severityMedium;
     case 'info':
     default:
-      return 'Informativo';
+      return PLATFORM_UI_COPY.audit.severityNormal;
   }
 }

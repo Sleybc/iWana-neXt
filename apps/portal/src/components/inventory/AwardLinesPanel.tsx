@@ -220,7 +220,7 @@ export function AwardLinesPanel({
       ) : null}
 
       {!canEdit ? (
-        <p className="text-sm text-iwana-secondary-700">
+        <p className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
           La adjudicación solo está disponible cuando la solicitud está aprobada.
         </p>
       ) : null}
@@ -246,7 +246,7 @@ export function AwardLinesPanel({
                   <p className="font-medium text-gray-900 dark:text-white">
                     {getLineDisplayLabel(line, items)}
                   </p>
-                  <p className="mt-1 text-sm text-iwana-secondary-700">
+                  <p className="mt-1 text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
                     Solicitado: {line.quantityRequested} {line.unitOfMeasure}
                   </p>
                 </div>
@@ -265,7 +265,10 @@ export function AwardLinesPanel({
                     Adjudicaciones registradas
                   </p>
                   {lineAwards.map((award) => (
-                    <p key={award.id} className="text-sm text-iwana-secondary-700">
+                    <p
+                      key={award.id}
+                      className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                    >
                       {supplierLabels[award.awardedPartyRefId] ?? 'Proveedor adjudicado'} ·{' '}
                       {award.awardedQuantity} {line.unitOfMeasure}
                       {award.awardNotes ? ` · ${award.awardNotes}` : ''}
@@ -275,7 +278,7 @@ export function AwardLinesPanel({
               ) : null}
 
               {fullyAwarded ? (
-                <p className="text-sm text-iwana-secondary-700">
+                <p className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
                   Esta línea ya está adjudicada por completo.
                 </p>
               ) : canEdit ? (
@@ -379,7 +382,7 @@ export function AwardLinesPanel({
                     <textarea
                       aria-label={`Notas de adjudicación para ${getLineDisplayLabel(line, items)}`}
                       className={cn(
-                        'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+                        'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white',
                         interactiveFocusClassName,
                       )}
                       rows={2}

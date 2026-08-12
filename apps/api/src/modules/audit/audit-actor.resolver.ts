@@ -71,13 +71,13 @@ export class AuditActorResolver {
     const users = await repo.find({
       where: userIds.map((id) => ({ id })),
       withDeleted: true,
-      select: ['id', 'email', 'firstName', 'lastName', 'role', 'status', 'deletedAt'],
+      select: ['id', 'firstName', 'lastName', 'role', 'status', 'deletedAt'],
     });
 
     const actors = new Map<string, AuditActorDto>();
     for (const user of users) {
       const displayName =
-        compactName(user.firstName, user.lastName) ?? user.email ?? `Usuario ${shortId(user.id)}`;
+        compactName(user.firstName, user.lastName) ?? `Usuario ${shortId(user.id)}`;
       actors.set(user.id, {
         id: user.id,
         type: 'tenant',

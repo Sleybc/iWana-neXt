@@ -127,7 +127,7 @@ export function TenantCreateSummary({
               className={`truncate font-semibold ${
                 hasName
                   ? 'text-gray-900 dark:text-white'
-                  : 'italic text-gray-300 dark:text-gray-600'
+                  : 'italic text-gray-300 dark:text-gray-400'
               }`}
             >
               {hasName ? name : 'Nombre de la empresa'}
@@ -136,7 +136,7 @@ export function TenantCreateSummary({
               className={`mt-0.5 truncate font-mono text-xs ${
                 slug
                   ? 'text-iwana-secondary-700 dark:text-iwana-secondary-400'
-                  : 'text-gray-300 dark:text-gray-600'
+                  : 'text-gray-300 dark:text-gray-400'
               }`}
             >
               {slug || 'slug-empresa'}
@@ -145,7 +145,7 @@ export function TenantCreateSummary({
               className={`mt-0.5 truncate text-xs ${
                 contactEmail
                   ? 'text-gray-500 dark:text-gray-400'
-                  : 'text-gray-300 dark:text-gray-600'
+                  : 'text-gray-300 dark:text-gray-400'
               }`}
             >
               {contactEmail || 'email@empresa.com'}
@@ -209,7 +209,7 @@ export function TenantCreateSummary({
                       <span className="shrink-0 text-xs font-semibold text-red-500">*</span>
                     )}
                   </div>
-                  <span className="shrink-0 tabular-nums text-xs text-gray-400 dark:text-gray-500">
+                  <span className="shrink-0 tabular-nums text-xs text-gray-400 dark:text-gray-400">
                     {section.completed}/{section.total}
                   </span>
                 </div>
@@ -245,7 +245,7 @@ export function TenantCreateSummary({
                   className={`mt-0.5 h-4 w-4 shrink-0 ${
                     item.ready
                       ? 'text-emerald-500 dark:text-emerald-400'
-                      : 'text-gray-300 dark:text-gray-600'
+                      : 'text-gray-300 dark:text-gray-400'
                   }`}
                 />
                 <div>

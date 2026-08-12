@@ -357,7 +357,7 @@ function StockKardexPanelInner({ initialFilters }: StockKardexPanelProps) {
                         <td className={portalDataTableCellClassName}>
                           <button
                             type="button"
-                            className="inline-flex items-center text-iwana-secondary-700"
+                            className="inline-flex items-center text-iwana-secondary-700 dark:text-iwana-secondary-400"
                             aria-expanded={expanded}
                             aria-label={expanded ? 'Contraer líneas' : 'Expandir líneas'}
                             onClick={() =>
@@ -386,7 +386,7 @@ function StockKardexPanelInner({ initialFilters }: StockKardexPanelProps) {
                       {expanded ? (
                         <tr>
                           <td colSpan={6} className={portalDataTableCellClassName}>
-                            <ul className="space-y-1 text-sm text-iwana-secondary-700">
+                            <ul className="space-y-1 text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
                               {movement.lines.map((line) => (
                                 <li key={line.id}>
                                   {line.itemSku ?? line.itemId} ·{' '}

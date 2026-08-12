@@ -393,7 +393,7 @@ export function DocumentSupportSection({
                   {currentVersion ? (
                     <div className="mt-4 grid gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300 md:grid-cols-3">
                       <div>
-                        <p className="font-medium text-gray-400 dark:text-gray-500">
+                        <p className="font-medium text-gray-400 dark:text-gray-400">
                           Archivo actual
                         </p>
                         <p className="mt-1 truncate font-semibold text-gray-900 dark:text-white">
@@ -401,13 +401,13 @@ export function DocumentSupportSection({
                         </p>
                       </div>
                       <div>
-                        <p className="font-medium text-gray-400 dark:text-gray-500">Última carga</p>
+                        <p className="font-medium text-gray-400 dark:text-gray-400">Última carga</p>
                         <p className="mt-1 font-semibold text-gray-900 dark:text-white">
                           {formatDateTime(currentVersion.uploadedAt)}
                         </p>
                       </div>
                       <div>
-                        <p className="font-medium text-gray-400 dark:text-gray-500">Responsable</p>
+                        <p className="font-medium text-gray-400 dark:text-gray-400">Responsable</p>
                         <p className="mt-1 font-semibold text-gray-900 dark:text-white">
                           {currentVersion.uploadedBy}
                         </p>

@@ -62,9 +62,10 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 
 ## 3. Panel / card de contenido
 
-- **Usa:** `PortalPanel` (rounded-2xl, borde, p-5, header con eyebrow/título/descripción/acciones) — no dupliques su shell a mano.
-- Card base **blanca** con `shadow-iwana-soft`; `iwana-surface-soft` solo para superficies de apoyo.
-- **Nunca:** cards dentro de cards sin función; glass en superficies de contenido; `iwana-secondary-50` como fondo de panel.
+- **Usa (portal):** `PortalPanel` (rounded-2xl, borde, p-5, header con eyebrow/título/descripción/acciones) — no dupliques su shell a mano.
+- **Usa (apps/web, settings y formularios de módulo):** el canvas `bg-iwana-surface-soft` es el fondo. Las **tabs van sobre el canvas** (como Historial/Empresas). Cada bloque operativo es un panel blanco `rounded-2xl border-gray-200 shadow-iwana-card` (`settingsSectionPanelClassName` en settings). **Nunca** un `Card` que envuelva tabs + todo el contenido de la página.
+- Card base **blanca** con `shadow-iwana-card` (sección) o `shadow-iwana-soft` (apoyo); `iwana-surface-soft` solo para pozos internos.
+- **Nunca:** cards dentro de cards con sombra; glass en superficies de contenido; `iwana-secondary-50` como fondo de panel.
 
 ## 4. Tabs de módulo
 
@@ -90,6 +91,7 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 ## 8. Formularios
 
 - **Usa:** `FormField`/`FormSection`, `Input`, `Select`, `MultiSelect`, `DatePicker`, `CheckboxCard`, `OtpInput` de `@iwana/ui`; superficies de input con `.portal-input-surface`; textarea con `portalTextareaClassName`.
+- En `apps/web`, el formulario **no** va dentro de un Card de página: tabs en canvas + un panel `shadow-iwana-card` por sección (receta §3).
 - Labels: patrón `PortalSearchField` (label asociado o `sr-only`); agrupar por decisión de negocio.
 - Validación en blur; error junto al campo en español claro (el error global no reemplaza al de campo); auto-foco al primer inválido.
 - Foco visible en todo interactivo custom: `interactiveFocusClassName`.
@@ -102,8 +104,9 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 
 ## 10. Shell (sidebar/header)
 
-- Sidebar azul noche (`bg-iwana-primary`) colapsable, ítem activo con **barra lima** (firma #1); header con búsqueda (`PortalSearchField` / dirección Cmd+K), campana, chip de usuario.
-- Referencia de arquitectura: TailAdmin (ADR-023) — **solo como referencia**; ver `prototype-map.md` para lo prohibido.
+- Sidebar **blanco** (`bg-white` / `dark:bg-dark-surface-2`), sólido, colapsable. Ítem activo: tinte `iwana-surface-soft` / `dark-surface-3` + **barra lima** (firma #1) + icono lima AA. **Prohibido** `bg-iwana-primary` en el aside (navy Superado 2026-08-11; BLOQUEO-3). No puntuar aside blanco como deuda de identidad.
+- Header con búsqueda (`PortalSearchField` / dirección Cmd+K), campana, chip de usuario.
+- Referencia de arquitectura: TailAdmin (ADR-023) — **solo como referencia**; ver `prototype-map.md` para lo prohibido. El prototipo HTML con sidebar navy **no** es la receta viva.
 - Footers sticky de modo creación: `createModeStickyFooterClassName`, `CreateModeSummaryFooter`, `CreateModeMobileStepIndicator`, `CreateModeMobileCaptureFooter`.
 
 ## 11. Eyebrows y headers de sección

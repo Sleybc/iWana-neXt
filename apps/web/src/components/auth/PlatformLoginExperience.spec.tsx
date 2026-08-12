@@ -44,4 +44,11 @@ describe('PlatformLoginExperience', () => {
     expect(screen.getByTestId('platform-login-shell')).toHaveAttribute('data-variant', 'premium');
     expect(screen.getByLabelText('Formulario de ingreso')).toBeInTheDocument();
   });
+
+  it('usa el eyebrow de consola y no muestra gobierno', () => {
+    render(<PlatformLoginExperience />);
+
+    expect(screen.getByText('Plataforma iWana')).toBeInTheDocument();
+    expect(screen.queryByText(/gobierno/i)).not.toBeInTheDocument();
+  });
 });

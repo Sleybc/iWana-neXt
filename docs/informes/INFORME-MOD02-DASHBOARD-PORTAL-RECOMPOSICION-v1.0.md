@@ -2,13 +2,16 @@
 
 ## Informe vivo — recomposición del `/dashboard` del portal
 
-**Versión:** 1.0  
-**Estado:** Completado (G6 GO) — pendiente G6.5 / G7  
-**Fecha:** 2026-08-10  
+**Versión:** 1.0
+**Estado:** Completado (G6 GO) — pendiente G6.5 / G7 · delta UX GO · **remediación UI §11 GO (P1 cerrados)**
+**Fecha:** 2026-08-10 (apertura) · actualizado 2026-08-11
 **Modo activo:** EM + Orchestrator ([perfil AI-EM-ARCH v2.4](../roles/Perfil_IA_EM_Architect_Unificado_v2.md))  
 **Autor consolidación:** AI-EM-ARCH  
 **Plan canónico (checklist):** [`docs/plans/2026-08-10-mod02-dashboard-portal-recomposicion.md`](../plans/2026-08-10-mod02-dashboard-portal-recomposicion.md)  
+**Plan remediación UI:** [`docs/plans/2026-08-11-mod02-dashboard-remediacion-ui.md`](../plans/2026-08-11-mod02-dashboard-remediacion-ui.md)  
 **Prompt G4:** [`PROMPT-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-RECOMPOSICION-v1.0.md)  
+**Prompt delta UX:** [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md)  
+**Prompt remediación UI:** [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md)
 **Rama:** `feat/mod02-dashboard-portal-recomposicion`  
 **HEAD al abrir informe:** `39a7bbc6`  
 **SHA consolidación G6:** `53c1a3d9` (dictámenes tip `b8e76630`; código `d4ee265a` / `ddbc22cf` / `e09ffa9a` / `e4f93324`)
@@ -134,6 +137,13 @@ Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 | 2026-08-10 | G6-1-R1 | AI-PLAT-OPS | **OK light** | SHA `9fc1ca7f` (≥ `d4ee265a`) · E2E 26/26 exit 0 · audit-ui exit 0 | Re-verify acotado post remediación; **no** G6 GO. Ver §9 G6-1-R1. |
 | 2026-08-10 | G6-4-R1 | AI-SR-QA | **GO** | HEAD `05425960` (≥ `d4ee265a`+`ddbc22cf`+`9fc1ca7f`) · jest 77/77 cov ≥80% · E2E 26/26 | Re-dictamen: CA-V2-07 axe light OK · CA-V2-05 destino OK. Ver §9 G6-4-R1. |
 | 2026-08-10 | G6-5 | AI-EM-ARCH | **GO** | tip `b8e76630` · G6-1-R1 + G6-2 + G6-3-R1 + G6-4-R1 | Consolidación fase: G6 cumplido; G6.5/G7 abiertos. Ver §9 G6-5. |
+| 2026-08-11 | E2E-R41-VALIDO | AI-SR-QA (verificación independiente) | Hecho | corrida 30/0/0/0/0 · `E2E_CLEANUP=OK` · gate parser exit 0 | Corrida E2E completa válida (local, `API_BASE_URL=3010` por stack dev en 3000). 4d verde con fixes de ráfaga BOLA (5 concurrentes) y reset 4a/4c. Dictamen QA: evidencia íntegra. G6.5 pendiente de CI Linux por SHA; G7 pendiente de decisión CTO. |
+| 2026-08-11 | REM-UI-G4 | AI-EM-ARCH | Hecho | prompt remediación v1.0 · plan 2026-08-11 · informe §12 | Review §11 60/100 no invalida G6/delta; no ratifica delta. [DESEMPATE] viewport 1280. Tracks UX/DS/FE desplegados. |
+| 2026-08-11 | REM-UI-GO | AI-EM-ARCH | Hecho | QA D-R* GO · FE C-R1…C-R7 · locator CA-05 | P1 §11 cerrados. Delta ratificado en UI. G6.5/G7 abiertos. |
+| 2026-08-11 | C-R1…C-R7 | AI-FE-PLATFORM | Hecho | jest dashboard 38/38 + campana/cache · typecheck 0 · audit-ui 0 · E2E sin Chromium | Hora honesta por oleada; anuncio/foco B1; DropdownMenu B0; matriz 375/768/1280; cache audit compartida; I-6 foco+reduced motion; `<time>` mono. Sin veredicto §12. |
+| 2026-08-11 | DS-B-R1…R3 | AI-DS-OWNER | **GO condicionado** | `DropdownMenu.tsx` :126-147 · :246-259 · :275-293 · `DashboardClient.tsx:370-371` · DS v1.3 §2.1 nota (a) | Carril rápido B-R1…B-R3. Sin bump v1.4. FE autorizado a componer. Ver §12 veredicto B. |
+| 2026-08-11 | U-R1…U-R3 | AI-PROD-UX | Hecho | UX spec adendas R-A…R-D | Remediación UI formalizada. Copy hora desactualizada + alerta de grupo B1 + anuncio I-6. Matriz B0 375/768/1280. R-8 vigente. Sin [BLOQUEO]. |
+| 2026-08-11 | D-R1…D-R7 | AI-SR-QA | **GO** | working tree · HEAD `ee0998d5` · jest 9/131 · cov lines 93,95% / branches 85,48% · typecheck 0 · audit-ui 0 · E2E 28/29 | CA-REM-01…10 OK. P1 R-P1-01…03 cerrados. Residual: locator E2E CA-05 (strict mode). No anticipa G6.5/G7. Ver §12 veredicto D. |
 
 ---
 
@@ -528,3 +538,313 @@ pnpm exec playwright test --config e2e/playwright.portal.config.ts portal-dashbo
 **G6.5:** no iniciado — exige corrida Linux de CI identificada por SHA.  
 **G7:** no iniciado — exige recomendación explícita + CTO.  
 Ninguno se infiere de este GO (ADR-069).
+
+---
+
+## 10. Delta UX residual — 2026-08-11 (AI-EM-ARCH)
+
+**Veredicto del review post-G6:** pantalla alineada al encuadre de recomposición; residual con **tarjetas gemelas** (mismo eyebrow Operaciones/Mesa/Comercial ×2) como hallazgo dominante de escaneo. **No invalida el G6 GO.**
+
+**Prompt emitido:** [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) **v1.2 (opción 3)** — B1 por dominio, Ver más inteligente, deep links historial, pista **[CONSULTA] SEC-ENG** para AUDITOR/`audit-logs`. Clase A (anti-alcance) fuera. Página historial completo (P-4) fuera.
+
+**Estado del delta:** **calidad GO** (2026-08-11, re-dictamen QA) · residual E2E Chromium · sin G6.5/G7
+
+| Track | Agente | ID sesión |
+| --- | --- | --- |
+| E · SEC-ENG | [SEC-ENG consulta AUDITOR](986c06de-ce31-42a5-a4ea-7bb9cde5a34d) | **GO condicionado** (2026-08-11) |
+| B · DS-OWNER | [DS-OWNER contrato v1.3](f16e14a3-6316-485f-a1c1-bb8b9a40f79d) | **Hecho** — DS v1.3 congelado |
+| UX · PROD-UX | [PROD-UX adendas Ver más](203c093e-d92a-4685-9463-f09b39411f4e) | **Hecho** — U-1/U-2/U-3 en UX spec |
+| A · SR-FULL MFA | [SR-FULL copy MFA](551e9811-0f18-4426-8c20-b64f79711f96) | **Hecho** — A-1/A-2 · tenant-self 17/17 |
+| A · SR-FULL A-3 | [SR-FULL A-3 audit AUDITOR](c88c2f63-bd6d-406f-9cd2-2a5e3c6db47a) | **Hecho** — list +AUDITOR; export sin AUDITOR; sanitize read; 37 tests |
+| C · FE-PLATFORM | [FE-PLATFORM delta C-1…C-12](ab543119-ee15-4587-a608-ebb8446a8d99) | **Hecho** — C-1…C-12 · jest 99/99 · audit-ui P0/P1=0 |
+| C · FE C-13 | [FE C-13 historial AUDITOR](57644670-bf0d-41b1-9fed-f5a90ebdd13f) | **Hecho** — change-history AUDITOR · 68/68 |
+
+**Oleada 2 (QA):** [SR-QA verificar delta UX](fc16160a-2913-47a7-93f6-f0cd8c479858) → **GO condicionado**
+
+| CA | Resultado |
+| --- | --- |
+| 01,02,06–14 | OK |
+| 03,04,05 | FAIL evidencia — falta unit D-1/D-2/D-3 |
+| Cov dashboard | stmts **81,95%** / lines **85,05%** (sin retroceso) |
+| E2E | no corrido (Chromium ausente); mock aún «MFA no obligatorio» |
+
+**Oleada 2b (remediación QA):** [FE tests D-1 D-3 + E2E MFA](ad0373fe-8026-4bcf-a184-188a5b30a974) → **Hecho** (DashboardClient 21/21; mocks E2E MFA alineados)
+
+**Oleada 2c (re-dictamen QA):** [SR-QA re-dictamen CA-03-05](fc16160a-2913-47a7-93f6-f0cd8c479858) → **GO condicionado** (solo E2E Chromium no ejecutado en sandbox; patrón G6)
+
+| Métrica | Valor |
+| --- | --- |
+| CA-DELTA-01…14 | **OK** (03/04/05 remedados) |
+| DashboardClient.spec | 21/21 |
+| Cov dashboard | stmts **84,58%** / lines **87,15%** |
+| E2E mock MFA | 0× «MFA no obligatorio» |
+| Residual | Playwright browser en entorno local/CI (PLAT-OPS si hace falta) |
+
+### Veredicto EM-ARCH — delta UX v1.2 (2026-08-11)
+
+**Calidad del delta: GO** para integrar en la rama de trabajo (CA unitarios + SEC + DS + UX cerrados).
+**No** anticipa G6.5 ni G7 (ADR-069).
+**Residual explícito:** corrida E2E portal-dashboard con Chromium en CI/Linux cuando PLAT-OPS/CI lo permitan.
+
+Tracks cerrados: SEC · DS v1.3 · PROD-UX · SR-FULL A-1…A-3 · FE C-1…C-13 · QA (re-dictamen).
+
+### Dictamen SEC (pista E) — 2026-08-11
+
+**Veredicto:** GO condicionado · agente [SEC-ENG consulta AUDITOR](986c06de-ce31-42a5-a4ea-7bb9cde5a34d)
+
+**Controles mínimos (merge):**
+1. `@Roles` list `GET /audit-logs` + `UserRole.AUDITOR`; tenant solo JWT.
+2. Export: documentar o acotar `@Roles` por método (list +AUDITOR; export ADMIN/SYSTEM_ADMIN salvo justificación).
+3. Re-sanitize `oldValue`/`newValue` en path de lectura (`AuditQueryService`).
+4. FE home AUDITOR: solo acción, tipo entidad, actor, tiempo — sin dumps ni «ver todo»; límite ~8.
+5. Tests: AUDITOR 200; otros 403; aislamiento tenant; sanitize read.
+6. HLD-MOD02 §5.2 casilla AUDITOR «Actividad reciente» → Sí, citando este dictamen.
+
+| A · SR-FULL A-3 | [SR-FULL A-3 audit AUDITOR](c88c2f63-bd6d-406f-9cd2-2a5e3c6db47a) | desbloqueado tras SEC GO |
+
+### Actualización de ejecución local — 2026-08-11
+
+Esta actualización deja trazabilidad de la ejecución AI-EM-ARCH solicitada para el prompt v1.2. Se aplicó el protocolo multiagente con tracks de escritura disjuntos: FE (`Banach`, `019ff105-418d-72d0-bb6e-335ee80cd581`), backend (`Erdos`, `019ff105-421d-73b1-b761-c4aa52c09844`) y revisiones independientes DS (`Hubble`), UX (`Hypatia`), SEC (`Fermat`) y QA (`Anscombe`). No se revirtió trabajo previo del usuario.
+
+#### Resultado funcional del delta
+
+- **B / DS:** `PortalDashboardMetric.eyebrow` continúa opcional; B1 usa la receta de agrupación por dominio existente, sin tokens, primitivas ni shell nuevos. Se retiró el override gris del eyebrow para conservar la firma lima.
+- **UX / C:** la promoción «Ver más» ahora considera estado de carga/error; onboarding distingue operación activa, no iniciada y configuración al día; el historial expone error aunque no tenga entradas y su vacío no presenta acción irrelevante; se añadió `ExpedienteRecord` al mapa de labels/deep links; riesgo usa ámbar y no lima; el skeleton accesible usa `role="status"`.
+- **A / seguridad y vocabulario:** MFA se muestra como «verificación en dos pasos»; `AUDITOR` puede consultar actividad, pero no exportarla; la lectura vuelve a sanitizar valores; el fallback del actor ya no selecciona ni expone email y usa un identificador corto no sensible.
+- **C-13:** el historial de auditoría permanece acotado a la composición permitida del inicio, con una sola consulta y sin dumps de payload.
+
+#### Evidencia fresca
+
+| Validación | Resultado |
+| --- | --- |
+| `pnpm test` | **OK**, Turbo 9/9 tareas exitosas |
+| `pnpm lint` | **OK**, 0 errores; solo warnings preexistentes |
+| `pnpm typecheck` | **OK**, Turbo 8/8 tareas exitosas |
+| Jest portal focalizado | **OK**, 6 suites / 95 tests |
+| Jest API focalizado | **OK**, 4 suites / 37 tests |
+| E2E `portal-dashboard-empresa` | **OK**, 26/26 tests |
+| Cobertura dashboard | statements **85,96%**, lines **88,36%**, branches **78,02%** |
+| `audit-ui.mjs` | **P0 = 0**, **P1 = 0**; un P2 heurístico permitido para filtro activo lima |
+| Auditoría de ubicaciones documentales | **OK**, bloqueantes 0 |
+| Auditoría de citas ADR | **OK**, bloqueantes 0 |
+
+La cobertura de statements/lines supera el baseline del informe. Branches queda en 78,02% y se conserva como deuda informativa si el gate se interpreta estrictamente por cada métrica, no como una afirmación de cobertura total ≥80%.
+
+#### Dictamen actualizado de seguridad y gates
+
+SEC revalidó el cierre del bloqueo PII: no hay fallback de email en el read model, la lista incluye `AUDITOR`, la exportación lo excluye y los controles de tenant/sanitización están cubiertos por las pruebas HTTP focalizadas. La mención heredada de exportación para `AUDITOR` en `PRD-MOD01-DEFINICION-v1.1.md` entra en conflicto con el contrato específico vigente de MOD02 (`HLD-MOD02-DASHBOARD-EMPRESA-v2.0.1` y este prompt); se registra como deuda documental/contractual para armonización futura, no como bloqueo de este delta acotado.
+
+**CA-DELTA-01…13:** GO con evidencia local. **CA-DELTA-14:** GO condicionado por pruebas HTTP y dictamen SEC; queda pendiente una E2E real dedicada a `AUDITOR` y aislamiento entre tenants. **G6.5:** pendiente de corrida Linux/CI identificada por SHA. **G7:** pendiente de recomendación explícita y decisión CTO. Ninguno se infiere de las validaciones locales.
+
+### Recomendación de cierre G7 — pendiente de CTO
+
+**[ESCALACION AL CTO]** Recomiendo cerrar G7 únicamente cuando el run Linux/CI del commit candidato confirme: (1) suite unitaria y gate de branches del dashboard ≥80%; (2) E2E real de `AUDITOR` con aislamiento entre tenants, listado 200 y exportación 403; (3) `E2E_CLEANUP=OK`; y (4) auditorías documentales sin bloqueantes. La recomendación no constituye aprobación: el estado G7 permanece **pendiente de decisión CTO** hasta que exista SHA/run CI y registro formal de aceptación.
+
+### Cierre de pendientes corregibles — 2026-08-11
+
+Se corrigieron los pendientes locales detectados en la revisión:
+
+- La cobertura focalizada del dashboard quedó en **118/118 tests**, 7 suites, con **branches 85,15%** (statements 91,94%; lines 93,11%).
+- El runner E2E ahora deriva `PORT` desde `API_BASE_URL`, completa el primer cambio de contraseña de los administradores efímeros y pasa al spec un token operativo del tenant B.
+- La suite operacional espera el reset contractual entre 4a/4c y limita la ráfaga BOLA de 4d a cinco requests concurrentes, manteniendo 121 lecturas.
+- El E2E real de AUDITOR quedó integrado: listado 200 acotado al tenant del JWT, actividad sintética del tenant B ausente y exportación 403. Las primeras corridas localizaron y corrigieron el 401 por credencial de B y los timeouts de 4c/4d.
+
+#### Evidencia E2E y estado de gate
+
+La primera corrida real alcanzó cleanup correcto, pero terminó en 15 pasadas y 2 fallos; la segunda, tras corregir AUDITOR y 4c, alcanzó 17 pasadas y 1 fallo en 4d. Una tercera corrida fue interrumpida por el límite accidental del proceso antes de producir contadores válidos; el stack efímero se retiró manualmente con `docker compose ... down -v`.
+
+**Cuarta corrida (2026-08-11, completa y válida):** con los fixes de 4c (reset contractual forzado) y 4d (ráfaga BOLA a 5 concurrentes) ya en el working tree, la suite completa quedó **30/0/0/0/0** (30 passed · 0 failed · 0 skipped · 0 did-not-run · 0 flaky), `E2E_SETUP=OK`, `E2E_PLAYWRIGHT_EXIT=0` y `E2E_CLEANUP=OK`. El runner corrió en `http://127.0.0.1:3010` porque el stack dev local ocupa el 3000 (el provisioner deriva `PORT` de `API_BASE_URL`). El gate `--verify-playwright-markers` aceptó el log con exit 0. Se confirma el objetivo `30/0/0/0/0` **local**; **G6.5 sigue pendiente** de la corrida Linux de CI identificada por SHA (ADR-069) y de la verificación del job en GitHub Actions.
+
+La recomendación G7 permanece sin cambios: requiere G6.5 verde (run CI Linux por SHA) y decisión formal del CTO.
+
+---
+
+## 11. Review UI — Centro de control (MOD02)
+
+### Resumen ejecutivo
+
+El inicio `/dashboard` se reconoce como iWana sin depender del logo: usa barra lima de navegación activa, sombra dual, cifras mono/tabulares, superficies y tonos semánticos del sistema. La tarea principal está bien expresada por rol, pero esta auditoría no ratifica el cierre del delta mientras sigan abiertos tres P1: frescura engañosa ante fallos parciales, recuperación de error incompleta para tecnologías de asistencia y menú móvil con semántica de menú sin su comportamiento de teclado.
+
+**Modo:** código + screenshots frescos locales a 375/768/1280 px
+
+**Script:** 0 deterministas, 0 heurísticos confirmados, 1 heurístico descartado
+
+**Puntaje:** **60/100** (P0: 0, P1: 3, P2: 3, P3: 1)
+
+El heurístico descartado fue `bg-iwana-secondary-50` en `portalFilterChipClassName`: es un acento de interacción permitido, no un fondo base.
+
+### Hallazgos críticos (P0)
+
+Ninguno.
+
+### Hallazgos
+
+#### [P1][Confianza del dato] Una actualización fallida aparenta ser una lectura reciente
+
+- **Evidencia:** `apps/portal/src/components/dashboard/DashboardClient.tsx:1064` crea una hora nueva antes de conocer los resultados; `:1077-1084` conserva el dato anterior cuando una fuente falla; `:1098` publica la hora nueva de todos modos; `:1252-1254` no muestra error si la métrica aún conserva un valor.
+- **Impacto:** una persona operadora puede tomar decisiones sobre cifras antiguas bajo una marca nueva de «Última lectura», sin señal de dato desactualizado.
+- **Recomendación:** conservar la hora de la última lectura exitosa por fuente y representar `error + data` como dato anterior con aviso recuperable; la hora global solo debe avanzar cuando su alcance quede explícito o la lectura completa termine correctamente.
+- **Esfuerzo:** M.
+
+#### [P1][Accesibilidad] El flujo error → reintento no anuncia el bloque ni conserva el foco
+
+- **Evidencia:** `docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md:395` asigna al bloque un único `PortalAlert live='polite'`, pero B1 solo compone tarjetas en `apps/portal/src/components/dashboard/DashboardClient.tsx:1232-1302`; `docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md:336` exige mover el foco al encabezado cuando desaparece «Reintentar», y `DashboardClient.tsx:345-366` no implementa ese retorno.
+- **Impacto:** lectores de pantalla no reciben un anuncio agregado del fallo y, tras una recuperación exitosa, usuarios de teclado pierden su posición en una página extensa.
+- **Recomendación:** añadir un `PortalAlert` por grupo B1 afectado y un destino de foco estable (`tabIndex={-1}` + ref) para la transición `error → success`, manteniendo el error visual y reintento por tarjeta.
+- **Esfuerzo:** M.
+
+#### [P1][Accesibilidad] El menú móvil declara `menu` sin implementar el patrón de teclado
+
+- **Evidencia:** `apps/portal/src/components/dashboard/DashboardClient.tsx:382-453` controla el desbordamiento solo con `useState` y clic; no resuelve Escape, flechas, clic exterior, foco inicial ni retorno al disparador. La primitive vigente `packages/ui/src/components/DropdownMenu.tsx:126-145,255-300` ya cubre esos comportamientos.
+- **Impacto:** las acciones secundarias del encabezado son inconsistentes o inoperables con el patrón esperado por usuarios de teclado y tecnologías de asistencia.
+- **Recomendación:** componer `Button`, `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent` y `DropdownMenuItem` de `@iwana/ui`; añadir E2E de Escape, flechas y retorno de foco.
+- **Esfuerzo:** M.
+
+#### [P2][Responsive] B0 no respeta la distribución congelada de acciones
+
+- **Evidencia:** `DashboardClient.tsx:370-371` incluye `inline-flex` en el class-token base y `:390`/`:398` intenta ocultar controles con `hidden md:inline-flex`; el render fresco a 375 px sigue mostrando «Actualizar», la secundaria, la primaria y el menú. Desde `md`, `:409` oculta el menú y quedan tres controles visibles. La matriz de `docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md:369-375` exige 1+menú, 2 y 2+menú respectivamente.
+- **Impacto:** el encabezado gana altura y ruido en teléfono, y la jerarquía de acciones diverge en los tres puntos de corte.
+- **Recomendación:** retirar `inline-flex` del token compartido o resolver variantes con `cn`/CVA, y materializar exactamente la matriz de prioridad del contrato.
+- **Esfuerzo:** S.
+
+#### [P2][Ingeniería frontend] Historial y campana mantienen lecturas y vocabularios paralelos
+
+- **Evidencia:** el dashboard consulta `audit` desde `DashboardClient.tsx:302`, mientras `apps/portal/src/components/layout/NotificationBell.tsx:77-106` vuelve a consultar y sondea cada minuto. Esto contradice R-8 de `docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md:416-419`. Además, `RecentActivityPanel.tsx:50-107` y `NotificationBell.tsx:14-40` mantienen mapas distintos; la campana conserva fallback de enum crudo y muestra identificador en `:213-217`.
+- **Impacto:** la misma actividad puede verse distinta entre dos superficies del Centro de control, aumenta el presupuesto de peticiones y reaparecen términos internos.
+- **Recomendación:** compartir una sola lectura del shell/home y promover etiquetas de acción/entidad a un helper canónico de vocabulario; no mostrar identificadores salvo necesidad operativa explícita.
+- **Esfuerzo:** M.
+
+#### [P2][Feedback] «Ofertas en riesgo» puede parecer una acción sin efecto
+
+- **Evidencia:** `DashboardClient.tsx:1286-1294` solo cambia `highlightCommercial` y abre el pliegue; el mensaje de destino vive en `:713-720`, por debajo de B1, sin desplazamiento, foco ni anuncio del bloque revelado.
+- **Impacto:** la persona pulsa el indicador, permanece visualmente en la misma tarjeta y puede no descubrir la lista que acaba de abrirse.
+- **Recomendación:** llevar foco/contexto al bloque revelado y anunciar su actualización; cualquier desplazamiento debe respetar `prefers-reduced-motion`.
+- **Esfuerzo:** M.
+
+#### [P3][Firma iWana] Tiempos secundarios pierden el tratamiento mono técnico
+
+- **Evidencia:** la hora del encabezado en `DashboardClient.tsx:1214` y el tiempo relativo en `apps/portal/src/components/dashboard/RecentActivityPanel.tsx:223-229` no usan `font-mono`/`tabular-nums`; el segundo tampoco usa `<time dateTime>`.
+- **Impacto:** baja ligeramente la estabilidad de escaneo y se pierde la señal de dato técnico definida por Firma iWana.
+- **Recomendación:** aplicar `font-mono tabular-nums` y semántica `<time>` donde corresponda.
+- **Esfuerzo:** S.
+
+### Quick wins
+
+1. Corregir la matriz responsive de B0 y añadir aserciones E2E de cantidad exacta de acciones por breakpoint.
+2. Aplicar mono/tabular y `<time>` a las marcas de tiempo.
+
+### Mejoras estratégicas
+
+- Consolidar el desbordamiento del encabezado sobre las primitives `Button`/`DropdownMenu` existentes; no requiere dependencia ni ADR nuevos.
+- Unificar la lectura y el vocabulario del historial entre home y campana.
+- Resolver con PROD-UX + DS-OWNER la tensión entre la adenda B1 por dominios y el objetivo original de mostrar B1 completa + inicio de B2 a 1280 px: la captura fresca muestra seis indicadores completos y parte del séptimo, sin B2. La adenda versiona el layout de indicadores, pero no deroga de forma explícita ese presupuesto de primer viewport; se registra como decisión por aclarar, no como hallazgo puntuado.
+
+### Evidencia ejecutada
+
+| Validación | Resultado |
+| --- | --- |
+| `audit-ui.mjs` focalizado | P0: 0 · P1: 0 · P2 heurístico: 1 descartado · P3: 0 |
+| Jest dashboard + primitive métrica | **8 suites / 129 tests** pasaron |
+| Cobertura dashboard focalizada | **118/118** · statements 91,94% · branches 85,15% · functions 91,54% · lines 93,12% |
+| Playwright responsive/Firma | **4/4** pasaron; las aserciones actuales no detectan la cantidad incorrecta de acciones |
+| Playwright axe estados/temas | **10/10** pasaron; claro/oscuro sin violaciones para los casos ejecutados |
+
+### Por verificar
+
+- Ejecutar axe con tag explícito WCAG 2.2 AA y completar la matriz de los seis estados en ambos temas; hoy `runAxe` usa `wcag2a` + `wcag2aa`, loading solo claro y updating solo oscuro.
+- Regenerar la evidencia versionada después de corregir B0; las capturas actuales contienen el indicador de desarrollo «Cache disabled» y no son baseline de regresión visual.
+- Fortalecer D-5: hoy verifica acción primaria dentro del viewport y ausencia de solape, pero no cantidad de acciones ni B1 completa/inicio de B2 a 1280 px.
+- Verificar la ruta específica de CA-02 antes del mock global para que la prueba no pueda ocultar un acceso a endpoints de plataforma.
+
+### Veredicto
+
+**Aprobada con cambios bloqueantes.** La identidad iWana está correctamente implantada y no se requiere rediseño; los tres P1 deben cerrarse antes de usar esta revisión como ratificación del delta. Este dictamen no anticipa G6.5 ni G7, que permanecen sujetos a la corrida Linux por SHA y a la decisión formal correspondiente.
+
+---
+
+## 12. Remediación UI post-review §11 — 2026-08-11 (AI-EM-ARCH)
+
+**Modo:** Orchestrator + EM.
+
+**Consolidación:** el review §11 (60/100, P0: 0 · P1: 3 · P2: 3 · P3: 1) **no invalida** el G6 GO de recomposición ni el GO de calidad del delta UX v1.2. Tampoco ratifica el cierre del delta. Los tres P1 son huecos de implementación contra contratos ya congelados (R-3, UX §6.4, DS §2.1 nota (a), UX §8, R-8), no un rediseño.
+
+**Prompt G4 remediación:** [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md)  
+**Plan:** [`2026-08-11-mod02-dashboard-remediacion-ui.md`](../plans/2026-08-11-mod02-dashboard-remediacion-ui.md)
+
+### [DESEMPATE] Primer viewport a 1280 px
+
+**Área RACI:** UX · **Decisión:** la adenda B1 deroga el tramo «banda completa + inicio de B2» de UX §8 solo a 1280 px y solo para roles con ≥ 2 grupos de dominio. Suelo de §2.2 intacto (B0 + ≥ 2 indicadores). A 1280 el primer viewport exige B0 + los dos primeros grupos de dominio completos. B2 puede quedar bajo el pliegue. Justificación: el defecto de tarjetas gemelas pesa más que ver el arranque de B2 sin scroll. Registro: prompt remediación §2.
+
+### Tracks
+
+| Track | Dueño | IDs | Estado |
+| --- | --- | --- | --- |
+| UX | AI-PROD-UX | U-R1…U-R3 | **Hecho** — adendas R-A…R-D + copy en UX spec |
+| B · carril rápido | AI-DS-OWNER | B-R1…B-R3 | **GO condicionado** (2026-08-11) |
+| C · FE | AI-FE-PLATFORM | C-R1…C-R7 | Hecho — dictamen QA **GO** |
+| D · QA | AI-SR-QA | D-R1…D-R7 | **GO** (2026-08-11) |
+
+**Anti-alcance:** sin endpoints, `@Roles`, tokens de marca, primitive nueva, G6.5 ni G7.
+
+**Impacto:** tenant / seguridad / escala / regulación = sin impacto. Superficie = `apps/portal` home + campana del shell. PII = sin cambio.
+
+### Veredicto B · carril rápido (AI-DS-OWNER) — 2026-08-11
+
+Contrato DS **v1.3 congelado** — sin bump a v1.4. Cero tokens de marca. Cero primitive nueva. FE queda autorizado a componer ya.
+
+| ID | Veredicto | Evidencia |
+| --- | --- | --- |
+| **B-R1** | **GO condicionado** | Desbordamiento B0 = `Button` + `DropdownMenu` / `Trigger` (`asChild`) / `Content` / `Item` de `@iwana/ui`. Primitive verificada: Escape + retorno al disparador (`DropdownMenu.tsx:255-259`); flechas en disparador (`:126-147`) y en menú (`:275-293`, también Home/End); clic exterior (`:246-252`); foco inicial por teclado (`:131-134` primer ítem, `:143-146` último). Condición: al activar un ítem que no navega, devolver el foco al disparador en el `onClick` del consumidor (`triggerRef` + microtask) — `DropdownMenuItem` solo hace `setOpen(false)` (`:370-374`). No es hueco de API ni `[BLOQUEO]`. |
+| **B-R2** | **GO** | `headerActionClassName` (`DashboardClient.tsx:370-371`) no debe llevar `inline-flex` en el token compartido: anula `hidden md:inline-flex` de Actualizar/secundaria (`:390`, `:398`). Receta: `cn` / CVA por variante (display fuera del token base). Visibilidad del disparador del menú (375 / 768 / 1280) va en un **wrapper**, no en `Button` (`Button.tsx:18` ya trae `inline-flex`). Sin token de marca. |
+| **B-R3** | **GO** | Se reafirma DS §2.1 nota (a): el anuncio de error es del **grupo B1** (`PortalAlert variant='error' live='polite'`, `portal-ui.tsx:1718` / `:1731-1734`), no de `PortalDashboardMetric`. Prohibido abrir `aria-live` en la tarjeta. Checklist §9 A («La tarjeta no emite `aria-live` propio») sigue vigente. |
+
+### Veredicto D · QA (AI-SR-QA) — 2026-08-11
+
+**Modo:** verificación ejecutada (no implementación). Skills: `testing-patterns`.  
+**Contratos:** prompt remediación v1.0 · UX spec adendas R-A…R-D · copy oficial PROD-UX.  
+**HEAD de referencia:** `ee0998d5` (working tree de remediación C-R1…C-R7). **No anticipa G6.5 ni G7.**
+
+#### Dictamen: **GO**
+
+CA-REM-01…10 OK. Los tres P1 del review §11 (R-P1-01…03) quedan cerrados con evidencia unitaria y, donde aplica, E2E. Un fallo E2E residual (CA-05 baseline) es locator en strict mode, no un P1 de producto.
+
+#### Matriz CA-REM
+
+| ID | Resultado | Test que lo cubre |
+| --- | --- | --- |
+| **CA-REM-01** | **OK** | `DashboardClient.spec.tsx` · `C-R1: fallo parcial no avanza la hora de B0 y anuncia dato desactualizado` — `dateTime` inalterado + copy `Algunos datos no se actualizaron. Revisa los avisos o pulsa Actualizar.` |
+| **CA-REM-02** | **OK** | `DashboardClient.spec.tsx` · `C-R1: error + dato previo muestra Reintentar en la métrica` |
+| **CA-REM-03** | **OK** | `DashboardClient.spec.tsx` · `C-R2` (un título de grupo + cuerpo R-B) · implementación `PortalAlert live="polite"` · E2E axe «error de fuente» light/dark **pass** |
+| **CA-REM-04** | **OK** | `DashboardClient.spec.tsx` · `C-R2` — tras reintento, `document.activeElement` = encabezado `Operaciones de campo` con `tabindex="-1"` |
+| **CA-REM-05** | **OK** | Unit `C-R3` (Escape + foco al disparador) · E2E `C-R3 / C-R4 · 375: 1 visible + menú; Escape y flechas devuelven el foco` **pass** |
+| **CA-REM-06** | **OK** | Unit `C-R4` (token sin `inline-flex` base; menú `md:hidden xl:flex`) · E2E 375/768/1280 **pass** (1+menú / 2 / 2+menú) |
+| **CA-REM-07** | **OK** | `DashboardClient.spec.tsx` · `C-R5` (`auditList` ×1 con campana+home) · `NotificationBell.spec.tsx` · `muestra vocabulario amigable y oculta enum e identificador` |
+| **CA-REM-08** | **OK** | `DashboardClient.spec.tsx` · `C-R6` — foco en `Atención comercial`, anuncio exacto, `scrollIntoView` no llamado con `prefers-reduced-motion` |
+| **CA-REM-09** | **OK** | `DashboardClient.spec.tsx` · `C-R7` (hora B0 `<time>` + `font-mono tabular-nums`) · `RecentActivityPanel.spec.tsx` (tiempos del historial) |
+| **CA-REM-10** | **OK** | Comandos abajo: audit-ui P0/P1 = 0; cobertura sin retroceso vs §11; typecheck exit 0 |
+
+#### Evidencia de comandos
+
+| Validación | Resultado |
+| --- | --- |
+| Jest dashboard + cache + campana (`--testPathPattern="components/dashboard\|audit-feed-cache\|NotificationBell"`) | **9 suites / 131 tests** pass |
+| Cobertura dashboard focalizada (mismo denominador §11: `components/dashboard/**`) | statements **92,65%** · branches **85,48%** · functions **91,83%** · lines **93,95%** · **126/126** — vs §11 lines 93,12% / branches 85,15% (**sin retroceso**) |
+| Cobertura + `lib/audit-*.ts` | statements 92,73% · branches 85,13% · functions 92,45% · lines 93,93% · 131/131 |
+| `pnpm --filter @iwana/portal typecheck` | **exit 0** |
+| `audit-ui.mjs` dashboard + `NotificationBell.tsx` | **sin hallazgos** · P0: 0 · P1: 0 |
+| Playwright `portal-dashboard-empresa` (Chromium usuario, `PLAYWRIGHT_BROWSERS_PATH`) | **28 passed / 1 failed** · C-R3/C-R4 (CA-REM-05/06) **pass** · axe error light/dark **pass** |
+
+Nota de cobertura: el `collectCoverageFrom=src/components/dashboard/**/*.{ts,tsx}` del prompt midió 0/0 (`rootDir: src` + glob `{ts,tsx}` en PowerShell). Se reejecutó con globs relativos a `src` (`components/dashboard/**/*.ts` + `*.tsx`), el mismo patrón efectivo de §11.
+
+#### Residual (no bloquea)
+
+- E2E baseline **CA-05**: el locator `getByText(/historial de cambios/i)` chocaba en strict mode con el subtítulo de la campana. FE ajustó a `getByRole('heading', { name: /historial de cambios/i })`. Re-corrida Playwright de ese test: pendiente (Chromium ausente en el sandbox de FE). No es P1.
+- El unit C-R2 no aserta el atributo `aria-live="polite"`; lo cubren la implementación (`live="polite"`) y axe E2E del estado error.
+
+**Sin `[BLOQUEO]` a FE.** P1 R-P1-01…03 cerrados. Este dictamen no ratifica G6.5 ni G7.
+
+### Consolidación EM-ARCH — remediación UI (2026-08-11)
+
+**Calidad de la remediación: GO.** Los tres P1 del review §11 quedan cerrados. El delta UX v1.2 queda **ratificado en superficie UI** (ya no bloqueado por §11). **G6.5 y G7 siguen abiertos** (ADR-069): no se infieren de este GO.
+
+Tracks: [PROD-UX](012d9363-fc34-4756-8b04-87a26d75aa20) · [DS-OWNER](fef0bc22-dc62-4e67-add7-175ce5dd7ef9) · [FE-PLATFORM](e1bf430d-0841-4de3-8a65-695d917a74ea) · [SR-QA](a3326c86-8e04-47cc-82ab-912496ce1f4c).

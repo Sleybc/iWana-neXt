@@ -66,19 +66,19 @@ export function ExpedienteHeader({
           {(createdAt || createdBy || acquisitionChannel) && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {createdAt && (
-                <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-400">
                   <CalendarPlus className="h-3 w-3 shrink-0" aria-hidden="true" />
                   {new Date(createdAt).toLocaleDateString('es-CO', { dateStyle: 'medium' })}
                 </span>
               )}
               {createdBy && (
-                <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-400">
                   <User className="h-3 w-3 shrink-0" aria-hidden="true" />
                   {createdBy}
                 </span>
               )}
               {acquisitionChannel && (
-                <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-400">
                   <Radio className="h-3 w-3 shrink-0" aria-hidden="true" />
                   {acquisitionChannel}
                 </span>

@@ -4,16 +4,16 @@ export const AUTH_FORM_PANEL_PREMIUM_CLASS =
 export const AUTH_FORM_LABEL_CLASS = 'text-sm font-bold text-[#181818] dark:text-white';
 
 export const AUTH_FORM_INPUT_BASE_CLASS =
-  'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
+  'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400';
 
 export const AUTH_FORM_INPUT_WITH_LEADING_ICON_CLASS = `${AUTH_FORM_INPUT_BASE_CLASS} pr-4`;
 export const AUTH_FORM_INPUT_WITH_BOTH_ICONS_CLASS = `${AUTH_FORM_INPUT_BASE_CLASS} pr-12`;
 
 export const AUTH_FORM_ICON_LEADING_CLASS =
-  'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-500';
+  'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-400';
 
 export const AUTH_FORM_ICON_TRAILING_BUTTON_CLASS =
-  'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-500 dark:hover:text-gray-300';
+  'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-400 dark:hover:text-gray-300';
 
 export const AUTH_FORM_INPUT_FOCUS_CLASS = 'border-slate-200 focus:ring-[#A5C330]';
 export const AUTH_FORM_INPUT_ERROR_CLASS = 'border-red-500 focus:ring-red-500';

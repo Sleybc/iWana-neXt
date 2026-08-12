@@ -67,8 +67,6 @@ const SITES_NAMESPACE = 'sites';
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
 const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
-const inputClassName =
-  'h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
 const coordinateTokenPattern = /^[+-]?\d+(?:[.,]\d+)?$/u;
 
 function roundCoordinate(value: number): number {

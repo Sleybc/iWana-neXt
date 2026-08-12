@@ -664,7 +664,7 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
-      # Prueba local del parser/gate: 29/0/0/0/0 pasa; 28 o flaky > 0 falla.
+      # Prueba local del parser/gate: 30/0/0/0/0 pasa; 29 o flaky > 0 falla.
       # No necesita servicios ni produce reportes.
       - name: Validate E2E marker gate logic
         run: node scripts/e2e-provision-operational.mjs --validate-playwright-markers
@@ -713,7 +713,8 @@ jobs:
       #   5. docker compose up -d --build --wait worker-e2e (BullMQ con healthcheck)
       #   6. pnpm --filter @iwana/api dev (API en el host, healthcheck via /api/v1/health)
       #   7. Provisiona tenants, usuarios, fixtures de inventario y business hours
-      #   8. Ejecuta Playwright: e2e/tests/api/execution-orders-operational.spec.ts
+      #   8. Ejecuta ambos specs API reales: órdenes operativas + aislamiento de
+      #      audit logs con AUDITOR y dos tenants.
       #   9. Cleanup: tenants, schemas, worker, API process, docker compose down
       #
       # Las credenciales se generan aleatoriamente en memoria. Nunca se imprimen
@@ -734,7 +735,7 @@ jobs:
       # ── Verificación explícita de gates E2E ───────────────────────────────
       # El job FALLA si cualquiera de: E2E_SETUP=OK ausente, exit ≠ 0, tests
       # fallidos > 0, skipped > 0, did-not-run > 0, flaky/retried > 0,
-      # passed < 29 (REQUIRED_OPERATIONAL_E2E_PASSED en el provisioner),
+      # passed < 30 (REQUIRED_OPERATIONAL_E2E_PASSED en el provisioner),
       # resumen de Playwright sin parsear, o E2E_CLEANUP=OK ausente/FAILED/DISABLED.
       # Condiciones explícitas sobre los marcadores publicados por el
       # provisioner (log teeed en el paso e2e); no confía en exit codes solos.

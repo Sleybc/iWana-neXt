@@ -15,10 +15,10 @@ const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
 const cellClass = 'px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200';
 const inputClassName =
-  'h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
+  'h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-gray-100';
 const selectClassName = 'rounded-2xl shadow-sm dark:bg-dark-surface-2';
 const datePickerButtonClassName =
-  'h-11 rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-900 shadow-sm dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
+  'h-11 rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-900 shadow-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-gray-100';
 
 function normalizeTime(value: string | null): string {
   if (!value) return '';

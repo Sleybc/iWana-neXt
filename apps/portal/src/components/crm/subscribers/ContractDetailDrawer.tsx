@@ -34,7 +34,7 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
 
 const STATUS_COLORS: Record<ContractStatus, { bg: string; text: string; dot: string }> = {
   DRAFT: {
-    bg: 'bg-gray-100 dark:bg-gray-800',
+    bg: 'bg-gray-100 dark:bg-dark-surface-3',
     text: 'text-gray-600 dark:text-gray-300',
     dot: 'bg-gray-400',
   },
@@ -54,7 +54,7 @@ const STATUS_COLORS: Record<ContractStatus, { bg: string; text: string; dot: str
     dot: 'bg-red-500',
   },
   ARCHIVED: {
-    bg: 'bg-gray-100 dark:bg-gray-700/40',
+    bg: 'bg-gray-100 dark:bg-dark-surface-4/40',
     text: 'text-gray-500 dark:text-gray-400',
     dot: 'bg-gray-400',
   },
@@ -198,7 +198,7 @@ function DetailField({ label, value }: { label: string; value: string | null | u
   if (!value) return null;
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
         {label}
       </p>
       <p className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">{value}</p>
@@ -387,7 +387,7 @@ export function ContractDetailDrawer({
         {/* Cabecera */}
         <div className="flex items-start gap-3 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-400">
               Contrato de servicio
             </p>
             <h2

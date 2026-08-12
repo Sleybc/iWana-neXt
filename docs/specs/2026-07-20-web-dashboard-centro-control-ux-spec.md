@@ -1,7 +1,7 @@
 # UX spec — Centro de control (apps/web dashboard)
 
 **Fecha:** 2026-07-20
-**Estado:** Congelado — desbloqueante para AI-FE-PLATFORM (sprint actual)
+**Estado:** Congelado — **parcialmente superado el 2026-08-11** por [`2026-08-11-web-centro-control-portada-senal-ux-spec.md`](2026-08-11-web-centro-control-portada-senal-ux-spec.md) (enfoque A: sin tabla en el home; CA-02 y CA-09 del home dejan de aplicar). CA-01 y el directorio `/tenants` siguen vigentes aquí.
 **Propietario:** AI-PROD-UX
 **Alcance:** `/dashboard` → `DashboardClient.tsx`, `TenantsTable.tsx`, `SystemStatusPanel.tsx`, `PanelCard.tsx`
 **Referencia de identidad:** `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md` (Firma iWana §2.1, §2.6, §2.8)

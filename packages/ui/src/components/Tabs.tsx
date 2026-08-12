@@ -68,11 +68,11 @@ function TabsList({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
 }
 
 const tabsTriggerVariants = cva(
-  'relative inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-400 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:dark:bg-dark-surface-2 data-[state=active]:dark:text-white dark:disabled:text-gray-500',
+  'relative inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-400 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:dark:bg-dark-surface-2 data-[state=active]:dark:text-white dark:disabled:text-gray-400',
   {
     variants: {
       variant: {
-        default: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+        default: 'text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100',
         danger: 'text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300',
       },
     },

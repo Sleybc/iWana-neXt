@@ -1315,19 +1315,19 @@ function DailyAgenda({
 
                             {outsideWindowShade?.full ? (
                               <div
-                                className="pointer-events-none absolute inset-0 z-10 bg-gray-300/25 dark:bg-gray-900/35"
+                                className="pointer-events-none absolute inset-0 z-10 bg-gray-300/25 dark:bg-dark-surface-4/35"
                                 aria-hidden="true"
                               />
                             ) : null}
                             {outsideWindowShade && !outsideWindowShade.full ? (
                               <>
                                 <div
-                                  className="pointer-events-none absolute inset-y-0 left-0 z-10 bg-gray-300/25 dark:bg-gray-900/35"
+                                  className="pointer-events-none absolute inset-y-0 left-0 z-10 bg-gray-300/25 dark:bg-dark-surface-4/35"
                                   style={{ width: `${outsideWindowShade.before}%` }}
                                   aria-hidden="true"
                                 />
                                 <div
-                                  className="pointer-events-none absolute inset-y-0 right-0 z-10 bg-gray-300/25 dark:bg-gray-900/35"
+                                  className="pointer-events-none absolute inset-y-0 right-0 z-10 bg-gray-300/25 dark:bg-dark-surface-4/35"
                                   style={{ width: `${outsideWindowShade.after}%` }}
                                   aria-hidden="true"
                                 />
@@ -1403,7 +1403,7 @@ function DailyAgenda({
 
                             {events.length === 0 && !rowDraft && (
                               <div className="pointer-events-none absolute inset-x-0 top-2 flex px-5">
-                                <p className="text-sm text-gray-400 dark:text-gray-500">
+                                <p className="text-sm text-gray-400 dark:text-gray-400">
                                   Arrastra un pendiente o haz clic para crear.
                                 </p>
                               </div>

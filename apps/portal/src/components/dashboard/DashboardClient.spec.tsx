@@ -1,8 +1,15 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserRole } from '@iwana/shared';
-import { DashboardClient, __resetDashboardSessionCacheForTests } from './DashboardClient';
+import {
+  DashboardClient,
+  __resetDashboardSessionCacheForTests,
+  sortFieldAlertsBySeverity,
+} from './DashboardClient';
+import { NotificationBell } from '@/components/layout/NotificationBell';
+import { __resetAuditFeedCacheForTests } from '@/lib/audit-feed-cache';
 import type { DashboardSummary } from '@/lib/api-client';
+import type { WfmDashboardAlert } from '@/lib/api-client';
 
 const useAuthMock = jest.fn();
 
@@ -44,6 +51,7 @@ jest.mock('@/lib/api-client', () => {
     status: number;
     constructor(status: number, message: string) {
       super(message);
+      Object.setPrototypeOf(this, MockApiError.prototype);
       this.name = 'ApiError';
       this.status = status;
     }
@@ -91,15 +99,34 @@ jest.mock('./QuickActionsPanel', () => ({
 }));
 
 jest.mock('./RecentActivityPanel', () => ({
-  RecentActivityPanel: () => <div data-testid="change-history">Historial de cambios</div>,
+  RecentActivityPanel: ({
+    entries,
+    status,
+    minimized,
+  }: {
+    entries?: unknown[] | null;
+    status?: string;
+    minimized?: boolean;
+  }) => (
+    <div data-testid="change-history" data-minimized={minimized ? 'true' : 'false'}>
+      Historial de cambios · {status ?? 'idle'} · {entries?.length ?? 0}
+    </div>
+  ),
 }));
 
 jest.mock('./OnboardingAlerts', () => ({
-  OnboardingAlerts: ({ alerts }: { alerts: Array<{ title: string }> }) => (
-    <div data-testid="next-configuration">
-      {alerts.length === 0 ? 'Sin alertas' : alerts[0]?.title}
-    </div>
-  ),
+  OnboardingAlerts: ({
+    alerts,
+    operationState,
+  }: {
+    alerts: Array<{ title: string }>;
+    operationState?: string;
+  }) =>
+    operationState === 'active' ? null : (
+      <div data-testid="next-configuration">
+        {alerts.length === 0 ? 'Sin alertas' : alerts[0]?.title}
+      </div>
+    ),
 }));
 
 const narrowedSummary: DashboardSummary = {
@@ -180,8 +207,8 @@ function mockAdminApis() {
     breachedCount: 1,
     resolvedTodayCount: 0,
     fieldServicePendingCount: 0,
-    byPriority: {},
-    byType: {},
+    byPriority: { HIGH: 2, NORMAL: 3 },
+    byType: { PQR: 1, CUSTOMER_INCIDENT: 4 },
   });
   commercialGetSummary.mockResolvedValue({
     plansCount: 1,
@@ -235,6 +262,7 @@ describe('DashboardClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     __resetDashboardSessionCacheForTests();
+    __resetAuditFeedCacheForTests();
     useAuthMock.mockReturnValue({
       user: { id: 'u-1', role: UserRole.ADMIN, tenantId: 't-1', displayName: 'Admin' },
       isLoading: false,
@@ -258,6 +286,18 @@ describe('DashboardClient', () => {
     expect(getSummary).not.toHaveBeenCalled();
     expect(wfmGetSummary).not.toHaveBeenCalled();
     expect(getPublicBranding).toHaveBeenCalled();
+  });
+
+  it('muestra una salida segura cuando la sesión no trae un rol reconocible', () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-unknown', role: 'ROLE_NOT_REGISTERED', tenantId: 't-1' },
+      isLoading: false,
+    });
+
+    render(<DashboardClient />);
+
+    expect(screen.getByText('No pudimos determinar tu perfil de acceso.')).toBeInTheDocument();
+    expect(getPublicBranding).not.toHaveBeenCalled();
   });
 
   it('sincroniza A-3: summary estrecho sin campos de marca', async () => {
@@ -379,6 +419,46 @@ describe('DashboardClient', () => {
     });
   });
 
+  it('abre el menú móvil y ejecuta la actualización desde su callback visible', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Más acciones del inicio' }));
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: /Programar visita/i })).toHaveAttribute(
+      'href',
+      '/dashboard/scheduling?open=create',
+    );
+
+    await user.click(within(menu).getByRole('menuitem', { name: /Actualizar/i }));
+    await waitFor(() => {
+      expect(getSummary).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('C-R3: el menú B0 cierra con Escape y devuelve el foco al disparador', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+    });
+
+    const trigger = screen.getByRole('button', { name: 'Más acciones del inicio' });
+    await user.click(trigger);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+    expect(trigger).toHaveFocus();
+  });
+
   it('SALES no pide WFM ni assurance', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'u-3', role: UserRole.SALES, tenantId: 't-1', displayName: 'Comercial' },
@@ -434,6 +514,45 @@ describe('DashboardClient', () => {
     expect(commercialGetSummary).not.toHaveBeenCalled();
   });
 
+  it('AUDITOR pide audit (limit 8) y muestra historial minimizado (C-13)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-aud', role: UserRole.AUDITOR, tenantId: 't-1', displayName: 'Auditor' },
+      isLoading: false,
+    });
+    auditList.mockResolvedValue([
+      {
+        id: 'a-1',
+        tenantId: 't-1',
+        userId: 'u-1',
+        actor: { id: 'u-1', type: 'tenant', displayName: 'Ana Operaciones' },
+        action: 'UPDATE',
+        entityType: 'User',
+        entityId: 'u-1',
+        oldValue: null,
+        newValue: null,
+        ipAddress: null,
+        userAgent: null,
+        requestId: null,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('change-history')).toBeInTheDocument();
+    });
+
+    expect(auditList).toHaveBeenCalledWith({ limit: 8 }, expect.any(String));
+    expect(auditList).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('change-history')).toHaveAttribute('data-minimized', 'true');
+    expect(screen.getByTestId('change-history')).toHaveTextContent(/· 1$/);
+    expect(wfmGetSummary).not.toHaveBeenCalled();
+    expect(assuranceGetSummary).not.toHaveBeenCalled();
+    expect(commercialGetSummary).not.toHaveBeenCalled();
+    expect(getSummary).not.toHaveBeenCalled();
+  });
+
   it('métrica nula muestra sustituto AA y no cifra cero (D-2)', async () => {
     wfmGetSummary.mockResolvedValue({
       todayCount: null,
@@ -479,11 +598,270 @@ describe('DashboardClient', () => {
       ).toBeInTheDocument();
     });
 
-    const alert = screen.getByRole('status');
-    expect(alert.className).not.toMatch(/bg-\[linear-gradient/);
-    expect(alert.className).toMatch(/dark:bg-red-950/);
+    const alerts = screen.getAllByRole('status');
+    expect(alerts.some((alert) => !alert.className.match(/bg-\[linear-gradient/))).toBe(true);
+    expect(alerts.some((alert) => alert.className.match(/dark:bg-red-950/))).toBe(true);
     expect(container.innerHTML).not.toMatch(/bg-\[linear-gradient/);
     expect(screen.getByRole('link', { name: /Casos abiertos/i })).toBeInTheDocument();
+  });
+
+  it('muestra permisos insuficientes en mesa de ayuda y permite reintentar', async () => {
+    const user = userEvent.setup();
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-support', role: UserRole.SUPPORT, tenantId: 't-1', displayName: 'Soporte' },
+      isLoading: false,
+    });
+    assuranceGetSummary.mockRejectedValue(new ApiError(403, 'forbidden'));
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No pudimos cargar el resumen de la mesa de ayuda/i),
+      ).toBeInTheDocument();
+    });
+
+    assuranceGetSummary.mockResolvedValue({
+      openCount: 5,
+      assignedCount: 1,
+      inProgressCount: 1,
+      atRiskCount: 2,
+      breachedCount: 1,
+      resolvedTodayCount: 0,
+      fieldServicePendingCount: 0,
+      byPriority: { HIGH: 2, NORMAL: 3 },
+      byType: { PQR: 1, CUSTOMER_INCIDENT: 4 },
+    });
+    const helpDeskPanel = screen
+      .getByRole('heading', { name: 'Casos de la mesa de ayuda' })
+      .closest('section');
+    expect(helpDeskPanel).not.toBeNull();
+    await user.click(
+      within(helpDeskPanel as HTMLElement).getByRole('button', { name: /Reintentar/i }),
+    );
+    await waitFor(() => {
+      expect(assuranceGetSummary).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('mapea expiración de sesión en un error operativo visible', async () => {
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    wfmGetSummary.mockRejectedValue(new ApiError(401, 'expired'));
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No pudimos cargar el resumen de operaciones de campo/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('B1 ADMIN expone 4 encabezados de dominio sin eyebrow de categoría (C-6)', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Visitas de hoy')).toBeInTheDocument();
+    });
+
+    const indicators = screen.getByLabelText('Indicadores núcleo');
+    for (const label of ['Operaciones de campo', 'Mesa de ayuda', 'Comercial', 'Oportunidades']) {
+      const heading = within(indicators).getByText(label);
+      expect(heading).toHaveClass('portal-eyebrow');
+      expect(heading).not.toHaveClass('text-gray-700');
+      expect(heading).not.toHaveClass('dark:text-gray-200');
+    }
+
+    const visits = screen.getByRole('link', { name: /Visitas de hoy/i });
+    expect(within(visits).queryByText('Operaciones de campo')).not.toBeInTheDocument();
+  });
+
+  it('promueve help-desk y comercial cuando KPI > 0 y Ver más cuenta el resto (C-8/C-11)', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Casos de la mesa de ayuda/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Atención comercial/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ver más · 1 bloque/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Estado del almacén/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Ver más · 1 bloque/i }));
+    expect(screen.getByText(/Estado del almacén/i)).toBeInTheDocument();
+  });
+
+  it('destaca Ofertas en riesgo con color de atención, no lima', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ofertas en riesgo/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /Ofertas en riesgo/i }));
+
+    const highlight = screen.getByText(/Atención comercial. Revisa las ofertas en riesgo./i);
+    expect(highlight).toHaveClass('text-amber-700');
+    expect(highlight).not.toHaveClass('text-iwana-secondary-700');
+  });
+
+  it('filtra la atención comercial para ACCOUNTANT y conserva solo planes sin precio', async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 'u-accountant',
+        role: UserRole.ACCOUNTANT,
+        tenantId: 't-1',
+        displayName: 'Contable',
+      },
+      isLoading: false,
+    });
+    commercialGetSummary.mockResolvedValue({
+      missingCurrentPriceCount: 1,
+      offersAtRiskCount: 0,
+      catalogActiveCount: 1,
+      attentionItems: [
+        {
+          id: 'price-gap',
+          entityType: 'plan',
+          name: 'Plan sin precio',
+          reason: 'missing_current_price',
+          destinoTab: 'plans',
+        },
+        {
+          id: 'expiring',
+          entityType: 'promotion',
+          name: 'Promoción próxima a vencer',
+          reason: 'expiring_soon',
+          destinoTab: 'promotions',
+        },
+      ],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Plan sin precio')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Promoción próxima a vencer')).not.toBeInTheDocument();
+  });
+
+  it('muestra error de empresa y permite reintentar el próximo paso', async () => {
+    const user = userEvent.setup();
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    getSummary.mockRejectedValueOnce(new ApiError(500, ''));
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No pudimos cargar el próximo paso de configuración/i),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /Reintentar/i }));
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/No pudimos cargar el próximo paso de configuración/i),
+      ).not.toBeInTheDocument();
+    });
+    expect(getSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it('unifica fetch de historial en una sola petición audit (C-7)', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('change-history')).toBeInTheDocument();
+    });
+    expect(auditList).toHaveBeenCalledTimes(1);
+  });
+
+  it('acciones B0 incluyen anillo de foco (C-1)', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+    });
+
+    const primary = screen.getByRole('link', { name: /Registrar suscriptor/i });
+    expect(primary.className).toMatch(/focus-visible:/);
+    const refresh = screen.getByRole('button', { name: /Actualizar/i });
+    expect(refresh.className).toMatch(/focus-visible:/);
+  });
+
+  it('ordena los avisos de campo por severidad y conserva el orden entre empates', () => {
+    const alerts: WfmDashboardAlert[] = [
+      {
+        id: 'info',
+        type: 'DRAFT_STARTING_SOON',
+        severity: 'info',
+        title: 'Informativo',
+        description: 'Detalle',
+        eventId: null,
+        assignedUserId: null,
+        scheduledStartAt: null,
+      },
+      {
+        id: 'critical',
+        type: 'OVERDUE_EVENT',
+        severity: 'critical',
+        title: 'Crítico',
+        description: 'Detalle',
+        eventId: null,
+        assignedUserId: null,
+        scheduledStartAt: null,
+      },
+      {
+        id: 'warning',
+        type: 'HIGH_TECHNICIAN_LOAD',
+        severity: 'warning',
+        title: 'Atención',
+        description: 'Detalle',
+        eventId: null,
+        assignedUserId: null,
+        scheduledStartAt: null,
+      },
+    ];
+
+    expect(sortFieldAlertsBySeverity(alerts).map((alert) => alert.severity)).toEqual([
+      'critical',
+      'warning',
+      'info',
+    ]);
+  });
+
+  it('mantiene skeleton en próximo paso mientras tenant-summary sigue cargando', async () => {
+    let resolveSummary: (value: DashboardSummary) => void = () => undefined;
+    getSummary.mockImplementationOnce(
+      () =>
+        new Promise<DashboardSummary>((resolve) => {
+          resolveSummary = resolve;
+        }),
+    );
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(getSummary).toHaveBeenCalledTimes(1);
+    });
+
+    const nextConfiguration = screen
+      .getByRole('heading', { name: 'Próximo paso de configuración' })
+      .closest('section');
+    expect(nextConfiguration).toHaveAttribute('aria-busy', 'true');
+
+    resolveSummary(narrowedSummary);
+    await waitFor(() => {
+      expect(screen.queryByTestId('next-configuration')).not.toBeInTheDocument();
+    });
   });
 
   it('abre bloques plegados con Ver más (cobertura B2b)', async () => {
@@ -495,7 +873,360 @@ describe('DashboardClient', () => {
     });
 
     await user.click(screen.getByRole('button', { name: /Ver más/i }));
-    expect(screen.getByText(/Casos de la mesa de ayuda/i)).toBeInTheDocument();
     expect(screen.getByText(/Estado del almacén/i)).toBeInTheDocument();
+  });
+
+  function buildFieldAlerts(count: number) {
+    const severities = ['critical', 'warning', 'info'] as const;
+    return Array.from({ length: count }, (_, index) => ({
+      id: `alert-${index + 1}`,
+      type: index % 2 === 0 ? 'OVERDUE' : 'DRAFT_SOON',
+      severity: severities[index % severities.length],
+      title: `Aviso de campo ${index + 1}`,
+      description: `Detalle del aviso ${index + 1}`,
+      eventId: index === 0 ? 'evt-agenda-001' : null,
+      assignedUserId: null,
+      scheduledStartAt: null,
+    }));
+  }
+
+  it('CA-DELTA-05: ADMIN muestra hasta 5 avisos de campo con severidad, sin mini-card y enlace a agenda', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 3,
+      overdueCount: 1,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 2,
+        readyToScheduleCount: 2,
+        needsContextCount: 0,
+        overdueSlaCount: 1,
+        highPriorityOpenCount: 0,
+      },
+      alerts: buildFieldAlerts(6),
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Aviso de campo 5')).toBeInTheDocument();
+    });
+
+    const fieldPanel = screen
+      .getByRole('heading', { name: 'Atención de campo' })
+      .closest('section') as HTMLElement;
+    expect(within(fieldPanel).queryByText('Aviso de campo 6')).not.toBeInTheDocument();
+    expect(within(fieldPanel).getAllByText('Crítico').length).toBeGreaterThan(0);
+    expect(within(fieldPanel).getAllByText('Atención').length).toBeGreaterThan(0);
+    expect(within(fieldPanel).getAllByText('Informativo').length).toBeGreaterThan(0);
+
+    const alertLink = within(fieldPanel).getByRole('link', { name: /Aviso de campo 1/i });
+    expect(alertLink).toHaveAttribute('href', '/dashboard/scheduling/agenda');
+    expect(alertLink.className).not.toMatch(/rounded-xl/);
+    expect(alertLink.className).not.toMatch(/(?:^|\s)border(?:\s|$)/);
+    expect(within(fieldPanel).queryByText(/OVERDUE|DRAFT_SOON/)).not.toBeInTheDocument();
+  });
+
+  it('CA-DELTA-05: SUPPORT limita Atención de campo a máximo 3 filas', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-support', role: UserRole.SUPPORT, tenantId: 't-1', displayName: 'Soporte' },
+      isLoading: false,
+    });
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 2,
+      overdueCount: 1,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 1,
+        readyToScheduleCount: 1,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      },
+      alerts: buildFieldAlerts(5),
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Aviso de campo 1')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Aviso de campo 4')).toBeInTheDocument();
+    expect(screen.queryByText('Aviso de campo 3')).not.toBeInTheDocument();
+    expect(screen.queryByText('Aviso de campo 5')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Aviso de campo 1/i })).toHaveAttribute(
+      'href',
+      '/dashboard/scheduling/agenda',
+    );
+  });
+
+  it('CA-DELTA-03: HelpDeskBlock desglosa byPriority/byType con enlaces filtrados', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-support', role: UserRole.SUPPORT, tenantId: 't-1', displayName: 'Soporte' },
+      isLoading: false,
+    });
+    assuranceGetSummary.mockResolvedValue({
+      openCount: 5,
+      assignedCount: 1,
+      inProgressCount: 1,
+      atRiskCount: 2,
+      breachedCount: 1,
+      resolvedTodayCount: 0,
+      fieldServicePendingCount: 0,
+      byPriority: { HIGH: 2, NORMAL: 3 },
+      byType: { PQR: 1, CUSTOMER_INCIDENT: 4 },
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/5 casos abiertos · 2 en riesgo/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Por prioridad')).toBeInTheDocument();
+    expect(screen.getByText('Por tipo')).toBeInTheDocument();
+
+    const highPriority = screen.getByRole('link', { name: /Alta · 2/i });
+    expect(highPriority).toHaveAttribute('href', '/dashboard/assurance?priority=HIGH');
+    const normalPriority = screen.getByRole('link', { name: /Normal · 3/i });
+    expect(normalPriority).toHaveAttribute('href', '/dashboard/assurance?priority=NORMAL');
+
+    const pqr = screen.getByRole('link', { name: /PQR · 1/i });
+    expect(pqr).toHaveAttribute('href', '/dashboard/assurance?type=PQR');
+    const incident = screen.getByRole('link', { name: /Incidente de cliente · 4/i });
+    expect(incident).toHaveAttribute('href', '/dashboard/assurance?type=CUSTOMER_INCIDENT');
+
+    expect(screen.queryByText(/\bHIGH\b/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bCUSTOMER_INCIDENT\b/)).not.toBeInTheDocument();
+  });
+
+  it('CA-DELTA-04: PipelineBlock desglosa estados abiertos con vocabulario y enlace', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-sales', role: UserRole.SALES, tenantId: 't-1', displayName: 'Comercial' },
+      isLoading: false,
+    });
+    crmPipelineSummary.mockResolvedValue({
+      data: {
+        NUEVO_POTENCIAL: 3,
+        PRECALIFICADO: 2,
+        EN_COTIZACION: 1,
+        DESCARTADO: 4,
+        CLIENTE_ACTIVO: 5,
+      },
+      total: 15,
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/6 en seguimiento · 15 en total/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Nuevo')).toBeInTheDocument();
+    expect(screen.getByText('Precalificado')).toBeInTheDocument();
+    expect(screen.getByText('En cotización')).toBeInTheDocument();
+    expect(screen.queryByText('NUEVO_POTENCIAL')).not.toBeInTheDocument();
+    expect(screen.queryByText('PRECALIFICADO')).not.toBeInTheDocument();
+    expect(screen.queryByText('EN_COTIZACION')).not.toBeInTheDocument();
+    expect(screen.queryByText('Descartado')).not.toBeInTheDocument();
+    expect(screen.queryByText('Activo')).not.toBeInTheDocument();
+
+    const openLink = screen.getByRole('link', { name: /Ver oportunidades/i });
+    expect(openLink).toHaveAttribute('href', '/dashboard/crm/expedientes?view=open');
+  });
+
+  it('C-R1: fallo parcial no avanza la hora de B0 y anuncia dato desactualizado', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
+    });
+
+    const lastRead = document.querySelector('time');
+    expect(lastRead).not.toBeNull();
+    const completeRead = lastRead!.getAttribute('dateTime');
+    expect(completeRead).toBeTruthy();
+
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
+
+    await user.click(screen.getByRole('button', { name: /^Actualizar$/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /Algunos datos no se actualizaron. Revisa los avisos o pulsa Actualizar./i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const afterPartial = document.querySelector('time');
+    expect(afterPartial).not.toBeNull();
+    expect(afterPartial).toHaveAttribute('dateTime', completeRead);
+  });
+
+  it('C-R1: error + dato previo muestra Reintentar en la métrica', async () => {
+    const user = userEvent.setup();
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
+    });
+
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
+    await user.click(screen.getByRole('button', { name: /^Actualizar$/ }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: /Reintentar/i }).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole('link', { name: /Visitas de hoy/i })).not.toBeInTheDocument();
+  });
+
+  it('C-R2: el grupo B1 en error anuncia una vez y recupera el foco al encabezado', async () => {
+    const user = userEvent.setup();
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No pudimos actualizar las cifras de operaciones de campo/i),
+      ).toBeInTheDocument();
+    });
+
+    const groupAlerts = screen.getAllByText(
+      /No pudimos actualizar las cifras de operaciones de campo/i,
+    );
+    expect(groupAlerts).toHaveLength(1);
+    expect(
+      screen.getByText(
+        /Las cifras anteriores siguen visibles. Reintenta en cada tarjeta con aviso./i,
+      ),
+    ).toBeInTheDocument();
+
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 3,
+      overdueCount: 1,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 2,
+        readyToScheduleCount: 2,
+        needsContextCount: 0,
+        overdueSlaCount: 1,
+        highPriorityOpenCount: 0,
+      },
+      alerts: [],
+      technicianLoad: [],
+    });
+
+    await user.click(screen.getAllByRole('button', { name: /Reintentar/i })[0]!);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/No pudimos actualizar las cifras de operaciones de campo/i),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(document.activeElement).toHaveTextContent('Operaciones de campo');
+    expect(document.activeElement).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('C-R4: token B0 sin inline-flex base y menú solo fuera de md', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+    });
+
+    const refresh = screen.getByRole('button', { name: /^Actualizar$/ });
+    expect(refresh.className).toMatch(/\bhidden\b/);
+    expect(refresh.className).toMatch(/md:inline-flex/);
+    expect(refresh.className).not.toMatch(/inline-flex min-h-11/);
+
+    const overflow = screen.getByRole('button', { name: 'Más acciones del inicio' });
+    const overflowWrap = overflow.parentElement;
+    expect(overflowWrap?.className).toMatch(/md:hidden/);
+    expect(overflowWrap?.className).toMatch(/xl:flex/);
+
+    expect(screen.queryByRole('link', { name: /^Programar visita$/ })).not.toBeInTheDocument();
+  });
+
+  it('C-R5: home y campana comparten una sola lectura audit', async () => {
+    render(
+      <>
+        <NotificationBell />
+        <DashboardClient />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('change-history')).toBeInTheDocument();
+    });
+    expect(auditList).toHaveBeenCalledTimes(1);
+  });
+
+  it('C-R6: Ofertas en riesgo enfoca el bloque comercial y no hace scroll con reduced motion', async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: (query: string) => ({
+        matches: query.includes('prefers-reduced-motion'),
+        media: query,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+      }),
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ofertas en riesgo/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /Ofertas en riesgo/i }));
+
+    const heading = screen.getByRole('heading', { name: 'Atención comercial' });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(heading).toHaveFocus();
+    const announcement = screen.getByText(/Atención comercial. Revisa las ofertas en riesgo./i);
+    expect(announcement).toHaveAttribute('role', 'status');
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('C-R7: la hora de B0 usa mono tabular y time', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(document.querySelector('time')).not.toBeNull();
+    });
+
+    const time = document.querySelector('time');
+    expect(time).toHaveClass('font-mono');
+    expect(time).toHaveClass('tabular-nums');
+    expect(time).toHaveAttribute('dateTime');
   });
 });

@@ -42,11 +42,12 @@ const settings: TenantSelfSettings = {
 };
 
 describe('TenantSummaryCard', () => {
-  it('muestra ficha subordinada con enlace a configuración (B3)', () => {
+  it('muestra ficha subordinada con un solo canal de estado (C-10)', () => {
     render(<TenantSummaryCard tenant={tenant} settings={settings} />);
 
     expect(screen.getByText('ISP Prueba Colombia')).toBeInTheDocument();
-    expect(screen.getAllByText('Activo').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Activo')).toHaveLength(1);
+    expect(screen.queryByText('Estado del servicio')).not.toBeInTheDocument();
     expect(screen.getByText('Bogotá, Cundinamarca')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Ver en configuración/i })).toHaveAttribute(
       'href',
@@ -68,8 +69,37 @@ describe('TenantSummaryCard', () => {
       />,
     );
 
-    expect(screen.getAllByText('Error de preparación').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Error de preparación')).toHaveLength(1);
     expect(screen.queryByText('PROVISIONING_FAILED')).not.toBeInTheDocument();
     expect(screen.getAllByText('CO').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it.each([
+    ['SUSPENDED', 'Suspendido'],
+    ['PROVISIONING', 'En preparación'],
+    ['MARKED_FOR_DELETION', 'En eliminación'],
+  ] as const)('muestra el estado empresarial %s con etiqueta amigable', (status, label) => {
+    render(<TenantSummaryCard tenant={{ ...tenant, status }} settings={settings} />);
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText(status)).not.toBeInTheDocument();
+  });
+
+  it('usa neutral y no disponible para estado o ubicación desconocidos', () => {
+    render(
+      <TenantSummaryCard
+        tenant={{
+          ...tenant,
+          status: 'UNKNOWN_STATUS' as DashboardSummaryTenant['status'],
+          city: null,
+          department: null,
+          countryCode: null,
+        }}
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByText('Estado desconocido')).toBeInTheDocument();
+    expect(screen.getByText('No disponible')).toBeInTheDocument();
   });
 });

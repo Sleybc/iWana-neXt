@@ -65,25 +65,54 @@ jest.mock('@/components/shared/PlatformTenantPicker', () => ({
   ),
 }));
 
+const summaryPresetMock = jest.fn();
+
 jest.mock('@/components/audit/AuditSummary', () => ({
   AuditSummary: ({
     mode,
     tenantName,
     entries,
     isLoading,
-    onFilterApply,
+    activePreset,
+    onPresetChange,
   }: {
     mode: 'platform' | 'tenant';
     tenantName?: string;
     entries: Array<unknown>;
     isLoading: boolean;
-    onFilterApply: (filter: { actionSet?: string[]; severity?: 'critical' }) => void;
+    activePreset: string | null;
+    onPresetChange: (preset: string | null) => void;
   }) => (
     <section data-testid={`${mode}-summary`}>
       <p>{mode === 'tenant' ? `Resumen de ${tenantName}` : 'Resumen de plataforma'}</p>
       <p>{isLoading ? 'Cargando resumen' : `Entradas resumen: ${entries.length}`}</p>
-      <button type="button" onClick={() => onFilterApply({ actionSet: ['LOGIN'] })}>
-        Aplicar filtro {mode}
+      <p>Preset activo: {activePreset ?? 'ninguno'}</p>
+      <button
+        type="button"
+        onClick={() => {
+          summaryPresetMock('critical');
+          onPresetChange(activePreset === 'critical' ? null : 'critical');
+        }}
+      >
+        Ver críticos {mode}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          summaryPresetMock('access');
+          onPresetChange('access');
+        }}
+      >
+        Ver accesos {mode}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          summaryPresetMock('tenants');
+          onPresetChange(activePreset === 'tenants' ? null : 'tenants');
+        }}
+      >
+        Ver empresas {mode}
       </button>
     </section>
   ),
@@ -92,39 +121,60 @@ jest.mock('@/components/audit/AuditSummary', () => ({
 jest.mock('@/components/audit/AuditLogsTable', () => ({
   AuditLogsTable: ({
     companyName,
-    externalFilters,
     entries,
     isLoading,
     actionFilter,
     dateFrom,
     dateTo,
+    pageSize,
+    emptySummaryPreset,
     onActionFilterChange,
+    onPageSizeChange,
     onDateFromChange,
     onDateToChange,
     onExportCsv,
+    titleRef,
+    titleId,
   }: {
     companyName?: string;
-    externalFilters?: { actionSet?: string[]; severity?: string };
-    entries: Array<unknown>;
+    entries: Array<{ id: string; action?: string; entityType?: string }>;
     isLoading: boolean;
     actionFilter?: string;
     dateFrom?: string;
     dateTo?: string;
+    pageSize?: number;
+    emptySummaryPreset?: boolean;
     onActionFilterChange?: (value: string) => void;
     onDateFromChange?: (value: string) => void;
     onDateToChange?: (value: string) => void;
+    onPageSizeChange?: (value: number) => void;
     onExportCsv?: () => Promise<{ truncated: boolean } | void> | { truncated: boolean } | void;
+    titleRef?: { current: HTMLHeadingElement | null };
+    titleId?: string;
   }) => (
     <section data-testid={companyName ? 'tenant-table' : 'platform-table'}>
+      <h2 id={titleId} ref={titleRef} tabIndex={-1}>
+        Listado de cambios
+      </h2>
       <p>{companyName ? `Tabla de ${companyName}` : 'Tabla de plataforma'}</p>
       <p>{isLoading ? 'Cargando tabla' : `Entradas tabla: ${entries.length}`}</p>
       <p>
-        Filtros externos:{' '}
-        {externalFilters?.actionSet?.join(',') ?? externalFilters?.severity ?? 'ninguno'}
-      </p>
-      <p>
         Filtros barra: {actionFilter || 'ninguno'}|{dateFrom || ''}|{dateTo || ''}
       </p>
+      <p>Tamaño de página: {pageSize ?? 'sin tamaño'}</p>
+      {emptySummaryPreset ? <p>Empty preset resumen</p> : null}
+      <ul>
+        {entries.map((e) => (
+          <li key={e.id}>
+            fila:{e.id}:{e.action ?? ''}:{e.entityType ?? ''}
+          </li>
+        ))}
+      </ul>
+      {onPageSizeChange ? (
+        <button type="button" onClick={() => onPageSizeChange(20)}>
+          Cambiar tamaño {companyName ? 'tenant' : 'platform'}
+        </button>
+      ) : null}
       {onActionFilterChange ? (
         <button type="button" onClick={() => onActionFilterChange('CREATE')}>
           Filtrar acción {companyName ? 'tenant' : 'platform'}
@@ -142,7 +192,7 @@ jest.mock('@/components/audit/AuditLogsTable', () => ({
       ) : null}
       {onExportCsv ? (
         <button type="button" onClick={() => void onExportCsv()}>
-          Exportar {companyName ? 'tenant' : 'platform'}
+          Descargar {companyName ? 'tenant' : 'platform'}
         </button>
       ) : null}
     </section>
@@ -152,12 +202,25 @@ jest.mock('@/components/audit/AuditLogsTable', () => ({
 jest.mock('@/lib/platform-ui-copy', () => ({
   PLATFORM_UI_COPY: {
     audit: {
-      title: 'Auditoria',
-      subtitle: 'Historial de cambios y operaciones de plataforma',
-      platformSectionTitle: 'Auditoria de plataforma',
+      title: 'Historial de cambios',
+      subtitle: 'Qué cambió el equipo en empresas, accesos y la plataforma.',
+      platformSectionTitle: 'Cambios de plataforma',
       platformSectionSubtitle: 'Cambios globales',
-      tenantSectionTitle: 'Auditoria por empresa',
+      tenantSectionTitle: 'Cambios por empresa',
       tenantSectionSubtitle: 'Cambios por empresa',
+      loadError: 'No pudimos cargar el historial. Reintenta en unos minutos.',
+      scopeLabel: 'Ámbito del historial',
+      download: 'Descargar',
+      downloadError: 'No pudimos descargar el archivo. Reintenta en unos minutos.',
+      summaryFilterChip: 'Mostrando: {label} · lote del resumen',
+      summaryFilterClear: 'Quitar filtro',
+      criticalChanges: 'Cambios críticos',
+      accesses: 'Accesos',
+      accessAndSecurity: 'Acceso y seguridad',
+      companiesWithChanges: 'Empresas con cambios',
+      whoChanged: 'Quién cambió',
+      emptySummaryPreset: 'Sin cambios en el lote del resumen con este filtro',
+      emptySummaryPresetHint: 'Quita el filtro del resumen para ver todos los cambios.',
     },
     shared: {
       selectTenant: 'Seleccionar empresa',
@@ -204,13 +267,306 @@ jest.mock('@/lib/api-client', () => ({
   },
 }));
 
+function mockHappyPath() {
+  tenantListMock.mockResolvedValue([
+    {
+      id: 'tenant-1',
+      name: 'Empresa Uno',
+      slug: 'empresa-uno',
+      status: 'ACTIVE',
+    },
+  ]);
+  platformAuditListMock.mockResolvedValue({ data: [], nextCursor: null });
+  auditListMock.mockResolvedValue({ data: [], nextCursor: null });
+}
+
 describe('AuditLogsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     searchParamsMock = new URLSearchParams();
   });
 
-  it('limpia filtros y resumen previo al cambiar de empresa', async () => {
+  it('CA-AUD-06: un H1 y sin párrafos de subtítulo de sección bajo tabs', async () => {
+    mockHappyPath();
+    render(<AuditLogsPage />);
+
+    await screen.findByText('Tabla de plataforma');
+
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Historial de cambios');
+    expect(screen.queryByText('Cambios globales')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cambios por empresa')).toBeInTheDocument(); // tab label
+  });
+
+  it('CA-AUD-03: list rechazado muestra loadError en Alert', async () => {
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (message: string) => Error;
+    };
+    tenantListMock.mockResolvedValue([]);
+    platformAuditListMock.mockImplementation(({ limit }: { limit: number }) => {
+      if (limit === 100) {
+        return Promise.resolve({ data: [], nextCursor: null });
+      }
+      return Promise.reject(
+        new ApiError('No pudimos cargar el historial. Reintenta en unos minutos.'),
+      );
+    });
+
+    render(<AuditLogsPage />);
+
+    expect(
+      await screen.findByText('No pudimos cargar el historial. Reintenta en unos minutos.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('CA-AUD-05: exporta con Descargar y filename de producto', async () => {
+    mockHappyPath();
+    platformAuditExportMock.mockResolvedValue({
+      blob: new Blob(['csv']),
+      truncated: false,
+      filename: undefined,
+    });
+
+    const createObjectURL = jest.fn(() => 'blob:mock');
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: jest.fn() });
+    const clickSpy = jest
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+
+    render(<AuditLogsPage />);
+    await screen.findByText('Tabla de plataforma');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Descargar platform' }));
+
+    await waitFor(() => {
+      expect(platformAuditExportMock).toHaveBeenCalled();
+    });
+    expect(createObjectURL).toHaveBeenCalled();
+
+    // El download attribute se setea en el anchor antes del click
+    clickSpy.mockRestore();
+  });
+
+  it('CA-AUD-09 / CA-FR-01+02: preset filtra lote, muestra chip y Quitar filtro restaura', async () => {
+    tenantListMock.mockResolvedValue([
+      {
+        id: 'tenant-1',
+        name: 'Empresa Uno',
+        slug: 'empresa-uno',
+        status: 'ACTIVE',
+      },
+    ]);
+    const tableRows = [
+      {
+        id: 'row-1',
+        action: 'DELETE',
+        entityType: 'User',
+        entityId: 'u1',
+        userId: 'u1',
+        actor: { displayName: 'Ana' },
+        ipAddress: null,
+        userAgent: null,
+        requestId: null,
+        oldValue: null,
+        newValue: null,
+        createdAt: '2026-08-11T10:00:00.000Z',
+      },
+      {
+        id: 'row-2',
+        action: 'LOGIN',
+        entityType: 'User',
+        entityId: 'u2',
+        userId: 'u2',
+        actor: { displayName: 'Luis' },
+        ipAddress: null,
+        userAgent: null,
+        requestId: null,
+        oldValue: null,
+        newValue: null,
+        createdAt: '2026-08-11T11:00:00.000Z',
+      },
+    ];
+    platformAuditListMock.mockImplementation(({ limit }: { limit: number }) => {
+      if (limit === 100) {
+        return Promise.resolve({ data: tableRows, nextCursor: null });
+      }
+      return Promise.resolve({ data: tableRows, nextCursor: null });
+    });
+    auditListMock.mockResolvedValue({ data: [], nextCursor: null });
+
+    render(<AuditLogsPage />);
+    await screen.findByText('Entradas tabla: 2');
+
+    const title = screen.getByRole('heading', { name: 'Listado de cambios' });
+    const focusSpy = jest.spyOn(title, 'focus');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver críticos platform' }));
+
+    expect(summaryPresetMock).toHaveBeenCalledWith('critical');
+    expect(focusSpy).toHaveBeenCalled();
+    expect(
+      await screen.findByText(/Mostrando: Cambios críticos · lote del resumen/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar filtro' })).toBeInTheDocument();
+    expect(screen.getByText('Entradas tabla: 1')).toBeInTheDocument();
+    expect(screen.getByText('fila:row-1:DELETE:User')).toBeInTheDocument();
+    expect(screen.queryByText('fila:row-2:LOGIN:User')).not.toBeInTheDocument();
+
+    // URL action no se contamina (CA-FR-08)
+    expect(replaceMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('action='),
+      expect.anything(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar filtro' }));
+
+    expect(await screen.findByText('Entradas tabla: 2')).toBeInTheDocument();
+    expect(screen.queryByText(/Mostrando: Cambios críticos/)).not.toBeInTheDocument();
+  });
+
+  it('CA-FR-11+12+13: preset tenants usa lote del resumen (no página pager)', async () => {
+    const recent = new Date().toISOString();
+    const tenantInSummary = {
+      id: 'summary-tenant-1',
+      action: 'UPDATE',
+      entityType: 'Tenant',
+      entityId: 't-1',
+      userId: 'u-1',
+      actor: { displayName: 'Ana' },
+      ipAddress: null,
+      userAgent: null,
+      requestId: null,
+      oldValue: { status: 'ACTIVE' },
+      newValue: { status: 'SUSPENDED' },
+      createdAt: recent,
+    };
+    const loginOnPage = {
+      id: 'page-login-1',
+      action: 'LOGIN',
+      entityType: 'User',
+      entityId: 'u-2',
+      userId: 'u-2',
+      actor: { displayName: 'Luis' },
+      ipAddress: null,
+      userAgent: null,
+      requestId: null,
+      oldValue: null,
+      newValue: null,
+      createdAt: recent,
+    };
+
+    tenantListMock.mockResolvedValue([
+      {
+        id: 'tenant-1',
+        name: 'Empresa Uno',
+        slug: 'empresa-uno',
+        status: 'ACTIVE',
+      },
+    ]);
+    platformAuditListMock.mockImplementation(({ limit }: { limit: number }) => {
+      if (limit === 100) {
+        return Promise.resolve({
+          data: [tenantInSummary, loginOnPage],
+          nextCursor: null,
+        });
+      }
+      // Página del pager: solo LOGIN (sin Tenant) — root cause v1.1
+      return Promise.resolve({ data: [loginOnPage], nextCursor: null });
+    });
+    auditListMock.mockResolvedValue({ data: [], nextCursor: null });
+
+    render(<AuditLogsPage />);
+    await screen.findByText('Entradas tabla: 1');
+    expect(screen.getByText('fila:page-login-1:LOGIN:User')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver empresas platform' }));
+
+    expect(summaryPresetMock).toHaveBeenCalledWith('tenants');
+    expect(
+      await screen.findByText(/Mostrando: Empresas con cambios · lote del resumen/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/lote del resumen/)).toBeInTheDocument();
+    expect(screen.queryByText('Empty preset resumen')).not.toBeInTheDocument();
+    expect(screen.getByText('fila:summary-tenant-1:UPDATE:Tenant')).toBeInTheDocument();
+    expect(screen.queryByText('fila:page-login-1:LOGIN:User')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar filtro' }));
+
+    expect(await screen.findByText('Entradas tabla: 1')).toBeInTheDocument();
+    expect(screen.getByText('fila:page-login-1:LOGIN:User')).toBeInTheDocument();
+    expect(screen.queryByText('fila:summary-tenant-1:UPDATE:Tenant')).not.toBeInTheDocument();
+    expect(screen.queryByText(/lote del resumen/)).not.toBeInTheDocument();
+  });
+
+  it('CA-FR-06: cambiar action del chrome limpia el preset', async () => {
+    tenantListMock.mockResolvedValue([
+      {
+        id: 'tenant-1',
+        name: 'Empresa Uno',
+        slug: 'empresa-uno',
+        status: 'ACTIVE',
+      },
+    ]);
+    const tableRows = [
+      {
+        id: 'row-1',
+        action: 'DELETE',
+        entityType: 'User',
+        entityId: 'u1',
+        userId: 'u1',
+        actor: { displayName: 'Ana' },
+        ipAddress: null,
+        userAgent: null,
+        requestId: null,
+        oldValue: null,
+        newValue: null,
+        createdAt: '2026-08-11T10:00:00.000Z',
+      },
+    ];
+    platformAuditListMock.mockResolvedValue({ data: tableRows, nextCursor: null });
+    auditListMock.mockResolvedValue({ data: [], nextCursor: null });
+
+    render(<AuditLogsPage />);
+    await screen.findByText('Entradas tabla: 1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver críticos platform' }));
+    expect(await screen.findByText(/Mostrando: Cambios críticos/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrar acción platform' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Mostrando: Cambios críticos/)).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Preset activo: ninguno')).toBeInTheDocument();
+  });
+
+  it('CA-FR-08: export no incluye el preset de resumen', async () => {
+    mockHappyPath();
+    platformAuditExportMock.mockResolvedValue({
+      blob: new Blob(['csv']),
+      truncated: false,
+      filename: undefined,
+    });
+
+    const createObjectURL = jest.fn(() => 'blob:mock');
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: jest.fn() });
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    render(<AuditLogsPage />);
+    await screen.findByText('Tabla de plataforma');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver críticos platform' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Descargar platform' }));
+
+    await waitFor(() => {
+      expect(platformAuditExportMock).toHaveBeenCalledWith({});
+    });
+  });
+
+  it('limpia resumen previo al cambiar de empresa', async () => {
     const tenantTwoSummary = createDeferred<AuditApiResponse>();
 
     tenantListMock.mockResolvedValue([
@@ -238,7 +594,7 @@ describe('AuditLogsPage', () => {
         if (tenantSlug === 'empresa-uno') {
           return Promise.resolve({
             data:
-              limit === 200
+              limit === 100
                 ? [
                     {
                       id: 'summary-1',
@@ -274,7 +630,7 @@ describe('AuditLogsPage', () => {
           });
         }
 
-        if (tenantSlug === 'empresa-dos' && limit === 200) {
+        if (tenantSlug === 'empresa-dos' && limit === 100) {
           return tenantTwoSummary.promise;
         }
 
@@ -287,24 +643,17 @@ describe('AuditLogsPage', () => {
 
     render(<AuditLogsPage />);
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Cambios por empresa' }));
+
     expect(await screen.findByText('Resumen de Empresa Uno')).toBeInTheDocument();
     expect(await screen.findByText('Entradas resumen: 2')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtro tenant' }));
-
-    expect(await screen.findByText('Filtro activo desde el resumen.')).toBeInTheDocument();
-    expect(screen.getByText('Filtros externos: LOGIN')).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Seleccionar empresa' }), {
       target: { value: 'empresa-dos' },
     });
 
-    expect(screen.queryByText('Filtro activo desde el resumen.')).not.toBeInTheDocument();
     expect(screen.getByText('Resumen de Empresa Dos')).toBeInTheDocument();
     expect(screen.getByText('Cargando resumen')).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId('tenant-table')).getByText('Filtros externos: ninguno'),
-    ).toBeInTheDocument();
 
     tenantTwoSummary.resolve({
       data: [
@@ -332,27 +681,16 @@ describe('AuditLogsPage', () => {
   });
 
   it('envía action/fromDate/toDate al listar y exporta vía endpoint server-side', async () => {
-    tenantListMock.mockResolvedValue([
-      {
-        id: 'tenant-1',
-        name: 'Empresa Uno',
-        slug: 'empresa-uno',
-        status: 'ACTIVE',
-      },
-    ]);
-
-    platformAuditListMock.mockResolvedValue({ data: [], nextCursor: null });
-    auditListMock.mockResolvedValue({ data: [], nextCursor: null });
+    mockHappyPath();
     platformAuditExportMock.mockResolvedValue({
       blob: new Blob(['csv']),
       truncated: true,
-      filename: 'platform-audit-logs-2026-07-20.csv',
+      filename: 'historial-plataforma-2026-07-20.csv',
     });
 
     const createObjectURL = jest.fn(() => 'blob:mock');
-    const revokeObjectURL = jest.fn();
     Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
-    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: jest.fn() });
     jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
 
     render(<AuditLogsPage />);
@@ -363,7 +701,7 @@ describe('AuditLogsPage', () => {
 
     await waitFor(() => {
       expect(platformAuditListMock).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'CREATE', limit: 50 }),
+        expect.objectContaining({ action: 'CREATE', limit: 10 }),
       );
     });
 
@@ -380,7 +718,7 @@ describe('AuditLogsPage', () => {
       );
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Exportar platform' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Descargar platform' }));
 
     await waitFor(() => {
       expect(platformAuditExportMock).toHaveBeenCalledWith(
@@ -392,5 +730,44 @@ describe('AuditLogsPage', () => {
       );
     });
     expect(createObjectURL).toHaveBeenCalled();
+  });
+
+  it('pide 10 cambios por defecto y recarga al elegir 20', async () => {
+    mockHappyPath();
+
+    render(<AuditLogsPage />);
+
+    await screen.findByText('Tabla de plataforma');
+
+    await waitFor(() => {
+      expect(platformAuditListMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 10 }));
+    });
+    expect(screen.getAllByText('Tamaño de página: 10').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar tamaño platform' }));
+
+    await waitFor(() => {
+      expect(platformAuditListMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
+    });
+    expect(screen.getAllByText('Tamaño de página: 20').length).toBeGreaterThan(0);
+  });
+
+  it('cambia entre plataforma y empresa sin mostrar las dos tablas a la vez', async () => {
+    mockHappyPath();
+
+    render(<AuditLogsPage />);
+
+    expect(await screen.findByTestId('platform-table')).toBeInTheDocument();
+    expect(screen.queryByTestId('tenant-table')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Cambios por empresa' }));
+
+    expect(await screen.findByTestId('tenant-table')).toBeInTheDocument();
+    expect(screen.queryByTestId('platform-table')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Cambios de plataforma' }));
+
+    expect(await screen.findByTestId('platform-table')).toBeInTheDocument();
+    expect(screen.queryByTestId('tenant-table')).not.toBeInTheDocument();
   });
 });

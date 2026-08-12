@@ -205,7 +205,7 @@ function AddTributosModal({
           <div className="flex flex-col gap-4">
             {Object.entries(byCategory).map(([category, items]) => (
               <div key={category}>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                   {CATEGORY_LABELS[category] ?? category}
                 </p>
                 <ul className="flex flex-col gap-1">
@@ -351,7 +351,7 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
             <span>{statusMeta.label}</span>
           </div>
           {assignment.reason && (
-            <p className="ml-4 mt-0.5 text-xs italic text-gray-400 dark:text-gray-500">
+            <p className="ml-4 mt-0.5 text-xs italic text-gray-400 dark:text-gray-400">
               {assignment.reason}
             </p>
           )}
@@ -399,7 +399,7 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
                 step="0.01"
                 value={manualRate}
                 onChange={(e) => setManualRate(e.target.value)}
-                className="w-28 rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                className="w-28 rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
                 placeholder="Ej: 19.00"
               />
             </label>
@@ -413,7 +413,7 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
                 maxLength={300}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-gray-300 px-2.5 py-1 text-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
                 placeholder="Ej: Cliente gobierno con estampilla aprobada"
               />
             </label>
@@ -624,7 +624,7 @@ export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
               </ul>
 
               {profile.confirmedAt && (
-                <p className="mt-3 text-right text-xs text-gray-400 dark:text-gray-500">
+                <p className="mt-3 text-right text-xs text-gray-400 dark:text-gray-400">
                   Configurado el{' '}
                   {new Date(profile.confirmedAt).toLocaleDateString('es-CO', {
                     day: '2-digit',

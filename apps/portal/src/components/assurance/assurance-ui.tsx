@@ -3,7 +3,7 @@ import { cn } from '@iwana/ui';
 import { PortalPanel } from '@/components/shared/portal-ui';
 
 export const assuranceTextareaClassName =
-  'min-h-[120px] w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm transition-colors duration-200 placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
+  'min-h-[120px] w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm transition-colors duration-200 placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400';
 
 interface AssuranceSectionCardProps {
   title: string;

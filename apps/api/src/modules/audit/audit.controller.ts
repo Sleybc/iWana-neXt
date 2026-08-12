@@ -14,18 +14,19 @@ import { AUDIT_EXPORT_TRUNCATED_HEADER } from './helpers/audit-export.helper';
 /**
  * Controlador de consulta del audit log del tenant.
  *
- * Accesible para ADMIN del tenant y SYSTEM_ADMIN de plataforma.
- * SYSTEM_ADMIN debe proveer X-Tenant-Slug para que TenantMiddleware
- * establezca el contexto de schema antes de ejecutar la query.
+ * Listado: ADMIN, AUDITOR (tenant) y SYSTEM_ADMIN (plataforma).
+ * Export: solo ADMIN + SYSTEM_ADMIN — AUDITOR no exporta (delta home / SEC-REVIEW).
+ * Schema/tenant solo desde JWT vía TenantContext (SYSTEM_ADMIN: X-Tenant-Slug en middleware
+ * de plataforma; roles tenant no amplían schema por header).
  *
  * Los registros son de solo lectura — la escritura es append-only via AuditService.
  *
  * Prefijo: /api/v1/audit-logs
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 4 (GET /api/v1/audit-logs)
+ * PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX A-3 / D-SEC-01
  */
 @Controller('audit-logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
 @SkipAudit()
 @ApiTags('audit-logs')
 @ApiBearerAuth('access-token')
@@ -38,10 +39,12 @@ export class AuditController {
    * GET /api/v1/audit-logs?cursor=uuid&limit=50&action=LOGIN&entityType=User
    */
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.AUDITOR, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({
     summary: 'Consultar audit log del tenant con filtros y paginacion cursor-based',
     description:
-      'Filtros: action, entityType, entityId, userId, fromDate, toDate (ISO 8601). Paginación cursor-based.',
+      'Filtros: action, entityType, entityId, userId, fromDate, toDate (ISO 8601). Paginación cursor-based. ' +
+      'AUDITOR: solo lectura del listado (sin export).',
   })
   @ApiResponse({
     status: 200,
@@ -52,13 +55,18 @@ export class AuditController {
     return this.auditQueryService.query(dto);
   }
 
+  /**
+   * Export CSV acotado: ADMIN + SYSTEM_ADMIN únicamente.
+   * AUDITOR queda fuera a propósito (home solo necesita listado reciente).
+   */
   @Get('export')
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({
     summary: 'Exportar audit log del tenant a CSV',
     description:
       'Mismos filtros que el listado (sin cursor/limit). Máximo 5000 filas. ' +
       'Si se trunca, responde con header X-Export-Truncated: true y una fila comentario en el CSV. ' +
-      'SYSTEM_ADMIN debe enviar X-Tenant-Slug.',
+      'SYSTEM_ADMIN debe enviar X-Tenant-Slug. No disponible para AUDITOR.',
   })
   @ApiProduces('text/csv')
   @ApiResponse({

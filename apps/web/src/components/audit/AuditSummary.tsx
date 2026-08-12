@@ -1,8 +1,8 @@
 'use client';
 
-// Resumen superior del módulo de auditoría — 4 tarjetas con señales operativas
-// Agrega client-side sobre limit=200 (Fase 5: agregar endpoint de agregación en backend)
-import React, { useMemo, useState } from 'react';
+// Resumen superior del historial — 4 tarjetas con señales (anatomía rica DS-A-SUM).
+// CTA → preset cliente sobre lote + foco a tabla (CA-AUD-09 / CA-FR).
+import React, { useMemo } from 'react';
 import {
   AlertTriangle,
   ShieldAlert,
@@ -13,33 +13,15 @@ import {
   TrendingDown,
   Minus,
 } from 'lucide-react';
-import { deriveSeverity } from './helpers/deriveSeverity';
-import { computeDiff } from './helpers/computeDiff';
-import { actionLabel, AUTH_ACTIONS, SECURITY_ACTIONS, TENANT_ACTIONS } from './helpers/actionLabel';
-import { entityLabel } from './helpers/entityLabel';
-import { timeAgo } from './helpers/timeAgo';
-
-/**
- * Extrae el nombre legible del registro afectado desde los datos del evento.
- * Prioriza: name/firstName > email > slug — igual que buildNarrative en AuditRowBasic.
- */
-function extractEntrySubject(entry: SummaryEntry): string {
-  const data = entry.newValue ?? entry.oldValue;
-  if (data && typeof data === 'object') {
-    const d = data as Record<string, unknown>;
-    const name = d.name ?? d.firstName ?? d.email ?? d.slug ?? d.legalName;
-    if (name && typeof name === 'string') return name;
-  }
-  // Fallback a entidad + ID corto
-  if (entry.entityId) return `${entityLabel(entry.entityType)} ${entry.entityId.slice(0, 8)}`;
-  return entityLabel(entry.entityType);
-}
-
-function extractActorName(entry: SummaryEntry): string {
-  if (!entry.userId) return 'Sistema';
-  if (entry.actor?.displayName) return entry.actor.displayName;
-  return entry.userId.slice(0, 8);
-}
+import { cn, interactiveFocusClassName, SkeletonBlock } from '@iwana/ui';
+import {
+  matchesSummaryPreset,
+  splitSummaryWindow,
+  type SummaryPreset,
+  type SummaryWindow,
+} from './summary-presets';
+import { describePlatformActivityLine } from '@/lib/platform-audit-vocabulary';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 export interface SummaryEntry {
   id: string;
@@ -61,6 +43,7 @@ export interface SummaryEntry {
   createdAt: string;
 }
 
+/** @deprecated CA-AUD-09: el resumen ya no aplica filtros vía AppliedFilter. */
 export interface AppliedFilter {
   actionSet?: string[] | undefined;
   severity?: 'critical' | undefined;
@@ -75,77 +58,48 @@ export interface TenantInfo {
 interface AuditSummaryProps {
   entries: SummaryEntry[];
   isLoading: boolean;
-  /** 'platform' muestra tarjeta de empresas activas; 'tenant' muestra top actores */
+  /** 'platform' muestra empresas con cambios; 'tenant' muestra quién cambió */
   mode: 'platform' | 'tenant';
-  /** Tenants disponibles para resolver IDs a nombres (solo en modo platform) */
   tenants?: TenantInfo[];
-  /** Nombre de la empresa seleccionada (solo en modo tenant) */
   tenantName?: string | undefined;
-  window: '24h' | '7d';
-  onWindowChange: (w: '24h' | '7d') => void;
-  onFilterApply: (filter: AppliedFilter) => void;
+  window: SummaryWindow;
+  onWindowChange: (w: SummaryWindow) => void;
+  /** Preset activo del lote (null = sin filtro de resumen). */
+  activePreset: SummaryPreset | null;
+  /** Aplica o quita preset (toggle si es el mismo). El padre enfoca la tabla. */
+  onPresetChange: (preset: SummaryPreset | null) => void;
 }
 
-/** Retorna el timestamp de inicio de una ventana temporal */
-function windowStart(window: '24h' | '7d'): Date {
-  const now = new Date();
-  if (window === '7d') return new Date(now.getTime() - 7 * 24 * 3600_000);
-  return new Date(now.getTime() - 24 * 3600_000);
+function extractActorName(entry: SummaryEntry): string {
+  if (!entry.userId) return 'Sistema';
+  if (entry.actor?.displayName) return entry.actor.displayName;
+  return PLATFORM_UI_COPY.audit.actorFallback;
 }
 
-/** Separa entries en ventana actual y ventana anterior (para calcular delta) */
-function splitWindow(
-  entries: SummaryEntry[],
-  window: '24h' | '7d',
-): { current: SummaryEntry[]; previous: SummaryEntry[] } {
-  const start = windowStart(window);
-  const prevStart = new Date(start.getTime() - (window === '7d' ? 7 : 1) * 24 * 3600_000);
-
-  const current = entries.filter((e) => new Date(e.createdAt) >= start);
-  const previous = entries.filter(
-    (e) => new Date(e.createdAt) >= prevStart && new Date(e.createdAt) < start,
-  );
-  return { current, previous };
-}
-
-/** Icono de delta con color */
 function DeltaBadge({ current, previous }: { current: number; previous: number }) {
   const diff = current - previous;
-  if (diff === 0)
+  if (diff === 0) {
     return (
-      <span className="flex items-center gap-0.5 text-xs text-gray-400">
-        <Minus className="h-3 w-3" />0
+      <span className="flex items-center gap-0.5 text-xs text-gray-500">
+        <Minus className="h-3 w-3" aria-hidden="true" />0
       </span>
     );
-  if (diff > 0)
+  }
+  if (diff > 0) {
     return (
-      <span className="flex items-center gap-0.5 text-xs text-red-500">
-        <TrendingUp className="h-3 w-3" />+{diff}
+      <span className="flex items-center gap-0.5 text-xs text-error-700 dark:text-error-400">
+        <TrendingUp className="h-3 w-3" aria-hidden="true" />+{diff}
       </span>
     );
+  }
   return (
-    <span className="flex items-center gap-0.5 text-xs text-green-500">
-      <TrendingDown className="h-3 w-3" />
+    <span className="flex items-center gap-0.5 text-xs text-success-700 dark:text-success-400">
+      <TrendingDown className="h-3 w-3" aria-hidden="true" />
       {diff}
     </span>
   );
 }
 
-/** Skeleton de tarjeta durante carga */
-function CardSkeleton() {
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-dark-border-2 bg-white dark:bg-dark-surface-2 p-4 space-y-3 animate-pulse">
-      <div className="h-4 w-24 bg-gray-200 dark:bg-dark-surface-4 rounded" />
-      <div className="h-8 w-16 bg-gray-200 dark:bg-dark-surface-4 rounded" />
-      <div className="space-y-1.5">
-        <div className="h-3 w-full bg-gray-100 dark:bg-dark-surface-3 rounded" />
-        <div className="h-3 w-3/4 bg-gray-100 dark:bg-dark-surface-3 rounded" />
-      </div>
-    </div>
-  );
-}
-
-/** Tarjeta de resumen con métrica, delta y lista */
 function SummaryCard({
   icon,
   title,
@@ -156,6 +110,7 @@ function SummaryCard({
   items,
   actionLabel: actionLabelText,
   onAction,
+  pressed,
   accentClass,
 }: {
   icon: React.ReactNode;
@@ -167,55 +122,70 @@ function SummaryCard({
   items: string[];
   actionLabel: string;
   onAction: () => void;
+  pressed: boolean;
   accentClass: string;
 }) {
   return (
-    <div className="flex flex-col rounded-xl border border-gray-200 dark:border-dark-border-2 bg-white dark:bg-dark-surface-2 p-4 gap-2">
-      {/* Cabecera */}
+    <div
+      className={cn(
+        'flex flex-col gap-2 rounded-2xl border bg-white p-4 shadow-iwana-soft dark:bg-dark-surface-2',
+        pressed
+          ? 'border-iwana-primary/40 dark:border-iwana-primary/40'
+          : 'border-gray-200 dark:border-dark-border',
+      )}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={`${accentClass} p-1.5 rounded-lg`} aria-hidden="true">
+          <span className={`${accentClass} rounded-lg p-1.5`} aria-hidden="true">
             {icon}
           </span>
           <div>
             <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{title}</p>
-            <p className="text-[10px] text-gray-400">{windowLabel}</p>
+            <p className="text-xs text-gray-500">{windowLabel}</p>
           </div>
         </div>
       </div>
 
-      {/* Métrica principal */}
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold text-gray-900 dark:text-white">{count}</span>
+        <span className="font-mono text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
+          {count}
+        </span>
         <DeltaBadge current={count} previous={countPrev} />
       </div>
 
-      {sublabel && <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">{sublabel}</p>}
+      {sublabel ? (
+        <p className="-mt-1 text-xs text-gray-500 dark:text-gray-400">{sublabel}</p>
+      ) : null}
 
-      {/* Lista de ítems */}
       {items.length > 0 ? (
-        <ul className="space-y-0.5 flex-1">
+        <ul className="flex-1 space-y-0.5">
           {items.map((item, i) => (
-            <li key={i} className="text-xs text-gray-600 dark:text-gray-400 truncate">
-              <span className="mr-1 text-gray-300 dark:text-gray-600">•</span>
+            <li key={`${item}-${i}`} className="truncate text-xs text-gray-600 dark:text-gray-400">
+              <span className="mr-1 text-gray-300 dark:text-gray-400" aria-hidden="true">
+                •
+              </span>
               {item}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-gray-400 italic flex-1">Sin actividad en esta ventana</p>
+        <p className="flex-1 text-xs text-gray-500 italic">Sin actividad en esta ventana</p>
       )}
 
-      {/* Acción */}
-      {count > 0 && (
+      {count > 0 ? (
         <button
           type="button"
           onClick={onAction}
-          className="mt-1 text-xs font-medium text-iwana-primary-700 dark:text-iwana-primary-400 hover:underline text-left"
+          aria-pressed={pressed}
+          className={cn(
+            'mt-1 min-h-11 text-left text-xs font-medium text-iwana-primary-700 hover:underline dark:text-iwana-primary-400',
+            interactiveFocusClassName,
+            pressed && 'font-semibold underline',
+          )}
         >
           {actionLabelText} →
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -228,77 +198,66 @@ export function AuditSummary({
   tenantName,
   window,
   onWindowChange,
-  onFilterApply,
+  activePreset,
+  onPresetChange,
 }: AuditSummaryProps) {
-  const { current, previous } = useMemo(() => splitWindow(entries, window), [entries, window]);
+  const { current, previous } = useMemo(
+    () => splitSummaryWindow(entries, window),
+    [entries, window],
+  );
 
-  // --- Tarjeta 1: Eventos críticos ---
   const criticalCurrent = useMemo(
-    () =>
-      current.filter((e) => {
-        const diff = computeDiff(e.oldValue, e.newValue);
-        return deriveSeverity(e.action, e.entityType, diff) === 'critical';
-      }),
+    () => current.filter((e) => matchesSummaryPreset(e, 'critical')),
     [current],
   );
   const criticalPrev = useMemo(
-    () =>
-      previous.filter((e) => {
-        const diff = computeDiff(e.oldValue, e.newValue);
-        return deriveSeverity(e.action, e.entityType, diff) === 'critical';
-      }),
+    () => previous.filter((e) => matchesSummaryPreset(e, 'critical')),
     [previous],
   );
-  const criticalItems = criticalCurrent
-    .slice(0, 3)
-    .map((e) => `${extractEntrySubject(e)} · ${actionLabel(e.action)} · ${timeAgo(e.createdAt)}`);
+  const criticalItems = criticalCurrent.slice(0, 3).map((e) => describePlatformActivityLine(e));
 
-  // --- Tarjeta 2: Accesos ---
-  const authCurrent = useMemo(() => current.filter((e) => AUTH_ACTIONS.has(e.action)), [current]);
-  const authPrev = useMemo(() => previous.filter((e) => AUTH_ACTIONS.has(e.action)), [previous]);
+  const authCurrent = useMemo(
+    () => current.filter((e) => matchesSummaryPreset(e, 'access')),
+    [current],
+  );
+  const authPrev = useMemo(
+    () => previous.filter((e) => matchesSummaryPreset(e, 'access')),
+    [previous],
+  );
   const loginFailed = authCurrent.filter((e) => e.action === 'LOGIN_FAILED');
   const loginOk = authCurrent.filter((e) => e.action === 'LOGIN');
 
-  // Priorizar señales de riesgo cuando existan (≥3 fallidos del mismo actor)
   const riskActors = useMemo(() => {
-    const counts: Record<string, number> = {};
+    const counts: Record<string, { n: number; name: string }> = {};
     loginFailed.forEach((e) => {
-      const key = e.userId ?? e.ipAddress ?? 'desconocido';
-      counts[key] = (counts[key] ?? 0) + 1;
+      const key = e.userId ?? 'anon';
+      const name = extractActorName(e);
+      const prev = counts[key];
+      counts[key] = { n: (prev?.n ?? 0) + 1, name };
     });
-    return Object.entries(counts)
-      .filter(([, n]) => n >= 3)
-      .sort((a, b) => b[1] - a[1])
+    return Object.values(counts)
+      .filter((row) => row.n >= 3)
+      .sort((a, b) => b.n - a.n)
       .slice(0, 3);
   }, [loginFailed]);
 
   const authItems =
     riskActors.length > 0
-      ? riskActors.map(
-          ([actor, n]) =>
-            `⚠ ${actor.length > 30 ? 'desconocido' : actor.slice(0, 12)} — ${n} fallos`,
-        )
-      : loginOk.slice(0, 3).map((e) => `${extractEntrySubject(e)} · ${timeAgo(e.createdAt)}`);
+      ? riskActors.map((row) => `${row.name} — ${row.n} fallos`)
+      : loginOk.slice(0, 3).map((e) => describePlatformActivityLine(e));
 
   const authSublabel = loginFailed.length > 0 ? `Fallidos: ${loginFailed.length}` : undefined;
 
-  // --- Tarjeta 3: Permisos y seguridad ---
-  // Solo cuenta acciones de seguridad y tenant explícitas (no UPDATEs genéricos).
-  // Los UPDATEs con campos críticos ya están cubiertos por "Eventos críticos".
   const secCurrent = useMemo(
-    () => current.filter((e) => SECURITY_ACTIONS.has(e.action) || TENANT_ACTIONS.has(e.action)),
+    () => current.filter((e) => matchesSummaryPreset(e, 'security')),
     [current],
   );
   const secPrev = useMemo(
-    () => previous.filter((e) => SECURITY_ACTIONS.has(e.action) || TENANT_ACTIONS.has(e.action)),
+    () => previous.filter((e) => matchesSummaryPreset(e, 'security')),
     [previous],
   );
-  const secItems = secCurrent
-    .slice(0, 3)
-    .map((e) => `${extractEntrySubject(e)} · ${actionLabel(e.action)}`);
+  const secItems = secCurrent.slice(0, 3).map((e) => describePlatformActivityLine(e));
 
-  // --- Tarjeta 4 / 4-bis ---
-  // Modo platform: empresas más activas (por entityType === 'Tenant' o entityId)
   const tenantMap = useMemo(() => {
     const m: Record<string, string> = {};
     tenants.forEach((t) => {
@@ -318,7 +277,7 @@ export function AuditSummary({
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
-      .map(([id, n]) => `${tenantMap[id] ?? id.slice(0, 8)} — ${n} acciones`);
+      .map(([id, n]) => `${tenantMap[id] ?? 'Una empresa'} — ${n} cambios`);
   }, [mode, current, tenantMap]);
 
   const uniqueTenantsCount = useMemo(() => {
@@ -326,7 +285,6 @@ export function AuditSummary({
     return ids.size;
   }, [current]);
 
-  // Top actores en modo tenant
   const actorActivity = useMemo(() => {
     if (mode !== 'tenant') return [];
     const counts: Record<string, number> = {};
@@ -338,11 +296,10 @@ export function AuditSummary({
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([uid, n]) => {
-        if (uid === 'Sistema') return `Sistema — ${n} acciones`;
-        // Buscar nombre en algún entry con ese userId
-        const entry = current.find((e) => e.userId === uid);
-        const name = entry ? extractActorName(entry) : uid.slice(0, 8);
-        return `${name} — ${n} acciones`;
+        if (uid === 'Sistema') return `Sistema — ${n} cambios`;
+        const found = current.find((e) => e.userId === uid);
+        const name = found ? extractActorName(found) : PLATFORM_UI_COPY.audit.actorFallback;
+        return `${name} — ${n} cambios`;
       });
   }, [mode, current]);
 
@@ -350,109 +307,134 @@ export function AuditSummary({
     return new Set(current.map((e) => e.userId ?? 'Sistema')).size;
   }, [current]);
 
-  const windowLabel = window === '24h' ? 'Últimas 24 h' : 'Últimos 7 días';
+  const windowLabel =
+    window === '24h' ? PLATFORM_UI_COPY.audit.window24h : PLATFORM_UI_COPY.audit.window7d;
+
+  function handlePresetClick(preset: SummaryPreset) {
+    onPresetChange(activePreset === preset ? null : preset);
+  }
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 mb-6">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <CardSkeleton key={i} />
-        ))}
-      </div>
+      <section className="mb-6" aria-busy="true" aria-label={PLATFORM_UI_COPY.audit.summaryEyebrow}>
+        <p className="portal-eyebrow">{PLATFORM_UI_COPY.audit.summaryEyebrow}</p>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-[140px] w-full rounded-2xl" />
+          ))}
+        </div>
+      </section>
     );
   }
 
   return (
-    <div className="space-y-3 mb-6">
-      {/* Control de ventana temporal */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500 dark:text-gray-400">Resumen:</span>
-        <div className="flex rounded-lg border border-gray-200 dark:border-dark-border-2 overflow-hidden text-xs">
-          {(['24h', '7d'] as const).map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => onWindowChange(w)}
-              className={`px-3 py-1 transition-colors ${
-                window === w
-                  ? 'bg-iwana-primary text-white'
-                  : 'bg-white dark:bg-dark-surface-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-dark-surface-3'
-              }`}
-            >
-              {w}
-            </button>
-          ))}
+    <section className="mb-6 space-y-3" aria-label={PLATFORM_UI_COPY.audit.summaryEyebrow}>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="portal-eyebrow">{PLATFORM_UI_COPY.audit.summaryEyebrow}</p>
+        <div
+          className="flex overflow-hidden rounded-lg border border-gray-200 dark:border-dark-border-2"
+          role="group"
+          aria-label="Ventana temporal"
+        >
+          {(['24h', '7d'] as const).map((w) => {
+            const label =
+              w === '24h' ? PLATFORM_UI_COPY.audit.window24h : PLATFORM_UI_COPY.audit.window7d;
+            return (
+              <button
+                key={w}
+                type="button"
+                onClick={() => onWindowChange(w)}
+                aria-pressed={window === w}
+                className={cn(
+                  'min-h-11 px-3 text-sm transition-colors',
+                  interactiveFocusClassName,
+                  window === w
+                    ? 'bg-iwana-primary text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50 dark:bg-dark-surface-2 dark:text-gray-300 dark:hover:bg-dark-surface-3',
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {/* Tarjeta 1: Eventos críticos */}
         <SummaryCard
           icon={<AlertTriangle className="h-4 w-4 text-red-600" />}
-          title="Eventos críticos"
+          title={PLATFORM_UI_COPY.audit.criticalChanges}
           windowLabel={windowLabel}
           count={criticalCurrent.length}
           countPrev={criticalPrev.length}
           items={criticalItems}
           actionLabel="Ver críticos"
-          onAction={() => onFilterApply({ severity: 'critical' })}
+          onAction={() => handlePresetClick('critical')}
+          pressed={activePreset === 'critical'}
           accentClass="bg-red-50 dark:bg-red-900/20"
         />
 
-        {/* Tarjeta 2: Accesos */}
         <SummaryCard
           icon={<KeyRound className="h-4 w-4 text-blue-600" />}
-          title="Accesos"
+          title={PLATFORM_UI_COPY.audit.accesses}
           windowLabel={windowLabel}
           count={authCurrent.length}
           countPrev={authPrev.length}
           sublabel={authSublabel}
           items={authItems}
           actionLabel="Ver accesos"
-          onAction={() => onFilterApply({ actionSet: [...AUTH_ACTIONS] })}
+          onAction={() => handlePresetClick('access')}
+          pressed={activePreset === 'access'}
           accentClass="bg-blue-50 dark:bg-blue-900/20"
         />
 
-        {/* Tarjeta 3: Permisos y seguridad */}
         <SummaryCard
           icon={<ShieldAlert className="h-4 w-4 text-amber-600" />}
-          title="Permisos y seguridad"
-          windowLabel={window === '24h' ? 'Últimas 24 h' : 'Últimos 7 días'}
+          title={PLATFORM_UI_COPY.audit.accessAndSecurity}
+          windowLabel={windowLabel}
           count={secCurrent.length}
           countPrev={secPrev.length}
           items={secItems}
-          actionLabel="Ver permisos"
-          onAction={() => onFilterApply({ actionSet: [...SECURITY_ACTIONS, ...TENANT_ACTIONS] })}
+          actionLabel="Ver seguridad"
+          onAction={() => handlePresetClick('security')}
+          pressed={activePreset === 'security'}
           accentClass="bg-amber-50 dark:bg-amber-900/20"
         />
 
-        {/* Tarjeta 4 / 4-bis */}
         {mode === 'platform' ? (
           <SummaryCard
             icon={<Building2 className="h-4 w-4 text-iwana-primary-600" />}
-            title="Empresas activas"
+            title={PLATFORM_UI_COPY.audit.companiesWithChanges}
             windowLabel={windowLabel}
             count={uniqueTenantsCount}
             countPrev={0}
             items={tenantActivity}
             actionLabel="Ver actividad"
-            onAction={() => onFilterApply({ actionSet: ['CREATE', 'UPDATE', 'DELETE'] })}
+            onAction={() => handlePresetClick('tenants')}
+            pressed={activePreset === 'tenants'}
             accentClass="bg-iwana-primary-50 dark:bg-iwana-primary-900/20"
           />
         ) : (
           <SummaryCard
-            icon={<Users className="h-4 w-4 text-iwana-secondary-700" />}
-            title={tenantName ? `Actores — ${tenantName}` : 'Top actores'}
+            icon={<Users className="h-4 w-4 text-iwana-primary-600" />}
+            title={
+              tenantName
+                ? `${PLATFORM_UI_COPY.audit.whoChanged} — ${tenantName}`
+                : PLATFORM_UI_COPY.audit.whoChanged
+            }
             windowLabel={windowLabel}
             count={uniqueActors}
             countPrev={0}
             items={actorActivity}
             actionLabel="Ver actividad"
-            onAction={() => onFilterApply({ actionSet: ['CREATE', 'UPDATE', 'DELETE'] })}
-            accentClass="bg-iwana-secondary-50 dark:bg-iwana-secondary-900/20"
+            onAction={() => handlePresetClick('actors')}
+            pressed={activePreset === 'actors'}
+            accentClass="bg-iwana-primary-50 dark:bg-iwana-primary-900/20"
           />
         )}
       </div>
-    </div>
+    </section>
   );
 }
+
+export type { SummaryPreset };

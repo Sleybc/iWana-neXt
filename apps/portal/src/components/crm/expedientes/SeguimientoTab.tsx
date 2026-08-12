@@ -816,7 +816,7 @@ export function SeguimientoTab({
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-iwana-primary/10">
                 <UserCheck className="h-3.5 w-3.5 text-iwana-primary" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
                 Responsable
               </p>
             </div>
@@ -829,13 +829,13 @@ export function SeguimientoTab({
                   {responsibility.currentResponsible?.role || 'Rol no disponible'}
                 </p>
                 {responsibility.currentResponsibleAssignedAt && (
-                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-400">
                     Desde {formatCrmDateTime(responsibility.currentResponsibleAssignedAt)}
                   </p>
                 )}
               </>
             ) : (
-              <p className="text-sm text-gray-400 dark:text-gray-500">Sin responsable asignado</p>
+              <p className="text-sm text-gray-400 dark:text-gray-400">Sin responsable asignado</p>
             )}
           </div>
 
@@ -845,7 +845,7 @@ export function SeguimientoTab({
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-iwana-secondary/15 dark:bg-iwana-secondary-700/20">
                 <TrendingUp className="h-3.5 w-3.5 text-iwana-secondary-700" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
                 Originador
               </p>
             </div>
@@ -862,15 +862,15 @@ export function SeguimientoTab({
                     {formatAcquisitionChannel(currentAttribution.acquisitionChannel)}
                   </Badge>
                 </div>
-                <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-400">
                   Desde {formatCrmDateTime(currentAttribution.attributedAt)}
                 </p>
               </>
             ) : (
-              <p className="text-sm text-gray-400 dark:text-gray-500">Sin atribución activa</p>
+              <p className="text-sm text-gray-400 dark:text-gray-400">Sin atribución activa</p>
             )}
             {!canManageAttribution && (
-              <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-500">
+              <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-400">
                 Solo ADMIN puede editar atribuciones.
               </p>
             )}
@@ -882,7 +882,7 @@ export function SeguimientoTab({
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20">
                 <User className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
                 Interés del cliente
               </p>
             </div>
@@ -893,7 +893,7 @@ export function SeguimientoTab({
             </p>
             {expediente.additionalProductIds && expediente.additionalProductIds.length > 0 && (
               <div className="mt-2 space-y-1 border-t border-gray-50 pt-2 dark:border-dark-border/50">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-400">
                   Servicios Adicionales
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -916,7 +916,7 @@ export function SeguimientoTab({
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
                 <ArrowRightLeft className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
               </span>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
                 Origen
               </p>
             </div>

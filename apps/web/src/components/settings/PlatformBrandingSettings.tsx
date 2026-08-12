@@ -1,19 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Camera,
-  CheckCircle2,
-  CircleAlert,
-  ImageUp,
-  RotateCcw,
-  Save,
-  Trash2,
-} from 'lucide-react';
+import { Camera, CheckCircle2, CircleAlert, ImageUp, RotateCcw, Save, Trash2 } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type UseFormRegisterReturn } from 'react-hook-form';
 import { z } from 'zod';
 import {
+  Alert,
+  AlertDescription,
   Button,
   Dialog,
   DialogClose,
@@ -23,6 +17,9 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
+  SkeletonBlock,
+  cn,
+  interactiveFocusClassName,
 } from '@iwana/ui';
 import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 import {
@@ -33,27 +30,23 @@ import {
   type PlatformBrandingUsage,
   type UpdatePlatformBrandingPayload,
 } from '@/lib/api-client';
-import {
-  FORM_ALERT_ERROR_CLASS,
-  FORM_ALERT_SUCCESS_CLASS,
-  FORM_HELP_CLASS,
-} from '@/lib/form-styles';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+import { settingsSectionPanelClassName, settingsWellClassName } from './settings-shell';
+
+const copy = PLATFORM_UI_COPY.settings.identity;
 
 const urlSchema = z
   .string()
   .trim()
   .refine((value) => value === '' || value.startsWith('https://') || value.startsWith('/'), {
-    message: 'Usa una URL HTTPS o una ruta interna del sistema.',
+    message: copy.validationUrl,
   });
 
 const platformBrandingSchema = z.object({
-  productName: z.string().trim().min(2, 'El producto debe tener al menos 2 caracteres.'),
-  surfaceName: z.string().trim().min(2, 'La superficie debe tener al menos 2 caracteres.'),
-  metadataTitle: z.string().trim().min(4, 'El título debe tener al menos 4 caracteres.'),
-  metadataDescription: z
-    .string()
-    .trim()
-    .min(12, 'La descripción debe tener al menos 12 caracteres.'),
+  productName: z.string().trim().min(2, copy.validationProduct),
+  surfaceName: z.string().trim().min(2, copy.validationSurface),
+  metadataTitle: z.string().trim().min(4, copy.validationTitle),
+  metadataDescription: z.string().trim().min(12, copy.validationDescription),
   logoUrl: urlSchema,
   faviconUrl: urlSchema,
   loginBackgroundLightUrl: urlSchema,
@@ -74,6 +67,7 @@ type BrandingSlotRule = {
   maxWidth?: number;
   maxHeight?: number;
   helpText: string;
+  formatHint: string;
 };
 
 const SLOT_RULES: Record<'logo' | 'favicon' | 'login_background', BrandingSlotRule> = {
@@ -84,7 +78,8 @@ const SLOT_RULES: Record<'logo' | 'favicon' | 'login_background', BrandingSlotRu
     minHeight: 60,
     aspectRatioMin: 1.6,
     aspectRatioMax: 5,
-    helpText: 'PNG/JPG/WEBP, máximo 1 MB, mínimo 240x60 px, proporción entre 1.60 y 5.00.',
+    helpText: copy.mimeHelpLogo,
+    formatHint: 'PNG, JPG o WEBP',
   },
   favicon: {
     allowedMimes: ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon'],
@@ -94,7 +89,8 @@ const SLOT_RULES: Record<'logo' | 'favicon' | 'login_background', BrandingSlotRu
     square: true,
     maxWidth: 512,
     maxHeight: 512,
-    helpText: 'PNG/ICO, máximo 256 KB, cuadrado, entre 32x32 y 512x512 px.',
+    helpText: copy.mimeHelpFavicon,
+    formatHint: 'PNG o ICO',
   },
   login_background: {
     allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
@@ -103,7 +99,8 @@ const SLOT_RULES: Record<'logo' | 'favicon' | 'login_background', BrandingSlotRu
     minHeight: 720,
     aspectRatioMin: 1.6,
     aspectRatioMax: 1.9,
-    helpText: 'PNG/JPG/WEBP, máximo 5 MB, mínimo 1280x720 px, proporción entre 1.60 y 1.90.',
+    helpText: copy.mimeHelpLoginBg,
+    formatHint: 'PNG, JPG o WEBP',
   },
 };
 
@@ -175,7 +172,7 @@ async function validateFileAgainstRule(
   const mimeType = resolveFileMimeType(file);
 
   if (!rule.allowedMimes.includes(mimeType)) {
-    return `Formato no permitido. Usa: ${rule.allowedMimes.join(', ')}.`;
+    return `Formato no permitido. Usa ${rule.formatHint}.`;
   }
 
   if (file.size > rule.maxBytes) {
@@ -195,7 +192,7 @@ async function validateFileAgainstRule(
   }
 
   if (dimensions.width < rule.minWidth || dimensions.height < rule.minHeight) {
-    return `La imagen debe ser al menos de ${rule.minWidth}x${rule.minHeight} px.`;
+    return `La imagen debe ser al menos de ${rule.minWidth}×${rule.minHeight} px.`;
   }
 
   if (
@@ -203,7 +200,7 @@ async function validateFileAgainstRule(
     typeof rule.maxHeight === 'number' &&
     (dimensions.width > rule.maxWidth || dimensions.height > rule.maxHeight)
   ) {
-    return `La imagen no puede superar ${rule.maxWidth}x${rule.maxHeight} px.`;
+    return `La imagen no puede superar ${rule.maxWidth}×${rule.maxHeight} px.`;
   }
 
   if (rule.square) {
@@ -223,16 +220,11 @@ async function validateFileAgainstRule(
   return null;
 }
 
-// --- BrandingSlotCard: tarjeta clickeable para cambiar un activo visual ---
-
 interface BrandingSlotCardProps {
   label: string;
   description: string;
-  /** Label del <Input> de URL — debe coincidir con getByLabelText en tests */
   urlFieldLabel: string;
-  /** Alt text de la imagen previualizada */
   imgAlt: string;
-  /** URL actual del campo (de watch()) */
   value: string;
   accept: string;
   isUploading: boolean;
@@ -240,9 +232,9 @@ interface BrandingSlotCardProps {
   onUpload: (file: File) => Promise<void>;
   onRemove?: () => Promise<void>;
   rulesHint: string;
-  /** Resultado de register('campoUrl') — se pasa directo al <Input> */
   registration: UseFormRegisterReturn;
   error?: string | undefined;
+  disabled?: boolean;
 }
 
 function BrandingSlotCard({
@@ -259,54 +251,56 @@ function BrandingSlotCard({
   rulesHint,
   registration,
   error,
+  disabled,
 }: BrandingSlotCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="space-y-3 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+    <div className={settingsWellClassName}>
       <div className="text-sm font-semibold text-gray-900 dark:text-white">{label}</div>
 
-      {/* Área clickeable: muestra la imagen actual con overlay al hacer hover */}
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        disabled={isUploading}
-        className="group relative flex h-32 w-full cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 disabled:cursor-not-allowed dark:border-dark-border dark:bg-dark-surface-2"
+        disabled={isUploading || disabled}
+        className={cn(
+          'group relative flex min-h-11 h-32 w-full cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 disabled:cursor-not-allowed dark:border-dark-border dark:bg-dark-surface-2',
+          interactiveFocusClassName,
+        )}
         aria-label={`Cambiar ${label.toLowerCase()}`}
       >
         {value ? (
           <>
             <img src={value} alt={imgAlt} className="h-20 max-w-full object-contain" />
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
               <Camera className="h-5 w-5 text-white" aria-hidden="true" />
-              <span className="text-xs font-medium text-white">Cambiar imagen</span>
+              <span className="text-xs font-medium text-white">{copy.changeImage}</span>
             </div>
           </>
         ) : (
           <div className="flex flex-col items-center gap-2 text-gray-400">
             <ImageUp className="h-8 w-8" aria-hidden="true" />
-            <span className="text-xs">Subir imagen</span>
+            <span className="text-xs">{copy.uploadImage}</span>
           </div>
         )}
-        {isUploading && (
+        {isUploading ? (
           <div
             role="status"
-            aria-label="Subiendo imagen"
-            className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 dark:bg-dark-surface-2/80"
+            aria-label={copy.uploading}
+            className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/80 dark:bg-dark-surface-2/80"
           >
             <span className="text-sm text-gray-500 dark:text-gray-400" aria-hidden="true">
-              Subiendo…
+              {copy.uploading}
             </span>
           </div>
-        )}
+        ) : null}
       </button>
 
-      {/* Input de archivo oculto — activado por el botón de arriba */}
       <input
         ref={fileInputRef}
         type="file"
         accept={accept}
-        disabled={isUploading}
+        disabled={isUploading || disabled}
         className="sr-only"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -315,22 +309,21 @@ function BrandingSlotCard({
         }}
       />
 
-      <p className={FORM_HELP_CLASS}>{description}</p>
-      <p className={FORM_HELP_CLASS}>{`Reglas: ${rulesHint}`}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400">{rulesHint}</p>
 
-      {/* URL alternativa: colapsable para usuarios avanzados */}
       <details className="text-sm">
         <summary
-          className={`cursor-pointer select-none ${FORM_HELP_CLASS} hover:text-gray-700 dark:hover:text-gray-300`}
+          className={cn(
+            'cursor-pointer select-none text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300',
+            interactiveFocusClassName,
+          )}
         >
-          Opciones avanzadas del activo
+          {copy.advancedOptions}
         </summary>
         <div className="mt-2 space-y-2">
-          <p className={FORM_HELP_CLASS}>
-            Usa una URL solo si el archivo ya existe en una ubicación aprobada y no necesitas
-            subirlo desde esta pantalla.
-          </p>
-          <Input label={urlFieldLabel} error={error} {...registration} />
+          <p className="text-sm text-gray-500 dark:text-gray-400">{copy.advancedHelp}</p>
+          <Input label={urlFieldLabel} error={error} disabled={disabled} {...registration} />
         </div>
       </details>
 
@@ -342,24 +335,23 @@ function BrandingSlotCard({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={isUploading || Boolean(isRemoving)}
+                disabled={isUploading || Boolean(isRemoving) || disabled}
               >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
-                Eliminar imagen
+                {copy.removeCta}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>¿Eliminar {label.toLowerCase()}?</DialogTitle>
-                <DialogDescription>
-                  Se aplicará el fallback base de la plataforma. Tendrás que subir una imagen nueva
-                  para reemplazarla.
-                </DialogDescription>
+                <DialogTitle>
+                  {copy.removeDialogTitle.replace('{label}', label.toLowerCase())}
+                </DialogTitle>
+                <DialogDescription>{copy.removeDialogBody}</DialogDescription>
               </DialogHeader>
               <div className="mt-4 flex justify-end gap-3">
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
-                    Cancelar
+                    {copy.cancel}
                   </Button>
                 </DialogClose>
                 <DialogClose asChild>
@@ -371,7 +363,7 @@ function BrandingSlotCard({
                       void onRemove();
                     }}
                   >
-                    Sí, eliminar
+                    {copy.removeConfirm}
                   </Button>
                 </DialogClose>
               </div>
@@ -379,6 +371,21 @@ function BrandingSlotCard({
           </Dialog>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function IdentityLoadingSkeleton() {
+  return (
+    <div role="status" aria-busy="true" aria-label={copy.loading} className="space-y-6">
+      <span className="sr-only">{copy.loading}</span>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <SkeletonBlock className="h-56 w-full rounded-2xl" />
+        <SkeletonBlock className="h-56 w-full rounded-2xl" />
+        <SkeletonBlock className="h-56 w-full rounded-2xl" />
+        <SkeletonBlock className="h-56 w-full rounded-2xl" />
+      </div>
+      <SkeletonBlock className="h-48 w-full rounded-2xl" />
     </div>
   );
 }
@@ -425,7 +432,7 @@ export function PlatformBrandingSettings() {
         }
       } catch (error) {
         if (mounted) {
-          setLoadError(getErrorMessage(error, 'No fue posible cargar el branding de plataforma.'));
+          setLoadError(getErrorMessage(error, copy.errorLoad));
         }
       } finally {
         if (mounted) {
@@ -443,7 +450,6 @@ export function PlatformBrandingSettings() {
 
   const formValues = watch();
 
-  // Vista previa de los campos de texto — se actualiza en tiempo real
   const preview = useMemo(
     () => ({
       productName: formValues.productName?.trim() || 'iWana neXt',
@@ -490,11 +496,11 @@ export function PlatformBrandingSettings() {
       const updated = await platformBrandingApi.update(payload);
       reset(toFormValues(updated));
       await refreshPublicBranding();
-      setFeedback({ type: 'success', message: 'Branding de plataforma actualizado.' });
+      setFeedback({ type: 'success', message: copy.successSave });
     } catch (error) {
       setFeedback({
         type: 'error',
-        message: getErrorMessage(error, 'No fue posible guardar el branding de plataforma.'),
+        message: getErrorMessage(error, copy.errorSave),
       });
     }
   };
@@ -505,11 +511,11 @@ export function PlatformBrandingSettings() {
       const updated = await platformBrandingApi.reset();
       reset(toFormValues(updated));
       await refreshPublicBranding();
-      setFeedback({ type: 'success', message: 'Branding base restaurado.' });
+      setFeedback({ type: 'success', message: copy.successReset });
     } catch (error) {
       setFeedback({
         type: 'error',
-        message: getErrorMessage(error, 'No fue posible restaurar el branding base.'),
+        message: getErrorMessage(error, copy.errorReset),
       });
     } finally {
       setIsResetting(false);
@@ -540,11 +546,11 @@ export function PlatformBrandingSettings() {
       const updated = await platformBrandingApi.get();
       reset(toFormValues(updated));
       await refreshPublicBranding();
-      setFeedback({ type: 'success', message: 'Activo subido y aplicado al branding.' });
+      setFeedback({ type: 'success', message: copy.successUpload });
     } catch (error) {
       setFeedback({
         type: 'error',
-        message: getErrorMessage(error, 'No fue posible subir el activo de branding.'),
+        message: getErrorMessage(error, copy.errorUpload),
       });
     } finally {
       setUploadingSlot(null);
@@ -581,59 +587,44 @@ export function PlatformBrandingSettings() {
       await refreshPublicBranding();
       setFeedback({
         type: 'success',
-        message: 'Imagen eliminada. Se aplicó el fallback base de la plataforma.',
+        message: copy.successRemove,
       });
     } catch (error) {
       setFeedback({
         type: 'error',
-        message: getErrorMessage(error, 'No fue posible eliminar la imagen del slot.'),
+        message: getErrorMessage(error, copy.errorRemove),
       });
     } finally {
       setRemovingSlot(null);
     }
   };
 
-  return (
-    // Contenedor sin borde propio — el Card de la página settings ya lo provee
-    <div className="space-y-6">
-      {/* Alertas de éxito y error */}
-      {feedback?.type === 'error' && (
-        <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
-          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{feedback.message}</p>
-        </div>
-      )}
-      {feedback?.type === 'success' && (
-        <div role="alert" className={FORM_ALERT_SUCCESS_CLASS}>
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{feedback.message}</p>
-        </div>
-      )}
+  const formDisabled = isLoadingData || loadError !== null;
 
-      {/* Encabezado */}
+  return (
+    <div className="space-y-6">
+      {feedback?.type === 'error' ? (
+        <Alert variant="error" icon={<CircleAlert className="h-5 w-5" />}>
+          <AlertDescription className="mt-0">{feedback.message}</AlertDescription>
+        </Alert>
+      ) : null}
+      {feedback?.type === 'success' ? (
+        <Alert variant="success" icon={<CheckCircle2 className="h-5 w-5" />}>
+          <AlertDescription className="mt-0">{feedback.message}</AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
-          Branding de plataforma
-        </h2>
-        <p className={`max-w-2xl ${FORM_HELP_CLASS}`}>
-          Administra logo, favicon, fondos de acceso y nombres públicos de la consola interna, sin
-          mezclar este branding con la identidad de cada empresa.
-        </p>
+        <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">{copy.title}</h2>
+        <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">{copy.help}</p>
       </div>
 
-      {/* Estado de carga */}
-      {isLoadingData && (
-        <p role="status" className="text-sm text-gray-500 dark:text-gray-400">
-          Cargando branding…
-        </p>
-      )}
+      {isLoadingData ? <IdentityLoadingSkeleton /> : null}
 
-      {/* Error de carga con acción de reintento */}
-      {loadError && !isLoadingData && (
-        <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
-          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+      {loadError && !isLoadingData ? (
+        <Alert variant="error" icon={<CircleAlert className="h-5 w-5" />}>
           <div className="flex flex-1 items-start justify-between gap-3">
-            <p>{loadError}</p>
+            <AlertDescription className="mt-0">{loadError}</AlertDescription>
             <Button
               type="button"
               variant="outline"
@@ -648,183 +639,172 @@ export function PlatformBrandingSettings() {
                     setIsLoadingData(false);
                   })
                   .catch((error: unknown) => {
-                    setLoadError(
-                      getErrorMessage(error, 'No fue posible cargar el branding de plataforma.'),
-                    );
+                    setLoadError(getErrorMessage(error, copy.errorLoad));
                     setIsLoadingData(false);
                   });
               }}
             >
-              Reintentar
+              {copy.retry}
             </Button>
           </div>
-        </div>
-      )}
+        </Alert>
+      ) : null}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* ── Sección: Activos visuales ─────────────────────────────────── */}
-        <section className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Activos visuales principales
-            </h3>
-            <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-              Haz clic sobre cada vista previa para reemplazar el activo. Las opciones avanzadas de
-              origen quedan disponibles solo cuando realmente las necesites.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <BrandingSlotCard
-              label="Logo de consola"
-              description="Se usa en la navegación principal, la cabecera móvil y el acceso administrativo."
-              urlFieldLabel="Logo"
-              imgAlt="Logo de plataforma"
-              value={formValues.logoUrl}
-              accept="image/png,image/jpeg,image/webp"
-              isUploading={uploadingSlot === 'logo:default'}
-              isRemoving={removingSlot === 'logo:default'}
-              onUpload={(file) => onUploadAsset('logo', file)}
-              onRemove={() => onRemoveAsset('logo')}
-              rulesHint={SLOT_RULES.logo.helpText}
-              registration={register('logoUrl')}
-              error={errors.logoUrl?.message}
-            />
-            <BrandingSlotCard
-              label="Favicon administrativo"
-              description="Identifica la consola en pestañas del navegador, login y metadata pública."
-              urlFieldLabel="Favicon"
-              imgAlt="Favicon de plataforma"
-              value={formValues.faviconUrl}
-              accept="image/png,image/x-icon,image/vnd.microsoft.icon"
-              isUploading={uploadingSlot === 'favicon:default'}
-              isRemoving={removingSlot === 'favicon:default'}
-              onUpload={(file) => onUploadAsset('favicon', file)}
-              onRemove={() => onRemoveAsset('favicon')}
-              rulesHint={SLOT_RULES.favicon.helpText}
-              registration={register('faviconUrl')}
-              error={errors.faviconUrl?.message}
-            />
-            <BrandingSlotCard
-              label="Fondo de login — modo claro"
-              description="Ambientación principal de la pantalla de acceso cuando el tema claro está activo."
-              urlFieldLabel="Fondo login claro"
-              imgAlt="Fondo login modo claro"
-              value={formValues.loginBackgroundLightUrl}
-              accept="image/png,image/jpeg,image/webp"
-              isUploading={uploadingSlot === 'login_background:light'}
-              isRemoving={removingSlot === 'login_background:light'}
-              onUpload={(file) => onUploadAsset('login_background', file, 'light')}
-              onRemove={() => onRemoveAsset('login_background', 'light')}
-              rulesHint={SLOT_RULES.login_background.helpText}
-              registration={register('loginBackgroundLightUrl')}
-              error={errors.loginBackgroundLightUrl?.message}
-            />
-            <BrandingSlotCard
-              label="Fondo de login — modo oscuro"
-              description="Ambientación principal de la pantalla de acceso cuando el tema oscuro está activo."
-              urlFieldLabel="Fondo login oscuro"
-              imgAlt="Fondo login modo oscuro"
-              value={formValues.loginBackgroundDarkUrl}
-              accept="image/png,image/jpeg,image/webp"
-              isUploading={uploadingSlot === 'login_background:dark'}
-              isRemoving={removingSlot === 'login_background:dark'}
-              onUpload={(file) => onUploadAsset('login_background', file, 'dark')}
-              onRemove={() => onRemoveAsset('login_background', 'dark')}
-              rulesHint={SLOT_RULES.login_background.helpText}
-              registration={register('loginBackgroundDarkUrl')}
-              error={errors.loginBackgroundDarkUrl?.message}
-            />
-          </div>
-        </section>
-
-        {/* ── Sección: Nombres e identidad ─────────────────────────────── */}
-        <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Nombres e identidad
-            </h3>
-            <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-              Definen cómo se nombra la consola en navegación, login y superficies públicas del navegador.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Input
-              label="Producto"
-              error={errors.productName?.message}
-              {...register('productName')}
-            />
-            <Input
-              label="Superficie"
-              error={errors.surfaceName?.message}
-              {...register('surfaceName')}
-            />
-            <Input
-              label="Título público"
-              error={errors.metadataTitle?.message}
-              {...register('metadataTitle')}
-            />
-            <Input
-              label="Descripción pública"
-              error={errors.metadataDescription?.message}
-              {...register('metadataDescription')}
-            />
-          </div>
-
-          {/* Vista previa en vivo de los valores de identidad */}
-          <dl className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-white p-4 text-sm dark:border-dark-border dark:bg-dark-surface-2 md:grid-cols-2">
+      {!isLoadingData && !loadError ? (
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-6"
+          aria-busy={formDisabled || undefined}
+        >
+          <section className={`space-y-3 ${settingsSectionPanelClassName}`}>
             <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Producto</dt>
-              <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                {preview.productName}
-              </dd>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                {copy.assetsSection}
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{copy.assetsHelp}</p>
             </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Superficie</dt>
-              <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                {preview.surfaceName}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                Título en navegador
-              </dt>
-              <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                {preview.metadataTitle}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Descripción</dt>
-              <dd className="mt-1 text-gray-600 dark:text-gray-300">
-                {preview.metadataDescription}
-              </dd>
-            </div>
-          </dl>
-        </section>
 
-        {/* ── Acciones ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onResetDefaults}
-            loading={isResetting}
-            disabled={isLoadingData || loadError !== null}
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            Restaurar base
-          </Button>
-          <Button
-            type="submit"
-            loading={isSubmitting}
-            disabled={isLoadingData || loadError !== null}
-          >
-            <Save className="h-4 w-4" aria-hidden="true" />
-            Guardar cambios
-          </Button>
-        </div>
-      </form>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <BrandingSlotCard
+                label={copy.logoLabel}
+                description={copy.logoDescription}
+                urlFieldLabel={copy.logoUrlLabel}
+                imgAlt={copy.logoImgAlt}
+                value={formValues.logoUrl}
+                accept="image/png,image/jpeg,image/webp"
+                isUploading={uploadingSlot === 'logo:default'}
+                isRemoving={removingSlot === 'logo:default'}
+                onUpload={(file) => onUploadAsset('logo', file)}
+                onRemove={() => onRemoveAsset('logo')}
+                rulesHint={SLOT_RULES.logo.helpText}
+                registration={register('logoUrl')}
+                error={errors.logoUrl?.message}
+              />
+              <BrandingSlotCard
+                label={copy.faviconLabel}
+                description={copy.faviconDescription}
+                urlFieldLabel={copy.faviconUrlLabel}
+                imgAlt={copy.faviconImgAlt}
+                value={formValues.faviconUrl}
+                accept="image/png,image/x-icon,image/vnd.microsoft.icon"
+                isUploading={uploadingSlot === 'favicon:default'}
+                isRemoving={removingSlot === 'favicon:default'}
+                onUpload={(file) => onUploadAsset('favicon', file)}
+                onRemove={() => onRemoveAsset('favicon')}
+                rulesHint={SLOT_RULES.favicon.helpText}
+                registration={register('faviconUrl')}
+                error={errors.faviconUrl?.message}
+              />
+              <BrandingSlotCard
+                label={copy.loginBgLightLabel}
+                description={copy.loginBgLightDescription}
+                urlFieldLabel={copy.loginBgLightUrlLabel}
+                imgAlt={copy.loginBgLightImgAlt}
+                value={formValues.loginBackgroundLightUrl}
+                accept="image/png,image/jpeg,image/webp"
+                isUploading={uploadingSlot === 'login_background:light'}
+                isRemoving={removingSlot === 'login_background:light'}
+                onUpload={(file) => onUploadAsset('login_background', file, 'light')}
+                onRemove={() => onRemoveAsset('login_background', 'light')}
+                rulesHint={SLOT_RULES.login_background.helpText}
+                registration={register('loginBackgroundLightUrl')}
+                error={errors.loginBackgroundLightUrl?.message}
+              />
+              <BrandingSlotCard
+                label={copy.loginBgDarkLabel}
+                description={copy.loginBgDarkDescription}
+                urlFieldLabel={copy.loginBgDarkUrlLabel}
+                imgAlt={copy.loginBgDarkImgAlt}
+                value={formValues.loginBackgroundDarkUrl}
+                accept="image/png,image/jpeg,image/webp"
+                isUploading={uploadingSlot === 'login_background:dark'}
+                isRemoving={removingSlot === 'login_background:dark'}
+                onUpload={(file) => onUploadAsset('login_background', file, 'dark')}
+                onRemove={() => onRemoveAsset('login_background', 'dark')}
+                rulesHint={SLOT_RULES.login_background.helpText}
+                registration={register('loginBackgroundDarkUrl')}
+                error={errors.loginBackgroundDarkUrl?.message}
+              />
+            </div>
+          </section>
+
+          <section className={`space-y-4 ${settingsSectionPanelClassName}`}>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                {copy.namesSection}
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{copy.namesHelp}</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input
+                label={copy.productLabel}
+                error={errors.productName?.message}
+                {...register('productName')}
+              />
+              <Input
+                label={copy.surfaceLabel}
+                error={errors.surfaceName?.message}
+                {...register('surfaceName')}
+              />
+              <Input
+                label={copy.titleLabel}
+                error={errors.metadataTitle?.message}
+                {...register('metadataTitle')}
+              />
+              <Input
+                label={copy.descriptionLabel}
+                error={errors.metadataDescription?.message}
+                {...register('metadataDescription')}
+              />
+            </div>
+
+            <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewProduct}</dt>
+                <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                  {preview.productName}
+                </dd>
+              </div>
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewSurface}</dt>
+                <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                  {preview.surfaceName}
+                </dd>
+              </div>
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewTitle}</dt>
+                <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+                  {preview.metadataTitle}
+                </dd>
+              </div>
+              <div>
+                <dt className="portal-eyebrow-muted">{copy.previewDescription}</dt>
+                <dd className="mt-1 text-gray-600 dark:text-gray-300">
+                  {preview.metadataDescription}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onResetDefaults}
+                loading={isResetting}
+                disabled={formDisabled}
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {copy.resetDefaults}
+              </Button>
+              <Button type="submit" loading={isSubmitting} disabled={formDisabled}>
+                <Save className="h-4 w-4" aria-hidden="true" />
+                {copy.save}
+              </Button>
+            </div>
+          </section>
+        </form>
+      ) : null}
     </div>
   );
 }

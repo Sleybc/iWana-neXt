@@ -1,12 +1,21 @@
 # Contrato DS — recomposición del `/dashboard` del portal
 
-**Versión:** 1.2
-**Estado:** **Congelado** (v1.0 el 2026-08-04; **re-sync v1.1** el 2026-08-10; **re-sync v1.2** el 2026-08-10 — protocolo §3bis: cambio post-congelación versionado y notificado a AI-FE-PLATFORM y AI-SR-QA vía AI-EM-ARCH)
-**Fecha:** 2026-08-10
+**Versión:** 1.3
+**Estado:** **Congelado** (v1.0 el 2026-08-04; **re-sync v1.1** el 2026-08-10; **re-sync v1.2** el 2026-08-10; **re-sync v1.3** el 2026-08-11 — protocolo §3bis: cambio post-congelación versionado y notificado a AI-FE-PLATFORM y AI-SR-QA vía AI-EM-ARCH / prompt delta Track B)
+**Fecha:** 2026-08-11
 **Autor:** AI-DS-OWNER
 **Ejecuta:** AI-FE-PLATFORM · **Verifica:** AI-SR-QA · **Orquesta:** AI-EM-ARCH
 
-### Changelog v1.2 (único delta vs v1.1)
+### Changelog v1.3 (único delta vs v1.2)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **§1.2 / §1.1** — `PortalDashboardMetric.eyebrow` pasa a **opcional** (`eyebrow?: string`). Omitido o string vacío (tras trim) → **no se renderiza** la ranura; el orden restante es **cifra → rótulo → delta → descripción** | Contraste §1.7 (matrices eyebrow × accent y description × accent) **intacto**; tipografía `.portal-eyebrow-muted` cuando la ranura sí se pinta; lima-como-predicado; sombras; lienzo; capas z |
+| **§1.8** — receta **grupo de dominio B1**: encabezado de dominio **una vez** (`.portal-eyebrow`) + `grid` de hijos `PortalDashboardMetric` **sin** eyebrow de categoría; contenedor = sección + gap (**prohibido** card-dentro-de-card / `PortalPanel` con borde que anide shells de métrica) | Cero tokens de marca nuevos; cero hex; **prohibido** lima en urgencia; sin primitive nueva obligatoria distinta de extender `PortalDashboardMetric` |
+
+> **Carril rápido (EM-ARCH):** API aditiva + receta de composición no-marca. FE aplica §1.2 + §1.8 en `portal-ui` / composición B1; QA cubre CA-DELTA-06 / CA-DELTA-11. Sin ADR/CTO.
+
+### Changelog v1.2 (histórico — delta vs v1.1)
 
 | Qué cambia | Qué no cambia |
 | --- | --- |
@@ -34,9 +43,10 @@
 - [`2026-07-26-estados-atenuados-contraste-ds-contrato.md`](2026-07-26-estados-atenuados-contraste-ds-contrato.md) §3.3 (piso atenuado), §4.2 (`loading` no exento), §4.4 (matriz).
 - `packages/ui/src/styles/globals.css` — **única fuente autorizada de tokens**, recorrida entera el 2026-08-04.
 - `apps/portal/src/components/shared/portal-ui.tsx` — inventario de primitives, líneas verificadas una a una.
-- Skills aplicadas: `iwana-identity-ui-review` (`tokens.md`, `firma-elements.md`, `component-recipes.md`), `core-components`, `tailwind-patterns`.
+- Skills aplicadas: `iwana-identity-ui-review` (`tokens.md`, `firma-elements.md`, `component-recipes.md` §1 KPI / §11 eyebrows), `core-components`, `tailwind-patterns`.
+- Prompt delta Track B: [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) v1.2 — B-1 / B-2 / B-3.
 
-> **Versión de contrato:** 1.2 — congelada (re-sync). Cualquier modificación posterior se versiona como v1.3+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
+> **Versión de contrato:** 1.3 — congelada (re-sync). Cualquier modificación posterior se versiona como v1.4+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
 
 > **Deslinde de dominio:** este documento fija **tokens, API de componente y estados requeridos**. No fija flujo, jerarquía de información, política de refresco ni qué bloque va dónde: eso es de AI-PROD-UX, que trabaja en paralelo sobre el mismo HLD. Donde este contrato roza el producto, lo hace como restricción ("si se renderiza X, cumple Y"), nunca como prescripción de contenido.
 
@@ -104,14 +114,14 @@ Extiende `PortalMetricCard` (`apps/portal/src/components/shared/portal-ui.tsx:37
 
 ```
 ┌ shell: portalMetricCardShellClassName + acento + sombra ─────────┐
-│  [eyebrow]                                    [ícono, opcional]  │  ← tipografía `.portal-eyebrow-muted` + color por §1.7
+│  [eyebrow?]                                   [ícono, opcional]  │  ← opcional (v1.3); tipografía `.portal-eyebrow-muted` + color por §1.7
 │  1.284 / 1.500                                                   │  ← ranura de cifra (mono, tabular)
 │  Visitas de hoy                                     [delta]      │  ← rótulo + badge tonal
 │  Programadas para la jornada en curso                            │  ← descripción: tipografía cuerpo + color por §1.7
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Cinco ranuras, en este orden y sin excepción: **eyebrow → cifra → rótulo → delta → descripción**. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5). El color del eyebrow **y** de la descripción (texto muted de cuerpo) **dependen de `accent`** (§1.7); no son siempre el gris-500/400 a secas.
+Orden canónico de ranuras: **eyebrow (si presente) → cifra → rótulo → delta → descripción**. Si `eyebrow` se omite o es string vacío, **la ranura no existe en el DOM** (cero hueco reservado, cero spacer); el orden restante **cifra → rótulo → delta → descripción** permanece intacto. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5). Cuando hay eyebrow, su color **y** el de la descripción (texto muted de cuerpo) **dependen de `accent`** (§1.7); no son siempre el gris-500/400 a secas.
 
 ### 1.2 API pública
 
@@ -131,8 +141,12 @@ interface PortalDashboardMetricDelta {
 }
 
 interface PortalDashboardMetricProps {
-  /** Ranura 1 — categoría del indicador. Tipografía `.portal-eyebrow-muted`; color por matriz §1.7. */
-  eyebrow: string;
+  /**
+   * Ranura 1 — categoría del indicador (opcional desde v1.3).
+   * Tipografía `.portal-eyebrow-muted`; color por matriz §1.7 cuando se renderiza.
+   * Omitido o `''` (tras trim) → no se monta la ranura; ver §1.1 y §1.8 (grupo B1).
+   */
+  eyebrow?: string;
 
   /** Ranura 3 — rótulo legible del indicador. Obligatorio: es el nombre accesible. */
   label: string;
@@ -323,7 +337,38 @@ Helper recomendado (paridad con `portalMetricEyebrowClassName`): `portalMetricMu
 2. `opacity-*` o grises más claros que el escalón contratado (`gray-400`/`gray-500` sobre tint danger/warning) en eyebrow, `description` o muted de cuerpo.
 3. Hex crudos o rampas ajenas (`slate-*`, etc.).
 
-**Verificación QA:** re-medir **eyebrow y `description`** en los cuatro acentos × dos temas; umbral ≥ 4,5:1. Peor caso esperado en `danger`/`warning` con el escalón: ≥ 9,7:1 (misma familia de medición §1.3). G6-4 axe light sin filtros debe pasar CA-V2-07 tras aplicar FE.
+**Verificación QA:** re-medir **eyebrow y `description`** en los cuatro acentos × dos temas; umbral ≥ 4,5:1. Peor caso esperado en `danger`/`warning` con el escalón: ≥ 9,7:1 (misma familia de medición §1.3). G6-4 axe light sin filtros debe pasar CA-V2-07 tras aplicar FE. Cuando `eyebrow` está omitido (v1.3), la verificación de contraste del eyebrow **no aplica** a esa instancia; la matriz §1.7 permanece vigente para cualquier instancia que sí lo pinte.
+
+---
+
+### 1.8 Receta — grupo de dominio B1 (v1.3)
+
+**Problema cerrado (D-P1-04 / CA-DELTA-06):** retícula plana de N `PortalDashboardMetric` con el mismo eyebrow de categoría repetido (p. ej. «Operaciones» ×2) → lectura de **tarjetas gemelas**. El delta UX (Adenda B1 / prompt Track B) agrupa por dominio; este contrato fija **solo la receta visual**, no la membresía de indicadores ni el copy de dominio (eso es AI-PROD-UX / composición FE).
+
+**Anatomía del grupo** (una unidad visual por dominio con ≥1 métrica autorizada):
+
+```
+┌ sección de dominio (sin shell de card) ──────────────────────────┐
+│  .portal-eyebrow   ← rótulo de dominio, UNA vez                   │
+│  grid (gap del sistema)                                          │
+│    ├── PortalDashboardMetric  (sin eyebrow de categoría)         │
+│    └── PortalDashboardMetric? (sin eyebrow de categoría)         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+| Pieza | Receta vinculante | Prohibido |
+| --- | --- | --- |
+| Contenedor del grupo | `<section>` (o equivalente semántico) + `gap`/`space-y` del sistema; **sin** borde/sombra/fondo de card propio | Envolver el grupo en `PortalPanel` (u otro shell con borde) **y** además pintar shells de métrica hijas → **card-dentro-de-card**. Las métricas ya traen `portalMetricCardShellClassName` |
+| Encabezado de dominio | **Una vez** por grupo: tipografía **`.portal-eyebrow`** (acento de sistema lima — §4.3; sobre lienzo / blanco / `iwana-surface-soft`, nunca sobre `iwana-primary-50`) + texto del dominio en sentence case según UX | Repetir el dominio como `eyebrow` dentro de cada métrica hija; inventar tracking a mano; usar `.portal-eyebrow-muted` en el encabezado de grupo (ese muted es para categoría **dentro** de la card) |
+| Hijos | `PortalDashboardMetric` con **`eyebrow` omitido** (o `''`); conservan `label`, `description`, `accent`, `icon`, `delta`, `href`/`onClick`, estados §2.1 | Segunda cáscara tipo card alrededor de cada hijo; eyebrow de categoría duplicando el dominio |
+| Grid interno | `grid grid-cols-1 sm:grid-cols-2` (1 columna si un solo hijo); gap coherente con el resto del home | Forzar 2 columnas con un solo hijo; rellenar huecos con KPI vacío/decorativo |
+| Skeleton | Misma forma de grupos (encabezado + N skeletons de métrica), no N bloques sueltos si el rol tiene agrupación | Siete skeletons planos cuando la composición es por dominio |
+
+**Tokens:** reutiliza únicamente tokens ya citados en §0.2 (`.portal-eyebrow`, shells de métrica, tipografía muted §1.7 si hubiera eyebrow). **Cero tokens de marca nuevos.** El lima del encabezado de dominio es el predicado «acento de sistema» de §4.3 — **no** urgencia.
+
+**Relación con §1.2:** el `eyebrow` opcional existe precisamente para esta composición (y cualquier futuro caso donde la categoría viva fuera de la card). Fuera de un grupo B1, el consumidor **puede** seguir pasando `eyebrow` como en v1.0–v1.2; no es deprecación forzada de la ranura.
+
+**Deslinde:** qué dominios existen, qué IDs van en cada uno y el texto exacto del encabezado → UX / FE composición. Este §1.8 solo obliga la forma visual y la API (`eyebrow` ausente en hijas).
 
 ---
 
@@ -341,9 +386,9 @@ Leyenda: **R** = receta obligatoria · **N/A** = no aplica, con justificación e
 | **foco** | R (solo con `href`/`onClick`) | `interactiveFocusClassName`, sin excepción ni override. **N/A sin destino**: un elemento no focalizable no puede tener estado de foco, y no se le añade `tabIndex` para fabricarlo |
 | **activo** | **N/A justificado** | El home no tiene selección: sus indicadores navegan, no filtran en sitio. `PortalMetricCard` sí ofrece `isActive`, y este contrato **omite deliberadamente** esa prop (§1.2). Si una fase futura introduce filtro en sitio, la casilla se abre con `ring-2 ring-iwana-primary/40`, ya existente en `portal-ui.tsx:323` |
 | **deshabilitado** | **N/A justificado** | Un indicador sin permiso **no se renderiza deshabilitado: no se renderiza** (HLD §5.1). Una tarjeta atenuada informa de la existencia de un dato al que el usuario no tiene acceso — es fuga de información y ruido. Corolario: la tarjeta nunca lleva `disabled` ni `aria-disabled`, luego nunca está exenta de contraste (contrato de atenuados §2) |
-| **cargando** | R | `state='loading'` → `aria-busy="true"` en la tarjeta; la ranura de cifra se sustituye **en sitio** por `SkeletonBlock` con la altura exacta de la línea de cifra; eyebrow y rótulo permanecen en su token pleno. **`opacity-*` prohibido en cualquier valor** (contrato de atenuados §4.2). Sin spinner |
+| **cargando** | R | `state='loading'` → `aria-busy="true"` en la tarjeta; la ranura de cifra se sustituye **en sitio** por `SkeletonBlock` con la altura exacta de la línea de cifra; el rótulo permanece en su token pleno; el eyebrow, **si estaba presente**, permanece (si estaba omitido, no se fabrica uno vacío). **`opacity-*` prohibido en cualquier valor** (contrato de atenuados §4.2). Sin spinner |
 | **vacío** | R | `value === null` → «sin dato» de §1.3. Es un estado **de dato**, no de error: la tarjeta no cambia de acento ni de superficie |
-| **error** | R | `state='error'` → `errorLabel` en la ranura de cifra + botón de reintento si hay `onRetry`. **La tarjeta no se desmonta, no cambia de acento a `danger` y no borra su rótulo.** Sin región viva propia — ver nota (a) |
+| **error** | R | `state='error'` → `errorLabel` en la ranura de cifra + botón de reintento si hay `onRetry`. **La tarjeta no se desmonta, no cambia de acento a `danger` y no borra su rótulo** (ni el eyebrow si estaba presente). Sin región viva propia — ver nota (a) |
 | **éxito** | **N/A justificado** | Un indicador no tiene resultado de operación: refleja el estado del mundo, no la consecuencia de una acción del usuario. Si un valor «bueno» debe destacarse, es `delta` con `tone='progress'`, no un estado de la tarjeta |
 | **solo lectura** | **N/A justificado** | La tarjeta **siempre** es de solo lectura; no edita nada. Un estado que coincide con el estado permanente del componente no es un estado (contrato de atenuados §4.4, fila `readonly`) |
 
@@ -708,6 +753,7 @@ No alteran alcance, contrato de datos, boundary ni tokens de marca:
 | 10 | Eliminación del mapa de severidad local de `OnboardingAlerts.tsx:11-36` | Sustitución por primitive con superficie ya normada |
 | 11 | **v1.1** — matriz eyebrow × `accent` (§1.7): escalón `gray-700`/`gray-200` en shells `danger`/`warning` | Cierra residual QA ~4,45:1; tipografía muted intacta; **sin** lima ni tokens de marca nuevos. Notificado a FE + QA |
 | 12 | **v1.2** — matriz `description` × `accent` (§1.7): mismo escalón en shells `danger`/`warning` (y muted de cuerpo) | Cierra gap G6-4 axe light ≈4,45:1; **sin** lima ni tokens de marca nuevos. Carril rápido; notificado a FE + QA |
+| 13 | **v1.3** — `eyebrow` opcional (§1.2) + receta grupo de dominio B1 (§1.8): sin card-dentro-de-card; contraste §1.7 intacto | Cierra D-P1-04 / CA-DELTA-06·11; **sin** tokens de marca nuevos; sin primitive nueva. Carril rápido; notificado a FE + QA vía prompt delta Track B |
 
 ### 8.2 Escala a AI-EM-ARCH
 
@@ -744,14 +790,23 @@ AI-FE-PLATFORM completa todos los ítems antes de entregar. AI-SR-QA valida de f
 - [ ] `value === null` rinde `text-gray-700 dark:text-gray-200`, sin `font-mono` y sin `uppercase`.
 - [ ] 🔍 Con `value: null`, contraste ≥ 4,5:1 en **los cuatro acentos** y **los dos temas**. Peor caso esperado: 9,72:1.
 - [ ] Eyebrow: tipografía `.portal-eyebrow-muted`; con `accent` ∈ {`warning`,`danger`} color `text-gray-700 dark:text-gray-200` (§1.7). **Sin** lima sobre rose/amber.
-- [ ] 🔍 Eyebrow contraste ≥ 4,5:1 en **los cuatro acentos** × **dos temas** (cierra residual ~4,45:1 sobre `danger`).
+- [ ] `eyebrow` es **opcional** (§1.2 v1.3): omitido o `''` → **0** nodos de ranura eyebrow en el DOM; orden restante cifra → rótulo → delta → descripción.
+- [ ] 🔍 Eyebrow contraste ≥ 4,5:1 en **los cuatro acentos** × **dos temas** **cuando la ranura está presente** (cierra residual ~4,45:1 sobre `danger`).
 - [ ] `description` (y muted de cuerpo en shell): con `accent` ∈ {`warning`,`danger`} color `text-gray-700 dark:text-gray-200`; con `neutral`/`primary` `text-gray-500 dark:text-gray-400` (§1.7 v1.2). **Sin** lima ni `opacity-*`.
 - [ ] 🔍 `description` contraste ≥ 4,5:1 en **los cuatro acentos** × **dos temas** (cierra G6-4 axe light ≈4,45:1 sobre `danger`).
 - [ ] La cifra conserva `font-mono` y `tabular-nums`.
-- [ ] `state='error'` **no desmonta** la tarjeta: eyebrow y rótulo siguen en pantalla.
+- [ ] `state='error'` **no desmonta** la tarjeta: rótulo (y eyebrow si presente) siguen en pantalla.
 - [ ] `state='loading'` sustituye solo la ranura de cifra por `SkeletonBlock`, con `aria-busy="true"` en la tarjeta.
 - [ ] 🔍 `grep -n "opacity-" ` sobre el componente → **0 resultados**.
 - [ ] La tarjeta no emite `aria-live` propio.
+
+### Abis. Grupo de dominio B1 (§1.8)
+
+- [ ] Cada grupo: un encabezado `.portal-eyebrow` **una vez** + grid de `PortalDashboardMetric` hijas **sin** `eyebrow` de categoría.
+- [ ] Contenedor del grupo = sección + gap; **sin** `PortalPanel`/card envolvente que anide shells de métrica (anti card-dentro-de-card).
+- [ ] 🔍 En composición ADMIN agrupada: **0** eyebrows de categoría duplicados en métricas hijas que repitan el dominio del encabezado.
+- [ ] Skeleton B1 respeta forma de grupos.
+- [ ] **Ningún token de marca nuevo**; audit-ui P0/P1 = 0 en rutas tocadas de `portal-ui` / dashboard.
 
 ### B. Sustitución de primitives
 

@@ -423,7 +423,7 @@ export function AssuranceTicketDrawer({
                                 {formatAssuranceDateTime(event.occurredAt)}
                               </span>
                             </div>
-                            <p className="mt-2 text-xs uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                            <p className="mt-2 text-xs uppercase tracking-[0.16em] text-gray-400 dark:text-gray-400">
                               Actor: {actor ? getAssuranceUserDisplayName(actor) : 'Sistema'}
                             </p>
                           </li>

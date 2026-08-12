@@ -5,7 +5,7 @@ export const FORM_PANEL_PREMIUM_CLASS =
   'rounded-[30px] border border-white/70 bg-white/95 p-8 shadow-iwana-lg lg:p-12 dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
 
 export const FORM_INPUT_CLASS =
-  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
+  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400';
 
 export const FORM_INPUT_WITH_LEADING_ICON_CLASS = `${FORM_INPUT_CLASS} pl-11`;
 export const FORM_INPUT_WITH_BOTH_ICONS_CLASS = `${FORM_INPUT_CLASS} pl-11 pr-11`;
@@ -31,9 +31,9 @@ export const FORM_SECTION_CARD_CLASS =
   'rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-border dark:bg-dark-surface-3/60';
 
 export const FORM_ICON_LEADING_CLASS =
-  'absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500';
+  'absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-400';
 
 export const FORM_ICON_TRAILING_BUTTON_CLASS =
-  'absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300';
+  'absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300';
 
 export const FORM_DIVIDER_CLASS = 'border-gray-100 dark:border-dark-border';

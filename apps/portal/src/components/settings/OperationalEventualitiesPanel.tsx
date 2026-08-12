@@ -40,15 +40,15 @@ const STATUS_BADGE_CLASSES: Record<OperationalEventualityStatus, string> = {
   confirmed:
     'inline-flex rounded-full px-2.5 py-1 text-xs font-medium leading-5 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   cancelled:
-    'inline-flex rounded-full px-2.5 py-1 text-xs font-medium leading-5 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    'inline-flex rounded-full px-2.5 py-1 text-xs font-medium leading-5 bg-gray-100 text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400',
 };
 
 const inputClass =
-  'h-10 w-full rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
+  'h-10 w-full rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-gray-100';
 
 const selectClassName = 'rounded-2xl shadow-sm dark:bg-dark-surface-2';
 const datePickerButtonClassName =
-  'h-10 rounded-2xl border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
+  'h-10 rounded-2xl border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-gray-100';
 
 interface EmptyDraft {
   userId: string;
@@ -516,7 +516,7 @@ function OperationalEventualitiesPanelInner({ canEdit }: Props) {
                           )}
                           {item.status !== 'pending' && (
                             <button
-                              className="text-xs font-medium text-gray-400 hover:underline dark:text-gray-500"
+                              className="text-xs font-medium text-gray-400 hover:underline dark:text-gray-400"
                               onClick={() => void handleDelete(item.id)}
                               disabled={pendingActionId === item.id}
                               data-testid={`delete-eventuality-${item.id}`}

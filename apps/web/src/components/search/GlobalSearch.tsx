@@ -151,7 +151,7 @@ export function GlobalSearch() {
           }
         }}
         className={cn(
-          'portal-input-surface h-11 w-full border pl-10 pr-16 text-sm text-gray-700 placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500',
+          'portal-input-surface h-11 w-full border pl-10 pr-16 text-sm text-gray-700 placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-400',
           interactiveFocusClassName,
         )}
       />

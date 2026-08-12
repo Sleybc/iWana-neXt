@@ -235,7 +235,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                           </span>
                           <input
                             aria-label={label}
-                            className="rounded border border-gray-300 px-2.5 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                            className="rounded border border-gray-300 px-2.5 py-1.5 text-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
                             placeholder={placeholder}
                             type="text"
                             value={billingDraft[key]}

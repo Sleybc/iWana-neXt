@@ -127,7 +127,7 @@ export function PurchaseDraftLinesTable({
                         {line.suggestedPartyName}
                       </span>
                     ) : (
-                      <span className="text-gray-400 dark:text-gray-500">
+                      <span className="text-gray-400 dark:text-gray-400">
                         Sin proveedor sugerido
                       </span>
                     )}

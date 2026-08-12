@@ -1,8 +1,9 @@
 'use client';
 
-// Fila de auditoría en modo Técnico — tabla densa con todos los campos técnicos
+// Fila de historial en modo Detalle — tabla densa; un control de expansión (CA-AUD-07).
 import React, { useState } from 'react';
 import { Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { actionLabel, AUTH_ACTIONS } from './helpers/actionLabel';
 import { entityLabel } from './helpers/entityLabel';
 import { abbreviateUserAgent } from './helpers/computeDiff';
@@ -14,6 +15,7 @@ import {
   shortId,
   type DisplayText,
 } from './helpers/auditDisplay';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 import { AuditExpandedDetails } from './AuditExpandedDetails';
 
 export interface AuditTechnicalEntry {
@@ -42,9 +44,9 @@ interface AuditRowTechnicalProps {
   entry: AuditTechnicalEntry;
   expanded: boolean;
   onToggle: () => void;
+  showTechnicalMeta?: boolean;
 }
 
-/** Badge de acción con colores semánticos */
 function actionBadgeClass(action: string): string {
   if (action === 'CREATE')
     return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
@@ -73,7 +75,10 @@ function CopyableMeta({ value, label = 'Copiar ID' }: { value: string | null; la
       onClick={(e) => {
         void handleCopy(e);
       }}
-      className="inline-flex items-center gap-1 rounded-md text-[11px] font-mono text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md font-mono text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300',
+        interactiveFocusClassName,
+      )}
       aria-label={label}
       title={value}
     >
@@ -96,16 +101,21 @@ function PrimarySecondaryCell({ text }: { text: DisplayText }) {
       >
         {text.title}
       </p>
-      {text.subtitle && (
-        <p className="truncate text-[11px] text-gray-400 dark:text-gray-500" title={text.subtitle}>
+      {text.subtitle ? (
+        <p className="truncate text-xs text-gray-400 dark:text-gray-400" title={text.subtitle}>
           {text.subtitle}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
 
-export function AuditRowTechnical({ entry, expanded, onToggle }: AuditRowTechnicalProps) {
+export function AuditRowTechnical({
+  entry,
+  expanded,
+  onToggle,
+  showTechnicalMeta = true,
+}: AuditRowTechnicalProps) {
   const subject = describeAuditSubject(entry);
   const actor = describeAuditActor(entry);
   const origin = describeIp(entry.ipAddress);
@@ -113,80 +123,71 @@ export function AuditRowTechnical({ entry, expanded, onToggle }: AuditRowTechnic
 
   return (
     <>
-      <tr
-        onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-        tabIndex={0}
-        role="button"
-        aria-expanded={expanded}
-        className="border-t border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
-      >
-        <td className="px-3 py-3 whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
-          <time dateTime={entry.createdAt} title={new Date(entry.createdAt).toISOString()}>
+      <tr className="border-t border-gray-100 transition-colors hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3">
+        <td className="px-3 py-3 text-xs whitespace-nowrap text-gray-600 dark:text-gray-400">
+          <time dateTime={entry.createdAt} className="font-mono tabular-nums">
             <span className="block font-medium text-gray-700 dark:text-gray-300">
               {new Date(entry.createdAt).toLocaleDateString('es-CO')}
             </span>
-            <span className="block text-gray-400 dark:text-gray-500">
+            <span className="block text-gray-400 dark:text-gray-400">
               {new Date(entry.createdAt).toLocaleTimeString('es-CO')}
             </span>
           </time>
         </td>
 
-        <td className="px-3 py-3 min-w-[150px]">
+        <td className="min-w-[150px] px-3 py-3">
           <span
             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClass(entry.action)}`}
           >
             {actionLabel(entry.action)}
           </span>
-          <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-400">
             {entityLabel(entry.entityType)}
           </p>
         </td>
 
-        <td className="px-3 py-3 min-w-[220px] max-w-[280px]">
+        <td className="min-w-[220px] max-w-[280px] px-3 py-3">
           <PrimarySecondaryCell text={subject} />
           <CopyableMeta value={entry.entityId} label="Copiar ID del registro afectado" />
         </td>
 
-        <td className="px-3 py-3 min-w-[150px]">
+        <td className="min-w-[150px] px-3 py-3">
           <PrimarySecondaryCell text={actor} />
-          <CopyableMeta value={entry.userId} label="Copiar ID del actor" />
+          <CopyableMeta value={entry.userId} label="Copiar ID de la persona" />
         </td>
 
-        <td className="px-3 py-3 min-w-[120px]">
+        <td className="min-w-[120px] px-3 py-3">
           <PrimarySecondaryCell text={origin} />
         </td>
 
         <td
-          className="px-3 py-3 min-w-[150px] max-w-[190px] text-xs text-gray-500 dark:text-gray-400 truncate"
+          className="min-w-[150px] max-w-[190px] truncate px-3 py-3 text-xs text-gray-500 dark:text-gray-400"
           title={entry.userAgent ?? undefined}
         >
           {abbreviateUserAgent(entry.userAgent)}
         </td>
 
-        <td className="px-3 py-3 min-w-[160px]">
+        <td className="min-w-[160px] px-3 py-3">
           <PrimarySecondaryCell text={trace} />
           {entry.requestId ? (
             <CopyableMeta value={entry.requestId} label="Copiar ID de solicitud" />
           ) : (
-            <CopyableMeta value={entry.id} label="Copiar ID del log" />
+            <CopyableMeta value={entry.id} label="Copiar ID del cambio" />
           )}
         </td>
 
         <td className="px-3 py-3 text-right">
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            aria-label={expanded ? 'Colapsar' : 'Expandir'}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-label={
+              expanded ? PLATFORM_UI_COPY.audit.collapseDetail : PLATFORM_UI_COPY.audit.expandDetail
+            }
+            className={cn(
+              'inline-flex min-h-11 min-w-11 items-center justify-center text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300',
+              interactiveFocusClassName,
+            )}
           >
             {expanded ? (
               <ChevronUp className="h-4 w-4" aria-hidden="true" />
@@ -197,12 +198,11 @@ export function AuditRowTechnical({ entry, expanded, onToggle }: AuditRowTechnic
         </td>
       </tr>
 
-      {/* Panel expandido idéntico al modo básico */}
-      {expanded && (
+      {expanded ? (
         <tr key={`${entry.id}-expanded`}>
           <td
             colSpan={8}
-            className="bg-gray-50 dark:bg-white/[0.03] border-t border-gray-100 dark:border-dark-border"
+            className="border-t border-gray-100 bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3"
           >
             <AuditExpandedDetails
               id={entry.id}
@@ -215,10 +215,12 @@ export function AuditRowTechnical({ entry, expanded, onToggle }: AuditRowTechnic
               createdAt={entry.createdAt}
               oldValue={entry.oldValue}
               newValue={entry.newValue}
+              showTechnicalMeta={showTechnicalMeta}
+              fieldMode="detail"
             />
           </td>
         </tr>
-      )}
+      ) : null}
     </>
   );
 }

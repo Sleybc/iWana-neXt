@@ -38,7 +38,7 @@ describe('AuditActorResolver', () => {
       expect.objectContaining({
         where: [{ id: 'tenant-user-1' }, { id: 'tenant-user-2' }],
         withDeleted: true,
-        select: ['id', 'email', 'firstName', 'lastName', 'role', 'status', 'deletedAt'],
+        select: ['id', 'firstName', 'lastName', 'role', 'status', 'deletedAt'],
       }),
     );
     expect(result.get('tenant-user-1')).toEqual({
@@ -52,11 +52,43 @@ describe('AuditActorResolver', () => {
     expect(result.get('tenant-user-2')).toEqual({
       id: 'tenant-user-2',
       type: 'tenant',
-      displayName: 'legacy@example.test',
+      displayName: 'Usuario tenant-u',
       role: 'SUPPORT',
       status: 'INACTIVE',
       isDeleted: true,
     });
+    expect(JSON.stringify(result.get('tenant-user-2'))).not.toContain('legacy@example.test');
+  });
+
+  it('no expone correo en el read-model cuando el actor legacy no tiene nombre', async () => {
+    const find = jest.fn().mockResolvedValue([
+      {
+        id: 'tenant-user-legacy',
+        email: 'legacy@example.test',
+        firstName: null,
+        lastName: null,
+        role: 'SUPPORT',
+        status: 'INACTIVE',
+        deletedAt: null,
+      },
+    ]);
+    const manager = { getRepository: jest.fn().mockReturnValue({ find }) };
+    const resolver = new AuditActorResolver({} as DataSource);
+
+    const result = await resolver.resolveMany(['tenant-user-legacy'], {
+      source: 'tenant',
+      queryRunner: { manager } as never,
+    });
+    const actor = result.get('tenant-user-legacy');
+
+    expect(actor?.displayName).toBe('Usuario tenant-u');
+    expect(actor?.displayName).not.toContain('@');
+    expect(JSON.stringify(actor)).not.toContain('legacy@example.test');
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: ['id', 'firstName', 'lastName', 'role', 'status', 'deletedAt'],
+      }),
+    );
   });
 
   it('resuelve actores plataforma sin seleccionar email cifrado', async () => {

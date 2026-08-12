@@ -42,7 +42,7 @@ const WEEKDAY_LABELS: Record<BusinessHoursWeekday, string> = {
 };
 
 const INPUT_CLASS =
-  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
+  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white';
 const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300';
 const MUTED_CLASS = 'text-sm leading-6 text-gray-500 dark:text-gray-400';
 const BADGE_CLASS =
@@ -839,7 +839,7 @@ export function WfmOperatingHoursManager({
                       />
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
-                      <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
+                      <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-iwana-neutral-600 dark:text-gray-300">
                         <input
                           type="checkbox"
                           checked={blackoutForm.isRecurring}
@@ -852,7 +852,7 @@ export function WfmOperatingHoursManager({
                         />
                         {WFM_SETTINGS_COPY.recurringCheckbox}
                       </label>
-                      <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
+                      <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-iwana-neutral-600 dark:text-gray-300">
                         <input
                           type="checkbox"
                           checked={blackoutForm.isEnabled}

@@ -116,8 +116,8 @@ function SectionAccordion({
             <div
               key={item.id}
               className={cn(
-                  'rounded-[20px] transition-all',
-                  isOpen ? 'overflow-visible' : 'overflow-hidden',
+                'rounded-[20px] transition-all',
+                isOpen ? 'overflow-visible' : 'overflow-hidden',
                 isOpen
                   ? 'bg-white shadow-[var(--shadow-iwana-soft)] border border-gray-50 dark:bg-dark-surface-2 dark:border-dark-border'
                   : 'bg-white shadow-sm border border-gray-50 hover:shadow-md hover:border-iwana-secondary/30 dark:bg-dark-surface-2 dark:border-dark-border dark:hover:border-iwana-secondary/30',
@@ -275,7 +275,7 @@ function SectionAccordion({
                     'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors',
                     isOpen || isComplete
                       ? 'bg-[#EDF8CC] text-[#6A7A1C]'
-                      : 'bg-gray-100 text-gray-400 group-hover:bg-iwana-secondary/10 group-hover:text-iwana-secondary-700',
+                      : 'bg-gray-100 text-gray-400 group-hover:bg-iwana-secondary/10 group-hover:text-iwana-secondary-700 dark:group-hover:text-iwana-secondary-400',
                   )}
                   aria-hidden="true"
                 >
@@ -288,7 +288,7 @@ function SectionAccordion({
                       isOpen
                         ? 'text-iwana-primary font-bold'
                         : isComplete
-                          ? 'text-iwana-primary group-hover:text-iwana-secondary-700'
+                          ? 'text-iwana-primary group-hover:text-iwana-secondary-700 dark:group-hover:text-iwana-secondary-400'
                           : 'text-iwana-primary group-hover:text-iwana-primary',
                     )}
                   >

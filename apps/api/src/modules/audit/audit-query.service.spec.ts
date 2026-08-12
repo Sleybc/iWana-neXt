@@ -159,6 +159,54 @@ describe('AuditQueryService', () => {
     expect(result.data[0]?.actor).toEqual({ id: null, type: 'system', displayName: 'Sistema' });
   });
 
+  it('aísla el schema solo desde TenantContext (JWT), no desde input externo', async () => {
+    mockTenantContextGetOrThrow.mockReturnValue({
+      tenantId: 'tenant-b',
+      schemaName: 'tenant_b_schema',
+    });
+
+    await service.query({ limit: 10 });
+
+    expect(mockRunInTenantSchema).toHaveBeenCalledWith(
+      dataSource,
+      'tenant_b_schema',
+      expect.any(Function),
+    );
+    expect(mockTenantContextGetOrThrow).toHaveBeenCalled();
+  });
+
+  it('re-sanitiza oldValue/newValue en el path de lectura (legacy)', async () => {
+    (queryBuilder.getMany as jest.Mock).mockResolvedValueOnce([
+      {
+        ...baseEntry,
+        id: 'audit-legacy',
+        oldValue: {
+          id: 'usr-1',
+          password: 'secret-legacy',
+          email: 'user@example.test',
+          status: 'ACTIVE',
+        },
+        newValue: {
+          id: 'usr-1',
+          firstName: 'Nombre',
+          token: 'tok-legacy',
+          status: 'ACTIVE',
+        },
+      },
+    ]);
+    countBuilder.getCount.mockResolvedValue(1);
+
+    const result = await service.query({ limit: 50 });
+    const dto = result.data[0];
+
+    expect(dto?.oldValue).toEqual({ id: 'usr-1', status: 'ACTIVE' });
+    expect(dto?.oldValue).not.toHaveProperty('password');
+    expect(dto?.oldValue).not.toHaveProperty('email');
+    expect(dto?.newValue).toEqual({ id: 'usr-1', status: 'ACTIVE' });
+    expect(dto?.newValue).not.toHaveProperty('firstName');
+    expect(dto?.newValue).not.toHaveProperty('token');
+  });
+
   it('aplica filtro fromDate/toDate como rango en query', async () => {
     await service.query({
       limit: 50,

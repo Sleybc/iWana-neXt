@@ -200,6 +200,7 @@ Un informe con 5 hallazgos verificados vale mas que uno con 20 especulativos. An
 5. **Preferencia no es hallazgo.** Un hallazgo con severidad solo se ancla en fuentes normativas: la spec Firma iWana, un ADR **aprobado**, el manual de identidad, los tokens reales de `globals.css` o un criterio WCAG. `trends-2026.md` **no es normativo**: su seccion A (Ecos de norma) sirve para localizar el artefacto — cita el artefacto, no la tabla; su seccion B (Propuestas DS) se ofrece como "sugerencia opcional" fuera del conteo de severidad. Antes de citar cualquier ancla, abrela y verifica que dice lo que afirmas (ver el caso ADR-026 en la cabecera de `trends-2026.md`).
 6. **Legacy en fases.** Flujos legacy que adoptan identidad por fases no se penalizan por lo pendiente; solo se reporta si introducen patrones **nuevos** contrarios al manual.
 7. **Presupuesto de atencion.** Reporta todos los P0/P1. De P2/P3 incluye solo los de mejor relacion impacto/esfuerzo (tipicamente ≤ 8); el resto se resume en una linea agregada.
+8. **Sidebar blanco no es defecto.** El aside vivo es `bg-white` / `dark:bg-dark-surface-2` (web y portal). `bg-iwana-primary` en el sidebar esta **prohibido** (BLOQUEO-3; contrato `2026-08-11-sidebar-azul-noche-ds-contrato.md` **Superado**, 2026-08-11). No puntuar, no listar como residual, no reabrir navy en auditorias de dark, shell o identidad. La firma del nav es la **barra lima**, no el fill azul.
 
 ## Formato de salida (modo review)
 

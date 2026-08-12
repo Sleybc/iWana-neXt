@@ -476,7 +476,7 @@ function SubscribersListClientInner() {
                       >
                         <div className="flex flex-col items-center gap-3">
                           <Users
-                            className="h-10 w-10 text-gray-300 dark:text-gray-600"
+                            className="h-10 w-10 text-gray-300 dark:text-gray-400"
                             aria-hidden="true"
                           />
                           <div>

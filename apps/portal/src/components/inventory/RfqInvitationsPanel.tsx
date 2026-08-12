@@ -344,7 +344,7 @@ export function RfqInvitationsPanel({
           <label className="block space-y-1 text-sm">
             <span className="font-medium text-gray-900 dark:text-white">Notas internas</span>
             <textarea
-              className={`w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white ${interactiveFocusClassName}`}
+              className={`w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white ${interactiveFocusClassName}`}
               rows={2}
               value={notes}
               disabled={panelDisabled}
@@ -362,7 +362,7 @@ export function RfqInvitationsPanel({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-white">{rfq.rfqNumber}</p>
-              <p className="mt-1 text-sm text-iwana-secondary-700">
+              <p className="mt-1 text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
                 {rfqStatus ? getPurchaseRfqStatusLabel(rfqStatus) : '—'}
               </p>
               <p className="mt-1 text-xs text-gray-500">
@@ -420,7 +420,7 @@ export function RfqInvitationsPanel({
           </div>
 
           {invitationSummary.size > 0 ? (
-            <div className="flex flex-wrap gap-2 text-xs text-iwana-secondary-700">
+            <div className="flex flex-wrap gap-2 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
               {Array.from(invitationSummary.entries()).map(([status, count]) => (
                 <span key={status}>
                   {getPurchaseRfqInvitationStatusLabel(status)}: {count}
@@ -447,7 +447,7 @@ export function RfqInvitationsPanel({
                   </span>
                   <textarea
                     aria-label="Motivo de declinación"
-                    className={`w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white ${interactiveFocusClassName}`}
+                    className={`w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white ${interactiveFocusClassName}`}
                     rows={2}
                     placeholder="Describe por qué se declina al proveedor"
                     value={declineReason}
@@ -480,7 +480,7 @@ export function RfqInvitationsPanel({
                             {formatInventoryDate(invitation.invitedAt?.slice(0, 10) ?? null)}
                           </p>
                           {linkedQuote ? (
-                            <p className="mt-1 text-xs text-iwana-secondary-700">
+                            <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
                               Cotización: {formatInventoryCurrency(linkedQuote.amount)}
                             </p>
                           ) : null}

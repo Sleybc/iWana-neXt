@@ -795,8 +795,9 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
                   {
                     id: 'mfa-not-required',
                     severity: 'warning',
-                    title: 'MFA no obligatorio',
-                    description: 'Se recomienda habilitar MFA obligatorio.',
+                    title: 'Verificación en dos pasos no obligatoria',
+                    description:
+                      'Se recomienda activar la verificación en dos pasos obligatoria para todos los usuarios de la empresa.',
                     href: '/dashboard/settings',
                   },
                 ],

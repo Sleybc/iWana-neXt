@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
 
 const STATUS_COLORS: Record<ContractStatus, { bg: string; text: string; dot: string }> = {
   DRAFT: {
-    bg: 'bg-gray-100 dark:bg-gray-800',
+    bg: 'bg-gray-100 dark:bg-dark-surface-3',
     text: 'text-gray-600 dark:text-gray-300',
     dot: 'bg-gray-400',
   },
@@ -47,7 +47,7 @@ const STATUS_COLORS: Record<ContractStatus, { bg: string; text: string; dot: str
     dot: 'bg-red-500',
   },
   ARCHIVED: {
-    bg: 'bg-gray-100 dark:bg-gray-700/40',
+    bg: 'bg-gray-100 dark:bg-dark-surface-4/40',
     text: 'text-gray-500 dark:text-gray-400',
     dot: 'bg-gray-400',
   },
@@ -245,7 +245,7 @@ export function ContractCard({
 
                 {/* Estado final sin acciones */}
                 {actions.length === 0 && contract.status !== 'DRAFT' && (
-                  <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500">
+                  <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-400">
                     Sin acciones disponibles
                   </div>
                 )}
@@ -273,7 +273,7 @@ export function ContractCard({
 
       {/* Fecha + acciones rápidas */}
       <div className="mt-3 flex items-center justify-between gap-2">
-        <p className="text-xs text-gray-400 dark:text-gray-500">Creado {createdDate}</p>
+        <p className="text-xs text-gray-400 dark:text-gray-400">Creado {createdDate}</p>
         <button
           type="button"
           onClick={() => onViewDetail(contract)}
@@ -291,7 +291,7 @@ export function ContractCard({
 function DetailLine({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-      <span className="shrink-0 text-gray-400 dark:text-gray-500">{icon}</span>
+      <span className="shrink-0 text-gray-400 dark:text-gray-400">{icon}</span>
       <span className="truncate">{text}</span>
     </div>
   );

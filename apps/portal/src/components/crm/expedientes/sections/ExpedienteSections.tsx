@@ -306,13 +306,13 @@ export function ExpedienteSections({
           </p>
         </div>
         <div className="text-right">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-400">
             Progreso
           </span>
           <p className="text-lg font-bold text-iwana-secondary-700 dark:text-iwana-secondary">
             {completedSections} de {totalSections} completadas
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-xs text-gray-400 dark:text-gray-400">
             Núcleo: {completedCoreSections} de {SECTIONS.length} + documental
           </p>
         </div>

@@ -153,8 +153,8 @@ export class DashboardSummaryService {
       alerts.push({
         id: 'tenant-provisioning',
         severity: 'info',
-        title: 'Empresa en aprovisionamiento',
-        description: 'El sistema está configurando el entorno de tu empresa. Estará listo pronto.',
+        title: 'Empresa en configuración',
+        description: 'Estamos preparando el entorno de tu empresa. Estará listo pronto.',
       });
     }
 
@@ -164,7 +164,7 @@ export class DashboardSummaryService {
         severity: 'error',
         title: 'Empresa suspendida',
         description:
-          'El acceso operativo está suspendido. Contacta al equipo de soporte de plataforma.',
+          'El acceso a la empresa está suspendido. Contacta al equipo de soporte de la plataforma.',
       });
     }
 
@@ -173,7 +173,7 @@ export class DashboardSummaryService {
         id: 'tenant-inactive',
         severity: 'error',
         title: 'Empresa inactiva',
-        description: 'El contrato de la empresa está finalizado y el acceso operativo bloqueado.',
+        description: 'El contrato de la empresa finalizó y el acceso quedó bloqueado.',
       });
     }
 
@@ -181,20 +181,20 @@ export class DashboardSummaryService {
       alerts.push({
         id: 'tenant-marked-for-deletion',
         severity: 'error',
-        title: 'Empresa en ventana de eliminación',
+        title: 'Empresa marcada para eliminación',
         description:
-          'La empresa está marcada para eliminación diferida. Contacta soporte si requiere restauración.',
+          'La empresa se eliminará próximamente. Contacta a soporte si necesitas restaurarla.',
       });
     }
 
-    // Alerta si MFA obligatorio no está habilitado
+    // Alerta si la verificación en dos pasos no es obligatoria para toda la empresa
     if (!features['mfa_required_all']) {
       alerts.push({
         id: 'mfa-not-required',
         severity: 'warning',
-        title: 'MFA no obligatorio',
+        title: 'Verificación en dos pasos no obligatoria',
         description:
-          'Se recomienda habilitar MFA obligatorio para todos los usuarios de la empresa.',
+          'Se recomienda activar la verificación en dos pasos obligatoria para todos los usuarios de la empresa.',
         href: '/dashboard/settings',
       });
     }
@@ -205,8 +205,7 @@ export class DashboardSummaryService {
         id: 'few-users',
         severity: 'info',
         title: 'Usuarios pendientes de configurar',
-        description:
-          'Solo hay un usuario activo. Considera agregar más miembros del equipo a la plataforma.',
+        description: 'Solo hay un usuario activo. Considera agregar más miembros del equipo.',
       });
     }
 
@@ -216,7 +215,7 @@ export class DashboardSummaryService {
         id: 'incomplete-profile',
         severity: 'info',
         title: 'Perfil de empresa incompleto',
-        description: 'Completa la información de contacto y datos de tu empresa.',
+        description: 'Completa la información de contacto y los datos de tu empresa.',
         href: '/dashboard/settings',
       });
     }

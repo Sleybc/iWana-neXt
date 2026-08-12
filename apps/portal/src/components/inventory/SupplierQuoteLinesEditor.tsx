@@ -140,7 +140,7 @@ export function SupplierQuoteLinesEditor({
         Total de la cotización:{' '}
         <span className="tabular-nums">{formatInventoryCurrency(total)}</span>
       </p>
-      <p className="text-xs text-iwana-secondary-700">
+      <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
         Deja vacío el costo unitario en las líneas que el proveedor no cotiza.
       </p>
     </div>

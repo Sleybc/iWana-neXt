@@ -82,16 +82,30 @@ export function PurchaseRequestsTable({
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
         <thead className="bg-gray-50 dark:bg-dark-surface-2">
           <tr>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Solicitud</th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Solicitud
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
               Tipo de compra
             </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Prioridad</th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Área</th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Estado</th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Requerida</th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Alertas</th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700">Acción</th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Prioridad
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Área
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Estado
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Requerida
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Alertas
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Acción
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-dark-border">

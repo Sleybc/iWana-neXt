@@ -42,11 +42,10 @@ function resolveLocation(tenant: DashboardSummaryTenant): string {
 
 /**
  * B3 · Estado de la empresa — ficha subordinada (UX §2.2 / §8).
- * Una fila de pares etiqueta/valor; el detalle vive en Configuración.
+ * Un solo canal de estado: badge en acciones (C-10); sin fila duplicada.
  */
 export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) {
   const rows: Array<{ label: string; value: string }> = [
-    { label: 'Estado del servicio', value: statusLabel(tenant.status) },
     { label: 'Zona horaria', value: settings.timezone },
     { label: 'Moneda', value: settings.currency },
     { label: 'Ubicación', value: resolveLocation(tenant) },
@@ -66,7 +65,7 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
         </div>
       }
     >
-      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {rows.map((row) => (
           <div key={row.label} className="min-w-0">
             <dt className="text-xs text-gray-500 dark:text-gray-400">{row.label}</dt>

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import '@iwana/ui/styles/globals.css';
 import './web-typography.css';
-import { ThemeProvider } from '@iwana/ui';
+import { ThemeProvider, THEME_BOOTSTRAP_SCRIPT } from '@iwana/ui';
 import { Exo_2, JetBrains_Mono } from 'next/font/google';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { PlatformBrandingProvider } from '@/components/branding/PlatformBrandingProvider';
@@ -37,6 +37,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className={`${exo2.className} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider>
           <Suspense fallback={null}>

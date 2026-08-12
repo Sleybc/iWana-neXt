@@ -110,10 +110,10 @@ export function GlobalSearchOverlay({
               {groups.map((group) => (
                 <section key={group.type} aria-label={group.label} className="space-y-2">
                   <div className="flex items-center justify-between px-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                       {group.label}
                     </h3>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{group.total}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{group.total}</span>
                   </div>
                   <div role="listbox" aria-label={group.label} className="space-y-2">
                     {group.items.map((item) => (

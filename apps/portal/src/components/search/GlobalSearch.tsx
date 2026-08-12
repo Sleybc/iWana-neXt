@@ -162,7 +162,7 @@ export function GlobalSearch({ openRequestId = 0, onOpenChange }: GlobalSearchPr
             setIsOpen(false);
           }
         }}
-        className="h-11 w-full rounded-2xl border border-gray-100 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 shadow-[var(--shadow-iwana-card)] placeholder:text-gray-400 focus:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
+        className="h-11 w-full rounded-2xl border border-gray-100 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 shadow-[var(--shadow-iwana-card)] placeholder:text-gray-400 focus:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-400 dark:focus:border-iwana-primary-300"
       />
 
       <span

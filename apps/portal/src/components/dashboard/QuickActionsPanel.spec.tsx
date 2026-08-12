@@ -69,4 +69,15 @@ describe('QuickActionsPanel', () => {
   it('mapa §4.14: SUBSCRIBER solo perfil', () => {
     expect(__listQuickAccessLabelsForRole(UserRole.SUBSCRIBER)).toEqual(['Mi perfil']);
   });
+
+  it('muestra estado vacío y destino de perfil para un rol sin accesos', () => {
+    render(<QuickActionsPanel role={'ROLE_NOT_REGISTERED' as UserRole} />);
+
+    expect(screen.getByText('Sin destinos disponibles')).toBeInTheDocument();
+    expect(screen.getByText(/no tiene accesos rápidos/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ir a mi perfil' })).toHaveAttribute(
+      'href',
+      '/dashboard/profile',
+    );
+  });
 });

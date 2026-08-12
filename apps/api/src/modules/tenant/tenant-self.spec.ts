@@ -118,8 +118,9 @@ describe('TenantController — contratos self-service del tenant', () => {
       {
         id: 'mfa-not-required',
         severity: 'warning' as const,
-        title: 'MFA no obligatorio',
-        description: 'Se recomienda habilitar MFA obligatorio.',
+        title: 'Verificación en dos pasos no obligatoria',
+        description:
+          'Se recomienda activar la verificación en dos pasos obligatoria para todos los usuarios de la empresa.',
         href: '/dashboard/settings',
       },
     ],
@@ -256,6 +257,11 @@ describe('TenantController — contratos self-service del tenant', () => {
       expect(result.data.metrics.auditEventsLast7d).toBe(15);
       expect(result.data.alerts).toHaveLength(1);
       expect(result.data.alerts[0]?.severity).toBe('warning');
+      expect(result.data.alerts[0]?.id).toBe('mfa-not-required');
+      expect(result.data.alerts[0]?.title).toBe('Verificación en dos pasos no obligatoria');
+      expect(result.data.alerts[0]?.description).toContain('verificación en dos pasos');
+      expect(result.data.alerts[0]?.title).not.toMatch(/MFA/i);
+      expect(result.data.alerts[0]?.description).not.toMatch(/MFA/i);
     });
 
     it('pasa tanto tenantId como schemaName del JWT al servicio', async () => {

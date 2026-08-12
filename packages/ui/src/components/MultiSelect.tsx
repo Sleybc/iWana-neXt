@@ -105,7 +105,7 @@ export function MultiSelect({
             disabled={disabled}
             className={cn(
               'flex min-h-[42px] w-full flex-wrap items-center gap-1.5 rounded-2xl border px-3 py-2 text-left text-sm transition-colors',
-              'border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3',
+              'border-gray-200 bg-white dark:border-iwana-neutral-600 dark:bg-dark-surface-3',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-secondary/30',
               open && 'border-iwana-secondary ring-2 ring-iwana-secondary/30',
               error && 'border-red-400 focus-visible:ring-red-200',
@@ -201,7 +201,7 @@ export function MultiSelect({
                 return (
                   <div key={group}>
                     {group && (
-                      <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                      <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                         {group}
                       </p>
                     )}

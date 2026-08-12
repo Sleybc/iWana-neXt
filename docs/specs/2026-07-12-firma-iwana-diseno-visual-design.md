@@ -53,6 +53,7 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 - Jerarquía de botones: **acción principal de página** = azul sólido (`primary`); **submit de modal/sección** = `primary`; ghost/outline/link = secundarias. `variant="lime"` permanece en `@iwana/ui` para marca/auth/avances explícitos fuera del default de header/empty operativo.
 
 > **Enmienda CTO 2026-07-23:** evaluación visual post-adopción UI-18 — CTAs de página leídos mejor en azul noche. Ver `docs/informes/INFORME-PORTAL-CTA-LIMA-VS-AZUL-DESEMPATE-v1.0.md`.
+> **Enmienda operador 2026-08-11:** el fill navy del sidebar queda **Superado**. Chrome vivo = `bg-white` / `dark:bg-dark-surface-2` + barra lima. No reabrir. Ver BLOQUEO-3 y `docs/specs/2026-08-11-sidebar-azul-noche-ds-contrato.md`.
 
 ## 4. Plan por fases
 
@@ -74,7 +75,7 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 | # | Ítem | Detalle |
 | --- | --- | --- |
 | 2.1 | KPI card única | Fusión de los dos sistemas actuales: eyebrow + cifra en rol `title` azul noche + icono neutro + **delta como badge tonal** + hueco para sparkline (anatomía Stripe/Tremor). Vive en `portal-ui.tsx`, se promueve a `@iwana/ui` al estabilizarse. Máximo 5-9 métricas núcleo por vista. |
-| 2.2 | Sidebar firma unificada | Barra lima + sidebar atenuada; un solo componente para portal y web. |
+| 2.2 | Sidebar firma unificada | Barra lima + sidebar atenuada; un solo patrón de chrome para portal y web. **Fill vigente (2026-08-11):** aside **blanco** / `dark-surface-2`. Navy (`bg-iwana-primary`) **Superado** — el operador lo rechazó; no es deuda ni residual. |
 | 2.3 | `DataTable` enterprise | **Piso normativo (ADR-065, supersede ADR-064 §§2/3/5/9):** paginación servidor obligatoria, `limit` 20. **El modo lo declara el servidor** vía `meta.capabilities.randomAccess`: `true` → `PortalTablePager` (Anterior · 1…N · Siguiente + `PortalPageSizeSelect` + conteo `Mostrando 21–40 de 128 usuarios` **en el pie**); `false` → `PortalTablePagination` («Cargar más», conteo en `PortalResultsStrip`). Una tabla monta un pie o el otro, nunca los dos; un solo conteo visible; sin ornamento de fin. `page`/`pageSize`/`sort`/filtros **en URL** (`push` al paginar, `replace` al filtrar). Números ghost sin borde, targets 44 px, **lima fuera del pager** (es avance, no posición). **Orden por columna:** `PortalDataTableSortableHead` solo en las columnas que `meta.capabilities.sortableFields` declare, con `aria-sort` y ciclo `asc → desc → sin orden`; un solo ícono, estado activo también por peso (WCAG 1.4.1); bajo `sm` el orden sale del encabezado a la barra de filtros. Anatomía: `PortalPanel` → filtros → strip → `portalDataTableShellClassName` solo en grilla. Evolución: TanStack Table headless + patrón tabla-en-card TailAdmin: sticky header, densidad, vistas guardadas, bulk actions, **virtualización ≥~1k** (complemento, no sustituto) — **esta decisión no los cancela ni los pospone**. |
 | 2.4 | Escala tipográfica dual | Tokens `--text-title-*` / `--text-theme-*` con Exo 2; jerarquía real de página (h1 > panel > cuerpo). |
 | 2.5 | Gramática de 3 estados | Primitive para acordeones/wizards/checklists (§3.5); aplica a expedientes y alta de proveedores MOD12. |

@@ -73,13 +73,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             type={inputType}
             ref={ref}
             className={cn(
-              'flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-gray-900 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500',
+              'flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-gray-900 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400',
               'transition-colors duration-200',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:border-transparent dark:focus-visible:ring-iwana-primary-300',
-              'disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-500 disabled:placeholder:text-gray-400 dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500 dark:disabled:placeholder:text-gray-500',
+              'disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-500 disabled:placeholder:text-gray-400 dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-400 dark:disabled:placeholder:text-gray-400',
               error
                 ? 'border-red-500 dark:border-red-500 focus-visible:ring-red-500'
-                : 'border-gray-300 dark:border-dark-border-2 hover:border-gray-400 dark:hover:border-gray-500',
+                : 'border-gray-300 dark:border-iwana-neutral-600 hover:border-gray-400 dark:hover:border-gray-500',
               startIcon && 'pl-9',
               endAdornment ? 'pr-16' : isPassword ? 'pr-10' : undefined,
               className,
@@ -99,7 +99,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 focus:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-300 dark:disabled:text-gray-600"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300 focus:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-300 dark:disabled:text-gray-400"
               aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               disabled={props.disabled}
             >

@@ -258,10 +258,26 @@ export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
       }
 
       if (url.includes('/tenants') && method === 'GET') {
+        const searchParams = new URL(url).searchParams;
+        const status = searchParams.get('status');
+        const search = searchParams.get('search')?.trim().toLowerCase();
+        let filtered = tenants;
+        if (status) {
+          filtered = filtered.filter((tenant) => tenant.status === status);
+        }
+        if (search) {
+          filtered = filtered.filter((tenant) => {
+            const haystack = [tenant.name, tenant.slug, tenant.contactEmail]
+              .join(' ')
+              .toLowerCase();
+            return haystack.includes(search);
+          });
+        }
+
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: tenants }),
+          body: JSON.stringify({ data: filtered }),
         });
         return;
       }

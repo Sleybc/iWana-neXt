@@ -2,8 +2,9 @@
 
 // apps/web/src/components/auth/PlatformAuthExperience.tsx
 import type { ReactNode } from 'react';
-import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 import { AuthBrandHeader, AuthPremiumShell } from '@iwana/ui';
+import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 export type PlatformAuthVisualVariant = 'premium' | 'sobria';
 
@@ -64,7 +65,7 @@ export function PlatformAuthExperience({
   variant = 'premium',
   ariaLabel,
   shellTestId,
-  asideEyebrow = 'Gobierno de plataforma',
+  asideEyebrow = PLATFORM_UI_COPY.shell.workspace,
   asideTitle,
   asideAccent,
   asideDescription,

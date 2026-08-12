@@ -42,12 +42,12 @@ function mergeTimeValue(currentValue: string, part: TimeFieldPart, nextPartValue
 
 function buildTriggerClassName(compact: boolean, disabled: boolean): string {
   const base =
-    'inline-flex items-center justify-between rounded-2xl border bg-white text-left text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-2 dark:text-white';
+    'inline-flex items-center justify-between rounded-2xl border bg-white text-left text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-white';
   const sizing = compact
     ? 'h-10 w-[98px] gap-1.5 px-2.5 py-2 text-sm'
     : 'h-11 w-full gap-2 px-3.5 py-2.5 text-sm';
   const state = disabled
-    ? 'cursor-not-allowed border-gray-200 text-gray-400 dark:text-gray-500'
+    ? 'cursor-not-allowed border-gray-200 text-gray-400 dark:text-gray-400'
     : 'border-gray-200 shadow-sm hover:border-iwana-primary/25';
 
   return `${base} ${sizing} ${state}`;
@@ -103,7 +103,7 @@ export function TimeFieldSelect({
             className={
               value
                 ? 'font-medium tabular-nums text-gray-900 dark:text-white'
-                : 'tabular-nums text-gray-400 dark:text-gray-500'
+                : 'tabular-nums text-gray-400 dark:text-gray-400'
             }
           >
             {displayValue}
@@ -111,8 +111,8 @@ export function TimeFieldSelect({
           <span
             className={
               compact
-                ? 'flex items-center gap-0.5 text-gray-400 dark:text-gray-500'
-                : 'flex items-center gap-1 text-gray-400 dark:text-gray-500'
+                ? 'flex items-center gap-0.5 text-gray-400 dark:text-gray-400'
+                : 'flex items-center gap-1 text-gray-400 dark:text-gray-400'
             }
           >
             <Clock3 className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />

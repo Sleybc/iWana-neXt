@@ -22,30 +22,14 @@ interface NavItem {
   icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
 }
 
-interface NavGroup {
-  group: string;
-  items: NavItem[];
-}
-
 const DESKTOP_STORAGE_KEY = 'iwana-web-sidebar-collapsed';
 
-// Grupos de navegación con sus ítems
-const navGroups: NavGroup[] = [
-  {
-    group: PLATFORM_UI_COPY.navigationGroups.operation,
-    items: [
-      { href: '/dashboard', label: PLATFORM_UI_COPY.navigation.home, icon: LayoutDashboard },
-      { href: '/tenants', label: PLATFORM_UI_COPY.navigation.tenants, icon: Building2 },
-      { href: '/users', label: PLATFORM_UI_COPY.navigation.users, icon: Users },
-    ],
-  },
-  {
-    group: PLATFORM_UI_COPY.navigationGroups.governance,
-    items: [
-      { href: '/audit-logs', label: PLATFORM_UI_COPY.navigation.audit, icon: ClipboardList },
-      { href: '/settings', label: PLATFORM_UI_COPY.navigation.settings, icon: Settings },
-    ],
-  },
+const navItems: NavItem[] = [
+  { href: '/dashboard', label: PLATFORM_UI_COPY.navigation.home, icon: LayoutDashboard },
+  { href: '/tenants', label: PLATFORM_UI_COPY.navigation.tenants, icon: Building2 },
+  { href: '/users', label: PLATFORM_UI_COPY.navigation.users, icon: Users },
+  { href: '/audit-logs', label: PLATFORM_UI_COPY.navigation.audit, icon: ClipboardList },
+  { href: '/settings', label: PLATFORM_UI_COPY.navigation.settings, icon: Settings },
 ];
 
 interface NavItemsProps {
@@ -56,71 +40,55 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
   const pathname = usePathname();
 
   return (
-    <>
-      {navGroups.map((navGroup, groupIndex) => (
-        <div key={navGroup.group} className="mb-2">
-          <p
-            className={cn(
-              'portal-eyebrow-muted mb-2 mt-6 px-4 text-[11px]',
-              groupIndex === 0 && 'mt-0',
-              desktopCollapsed && 'lg:hidden',
-            )}
-          >
-            {navGroup.group}
-          </p>
+    <ul className="flex flex-col gap-1 px-2">
+      {navItems.map((item) => {
+        const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const Icon = item.icon;
 
-          <ul className="flex flex-col gap-1 px-2">
-            {navGroup.items.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const Icon = item.icon;
+        return (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              title={desktopCollapsed ? item.label : undefined}
+              className={cn(
+                'group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
+                isActive
+                  ? 'relative bg-iwana-surface-soft text-iwana-primary dark:bg-dark-surface-3 dark:text-white'
+                  : 'text-gray-600 hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-gray-100',
+                desktopCollapsed && 'lg:justify-center lg:px-2',
+                interactiveFocusClassName,
+              )}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              {isActive && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-iwana-secondary dark:bg-iwana-secondary-400"
+                />
+              )}
+              <Icon
+                aria-hidden
+                className={cn(
+                  'h-5 w-5 shrink-0',
+                  isActive
+                    ? 'text-iwana-secondary-700 dark:text-iwana-secondary'
+                    : 'text-gray-400 group-hover:text-iwana-secondary-700 dark:text-gray-400 dark:group-hover:text-iwana-secondary',
+                )}
+              />
 
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    title={desktopCollapsed ? item.label : undefined}
-                    className={cn(
-                      'group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
-                      isActive
-                        ? 'relative bg-iwana-surface-soft text-iwana-primary dark:bg-dark-surface-3 dark:text-white'
-                        : 'text-gray-600 hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-gray-100',
-                      desktopCollapsed && 'lg:justify-center lg:px-2',
-                      interactiveFocusClassName,
-                    )}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    {isActive && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-iwana-secondary dark:bg-iwana-secondary-400"
-                      />
-                    )}
-                    <Icon
-                      aria-hidden
-                      className={cn(
-                        'h-5 w-5 shrink-0',
-                        isActive
-                          ? 'text-iwana-secondary-700 dark:text-iwana-secondary'
-                          : 'text-gray-400 group-hover:text-iwana-secondary-700 dark:text-gray-500 dark:group-hover:text-iwana-secondary',
-                      )}
-                    />
-
-                    <span
-                      className={cn(
-                        'whitespace-nowrap overflow-hidden transition-all duration-200',
-                        desktopCollapsed ? 'lg:w-0 lg:opacity-0' : 'w-auto opacity-100',
-                      )}
-                    >
-                      {item.label}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </>
+              <span
+                className={cn(
+                  'whitespace-nowrap overflow-hidden transition-all duration-200',
+                  desktopCollapsed ? 'lg:w-0 lg:opacity-0' : 'w-auto opacity-100',
+                )}
+              >
+                {item.label}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
 
@@ -153,10 +121,10 @@ export const Sidebar = ({
     <aside
       id="sidebar"
       ref={sidebar}
-      aria-label="Navegación principal"
+      aria-label={PLATFORM_UI_COPY.shell.navLandmark}
       className={cn(
-        'fixed left-0 top-0 z-40 flex h-screen flex-col overflow-y-hidden',
-        'border-r border-transparent bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:border-transparent dark:bg-dark-surface-2/95',
+        'fixed left-0 top-0 z-(--z-drawer) flex h-screen flex-col overflow-y-hidden',
+        'border-r border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2',
         'transition-all duration-200 ease-linear',
         'lg:static lg:translate-x-0',
         desktopCollapsed ? 'lg:w-[90px]' : 'lg:w-[290px]',
@@ -213,7 +181,7 @@ export const Sidebar = ({
       </div>
 
       <div className="no-scrollbar flex flex-col overflow-y-auto flex-1 py-4">
-        <nav aria-label="Menú principal">
+        <nav aria-label={PLATFORM_UI_COPY.shell.menuLandmark}>
           <Suspense fallback={null}>
             <NavItems desktopCollapsed={desktopCollapsed} />
           </Suspense>

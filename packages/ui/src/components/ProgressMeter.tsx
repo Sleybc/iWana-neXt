@@ -36,7 +36,7 @@ function ProgressMeter({
     <div className={cn('space-y-4', className)}>
       <div className="mb-1 flex items-end justify-between gap-4">
         <span className="text-sm font-semibold text-iwana-primary dark:text-white/90">{label}</span>
-        <span className="text-[2rem] leading-none font-bold tracking-tight text-iwana-secondary-700 dark:text-iwana-secondary">
+        <span className="text-[2rem] leading-none font-bold tracking-tight text-iwana-secondary-700 dark:text-iwana-secondary-400">
           {pct}%
         </span>
       </div>
@@ -56,10 +56,10 @@ function ProgressMeter({
               className={cn(
                 'flex items-center gap-1',
                 dim.value === 100
-                  ? 'font-medium text-iwana-secondary-700 dark:text-iwana-secondary'
+                  ? 'font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400'
                   : dim.value > 0
                     ? 'text-gray-500 dark:text-gray-400'
-                    : 'text-gray-400 dark:text-gray-500',
+                    : 'text-gray-400 dark:text-gray-400',
               )}
             >
               {dim.value === 100 ? (

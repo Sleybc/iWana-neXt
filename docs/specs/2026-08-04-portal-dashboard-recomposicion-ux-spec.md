@@ -1,10 +1,10 @@
 # UX spec — Recomposición del inicio del portal empresarial (`apps/portal` → `/dashboard`)
 
-**Versión:** 1.0
-**Estado:** Congelado — desbloqueante para AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX)
-**Fecha:** 2026-08-04
-**Autor:** AI-PROD-UX
-**Etapa del workflow:** 2 — solución UX/UI ([protocolo v1.5](../roles/Protocolo_Colaboracion_Multiagente_v1.md) §3)
+**Versión:** 1.0 + adendas delta UX v1.2 + **adendas remediación UI R-A…R-D (2026-08-11)**  
+**Estado:** Congelado — desbloqueante para AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX) · adendas delta autorizadas en [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) v1.2 · adendas de remediación autorizadas en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md) v1.0  
+**Fecha:** 2026-08-04 (congelación) · adendas delta y remediación UI 2026-08-11  
+**Autor:** AI-PROD-UX  
+**Etapa del workflow:** 2 — solución UX/UI ([protocolo v1.5](../roles/Protocolo_Colaboracion_Multiagente_v1.md) §3)  
 **Alcance:** el inicio `/dashboard` de `apps/portal` y las piezas del shell que la auditoría marcó como bloqueantes (foco y tabulación del menú lateral en móvil, entrada al buscador global bajo 1024 px)
 
 **Entradas**
@@ -537,3 +537,296 @@ Esta spec queda **congelada** en la versión 1.0 y es citable por ruta y versió
 Contrato hermano, fuera de este documento y congelado el mismo día: [`2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) v1.0 de AI-DS-OWNER — tokens, API de la tarjeta de indicador y matriz de estados requeridos. Verificado el 2026-08-04: las tres piezas que esta spec le pide (ranura de cifra con texto sustituto en lugar de cero, distintivo tonal de severidad, y estado de error por tarjeta con reintento) están contratadas allí, y ninguna decisión de este documento contradice a aquel.
 
 **Nota de gate 11 — resuelta el 2026-08-04.** Esta spec nunca tuvo hallazgos. Los 15 bloqueantes que reportó al congelarse eran del contrato hermano, por citar ADR-075 sin marcador; AI-EM-ARCH los cerró el mismo día y el ADR pasó después a **Aprobado**, con lo que el marcador dejó de ser necesario. `pnpm audit:adr-citations` está hoy en `BLOQUEANTE: 0`. Se conserva el registro porque el aviso hizo su trabajo: un track detectó un defecto de gate en el artefacto de otro y lo trasladó en lugar de ignorarlo.
+
+**Adendas 2026-08-11 (delta UX v1.2).** Ver «Adendas delta UX»: B1 por dominio (U-1), Ver más inteligente (U-2) y mapa deep links historial (U-3). Congeladas en el mismo acto que el prompt v1.2; FE/QA citan spec + adendas.
+
+**Adendas remediación UI 2026-08-11 (R-A…R-D).** Ver la sección final «Adendas remediación UI — 2026-08-11». Versionan honestidad de hora (R-A), anuncio/foco de error de B1 (R-B), aterrizaje desde I-6 (R-C), primer viewport a 1280 px (R-D) y la matriz de acciones de B0. No reabren I-1…I-7 ni el contrato DS. FE/QA citan spec + estas adendas; el prompt de remediación ya las publicó para no bloquear implementación.
+
+---
+
+## Adendas delta UX — 2026-08-11 (prompt v1.2)
+
+Autoriza AI-EM-ARCH en [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) v1.2. Contrato DS hermano: v1.3 (`eyebrow` opcional + receta de grupo). Skills: `system-vocabulary-review` · `iwana-identity-ui-review` (modo diseño, solo spec). Tracks notificados: AI-FE-PLATFORM · AI-SR-QA · AI-DS-OWNER · AI-SR-FULL · AI-SEC-ENG (pista E, sin cambio de composición aquí).
+
+Estas adendas **versionan** el flujo de B1, el pliegue «Ver más» y los deep links del historial. El resto de la spec v1.0 permanece vigente. No se inventan pantallas, endpoints ni tokens.
+
+---
+
+### Adenda B1 — agrupación por dominio (U-1)
+
+**Qué cambia:** solo la composición visual de la banda **B1**. Sustituye, cuando aplique, la lectura de «retícula plana de N cards iguales» / «4 por fila» de §2.2, §3 y §4.3 (ADMIN) y el layout de §8 para indicadores: la lectura principal pasa a **bandas de dominio**, no a siete tarjetas gemelas con eyebrow repetido.
+
+**Qué no cambia:** inventario y semántica de I-1…I-7 (§3.2), destinos/filtros, B0/B2/B2b/B3 (salvo Adenda «Ver más inteligente»), estados §6, accesos §4.14, techos de autorización, cota máxima de 7 indicadores.
+
+#### Dominios canónicos — membresía I-1…I-7 (cerrada)
+
+Orden de **membresía** (cerrada; no se reasignan IDs). El orden de **pintado de grupos** sigue la primera aparición de sus miembros en `metricIds` del rol (así SUPPORT mantiene casos antes que campo, §4.5); dentro de cada grupo, el orden de métricas es el de `metricIds`.
+
+| # | Dominio (rótulo de encabezado, una sola vez) | Indicadores | Etiquetas visibles (§3.2) |
+| --- | --- | --- | --- |
+| — | Operaciones de campo | I-1, I-2 | Visitas de hoy · Solicitudes por programar |
+| — | Mesa de ayuda | I-3, I-4 | Casos abiertos · Casos en riesgo de incumplir |
+| — | Comercial | I-5, I-6 | Planes sin precio vigente · Ofertas en riesgo |
+| — | Oportunidades | I-7 | Oportunidades en seguimiento |
+
+Si el rol no impone otro orden (p. ej. ADMIN con I-1…I-7 secuencial), el pintado coincide con: campo → mesa → comercial → oportunidades.
+
+#### Reglas de composición
+
+1. **Grupo =** encabezado de dominio (vocabulario de la tabla) + grid interno de métricas del grupo.
+2. **Grid del grupo:** 1 columna si hay un solo hijo; `sm:grid-cols-2` si hay dos. No forzar huecos vacíos a 4 columnas.
+3. **Eyebrow de categoría omitido** en cada métrica hija (ranura `eyebrow` vacía / no renderizada — DS v1.3). El dominio vive solo en el encabezado del grupo.
+4. Siguen existiendo **hasta 7 indicadores** como cifras/acciones/destinos independientes; **prohibido** fusionar dos cifras en un solo valor o eliminar IDs.
+5. Roles con un solo indicador (p. ej. contadora → I-5): **un grupo de un miembro** (encabezado «Comercial» + una métrica), o card suelta equivalente — sin inventar hermanos.
+6. Roles sin indicadores: B1 ausente (sin cambio).
+7. **Prohibido** rellenar huecos con KPI vacío o decorativo.
+8. Iconos **distintos** dentro del mismo grupo (I-3 ≠ I-4, I-5 ≠ I-6); la elección de icono es de FE contra el catálogo Lucide ya usado, no de esta spec.
+9. **Skeleton B1:** respeta la forma de grupos del rol (p. ej. ADMIN → hasta 4 encabezados de dominio), no siete bloques sueltos.
+
+#### Ejemplos por rol (lectura esperada)
+
+| Rol | Grupos visibles | Lectura |
+| --- | --- | --- |
+| Administradora | 4 (campo, mesa, comercial, oportunidades) | Hasta cuatro bandas de dominio; 7 métricas hijas sin eyebrow de categoría |
+| Monitoreo operativo | 2 (campo, mesa) | I-1…I-4 |
+| Soporte inicial | 2 (mesa, campo) — grupos ordenados por primera aparición en `metricIds` (§4.5) | I-3, I-4, I-1, I-2 |
+| Ejecutivo comercial | 2 (comercial, oportunidades) | I-5…I-7 |
+| Contadora | 1 (comercial) | Solo I-5 |
+
+> **Nota SUPPORT:** §4.5 exige casos antes que campo. FE construye la lista de grupos recorriendo `metricIds` y abriendo un grupo la primera vez que aparece un miembro; no reordenar a la secuencia canónica campo→mesa.
+
+**Criterio de aceptación (delta):** CA-DELTA-06 — ADMIN expone hasta 4 encabezados de dominio; 0 eyebrows de categoría duplicados en métricas hijas; I-1…I-7 siguen navegables.
+
+---
+
+### Adenda «Ver más inteligente» (U-2)
+
+**Cierra:** D-P1-05 · D-QW-04 · CA-DELTA-08 · CA-DELTA-12.
+
+**Problema:** el pliegue estático de §4.3 (ADMIN) puede ocultar trabajo real cuando el KPI asociado ya es > 0.
+
+**Alcance:** solo bloques que estén en `foldedBlockIds` de la composición del rol. No cambia qué bloques están autorizados ni el máximo de un dominante (§2.3 regla 4).
+
+#### Asociación bloque ↔ KPI de B1
+
+| Bloque (`DashboardBlockId`) | KPI asociado | Condición para salir del pliegue |
+| --- | --- | --- |
+| `commercial-attention` | I-5 **o** I-6 | Al menos uno de los dos con valor numérico **> 0** |
+| `help-desk` | I-3 **o** I-4 | Al menos uno de los dos con valor numérico **> 0** |
+| `inventory` (Estado del almacén) | — | **Nunca** por KPI de B1 (no hay indicador de almacén en I-1…I-7). Sigue plegable |
+| `field-attention` | I-1 / I-2 | No aplica en ADMIN (es el dominante, no está plegado) |
+
+Si el KPI está en estado error / dato no disponible, **no** se promociona (solo cuenta un número > 0 leído con éxito).
+
+#### Reglas de promoción
+
+1. Partir del conjunto `foldedBlockIds` del rol.
+2. Para cada bloque de la tabla anterior que esté plegado **y** cumpla la condición → **sacarlo del pliegue efectivo** y mostrarlo visible sin clic.
+3. **Ubicación del promovido:** debajo del bloque dominante (columna B2), **antes** del control «Ver más», en este orden fijo si hay varios: `commercial-attention` → `help-desk`. En viewport de una columna, el mismo orden apilado. No competir como segundo dominante: siguen siendo listas de apoyo promovidas por señal de KPI.
+4. El pliegue efectivo (`foldedRest`) = plegados originales menos los promovidos.
+5. Si `foldedRest` queda vacío → **no se muestra** el control «Ver más».
+6. Inventario y cualquier otro bloque sin regla de KPI permanecen en `foldedRest` si estaban plegados.
+
+#### Copy del control (vocabulario de producto)
+
+| Estado | Texto visible exacto | Notas |
+| --- | --- | --- |
+| Colapsado, N ≥ 2 | `Ver más · N bloques` | N = tamaño de `foldedRest` (solo lo que sigue oculto) |
+| Colapsado, N = 1 | `Ver más · 1 bloque` | Singular |
+| Expandido | `Ocultar bloques adicionales` | Sin cambio de sentido respecto al copy actual |
+| N = 0 | — | Control ausente |
+
+- Sentence case. Sin jerga (`folded`, IDs técnicos) en UI.
+- Nombre accesible del botón puede repetir el texto visible; `aria-expanded` refleja abierto/cerrado.
+- El conteo **no** incluye bloques ya promovidos por KPI.
+
+**Ejemplo ADMIN:** I-5 = 3, I-3 = 0, I-4 = 0 → `commercial-attention` visible bajo campo; pliegue efectivo = `help-desk` + `inventory` → control `Ver más · 2 bloques`.
+
+---
+
+### Adenda deep links del historial — mapa `entityType` → ruta (U-3)
+
+**Cierra:** D-QW-07 · CA-DELTA-13. Aplica al bloque **Historial de cambios** (`RecentActivityPanel` / fuente `audit`). No abre alcance de P-4 (página de historial completo).
+
+**Regla de oro:** solo se enlaza si existe página bajo `apps/portal/src/app/dashboard/`. **Prohibido** inventar pantallas o rutas. Si no hay destino seguro → fila **sin enlace** (texto plano). Sin 404.
+
+#### Cómo leer la tabla
+
+| Columna | Significado |
+| --- | --- |
+| `entityType` (audit) | Valor crudo (y alias frecuentes) tal como llega en el historial |
+| Ruta portal | Plantilla bajo `/dashboard/…` |
+| Clase | `detalle` = interpola `entityId` · `lista` = existe listado pero **no** hay `/…/:id` → **no** deep-link de registro · `sin ruta` = no enlazar |
+| FE | Solo clase `detalle` + `entityId` no vacío → `<Link>`. Clase `lista` o `sin ruta` → fila sin enlace (la lista no es el registro) |
+
+#### Mapa mínimo (inventario verificado 2026-08-11)
+
+Rutas de detalle existentes hoy: `crm/expedientes/[id]`, `crm/subscribers/[id]`. El resto son listados o settings sin ficha por id.
+
+| `entityType` (audit) | Ruta portal | Clase |
+| --- | --- | --- |
+| `User`, `user` | `/dashboard/users` | **lista** — no existe `/dashboard/users/:id` → sin deep-link de registro |
+| `Expediente`, `ExpedienteRecord` | `/dashboard/crm/expedientes/:id` | **detalle** |
+| `Subscriber` | `/dashboard/crm/subscribers/:id` | **detalle** |
+| `PotentialLead` | `/dashboard/leads` | **lista** |
+| `AccessProfile`, `access_profile` | `/dashboard/settings/access` | **lista** |
+| `TenantSettings`, `tenant_settings`, `Settings` | `/dashboard/settings` | **lista** |
+| `organization_site`, `organization_site_business_hours`, `organization_company_business_hours`, `organization_business_hours_exception`, `organization_site_assignments`, `organization_site_responsibilities` | `/dashboard/settings/organization` | **lista** |
+| `InventoryItem`, `inventory_item` | `/dashboard/inventory` | **lista** |
+| `AssuranceTicket`, `Ticket` | `/dashboard/assurance` | **lista** |
+| `CommercialPlan`, `Plan`, `bundle`, `product`, `promotion`, `service` *(si aparecen en audit)* | `/dashboard/commercial` | **lista** |
+| `Visit`, `WorkOrder`, `ScheduleEvent`, `Wfm` | `/dashboard/scheduling` o agenda | **lista** — sin ficha `/…/:id` |
+| `Tenant`, `tenant`, `TenantProfile`, `TenantBranding` | — | **sin ruta** de ficha operativa en historial (B3 / settings no son deep-link del evento) |
+| `Session`, `AuditLog`, `Role`, `ConsentRecord`, `ProspectCase`, `SubscriberList`, `PlatformUser`, `user_access_profiles`, `access_profile_permissions`, `UserProfile`, `UserPasswordReset`, `UserLoginEmail`, `UserLoginEmailAdmin` | — | **sin ruta** |
+| Cualquier otro no listado | — | **sin ruta** (default seguro) |
+
+> **Nota de vocablo:** en UI el tipo sigue traduciéndose con `auditEntityTypeLabel` (p. ej. `Expediente` → «oportunidad»). El mapa de rutas usa el valor crudo del API, no la etiqueta.
+
+#### Criterios FE / QA
+
+1. Con `entityType` ∈ {`Expediente`, `ExpedienteRecord`} y `entityId` → href `/dashboard/crm/expedientes/{entityId}`.
+2. Con `entityType` = `Subscriber` y `entityId` → href `/dashboard/crm/subscribers/{entityId}`.
+3. `User` / `user`: **sin enlace** en esta fase (solo lista existe; no fingir detalle).
+4. Resto: sin enlace.
+5. No añadir CTA «ver todo» (P-4 / §4.9).
+
+**Deuda explícita (fuera de este delta):** deep-link de usuario cuando exista `/dashboard/users/:id`; deep-links de inventario, casos y visitas cuando existan fichas. Registrar en informe vivo si se prioriza después — no ampliar U-3 en silencio.
+
+---
+
+## Adendas remediación UI — 2026-08-11
+
+Autoriza AI-EM-ARCH en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md) v1.0. Cierra los huecos de implementación del review UI §11 (R-P1-01, R-P1-02, R-P2-01, R-P2-03) y fija el desempate de viewport 1280. Contrato DS hermano: **v1.3 — Congelado**, sin bump. Skills: `system-vocabulary-review` · `iwana-identity-ui-review` (modo diseño, solo spec). Tracks notificados: AI-FE-PLATFORM · AI-SR-QA · AI-DS-OWNER.
+
+Estas adendas **versionan** la honestidad de la hora de B0, el anuncio/foco del error de B1, el aterrizaje desde I-6, el primer viewport a 1280 px y la matriz de acciones de B0. El resto de la spec v1.0 y de las adendas delta v1.2 permanece vigente. No se inventan indicadores, endpoints, tokens ni primitives. No se reabren I-1…I-7.
+
+**Modo identidad:** refinamiento de flujo y copy sobre la composición ya congelada. No es un rediseño. El lima no entra en avisos de dato incompleto, error ni riesgo.
+
+**Stop comprobado:** ninguna de estas adendas exige un campo ausente en HLD §4.2. La hora por fuente y la hora global son estado de lectura del cliente sobre los contratos ya autorizados. Sin `[BLOQUEO]`.
+
+---
+
+### Adenda R-A — Honestidad de «Última lectura» (R-P1-01)
+
+Aclara R-3 / R-6 / R-7 de §9; **no** las sustituye.
+
+1. Cada fuente conserva la marca de su **última lectura exitosa**.
+2. La hora global de B0 **solo avanza** cuando **todas** las fuentes pedidas en esa oleada terminan en éxito.
+3. Si al menos una fuente falla y otra conserva dato previo: B0 **no** publica una hora nueva; junto a la hora se muestra el aviso recuperable de dato desactualizado (copy de abajo). La cifra antigua sigue visible.
+4. Una métrica en `error + data` **debe** mostrar el estado de error/reintento aunque conserve valor. Ocultar el error porque hay cifra previa miente sobre la frescura.
+5. Un reintento de un solo bloque (R-6) no avanza la hora global salvo que esa oleada cubra todas las fuentes del rol y todas tengan éxito.
+
+**Aviso junto a «Última lectura» — texto visible exacto:**
+
+```text
+Algunos datos no se actualizaron. Revisa los avisos o pulsa Actualizar.
+```
+
+Reglas de composición del aviso:
+
+- Vive **junto a** la hora de B0 (`Última lectura: …`), no como un `PortalAlert` de página. No abre región viva propia: el anuncio para tecnologías de asistencia lo hace el grupo o el bloque que falló (R-B y §6.4).
+- Sentence case. Sin jerga (`fuente`, `oleada`, `contrato`, nombre de módulo interno).
+- Desaparece solo cuando una oleada posterior termina con **todas** las fuentes en éxito y B0 publica una hora nueva.
+- Tono de advertencia del sistema, **nunca lima**.
+
+---
+
+### Adenda R-B — Anuncio y foco del error de B1 (R-P1-02)
+
+Materializa §6.4 y la nota (a) del contrato DS §2.1. **No** abre `aria-live` en cada tarjeta.
+
+1. Cada **grupo de dominio B1** que tenga al menos una métrica en error monta un `PortalAlert variant='error' live='polite'` **del grupo**, además del estado visual/reintento por tarjeta.
+2. El encabezado del grupo es destino de foco estable: `tabIndex={-1}` + `ref`.
+3. Tras un reintento con éxito, si el botón «Reintentar» desaparece, el foco pasa a ese encabezado.
+4. Un segundo fallo se anuncia en la misma región viva del grupo (mismo `PortalAlert`; no se apila un segundo aviso).
+5. El grupo no se desmonta ni se colapsa.
+
+**Copy exacto del `PortalAlert` de grupo**
+
+El `{rótulo}` es el encabezado de dominio de la adenda B1, sin cambiar una letra: `Operaciones de campo` · `Mesa de ayuda` · `Comercial` · `Oportunidades`.
+
+| Ranura | Texto exacto |
+| --- | --- |
+| Título | `No pudimos actualizar las cifras de {rótulo en minúsculas}` |
+| Cuerpo | `Las cifras anteriores siguen visibles. Reintenta en cada tarjeta con aviso.` |
+
+Títulos resultantes (cerrados; no se improvisan):
+
+| Grupo | Título visible exacto |
+| --- | --- |
+| Operaciones de campo | `No pudimos actualizar las cifras de operaciones de campo` |
+| Mesa de ayuda | `No pudimos actualizar las cifras de mesa de ayuda` |
+| Comercial | `No pudimos actualizar las cifras de comercial` |
+| Oportunidades | `No pudimos actualizar las cifras de oportunidades` |
+
+Un grupo, un aviso: si fallan I-5 e I-6 a la vez, el grupo Comercial monta **un** `PortalAlert`, no dos. Las tarjetas siguen mostrando su propio error/reintento.
+
+---
+
+### Adenda R-C — «Ofertas en riesgo» → bloque comercial (R-P2-03)
+
+Aclara la excepción de I-6 (§3.4). No inventa toast ni destino nuevo.
+
+1. El clic en I-6 sigue abriendo el pliegue y marcando el bloque comercial (`commercial-attention`).
+2. Tras revelar, el foco va al encabezado del bloque (destino estable `tabIndex={-1}`). El encabezado visible sigue siendo **Atención comercial**.
+3. El bloque anunciado usa región viva educada (`aria-live='polite'` o `PortalAlert` / `role='status'` ya existente). No se inventa un toast.
+4. Si hace falta desplazamiento, `scrollIntoView` solo cuando **no** hay `prefers-reduced-motion`; con la preferencia activa, solo se mueve el foco.
+
+**Anuncio al revelar el bloque — texto exacto:**
+
+```text
+Atención comercial. Revisa las ofertas en riesgo.
+```
+
+Se emite una sola vez por clic en I-6, también si el bloque ya estaba visible por la promoción de «Ver más inteligente». Sin identificadores técnicos en el anuncio.
+
+---
+
+### Adenda R-D — Viewport 1280 (desempate)
+
+Texto normativo del desempate de AI-EM-ARCH (prompt remediación §2). **Deroga** el tramo «banda completa de indicadores + inicio de B2» de §8 **solo a 1280 px y solo para roles con ≥ 2 grupos de dominio**.
+
+| Qué | Decisión |
+| --- | --- |
+| Suelo de §2.2 | **Intacto** en los tres tamaños: B0 con al menos una acción operable + **al menos dos indicadores** (o la excepción ya escrita de UX-03 si el rol no tiene indicadores) |
+| Primer viewport a 1280 px, rol con ≥ 2 grupos | B0 + **los dos primeros grupos de dominio completos** (orden de pintado de la adenda B1). B2 **puede** quedar bajo el pliegue |
+| Primer viewport a 1280 px, rol con 0 o 1 grupo | La derogación **no aplica**. Sigue §8 + UX-03 |
+| Prohibido | Comprimir tarjetas · eliminar I-1…I-7 · volver a la retícula plana · forzar B2 en el primer viewport a 1280 |
+
+QA **no** falla el criterio de primer viewport si B2 queda bajo el pliegue a 1280 px, siempre que B0 y los dos primeros grupos de dominio estén completos.
+
+Ejemplo ADMIN (cuatro grupos, orden campo → mesa → comercial → oportunidades): a 1280 el primer viewport muestra B0 + Operaciones de campo + Mesa de ayuda. Comercial, Oportunidades y B2 pueden quedar bajo el pliegue.
+
+---
+
+### Matriz B0 de acciones (U-R2) — deroga la fila «Acciones de B0» de §8
+
+«Actualizar» (R-3) es siempre operable, pero **no** cuenta como acción primaria de §5.2. La primaria y la secundaria siguen siendo las de §5.2.
+
+| Viewport | Controles visibles | Menú de desbordamiento |
+| --- | --- | --- |
+| **375 px** | **1:** la acción primaria | Sí. Nombre accesible exacto: `Más acciones del inicio`. Dentro, en este orden: `Actualizar` y, si existe, la secundaria |
+| **768 px** | **2:** primaria + `Actualizar` | **No.** La secundaria no se ofrece en este tamaño |
+| **1280 px** | **2:** primaria + `Actualizar` | Sí, **solo si** hay secundaria u otra acción de desbordamiento. Dentro: la secundaria y el resto. Nombre accesible: `Más acciones del inicio` |
+
+Si el menú quedaría vacío, **no se renderiza**. El patrón de teclado del menú es el de `DropdownMenu` ya existente (Escape, flechas, clic exterior, foco inicial y retorno al disparador). Esta spec no redefine ese contrato.
+
+---
+
+### R-8 vigente (U-R3)
+
+**R-8 de §9 no se reabre ni se relaja.** El historial de cambios del inicio y la campana de notificaciones consumen **una sola lectura** compartida. Sin identificadores en la interfaz salvo necesidad operativa explícita. Mismo vocabulario de acción y entidad en ambas superficies (helper canónico; sin fallback de enumeración cruda en la campana). Esta remediación no añade sondeo ni duplica la petición del inicio: R-2 sigue — el home no se auto-refresca.
+
+---
+
+### Criterios de experiencia añadidos (trazables a CA-REM-*)
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-REM-01** | Con una fuente en error y otra en éxito, B0 no muestra una hora más reciente que la última oleada completa y muestra el aviso de R-A | Lectura de B0 |
+| **UX-REM-02** | La métrica con dato previo y fuente en error muestra error y «Reintentar» | Recorrido de la tarjeta |
+| **UX-REM-03** | Un grupo B1 en error anuncia **una** vez con el título/cuerpo de R-B | Un `PortalAlert` por grupo afectado |
+| **UX-REM-04** | Tras reintento exitoso, el foco está en el encabezado del grupo | Teclado / foco |
+| **UX-REM-05** | Acciones de B0: 375 → 1 + menú; 768 → 2 sin menú; 1280 → 2 + menú si hay secundaria | Viewport |
+| **UX-REM-06** | Clic en «Ofertas en riesgo» mueve el foco a Atención comercial, emite el anuncio de R-C y no anima el desplazamiento si hay `prefers-reduced-motion` | Teclado + preferencia de movimiento |
+| **UX-REM-07** | Campana e historial del inicio muestran el mismo hecho con el mismo vocabulario; sin identificador visible | Comparación de ambas superficies |

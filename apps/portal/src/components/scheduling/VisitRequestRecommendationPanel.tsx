@@ -536,7 +536,7 @@ export function VisitRequestRecommendationPanel({
               {customerDisplayName ?? getVisitRequestReferenceLabel(selectedVisitRequest)}
             </p>
             {customerDisplayName && (
-              <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+              <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-400">
                 {getVisitRequestReferenceLabel(selectedVisitRequest)}
               </p>
             )}

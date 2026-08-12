@@ -56,14 +56,14 @@ const passwordRequirements = [
 const authClassNames = {
   label: 'text-sm font-bold text-iwana-primary dark:text-white',
   fieldBase:
-    'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500',
+    'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400',
   fieldDefault:
-    'border-slate-200 focus:ring-iwana-secondary/35 dark:border-dark-border dark:focus:ring-iwana-secondary-400/25',
+    'border-slate-200 focus:ring-iwana-secondary/35 dark:border-iwana-neutral-600 dark:focus:ring-iwana-secondary-400/25',
   fieldError: 'border-red-500 focus:ring-red-500/30',
   fieldLeadingIcon:
-    'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-500',
+    'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-400',
   fieldTrailingButton:
-    'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-500 dark:hover:text-gray-300',
+    'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-400 dark:hover:text-gray-300',
   infoCard:
     'rounded-2xl border border-iwana-primary-100 bg-[linear-gradient(135deg,var(--color-iwana-surface-soft),rgba(255,255,255,0.96))] p-4 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none',
   helperCard:
@@ -411,8 +411,8 @@ export function LoginForm() {
           Acceso administrativo
         </p>
         <p className="mt-1 text-sm text-slate-600 dark:text-gray-400">
-          Usa tu cuenta de plataforma para revisar empresas, usuarios internos y actividad
-          operativa con trazabilidad centralizada.
+          Usa tu cuenta de plataforma para revisar empresas, usuarios internos y actividad operativa
+          con trazabilidad centralizada.
         </p>
       </div>
 

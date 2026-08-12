@@ -95,7 +95,7 @@ function ContactEntry({ attempt }: { attempt: ContactAttemptRecord }) {
         <Badge variant={getContactChannelBadgeVariant(attempt.channel)}>{attempt.channel}</Badge>
         <Badge variant={getContactResultBadgeVariant(attempt.result)}>{attempt.result}</Badge>
         {attempt.durationMinutes && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+          <span className="text-[10px] text-gray-400 dark:text-gray-400">
             {attempt.durationMinutes} min
           </span>
         )}
@@ -104,7 +104,7 @@ function ContactEntry({ attempt }: { attempt: ContactAttemptRecord }) {
         <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-300">{attempt.notes}</p>
       )}
       {attempt.actorName && (
-        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">por {attempt.actorName}</p>
+        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-400">por {attempt.actorName}</p>
       )}
     </div>
   );
@@ -122,7 +122,7 @@ function ResponsibilityEntry({ item }: { item: OperationalHistoryItem }) {
         </p>
       )}
       {item.previousResponsible && (
-        <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+        <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-400">
           Anterior: {item.previousResponsible.name || 'Sin nombre'}
         </p>
       )}
@@ -157,13 +157,13 @@ function PipelineEntry({ change }: { change: ExpedienteTimelineChange }) {
           {formatExpedienteStatus(change.toStatus)}
         </Badge>
         {change.fromStatus && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+          <span className="text-[10px] text-gray-400 dark:text-gray-400">
             ← {formatExpedienteStatus(change.fromStatus)}
           </span>
         )}
       </div>
       {change.actor?.name && (
-        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">por {change.actor.name}</p>
+        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-400">por {change.actor.name}</p>
       )}
       {change.reason && (
         <p className="mt-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] dark:bg-dark-surface-3">
@@ -196,7 +196,7 @@ function SystemActivityEntry({ activity }: { activity: ExpedienteActivityItem })
             {formatExpedienteStatus(activity.toStatus)}
           </Badge>
           {activity.fromStatus && (
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+            <span className="text-[10px] text-gray-400 dark:text-gray-400">
               ← {formatExpedienteStatus(activity.fromStatus)}
             </span>
           )}
@@ -208,7 +208,7 @@ function SystemActivityEntry({ activity }: { activity: ExpedienteActivityItem })
         </p>
       )}
       {actorName && (
-        <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-500">
+        <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-400">
           por {actorName}
         </p>
       )}
@@ -268,7 +268,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
       <div
         className={`rounded-[14px] border border-gray-100 border-l-2 bg-white px-3 py-2.5 shadow-sm transition-shadow hover:shadow-sm dark:border-dark-border dark:bg-dark-surface-2 ${kindMeta.accentClassName}`}
       >
-        <p className="text-[10px] font-bold uppercase tracking-wide leading-tight text-gray-400 dark:text-gray-500">
+        <p className="text-[10px] font-bold uppercase tracking-wide leading-tight text-gray-400 dark:text-gray-400">
           {kindLabel}
         </p>
         {entry.kind === 'contact' && <ContactEntry attempt={entry.data as ContactAttemptRecord} />}
@@ -284,7 +284,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
         {entry.kind === 'system' && (
           <SystemActivityEntry activity={entry.data as ExpedienteActivityItem} />
         )}
-        <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">
+        <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-400">
           {entry.sortAt.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}
         </p>
       </div>
@@ -319,13 +319,13 @@ export function ExpedienteTimelinePanel({
           disabled={allTimelineEntries.length === 0 && !loadingAttempts}
           className="group flex items-center gap-2 outline-none"
         >
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
             Bitácora de actividad
             {allTimelineEntries.length > 0 && ` (${allTimelineEntries.length})`}
           </p>
           {allTimelineEntries.length > 0 && (
             <ChevronDown
-              className={`h-4 w-4 text-gray-400 transition-transform duration-200 dark:text-gray-500 ${
+              className={`h-4 w-4 text-gray-400 transition-transform duration-200 dark:text-gray-400 ${
                 isHistoryExpanded ? 'rotate-180' : ''
               }`}
               aria-hidden="true"
@@ -379,7 +379,7 @@ export function ExpedienteTimelinePanel({
             <div className="h-4 w-px bg-gray-200 dark:bg-dark-border" aria-hidden="true" />
 
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
                 Ver
               </span>
               <div className="flex flex-wrap gap-1">
@@ -414,8 +414,8 @@ export function ExpedienteTimelinePanel({
         </div>
       ) : allTimelineEntries.length === 0 ? (
         <div className="rounded-[14px] border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center dark:border-dark-border dark:bg-dark-surface-3">
-          <Phone className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" aria-hidden="true" />
-          <p className="mt-3 text-sm text-gray-400 dark:text-gray-500">
+          <Phone className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-400" aria-hidden="true" />
+          <p className="mt-3 text-sm text-gray-400 dark:text-gray-400">
             Aún no hay actividad registrada para esta oportunidad.
           </p>
         </div>
@@ -428,7 +428,7 @@ export function ExpedienteTimelinePanel({
                   <TimelineItem key={entry.id} entry={entry} />
                 ))
               ) : (
-                <p className="py-4 text-sm text-gray-400 dark:text-gray-500">
+                <p className="py-4 text-sm text-gray-400 dark:text-gray-400">
                   Sin resultados para este filtro.
                 </p>
               )}

@@ -601,11 +601,15 @@ export function PurchaseRequestWorkbenchDrawer({
                     />
                     <dl className="grid gap-3 text-sm sm:grid-cols-2">
                       <div>
-                        <dt className="text-iwana-secondary-700">Tipo de compra</dt>
+                        <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          Tipo de compra
+                        </dt>
                         <dd className="mt-1">{getPurchaseRequestTypeLabel(request.requestType)}</dd>
                       </div>
                       <div>
-                        <dt className="text-iwana-secondary-700">Prioridad</dt>
+                        <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          Prioridad
+                        </dt>
                         <dd className="mt-1">
                           <Badge variant={getPurchaseRequestPriorityBadgeVariant(request.priority)}>
                             {getPurchaseRequestPriorityLabel(request.priority)}
@@ -613,7 +617,9 @@ export function PurchaseRequestWorkbenchDrawer({
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-iwana-secondary-700">Estado</dt>
+                        <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          Estado
+                        </dt>
                         <dd className="mt-1">
                           <Badge variant={getPurchaseRequestStatusBadgeVariant(request.status)}>
                             {getPurchaseRequestStatusLabel(request.status)}
@@ -621,17 +627,23 @@ export function PurchaseRequestWorkbenchDrawer({
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-iwana-secondary-700">Fecha requerida</dt>
+                        <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          Fecha requerida
+                        </dt>
                         <dd className="mt-1">{formatInventoryDate(request.neededByDate)}</dd>
                       </div>
                       <div>
-                        <dt className="text-iwana-secondary-700">Monto estimado</dt>
+                        <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          Monto estimado
+                        </dt>
                         <dd className="mt-1 tabular-nums">
                           {formatInventoryCurrency(detail?.estimatedAmount ?? 0)}
                         </dd>
                       </div>
                       <div>
-                        <dt className="text-iwana-secondary-700">Política</dt>
+                        <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                          Política
+                        </dt>
                         <dd className="mt-1">
                           {detail?.approvalPolicy.canApprove
                             ? 'Lista para aprobación'

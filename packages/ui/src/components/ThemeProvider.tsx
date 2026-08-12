@@ -1,17 +1,17 @@
 'use client';
 // ThemeProvider — Proveedor de tema claro/oscuro para iWana neXt.
 // Implementa dark mode funcional con Tailwind 4 (clase 'dark' en <html>).
-// Persiste preferencia en localStorage. Respeta prefers-color-scheme inicial.
+// Persiste preferencia en localStorage solo tras hidratar. Respeta prefers-color-scheme inicial.
 
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from 'react';
+  THEME_STORAGE_KEY,
+  applyHtmlThemeClass,
+  resolveThemeFromStorage,
+  type ThemeName,
+} from '../theme-bootstrap';
 
-type Theme = 'light' | 'dark';
+type Theme = ThemeName;
 
 interface ThemeContextValue {
   theme: Theme;
@@ -21,32 +21,30 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = 'iwana-theme';
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light');
+  const [mounted, setMounted] = useState(false);
 
-  // Al montar: leer localStorage o usar preferencia del sistema operativo
+  // Al montar: leer localStorage o usar preferencia del sistema operativo.
+  // No persistir el default React 'light' antes de hidratar (CA-DARK-UX-02).
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored === 'dark' || stored === 'light') {
-      setThemeState(stored);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setThemeState(prefersDark ? 'dark' : 'light');
-    }
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    const prefersDark =
+      stored === 'dark' || stored === 'light'
+        ? false
+        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setThemeState(resolveThemeFromStorage(stored, prefersDark));
+    setMounted(true);
   }, []);
 
-  // Aplicar clase 'dark' al <html> y persistir en localStorage cada vez que cambia el tema
+  // Aplicar clase 'dark' y persistir solo cuando el tema ya se leyó de storage.
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+    if (!mounted) {
+      return;
     }
-    localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
+    applyHtmlThemeClass(document.documentElement, theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme, mounted]);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);

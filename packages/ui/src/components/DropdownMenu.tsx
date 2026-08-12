@@ -335,7 +335,7 @@ const DropdownMenuContent = React.forwardRef<HTMLDivElement, DropdownMenuContent
 DropdownMenuContent.displayName = 'DropdownMenuContent';
 
 const dropdownMenuItemVariants = cva(
-  'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-400 dark:disabled:text-gray-500',
+  'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-400 dark:disabled:text-gray-400',
   {
     variants: {
       variant: {

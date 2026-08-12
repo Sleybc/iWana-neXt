@@ -145,7 +145,9 @@ export function StockItemDetailDrawer({
             <h2 id={titleId} className="text-xl font-semibold text-iwana-secondary-900">
               {item.name}
             </h2>
-            <p className="text-sm text-iwana-secondary-700">{item.sku}</p>
+            <p className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              {item.sku}
+            </p>
           </div>
           <Button ref={closeButtonRef} type="button" variant="secondary" onClick={onClose}>
             Cerrar
@@ -177,7 +179,9 @@ export function StockItemDetailDrawer({
               value={formatInventoryCostOrNone(item.lastPurchaseCost)}
             />
           </dl>
-          <p className="text-xs text-iwana-secondary-700">{INVENTORY_AVERAGE_COST_HELP_TEXT}</p>
+          <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            {INVENTORY_AVERAGE_COST_HELP_TEXT}
+          </p>
         </section>
 
         <section className="space-y-2">
@@ -241,7 +245,9 @@ export function StockItemDetailDrawer({
               </tbody>
             </table>
           )}
-          <p className="text-xs text-iwana-secondary-700">{STOCK_RESERVED_HELP_TEXT}</p>
+          <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            {STOCK_RESERVED_HELP_TEXT}
+          </p>
         </section>
 
         <section className="space-y-2">
@@ -264,11 +270,11 @@ export function StockItemDetailDrawer({
                     <span className="font-medium">{movement.movementNumber}</span>
                     <span>{formatInventoryDate(movement.createdAt)}</span>
                   </div>
-                  <p className="text-sm text-iwana-secondary-700">
+                  <p className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
                     {getStockMovementOriginLabel(movement.origin)}
                   </p>
                   {movement.lines.some((line) => line.unitCost != null && line.unitCost !== '') ? (
-                    <ul className="mt-1 space-y-0.5 text-xs text-iwana-secondary-700">
+                    <ul className="mt-1 space-y-0.5 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
                       {movement.lines.map((line) =>
                         line.unitCost != null && line.unitCost !== '' ? (
                           <li key={line.id}>
@@ -293,7 +299,7 @@ export function StockItemDetailDrawer({
             >
               Anterior
             </Button>
-            <span className="text-sm text-iwana-secondary-700">
+            <span className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
               Página {page} de {totalPages}
             </span>
             <Button

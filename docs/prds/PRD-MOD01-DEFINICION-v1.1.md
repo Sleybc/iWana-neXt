@@ -111,7 +111,7 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 #### UC-05: Consulta de audit log (Auditor)
 
 - Actor: Auditor del ISP
-- Flujo: Consulta `/api/v1/audit-logs` con filtros (rango de fechas, tipo de entidad, usuario) → sistema retorna registros paginados con cursor → puede exportar para informes regulatorios (CRC, DIAN)
+- Flujo: Consulta `/api/v1/audit-logs` con filtros (rango de fechas, tipo de entidad, usuario) → sistema retorna registros paginados con cursor. La exportación para informes regulatorios (CRC, DIAN) queda restringida a `ADMIN` y `SYSTEM_ADMIN`; `AUDITOR` mantiene acceso de solo lectura al listado, conforme al HLD MOD02 v2.0.1 y al dictamen SEC del delta UX 2026-08-11.
 
 ---
 

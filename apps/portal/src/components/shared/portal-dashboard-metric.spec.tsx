@@ -139,6 +139,26 @@ describe('PortalDashboardMetric', () => {
     );
   });
 
+  it('omite la ranura eyebrow cuando no se pasa o viene vacía (B-1 / DS v1.3)', () => {
+    const { rerender, container } = render(
+      <PortalDashboardMetric label="Visitas de hoy" value={12} icon={Calendar} />,
+    );
+
+    expect(container.querySelector('.portal-eyebrow-muted')).toBeNull();
+    expect(screen.getByText('Visitas de hoy')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+
+    rerender(
+      <PortalDashboardMetric eyebrow="   " label="Visitas de hoy" value={12} icon={Calendar} />,
+    );
+    expect(container.querySelector('.portal-eyebrow-muted')).toBeNull();
+
+    rerender(
+      <PortalDashboardMetric eyebrow="Agenda" label="Visitas de hoy" value={12} icon={Calendar} />,
+    );
+    expect(screen.getByText('Agenda')).toBeInTheDocument();
+  });
+
   it('en danger/warning el eyebrow usa escalón AA gray-700 (DS §1.7)', () => {
     const { rerender } = render(
       <PortalDashboardMetric

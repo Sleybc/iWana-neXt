@@ -20,10 +20,10 @@ async function loginToDashboard(page: Page) {
 
 async function openMobileSidebar(page: Page) {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.getByRole('button', { name: 'Abrir menu' }).click();
+  await page.getByRole('button', { name: 'Abrir menú' }).click();
   await expect(
     page.getByRole('complementary', { name: 'Navegación principal' }).getByRole('button', {
-      name: 'Cerrar menu',
+      name: 'Cerrar menú',
     }),
   ).toBeVisible();
 }
@@ -60,7 +60,7 @@ test.describe('Web shell sidebar — touch targets + evidencia visual', () => {
     await openMobileSidebar(page);
 
     const sidebar = page.getByRole('complementary', { name: 'Navegación principal' });
-    const closeBtn = sidebar.getByRole('button', { name: 'Cerrar menu' });
+    const closeBtn = sidebar.getByRole('button', { name: 'Cerrar menú' });
     const closeBox = await measureBox(closeBtn);
     expect(closeBox.width, 'cierre ancho').toBeGreaterThanOrEqual(44);
     expect(closeBox.height, 'cierre alto').toBeGreaterThanOrEqual(44);

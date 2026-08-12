@@ -235,7 +235,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       {/* Estado vacío total */}
       {emptyNoExpediente && (
         <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-gray-200 bg-white py-16 text-center dark:border-dark-border dark:bg-dark-surface-2">
-          <Wifi className="mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" aria-hidden />
+          <Wifi className="mb-3 h-10 w-10 text-gray-300 dark:text-gray-400" aria-hidden />
           <p className="font-medium text-gray-700 dark:text-gray-300">Sin servicios contratados</p>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Este suscriptor aún no tiene contratos registrados.
@@ -407,7 +407,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
 function ExpedienteField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
         {label}
       </dt>
       <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{value}</dd>

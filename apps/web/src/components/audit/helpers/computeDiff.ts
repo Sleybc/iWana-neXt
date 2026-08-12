@@ -2,6 +2,8 @@
  * Compara oldValue y newValue y retorna todos los campos que cambiaron.
  * Extraído de AuditLogsTable para uso compartido en helpers y componentes.
  */
+import { describeAuditFieldLabel } from '@/lib/platform-audit-vocabulary';
+
 export function computeDiff(
   oldValue: Record<string, unknown> | null,
   newValue: Record<string, unknown> | null,
@@ -51,13 +53,9 @@ export function renderValue(val: unknown): string {
   return String(val);
 }
 
-/** Formatea el nombre de un campo camelCase a texto legible */
-export function formatFieldName(field: string): string {
-  return field
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, (str) => str.toUpperCase())
-    .replace('Id', 'ID')
-    .trim();
+/** Formatea el nombre de un campo camelCase a texto de producto */
+export function formatFieldName(field: string, options?: { mode?: 'reading' | 'detail' }): string {
+  return describeAuditFieldLabel(field, options) ?? '';
 }
 
 /** Abrevia un User-Agent a "Navegador Versión / OS" */

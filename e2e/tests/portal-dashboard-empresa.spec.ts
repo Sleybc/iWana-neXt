@@ -98,8 +98,9 @@ const mockTenantSummary = {
     {
       id: 'mfa-not-required',
       severity: 'warning',
-      title: 'MFA no obligatorio',
-      description: 'Se recomienda habilitar MFA obligatorio.',
+      title: 'Verificación en dos pasos no obligatoria',
+      description:
+        'Se recomienda activar la verificación en dos pasos obligatoria para todos los usuarios de la empresa.',
       href: '/dashboard/settings',
     },
   ],
@@ -680,7 +681,9 @@ test.describe('Dashboard empresarial — baseline CA (selectores semánticos D-6
     await setAuthSession(page);
     await gotoDashboard(page);
 
-    await expect(page.getByText(/historial de cambios/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /historial de cambios/i })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });
 
@@ -1018,5 +1021,64 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
     await expect(page).toHaveURL(/view=open/);
     await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();
     await expectLoadedDashboard(page);
+  });
+});
+
+test.describe('C-R3 / C-R4 · Acciones B0 y teclado del menú', () => {
+  test('375: 1 visible + menú; Escape y flechas devuelven el foco', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await setupDashboardMocks(page);
+    await setAuthSession(page);
+    await gotoDashboard(page);
+    await expectLoadedDashboard(page);
+
+    const primary = page.getByRole('link', { name: /Registrar suscriptor/i });
+    const refresh = page.getByRole('button', { name: /^Actualizar$/ });
+    const more = page.getByRole('button', { name: 'Más acciones del inicio' });
+    await expect(primary).toBeVisible();
+    await expect(refresh).toBeHidden();
+    await expect(more).toBeVisible();
+
+    await more.focus();
+    await page.keyboard.press('Enter');
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: /Actualizar/i })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: /Programar visita/i })).toBeVisible();
+
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(more).toBeFocused();
+  });
+
+  test('768: 2 visibles y sin menú', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
+    await setupDashboardMocks(page);
+    await setAuthSession(page);
+    await gotoDashboard(page);
+    await expectLoadedDashboard(page);
+
+    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Actualizar$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Más acciones del inicio' })).toBeHidden();
+  });
+
+  test('1280: 2 visibles + menú con secundaria', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await setupDashboardMocks(page);
+    await setAuthSession(page);
+    await gotoDashboard(page);
+    await expectLoadedDashboard(page);
+
+    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Actualizar$/ })).toBeVisible();
+    const more = page.getByRole('button', { name: 'Más acciones del inicio' });
+    await expect(more).toBeVisible();
+
+    await more.click();
+    const menu = page.getByRole('menu');
+    await expect(menu.getByRole('menuitem', { name: /Programar visita/i })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: /Actualizar/i })).toBeHidden();
   });
 });

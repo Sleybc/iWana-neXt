@@ -11,8 +11,8 @@ const quickLinks: Array<{ href: string; label: string; description: string }> = 
   { href: '/users', label: 'Usuarios internos', description: 'Revisa accesos y cuentas internas' },
   {
     href: '/audit-logs',
-    label: 'Auditoría',
-    description: 'Explora actividad y cambios recientes',
+    label: 'Historial de cambios',
+    description: 'Revisa qué cambió el equipo recientemente',
   },
   { href: '/settings', label: 'Plataforma', description: 'Ajustes globales y branding' },
 ];
@@ -149,7 +149,7 @@ export function GlobalSearchOverlay({
                 </p>
                 <p className="mt-1 text-sm text-slate-600 dark:text-gray-400">
                   Prueba con el nombre de la empresa, un correo, un responsable o una sección como
-                  Configuración o Auditoría.
+                  Configuración o Historial.
                 </p>
               </div>
               <div className="grid gap-2 text-sm text-gray-500 dark:text-gray-400 md:grid-cols-3">
@@ -172,14 +172,14 @@ export function GlobalSearchOverlay({
                 <section key={group.type} aria-label={group.label} className="space-y-2">
                   <div className="flex items-start justify-between gap-3 px-2">
                     <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
                         {group.label}
                       </h3>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {groupDescriptions[group.type]}
                       </p>
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{group.total}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400">{group.total}</span>
                   </div>
                   <div role="listbox" aria-label={group.label} className="space-y-2">
                     {group.items.map((item) => (

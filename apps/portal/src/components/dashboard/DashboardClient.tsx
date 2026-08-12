@@ -2,9 +2,26 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { ExpedienteStatus, UserRole } from '@iwana/shared';
 import { MoreHorizontal, RefreshCw } from 'lucide-react';
+import {
+  Badge,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  cn,
+} from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -12,14 +29,15 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  interactiveFocusClassName,
   portalInlineTextLinkClassName,
 } from '@/components/shared/portal-ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
+import { loadAuditFeed } from '@/lib/audit-feed-cache';
 import {
   ApiError,
   assuranceApi,
-  auditApi,
   commercialApi,
   crmApi,
   dashboardApi,
@@ -35,26 +53,36 @@ import {
   type TenantPublicBranding,
   type TenantSelf,
   type TenantSelfSettings,
+  type WfmDashboardAlert,
   type WfmDashboardSummary,
 } from '@/lib/api-client';
+import {
+  getAssuranceTicketPriorityLabel,
+  getAssuranceTicketTypeLabel,
+} from '@/components/assurance/assurance-labels';
+import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
 import { TenantSummaryCard } from './TenantSummaryCard';
 import { OnboardingAlerts } from './OnboardingAlerts';
 import { RecentActivityPanel } from './RecentActivityPanel';
 import { QuickActionsPanel } from './QuickActionsPanel';
 import {
   getDashboardRoleComposition,
+  groupDashboardMetricsByDomain,
   isUserRole,
   resolveDashboardAction,
   resolveDashboardBlock,
   resolveDashboardDataSources,
   resolveDashboardMetric,
+  resolvePromotedFoldedBlockIds,
   toLocalDayKey,
   type DashboardActionDefinition,
   type DashboardBlockId,
   type DashboardDataSourceId,
   type DashboardMetricId,
+  type DashboardMetricSourceStatus,
   type DashboardRoleComposition,
 } from './dashboard-role-composition';
+import type { OnboardingOperationState } from './OnboardingAlerts';
 
 type LoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
 
@@ -62,6 +90,7 @@ interface SourceState<T> {
   status: LoadStatus;
   data: T | null;
   error: string | null;
+  lastSuccessAt: string | null;
 }
 
 type CrmPipelineSummary = { data: Record<string, number>; total: number };
@@ -86,7 +115,7 @@ const CLOSED_PIPELINE_STATUSES = new Set<string>([
 const TAB_REFRESH_MS = 5 * 60 * 1000;
 
 function emptySource<T>(): SourceState<T> {
-  return { status: 'idle', data: null, error: null };
+  return { status: 'idle', data: null, error: null, lastSuccessAt: null };
 }
 
 function createInitialSources(): DashboardSourcesState {
@@ -106,17 +135,23 @@ function createInitialSources(): DashboardSourcesState {
 function assignSource(
   state: DashboardSourcesState,
   id: DashboardDataSourceId,
-  value: { status: LoadStatus; data: unknown; error: string | null },
+  value: { status: LoadStatus; data: unknown; error: string | null; lastSuccessAt: string | null },
 ): void {
   // Indexación heterogénea del fan-out: el discriminante es `id`.
   (state as Record<DashboardDataSourceId, SourceState<unknown>>)[id] = value;
 }
 
 function mapSourceError(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    if (error.status === 403) return 'No tienes permisos para este bloque.';
-    return error.message || fallback;
+  const candidate =
+    error instanceof ApiError
+      ? error
+      : error instanceof Error && typeof (error as Error & { status?: unknown }).status === 'number'
+        ? (error as Error & { status: number })
+        : null;
+  if (candidate) {
+    if (candidate.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
+    if (candidate.status === 403) return 'No tienes permisos para este bloque.';
+    return candidate.message || fallback;
   }
   return fallback;
 }
@@ -226,11 +261,35 @@ function metricSourceStatus(
   return 'loading';
 }
 
+function resolveOnboardingOperationState(sources: DashboardSourcesState): OnboardingOperationState {
+  const operationSources = [sources.commercial, sources.crm, sources.inventory];
+  if (
+    operationSources.some(
+      (source) =>
+        source.status === 'idle' || source.status === 'loading' || source.status === 'error',
+    )
+  ) {
+    return 'unknown';
+  }
+
+  const universeCounts = [
+    sources.commercial.data?.catalogActiveCount,
+    sources.crm.data?.total,
+    sources.inventory.data?.itemsCount,
+  ];
+  const availableCounts = universeCounts.filter(
+    (count): count is number => typeof count === 'number',
+  );
+  if (availableCounts.length !== universeCounts.length) return 'unknown';
+  return availableCounts.some((count) => count > 0) ? 'active' : 'not-started';
+}
+
 interface DashboardCacheEntry {
   role: UserRole;
   slug: string;
   sources: DashboardSourcesState;
-  lastFetchedAt: string;
+  lastFetchedAt: string | null;
+  partialStale: boolean;
 }
 
 let dashboardSessionCache: DashboardCacheEntry | null = null;
@@ -259,7 +318,7 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
     case 'crm':
       return crmApi.getPipelineSummary(slug);
     case 'audit':
-      return auditApi.list({ limit: 8 }, slug);
+      return loadAuditFeed({ slug, force: true });
     default: {
       const _exhaustive: never = sourceId;
       return _exhaustive;
@@ -267,11 +326,24 @@ async function fetchSource(sourceId: DashboardDataSourceId, slug: string): Promi
   }
 }
 
-function MetricsSkeleton({ count }: { count: number }) {
+function MetricsSkeleton({
+  groups,
+}: {
+  groups: readonly { label: string; metricIds: readonly string[] }[];
+}) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true">
-      {Array.from({ length: Math.max(count, 1) }).map((_, i) => (
-        <PortalSkeletonBlock key={i} className="h-[148px] rounded-3xl" />
+    <div className="space-y-6" aria-busy="true">
+      {groups.map((group) => (
+        <div key={group.label} className="space-y-3">
+          <PortalSkeletonBlock className="h-4 w-40 rounded-md" />
+          <div
+            className={`grid grid-cols-1 gap-4 ${group.metricIds.length > 1 ? 'sm:grid-cols-2' : ''}`}
+          >
+            {group.metricIds.map((metricId) => (
+              <PortalSkeletonBlock key={metricId} className="h-[148px] rounded-3xl" />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -314,7 +386,7 @@ function BlockError({
 }
 
 const headerActionClassName =
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium';
+  'min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium';
 
 function DashboardHeaderActions({
   primary,
@@ -326,76 +398,69 @@ function DashboardHeaderActions({
   onRefresh: () => void;
 }) {
   const menuId = useId();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const overflowTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="flex w-full flex-wrap items-center gap-2 md:justify-end">
       <button
         type="button"
         onClick={onRefresh}
-        className={`${headerActionClassName} hidden border border-gray-200 text-gray-700 hover:bg-gray-50 md:inline-flex dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-surface-3`}
+        className={cn(
+          headerActionClassName,
+          interactiveFocusClassName,
+          'hidden border border-gray-200 text-gray-700 hover:bg-gray-50 md:inline-flex dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-surface-3',
+        )}
       >
         <RefreshCw className="h-4 w-4" aria-hidden="true" />
         Actualizar
       </button>
-      {secondary ? (
-        <Link
-          href={secondary.href}
-          className={`${headerActionClassName} hidden border border-iwana-primary text-iwana-primary hover:bg-iwana-primary-50 md:inline-flex dark:border-iwana-primary-300 dark:text-iwana-primary-300 dark:hover:bg-iwana-primary/10`}
-        >
-          {secondary.label}
-        </Link>
-      ) : null}
       <Link
         href={primary.href}
-        className={`${headerActionClassName} bg-iwana-primary text-white hover:bg-iwana-primary-600`}
+        className={cn(
+          headerActionClassName,
+          interactiveFocusClassName,
+          'inline-flex bg-iwana-primary text-white hover:bg-iwana-primary-600',
+        )}
       >
         {primary.label}
       </Link>
-      <div className="relative md:hidden">
-        <button
-          type="button"
-          className={`${headerActionClassName} border border-gray-200 text-gray-700 dark:border-dark-border dark:text-gray-200`}
-          aria-expanded={menuOpen}
-          aria-controls={menuId}
-          aria-haspopup="menu"
-          aria-label="Más acciones del inicio"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-        </button>
-        {menuOpen ? (
-          <div
-            id={menuId}
-            role="menu"
-            className="absolute right-0 z-20 mt-2 min-w-[220px] rounded-2xl border border-gray-200 bg-white p-2 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2"
+      <div className={cn('flex', secondary ? 'md:hidden xl:flex' : 'md:hidden')}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            ref={overflowTriggerRef}
+            asChild
+            aria-label="Más acciones del inicio"
+            aria-controls={menuId}
+            className={cn(
+              headerActionClassName,
+              interactiveFocusClassName,
+              'inline-flex border border-gray-200 text-gray-700 dark:border-dark-border dark:text-gray-200',
+            )}
           >
-            <div role="none" className="flex flex-col gap-1">
-              <button
-                type="button"
-                role="menuitem"
-                className={`${headerActionClassName} w-full justify-start border border-gray-200 text-gray-700 dark:border-dark-border dark:text-gray-200`}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onRefresh();
-                }}
-              >
-                <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                Actualizar
-              </button>
-              {secondary ? (
-                <Link
-                  role="menuitem"
-                  href={secondary.href}
-                  className={`${headerActionClassName} w-full justify-start border border-iwana-primary text-iwana-primary dark:border-iwana-primary-300 dark:text-iwana-primary-300`}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  {secondary.label}
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+            <button type="button">
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent id={menuId} align="end" width="w-56">
+            <DropdownMenuItem
+              className="xl:hidden"
+              onClick={() => {
+                onRefresh();
+                queueMicrotask(() => {
+                  overflowTriggerRef.current?.focus();
+                });
+              }}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Actualizar
+            </DropdownMenuItem>
+            {secondary ? (
+              <DropdownMenuItem asChild>
+                <Link href={secondary.href}>{secondary.label}</Link>
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
@@ -427,12 +492,48 @@ function BlockEmpty({
   );
 }
 
+function fieldAlertSeverityLabel(severity: 'critical' | 'warning' | 'info'): string {
+  if (severity === 'critical') return 'Crítico';
+  if (severity === 'warning') return 'Atención';
+  return 'Informativo';
+}
+
+const FIELD_ALERT_SEVERITY_ORDER: Record<WfmDashboardAlert['severity'], number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
+
+/** Orden estable de atención: el riesgo más alto aparece primero. */
+export function sortFieldAlertsBySeverity(
+  alerts: readonly WfmDashboardAlert[],
+): WfmDashboardAlert[] {
+  return alerts
+    .map((alert, index) => ({ alert, index }))
+    .sort(
+      (left, right) =>
+        FIELD_ALERT_SEVERITY_ORDER[left.alert.severity] -
+          FIELD_ALERT_SEVERITY_ORDER[right.alert.severity] || left.index - right.index,
+    )
+    .map(({ alert }) => alert);
+}
+
+function fieldAlertSeverityVariant(
+  severity: 'critical' | 'warning' | 'info',
+): 'error' | 'warning' | 'info' {
+  if (severity === 'critical') return 'error';
+  if (severity === 'warning') return 'warning';
+  return 'info';
+}
+
 function FieldAttentionBlock({
   sources,
   onRetry,
+  maxItems = 5,
 }: {
   sources: DashboardSourcesState;
   onRetry: () => void;
+  maxItems?: number;
 }) {
   const state = sources.wfm;
   const title = resolveDashboardBlock('field-attention').title;
@@ -448,7 +549,7 @@ function FieldAttentionBlock({
       />
     );
   }
-  const alerts = state.data?.alerts ?? [];
+  const alerts = sortFieldAlertsBySeverity(state.data?.alerts ?? []);
   return (
     <PortalPanel title={title}>
       {state.status === 'updating' ? (
@@ -467,14 +568,21 @@ function FieldAttentionBlock({
           }
         />
       ) : (
-        <ul className="space-y-3">
-          {alerts.slice(0, 5).map((alert) => (
-            <li
-              key={alert.id}
-              className="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-border-2"
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{alert.title}</p>
-              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">{alert.description}</p>
+        <ul className="divide-y divide-gray-100 dark:divide-dark-border-2">
+          {alerts.slice(0, maxItems).map((alert) => (
+            <li key={alert.id}>
+              <Link
+                href="/dashboard/scheduling/agenda"
+                className={`flex min-h-11 flex-col gap-1 px-1 py-3 transition-colors hover:bg-iwana-surface-soft/60 dark:hover:bg-dark-surface-3/50 ${interactiveFocusClassName}`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{alert.title}</p>
+                  <Badge variant={fieldAlertSeverityVariant(alert.severity)}>
+                    {fieldAlertSeverityLabel(alert.severity)}
+                  </Badge>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">{alert.description}</p>
+              </Link>
             </li>
           ))}
         </ul>
@@ -505,6 +613,9 @@ function HelpDeskBlock({
     );
   }
   const openCount = state.data?.openCount ?? 0;
+  const byPriority = Object.entries(state.data?.byPriority ?? {}).filter(([, count]) => count > 0);
+  const byType = Object.entries(state.data?.byType ?? {}).filter(([, count]) => count > 0);
+
   return (
     <PortalPanel title={title}>
       {state.status === 'updating' ? (
@@ -523,13 +634,49 @@ function HelpDeskBlock({
           }
         />
       ) : (
-        <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+        <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
           <p>
             {openCount} casos abiertos · {state.data?.atRiskCount ?? 0} en riesgo
           </p>
-          <Link href="/dashboard/assurance?status=OPEN" className={portalInlineTextLinkClassName}>
-            Revisar casos abiertos
-          </Link>
+          {byPriority.length > 0 ? (
+            <div>
+              <p className="portal-eyebrow-muted mb-2">Por prioridad</p>
+              <ul className="space-y-1">
+                {byPriority.map(([priority, count]) => (
+                  <li key={priority}>
+                    <Link
+                      href={`/dashboard/assurance?priority=${encodeURIComponent(priority)}`}
+                      className={portalInlineTextLinkClassName}
+                    >
+                      {getAssuranceTicketPriorityLabel(priority)} · {count}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {byType.length > 0 ? (
+            <div>
+              <p className="portal-eyebrow-muted mb-2">Por tipo</p>
+              <ul className="space-y-1">
+                {byType.map(([type, count]) => (
+                  <li key={type}>
+                    <Link
+                      href={`/dashboard/assurance?type=${encodeURIComponent(type)}`}
+                      className={portalInlineTextLinkClassName}
+                    >
+                      {getAssuranceTicketTypeLabel(type)} · {count}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {byPriority.length === 0 && byType.length === 0 ? (
+            <Link href="/dashboard/assurance?status=OPEN" className={portalInlineTextLinkClassName}>
+              Abrir mesa de ayuda
+            </Link>
+          ) : null}
         </div>
       )}
     </PortalPanel>
@@ -541,14 +688,21 @@ function CommercialAttentionBlock({
   onRetry,
   highlight,
   accountantOnly,
+  headingRef,
 }: {
   sources: DashboardSourcesState;
   onRetry: () => void;
   highlight?: boolean;
   accountantOnly?: boolean;
+  headingRef?: Ref<HTMLHeadingElement> | undefined;
 }) {
   const state = sources.commercial;
   const title = resolveDashboardBlock('commercial-attention').title;
+  const headingProps = {
+    id: 'commercial-attention',
+    titleTabIndex: -1 as const,
+    titleRef: headingRef,
+  };
   if (state.status === 'loading' && !state.data) {
     return <BlockLoading title={title} rows={5} />;
   }
@@ -574,10 +728,15 @@ function CommercialAttentionBlock({
   items = items.slice(0, 5);
 
   return (
-    <PortalPanel title={title}>
+    <PortalPanel title={title} {...headingProps}>
       {highlight ? (
-        <p className="mb-3 text-xs font-medium text-iwana-secondary-700 dark:text-iwana-secondary-300">
-          Ofertas en riesgo — detalle en esta lista
+        <p
+          role="status"
+          aria-live="polite"
+          aria-label="Atención comercial. Revisa las ofertas en riesgo."
+          className="mb-3 text-xs font-medium text-amber-700 dark:text-amber-300"
+        >
+          Atención comercial. Revisa las ofertas en riesgo.
         </p>
       ) : null}
       {state.status === 'updating' ? (
@@ -654,6 +813,10 @@ function PipelineBlock({
   }
   const total = state.data?.total ?? 0;
   const open = openPipelineCount(state.data) ?? 0;
+  const openStatuses = Object.entries(state.data?.data ?? {}).filter(
+    ([status, count]) => count > 0 && !CLOSED_PIPELINE_STATUSES.has(status),
+  );
+
   return (
     <PortalPanel title={title}>
       {state.status === 'updating' ? (
@@ -671,11 +834,31 @@ function PipelineBlock({
             </Link>
           }
         />
+      ) : open === 0 ? (
+        <BlockEmpty
+          title="Sin oportunidades abiertas"
+          description="No hay oportunidades en seguimiento ahora. Puedes revisar el historial del embudo."
+          action={
+            <Link href="/dashboard/crm/expedientes" className={portalInlineTextLinkClassName}>
+              Ver el historial
+            </Link>
+          }
+        />
       ) : (
-        <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+        <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
           <p>
             {open} en seguimiento · {total} en total
           </p>
+          <ul className="space-y-1">
+            {openStatuses.map(([status, count]) => (
+              <li key={status} className="flex items-center justify-between gap-3">
+                <span>{formatExpedienteStatus(status)}</span>
+                <span className="font-mono tabular-nums text-gray-900 dark:text-white">
+                  {count}
+                </span>
+              </li>
+            ))}
+          </ul>
           <Link
             href="/dashboard/crm/expedientes?view=open"
             className={portalInlineTextLinkClassName}
@@ -760,6 +943,7 @@ function renderDashboardBlock({
   highlightCommercial,
   onRetrySource,
   role,
+  commercialHeadingRef,
 }: {
   blockId: DashboardBlockId;
   sources: DashboardSourcesState;
@@ -767,11 +951,17 @@ function renderDashboardBlock({
   highlightCommercial: boolean;
   onRetrySource: (sourceId: DashboardDataSourceId) => void;
   role: UserRole;
+  commercialHeadingRef?: Ref<HTMLHeadingElement> | undefined;
 }) {
   switch (blockId) {
     case 'field-attention':
       return (
-        <FieldAttentionBlock key={blockId} sources={sources} onRetry={() => onRetrySource('wfm')} />
+        <FieldAttentionBlock
+          key={blockId}
+          sources={sources}
+          maxItems={role === UserRole.SUPPORT ? 3 : 5}
+          onRetry={() => onRetrySource('wfm')}
+        />
       );
     case 'help-desk':
       return (
@@ -784,6 +974,7 @@ function renderDashboardBlock({
           sources={sources}
           highlight={highlightCommercial}
           accountantOnly={composition.primaryActionId === 'review-plans-without-price'}
+          headingRef={commercialHeadingRef}
           onRetry={() => onRetrySource('commercial')}
         />
       );
@@ -799,6 +990,9 @@ function renderDashboardBlock({
       );
     case 'next-configuration': {
       const summary = sources['tenant-summary'];
+      if (summary.status === 'loading' && !summary.data) {
+        return <BlockLoading key={blockId} title={resolveDashboardBlock(blockId).title} rows={2} />;
+      }
       if (summary.status === 'error' && !summary.data) {
         return (
           <BlockError
@@ -811,16 +1005,28 @@ function renderDashboardBlock({
       }
       return (
         <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
-          <OnboardingAlerts alerts={summary.data?.alerts ?? []} />
+          <OnboardingAlerts
+            alerts={summary.data?.alerts ?? []}
+            isUpdating={summary.status === 'updating'}
+            operationState={resolveOnboardingOperationState(sources)}
+          />
         </section>
       );
     }
-    case 'change-history':
+    case 'change-history': {
+      const audit = sources.audit;
       return (
         <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
-          <RecentActivityPanel />
+          <RecentActivityPanel
+            entries={audit.data}
+            status={audit.status}
+            error={audit.error}
+            onRetry={() => onRetrySource('audit')}
+            minimized={role === UserRole.AUDITOR}
+          />
         </section>
       );
+    }
     case 'quick-actions':
       return (
         <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
@@ -846,9 +1052,14 @@ export function DashboardClient() {
 
   const [sources, setSources] = useState<DashboardSourcesState>(() => createInitialSources());
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+  const [partialStale, setPartialStale] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [highlightCommercial, setHighlightCommercial] = useState(false);
   const [foldedOpen, setFoldedOpen] = useState(false);
+  const lastFetchedAtRef = useRef<string | null>(null);
+  const commercialHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const groupHeadingRefs = useRef<Partial<Record<string, HTMLHeadingElement | null>>>({});
+  const prevGroupErrorRef = useRef<Record<string, boolean>>({});
 
   const loadSources = useCallback(
     async (options: {
@@ -870,6 +1081,7 @@ export function DashboardClient() {
           const patch = {
             data: current.data,
             error: null,
+            lastSuccessAt: current.lastSuccessAt,
             status: (silent && current.data ? 'updating' : 'loading') as LoadStatus,
           };
           assignSource(next, id, patch);
@@ -882,6 +1094,7 @@ export function DashboardClient() {
       );
 
       const fetchedAt = new Date().toISOString();
+      const allSucceeded = settled.every((result) => result.status === 'fulfilled');
       setSources((prev) => {
         const next: DashboardSourcesState = { ...prev };
         for (let i = 0; i < settled.length; i++) {
@@ -892,6 +1105,7 @@ export function DashboardClient() {
               status: 'success',
               data: result.value.data,
               error: null,
+              lastSuccessAt: fetchedAt,
             });
           } else {
             const previous = prev[sourceId];
@@ -902,20 +1116,31 @@ export function DashboardClient() {
                 result.reason,
                 'No pudimos cargar este bloque. Reintenta en unos minutos.',
               ),
+              lastSuccessAt: previous.lastSuccessAt,
             });
           }
         }
+        const previousComplete = lastFetchedAtRef.current;
+        const nextLastFetchedAt = allSucceeded ? fetchedAt : previousComplete;
+        const nextPartialStale = !allSucceeded && Boolean(nextLastFetchedAt);
         // R-5 · snapshot de sesión para volver con «Atrás» sin refetch.
         dashboardSessionCache = {
           role: loadRole,
           slug,
           sources: next,
-          lastFetchedAt: fetchedAt,
+          lastFetchedAt: nextLastFetchedAt,
+          partialStale: nextPartialStale,
         };
         return next;
       });
 
-      setLastFetchedAt(fetchedAt);
+      if (allSucceeded) {
+        lastFetchedAtRef.current = fetchedAt;
+        setLastFetchedAt(fetchedAt);
+        setPartialStale(false);
+      } else {
+        setPartialStale(Boolean(lastFetchedAtRef.current));
+      }
       setInitialLoadDone(true);
     },
     [],
@@ -955,7 +1180,9 @@ export function DashboardClient() {
     if (cached && cached.role === role && cached.slug === slug) {
       // R-5 · restaurar último estado leído; no disparar red.
       setSources(cached.sources);
+      lastFetchedAtRef.current = cached.lastFetchedAt;
       setLastFetchedAt(cached.lastFetchedAt);
+      setPartialStale(cached.partialStale);
       setInitialLoadDone(true);
       return;
     }
@@ -980,6 +1207,34 @@ export function DashboardClient() {
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [lastFetchedAt, loadSources, role]);
+
+  useLayoutEffect(() => {
+    if (!composition) return;
+    const groups = groupDashboardMetricsByDomain(composition.metricIds);
+    for (const group of groups) {
+      const hasError = group.metricIds.some(
+        (metricId) => metricSourceStatus(metricId, sources) === 'error',
+      );
+      const hadError = prevGroupErrorRef.current[group.domainId] === true;
+      if (hadError && !hasError) {
+        groupHeadingRefs.current[group.domainId]?.focus();
+      }
+      prevGroupErrorRef.current[group.domainId] = hasError;
+    }
+  }, [composition, sources]);
+
+  useLayoutEffect(() => {
+    if (!highlightCommercial) return;
+    const heading = commercialHeadingRef.current;
+    if (!heading) return;
+    heading.focus();
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduceMotion && typeof heading.scrollIntoView === 'function') {
+      heading.scrollIntoView({ block: 'start' });
+    }
+  }, [foldedOpen, highlightCommercial]);
 
   if (!user || !role || !composition) {
     return (
@@ -1010,7 +1265,19 @@ export function DashboardClient() {
   const today = toLocalDayKey();
 
   const supportIds = composition.supportBlockIds;
-  const foldedIds = composition.foldedBlockIds;
+  const metricGroups = groupDashboardMetricsByDomain(composition.metricIds);
+  const metricValues: Partial<Record<DashboardMetricId, number | null>> = {};
+  const metricStatuses: Partial<Record<DashboardMetricId, DashboardMetricSourceStatus>> = {};
+  for (const metricId of composition.metricIds) {
+    metricValues[metricId] = metricValue(metricId, sources);
+    metricStatuses[metricId] = metricSourceStatus(metricId, sources);
+  }
+  const { promotedBlockIds, remainingFoldedBlockIds } = resolvePromotedFoldedBlockIds({
+    foldedBlockIds: composition.foldedBlockIds,
+    metricValues,
+    metricStatuses,
+  });
+  const foldedCount = remainingFoldedBlockIds.length;
 
   return (
     <div className="space-y-6">
@@ -1019,7 +1286,21 @@ export function DashboardClient() {
         title={companyTitle}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>Última lectura: {formatLastReadAt(lastFetchedAt)}</span>
+            <span>
+              Última lectura:{' '}
+              {lastFetchedAt ? (
+                <time dateTime={lastFetchedAt} className="font-mono tabular-nums">
+                  {formatLastReadAt(lastFetchedAt)}
+                </time>
+              ) : (
+                formatLastReadAt(lastFetchedAt)
+              )}
+            </span>
+            {partialStale ? (
+              <span role="status" className="text-amber-700 dark:text-amber-300">
+                Algunos datos no se actualizaron. Revisa los avisos o pulsa Actualizar.
+              </span>
+            ) : null}
             {Object.values(sources).some((s) => s.status === 'updating') ? (
               <span
                 className="text-iwana-secondary-700 dark:text-iwana-secondary-300"
@@ -1035,66 +1316,91 @@ export function DashboardClient() {
         }
       />
 
-      {/* B1 · Indicadores núcleo */}
+      {/* B1 · Indicadores núcleo — agrupados por dominio (Adenda §A) */}
       {composition.metricIds.length > 0 ? (
         <section aria-label="Indicadores núcleo">
           {firstLoadPending ? (
-            <MetricsSkeleton count={composition.metricIds.length} />
+            <MetricsSkeleton groups={metricGroups} />
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {composition.metricIds.map((metricId) => {
-                const def = resolveDashboardMetric(metricId);
-                const status = metricSourceStatus(metricId, sources);
-                const value = metricValue(metricId, sources);
-                const delta = metricDelta(metricId, sources);
-                const href = def.buildHref(today);
-                const metricState =
-                  status === 'loading'
-                    ? 'loading'
-                    : status === 'error' && value == null
-                      ? 'error'
-                      : 'idle';
-
-                const description =
-                  status === 'updating' ? (
-                    <span aria-live="polite">Actualizando · {def.description}</span>
-                  ) : (
-                    def.description
-                  );
-
-                const common = {
-                  eyebrow: def.eyebrow,
-                  label: def.label,
-                  value,
-                  description,
-                  accent: def.accent,
-                  state: metricState as 'idle' | 'loading' | 'error',
-                  icon: def.icon,
-                  ...(delta ? { delta } : {}),
-                  ...(metricState === 'error'
-                    ? {
-                        onRetry: () => {
-                          for (const sourceId of def.sources) {
-                            retrySource(sourceId);
-                          }
-                        },
-                      }
-                    : {}),
-                };
-
-                if (href) {
-                  return <PortalDashboardMetric key={metricId} {...common} href={href} />;
-                }
-
+            <div className="space-y-6">
+              {metricGroups.map((group) => {
+                const groupHasError = group.metricIds.some(
+                  (metricId) => metricSourceStatus(metricId, sources) === 'error',
+                );
                 return (
-                  <PortalDashboardMetric
-                    key={metricId}
-                    {...common}
-                    onClick={() => {
-                      setHighlightCommercial(true);
-                      setFoldedOpen(true);
-                    }}
-                  />
+                  <div key={group.domainId} className="space-y-3">
+                    <h2
+                      ref={(node) => {
+                        groupHeadingRefs.current[group.domainId] = node;
+                      }}
+                      tabIndex={-1}
+                      className={cn('portal-eyebrow', interactiveFocusClassName)}
+                    >
+                      {group.label}
+                    </h2>
+                    {groupHasError ? (
+                      <PortalAlert
+                        variant="error"
+                        live="polite"
+                        title={`No pudimos actualizar las cifras de ${group.label.toLocaleLowerCase('es-CO')}`}
+                        description="Las cifras anteriores siguen visibles. Reintenta en cada tarjeta con aviso."
+                      />
+                    ) : null}
+                    <div
+                      className={`grid grid-cols-1 gap-4 ${group.metricIds.length > 1 ? 'sm:grid-cols-2' : ''}`}
+                    >
+                      {group.metricIds.map((metricId) => {
+                        const def = resolveDashboardMetric(metricId);
+                        const status = metricSourceStatus(metricId, sources);
+                        const value = metricValue(metricId, sources);
+                        const delta = metricDelta(metricId, sources);
+                        const href = def.buildHref(today);
+                        const metricState =
+                          status === 'loading' ? 'loading' : status === 'error' ? 'error' : 'idle';
+
+                        const description =
+                          status === 'updating' ? (
+                            <span aria-live="polite">Actualizando · {def.description}</span>
+                          ) : (
+                            def.description
+                          );
+
+                        const common = {
+                          label: def.label,
+                          value,
+                          description,
+                          accent: def.accent,
+                          state: metricState as 'idle' | 'loading' | 'error',
+                          icon: def.icon,
+                          ...(delta ? { delta } : {}),
+                          ...(metricState === 'error'
+                            ? {
+                                onRetry: () => {
+                                  for (const sourceId of def.sources) {
+                                    retrySource(sourceId);
+                                  }
+                                },
+                              }
+                            : {}),
+                        };
+
+                        if (href) {
+                          return <PortalDashboardMetric key={metricId} {...common} href={href} />;
+                        }
+
+                        return (
+                          <PortalDashboardMetric
+                            key={metricId}
+                            {...common}
+                            onClick={() => {
+                              setHighlightCommercial(true);
+                              setFoldedOpen(true);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -1113,19 +1419,33 @@ export function DashboardClient() {
               highlightCommercial,
               onRetrySource: retrySource,
               role,
+              commercialHeadingRef,
             })}
-            {foldedIds.length > 0 ? (
+            {promotedBlockIds.map((blockId) =>
+              renderDashboardBlock({
+                blockId,
+                sources,
+                composition,
+                highlightCommercial,
+                onRetrySource: retrySource,
+                role,
+                commercialHeadingRef,
+              }),
+            )}
+            {foldedCount > 0 ? (
               <div className="space-y-4">
                 <button
                   type="button"
                   onClick={() => setFoldedOpen((open) => !open)}
-                  className={portalInlineTextLinkClassName}
+                  className={`${portalInlineTextLinkClassName} ${interactiveFocusClassName}`}
                   aria-expanded={foldedOpen}
                 >
-                  {foldedOpen ? 'Ocultar bloques adicionales' : 'Ver más'}
+                  {foldedOpen
+                    ? 'Ocultar bloques adicionales'
+                    : `Ver más · ${foldedCount} ${foldedCount === 1 ? 'bloque' : 'bloques'}`}
                 </button>
                 {foldedOpen
-                  ? foldedIds.map((blockId) =>
+                  ? remainingFoldedBlockIds.map((blockId) =>
                       renderDashboardBlock({
                         blockId,
                         sources,
@@ -1133,6 +1453,7 @@ export function DashboardClient() {
                         highlightCommercial,
                         onRetrySource: retrySource,
                         role,
+                        commercialHeadingRef,
                       }),
                     )
                   : null}
@@ -1152,6 +1473,7 @@ export function DashboardClient() {
               highlightCommercial,
               onRetrySource: retrySource,
               role,
+              commercialHeadingRef,
             }),
           )}
         </div>

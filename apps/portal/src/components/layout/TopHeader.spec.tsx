@@ -60,7 +60,7 @@ describe('TopHeader', () => {
 
     const openMenu = screen.getByRole('button', { name: 'Abrir menú' });
     expect(openMenu.className).toMatch(/h-11/);
-    expect(openMenu.className).toMatch(/w-11/);
+    expect(openMenu.className).toMatch(/w-14/);
 
     const home = screen.getByRole('link', { name: 'Ir al dashboard' });
     expect(home.className).toMatch(/min-h-11/);

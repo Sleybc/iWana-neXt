@@ -8,11 +8,14 @@ Postura de la marca: **visualmente sobrio, interactivamente denso**. El color co
 
 Ítem activo del sidebar: tinte suave + barra vertical + icono lima; el resto del sidebar atenuado (patrón "dim the sidebar" de Linear).
 
+**Aside vigente (2026-08-11):** blanco / `dark-surface-2`. El navy (`bg-iwana-primary`) está **Superado** — no es receta, no es hallazgo.
+
 ```
-// contenedor activo: bg-white/10 (sobre sidebar azul) o tinte suave
+// aside: bg-white dark:bg-dark-surface-2  (nunca bg-iwana-primary)
+// contenedor activo: bg-iwana-surface-soft / dark:bg-dark-surface-3
 // indicador: absolute left-0 w-1 h-6 bg-iwana-secondary rounded-r-full
-// icono del ítem activo: text-iwana-secondary
-// ítems inactivos: text-white/70 hover:bg-white/5
+// icono del ítem activo: text-iwana-secondary-700 dark:text-iwana-secondary
+// ítems inactivos: text-gray-600 hover:bg-iwana-surface-soft
 ```
 
 ## 2. Sombra dual azulada

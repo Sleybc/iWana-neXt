@@ -1,35 +1,32 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@iwana/ui';
-import { Building2, CircleCheckBig, Clock3, ShieldAlert, X } from 'lucide-react';
-import { TenantsTable } from '@/components/dashboard/TenantsTable';
+import { Alert, AlertDescription, cn, interactiveFocusClassName } from '@iwana/ui';
+import { X } from 'lucide-react';
+import { SignalChips, type SignalChipModel } from '@/components/dashboard/SignalChips';
+import {
+  TenantsTable,
+  type SortDir,
+  type SortField,
+  type StatusFilterValue,
+} from '@/components/dashboard/TenantsTable';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
 import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
+import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 type TenantConfirmAction = {
   type: 'suspend' | 'activate';
   id: string;
 };
 
-type TenantStatusFilter =
-  | 'TODAS'
-  | 'ACTIVE'
-  | 'PROVISIONING'
-  | 'PROVISIONING_FAILED'
-  | 'SUSPENDED'
-  | 'INACTIVE'
-  | 'MARKED_FOR_DELETION';
-
 /** ADR-064 analogía web: page size / soft-cap previo → load-more por offset. */
 const TENANTS_PAGE_SIZE = PICKER_SOFT_CAP;
 
-const VALID_STATUS_FILTERS = new Set<TenantStatusFilter>([
+const VALID_STATUS_FILTERS = new Set<StatusFilterValue>([
   'TODAS',
   'ACTIVE',
   'PROVISIONING',
@@ -39,27 +36,50 @@ const VALID_STATUS_FILTERS = new Set<TenantStatusFilter>([
   'MARKED_FOR_DELETION',
 ]);
 
-function parseStatusFilter(value: string | null): TenantStatusFilter {
+const VALID_SORT_FIELDS = new Set<SortField>(['name', 'status', 'updatedAt', 'createdAt']);
+const VALID_SORT_DIRS = new Set<SortDir>(['asc', 'desc']);
+
+function parseStatusFilter(value: string | null): StatusFilterValue {
   if (!value) return 'TODAS';
-  return VALID_STATUS_FILTERS.has(value as TenantStatusFilter)
-    ? (value as TenantStatusFilter)
+  return VALID_STATUS_FILTERS.has(value as StatusFilterValue)
+    ? (value as StatusFilterValue)
     : 'TODAS';
+}
+
+function parseSortField(value: string | null): SortField {
+  return VALID_SORT_FIELDS.has(value as SortField) ? (value as SortField) : 'createdAt';
+}
+
+function parseSortDir(value: string | null): SortDir {
+  return VALID_SORT_DIRS.has(value as SortDir) ? (value as SortDir) : 'desc';
+}
+
+function tenantsStatusHref(status: 'ACTIVE' | 'PROVISIONING', current: URLSearchParams): string {
+  return withSearchParams('/tenants', mergeUrlSearchParams(current, { status }));
 }
 
 export default function TenantsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const directoryTitleRef = useRef<HTMLParagraphElement>(null);
+  const tenantsRef = useRef<TenantListItem[]>([]);
 
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
+  const [parkTenants, setParkTenants] = useState<TenantListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isParkLoading, setIsParkLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search')?.trim() ?? '');
-  const [statusFilter, setStatusFilter] = useState<TenantStatusFilter>(() =>
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>(() =>
     parseStatusFilter(searchParams.get('status')),
   );
+  const [sortField, setSortField] = useState<SortField>(() =>
+    parseSortField(searchParams.get('sort')),
+  );
+  const [sortDir, setSortDir] = useState<SortDir>(() => parseSortDir(searchParams.get('dir')));
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -68,18 +88,32 @@ export default function TenantsPage() {
   const [isConfirmingAction, setIsConfirmingAction] = useState(false);
   const successDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Persistencia URL: search + status
+  tenantsRef.current = tenants;
+
+  useEffect(() => {
+    const nextStatus = parseStatusFilter(searchParams.get('status'));
+    const nextSearch = searchParams.get('search')?.trim() ?? '';
+    const nextSort = parseSortField(searchParams.get('sort'));
+    const nextDir = parseSortDir(searchParams.get('dir'));
+    setStatusFilter((current) => (current === nextStatus ? current : nextStatus));
+    setSearchQuery((current) => (current === nextSearch ? current : nextSearch));
+    setSortField((current) => (current === nextSort ? current : nextSort));
+    setSortDir((current) => (current === nextDir ? current : nextDir));
+  }, [searchParams]);
+
   useEffect(() => {
     const query = mergeUrlSearchParams(searchParams, {
       search: searchQuery.trim() || null,
       status: statusFilter === 'TODAS' ? null : statusFilter,
+      sort: sortField === 'createdAt' ? null : sortField,
+      dir: sortField === 'createdAt' && sortDir === 'desc' ? null : sortDir,
     });
     const current = searchParams.toString();
     if (query === current) {
       return;
     }
     router.replace(withSearchParams(pathname, query), { scroll: false });
-  }, [pathname, router, searchParams, searchQuery, statusFilter]);
+  }, [pathname, router, searchParams, searchQuery, statusFilter, sortField, sortDir]);
 
   const clearSuccessDismissTimer = useCallback(() => {
     if (successDismissTimerRef.current) {
@@ -92,7 +126,6 @@ export default function TenantsPage() {
     (type: 'success' | 'error', message: string) => {
       clearSuccessDismissTimer();
       setNotification({ type, message });
-      // Éxito: autodescarte; error: persiste hasta cierre manual.
       if (type === 'success') {
         successDismissTimerRef.current = setTimeout(() => {
           setNotification(null);
@@ -110,9 +143,22 @@ export default function TenantsPage() {
   }, [clearSuccessDismissTimer]);
 
   const upsertTenantInState = useCallback((tenant: TenantListItem) => {
-    setTenants((current) =>
-      current.map((item) => (item.id === tenant.id ? { ...item, ...tenant } : item)),
-    );
+    const merge = (current: TenantListItem[]) =>
+      current.map((item) => (item.id === tenant.id ? { ...item, ...tenant } : item));
+    setTenants(merge);
+    setParkTenants(merge);
+  }, []);
+
+  const loadParkSummary = useCallback(async () => {
+    try {
+      setIsParkLoading(true);
+      const response = await tenantApi.list({ limit: TENANTS_PAGE_SIZE, offset: 0 });
+      setParkTenants(response);
+    } catch {
+      setParkTenants([]);
+    } finally {
+      setIsParkLoading(false);
+    }
   }, []);
 
   const loadTenants = useCallback(
@@ -125,12 +171,18 @@ export default function TenantsPage() {
           setIsLoading(true);
         }
         setError(null);
-        const offset = append ? tenants.length : 0;
-        const response = await tenantApi.list({ limit: TENANTS_PAGE_SIZE, offset });
+        const offset = append ? tenantsRef.current.length : 0;
+        const search = searchQuery.trim();
+        const response = await tenantApi.list({
+          limit: TENANTS_PAGE_SIZE,
+          offset,
+          ...(statusFilter !== 'TODAS' ? { status: statusFilter } : {}),
+          ...(search ? { search } : {}),
+        });
         setTenants((current) => (append ? [...current, ...response] : response));
         setHasMore(response.length === TENANTS_PAGE_SIZE);
       } catch {
-        setError('No fue posible cargar empresas.');
+        setError(PLATFORM_UI_COPY.dashboard.directoryError);
         if (!append) {
           setTenants([]);
           setHasMore(false);
@@ -140,40 +192,43 @@ export default function TenantsPage() {
         setIsLoadingMore(false);
       }
     },
-    [tenants.length],
+    [searchQuery, statusFilter],
   );
 
   useEffect(() => {
     void loadTenants();
-    // Carga inicial: no re-disparar cuando crece tenants.length tras append.
-  }, []);
+  }, [loadTenants]);
+
+  useEffect(() => {
+    void loadParkSummary();
+  }, [loadParkSummary]);
 
   const executeSuspend = useCallback(
     async (id: string) => {
       try {
         await tenantApi.suspend(id);
-        await loadTenants();
-        showNotification('success', 'Empresa suspendida correctamente');
+        await Promise.all([loadTenants(), loadParkSummary()]);
+        showNotification('success', PLATFORM_UI_COPY.tenants.suspendSuccess);
       } catch (err) {
         console.error('Error suspending tenant:', err);
-        showNotification('error', 'Error al suspender la empresa');
+        showNotification('error', PLATFORM_UI_COPY.tenants.actionError);
       }
     },
-    [loadTenants, showNotification],
+    [loadParkSummary, loadTenants, showNotification],
   );
 
   const executeActivate = useCallback(
     async (id: string) => {
       try {
         await tenantApi.activate(id);
-        await loadTenants();
-        showNotification('success', 'Empresa reactivada correctamente');
+        await Promise.all([loadTenants(), loadParkSummary()]);
+        showNotification('success', PLATFORM_UI_COPY.tenants.activateSuccess);
       } catch (err) {
         console.error('Error activating tenant:', err);
-        showNotification('error', 'Error al reactivar la empresa');
+        showNotification('error', PLATFORM_UI_COPY.tenants.actionError);
       }
     },
-    [loadTenants, showNotification],
+    [loadParkSummary, loadTenants, showNotification],
   );
 
   const handleSuspend = useCallback((id: string) => {
@@ -227,69 +282,78 @@ export default function TenantsPage() {
 
         upsertTenantInState(resolvedTenant);
 
-        if (resolvedTenant.status === 'ACTIVE') {
-          showNotification('success', 'Configuración completada correctamente');
-          return;
-        }
-
         if (resolvedTenant.status === 'PROVISIONING_FAILED') {
-          showNotification(
-            'error',
-            'La configuración volvió a fallar. Revisa el estado y reintenta en unos minutos.',
-          );
+          showNotification('error', PLATFORM_UI_COPY.tenants.actionError);
           return;
         }
 
-        showNotification('success', 'Configuración reintentada correctamente');
+        showNotification('success', PLATFORM_UI_COPY.tenants.retrySuccess);
       } catch (err) {
         console.error('Error retrying provisioning:', err);
-        await loadTenants();
-        showNotification('error', 'Error al reintentar la configuración');
+        await Promise.all([loadTenants(), loadParkSummary()]);
+        showNotification('error', PLATFORM_UI_COPY.tenants.actionError);
       }
     },
-    [loadTenants, showNotification, upsertTenantInState],
+    [loadParkSummary, loadTenants, showNotification, upsertTenantInState],
   );
 
-  const summaryCards = useMemo(() => {
-    const active = tenants.filter((tenant) => tenant.status === 'ACTIVE').length;
-    const provisioning = tenants.filter((tenant) => tenant.status === 'PROVISIONING').length;
-    const attention = tenants.filter((tenant) =>
+  const focusDirectory = useCallback(() => {
+    const heading = directoryTitleRef.current;
+    if (!heading) {
+      return;
+    }
+
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    heading.focus({ preventScroll: reduceMotion });
+    if (!reduceMotion && typeof heading.scrollIntoView === 'function') {
+      heading.scrollIntoView({ block: 'nearest' });
+    }
+  }, []);
+
+  const kpiCounts = useMemo(() => {
+    const active = parkTenants.filter((tenant) => tenant.status === 'ACTIVE').length;
+    const provisioning = parkTenants.filter((tenant) => tenant.status === 'PROVISIONING').length;
+    const attention = parkTenants.filter((tenant) =>
       ['PROVISIONING_FAILED', 'SUSPENDED', 'INACTIVE', 'MARKED_FOR_DELETION'].includes(
         tenant.status,
       ),
     ).length;
 
+    return { active, provisioning, attention };
+  }, [parkTenants]);
+
+  const signalChips = useMemo<SignalChipModel[]>(() => {
+    const current = new URLSearchParams(searchParams.toString());
+
     return [
       {
-        label: 'Activas',
-        value: active,
-        detail: 'Operando con acceso disponible',
-        icon: CircleCheckBig,
-        tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-300',
+        id: 'active',
+        label: PLATFORM_UI_COPY.dashboard.chipActive,
+        count: kpiCounts.active,
+        accent: 'primary',
+        href: tenantsStatusHref('ACTIVE', current),
+        ariaLabel: PLATFORM_UI_COPY.dashboard.viewActiveCompanies,
       },
       {
-        label: 'En puesta en marcha',
-        value: provisioning,
-        detail: 'Configuraciones todavía en curso',
-        icon: Clock3,
-        tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/25 dark:text-amber-300',
+        id: 'provisioning',
+        label: PLATFORM_UI_COPY.dashboard.chipProvisioning,
+        count: kpiCounts.provisioning,
+        accent: 'warning',
+        href: tenantsStatusHref('PROVISIONING', current),
+        ariaLabel: PLATFORM_UI_COPY.dashboard.viewProvisioningCompanies,
       },
       {
-        label: 'Requieren atención',
-        value: attention,
-        detail: 'Suspendidas, inactivas o con error',
-        icon: ShieldAlert,
-        tone: 'bg-red-50 text-red-700 dark:bg-red-950/25 dark:text-red-300',
+        id: 'attention',
+        label: PLATFORM_UI_COPY.dashboard.chipAttention,
+        count: kpiCounts.attention,
+        accent: 'danger',
+        ariaLabel: PLATFORM_UI_COPY.tenants.focusDirectory,
+        onActivate: focusDirectory,
       },
-      {
-        label: 'Directorio total',
-        value: tenants.length,
-        detail: 'Empresas registradas en plataforma',
-        icon: Building2,
-        tone: 'bg-iwana-surface-soft text-iwana-primary dark:bg-dark-surface-3 dark:text-white',
-      },
-    ] as const;
-  }, [tenants]);
+    ];
+  }, [focusDirectory, kpiCounts.active, kpiCounts.attention, kpiCounts.provisioning, searchParams]);
 
   const tableRows = useMemo(
     () =>
@@ -312,28 +376,28 @@ export default function TenantsPage() {
 
   return (
     <div className="space-y-6">
-      {notification && (
-        <div
-          role={notification.type === 'error' ? 'alert' : 'status'}
-          {...(notification.type === 'success' ? { 'aria-live': 'polite' as const } : {})}
-          className={`fixed top-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-2xl px-4 py-3 shadow-lg ${
-            notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-          }`}
+      {notification ? (
+        <Alert
+          variant={notification.type === 'error' ? 'error' : 'success'}
+          className="flex items-start justify-between gap-3"
         >
-          <p className="flex-1 text-sm leading-5 font-medium">{notification.message}</p>
+          <AlertDescription className="mt-0">{notification.message}</AlertDescription>
           <button
             type="button"
             onClick={() => {
               clearSuccessDismissTimer();
               setNotification(null);
             }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            className={cn(
+              'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg',
+              interactiveFocusClassName,
+            )}
             aria-label="Cerrar notificación"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
-        </div>
-      )}
+        </Alert>
+      ) : null}
 
       <ConfirmDialog
         open={pendingConfirm?.type === 'suspend'}
@@ -370,66 +434,19 @@ export default function TenantsPage() {
       />
 
       <PageHeader
-        title="Empresas"
-        subtitle="Revisa la puesta en marcha, el estado operativo y los datos base de cada empresa desde un solo directorio."
-        actions={
-          <Button asChild variant="primary">
-            <Link href="/tenants/new">Nueva empresa</Link>
-          </Button>
-        }
+        title={PLATFORM_UI_COPY.navigation.tenants}
+        subtitle={PLATFORM_UI_COPY.tenants.subtitle}
       />
 
-      <section
-        aria-label="Resumen operativo del directorio"
-        className="rounded-2xl border border-gray-200 bg-iwana-surface-soft/70 p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
-      >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="portal-eyebrow">Directorio operativo</p>
-            <h2 className="mt-2 text-xl font-semibold text-iwana-primary dark:text-white">
-              Prioriza altas pendientes, revisa alertas y entra rápido a la configuración de cada
-              empresa.
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-              El directorio te muestra el estado actual, el contacto principal y la última
-              actualización disponible para tomar decisiones sin salir de esta vista.
-            </p>
-          </div>
-          <Button asChild variant="secondary">
-            <Link href="/dashboard">Volver al centro de control</Link>
-          </Button>
-        </div>
+      {isLoading ? <span className="sr-only">{PLATFORM_UI_COPY.tenants.loading}</span> : null}
 
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card) => {
-            const Icon = card.icon;
-
-            return (
-              <div
-                key={card.label}
-                className="rounded-2xl border border-white/80 bg-white px-4 py-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                      {card.label}
-                    </p>
-                    <p className="mt-1 text-2xl font-semibold text-iwana-primary dark:text-white">
-                      {isLoading ? '...' : card.value}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                      {card.detail}
-                    </p>
-                  </div>
-                  <div className={`rounded-2xl p-2.5 ${card.tone}`}>
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <SignalChips
+        chips={signalChips}
+        isLoading={isParkLoading}
+        eyebrow={PLATFORM_UI_COPY.tenants.eyebrow}
+        ariaLabel={PLATFORM_UI_COPY.tenants.eyebrow}
+        skeletonCount={3}
+      />
 
       <TenantsTable
         tenants={tableRows}
@@ -446,6 +463,13 @@ export default function TenantsPage() {
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onLoadMore={() => void loadTenants({ append: true })}
+        sortField={sortField}
+        sortDir={sortDir}
+        onSortChange={(field, dir) => {
+          setSortField(field);
+          setSortDir(dir);
+        }}
+        titleRef={directoryTitleRef}
       />
     </div>
   );

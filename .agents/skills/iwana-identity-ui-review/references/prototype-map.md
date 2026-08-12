@@ -48,7 +48,8 @@ Un prototipo **nunca se copia como código**: se lee su patrón y se implementa 
 
 ### `prototipo_datos_usuario.html` — Shell CRM + formulario de edición
 
-- **Aporta (canónico):** el shell completo — sidebar azul noche colapsable (`w-20 lg:w-64`) con logo en badge lima, **barra lima de ítem activo** (`absolute left-0 w-1 h-6 bg-iwana-secondary rounded-r-full`), header h-20 con buscador redondeado y chip de usuario en pill; breadcrumbs con caret; cards `rounded-[20px] shadow-iwana-soft` con header de icono lima; labels uppercase 11px (→ hoy `.portal-eyebrow`); inputs `rounded-xl focus:ring-iwana-secondary/50`; chips removibles; coordenadas en `font-mono`; blob lima difuminado como decoración acotada.
+- **Aporta (canónico, salvo el fill del aside):** el shell completo — sidebar colapsable (`w-20 lg:w-64`) con logo, **barra lima de ítem activo** (`absolute left-0 w-1 h-6 bg-iwana-secondary rounded-r-full`), header h-20 con buscador redondeado y chip de usuario en pill; breadcrumbs con caret; cards `rounded-[20px] shadow-iwana-soft` con header de icono lima; labels uppercase 11px (→ hoy `.portal-eyebrow`); inputs `rounded-xl focus:ring-iwana-secondary/50`; chips removibles; coordenadas en `font-mono`; blob lima difuminado como decoración acotada.
+- **⚠️ Fill navy del prototipo — no vivo:** el HTML pinta el aside `bg-iwana-primary`. El operador rechazó navy el 2026-08-11. Receta viva: aside **blanco** / `dark-surface-2` (`component-recipes.md` §10 · BLOQUEO-3 · contrato azul-noche **Superado**). **No puntuar** la ausencia de navy.
 
 ### `prototipo_expediente.html` — Detalle de expediente / oportunidad
 

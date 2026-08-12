@@ -39,7 +39,7 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-white dark:bg-dark-surface-2">
       {sidebarMobileOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-(--z-overlay) bg-black/50 lg:hidden"
           onClick={() => setSidebarMobileOpen(false)}
           aria-hidden="true"
         />
@@ -60,8 +60,8 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
           setMobileOpen={setSidebarMobileOpen}
         />
 
-        {/* Canvas: separación del sidebar solo por contraste de superficie (sin radio). */}
-        <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface">
+        {/* Canvas: radio 3xl en el canto con el sidebar (operador 2026-08-11; deroga CA-SB-02). */}
+        <main className="flex-1 overflow-y-auto bg-iwana-surface-soft dark:bg-dark-surface lg:rounded-3xl">
           <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>

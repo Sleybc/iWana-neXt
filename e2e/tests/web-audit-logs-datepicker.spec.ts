@@ -88,7 +88,9 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await loginAsPlatformAdmin(page);
 
     await page.goto('/audit-logs');
-    await expect(page.getByRole('heading', { name: 'Auditoria', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Historial de cambios', exact: true }),
+    ).toBeVisible();
 
     const platformSection = page.locator('section[aria-labelledby="platform-audit-heading"]');
     await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
@@ -99,7 +101,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(1),
     );
-    await expect(platformSection.getByText('Sin eventos con estos filtros')).toBeVisible();
+    await expect(platformSection.getByText('Sin cambios con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -115,7 +117,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(-10),
     );
-    await expect(platformSection.getByText('Sin eventos con estos filtros')).toBeVisible();
+    await expect(platformSection.getByText('Sin cambios con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -132,10 +134,14 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await loginAsPlatformAdmin(page);
 
     await page.goto('/audit-logs');
-    await expect(page.getByRole('heading', { name: 'Auditoria', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Historial de cambios', exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Cambios por empresa' }).click();
 
     const tenantSection = page.locator('section[aria-labelledby="tenant-audit-heading"]');
-    await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -143,7 +149,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(1),
     );
-    await expect(tenantSection.getByText('Sin eventos con estos filtros')).toBeVisible();
+    await expect(tenantSection.getByText('Sin cambios con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -151,7 +157,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-3),
     );
-    await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -159,7 +165,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(-10),
     );
-    await expect(tenantSection.getByText('Sin eventos con estos filtros')).toBeVisible();
+    await expect(tenantSection.getByText('Sin cambios con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -167,7 +173,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(1),
     );
-    await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
   });
 
   test('cambia de empresa y mantiene filtros DatePicker funcionales en la tabla tenant', async ({
@@ -176,16 +182,20 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await loginAsPlatformAdmin(page);
 
     await page.goto('/audit-logs');
-    await expect(page.getByRole('heading', { name: 'Auditoria', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Historial de cambios', exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Cambios por empresa' }).click();
 
     const tenantSection = page.locator('section[aria-labelledby="tenant-audit-heading"]');
-    await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo')).toBeVisible();
 
     await tenantSection.getByRole('button', { name: 'Seleccionar empresa' }).click();
     await page.getByRole('option', { name: 'Fibernet Colombia' }).click();
 
-    await expect(tenantSection.locator('[title^="Actor: Operador fibernet"]')).toBeVisible();
-    await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toHaveCount(0);
+    await expect(tenantSection.getByText('Operador fibernet')).toBeVisible();
+    await expect(tenantSection.getByText('Operador demo')).toHaveCount(0);
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -193,7 +203,7 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-3),
     );
-    await expect(tenantSection.getByText('Sin eventos con estos filtros')).toBeVisible();
+    await expect(tenantSection.getByText('Sin cambios con estos filtros')).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -201,6 +211,6 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-from',
       buildDateInput(-10),
     );
-    await expect(tenantSection.locator('[title^="Actor: Operador fibernet"]')).toBeVisible();
+    await expect(tenantSection.getByText('Operador fibernet')).toBeVisible();
   });
 });

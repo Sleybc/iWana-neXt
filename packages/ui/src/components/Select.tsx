@@ -471,8 +471,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             className={cn(
               'flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-iwana-primary shadow-iwana-soft transition-all duration-200',
               'focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/50',
-              'disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400 dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
-              'dark:border-dark-border dark:bg-dark-surface-3 dark:text-white/90',
+              'disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400 dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-400',
+              'dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white/90',
               'dark:focus:border-iwana-secondary dark:focus:ring-iwana-secondary/30',
               open && 'border-iwana-secondary ring-2 ring-iwana-secondary/20',
               error && 'border-iwana-error focus:ring-iwana-error/50',
@@ -578,7 +578,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                         {...optionState}
                         className={cn(
                           'flex w-full items-center justify-between rounded-[20px] px-4 py-3 text-left text-sm transition',
-                          option.disabled && 'cursor-not-allowed text-gray-400 dark:text-gray-500',
+                          option.disabled && 'cursor-not-allowed text-gray-400 dark:text-gray-400',
                           !option.disabled &&
                             isHighlighted &&
                             'bg-iwana-secondary-50 text-iwana-primary dark:bg-dark-surface-3',

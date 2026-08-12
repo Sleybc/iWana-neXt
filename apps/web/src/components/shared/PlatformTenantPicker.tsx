@@ -88,7 +88,7 @@ export function PlatformTenantPicker({
           'portal-input-surface inline-flex h-11 min-w-[220px] items-center justify-between gap-3 border px-4 text-sm transition-colors',
           'text-gray-700 hover:bg-iwana-surface-soft dark:text-gray-200 dark:hover:bg-dark-surface-4',
           'disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400',
-          'dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
+          'dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-400',
           interactiveFocusClassName,
         )}
       >
@@ -96,7 +96,7 @@ export function PlatformTenantPicker({
         <ChevronDown
           aria-hidden="true"
           className={cn(
-            'h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 dark:text-gray-500',
+            'h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 dark:text-gray-400',
             open && 'rotate-180',
           )}
         />

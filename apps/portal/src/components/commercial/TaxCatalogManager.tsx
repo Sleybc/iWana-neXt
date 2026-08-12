@@ -70,7 +70,7 @@ function HelpPopover({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           aria-label="Ayuda"
-          className={`ml-1 inline-flex items-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 ${interactiveFocusClassName}`}
+          className={`ml-1 inline-flex items-center text-gray-400 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300 ${interactiveFocusClassName}`}
         >
           <HelpCircle className="h-3.5 w-3.5" />
         </button>

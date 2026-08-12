@@ -296,7 +296,7 @@ Estos puntos están **congelados fuera de Fase-1**. Cualquier trabajo sobre ello
 
 ### BLOQUEO-3: Sidebar azul noche — prohibido
 
-El sidebar conserva `bg-white/95` (claro) y `dark:bg-dark-surface-2/95` (oscuro). **Nunca** convertirlo a `bg-iwana-primary` ni a ningún fondo azul. La firma visual del sidebar blanco con acento lima es un patrón de identidad definido en `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md`.
+**Nunca** convertir el sidebar a `bg-iwana-primary` ni a ningún fondo azul. Fill vigente (2026-08-11, desempate operador): aside **sólido** `bg-white` / `dark:bg-dark-surface-2` (sin `/95`, sin `backdrop-blur` — contrato nav). La firma del nav es la **barra lima**, no el fill navy. Contrato azul-noche **Superado**. No puntuar aside blanco como defecto ni listarlo como residual.
 
 ### BLOQUEO-4: Tokens nuevos en globals.css
 

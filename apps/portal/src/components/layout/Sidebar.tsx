@@ -163,13 +163,13 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                       <span
                         title={desktopCollapsed ? item.label : undefined}
                         className={cn(
-                          'flex min-h-11 cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 dark:text-gray-500',
+                          'flex min-h-11 cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 dark:text-gray-400',
                           desktopCollapsed && 'lg:justify-center lg:px-2',
                         )}
                         aria-disabled="true"
                       >
                         <item.icon
-                          className="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-500"
+                          className="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-400"
                           aria-hidden
                         />
                         <span
@@ -197,7 +197,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                         interactiveFocusClassName,
                         isActive
                           ? 'relative bg-iwana-primary-50 font-medium text-iwana-primary-700 dark:bg-iwana-primary-800/30 dark:text-iwana-primary-200'
-                          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5',
+                          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-surface-3',
                         desktopCollapsed && 'lg:justify-center lg:px-2',
                       )}
                       aria-current={isActive ? 'page' : undefined}
@@ -213,7 +213,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                           'h-5 w-5 shrink-0',
                           isActive
                             ? 'text-iwana-primary-600 dark:text-iwana-primary-300'
-                            : 'text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300',
+                            : 'text-gray-400 group-hover:text-gray-600 dark:text-gray-400 dark:group-hover:text-gray-300',
                         )}
                         aria-hidden
                       />

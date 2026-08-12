@@ -133,7 +133,7 @@ export function CatalogPicker<T>({
                       className={[
                         'flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-sm transition',
                         isSelected
-                          ? 'bg-iwana-secondary/10 text-iwana-secondary-700'
+                          ? 'bg-iwana-secondary/10 text-iwana-secondary-700 dark:text-iwana-secondary-400'
                           : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-border',
                       ].join(' ')}
                     >
@@ -256,7 +256,7 @@ export function MultiCatalogPicker<T>({
             return (
               <span
                 key={key}
-                className="flex items-center gap-1 rounded-md bg-iwana-secondary/15 px-2 py-0.5 text-xs font-medium text-iwana-secondary-700"
+                className="flex items-center gap-1 rounded-md bg-iwana-secondary/15 px-2 py-0.5 text-xs font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400"
               >
                 {getLabel(item)}
                 {!disabled && (
@@ -327,7 +327,7 @@ export function MultiCatalogPicker<T>({
                       className={[
                         'flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-sm transition',
                         isSelected
-                          ? 'bg-iwana-secondary/10 text-iwana-secondary-700'
+                          ? 'bg-iwana-secondary/10 text-iwana-secondary-700 dark:text-iwana-secondary-400'
                           : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-border',
                       ].join(' ')}
                     >
