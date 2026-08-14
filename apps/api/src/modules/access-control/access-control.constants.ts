@@ -193,6 +193,22 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
   {
+    permissionKey: AccessPermissionKey.OPERATIONS_TASKS_READ,
+    moduleKey: 'operations',
+    action: 'read',
+    description: 'Ver tareas operativas de la empresa',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.OPERATIONS_TASKS_MANAGE,
+    moduleKey: 'operations',
+    action: 'manage',
+    description: 'Crear, asignar y actualizar tareas operativas',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
     permissionKey: AccessPermissionKey.CRM_CUSTOMERS_READ,
     moduleKey: 'crm',
     action: 'read',
@@ -300,6 +316,8 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissio
     AccessPermissionKey.WFM_SCHEDULE_READ,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+    AccessPermissionKey.OPERATIONS_TASKS_READ,
+    AccessPermissionKey.OPERATIONS_TASKS_MANAGE,
   ],
   [UserRole.SUPPORT]: [
     AccessPermissionKey.SETTINGS_READ,
@@ -307,10 +325,14 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissio
     AccessPermissionKey.USERS_READ,
     AccessPermissionKey.WFM_SCHEDULE_READ,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+    AccessPermissionKey.OPERATIONS_TASKS_READ,
+    AccessPermissionKey.OPERATIONS_TASKS_MANAGE,
   ],
   [UserRole.SALES]: [
     AccessPermissionKey.SETTINGS_READ,
     AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.OPERATIONS_TASKS_READ,
+    AccessPermissionKey.OPERATIONS_TASKS_MANAGE,
   ],
   [UserRole.TECHNICIAN]: [
     AccessPermissionKey.SETTINGS_READ,
@@ -319,6 +341,8 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissio
     AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+    AccessPermissionKey.OPERATIONS_TASKS_READ,
+    AccessPermissionKey.OPERATIONS_TASKS_MANAGE,
   ],
   [UserRole.ACCOUNTANT]: [
     AccessPermissionKey.SETTINGS_READ,
@@ -337,6 +361,7 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissio
     AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
     AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+    AccessPermissionKey.OPERATIONS_TASKS_READ,
   ],
   [UserRole.PARTNER]: [],
   [UserRole.AUDITOR]: [

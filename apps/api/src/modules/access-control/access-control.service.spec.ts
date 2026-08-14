@@ -988,6 +988,8 @@ describe('AccessControlService', () => {
         AccessPermissionKey.ORGANIZATION_SITES_MANAGE,
         AccessPermissionKey.WFM_SCHEDULE_READ,
         AccessPermissionKey.WFM_SCHEDULE_MANAGE,
+        AccessPermissionKey.OPERATIONS_TASKS_READ,
+        AccessPermissionKey.OPERATIONS_TASKS_MANAGE,
       ]),
     );
     expect(result.recoveryPermissions).toEqual(
