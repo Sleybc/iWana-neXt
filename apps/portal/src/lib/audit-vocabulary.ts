@@ -69,13 +69,25 @@ export function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[normalized] ?? 'Cambio registrado';
 }
 
-/** Mapea el tipo de entidad a vocabulario de producto. */
+const AUDIT_SESSION_ACTIONS = new Set(['LOGIN', 'LOGOUT', 'REFRESH', 'LOGIN_FAILED']);
+
+/** Mapea el tipo de entidad a vocabulario de producto. Vacío si no hay etiqueta. */
 export function auditEntityTypeLabel(entityType: string): string {
   const normalized = entityType.trim();
-  return AUDIT_ENTITY_TYPE_LABELS[normalized] ?? 'registro';
+  return (
+    AUDIT_ENTITY_TYPE_LABELS[normalized] ?? AUDIT_ENTITY_TYPE_LABELS[normalized.toLowerCase()] ?? ''
+  );
 }
 
-/** Línea visible para campana e historial: acción · entidad. Sin id. */
+/** Línea visible para campana e historial: acción · entidad. Sin id ni comodín «registro». */
 export function auditFeedSummary(action: string, entityType: string): string {
-  return `${auditActionLabel(action)} · ${auditEntityTypeLabel(entityType)}`;
+  const actionLabel = auditActionLabel(action);
+  if (AUDIT_SESSION_ACTIONS.has(action.trim().toUpperCase())) {
+    return actionLabel;
+  }
+  const entityLabel = auditEntityTypeLabel(entityType);
+  if (!entityLabel) {
+    return actionLabel;
+  }
+  return `${actionLabel} · ${entityLabel}`;
 }

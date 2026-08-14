@@ -6,7 +6,6 @@ import {
   DASHBOARD_ROLE_AUTHORIZATION_CEILING,
   DASHBOARD_ROLE_COMPOSITION,
   getDashboardRoleComposition,
-  groupDashboardMetricsByDomain,
   isUserRole,
   listCompositionBlockIds,
   resolveDashboardAction,
@@ -14,6 +13,7 @@ import {
   resolveDashboardDataSources,
   resolveDashboardMetric,
   resolvePromotedFoldedBlockIds,
+  resolveDashboardMetricAccent,
   toLocalDayKey,
   type DashboardActionId,
   type DashboardBlockId,
@@ -152,40 +152,46 @@ describe('dashboard-role-composition', () => {
     expect(toLocalDayKey(new Date(2026, 1, 1, 0, 1))).toBe('2026-02-01');
   });
 
-  it('ADMIN agrupa B1 en 4 dominios sin fusionar IDs (C-6)', () => {
-    const groups = groupDashboardMetricsByDomain(
-      getDashboardRoleComposition(UserRole.ADMIN).metricIds,
-    );
-    expect(groups.map((g) => g.label)).toEqual([
-      'Operaciones de campo',
-      'Mesa de ayuda',
-      'Comercial',
-      'Oportunidades',
-    ]);
-    expect(groups.flatMap((g) => [...g.metricIds])).toEqual([
-      'I-1',
-      'I-2',
-      'I-3',
-      'I-4',
-      'I-5',
-      'I-6',
-      'I-7',
-    ]);
+  it('ADMIN compone 7 métricas en orden plano I-1…I-7 (U-D5 §3)', () => {
+    const metricIds = getDashboardRoleComposition(UserRole.ADMIN).metricIds;
+    expect(metricIds).toEqual(['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7']);
+    // Cada par de apariencia similar usa iconos distintos para no confundir la tarjeta.
     expect(DASHBOARD_METRIC_REGISTRY['I-3'].icon).not.toBe(DASHBOARD_METRIC_REGISTRY['I-4'].icon);
     expect(DASHBOARD_METRIC_REGISTRY['I-5'].icon).not.toBe(DASHBOARD_METRIC_REGISTRY['I-6'].icon);
   });
 
-  it('SUPPORT conserva orden de composición dentro de dominios (C-6)', () => {
-    const groups = groupDashboardMetricsByDomain(
-      getDashboardRoleComposition(UserRole.SUPPORT).metricIds,
-    );
-    expect(groups.map((g) => g.domainId)).toEqual(['help-desk', 'field-ops']);
-    expect(groups.find((g) => g.domainId === 'help-desk')?.metricIds).toEqual(['I-3', 'I-4']);
-    expect(groups.find((g) => g.domainId === 'field-ops')?.metricIds).toEqual(['I-1', 'I-2']);
+  it('SUPPORT conserva el orden de composición plano sin reordenar por dominio (U-D5 §3)', () => {
+    expect(getDashboardRoleComposition(UserRole.SUPPORT).metricIds).toEqual([
+      'I-3',
+      'I-4',
+      'I-1',
+      'I-2',
+    ]);
   });
 
-  it('no crea grupos cuando no hay métricas', () => {
-    expect(groupDashboardMetricsByDomain([])).toEqual([]);
+  it('NOC, SALES y ACCOUNTANT componen la retícula por filas completa o parcial (U-D5 §3)', () => {
+    expect(getDashboardRoleComposition(UserRole.NOC).metricIds).toEqual([
+      'I-1',
+      'I-2',
+      'I-3',
+      'I-4',
+    ]);
+    expect(getDashboardRoleComposition(UserRole.SALES).metricIds).toEqual(['I-5', 'I-6', 'I-7']);
+    expect(getDashboardRoleComposition(UserRole.ACCOUNTANT).metricIds).toEqual(['I-5']);
+  });
+
+  it('roles sin ficha operativa no componen métricas en B1', () => {
+    for (const role of [
+      UserRole.TECHNICIAN,
+      UserRole.CONTRACTOR,
+      UserRole.AUDITOR,
+      UserRole.HR,
+      UserRole.SUBSCRIBER,
+      UserRole.PARTNER,
+      UserRole.INVESTOR,
+    ]) {
+      expect(getDashboardRoleComposition(role).metricIds).toEqual([]);
+    }
   });
 
   it('promueve bloques folded con KPI > 0 y deja el resto plegado (C-11)', () => {
@@ -222,5 +228,31 @@ describe('dashboard-role-composition', () => {
 
     expect(result.promotedBlockIds).toEqual(['help-desk']);
     expect(result.remainingFoldedBlockIds).toEqual(['commercial-attention']);
+  });
+});
+
+describe('resolveDashboardMetricAccent', () => {
+  it('conserva primary y neutral aunque el valor sea 0', () => {
+    expect(resolveDashboardMetricAccent({ declared: 'primary', value: 0, hasDelta: false })).toBe(
+      'primary',
+    );
+    expect(
+      resolveDashboardMetricAccent({ declared: 'neutral', value: null, hasDelta: false }),
+    ).toBe('neutral');
+  });
+
+  it('apaga warning/danger sin señal y los conserva con valor o delta', () => {
+    expect(resolveDashboardMetricAccent({ declared: 'warning', value: 0, hasDelta: false })).toBe(
+      'neutral',
+    );
+    expect(resolveDashboardMetricAccent({ declared: 'danger', value: null, hasDelta: false })).toBe(
+      'neutral',
+    );
+    expect(resolveDashboardMetricAccent({ declared: 'warning', value: 2, hasDelta: false })).toBe(
+      'warning',
+    );
+    expect(resolveDashboardMetricAccent({ declared: 'danger', value: 0, hasDelta: true })).toBe(
+      'danger',
+    );
   });
 });

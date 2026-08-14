@@ -16,25 +16,6 @@ import {
 } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 
-/**
- * Mapea el rol interno del tenant a texto legible para el panel empresarial.
- * Alineado con UserRole enum del backend (valores en UPPER_CASE).
- */
-function roleToLabel(role: string): string {
-  const labels: Record<string, string> = {
-    ADMIN: 'Administrador',
-    NOC: 'Operador NOC',
-    ACCOUNTANT: 'Contabilidad',
-    SUPPORT: 'Soporte',
-    SALES: 'Ventas',
-    TECHNICIAN: 'Técnico',
-    HR: 'Recursos Humanos',
-    AUDITOR: 'Auditor',
-    SUBSCRIBER: 'Suscriptor',
-  };
-  return labels[role] ?? role;
-}
-
 export const DropdownUser = () => {
   const router = useRouter();
   const { user, logout } = useAuth();

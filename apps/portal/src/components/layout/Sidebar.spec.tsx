@@ -216,4 +216,27 @@ describe('Sidebar', () => {
     const homeNav = screen.getByRole('link', { name: 'Inicio' });
     expect(homeNav.className).toMatch(/min-h-11/);
   });
+
+  it('alinea el nav con el inicio: Oportunidades, Programación, Usuarios y accesos; sin Reportes', () => {
+    renderSidebar();
+
+    expect(screen.getByRole('link', { name: 'Oportunidades' })).toHaveAttribute(
+      'href',
+      '/dashboard/crm/expedientes',
+    );
+    expect(screen.getByRole('link', { name: 'Programación' })).toHaveAttribute(
+      'href',
+      '/dashboard/scheduling',
+    );
+    expect(screen.getByRole('link', { name: 'Usuarios y accesos' })).toHaveAttribute(
+      'href',
+      '/dashboard/users',
+    );
+    expect(screen.queryByRole('link', { name: 'CRM' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Programacion')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reportes')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Siguiente fase/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Menú')).toBeInTheDocument();
+    expect(screen.getByText('Administración')).toBeInTheDocument();
+  });
 });

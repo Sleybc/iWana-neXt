@@ -3,7 +3,7 @@
 ## Auditoría UI/UX del `/dashboard` del portal de tenant — consolidación multiagente
 
 **Versión:** 1.0
-**Estado:** Vigente
+**Estado:** Superado — la re-auditoría vigente es [v1.1](INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1.md) (post-recomposición, 2026-08-12). Este documento conserva el dictamen del inicio *pre-recomposición*.
 **Fecha:** 2026-08-04
 **Modo activo:** Architect + Orchestrator ([perfil AI-EM-ARCH v2.3](../roles/Perfil_IA_EM_Architect_Unificado_v2.md) §2)
 **Autor:** AI-EM-ARCH

@@ -64,7 +64,6 @@ export type DashboardMetricAccent = 'neutral' | 'primary' | 'warning' | 'danger'
 
 export interface DashboardMetricDefinition {
   id: DashboardMetricId;
-  eyebrow: string;
   label: string;
   description: string;
   accent: DashboardMetricAccent;
@@ -229,7 +228,6 @@ export const DASHBOARD_ACTION_REGISTRY: Record<DashboardActionId, DashboardActio
 export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetricDefinition> = {
   'I-1': {
     id: 'I-1',
-    eyebrow: 'Operaciones de campo',
     label: 'Visitas de hoy',
     description: 'Agenda del día en curso',
     accent: 'primary',
@@ -240,7 +238,6 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
   },
   'I-2': {
     id: 'I-2',
-    eyebrow: 'Operaciones de campo',
     label: 'Solicitudes por programar',
     description: 'Listas para agenda',
     accent: 'warning',
@@ -250,7 +247,6 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
   },
   'I-3': {
     id: 'I-3',
-    eyebrow: 'Mesa de ayuda',
     label: 'Casos abiertos',
     description: 'Casos en atención',
     accent: 'primary',
@@ -260,7 +256,6 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
   },
   'I-4': {
     id: 'I-4',
-    eyebrow: 'Mesa de ayuda',
     label: 'Casos en riesgo de incumplir',
     description: 'Acuerdo de servicio en riesgo',
     accent: 'danger',
@@ -270,7 +265,6 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
   },
   'I-5': {
     id: 'I-5',
-    eyebrow: 'Comercial',
     label: 'Planes sin precio vigente',
     description: 'Catálogo incompleto para facturar',
     accent: 'warning',
@@ -280,7 +274,6 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
   },
   'I-6': {
     id: 'I-6',
-    eyebrow: 'Comercial',
     label: 'Ofertas en riesgo',
     description: 'Vencen pronto o cerca del cupo',
     accent: 'warning',
@@ -291,7 +284,6 @@ export const DASHBOARD_METRIC_REGISTRY: Record<DashboardMetricId, DashboardMetri
   },
   'I-7': {
     id: 'I-7',
-    eyebrow: 'Oportunidades',
     label: 'Oportunidades en seguimiento',
     description: 'Embudo abierto',
     accent: 'primary',
@@ -537,92 +529,6 @@ export function listCompositionBlockIds(
   return ids;
 }
 
-/** Dominios canónicos de B1 (Adenda UX §A · prompt delta v1.2). */
-export type DashboardMetricDomainId = 'field-ops' | 'help-desk' | 'commercial' | 'opportunities';
-
-export interface DashboardMetricDomainDefinition {
-  id: DashboardMetricDomainId;
-  label: string;
-  metricIds: readonly DashboardMetricId[];
-}
-
-export const DASHBOARD_METRIC_DOMAIN_ORDER: readonly DashboardMetricDomainId[] = [
-  'field-ops',
-  'help-desk',
-  'commercial',
-  'opportunities',
-] as const;
-
-export const DASHBOARD_METRIC_DOMAIN_REGISTRY: Record<
-  DashboardMetricDomainId,
-  DashboardMetricDomainDefinition
-> = {
-  'field-ops': {
-    id: 'field-ops',
-    label: 'Operaciones de campo',
-    metricIds: ['I-1', 'I-2'],
-  },
-  'help-desk': {
-    id: 'help-desk',
-    label: 'Mesa de ayuda',
-    metricIds: ['I-3', 'I-4'],
-  },
-  commercial: {
-    id: 'commercial',
-    label: 'Comercial',
-    metricIds: ['I-5', 'I-6'],
-  },
-  opportunities: {
-    id: 'opportunities',
-    label: 'Oportunidades',
-    metricIds: ['I-7'],
-  },
-};
-
-export interface DashboardMetricDomainGroup {
-  domainId: DashboardMetricDomainId;
-  label: string;
-  metricIds: readonly DashboardMetricId[];
-}
-
-/**
- * Agrupa métricas del rol por dominio.
- * Orden de grupos = primera aparición de un miembro en `metricIds` (respeta SUPPORT).
- * Dentro del grupo se conserva el orden de composición.
- */
-export function groupDashboardMetricsByDomain(
-  metricIds: readonly DashboardMetricId[],
-): readonly DashboardMetricDomainGroup[] {
-  const present = new Set(metricIds);
-  const orderIndex = new Map(metricIds.map((id, index) => [id, index]));
-  const groups: DashboardMetricDomainGroup[] = [];
-
-  for (const domainId of DASHBOARD_METRIC_DOMAIN_ORDER) {
-    const domain = DASHBOARD_METRIC_DOMAIN_REGISTRY[domainId];
-    const members = domain.metricIds
-      .filter((id) => present.has(id))
-      .sort((a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0));
-    if (members.length === 0) continue;
-    groups.push({
-      domainId,
-      label: domain.label,
-      metricIds: members,
-    });
-  }
-
-  groups.sort((a, b) => {
-    const aMin = Math.min(
-      ...a.metricIds.map((id) => orderIndex.get(id) ?? Number.MAX_SAFE_INTEGER),
-    );
-    const bMin = Math.min(
-      ...b.metricIds.map((id) => orderIndex.get(id) ?? Number.MAX_SAFE_INTEGER),
-    );
-    return aMin - bMin;
-  });
-
-  return groups;
-}
-
 /**
  * Bloques plegados que salen del pliegue cuando su KPI de B1 es > 0
  * (Adenda UX §B · «Ver más» inteligente).
@@ -664,3 +570,21 @@ export function resolvePromotedFoldedBlockIds(options: {
 /** Icono decorativo de identidad (B3) — no es acción. */
 export const DASHBOARD_IDENTITY_ICON = UserRound;
 export const DASHBOARD_INVENTORY_ICON = Package;
+
+/**
+ * Tinte de métrica del inicio (UX U-D / DS v1.4).
+ * `warning`/`danger` solo si hay señal (`value > 0` o delta). Cero no es urgencia.
+ * `primary`/`neutral` se conservan.
+ */
+export function resolveDashboardMetricAccent(options: {
+  declared: DashboardMetricAccent;
+  value: number | null;
+  hasDelta: boolean;
+}): DashboardMetricAccent {
+  const { declared, value, hasDelta } = options;
+  if (declared !== 'warning' && declared !== 'danger') {
+    return declared;
+  }
+  const hasSignal = (value != null && value > 0) || hasDelta;
+  return hasSignal ? declared : 'neutral';
+}

@@ -1,17 +1,21 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  PortalActionToolbar,
   PortalAlert,
   PortalDataTableHead,
   PortalDataTableSortableHead,
   PortalEmptyState,
   PortalPageSizeSelect,
+  PortalPanel,
   PortalResultsStrip,
   PortalSidePeek,
   PortalSuccessAlert,
   PortalTablePagination,
   PortalTablePager,
   buildPageWindow,
+  interactiveFocusClassName,
+  portalInlineTextLinkClassName,
   PORTAL_DEFAULT_PAGE_SIZE,
   PORTAL_PAGE_SIZE_OPTIONS,
 } from './portal-ui';
@@ -46,6 +50,16 @@ describe('portal-ui', () => {
     expect(screen.getByRole('status')).toHaveAttribute('aria-atomic', 'true');
   });
 
+  it('PortalActionToolbar expone toolbar con nombre accesible cuando hay aria-label', () => {
+    render(
+      <PortalActionToolbar align="end" aria-label="Acciones del inicio">
+        <button type="button">Actualizar</button>
+      </PortalActionToolbar>,
+    );
+
+    expect(screen.getByRole('toolbar', { name: 'Acciones del inicio' })).toBeInTheDocument();
+  });
+
   it('should expose polite live regions by default for error alerts (variant no decide politeness)', () => {
     render(
       <PortalAlert
@@ -58,6 +72,41 @@ describe('portal-ui', () => {
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
     expect(screen.getByRole('status')).toHaveAttribute('aria-atomic', 'true');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('título de alerta en sentence case, no eyebrow uppercase (DS v1.5)', () => {
+    render(
+      <PortalAlert
+        variant="warning"
+        title="Verificación en dos pasos no obligatoria"
+        description="Se recomienda activarla para todos los usuarios."
+      />,
+    );
+
+    const title = screen.getByText('Verificación en dos pasos no obligatoria');
+    expect(title).toHaveClass('font-semibold');
+    expect(title).not.toHaveClass('portal-eyebrow');
+  });
+
+  it('PortalPanel compact usa p-4; default conserva p-5 (DS v1.6)', () => {
+    const { rerender, container } = render(
+      <PortalPanel title="Historial de cambios">contenido</PortalPanel>,
+    );
+    expect(container.firstElementChild?.className).toMatch(/\bp-5\b/);
+    expect(container.firstElementChild?.className).not.toMatch(/\bp-4\b/);
+
+    rerender(
+      <PortalPanel compact title="Historial de cambios">
+        contenido
+      </PortalPanel>,
+    );
+    expect(container.firstElementChild?.className).toMatch(/\bp-4\b/);
+  });
+
+  it('el class-token de enlace inline incluye el anillo iWana', () => {
+    expect(portalInlineTextLinkClassName.split(/\s+/)).toEqual(
+      expect.arrayContaining(interactiveFocusClassName.split(/\s+/)),
+    );
   });
 
   it('should expose assertive live region when live="assertive" is opted in', () => {
@@ -102,6 +151,20 @@ describe('portal-ui', () => {
     );
 
     expect(container.firstChild).toHaveClass('bg-iwana-surface-soft');
+  });
+
+  it('embedded no pinta segunda cáscara (DS §1.9)', () => {
+    const { container } = render(
+      <PortalEmptyState
+        embedded
+        title="Sin avisos de campo"
+        description="No hay avisos pendientes."
+      />,
+    );
+
+    expect(container.firstChild).not.toHaveClass('bg-iwana-surface-soft');
+    expect(container.firstChild).not.toHaveClass('rounded-2xl');
+    expect(container.firstChild).not.toHaveClass('border');
   });
 
   it('PortalDataTableHead impone scope="col" por defecto', () => {

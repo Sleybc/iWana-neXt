@@ -200,6 +200,37 @@ describe('PortalDashboardMetric', () => {
     expect(screen.getByText('Agenda')).toHaveClass('portal-eyebrow-muted');
     expect(screen.getByText('Agenda')).not.toHaveClass('text-gray-700');
   });
+
+  it('usa cáscara default min-h-24 y no reserva 148 px (DS v1.4 / v1.6)', () => {
+    const { container } = render(
+      <PortalDashboardMetric label="Visitas de hoy" value={12} icon={Calendar} />,
+    );
+
+    expect(container.firstElementChild?.className).toMatch(/min-h-24/);
+    expect(container.firstElementChild?.className).toMatch(/flex-col/);
+    expect(container.firstElementChild?.className).not.toMatch(/min-h-\[148px\]/);
+    expect(screen.getByText('12')).toHaveClass('text-2xl');
+  });
+
+  it('con density=compact usa KPI vertical min-h-24 flex-col text-2xl rounded-2xl (DS v1.7 / U-D3)', () => {
+    const { container } = render(
+      <PortalDashboardMetric
+        density="compact"
+        label="Visitas de hoy"
+        value={12}
+        description="Programadas para la jornada"
+        icon={Calendar}
+      />,
+    );
+
+    expect(container.firstElementChild?.className).toMatch(/min-h-24/);
+    expect(container.firstElementChild?.className).toMatch(/flex-col/);
+    expect(container.firstElementChild?.className).toMatch(/rounded-2xl/);
+    expect(container.firstElementChild?.className).not.toMatch(/min-h-14/);
+    expect(container.firstElementChild?.className).not.toMatch(/flex-row/);
+    expect(screen.getByText('12')).toHaveClass('text-2xl');
+    expect(screen.getByText('Programadas para la jornada').className).toMatch(/sr-only/);
+  });
 });
 
 describe('PortalNavListRow', () => {

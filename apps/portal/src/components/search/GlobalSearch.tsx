@@ -23,6 +23,7 @@ export function GlobalSearch({ openRequestId = 0, onOpenChange }: GlobalSearchPr
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [shortcutMod, setShortcutMod] = useState('Ctrl');
   const { results, isLoading, error } = useGlobalSearch(query, isOpen);
   const routeKey = `${pathname}?${searchParams.toString()}`;
 
@@ -34,6 +35,12 @@ export function GlobalSearch({ openRequestId = 0, onOpenChange }: GlobalSearchPr
   useEffect(() => {
     onOpenChange?.(isOpen);
   }, [isOpen, onOpenChange]);
+
+  useEffect(() => {
+    const apple =
+      /Mac|iPhone|iPad|iPod/i.test(navigator.platform) || /Mac OS/i.test(navigator.userAgent);
+    setShortcutMod(apple ? '⌘' : 'Ctrl');
+  }, []);
 
   useEffect(() => {
     if (openRequestId === lastOpenRequestId.current) {
@@ -169,7 +176,7 @@ export function GlobalSearch({ openRequestId = 0, onOpenChange }: GlobalSearchPr
         aria-hidden="true"
         className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 text-xs text-gray-500 shadow-[var(--shadow-iwana-card)] dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400"
       >
-        <span>⌘</span>
+        <span>{shortcutMod}</span>
         <span>K</span>
       </span>
 

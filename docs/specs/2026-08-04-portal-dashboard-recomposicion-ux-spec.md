@@ -1,8 +1,8 @@
 # UX spec — Recomposición del inicio del portal empresarial (`apps/portal` → `/dashboard`)
 
-**Versión:** 1.0 + adendas delta UX v1.2 + **adendas remediación UI R-A…R-D (2026-08-11)**  
-**Estado:** Congelado — desbloqueante para AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX) · adendas delta autorizadas en [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) v1.2 · adendas de remediación autorizadas en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md) v1.0  
-**Fecha:** 2026-08-04 (congelación) · adendas delta y remediación UI 2026-08-11  
+**Versión:** 1.0 + adendas delta UX v1.2 + adendas remediación UI R-A…R-D (2026-08-11) + adenda densidad U-D (2026-08-12) + adenda remediación P1/P2 U-R2bis / U-NAV (2026-08-12) + adenda densidad UI U-D2 (2026-08-12) + adenda densidad UI U-D3 (2026-08-12) + adenda densidad UI U-D4 (2026-08-13) + adenda densidad UI U-D5 (2026-08-13) + adenda U-B0 franja fuera del título (2026-08-13) + **adenda U-B0bis sin franja de acciones (2026-08-13)**  
+**Estado:** Congelado — desbloqueante para AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX) · adendas delta autorizadas en [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) v1.2 · adendas de remediación autorizadas en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-UI-v1.0.md) v1.0 · adenda P1/P2 autorizada en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md) v1.0 · adenda densidad real U-D2 autorizada en [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md) v1.1 · adenda U-D3 autorizada en [`PROMPT-MOD02-DASHBOARD-PORTAL-AUDITORIA-DISENO-v1.2.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-AUDITORIA-DISENO-v1.2.md) y ejecución FE en [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md) · adenda U-D4 (antiespacios adaptativo) autorizada en sesión del responsable 2026-08-13, rastro en [`INFORME-MOD02-DASHBOARD-PORTAL-ANTIESPACIOS-v1.0.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-ANTIESPACIOS-v1.0.md) · adenda U-D5 (grilla B1 unificada 4 por fila) autorizada en sesión del responsable 2026-08-13, rastro en [`INFORME-MOD02-DASHBOARD-PORTAL-ANTIESPACIOS-v1.1.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-ANTIESPACIOS-v1.1.md) · **adenda U-B0 autorizada en sesión del responsable 2026-08-13 (opción 1: título limpio + toolbar debajo)**  
+**Fecha:** 2026-08-04 (congelación) · adendas delta y remediación UI 2026-08-11 · adenda densidad U-D, remediación P1/P2, U-D2 y U-D3 2026-08-12 · U-D4, U-D5, U-B0 y **U-B0bis** 2026-08-13  
 **Autor:** AI-PROD-UX  
 **Etapa del workflow:** 2 — solución UX/UI ([protocolo v1.5](../roles/Protocolo_Colaboracion_Multiagente_v1.md) §3)  
 **Alcance:** el inicio `/dashboard` de `apps/portal` y las piezas del shell que la auditoría marcó como bloqueantes (foco y tabulación del menú lateral en móvil, entrada al buscador global bajo 1024 px)
@@ -54,13 +54,13 @@ La corrección no es mover cajas de columna. Es **cambiar el eje**: el inicio pa
 
 | Banda | Contenido | Ancho a 1280 px | Peso visual | Aparece |
 | --- | --- | --- | --- | --- |
-| **B0 · Encabezado** | Título, hora de la última lectura, franja de acciones del rol (§5) | 12 col | Alto — es el único lugar con acciones primarias | Siempre |
+| **B0 · Encabezado** | Título + hora de última lectura. El H1 no contiene controles. **Sin** franja de acciones de página (U-B0bis) | 12 col | Alto — ancla de identidad, no de alta | Siempre |
 | **B1 · Indicadores núcleo** | De 3 a 7 indicadores del rol (§3), en tarjetas iguales | 12 col, 4 por fila | **Dominante** — es la superficie que responde «¿qué requiere mi atención?» | Si el rol tiene al menos un indicador autorizado |
 | **B2 · Trabajo de hoy** | La lista accionable del rol: atención de campo, atención comercial o casos (§4) | 8 col | Alto — es donde se pasa de la cifra al elemento concreto | Si el rol tiene al menos un bloque de lista autorizado |
 | **B2b · Apoyo** | Próximo paso de configuración (§7) · Historial de cambios · Accesos rápidos | 4 col, junto a B2 | Medio | Cada pieza según §4 |
 | **B3 · Estado de la empresa** | Ficha del tenant: nombre, estado del servicio, zona horaria, moneda, sedes | 12 col | **Subordinado** — cierra la página, no la abre | Siempre (es el único bloque común a los 12 roles) |
 
-**Punto de corte.** El «primer viewport» de esta spec se define, sin ambigüedad, como **lo visible sin desplazamiento vertical** en los tres tamaños de §8. En los tres debe caber, completa: B0 con al menos una acción operable, y **al menos dos indicadores de B1**. B3 nunca cae dentro del primer viewport en ningún tamaño — si cayera, la jerarquía volvería a invertirse.
+**Punto de corte.** El «primer viewport» de esta spec se define, sin ambigüedad, como **lo visible sin desplazamiento vertical** en los tres tamaños de §8. En los tres debe caber, completa: B0 (identidad) y **al menos dos indicadores de B1** (si el rol tiene indicadores). B3 nunca cae dentro del primer viewport en ningún tamaño — si cayera, la jerarquía volvería a invertirse.
 
 ### 2.3 Reglas de composición
 
@@ -255,9 +255,13 @@ La regla es determinista y auditable:
 
 ## 5. La franja de acciones del encabezado (CA-V2-03, H-06)
 
+> **U-B0bis (2026-08-13).** Esta franja **deja de pintarse** en el Inicio. B0 = identidad (H1 + subtítulo). Las altas viven en los módulos, en los indicadores y en Accesos rápidos. El registro por rol (§5.2) permanece como contrato de composición (p. ej. `primaryActionId` para el modo contable), no como chrome. Ver adenda U-B0bis. U-B0 queda **superada**.
+
+> **U-B0 (2026-08-13, superada).** La franja **no** vivía en el slot `actions` del `PageHeader`. B0a = identidad. B0b = toolbar debajo. Conservado solo como historia.
+
 ### 5.1 Criterio de selección
 
-Una acción entra en el encabezado si cumple las tres: **(a)** inicia trabajo, no lo consulta; **(b)** es de las más frecuentes del rol; **(c)** su destino existe hoy y el rol está autorizado. Máximo **dos** acciones visibles más un menú de desbordamiento; a 375 px, **una** visible (§8).
+Una acción **no** entra en el encabezado del Inicio. El criterio histórico (iniciar trabajo, frecuente, destino existente) sigue describiendo **qué altas importan al rol**, pero su superficie es el módulo correspondiente, un KPI o Accesos rápidos. **Prohibido** colocar esas acciones dentro del H1, del bloque de título o de un toolbar de página bajo el H1.
 
 ### 5.2 Acciones por rol
 
@@ -430,7 +434,7 @@ Trazables uno a uno a los CA-V2-\* del HLD. Un criterio que no se pueda verifica
 | --- | --- | --- | --- |
 | **UX-01** | Los 12 roles del catálogo reciben encabezado con al menos una acción, accesos rápidos y estado de la empresa. Ninguno recibe la leyenda «Panel en preparación», que se retira del producto | Recorrido por rol sobre §4.13 | CA-V2-01 |
 | **UX-02** | Ningún acceso rápido ni acción de encabezado ofrecido a un rol conduce a un error de permisos | Por rol, cada destino de §4.14 y §5.2 responde distinto de un rechazo por permisos | CA-V2-02 |
-| **UX-03** | Sin desplazamiento vertical, a 375, 768 y 1280 px, se ven el encabezado con al menos una acción operable y al menos dos indicadores (o, si el rol no tiene indicadores, la acción primaria de §5.2) | Captura a los tres tamaños | CA-V2-03 |
+| **UX-03** | Sin desplazamiento vertical, a 375, 768 y 1280 px, se ven el encabezado (H1 + última lectura) y al menos dos indicadores (o, si el rol no tiene indicadores, Accesos rápidos u otra banda autorizada). **Sin** CTA de página en B0 (U-B0bis) | Captura a los tres tamaños | CA-V2-03 |
 | **UX-04** | Ningún rol ve más de 7 indicadores núcleo; ninguna métrica de administración de la cuenta aparece como indicador núcleo | Conteo y clasificación contra §3.2 | CA-V2-04 |
 | **UX-05** | Cinco de los siete indicadores abren su lista filtrada con el filtro en la dirección; el filtro sobrevive a recargar la página y el botón «Atrás» devuelve al inicio. Los dos restantes están declarados como excepción en §3.4 | Recorrido por indicador | CA-V2-05 |
 | **UX-06** | La cifra de un indicador coincide con el conteo de la lista a la que conduce | Comparación cifra ↔ conteo del destino | CA-V2-05 |
@@ -541,6 +545,12 @@ Contrato hermano, fuera de este documento y congelado el mismo día: [`2026-08-0
 **Adendas 2026-08-11 (delta UX v1.2).** Ver «Adendas delta UX»: B1 por dominio (U-1), Ver más inteligente (U-2) y mapa deep links historial (U-3). Congeladas en el mismo acto que el prompt v1.2; FE/QA citan spec + adendas.
 
 **Adendas remediación UI 2026-08-11 (R-A…R-D).** Ver la sección final «Adendas remediación UI — 2026-08-11». Versionan honestidad de hora (R-A), anuncio/foco de error de B1 (R-B), aterrizaje desde I-6 (R-C), primer viewport a 1280 px (R-D) y la matriz de acciones de B0. No reabren I-1…I-7 ni el contrato DS. FE/QA citan spec + estas adendas; el prompt de remediación ya las publicó para no bloquear implementación.
+
+**Adenda densidad UI 2026-08-12 (U-D).** Ver «Adenda densidad UI — 2026-08-12 (U-D)». Versiona R-D (métrica compacta sin hueco de sparkline). Contrato DS hermano: **v1.4**. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.0.md). **Vigente** como base; la anatomía de KPI del home se versiona de nuevo en U-D2 (fila horizontal).
+
+**Adenda remediación P1/P2 2026-08-12 (U-R2bis / U-NAV).** Ver «Adenda remediación P1/P2 — 2026-08-12 (U-R2bis / U-NAV)». Versiona la matriz B0 desde `md`, labels del menú y de la búsqueda global, onboarding con conteos `unknown`, línea del historial y estados de B3. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md).
+
+**Adenda densidad UI U-D2 — 2026-08-12.** Ver «Adenda densidad UI U-D2 — 2026-08-12» al final de este documento. **No borra U-D.** Versiona la anatomía del KPI del home: **fila horizontal** (no póster `flex-col`). Contrato DS hermano: **v1.6**. Prompt de ejecución: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md). Criterios UX-D2-01…08. Tracks notificados: AI-FE-PLATFORM · AI-SR-QA · AI-DS-OWNER.
 
 ---
 
@@ -719,7 +729,7 @@ Aclara R-3 / R-6 / R-7 de §9; **no** las sustituye.
 **Aviso junto a «Última lectura» — texto visible exacto:**
 
 ```text
-Algunos datos no se actualizaron. Revisa los avisos o pulsa Actualizar.
+Algunos datos no se actualizaron. Revisa los avisos.
 ```
 
 Reglas de composición del aviso:
@@ -811,6 +821,8 @@ Ejemplo ADMIN (cuatro grupos, orden campo → mesa → comercial → oportunidad
 
 Si el menú quedaría vacío, **no se renderiza**. El patrón de teclado del menú es el de `DropdownMenu` ya existente (Escape, flechas, clic exterior, foco inicial y retorno al disparador). Esta spec no redefine ese contrato.
 
+> **U-R2bis (2026-08-12).** La fila **768 px** («2 visibles, menú No, secundaria no se ofrece») queda **superada**. Desde `md` (768 px) aplica el patrón 1280. Ver adenda remediación P1/P2 al final de este documento.
+
 ---
 
 ### R-8 vigente (U-R3)
@@ -827,6 +839,361 @@ Si el menú quedaría vacío, **no se renderiza**. El patrón de teclado del men
 | **UX-REM-02** | La métrica con dato previo y fuente en error muestra error y «Reintentar» | Recorrido de la tarjeta |
 | **UX-REM-03** | Un grupo B1 en error anuncia **una** vez con el título/cuerpo de R-B | Un `PortalAlert` por grupo afectado |
 | **UX-REM-04** | Tras reintento exitoso, el foco está en el encabezado del grupo | Teclado / foco |
-| **UX-REM-05** | Acciones de B0: 375 → 1 + menú; 768 → 2 sin menú; 1280 → 2 + menú si hay secundaria | Viewport |
+| **UX-REM-05** | Acciones de B0: 375 → 1 + menú; **desde md (768) y 1280** → primaria + Actualizar visibles + menú si hay secundaria (U-R2bis; 768 = patrón 1280) | Viewport |
 | **UX-REM-06** | Clic en «Ofertas en riesgo» mueve el foco a Atención comercial, emite el anuncio de R-C y no anima el desplazamiento si hay `prefers-reduced-motion` | Teclado + preferencia de movimiento |
 | **UX-REM-07** | Campana e historial del inicio muestran el mismo hecho con el mismo vocabulario; sin identificador visible | Comparación de ambas superficies |
+
+---
+
+## Adenda densidad UI — 2026-08-12 (U-D)
+
+**Autoriza** AI-EM-ARCH en sesión 2026-08-12 (evidencia viva `/dashboard` ADMIN + [informe v1.1 §8](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1.md)). **Versiona** R-D en un punto: se permite métrica compacta. **No** se eliminan I-1…I-7, **no** se vuelve a la retícula plana de 4 por fila, **no** se fuerza B2 en el primer viewport a 1280.
+
+Contrato hermano: [`2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.4**.
+
+Postura: iWana es *visualmente sobrio, interactivamente denso*. El hueco de sparkline de Firma §2.1 no se reserva hasta que exista gráfica.
+
+| Pieza | Decisión |
+| --- | --- |
+| **B1 · cáscara** | `PortalDashboardMetric` compacta: cifra + rótulo + delta + descripción, sin hueco vacío. Alto mínimo ~96 px (`min-h-24`). Target táctil ≥ 44 px se cumple con la card entera. |
+| **B1 · tinte** | `warning` / `danger` **solo** si `value > 0` o hay `delta`. Si no, `neutral` (I-1/I-3/I-7 conservan `primary` cuando aplica). Cero no es urgencia. |
+| **B1 · un hijo** | El grupo de un solo indicador (p. ej. I-7) **no** estira a 12 columnas: `max-w` de una columna de la retícula de 2. Prohibido rellenar con KPI fantasma. |
+| **B2 · retícula** | `items-start`: la columna 8 no se estira a la altura de la 4. |
+| **Vacíos** | Un solo shell. `PortalEmptyState` embebido en `PortalPanel` **sin** pozo interior (borde + `iwana-surface-soft` duplicados). |
+| **Accesos rápidos** | Meta en una línea (`line-clamp-1`). Sin segunda cáscara. |
+| **B3** | Lista compacta (`max-w-4xl`). Zona horaria y país en lenguaje de producto (`Hora de Bogotá`, `Colombia`), no IANA/ISO crudos. |
+| **Pliegue** | Copy: N=1 → `Ver más · 1 resumen`; N≥2 → `Ver más · N resúmenes`; expandido → `Ocultar resúmenes adicionales`. |
+| **Onboarding** | N=1 restante → `Ver el pendiente restante`; N≥2 → `Ver los N pendientes restantes`. |
+
+**Criterios**
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-DEN-01** | Con valor 0 y sin delta, I-2/I-4/I-5/I-6 no pintan cáscara ámbar/rosa | Inicio ADMIN vacío |
+| **UX-DEN-02** | I-7 no ocupa el ancho completo del lienzo | Grupo Oportunidades |
+| **UX-DEN-03** | La columna de B2 no deja un hueco estirado bajo «Ver más» | Viewport 1280 con B2b alto |
+| **UX-DEN-04** | El vacío de campo no anida un segundo recuadro bordeado | Atención de campo en cero |
+| **UX-DEN-05** | B3 no muestra `America/Bogota` ni `CO` como texto visible | Ficha de empresa |
+
+---
+
+## Adenda remediación P1/P2 — 2026-08-12 (U-R2bis / U-NAV)
+
+**Autoriza** AI-EM-ARCH en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md) v1.0. Decisiones copiadas de [informe v1.1](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1.md) §4 (mapa de copy) y §7 (desempate B0). Skills: `system-vocabulary-review` · `iwana-identity-ui-review` (modo diseño, solo spec). Tracks notificados: AI-FE-PLATFORM · AI-SR-QA · AI-DS-OWNER.
+
+Estas adendas **versionan** la matriz B0 desde `md`, los labels del menú lateral y de la búsqueda global, el onboarding con conteos no leídos, la línea del historial y los estados de B3. El resto de la spec v1.0, las adendas delta v1.2, las adendas remediación UI R-A…R-D y la **adenda densidad U-D permanecen vigentes**. No se inventan indicadores, endpoints, tokens ni primitives. No se reabre el tinte activo del sidebar. No se toca U-D.
+
+**Modo identidad:** refinamiento de flujo y copy sobre la composición ya congelada. No es un rediseño. El lima no entra en avisos de dato incompleto, error ni riesgo.
+
+**Stop comprobado:** ninguna de estas adendas exige un campo ausente en HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+### Adenda U-R2bis — Matriz B0 desde `md` (desempate informe v1.1 §7)
+
+**Versiona** la matriz B0 de U-R2. **Deroga** la fila **768 px** de U-R2 («2 visibles, menú No, la secundaria no se ofrece en este tamaño»). Justificación del desempate: «Programar visita» es una de las dos altas del ciclo ISP (§5.2); no se sacrifica en el viewport de tablet. No es bug de FE contra la spec anterior.
+
+«Actualizar» (R-3) sigue siendo siempre operable y **no** cuenta como acción primaria de §5.2. La primaria y la secundaria siguen siendo las de §5.2.
+
+| Viewport | Controles visibles | Menú de desbordamiento |
+| --- | --- | --- |
+| **375 px** | **1:** la acción primaria | Sí. Nombre accesible exacto: `Más acciones del inicio`. Dentro, en este orden: `Actualizar` y, si existe, la secundaria |
+| **Desde md (768 px) y 1280 px** | **2:** primaria + `Actualizar` | Sí, **solo si** hay secundaria u otra acción de desbordamiento. Dentro: la secundaria y el resto. Nombre accesible: `Más acciones del inicio` |
+
+La secundaria **ya no se oculta en tablet**. 768 = patrón 1280.
+
+Si el menú quedaría vacío, **no se renderiza**. El patrón de teclado del menú es el de `DropdownMenu` ya existente (Escape, flechas, clic exterior, foco inicial y retorno al disparador). Esta spec no redefine ese contrato.
+
+**UX-REM-05 actualizado:** 375 → 1 + menú; desde md (768) y 1280 → primaria + Actualizar visibles + menú si hay secundaria.
+
+---
+
+### Adenda U-NAV — Labels del menú lateral y de la búsqueda global
+
+**Fuente única:** las etiquetas visibles de accesos rápidos §4.14. El menú lateral y los atajos de la búsqueda global usan **las mismas** etiquetas. El `href` no cambia.
+
+| Antes | Después | Destino |
+| --- | --- | --- |
+| CRM | Oportunidades | Mismo href: `/dashboard/crm/expedientes` |
+| Programacion | Programación | Sin cambio de ruta |
+| Usuarios | Usuarios y accesos | Sin cambio de ruta |
+| Reportes + badge «Siguiente fase» | **Retirar** el ítem | No hay destino; §4.14 ya eliminó la fila |
+
+**Rótulos de grupo** del menú (sentence case, no mayúsculas sostenidas):
+
+| Antes (típico) | Después |
+| --- | --- |
+| MENÚ / Menu | Menú |
+| ADMINISTRACIÓN / Administracion | Administración |
+
+**Fuera de esta adenda:** las páginas internas de oportunidades pueden seguir diciendo «CRM» en copy de dominio operativo (expedientes, modo asistido). U-NAV unifica **solo** menú lateral y búsqueda global con el inicio.
+
+---
+
+### Onboarding — `unknown` no es «al día»
+
+Aclara §7.2. M2 y M3 exigen conteos de universo **leídos**.
+
+1. Con `operationState === 'unknown'` **no** se afirma «Configuración al día» ni ningún equivalente de «al día» / M3.
+2. En ese estado: **esqueleto** con forma del bloque, o **no renderizar**. Nunca copy de completitud.
+3. «Al día» (y el momento M3: el bloque desaparece) **solo** con conteos leídos **y** sin pendientes de configuración (`tenant.alerts[]` vacío).
+4. Si los conteos están leídos y en cero, aplica M2 de §7.2 («Empieza tu operación»), no «al día».
+
+---
+
+### Historial — misma línea que la campana
+
+Aclara R-8 / U-R3. Campana e historial del inicio usan el mismo resumen: `auditFeedSummary` con el patrón **`acción · entidad`**.
+
+| Caso | Texto visible |
+| --- | --- |
+| Hecho con entidad de negocio conocida | `{acción} · {entidad}` — p. ej. `Creación · oportunidad` |
+| `LOGIN` / `LOGOUT` / `REFRESH` | **Solo la acción.** `LOGIN` → `Inicio de sesión`. Sin entidad, sin «en usuario» |
+| Entidad sin etiqueta de producto | **Prohibido** el comodín `registro`. Omitir la entidad o usar un fallback de producto ya mapeado; nunca «Creación en registro» ni «Creación · registro» |
+
+Sin identificadores visibles. Mismo vocabulario en ambas superficies.
+
+---
+
+### B3 — loading, error y éxito
+
+Aclara §6.3 (Estado de la empresa). B3 tiene **tres** ramas, no una ficha de identidad por defecto:
+
+| Estado de `tenant-me` / `tenant-summary` | Qué se ve |
+| --- | --- |
+| **Cargando** | Esqueleto con forma de la ficha (una fila / lista compacta). **No** `IdentityOnlyCard` |
+| **Error** | Mensaje en lenguaje de negocio + **«Reintentar»** que recarga solo este bloque. **No** `IdentityOnlyCard` |
+| **Éxito con ficha operativa** | Ficha resumida de B3 (nombre, estado del servicio, zona horaria, moneda, sedes) |
+| **Éxito sin ficha operativa** | `IdentityOnlyCard` **solo aquí**: cuando, **tras** éxito, no hay datos de ficha operativa |
+
+`IdentityOnlyCard` no se usa durante carga ni durante fallo. Un error tragado o una identidad parcial mientras carga incumple la honestidad del dato (§11 punto 3).
+
+---
+
+### Criterios de experiencia añadidos
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-NAV-01** | El menú lateral y los atajos de la búsqueda global usan las mismas etiquetas que los accesos rápidos del inicio (§4.14): Oportunidades, Programación, Usuarios y accesos; sin ítem Reportes ni badge «Siguiente fase»; rótulos de grupo «Menú» y «Administración» | Recorrido del shell + búsqueda global vs. B2b |
+| **UX-UR2-01** | Desde `md` (768 px) y a 1280 px, B0 muestra primaria + Actualizar visibles, y el menú «Más acciones del inicio» **sí** aparece si hay secundaria. A 375 px: 1 control (primaria) + el mismo menú (Actualizar + secundaria si existe) | Viewport 375 / 768 / 1280 |
+| **UX-ONB-01** | Con `operationState === 'unknown'` no se afirma «Configuración al día» ni equivalente; se ve esqueleto o el bloque no se renderiza. «Al día» solo con conteos leídos y sin pendientes | Forzar conteos desconocidos vs. leídos en cero vs. leídos con operación |
+| **UX-AUD-01** | El historial del inicio no muestra el comodín «registro» ni «en usuario». `LOGIN`/`LOGOUT`/`REFRESH` muestran solo la acción (p. ej. «Inicio de sesión»). El resto usa `acción · entidad`, igual que la campana | Comparación campana ↔ historial; evento de sesión y evento sin mapa de entidad |
+
+---
+
+## Adenda densidad UI U-D2 — 2026-08-12
+
+**Autoriza** AI-EM-ARCH en plan U-D2 densidad real dashboard portal (sesión 2026-08-12). **No borra** la adenda U-D ni sus criterios UX-DEN-01…05: U-D sigue vigente como base (tinte condicionado, I-7 sin full-bleed, vacío embebido, B3 compacta, copy de pliegue). U-D2 **versiona la anatomía del KPI del home** y el ritmo de densidad operativa del primer viewport.
+
+Contrato hermano: [`2026-08-04-portal-dashboard-recomposicion-ds-contrato.md`](2026-08-04-portal-dashboard-recomposicion-ds-contrato.md) **v1.6** (`density: 'default' | 'compact'` en `PortalDashboardMetric`; `PortalPanel` con `compact` opcional).
+
+Prompt de ejecución: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md).
+
+Skills: `system-vocabulary-review` · `iwana-identity-ui-review` (modo diseño, solo spec). Tracks notificados: AI-FE-PLATFORM · AI-SR-QA · AI-DS-OWNER.
+
+**Modo identidad:** refinamiento de densidad sobre la composición ya congelada (U-1 grupos, I-1…I-7). No es un rediseño. El lima no entra en urgencia.
+
+**Qué no cambia:** inventario y semántica de I-1…I-7 (§3.2), destinos/filtros, agrupación por dominio U-1, B0/B2b/B3 salvo ritmo de gaps y accesos, estados §6, techos de autorización, tinte condicionado de U-D (UX-DEN-01), Assurance y demás consumidores fuera del home.
+
+### Anatomía versionada — KPI del home = fila horizontal (no póster)
+
+| Pieza | Decisión U-D2 | Relación con U-D |
+| --- | --- | --- |
+| **B1 · cáscara home** | `PortalDashboardMetric` con `density='compact'`: **fila horizontal** (`flex-row items-center`), `min-h-14` (~56 px), tipografía de cifra `text-xl`, padding `py-2 px-3`, radio `rounded-2xl`. Target táctil ≥ 44 px lo cumple la card entera. | U-D fijó `min-h-24` póster; U-D2 lo **versiona solo en el home** vía prop `density`. Assurance y demás usan `default` (anatomía v1.4). |
+| **B1 · descripción** | En idle del home: la `description` **no es permanente** — se omite o vive en `sr-only`. El dominio ya está en el eyebrow del grupo (U-1 / DS §1.8). | U-D listaba descripción visible en la cáscara; en home compacto deja de competir con la cifra. |
+| **B1 · composición** | **Prohibido** el póster `flex-col` en métricas del inicio. Agrupación U-1 **intacta** (encabezado de dominio + grid de hijas sin eyebrow). | Sin volver a retícula plana de 4 por fila. |
+| **Primer viewport 1280** | Con rol de ≥ 2 grupos: B0 + **≥ 2 grupos** + **arranque de B2** visible sin scroll. | Versiona el desempate R-D / U-D (que permitía B2 bajo el pliegue): la densidad real debe recuperar el inicio de B2. |
+| **B1 · tinte** | Cero **sin** tinte de urgencia: `warning`/`danger` solo si `value > 0` o hay `delta` (igual que UX-DEN-01). | U-D intacto. |
+| **Accesos rápidos** | Máximo **5** visibles + control «Ver más» si hay más. La meta de cada acceso es **`sr-only`** (no línea visible permanente). | U-D pedía `line-clamp-1` visible; U-D2 oculta la meta a vista y la deja para AT. |
+| **Ritmo** | Gaps del home ≤ `gap-4` / `space-y-4` entre bandas y dentro de B2b. | Compacta el aire vertical sin tocar tokens de marca. |
+| **Contratos** | FE/QA citan esta adenda + DS **v1.6**. I-1…I-7 intactos. | Prompt v1.1. |
+
+### Criterios de experiencia U-D2
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-D2-01** | Cada métrica del home B1 es **fila horizontal** con alto mínimo `min-h-14` (~56 px); no póster alto | Inicio ADMIN; inspección de cáscara |
+| **UX-D2-02** | En idle, la `description` de la métrica del home **no** es texto permanente visible (omitida o `sr-only`); el dominio ya está en el eyebrow del grupo | Lectura de B1 sin foco/hover especial |
+| **UX-D2-03** | Ninguna métrica del home usa composición póster `flex-col`; la agrupación U-1 (dominios) permanece intacta | ADMIN con 4 grupos; sin eyebrows duplicados |
+| **UX-D2-04** | A 1280 px, con rol de ≥ 2 grupos: primer viewport = B0 + ≥ 2 grupos completos + **arranque de B2** | Captura 1280 ADMIN |
+| **UX-D2-05** | Con valor 0 y sin delta, las métricas de urgencia no pintan tinte ámbar/rosa (cero sin urgencia) | Inicio ADMIN vacío; igual espíritu que UX-DEN-01 |
+| **UX-D2-06** | Accesos rápidos: máx. **5** visibles + «Ver más» si aplica; meta de cada fila en `sr-only` | B2b Accesos |
+| **UX-D2-07** | Gaps / apilado del home ≤ `gap-4` / `space-y-4` | Inspección de layout del inicio |
+| **UX-D2-08** | Implementación contra contratos U-D2 + DS **v1.6**; I-1…I-7 intactos (sin fusionar ni eliminar) | Diff FE + conteo de indicadores |
+
+**Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+## Adenda densidad UI U-D3 — 2026-08-12
+
+**Autoriza** AI-EM-ARCH en [`INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.2.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.2.md) y prompt de auditoría v1.2. **No borra** U-D ni U-D2 como historia: U-D2 queda **superada en anatomía y retícula B1**. U-D3 **restaura el KPI compacto vertical** (base U-D) y **llena la retícula** (hasta 4 por fila a 1280).
+
+**Por qué.** U-D2 cumplió el checkbox de «B2 en el primer viewport» convirtiendo el KPI en una fila de 56 px. Firma §2.1 no se reconoce: el operador ve cajas vacías (Track A 76/100 · Track B 86/100). Ni fila TailAdmin ni `PortalMetricCard` 148 px (hueco sparkline).
+
+**Modo identidad:** refinamiento de densidad. El lima no entra en urgencia. I-1…I-7 intactos.
+
+| Pieza | Decisión U-D3 | Relación con U-D2 |
+| --- | --- | --- |
+| **B1 · cáscara home** | `density='compact'` = **vertical** `flex-col`, `min-h-24` (~96 px), cifra `text-2xl`, padding `py-3 px-4`, radio `rounded-2xl`. Rótulo visible. Eyebrow de **card** omitido (el dominio vive en el encabezado de grupo). `description` en idle: omitida o `sr-only`. | Superada la fila `min-h-14` / `flex-row` / `text-xl`. |
+| **B1 · sparkline** | **Prohibido** reservar hueco. Sin series en HLD §4.2. | Igual que U-D / U-D2. |
+| **B1 · 148 px** | **Prohibido** en el home. `PortalMetricCard` intacto fuera. | Igual. |
+| **B1 · retícula** | Hasta **4 columnas a 1280** (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`). Un solo hijo ocupa **una** columna; **sin** `max-w` del 50 %. Prohibido KPI fantasma. | Superado el techo a 2 col y el `max-w` de media pista (I-7). |
+| **B1 · grupos** | Encabezado `.portal-eyebrow` de sección **una vez**; hijas sin eyebrow de categoría. | U-1 intacto. |
+| **Primer viewport 1280** | B0 + banda B1 (hasta 4 KPI en la primera fila) + arranque de B2. | U-D2-04 se reinterpreta: el trabajo visible no puede ser aire interno de card. |
+| **B2 / B2b** | `items-start` se conserva. El 8/4 con B2 vacío es **deuda P2**, no corte FE de esta adenda. | U-D / UX-DEN-03 intactos. |
+| **Contratos** | FE/QA citan esta adenda + DS **v1.7**. | Prompt densidad v1.2. |
+
+### Criterios de experiencia U-D3
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-D3-01** | Cada métrica del home B1 es **póster vertical** `min-h-24`; no fila `min-h-14` | Inicio ADMIN; inspección de cáscara |
+| **UX-D3-02** | Cifra `text-2xl` + `font-mono`/`tabular-nums`; rótulo visible | Lectura B1 |
+| **UX-D3-03** | A 1280, grid de grupo **hasta 4 columnas**; I-7 (un hijo) **no** deja media pista vacía | Captura 1280 ADMIN |
+| **UX-D3-04** | Agrupación U-1 intacta (eyebrow de dominio una vez; hijas sin eyebrow duplicado) | ADMIN 4 grupos |
+| **UX-D3-05** | Cero sparkline / cero `min-h-[148px]` en `PortalDashboardMetric` | Diff FE |
+| **UX-D3-06** | Cero sin urgencia (tinte `warning`/`danger` solo si `value > 0` o hay `delta`) | Igual espíritu UX-DEN-01 / UX-D2-05 |
+| **UX-D3-07** | I-1…I-7 intactos (sin fusionar ni eliminar) | Conteo de indicadores |
+| **UX-D3-08** | Implementación contra U-D3 + DS **v1.7** | Diff + checklist DS §I |
+
+**Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+## Adenda densidad UI U-D4 — antiespacios adaptativo (2026-08-13)
+
+**Autoriza** AI-EM-ARCH en sesión del responsable 2026-08-13 — Opción A (layout adaptativo por altura del bloque dominante para eliminar los espacios vacíos del inicio `/dashboard`); rastro en [`INFORME-MOD02-DASHBOARD-PORTAL-ANTIESPACIOS-v1.0.md`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-ANTIESPACIOS-v1.0.md). **No borra** U-D, U-D2 ni U-D3 como historia: U-D4 **versiona el layout de B2/B2b por altura del bloque dominante** y **confirma la alineación de B3 con §2.2**.
+
+**Modo identidad:** eliminación de antiespacios verticales sobre la composición ya congelada. No es un rediseño. El lima no entra en urgencia. I-1…I-7 intactos.
+
+**Qué no cambia:** composición por rol (§4), orden de bloques, plegado tras «Ver más» (§4.3), promoción con KPI > 0, franja de acciones (§5), ni los breakpoints de §8 — la banda reutiliza los existentes; solo suma densidad sin huecos en el estado vacío.
+
+### B3 (§2.2) — corrección de desalineación
+
+La ficha «Estado de la empresa» se renderiza a **12 columnas a ancho completo**: se elimina el cap `max-w-4xl` que la reducía a ~896 px y dejaba ~203 px vacíos. §2.2 ya declara B3 = 12 col; esta adenda **confirma que el código se alinea a la spec** (la fila B3 de U-D queda superada solo en el punto del ancho; la lista compacta permanece).
+
+### B2 / B2b (§2.1, §2.2, §8) — layout adaptativo por altura (Opción A)
+
+| Pieza | Decisión U-D4 | Relación con la spec |
+| --- | --- | --- |
+| **Modo retícula (caso rico, sin cambios)** | Cuando el bloque dominante es alto (**≥ 420 px** medidos), se mantiene el layout actual de la spec: **B2 = 8 col + B2b = 4 col** junto a B2 | §2.2 y §8 intactos |
+| **Modo banda (tenant con datos en cero / dominante corto, < 420 px)** | **B2** pasa a **12 col a ancho completo** y **B2b** se convierte en **banda horizontal de ancho completo bajo B2**: 3 paneles → 3 columnas · 2 paneles → 2 columnas · 1 panel → ancho acotado (`max-w-2xl`) | Suma densidad sin huecos en el estado vacío |
+| **Histéresis de salida** | La salida del modo banda exige un bloque dominante **≥ 460 px** | Evita el parpadeo de modo en el umbral |
+
+**Justificación:** el estado más común (tenant nuevo, KPIs en 0) dejaba **~890 px vacíos** en los 2/3 izquierdos; la banda llena la pantalla **sin degradar el caso rico** que la spec optimizó.
+
+### Criterios de experiencia U-D4
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-D4-01** | B3 se renderiza a 12 col a ancho completo; sin cap `max-w-4xl` (recupera los ~203 px) | Inicio ADMIN; inspección de B3 |
+| **UX-D4-02** | Con bloque dominante alto (≥ 420 px medidos): B2 = 8 col + B2b = 4 col, layout de §2.2 sin cambios | Inicio ADMIN con trabajo en B2 |
+| **UX-D4-03** | Con dominante corto (< 420 px): B2 = 12 col y B2b como banda horizontal de ancho completo bajo B2; 3 paneles → 3 columnas; 2 paneles → 2 columnas | Tenant nuevo / datos en cero |
+| **UX-D4-04** | Con 1 panel en B2b, la banda ocupa ancho acotado (`max-w-2xl`) | Tenant con una sola pieza de apoyo |
+| **UX-D4-05** | La salida del modo banda no ocurre hasta un dominante ≥ 460 px (histéresis): sin parpadeo en el rango 420–460 px | Transición de altura en el umbral |
+| **UX-D4-06** | Sin cambios: composición por rol (§4), orden de bloques, plegado «Ver más», promoción KPI > 0, franja de acciones (§5) y breakpoints de §8 | Diff FE + recorrido por rol |
+
+**Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+## Adenda densidad UI U-D5 (2026-08-13)
+
+**Autoriza** la decisión del responsable en sesión del 2026-08-13 — **Opción 1: grid unificada de 4 por fila** (diseño §2.2 original) para la retícula B1. La implementación previa (adaptativa por grupo) queda **superada**. **No borra** U-D, U-D2, U-D3 ni U-D4 como historia: U-D5 **deroga en B1** la agrupación por dominio (Adenda B1 / U-1) y la regla de grid por grupo de U-D3; lo demás de U-D3 y U-D4 permanece vigente.
+
+**Contexto — decisión del responsable (2026-08-13).** La agrupación por dominio (Adenda B1 / U-1) dejaba bandas de 2 KPIs con **media pista vacía** en las filas de B1 (informe antiespacios v1.0, H3: «grupos de 2 tarjetas; OPORTUNIDADES 1 tarjeta»). Tras evaluar las opciones, el responsable aprobó volver a la **grilla unificada** del §2.2 original: todas las tarjetas KPI de B1 fluyen en una sola grilla de hasta 4 por fila en escritorio y se retiran los eyebrows de dominio de B1.
+
+**Modo identidad:** vuelta a la retícula unificada de tarjetas iguales del §2.2. El lima no entra en urgencia. I-1…I-7 intactos.
+
+### Retícula B1 unificada
+
+| Pieza | Decisión U-D5 | Relación con la spec |
+| --- | --- | --- |
+| **B1 · retícula** | Todas las tarjetas KPI del rol fluyen en **una sola grilla** `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4` (hasta **4 por fila a 1280+**), en el orden de composición del rol (§4). Resultado por rol: **ADMIN 7** → fila de 4 + fila de 3; **NOC 4** → fila completa de 4; **SOPORTE 4** → fila completa de 4; **VENTAS 3** → 3 por fila; **CONTADOR (ACCOUNTANT) 1** → una columna (1/4, **nunca estirada** — único rol con 1 KPI, se conserva la regla DS v1.7); **TECNICO 0 KPIs** → no compone B1 (la sección no se renderiza) | §2.2 (B1 = 12 col, 4 por fila) |
+| **B1 · eyebrows** | La tarjeta KPI **conserva su etiqueta**; el dominio se infiere de la etiqueta. El **eyebrow de dominio deja de renderizarse** en B1 (una sola grilla, sin encabezados de grupo). La ranura `eyebrow` del DS (§1.2) queda **disponible para otros usos** | Adenda B1 (U-1) superada en B1 |
+| **B1 · anatomía** | KPI compacto vertical (base U-D / U-D3): **label + cifra + badge**, `min-h-24`, **sin** `max-w` 50 %. Tarjetas iguales, `gap-2` | U-D / U-D3 vigentes |
+| **Móvil / tablet** | Sin cambios: `grid-cols-1` apilado; `sm:grid-cols-2` (2 por fila) | §8 / U-D3 |
+| **Contratos** | FE/QA citan esta adenda + DS v1.7 (receta de grid §1.8 y nota U-D5 en §1.8) | Prompt densidad v1.2 |
+
+**Qué no cambia:** anatomía KPI compacta vertical (base U-D / U-D3: label + cifra + badge, `min-h-24`, sin `max-w` 50 %), tarjetas iguales, `gap-2`, composición por rol (§4), orden de indicadores (§3) y el comportamiento en móvil/tablet (`grid-cols-1` apilado; `sm:grid-cols-2` de 2 por fila). Secciones B2 / B2b intactas.
+
+### Criterios de experiencia U-D5
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-D5-01** | A 1280+, B1 usa hasta **4 columnas por fila**: ADMIN = 4+3; roles con 4 KPIs = fila completa de 4 | Captura 1280 ADMIN; inspección de grilla |
+| **UX-D5-02** | **Sin eyebrows de dominio** en B1: una sola grilla, sin encabezados de grupo | Lectura de B1; 0 eyebrows de dominio en B1 |
+| **UX-D5-03** | Rol con **1 KPI** (CONTADOR / ACCOUNTANT) = una columna (1/4), **sin estirar** a banda completa | Captura 1280 CONTADOR |
+| **UX-D5-04** | Móvil/tablet **sin cambios**: `grid-cols-1` / `sm:grid-cols-2` | Recorrido móvil/tablet |
+
+### Derogaciones explícitas (en B1)
+
+1. La **agrupación por dominio** de la Adenda B1 (bandas + eyebrows) y los criterios **U-1 / UX-D3-04**, en lo que prohíben la «retícula plana de 4 por fila».
+2. La **regla de grid por grupo** de U-D3 (tabla U-D3, filas «B1 · retícula» / «B1 · grupos», ≈ líneas 1037-1038).
+
+Lo demás de U-D3 (**KPI compacto vertical**, sin `max-w`, **sin KPI fantasma**, sin retorno al póster `flex-col`) permanece vigente. Secciones B2 / B2b intactas.
+
+**Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+## Adenda U-B0 — Franja de acciones fuera del título (2026-08-13)
+
+> **Superada** el 2026-08-13 por **U-B0bis**: el Inicio ya no pinta B0b. Conservada como historia de la decisión de sacar CTAs del `PageHeader`.
+
+**Autoriza** la decisión del responsable en sesión del 2026-08-13 — **opción 1:** `PageHeader` solo H1 + subtítulo; franja de acciones en un toolbar **debajo** del título (sigue arriba, fuera del H1). Skills: `iwana-identity-ui-review` (modo diseño) · `ui-ux-pro-max` (subordinada). Contrato DS hermano **v1.8**. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-B0-TOOLBAR-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-B0-TOOLBAR-v1.0.md).
+
+**Problema.** El H1 (nombre de empresa) compartía bloque con CTAs (`Actualizar`, primaria del rol, menú «Más acciones del inicio»). Eso mezcla orientación con iniciar trabajo y contradice la jerarquía Firma (título = ancla; acciones = chrome). El precedente de `apps/web` ya sacó CTAs del `PageHeader`.
+
+**Qué se versiona**
+
+| Pieza | Antes (superado en el Inicio) | U-B0 |
+| --- | --- | --- |
+| **B0a · identidad** | Título + hora + CTAs en el mismo `PageHeader` | `PageHeader` **sin** `actions`: H1 + subtítulo (última lectura, aviso stale, «Actualizando») |
+| **B0b · franja** | Slot `actions` del `PageHeader` | Toolbar **inmediatamente debajo** del título. Primitive: `PortalActionToolbar` `align="end"`. Nombre accesible del grupo: `Acciones del inicio` |
+| **H1** | Controles hermanos del título | **Cero controles** dentro del H1 ni de su contenedor de título |
+
+**Qué no cambia:** selección por rol (§5.2), destinos (§5.3), jerarquía azul noche / lima prohibido en filled, táctil 44 px, matriz U-R2bis (375: primaria + menú; desde `md`: primaria + Actualizar + menú si hay secundaria), `aria-label` del overflow `Más acciones del inicio`, Accesos rápidos (§4.14) como **navegación** (no se fusionan con B0b). El slot `actions` de `PageHeader` **permanece** para otras rutas del portal.
+
+**Prohibido:** reintroducir CTAs en el H1; meter altas en Accesos rápidos; `variant="lime"` como primaria de página.
+
+### Criterios de experiencia U-B0
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-B0-01** | El `h1` del Inicio no contiene botones ni enlaces de acción; la primaria y `Actualizar` están **fuera** de su contenedor de título | Unit + lectura DOM |
+| **UX-B0-02** | B0b está **entre** B0a y B1 (indicadores), no dentro del `PageHeader` | Recorrido visual / DOM |
+| **UX-B0-03** | Matriz U-R2bis intacta: 375 → 1 + menú; desde `md` → primaria + Actualizar + menú si hay secundaria | Viewport 375 / 768 / 1280 (equivale a UX-REM-05 / UX-UR2-01, con contenedor B0b) |
+
+**Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+## Adenda U-B0bis — Encabezado sin franja de acciones (2026-08-13)
+
+**Autoriza** la decisión del responsable en sesión del 2026-08-13: los botones de B0 **no quedan bien**; se **quitan**. Skills: `iwana-identity-ui-review` (modo diseño) · `system-vocabulary-review`. Contrato DS hermano **v1.9**. U-B0 (toolbar bajo el H1) queda **superada**.
+
+**Problema.** Tras sacar los CTAs del `PageHeader`, la franja B0b (primaria, Actualizar, menú) seguía compitiendo con el ancla de identidad y con los indicadores. El inicio debe orientar, no duplicar altas que ya viven en módulos.
+
+**Qué se versiona**
+
+| Pieza | U-B0 (superada) | U-B0bis |
+| --- | --- | --- |
+| **B0** | B0a identidad + B0b toolbar | Solo identidad: H1 + subtítulo (última lectura, aviso stale, «Actualizando») |
+| **Altas del rol** | CTA primaria/secundaria en B0b | Módulos, indicadores y Accesos rápidos. El registro §5.2 no se pinta |
+| **Recarga** | Botón Actualizar global | `Reintentar` por bloque o tarjeta. Sin recarga global de página |
+
+**Qué no cambia:** Accesos rápidos (§4.14) como navegación (no se fusionan con altas de B0). El slot `actions` de `PageHeader` **permanece** para otras rutas. Receta `Button variant="primary"` + `min-h-11` sigue vigente **fuera** del Inicio. `PortalActionToolbar` permanece como primitive.
+
+**Prohibido:** reintroducir CTAs en el H1 o un toolbar de página bajo el H1; meter altas en Accesos rápidos salvo decisión nueva; `variant="lime"` como primaria de página.
+
+### Criterios de experiencia U-B0bis
+
+| ID | Criterio | Cómo se verifica |
+| --- | --- | --- |
+| **UX-B0BIS-01** | El `h1` del Inicio no contiene botones ni enlaces de acción | Unit + DOM |
+| **UX-B0BIS-02** | No existe toolbar `Acciones del inicio`, ni `Actualizar` global, ni menú «Más acciones del inicio» | Unit + E2E |
+| **UX-B0BIS-03** | Primer viewport: identidad + indicadores (UX-03 actualizado). Recarga por `Reintentar` de bloque | Viewport / unit C-R2 |
+
+**Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.

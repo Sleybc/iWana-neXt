@@ -4,7 +4,7 @@ import { Clock } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@iwana/ui';
 import type { AuditLogEntry } from '@/lib/api-client';
-import { auditActionLabel, auditEntityTypeLabel } from '@/lib/audit-vocabulary';
+import { auditFeedSummary } from '@/lib/audit-vocabulary';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -86,9 +86,7 @@ export function resolveAuditEntityHref(
 }
 
 function buildActivitySummary(entry: AuditLogEntry): string {
-  const action = auditActionLabel(entry.action);
-  const entity = auditEntityTypeLabel(entry.entityType);
-  return `${action} en ${entity}`;
+  return auditFeedSummary(entry.action, entry.entityType);
 }
 
 function actorDisplayName(entry: AuditLogEntry): string | null {
@@ -109,9 +107,9 @@ export function RecentActivityPanel({
   const list = entries ?? [];
 
   return (
-    <PortalPanel title="Historial de cambios" busy={isLoading}>
+    <PortalPanel compact title="Historial de cambios" busy={isLoading}>
       {isLoading ? (
-        <div className="space-y-3" role="status" aria-label="Cargando historial">
+        <div className="space-y-1.5" role="status" aria-label="Cargando historial">
           {Array.from({ length: 4 }).map((_, i) => (
             <PortalSkeletonBlock key={i} className="h-10 rounded-xl" />
           ))}
@@ -144,6 +142,7 @@ export function RecentActivityPanel({
 
       {!isLoading && !showError && list.length === 0 ? (
         <PortalEmptyState
+          embedded
           title="Sin cambios recientes"
           description={
             minimized
@@ -154,13 +153,13 @@ export function RecentActivityPanel({
       ) : null}
 
       {!isLoading && !showError && list.length > 0 ? (
-        <ul className="space-y-3" aria-label="Cambios recientes">
+        <ul className="space-y-1.5" aria-label="Cambios recientes">
           {list.map((entry) => {
             const href = resolveAuditEntityHref(entry.entityType, entry.entityId);
             const summary = buildActivitySummary(entry);
             const actor = actorDisplayName(entry);
             return (
-              <li key={entry.id} className="flex min-h-11 items-start gap-3 text-sm">
+              <li key={entry.id} className="flex items-start gap-3 text-sm">
                 <div
                   className="mt-2 h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500"
                   aria-hidden="true"

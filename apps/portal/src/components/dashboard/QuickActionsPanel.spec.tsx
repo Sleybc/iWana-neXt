@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { UserRole } from '@iwana/shared';
 import { QuickActionsPanel, __listQuickAccessLabelsForRole } from './QuickActionsPanel';
 
@@ -26,15 +27,27 @@ describe('QuickActionsPanel', () => {
       'href',
       '/dashboard/commercial',
     );
+    expect(screen.getByRole('button', { name: /Ver más/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Usuarios y accesos' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Reportes')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fase siguiente/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/accesos disponibles hoy/i)).not.toBeInTheDocument();
+  });
+
+  it('ADMIN con Ver más revela el resto de accesos (tope 5, U-D2)', async () => {
+    const user = userEvent.setup();
+    render(<QuickActionsPanel role={UserRole.ADMIN} />);
+
+    expect(
+      screen.getAllByRole('link').filter((el) => el.getAttribute('href')?.startsWith('/dashboard')),
+    ).toHaveLength(5);
+    await user.click(screen.getByRole('button', { name: /Ver más/i }));
     expect(screen.getByRole('link', { name: 'Usuarios y accesos' })).toHaveAttribute(
       'href',
       '/dashboard/users',
     );
     expect(screen.getByRole('link', { name: 'Configuración' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Mi perfil' })).toBeInTheDocument();
-    expect(screen.queryByText('Reportes')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Fase siguiente/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/accesos disponibles hoy/i)).not.toBeInTheDocument();
   });
 
   it('TECHNICIAN solo ve programación y perfil (sin comerciales ni usuarios)', () => {
@@ -48,22 +61,24 @@ describe('QuickActionsPanel', () => {
     expect(screen.queryByRole('link', { name: 'Comercial' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Usuarios y accesos' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Configuración' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ver más/i })).not.toBeInTheDocument();
   });
 
   it('objetivos táctiles ≥44px (min-h-11) en cada acceso', () => {
     render(<QuickActionsPanel role={UserRole.SALES} />);
 
-    const links = screen.getAllByRole('link');
+    const links = screen.getAllByRole('link').filter((el) => el.className.includes('min-h-11'));
     expect(links.length).toBeGreaterThan(0);
     for (const link of links) {
       expect(link.className).toMatch(/min-h-11/);
     }
   });
 
-  it('lista en una columna sin truncate en descripciones', () => {
+  it('grid de dos columnas y meta sr-only (U-D2)', () => {
     const { container } = render(<QuickActionsPanel role={UserRole.ADMIN} />);
-    expect(container.querySelector('.truncate')).toBeNull();
-    expect(container.querySelector('ul')?.className).toMatch(/flex-col/);
+    expect(container.querySelector('ul')?.className).toMatch(/sm:grid-cols-2/);
+    expect(container.querySelector('.line-clamp-1')).toBeNull();
+    expect(container.querySelector('.sr-only')).toBeTruthy();
   });
 
   it('mapa §4.14: SUBSCRIBER solo perfil', () => {

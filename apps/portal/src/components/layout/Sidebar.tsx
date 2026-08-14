@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Settings,
   Users,
-  BarChart3,
   BriefcaseBusiness,
   HandCoins,
   LifeBuoy,
@@ -67,13 +66,13 @@ function resolveTenantDisplayName(profile?: TenantSelf | null): string {
  */
 const navGroups: NavGroup[] = [
   {
-    group: 'MENÚ',
+    group: 'Menú',
     items: [
       { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
       { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
-      { href: '/dashboard/crm/expedientes', label: 'CRM', icon: BriefcaseBusiness },
+      { href: '/dashboard/crm/expedientes', label: 'Oportunidades', icon: BriefcaseBusiness },
       { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
-      { href: '/dashboard/scheduling', label: 'Programacion', icon: CalendarClock },
+      { href: '/dashboard/scheduling', label: 'Programación', icon: CalendarClock },
       { href: '/dashboard/assurance', label: 'Mesa de ayuda', icon: LifeBuoy },
       {
         href: '/dashboard/operations',
@@ -97,17 +96,10 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    group: 'ADMINISTRACIÓN',
+    group: 'Administración',
     items: [
       { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
-      { href: '/dashboard/users', label: 'Usuarios', icon: Users },
-      {
-        href: '/reports',
-        label: 'Reportes',
-        icon: BarChart3,
-        disabled: true,
-        badge: 'Siguiente fase',
-      },
+      { href: '/dashboard/users', label: 'Usuarios y accesos', icon: Users },
     ],
   },
 ];
@@ -131,7 +123,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
         <div key={navGroup.group} className="mb-2">
           <p
             className={cn(
-              'mt-6 mb-2 px-4 text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300',
+              'mt-6 mb-2 px-4 text-xs font-semibold text-gray-600 dark:text-gray-300',
               groupIndex === 0 && 'mt-0',
               desktopCollapsed && 'lg:hidden',
             )}

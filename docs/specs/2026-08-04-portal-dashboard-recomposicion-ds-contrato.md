@@ -1,12 +1,115 @@
 # Contrato DS — recomposición del `/dashboard` del portal
 
-**Versión:** 1.3
-**Estado:** **Congelado** (v1.0 el 2026-08-04; **re-sync v1.1** el 2026-08-10; **re-sync v1.2** el 2026-08-10; **re-sync v1.3** el 2026-08-11 — protocolo §3bis: cambio post-congelación versionado y notificado a AI-FE-PLATFORM y AI-SR-QA vía AI-EM-ARCH / prompt delta Track B)
-**Fecha:** 2026-08-11
-**Autor:** AI-DS-OWNER
+**Versión:** 1.9
+**Estado:** **Congelado** (v1.0 el 2026-08-04; re-sync v1.1–v1.8; **re-sync v1.9** el 2026-08-13 — U-B0bis: Inicio sin CTA de página ni `PortalActionToolbar`)
+**Fecha:** 2026-08-13
+**Autor:** AI-DS-OWNER (contrato) · AI-EM-ARCH (autorización U-B0bis)
 **Ejecuta:** AI-FE-PLATFORM · **Verifica:** AI-SR-QA · **Orquesta:** AI-EM-ARCH
 
-### Changelog v1.3 (único delta vs v1.2)
+### Changelog v1.9 (único delta vs v1.8)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **Inicio (`/dashboard`)** — no hay CTA de página ni toolbar B0b. `PageHeader` = H1 + subtítulo. Recarga por `Reintentar` de bloque. | Primitive `PageHeader.actions` en otras rutas. Receta `Button variant="primary"` + `min-h-11` **fuera** del home. `PortalActionToolbar` (aria-label opcional) intacta como primitive. Cero tokens de marca. **No** se reabre §5.1. |
+
+> **Carril rápido (EM-ARCH):** quitar chrome del home, **cero tokens de marca**. UX hermano: adenda **U-B0bis** (U-B0 superada).
+
+### Changelog v1.8 (histórico — delta vs v1.7)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **CTA de Inicio (B0b)** — deja el slot `actions` de `PageHeader`. Se compone en `PortalActionToolbar` `align="end"` **debajo** del `PageHeader` (H1 + subtítulo). Receta de botón §3.3.3 intacta. | Primitive `PageHeader` (otras rutas siguen usando `actions`). `Button variant="primary"` + `min-h-11`. Cero tokens de marca. Cero primitive nueva. **No** se reabre §5.1. |
+
+> **Carril rápido (EM-ARCH):** composición de chrome existente, **cero tokens de marca**. UX hermano: adenda **U-B0**.
+
+### Changelog v1.7 (histórico — delta vs v1.6)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **`density='compact'` (home B1)** — deja de ser fila `min-h-14` / `flex-row` / `text-xl`. Pasa a KPI **vertical**: `min-h-24`, `flex-col`, cifra `text-2xl`, `py-3 px-4`, `rounded-2xl`. Rótulo visible. Eyebrow de card omitido en grupo B1. `description` idle omitida/`sr-only`. | Prop `density` aditiva; `'default'` = anatomía v1.4 para Assurance (`min-h-24 flex-col text-2xl`). Acentos, lima-como-predicado, contraste §1.7, vacío embebido §1.9, `PortalPanel compact`. **`PortalMetricCard` conserva 148 px**. **No** se reabre §5.1. **Prohibido** sparkline. |
+| **§1.8 grid** — `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`. Un solo hijo **sin** `max-w` del 50 %: ocupa una columna, no media pista. | Encabezado de dominio una vez; hijas sin eyebrow; prohibido KPI fantasma; sin card-dentro-de-card |
+
+> **No es carril rápido.** Cambia anatomía KPI y retícula (protocolo §3bis: versionar y notificar). Autorizado en [`PROMPT-MOD02-DASHBOARD-PORTAL-AUDITORIA-DISENO-v1.2`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-AUDITORIA-DISENO-v1.2.md). Ejecución FE: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md). UX hermano: adenda **U-D3**.
+
+#### Receta — `density` de `PortalDashboardMetric` (v1.7)
+
+| `density` | Cáscara | Layout | Cifra | Padding / radio | Consumidor canónico |
+| --- | --- | --- | --- | --- | --- |
+| `'default'` (omitido = default) | `min-h-24` (96 px) | `flex-col` (anatomía v1.4) | `text-2xl` | `py-3` · `rounded-3xl` (deuda: unificar a `rounded-2xl` cuando se toque Assurance) | Assurance y fuera del home B1 |
+| `'compact'` | `min-h-24` (96 px) | `flex-col` | `text-2xl` | `py-3 px-4` · `rounded-2xl` | Home B1 únicamente |
+
+Target táctil ≥ 44 px: lo cumple la card entera. **Prohibido** reservar hueco de sparkline. **Prohibido** `min-h-[148px]` en este primitive. La ranura `description` en home `compact` + idle sigue omitida o `sr-only`.
+
+### Changelog v1.6 (histórico — delta vs v1.5)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **`PortalDashboardMetric.density?: 'default' \| 'compact'`** — prop aditiva. **`default`** = anatomía v1.4 (`min-h-24`, `flex-col`, cifra `text-2xl`, `rounded-3xl`) — consumidores tipo **Assurance** y cualquier uso fuera del home B1. **`compact`** = fila horizontal (`flex-row items-center`), `min-h-14` (~56 px), cifra `text-xl`, `py-2 px-3`, `rounded-2xl` — **solo home B1** | API restante (§1.2), acentos, lima-como-predicado, contraste §1.7, agrupación §1.8, vacío embebido §1.9. **`PortalMetricCard` conserva 148 px**. **No** se reabre §5.1 |
+| **`PortalPanel` prop `compact` opcional** — con `compact`: padding `p-4`, cabecera/cuerpo más bajos. **Solo consumidores del home** (B2 / B2b / B3 del inicio). Default del primitive = anatomía vigente (`p-5`) | Radio de impacto fuera del home: paneles de otros módulos **no** reciben `compact` en esta fase. Cero tokens de marca |
+
+> **Carril rápido (EM-ARCH):** densidad operativa vía prop, **cero tokens de marca**. Autorizado en [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md). UX hermano: adenda **U-D2**. **No** se reabre §5.1. **No** se toca `PortalMetricCard` 148 px.
+
+#### Receta — `density` de `PortalDashboardMetric` (v1.6)
+
+| `density` | Cáscara | Layout | Cifra | Padding / radio | Consumidor canónico |
+| --- | --- | --- | --- | --- | --- |
+| `'default'` (omitido = default) | `min-h-24` (96 px) | `flex-col` (anatomía v1.4) | `text-2xl` | `py-3` · `rounded-3xl` (o el radio ya vigente de la cáscara v1.4) | Assurance y fuera del home B1 |
+| `'compact'` | `min-h-14` (~56 px) | `flex-row items-center` | `text-xl` | `py-2 px-3` · `rounded-2xl` | Home B1 únicamente |
+
+Target táctil ≥ 44 px: lo cumple la card entera en ambos modos. **Prohibido** reservar hueco de sparkline. La ranura `description` en home `compact` + idle sigue la UX U-D2 (omitida o `sr-only`); el contrato de tipografía/color §1.7 aplica **cuando** la ranura es visible.
+
+#### Receta — `PortalPanel` `compact` (v1.6)
+
+```ts
+interface PortalPanelProps {
+  // ...props vigentes...
+  /** Densidad del home. Solo consumidores del inicio. Default: anatomía p-5. */
+  compact?: boolean;
+}
+```
+
+| `compact` | Padding | Cabecera / cuerpo |
+| --- | --- | --- |
+| `false` / omitido | `p-5` (vigente) | Alturas vigentes |
+| `true` | `p-4` | Header/body más bajos (sin cambiar tipografía de `.portal-eyebrow` ni el `<h2>`) |
+
+**Prohibido** aplicar `compact` de forma global a los 53+ consumidores fuera del home en esta fase.
+
+### Changelog v1.5 (histórico — delta vs v1.4)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **Enlace inline del inicio** — `portalInlineTextLinkClassName` **compone** `interactiveFocusClassName` (anillo iWana). Hoy no lo incluye (`portal-ui.tsx` ~357) | Tipografía, `min-h-11`, color `text-iwana-primary` / `dark:text-iwana-primary-300`, `underline-offset-4`. Cero tokens de marca |
+| **`PortalAlert` título** — deja de usar `.portal-eyebrow` (uppercase/tracking). Receta: `text-sm font-semibold` + color `titleColor` de la variante; el cuerpo usa `bodyColor`. Sentence case | Eyebrow de **grupo de dominio B1** (§1.8) y de **paneles** (`PortalPanel` / `PortalSectionHeader`) **intactos**. Variantes, superficies, `live`. `min-h-24` de la métrica compacta v1.4 |
+| **CTA de página B0** — se compone con `Button asChild variant="primary"` + `className="min-h-11"` (`size` default = 40 px; el target táctil es 44). **Prohibido** reimplementar `bg-iwana-primary` a mano en el `Link` | Primitive `Button` intacta; jerarquía §4.2 (azul noche = CTA de página). **Sin primitive nueva** |
+| **Filas de atención comercial** — `PortalNavListRow` (ya tiene foco). **Prohibido** `Link` ad hoc sin `interactiveFocusClassName` | API de `PortalNavListRow` (§3.2); accesos rápidos B2b ya en el primitive |
+
+> **Carril rápido (EM-ARCH):** composición y class-token de foco, **cero tokens de marca**. Autorizado en [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md). **No** se reabre §5.1 (ítem activo sidebar). **No** se toca `min-h-24` de la métrica compacta v1.4.
+
+#### Receta — enlaces inline del inicio (v1.5)
+
+Class-token canónico de todo enlace de texto del inicio (vacíos, Reintentar, ficha de empresa, «Ver más»):
+
+```tsx
+export const portalInlineTextLinkClassName = cn(
+  'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300',
+  interactiveFocusClassName, // v1.5 — anillo iWana; hoy ausente en portal-ui.tsx ~357
+);
+```
+
+**Prohibido** un `Link` de texto del inicio con clases sueltas que omitan el anillo. El anillo no se reimplementa a mano: se **compone** el class-token ya exportado. Receta completa de composición del inicio en §3.3.
+
+### Changelog v1.4 (histórico — delta vs v1.3)
+
+| Qué cambia | Qué no cambia |
+| --- | --- |
+| **§1.4 / cáscara** — `PortalDashboardMetric` pasa de `min-h-[148px]` (hueco de sparkline no implementado) a **`min-h-24` (96 px)** + `py-3`. El target ≥ 44 px lo cumple la card entera, no la reserva de gráfica | API de props, acentos, lima-como-predicado, contraste §1.7, sombras, lienzo. `PortalMetricCard` (inventario y otros) **conserva** 148 px |
+| **§1.8** — grupo de un solo hijo: el grid **no** estira a 12 col; `max-w` de una columna (`sm:max-w-[calc(50%-0.5rem)]` o equivalente) | Encabezado de dominio una vez; hijas sin eyebrow; prohibido KPI fantasma |
+| **§1.9** — receta de vacío embebido: `PortalEmptyState` con `embedded` **sin** segunda cáscara (sin borde/fondo propios) cuando vive dentro de `PortalPanel` | Anatomía del empty autónomo (fuera de panel) intacta |
+
+> **Carril rápido (EM-ARCH):** densidad operativa, cero tokens de marca. El tinte `warning`/`danger` condicionado al valor es **composición** (UX U-D), no un acento nuevo del primitive.
+
+### Changelog v1.3 (histórico — delta vs v1.2)
 
 | Qué cambia | Qué no cambia |
 | --- | --- |
@@ -45,8 +148,15 @@
 - `apps/portal/src/components/shared/portal-ui.tsx` — inventario de primitives, líneas verificadas una a una.
 - Skills aplicadas: `iwana-identity-ui-review` (`tokens.md`, `firma-elements.md`, `component-recipes.md` §1 KPI / §11 eyebrows), `core-components`, `tailwind-patterns`.
 - Prompt delta Track B: [`PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DELTA-UX-v1.0.md) v1.2 — B-1 / B-2 / B-3.
+- Prompt remediación P1: [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md) — P1-CTA / P1-FOCO / P2-FOCO / P3-ALERT.
+- Prompt densidad U-D2: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md) — home `density=compact` · Assurance `default` · `PortalPanel.compact`.
+- Prompt auditoría tarjetas/aire: [`PROMPT-MOD02-DASHBOARD-PORTAL-AUDITORIA-DISENO-v1.2`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-AUDITORIA-DISENO-v1.2.md) — U-D3.
+- Prompt densidad U-D3: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md) — compact vertical + grid 4/fila.
+- [`INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.2`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.2.md) — cáscara fila vs Firma §2.1.
 
-> **Versión de contrato:** 1.3 — congelada (re-sync). Cualquier modificación posterior se versiona como v1.4+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
+> **Versión de contrato:** 1.7 — congelada (re-sync U-D3). Cualquier modificación posterior se versiona como v1.8+ y **se notifica a AI-FE-PLATFORM y AI-SR-QA a través del orquestador antes de ejecutarse**.
+
+> Prompt de ejecución hermano: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md). UX: adenda **U-D3** en [`2026-08-04-portal-dashboard-recomposicion-ux-spec.md`](2026-08-04-portal-dashboard-recomposicion-ux-spec.md).
 
 > **Deslinde de dominio:** este documento fija **tokens, API de componente y estados requeridos**. No fija flujo, jerarquía de información, política de refresco ni qué bloque va dónde: eso es de AI-PROD-UX, que trabaja en paralelo sobre el mismo HLD. Donde este contrato roza el producto, lo hace como restricción ("si se renderiza X, cumple Y"), nunca como prescripción de contenido.
 
@@ -112,16 +222,29 @@ Extiende `PortalMetricCard` (`apps/portal/src/components/shared/portal-ui.tsx:37
 
 ### 1.1 Anatomía
 
+**`density='default'`** (Assurance / fuera del home B1) — póster vertical, anatomía v1.4:
+
 ```
 ┌ shell: portalMetricCardShellClassName + acento + sombra ─────────┐
 │  [eyebrow?]                                   [ícono, opcional]  │  ← opcional (v1.3); tipografía `.portal-eyebrow-muted` + color por §1.7
-│  1.284 / 1.500                                                   │  ← ranura de cifra (mono, tabular)
+│  1.284 / 1.500                                                   │  ← ranura de cifra (mono, tabular) · text-2xl
 │  Visitas de hoy                                     [delta]      │  ← rótulo + badge tonal
 │  Programadas para la jornada en curso                            │  ← descripción: tipografía cuerpo + color por §1.7
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Orden canónico de ranuras: **eyebrow (si presente) → cifra → rótulo → delta → descripción**. Si `eyebrow` se omite o es string vacío, **la ranura no existe en el DOM** (cero hueco reservado, cero spacer); el orden restante **cifra → rótulo → delta → descripción** permanece intacto. El ícono es un adorno de esquina opcional y **no** portador de estado (§1.5). Cuando hay eyebrow, su color **y** el de la descripción (texto muted de cuerpo) **dependen de `accent`** (§1.7); no son siempre el gris-500/400 a secas.
+**`density='compact'`** (solo home B1, U-D3) — KPI compacto **vertical** (no fila):
+
+```
+┌ shell compact: min-h-24 · flex-col · rounded-2xl ────────────────┐
+│  [ícono esquina, opcional]                                       │
+│  12                                                              │  ← cifra text-2xl mono tabular
+│  Visitas de hoy                                     [delta]      │  ← rótulo visible
+│  (description omitida o sr-only en idle)                         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Orden canónico de ranuras en `default`: **eyebrow (si presente) → cifra → rótulo → delta → descripción**. Si `eyebrow` se omite o es string vacío, **la ranura no existe en el DOM** (cero hueco reservado, cero spacer); el orden restante **cifra → rótulo → delta → descripción** permanece intacto. En `compact` (v1.7), el layout es **columna** (`flex-col`); la descripción en idle del home sigue omitida / `sr-only`. El ícono es un adorno opcional y **no** portador de estado (§1.5). Cuando hay eyebrow o description visible, su color **depende de `accent`** (§1.7).
 
 ### 1.2 API pública
 
@@ -194,6 +317,13 @@ interface PortalDashboardMetricProps {
   /** Ícono decorativo de esquina. Su tono lo deriva `accent`; NO es una prop de color. */
   icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
 
+  /**
+   * Densidad de cáscara (v1.7). Default `'default'` = anatomía v1.4 (póster, min-h-24).
+   * `'compact'` = KPI vertical min-h-24, cifra text-2xl, rounded-2xl — solo home B1 (UX U-D3).
+   * Assurance y consumidores fuera del home B1 usan `'default'` (o omiten la prop).
+   */
+  density?: 'default' | 'compact';
+
   className?: string;
 }
 ```
@@ -221,7 +351,7 @@ La ranura es una y solo una a la vez. **Nunca se desmonta**: cambia su contenido
 
 | Ocupación | Condición | Receta de clase | Ratio medido |
 | --- | --- | --- | --- |
-| **Cifra** | `state='idle'` y `value !== null` | `font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white` (heredada de `portal-ui.tsx:395`) | ≥ 15,6:1 en claro; ≥ 14,3:1 en oscuro |
+| **Cifra** | `state='idle'` y `value !== null` | `font-mono font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white` + **`text-2xl`** en `default` y en `compact` (v1.7; ambos verticales) | ≥ 15,6:1 en claro; ≥ 14,3:1 en oscuro |
 | **Sin dato** | `state='idle'` y `value === null` | `text-sm font-semibold text-gray-700 dark:text-gray-200` — **sin `font-mono`, sin `uppercase`, sin `tracking`** | **9,72:1** claro (peor acento) · **11,59:1** oscuro |
 | **No disponible** | `state='error'` | igual que «sin dato», más el botón de reintento | idénticos |
 
@@ -250,7 +380,7 @@ Con `href`, la tarjeta entera es el destino:
 - Aplica `interactiveFocusClassName` (exportado por `@iwana/ui`, re-exportado en `portal-ui.tsx:29`). **Prohibido** un anillo de foco a mano.
 - Nombre accesible = `label`; si `label` no basta por sí solo, `aria-label` explícito. **Nunca** el número como único nombre.
 - El enlace **permanece navegable durante `state='loading'`**: el destino es válido con independencia de que la cifra haya llegado, y deshabilitarlo movería el foco al cambiar de estado. La tarjeta no es el control que dispara la carga, así que el punto 1 de §4.2 del contrato de atenuados no le aplica.
-- Objetivo táctil ≥ 44 px: garantizado por `min-h-[148px]` de la cáscara heredada (RNF-V2-03).
+- Objetivo táctil ≥ 44 px: garantizado por la card entera — `min-h-24` (96 px) en `density='default'` (v1.4) y en `density='compact'` (v1.7, home vertical). **Prohibido** reservar 148 px para un sparkline que no existe. **`PortalMetricCard` conserva 148 px** (fuera de este primitive).
 
 Que el destino conserve el filtro en la URL (CA-V2-05) es **de AI-PROD-UX**: este contrato solo exige que `href` sea una cadena completa y que la tarjeta no la manipule.
 
@@ -361,7 +491,7 @@ Helper recomendado (paridad con `portalMetricEyebrowClassName`): `portalMetricMu
 | Contenedor del grupo | `<section>` (o equivalente semántico) + `gap`/`space-y` del sistema; **sin** borde/sombra/fondo de card propio | Envolver el grupo en `PortalPanel` (u otro shell con borde) **y** además pintar shells de métrica hijas → **card-dentro-de-card**. Las métricas ya traen `portalMetricCardShellClassName` |
 | Encabezado de dominio | **Una vez** por grupo: tipografía **`.portal-eyebrow`** (acento de sistema lima — §4.3; sobre lienzo / blanco / `iwana-surface-soft`, nunca sobre `iwana-primary-50`) + texto del dominio en sentence case según UX | Repetir el dominio como `eyebrow` dentro de cada métrica hija; inventar tracking a mano; usar `.portal-eyebrow-muted` en el encabezado de grupo (ese muted es para categoría **dentro** de la card) |
 | Hijos | `PortalDashboardMetric` con **`eyebrow` omitido** (o `''`); conservan `label`, `description`, `accent`, `icon`, `delta`, `href`/`onClick`, estados §2.1 | Segunda cáscara tipo card alrededor de cada hijo; eyebrow de categoría duplicando el dominio |
-| Grid interno | `grid grid-cols-1 sm:grid-cols-2` (1 columna si un solo hijo); gap coherente con el resto del home | Forzar 2 columnas con un solo hijo; rellenar huecos con KPI vacío/decorativo |
+| Grid interno | `grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4` (v1.7). **Un solo hijo:** una columna natural; **sin** `max-w` del 50 % | Forzar 2 columnas a media pista; rellenar huecos con KPI vacío/decorativo; estirar I-7 a 12 col |
 | Skeleton | Misma forma de grupos (encabezado + N skeletons de métrica), no N bloques sueltos si el rol tiene agrupación | Siete skeletons planos cuando la composición es por dominio |
 
 **Tokens:** reutiliza únicamente tokens ya citados en §0.2 (`.portal-eyebrow`, shells de métrica, tipografía muted §1.7 si hubiera eyebrow). **Cero tokens de marca nuevos.** El lima del encabezado de dominio es el predicado «acento de sistema» de §4.3 — **no** urgencia.
@@ -369,6 +499,37 @@ Helper recomendado (paridad con `portalMetricEyebrowClassName`): `portalMetricMu
 **Relación con §1.2:** el `eyebrow` opcional existe precisamente para esta composición (y cualquier futuro caso donde la categoría viva fuera de la card). Fuera de un grupo B1, el consumidor **puede** seguir pasando `eyebrow` como en v1.0–v1.2; no es deprecación forzada de la ranura.
 
 **Deslinde:** qué dominios existen, qué IDs van en cada uno y el texto exacto del encabezado → UX / FE composición. Este §1.8 solo obliga la forma visual y la API (`eyebrow` ausente en hijas).
+
+> **U-D5 (2026-08-13).** B1 usa una sola grilla de hasta 4 por fila (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-4`); sin eyebrows de dominio en B1; rol con 1 KPI = una columna. Ver adenda U-D5 UX spec.
+
+---
+
+### 1.9 Receta — vacío embebido (v1.4)
+
+**Problema cerrado (auditoría v1.1 §8.2):** `PortalPanel` ya es cáscara (borde, sombra, `p-5`). Anidar `PortalEmptyState` con su propio `rounded-2xl` + borde + `iwana-surface-soft` produce card-dentro-de-card.
+
+| Pieza | Receta vinculante | Prohibido |
+| --- | --- | --- |
+| Vacío **dentro** de `PortalPanel` | `PortalEmptyState` con `embedded`: flex + gap; **sin** borde, **sin** fondo, **sin** `rounded-2xl` propios | Segunda cáscara; pozo `iwana-surface-soft` interior |
+| Vacío **autónomo** (fuera de panel) | Anatomía v1.0 intacta: borde + `bg-iwana-surface-soft` + `rounded-2xl` | Usar `embedded` en una superficie que no es ya un panel |
+
+**Tokens:** cero nuevos. El tinte `warning`/`danger` condicionado al valor de la métrica es **composición** (UX U-D / `resolveDashboardMetricAccent`), no un acento nuevo de este primitive.
+
+---
+
+### 1.10 Densidad del home — `density` + `PortalPanel.compact` (v1.7)
+
+**Problema cerrado (auditoría v1.2 / U-D3):** la fila `min-h-14` no se reconoce como KPI Firma; el `max-w` 50 % deja aire de retícula. Assurance no hereda el compacto del home.
+
+| Pieza | Receta vinculante | Prohibido |
+| --- | --- | --- |
+| Home B1 | `PortalDashboardMetric density="compact"` **vertical** `min-h-24` / `text-2xl` / `rounded-2xl` | Fila `flex-row` `min-h-14`; `default` (póster 3xl) en el inicio; `min-h-[148px]` |
+| Assurance / fuera de home B1 | `density="default"` u omitir | Cambiar el default global a compact |
+| Paneles del inicio (B2 / B2b / B3) | `PortalPanel compact` cuando el consumidor es del home | Aplicar `compact` a todos los consumidores de `PortalPanel` del portal |
+| `PortalMetricCard` | **148 px intacto** | Rebajar o acoplar a `density` de `PortalDashboardMetric` |
+| Grid B1 | Hasta 4 columnas a 1280; un hijo = una columna | `max-w-[calc(50%-0.5rem)]`; KPI fantasma |
+
+**Deslinde:** qué bandas usan compact y el ritmo de gaps → UX U-D3 / FE composición. Este §1.10 solo fija la API y las recetas de cáscara.
 
 ---
 
@@ -408,12 +569,14 @@ Leyenda: **R** = receta obligatoria · **N/A** = no aplica, con justificación e
 | éxito | **N/A justificado** | Un panel de lectura no confirma operaciones. `PortalSuccessAlert` (`portal-ui.tsx:1497`) existe para flujos con escritura, que el home no tiene (HLD §2.2) |
 | solo lectura | **N/A justificado** | Estado permanente del componente |
 
+**v1.6 — prop `compact`:** opcional; solo consumidores del home. Con `compact={true}`: padding `p-4` y cabecera/cuerpo más bajos (§1.10). El default del primitive permanece `p-5`. No altera esta matriz de estados.
+
 ### 2.3 `PortalNavListRow` como acceso rápido (`portal-ui.tsx:434`)
 
 | Estado | Veredicto | Receta / razón |
 | --- | --- | --- |
 | hover | R | `hover:border-iwana-primary hover:bg-iwana-primary-50 dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10`. Se conserva el gesto ya presente en `QuickActionsPanel.tsx:63`, **menos** `hover:-translate-y-0.5`: un desplazamiento sin `prefers-reduced-motion` es deuda conocida (§4.4 del informe) y no se propaga en código nuevo |
-| foco | R | `interactiveFocusClassName`, ya cableado en `portal-ui.tsx:468`. Es lo que la reimplementación perdió |
+| foco | R | `interactiveFocusClassName`, ya cableado en el primitive (`portalNavListRowClassName`). Es lo que la reimplementación perdió. **v1.5:** las filas de atención comercial del inicio **deben** usar este primitive; un `Link` ad hoc sin el anillo viola esta casilla |
 | activo | **N/A justificado** | Un acceso rápido navega y abandona la pantalla; no hay estado persistente que representar. El «dónde estoy» lo porta el ítem activo de la barra lateral (§5) |
 | deshabilitado | R | `disabled` **nativo** en el `<button>` + `portalDisabledControlClassName` (`opacity-50`, `portal-ui.tsx:69`). Exento de contraste solo porque la inoperancia está declarada en el DOM (contrato de atenuados §2). **Prohibido** el patrón actual de `QuickActionsPanel.tsx:89`: un `<div aria-disabled="true">` con rol genérico es ARIA inerte que aparenta cobertura. **Nota de alcance:** si un destino no está autorizado para el rol, **no se muestra deshabilitado, se omite** (CA-V2-02). El estado `disabled` queda reservado a destinos existentes y temporalmente inoperantes |
 | cargando | **N/A justificado** | La lista de accesos rápidos se deriva de permisos ya resueltos por el layout; no tiene carga propia. Si la envolviera un panel en carga, el estado lo porta el panel (§2.2) |
@@ -482,6 +645,55 @@ interface PortalNavListRowProps {
 
 Cambio **aditivo y no rompedor** para los consumidores actuales. Aprobado en carril rápido (§8).
 
+### 3.3 Recetas de composición del inicio (v1.5)
+
+Cuatro recetas de **composición**, no de primitive nueva. Cero tokens de marca. No reabren §5.1 ni alteran el default `min-h-24` de §1.4 (`density='default'`). La densidad del home es **v1.7** (`density='compact'` vertical, §1.10), no este apartado.
+
+#### 3.3.1 Enlace inline — `portalInlineTextLinkClassName`
+
+Ver receta del inicio (changelog v1.5). El class-token **debe** incluir `interactiveFocusClassName`. Consumidores del inicio: vacíos, Reintentar, ficha de empresa, «Ver más». **Prohibido** componer el enlace a mano omitiendo el anillo.
+
+#### 3.3.2 Título de `PortalAlert`
+
+Hoy el título pinta `.portal-eyebrow` + `eyebrowColor` (`portal-ui.tsx` ~1767) → la alerta viva se lee en mayúsculas («VERIFICACIÓN EN DOS PASOS NO OBLIGATORIA»).
+
+| Ranura | Receta vinculante | Prohibido |
+| --- | --- | --- |
+| **Título** | `text-sm font-semibold` + color **`titleColor`** de la variante (`alertVariantStyles`). Copy en **sentence case** | `.portal-eyebrow` / uppercase / tracking en el título; aplicar `eyebrowColor` al título |
+| **Cuerpo** (`description`) | Tipografía de cuerpo `text-sm` + color **`bodyColor`** de la variante | Usar `titleColor` en el cuerpo (hoy ocurre: el cuerpo hereda el token del título) |
+
+**Qué no cambia:** el eyebrow de **grupo de dominio B1** (§1.8) y el de **paneles** (`PortalPanel` / `PortalSectionHeader`) siguen `.portal-eyebrow`. Esa clase no se depreca; **deja de usarse como título de alerta**.
+
+#### 3.3.3 CTA de página B0
+
+La acción primaria de página se **compone** con el primitive existente. **No** hay primitive nueva.
+
+**v1.9 — Inicio (`/dashboard`):** no hay CTA de página. El `PageHeader` es solo H1 + subtítulo. No se usa `PortalActionToolbar` ni `PageHeader.actions` en esta ruta.
+
+**v1.8 (superada en el Inicio):** el CTA no iba en `PageHeader.actions`; vivía en B0b.
+
+Otras rutas del portal pueden seguir usando `PageHeader.actions` con la receta:
+
+```tsx
+<Button asChild variant="primary" className="min-h-11">
+  <Link href={primary.href}>{primary.label}</Link>
+</Button>
+```
+
+| Pieza | Receta | Razón |
+| --- | --- | --- |
+| Variante | `Button variant="primary"` | Jerarquía §4.2: azul noche = CTA de página. El CVA ya aporta el par dark (`dark:bg-iwana-primary-500`) |
+| Altura | `className="min-h-11"` | `size="default"` es `h-10` (40 px); el target táctil del inicio es **44 px** |
+| Composición | `asChild` + `Link` | Prefetch y clic con modificador; el botón no se reimplementa |
+
+**Prohibido** reimplementar `bg-iwana-primary` / `hover:bg-iwana-primary-600` / `rounded-xl` a mano en el `Link` (pierde el par dark del CVA). **Prohibido** `variant="lime"` como CTA de página.
+
+#### 3.3.4 Filas de atención comercial
+
+Cada fila accionable de atención comercial (I-6 / ventas / contadora) es un **`PortalNavListRow`** con `href`. El primitive ya cablea `interactiveFocusClassName` en `portalNavListRowClassName`.
+
+**Prohibido** un `Link` ad hoc (borde/hover locales) **sin** `interactiveFocusClassName`. Si una fila no cabe en `PortalNavListRow`, el anillo sigue siendo obligatorio — no hay excepción de «lista custom».
+
 ---
 
 ## 4. El lima como predicado, no como color
@@ -521,7 +733,7 @@ Lecturas vinculantes de la tabla:
 2. **Ni `PortalMetricCardAccent` ni `PortalAlertVariant` tienen casilla lima, y no se les añade.** Las dos únicas puertas al lima con vocabulario son `Badge variant="lime"` y `Button variant="lime"`.
 3. **`Badge variant="lime"` solo se emite cuando el predicado es completitud o avance.** Un badge lime sobre una cuenta neutra es la reencarnación de H-13 en otro componente.
 4. **El lima nunca sustituye a `warning`/`error`.** Urgencia y prioridad alta usan esas escalas (spec Firma §3, regla no negociable).
-5. **Jerarquía de botones sin cambio:** la acción principal de página es **azul noche** (`Button variant="primary"`), por la enmienda del CTO del 2026-07-23. Si el home llega a tener una franja de acciones, es azul. `variant="lime"` no es su default.
+5. **Jerarquía de botones sin cambio:** la acción principal de página es **azul noche** (`Button variant="primary"`), por la enmienda del CTO del 2026-07-23. Si el home llega a tener una franja de acciones, es azul. `variant="lime"` no es su default. **v1.5:** el CTA de B0 se compone con `Button asChild variant="primary"` + `className="min-h-11"` (§3.3.3); no se pinta `bg-iwana-primary` a mano.
 
 ### 4.3 Superficies donde el lima sí es obligatorio en esta recomposición
 
@@ -623,6 +835,7 @@ Lo que sí es vinculante:
 1. **Todo elemento focalizable que este contrato toca lo usa**, sin anillos a mano.
 2. **`Sidebar.tsx:191-201` lo incorpora**: hoy el `<Link>` de navegación no lo lleva.
 3. `globals.css` **no resetea `outline`** en ninguna parte (verificado recorriendo el archivo entero), luego el foco nativo sobrevive donde la clase falte. Eso es una red, no una excusa: la clase es obligatoria igualmente, porque el anillo nativo no garantiza contraste sobre superficies tintadas.
+4. **v1.5 — class-token de enlace inline:** `portalInlineTextLinkClassName` **compone** `interactiveFocusClassName` (§3.3.1). Las filas de atención comercial usan `PortalNavListRow`, que ya lo cablea (§3.3.4). **No** se reabre §5.1.
 
 ---
 
@@ -754,6 +967,11 @@ No alteran alcance, contrato de datos, boundary ni tokens de marca:
 | 11 | **v1.1** — matriz eyebrow × `accent` (§1.7): escalón `gray-700`/`gray-200` en shells `danger`/`warning` | Cierra residual QA ~4,45:1; tipografía muted intacta; **sin** lima ni tokens de marca nuevos. Notificado a FE + QA |
 | 12 | **v1.2** — matriz `description` × `accent` (§1.7): mismo escalón en shells `danger`/`warning` (y muted de cuerpo) | Cierra gap G6-4 axe light ≈4,45:1; **sin** lima ni tokens de marca nuevos. Carril rápido; notificado a FE + QA |
 | 13 | **v1.3** — `eyebrow` opcional (§1.2) + receta grupo de dominio B1 (§1.8): sin card-dentro-de-card; contraste §1.7 intacto | Cierra D-P1-04 / CA-DELTA-06·11; **sin** tokens de marca nuevos; sin primitive nueva. Carril rápido; notificado a FE + QA vía prompt delta Track B |
+| 14 | **v1.4** — métrica compacta `min-h-24` (§1.4); grupo de un hijo con `max-w` de media retícula (§1.8); vacío embebido (§1.9) | Cierra densidad auditoría v1.1 §8; **sin** tokens de marca nuevos. Carril rápido; notificado a FE + QA vía prompt densidad |
+| 15 | **v1.5** — `portalInlineTextLinkClassName` compone `interactiveFocusClassName`; título de `PortalAlert` = `text-sm font-semibold` + `titleColor` (cuerpo `bodyColor`, sentence case); CTA B0 = `Button asChild variant="primary"` + `min-h-11`; filas comerciales = `PortalNavListRow` (§3.3) | Cierra P1/P2/P3 de foco, CTA y alerta viva; **sin** tokens de marca; **sin** primitive nueva; **no** reabre §5.1; **no** toca `min-h-24`. Carril rápido; notificado a FE + QA vía prompt remediación P1 |
+| 16 | **v1.6** — `PortalDashboardMetric.density?: 'default' \| 'compact'` (§1.1 / §1.2 / §1.10); `default` = anatomía v1.4 (Assurance); `compact` = fila `min-h-14` (home B1); `PortalPanel.compact` opcional solo home | Cierra plan U-D2 densidad real; **sin** tokens de marca; **no** reabre §5.1; **no** toca `PortalMetricCard` 148 px. Carril rápido; notificado a FE + QA vía prompt densidad v1.1 |
+| 18 | **v1.8** — CTA de Inicio en `PortalActionToolbar` `align="end"` (B0b), no en `PageHeader.actions` (§3.3.3). `aria-label` opcional en el toolbar | Cierra U-B0; **sin** tokens de marca; **sin** primitive nueva; slot `actions` de `PageHeader` intacto fuera del home. Carril rápido; notificado a FE + QA |
+| 19 | **v1.9** — Inicio sin CTA de página ni B0b (§3.3.3). Receta `Button` + `min-h-11` solo fuera del home | Cierra U-B0bis; U-B0 superada; **sin** tokens de marca; primitive `PortalActionToolbar` intacta. Carril rápido; notificado a FE + QA |
 
 ### 8.2 Escala a AI-EM-ARCH
 
@@ -806,6 +1024,9 @@ AI-FE-PLATFORM completa todos los ítems antes de entregar. AI-SR-QA valida de f
 - [ ] Contenedor del grupo = sección + gap; **sin** `PortalPanel`/card envolvente que anide shells de métrica (anti card-dentro-de-card).
 - [ ] 🔍 En composición ADMIN agrupada: **0** eyebrows de categoría duplicados en métricas hijas que repitan el dominio del encabezado.
 - [ ] Skeleton B1 respeta forma de grupos.
+- [ ] Cáscara de `PortalDashboardMetric`: **`density='default'`** → `min-h-24` + layout `flex-col` + cifra `text-2xl`; **`density='compact'`** → `min-h-24` + `flex-col` + cifra `text-2xl` + `py-3 px-4` + `rounded-2xl` (§1.10 v1.7). **No** `min-h-[148px]` en este primitive. `PortalMetricCard` conserva 148 px.
+- [ ] Grupo de un solo hijo: **una** columna del grid (hasta 4 a 1280); **sin** `sm:max-w-[calc(50%-0.5rem)]`.
+- [ ] Vacío dentro de `PortalPanel` usa `PortalEmptyState embedded` (sin segunda cáscara).
 - [ ] **Ningún token de marca nuevo**; audit-ui P0/P1 = 0 en rutas tocadas de `portal-ui` / dashboard.
 
 ### B. Sustitución de primitives
@@ -817,6 +1038,7 @@ AI-FE-PLATFORM completa todos los ítems antes de entregar. AI-SR-QA valida de f
 - [ ] `DashboardPanel.tsx` y `MetricCard.tsx` eliminados del repositorio, no solo dejados sin usar.
 - [ ] Ningún eyebrow con `tracking-[...]` a mano: todos por `.portal-eyebrow` / `.portal-eyebrow-muted`.
 - [ ] `PortalNavListRow` acepta `href` y rinde `next/link`; con `disabled` **no** rinde enlace.
+- [ ] Título de `PortalAlert` **no** usa `.portal-eyebrow` (§3.3.2); el eyebrow de grupo B1 y de paneles **sí** lo conserva.
 
 ### C. Lima como predicado
 
@@ -853,6 +1075,28 @@ AI-FE-PLATFORM completa todos los ítems antes de entregar. AI-SR-QA valida de f
 - [ ] **Ningún token nuevo en `globals.css`** salvo los siete de §7.3, y esos solo tras la aprobación de ADR-075.
 - [ ] Ningún `tailwind.config.*` creado (ADR-023).
 - [ ] 🔍 Evidencia de pruebas con `Cached: 0` o corrida forzada (HLD §10, regla de evidencia).
+
+### H. Remediación P1 v1.5 (§3.3)
+
+- [ ] `portalInlineTextLinkClassName` incluye `interactiveFocusClassName` (anillo iWana). 🔍 `grep` del class-token: ambas clases en la misma constante.
+- [ ] 🔍 Enlaces de texto del inicio (vacíos, Reintentar, ficha de empresa, «Ver más») usan ese class-token; **0** `Link` de texto del inicio sin anillo.
+- [ ] Título de `PortalAlert`: `text-sm font-semibold` + `titleColor` de la variante; **sin** `.portal-eyebrow`. Copy en sentence case.
+- [ ] Cuerpo de `PortalAlert` usa `bodyColor`, no `titleColor`.
+- [ ] 🔍 Eyebrow de grupo B1 y de `PortalPanel` / `PortalSectionHeader` sigue `.portal-eyebrow` (no colateral del título de alerta).
+- [ ] CTA de página B0 **en el Inicio:** **0** toolbar `Acciones del inicio`, **0** `PageHeader.actions`, **0** `bg-iwana-primary` a mano. Receta `Button asChild variant="primary"` + `min-h-11` solo **fuera** del home.
+- [ ] Filas de atención comercial: `PortalNavListRow` (foco del primitive). 🔍 **0** `Link` ad hoc de esa lista sin `interactiveFocusClassName`.
+- [ ] Cáscara de métrica en `density='default'` **sigue** `min-h-24` (v1.4). §5.1 **no** se toca.
+
+### I. Densidad real U-D3 v1.7 (§1.10)
+
+- [ ] `PortalDashboardMetric` acepta `density?: 'default' | 'compact'` (default = `'default'`).
+- [ ] Home B1 pasa `density="compact"`; Assurance (y fuera de home B1) usa `default` u omite.
+- [ ] 🔍 Cáscara compact: `min-h-24`, `flex-col`, cifra `text-2xl`, `py-3 px-4`, `rounded-2xl`. **0** `min-h-14` / `flex-row` en home B1.
+- [ ] 🔍 Cáscara default: `min-h-24`, `flex-col`, cifra `text-2xl` (regresión Assurance).
+- [ ] 🔍 Grid B1: `xl:grid-cols-4`; un hijo **sin** `max-w-[calc(50%-0.5rem)]`.
+- [ ] `PortalPanel` acepta `compact?: boolean`; solo paneles del home lo activan (`p-4`).
+- [ ] 🔍 `PortalMetricCard` sigue en **148 px**. §5.1 **no** se toca. Cero sparkline.
+- [ ] 🔍 Cero tokens de marca nuevos.
 
 ---
 
@@ -913,6 +1157,10 @@ Todas abiertas y comprobadas el 2026-08-04 antes de citarse (protocolo §7.4, AD
 - [`ADR-056`](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) (Aprobado) — §2 norma dark y emparejamiento, §5 cita verificada
 - [`ADR-023`](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md) (Aprobado) — CSS-first, sin `tailwind.config`
 - [`INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.0.md) (Vigente) — §4 hallazgos, §5 desempates, §6 escalaciones, §7.2 lluvia DS, §8 gate G6
+- [`INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1`](../informes/INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1.md) — P1 CTA/filas, P2 enlace inline, P3 título de alerta; desempate «no reabrir §5.1»
+- [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md) — autorización EM-ARCH del delta v1.5
+- [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md) — autorización EM-ARCH del delta v1.6 (U-D2)
+- [`2026-08-04-portal-dashboard-recomposicion-ux-spec.md`](2026-08-04-portal-dashboard-recomposicion-ux-spec.md) — adenda U-D2
 - [`spec Firma iWana`](2026-07-12-firma-iwana-diseno-visual-design.md) — §3 elementos y reglas del lima, §4 ítems 1.2bis/1.3/2.1/2.2, §5 anti-patrones
 - [`2026-07-20-web-dashboard-firma-fase1-contrato.md`](2026-07-20-web-dashboard-firma-fase1-contrato.md) v1.0 — precedente heredado; §7 **sigue vigente para `apps/web`**
 - [`2026-07-26-estados-atenuados-contraste-ds-contrato.md`](2026-07-26-estados-atenuados-contraste-ds-contrato.md) (Vigente) — §2 frontera de exención, §3.1 prohibición de opacidad, §3.3 escalón de token, §4.2 loading, §4.4 matriz

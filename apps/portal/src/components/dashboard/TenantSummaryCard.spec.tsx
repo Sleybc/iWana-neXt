@@ -49,6 +49,10 @@ describe('TenantSummaryCard', () => {
     expect(screen.getAllByText('Activo')).toHaveLength(1);
     expect(screen.queryByText('Estado del servicio')).not.toBeInTheDocument();
     expect(screen.getByText('Bogotá, Cundinamarca')).toBeInTheDocument();
+    expect(screen.getByText('Hora de Bogotá')).toBeInTheDocument();
+    expect(screen.getByText('Colombia')).toBeInTheDocument();
+    expect(screen.queryByText('America/Bogota')).not.toBeInTheDocument();
+    expect(screen.queryByText('CO')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Ver en configuración/i })).toHaveAttribute(
       'href',
       '/dashboard/settings',
@@ -71,7 +75,8 @@ describe('TenantSummaryCard', () => {
 
     expect(screen.getAllByText('Error de preparación')).toHaveLength(1);
     expect(screen.queryByText('PROVISIONING_FAILED')).not.toBeInTheDocument();
-    expect(screen.getAllByText('CO').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Colombia').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('CO')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -101,5 +106,12 @@ describe('TenantSummaryCard', () => {
 
     expect(screen.getByText('Estado desconocido')).toBeInTheDocument();
     expect(screen.getByText('No disponible')).toBeInTheDocument();
+  });
+
+  it('ocupa las 12 columnas sin cap de ancho (UX-D4-01)', () => {
+    const { container } = render(<TenantSummaryCard tenant={tenant} settings={settings} />);
+
+    expect(container.querySelector('.max-w-4xl')).toBeNull();
+    expect(container.querySelectorAll('[class*="max-w-"]')).toHaveLength(0);
   });
 });

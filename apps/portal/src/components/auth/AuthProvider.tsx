@@ -68,15 +68,15 @@ function toAuthUser(
   lastName: string | null = null,
 ): AuthUser {
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
+  const roleLabel = getPortalUserRoleLabel(profile.role);
   return {
     id: profile.sub,
     emailHash: profile.email,
     role: profile.role,
     type: profile.type,
     tenantId: profile.tenantId,
-    // displayName: nombre real si existe, si no el rol
-    displayName: fullName ?? getPortalUserRoleLabel(profile.role),
-    subtitle: getPortalUserRoleLabel(profile.role),
+    displayName: fullName ?? roleLabel,
+    subtitle: fullName ? roleLabel : '',
     firstName,
     lastName,
   };

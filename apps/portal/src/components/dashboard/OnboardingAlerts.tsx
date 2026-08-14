@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { Badge, Button } from '@iwana/ui';
+import { Button } from '@iwana/ui';
 import type { DashboardAlert } from '@/lib/api-client';
 import {
   PortalAlert,
-  PortalEmptyState,
   PortalNavListRow,
   PortalPanel,
-  portalInlineTextLinkClassName,
+  PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 
 export type OnboardingOperationState = 'unknown' | 'not-started' | 'active';
@@ -52,7 +51,21 @@ export function OnboardingAlerts({
   operationState = 'unknown',
 }: OnboardingAlertsProps) {
   if (alerts.length === 0) {
-    if (operationState === 'active') return null;
+    if (operationState === 'unknown') {
+      return (
+        <PortalPanel title="Estado de configuración" busy>
+          {isUpdating ? (
+            <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+              Actualizando
+            </p>
+          ) : null}
+          <div className="space-y-3" role="status" aria-label="Cargando estado de configuración">
+            <PortalSkeletonBlock className="h-12 rounded-xl" />
+            <PortalSkeletonBlock className="h-12 rounded-xl" />
+          </div>
+        </PortalPanel>
+      );
+    }
 
     if (operationState === 'not-started') {
       return (
@@ -80,27 +93,10 @@ export function OnboardingAlerts({
       );
     }
 
-    return (
-      <PortalPanel title="Estado de configuración">
-        {isUpdating ? (
-          <p className="mb-3 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-            Actualizando
-          </p>
-        ) : null}
-        <PortalEmptyState
-          title="Configuración al día"
-          description="Tu empresa no tiene pasos pendientes. Puedes revisar el detalle cuando lo necesites."
-          action={
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="lime">Al día</Badge>
-              <Link href="/dashboard/settings" className={portalInlineTextLinkClassName}>
-                Ver configuración
-              </Link>
-            </div>
-          }
-        />
-      </PortalPanel>
-    );
+    if (operationState === 'active') return null;
+
+    const _exhaustive: never = operationState;
+    return _exhaustive;
   }
 
   const next = alerts[0]!;
@@ -143,7 +139,9 @@ export function OnboardingAlerts({
         {rest.length > 0 ? (
           <details className="rounded-xl border border-gray-100 px-3 py-2 dark:border-dark-border">
             <summary className="cursor-pointer text-sm font-medium text-iwana-primary dark:text-iwana-primary-300">
-              Ver los {rest.length} pendientes restantes
+              {rest.length === 1
+                ? 'Ver el pendiente restante'
+                : `Ver los ${rest.length} pendientes restantes`}
             </summary>
             <div className="mt-3 space-y-3">
               {rest.map((alert) => (

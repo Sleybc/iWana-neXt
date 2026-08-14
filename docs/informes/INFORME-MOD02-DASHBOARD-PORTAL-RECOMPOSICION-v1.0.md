@@ -15,6 +15,14 @@
 **Rama:** `feat/mod02-dashboard-portal-recomposicion`  
 **HEAD al abrir informe:** `39a7bbc6`  
 **SHA consolidación G6:** `53c1a3d9` (dictámenes tip `b8e76630`; código `d4ee265a` / `ddbc22cf` / `e09ffa9a` / `e4f93324`)
+**Re-auditoría identidad/copy (2026-08-12):** [`INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1.md`](INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.1.md) — G6 de recomposición **no se revierte**; el delta emite **GO con cambios** (P1 de vocabulario del nav y dos huecos de a11y locales).
+**Delta densidad UI (2026-08-12):** autorizado e implementado. Contratos: UX adenda U-D · DS v1.4. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.0.md).
+**Remediación P1/P2/P3 (2026-08-12):** autorizada e implementada. Contratos: UX U-R2bis/U-NAV · DS **v1.5**. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-REMEDIACION-P1-v1.0.md). Nav, CTA, foco, B3, historial y atajo de búsqueda cerrados.
+**Densidad real U-D2 (2026-08-12):** autorizada e implementada. Contratos: UX adenda **U-D2** · DS **v1.6**. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.1.md). Home B1 `density="compact"` (fila `min-h-14`); Assurance permanece `default`; accesos tope 5 + Ver más; `PortalPanel compact` solo home.
+**Auditoría tarjetas/aire v1.2 (2026-08-12):** [`INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.2.md`](INFORME-MOD02-DASHBOARD-PORTAL-AUDITORIA-UIUX-v1.2.md) — U-D2 **superada en anatomía B1**. Contratos: UX **U-D3** · DS **v1.7**. Prompt FE: [`PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-DENSIDAD-UI-v1.2.md).
+**FE U-D3 (2026-08-12):** **GO** — `PortalDashboardMetric` compact vertical `min-h-24`/`text-2xl`/`rounded-2xl`; grid B1 `xl:grid-cols-4` sin `max-w` 50 %; skeleton `h-24`. Jest `portal-dashboard-metric` + `DashboardClient.spec` **52/52** · typecheck portal exit **0** · `audit-ui` P0/P1 **0**. G6 de recomposición **no se revierte**.
+**U-B0bis encabezado sin botones (2026-08-13):** autorizada. Contratos: UX adenda **U-B0bis** · DS **v1.9**. U-B0 (toolbar bajo el H1) **superada**. `PageHeader` del Inicio = H1 + subtítulo; sin `PortalActionToolbar`; recarga por `Reintentar` de bloque.
+**U-B0 franja fuera del título (2026-08-13):** **superada** por U-B0bis. Contratos históricos: UX adenda **U-B0** · DS **v1.8**. Prompt: [`PROMPT-MOD02-DASHBOARD-PORTAL-B0-TOOLBAR-v1.0.md`](../prompts/PROMPT-MOD02-DASHBOARD-PORTAL-B0-TOOLBAR-v1.0.md).
 
 ---
 
@@ -27,8 +35,8 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | Contrato | Ruta | Versión |
 | --- | --- | --- |
 | HLD | `docs/hlds/HLD-MOD02-DASHBOARD-EMPRESA-v2.0.md` | v2.0.1 G1 firmado |
-| UX spec | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md` | v1.0 |
-| DS contrato | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md` | **v1.2** (re-sync 2026-08-10) |
+| UX spec | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ux-spec.md` | v1.0 + **U-B0bis** (2026-08-13; U-B0 superada) |
+| DS contrato | `docs/specs/2026-08-04-portal-dashboard-recomposicion-ds-contrato.md` | **v1.9** (Inicio sin CTA de página; U-B0bis) |
 | ADR capas z | `docs/adrs/ADR-075-Contrato-Capas-Z-Portal.md` | Aprobado |
 
 ## 3. Estado por track
@@ -83,6 +91,8 @@ Recomponer el inicio `/dashboard` de `apps/portal` como centro de trabajo útil 
 | 2026-08-10 | G6-1-R1 · re-verify light AI-PLAT-OPS | SHA `9fc1ca7f` (≥ `d4ee265a`) · E2E **26/26** exit 0 · audit-ui exit 0 · ver §9 G6-1-R1 |
 | 2026-08-10 | G6-4-R1 · jest dashboard coverage (re-verify post remediación) | 7 suites · **77** pass · stmts **81,89%** · lines **84,97%** · funcs 82,14% · branches 71,33% · Cached: N/A |
 | 2026-08-10 | G6-4-R1 · Playwright `portal-dashboard-empresa` (re-verify) | **26/26** pass · axe light+dark OK · CA-V2-05 hidratación destino OK · ~67 s · ver §9 G6-4-R1 |
+| 2026-08-13 | U-B0 · jest `DashboardClient.spec` + `portal-ui.spec` | **2 suites · 77 pass** · `audit-ui` P0/P1 **0** (P2 heurístico lime-50 preexistente en portal-ui, no del delta) |
+| 2026-08-13 | U-B0bis · quitar franja B0 | Jest `DashboardClient.spec` + `portal-ui.spec` · **2 suites · 71 pass** · `audit-ui` P0/P1 **0** |
 
 Carpeta de capturas: `docs/informes/evidencias/portal-dashboard-recomposicion/`.
 
@@ -809,6 +819,8 @@ Contrato DS **v1.3 congelado** — sin bump a v1.4. Cero tokens de marca. Cero p
 CA-REM-01…10 OK. Los tres P1 del review §11 (R-P1-01…03) quedan cerrados con evidencia unitaria y, donde aplica, E2E. Un fallo E2E residual (CA-05 baseline) es locator en strict mode, no un P1 de producto.
 
 #### Matriz CA-REM
+
+> **U-B0bis:** CA-REM-01/02/05/06 cubrían la franja B0 (Actualizar global y menú). Esa superficie se retiró; la recarga queda en `Reintentar` por bloque (C-R2). Filas históricas se conservan como evidencia de G6.
 
 | ID | Resultado | Test que lo cubre |
 | --- | --- | --- |

@@ -105,6 +105,12 @@ describe('GlobalSearch', () => {
     });
   });
 
+  it('muestra Ctrl+K fuera de Apple', () => {
+    render(<GlobalSearch />);
+    expect(screen.getByText('Ctrl')).toBeInTheDocument();
+    expect(screen.getByText('K')).toBeInTheDocument();
+  });
+
   it('should mostrar error recuperable cuando falla la consulta', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 

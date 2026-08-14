@@ -17,14 +17,14 @@ jest.mock('next/link', () => {
 });
 
 describe('OnboardingAlerts', () => {
-  it('vacío ofrece siguiente acción en configuración', () => {
+  it('con conteos desconocidos no afirma que la configuración está al día', () => {
     render(<OnboardingAlerts alerts={[]} />);
 
-    expect(screen.getByText('Configuración al día')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Ver configuración/i })).toHaveAttribute(
-      'href',
-      '/dashboard/settings',
-    );
+    expect(
+      screen.getByRole('status', { name: /Cargando estado de configuración/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Configuración al día')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Ver configuración/i })).not.toBeInTheDocument();
   });
 
   it('destaca el primer pendiente y pliega el resto', async () => {
@@ -56,9 +56,9 @@ describe('OnboardingAlerts', () => {
     expect(screen.queryByText(/MFA no obligatorio/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\bMFA\b/)).not.toBeInTheDocument();
     expect(screen.getByText(/2 pendientes/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ver los 1 pendientes restantes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ver el pendiente restante/i)).toBeInTheDocument();
 
-    await user.click(screen.getByText(/Ver los 1 pendientes restantes/i));
+    await user.click(screen.getByText(/Ver el pendiente restante/i));
     expect(screen.getByText('Completa sedes')).toBeInTheDocument();
   });
 
@@ -84,7 +84,10 @@ describe('OnboardingAlerts', () => {
     render(<OnboardingAlerts alerts={[]} isUpdating />);
 
     expect(screen.getByText('Actualizando')).toBeInTheDocument();
-    expect(screen.getByText('Configuración al día')).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: /Cargando estado de configuración/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Configuración al día')).not.toBeInTheDocument();
   });
 
   it('M2 ofrece las tres acciones iniciales en el orden de operación', () => {

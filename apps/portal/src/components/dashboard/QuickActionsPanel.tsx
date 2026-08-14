@@ -1,5 +1,8 @@
+'use client';
+
 import { UserRole } from '@iwana/shared';
 import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
 import {
   PortalEmptyState,
   PortalNavListRow,
@@ -98,17 +101,24 @@ const QUICK_ACCESSES: readonly QuickAccessDefinition[] = [
   },
 ];
 
+const QUICK_ACCESS_VISIBLE_CAP = 5;
+
 interface QuickActionsPanelProps {
   role: UserRole;
 }
 
 export function QuickActionsPanel({ role }: QuickActionsPanelProps) {
   const items = QUICK_ACCESSES.filter((access) => access.roles.includes(role));
+  const [expanded, setExpanded] = useState(false);
+  const hasOverflow = items.length > QUICK_ACCESS_VISIBLE_CAP;
+  const visibleItems = expanded || !hasOverflow ? items : items.slice(0, QUICK_ACCESS_VISIBLE_CAP);
+  const hiddenCount = items.length - QUICK_ACCESS_VISIBLE_CAP;
 
   return (
-    <PortalPanel title="Accesos rápidos">
+    <PortalPanel compact title="Accesos rápidos">
       {items.length === 0 ? (
         <PortalEmptyState
+          embedded
           title="Sin destinos disponibles"
           description="Tu perfil no tiene accesos rápidos en el inicio. Revisa tu perfil para continuar."
           action={
@@ -118,19 +128,33 @@ export function QuickActionsPanel({ role }: QuickActionsPanelProps) {
           }
         />
       ) : (
-        <ul className="flex flex-col gap-2" aria-label="Accesos rápidos">
-          {items.map((access) => (
-            <li key={access.id}>
-              <PortalNavListRow
-                href={access.href}
-                title={access.label}
-                meta={access.description}
-                trailing={<ArrowRight className="h-4 w-4" aria-hidden={true} />}
-                aria-label={access.label}
-              />
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-2">
+          <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2" aria-label="Accesos rápidos">
+            {visibleItems.map((access) => (
+              <li key={access.id}>
+                <PortalNavListRow
+                  href={access.href}
+                  title={access.label}
+                  meta={<span className="sr-only">{access.description}</span>}
+                  trailing={<ArrowRight className="h-4 w-4" aria-hidden={true} />}
+                  aria-label={access.label}
+                />
+              </li>
+            ))}
+          </ul>
+          {hasOverflow ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((open) => !open)}
+              className={portalInlineTextLinkClassName}
+              aria-expanded={expanded}
+            >
+              {expanded
+                ? 'Mostrar menos'
+                : `Ver más · ${hiddenCount} ${hiddenCount === 1 ? 'acceso' : 'accesos'}`}
+            </button>
+          ) : null}
+        </div>
       )}
     </PortalPanel>
   );

@@ -9,6 +9,22 @@ interface TenantSummaryCardProps {
   settings: TenantSelfSettings;
 }
 
+const TIMEZONE_LABELS: Record<string, string> = {
+  'America/Bogota': 'Hora de Bogotá',
+};
+
+const COUNTRY_LABELS: Record<string, string> = {
+  CO: 'Colombia',
+};
+
+function formatTimezone(value: string): string {
+  return TIMEZONE_LABELS[value] ?? value;
+}
+
+function formatCountry(value: string): string {
+  return COUNTRY_LABELS[value] ?? value;
+}
+
 function statusVariant(
   status: DashboardSummaryTenant['status'],
 ): 'success' | 'warning' | 'error' | 'neutral' {
@@ -35,7 +51,7 @@ function statusLabel(status: DashboardSummaryTenant['status']): string {
 function resolveLocation(tenant: DashboardSummaryTenant): string {
   const parts = [tenant.city, tenant.department].filter(Boolean);
   if (parts.length === 0) {
-    return tenant.countryCode ?? 'No disponible';
+    return tenant.countryCode ? formatCountry(tenant.countryCode) : 'No disponible';
   }
   return parts.join(', ');
 }
@@ -46,10 +62,10 @@ function resolveLocation(tenant: DashboardSummaryTenant): string {
  */
 export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) {
   const rows: Array<{ label: string; value: string }> = [
-    { label: 'Zona horaria', value: settings.timezone },
+    { label: 'Zona horaria', value: formatTimezone(settings.timezone) },
     { label: 'Moneda', value: settings.currency },
     { label: 'Ubicación', value: resolveLocation(tenant) },
-    { label: 'País', value: settings.country },
+    { label: 'País', value: formatCountry(settings.country) },
   ];
 
   return (
@@ -65,7 +81,7 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
         </div>
       }
     >
-      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {rows.map((row) => (
           <div key={row.label} className="min-w-0">
             <dt className="text-xs text-gray-500 dark:text-gray-400">{row.label}</dt>

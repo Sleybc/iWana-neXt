@@ -353,9 +353,11 @@ export function portalMetricMutedTextClassName(accent: PortalMetricCardAccent = 
     : 'text-gray-500 dark:text-gray-400';
 }
 
-/** Enlace de texto secundario del portal (CTAs «Ver más») — par dark AA. */
-export const portalInlineTextLinkClassName =
-  'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300';
+/** Enlace de texto secundario del portal (CTAs «Ver más») — par dark AA + anillo iWana. */
+export const portalInlineTextLinkClassName = cn(
+  'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300',
+  interactiveFocusClassName,
+);
 
 /** Campo de formulario canónico del portal (input/select surface + foco). */
 export const portalFieldClassName = cn(
@@ -496,6 +498,11 @@ interface PortalDashboardMetricBaseProps {
   onRetry?: () => void;
   /** Ícono decorativo; tono derivado de `accent`. */
   icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  /**
+   * Densidad de cáscara (DS v1.7 / UX U-D3). `'default'` = póster v1.4 (Assurance).
+   * `'compact'` = KPI vertical min-h-24 flex-col text-2xl rounded-2xl — solo home B1.
+   */
+  density?: 'default' | 'compact';
   className?: string;
 }
 
@@ -544,15 +551,17 @@ export function PortalDashboardMetric({
   errorLabel = 'No disponible',
   onRetry,
   icon: Icon,
+  density = 'default',
   className,
 }: PortalDashboardMetricProps) {
   const isInteractive = Boolean(href || onClick);
   const isLoading = state === 'loading';
   const isError = state === 'error';
+  const isCompact = density === 'compact';
 
   const shellClassName = cn(
-    portalMetricCardShellClassName,
-    'min-h-[148px]',
+    'flex min-h-24 flex-col justify-center border px-4 py-3 shadow-iwana-soft',
+    isCompact ? 'rounded-2xl' : 'rounded-3xl',
     portalMetricCardAccentClassName(accent),
     isInteractive && interactiveFocusClassName,
     isInteractive && 'transition-shadow hover:shadow-iwana-active',
@@ -561,10 +570,10 @@ export function PortalDashboardMetric({
 
   let valueSlot: ReactNode;
   if (isLoading) {
-    valueSlot = <SkeletonBlock className="mt-2 h-8 w-28 rounded-lg" />;
+    valueSlot = <SkeletonBlock className="mt-0.5 h-8 w-28 rounded-lg" />;
   } else if (isError) {
     valueSlot = (
-      <div className="mt-2 space-y-2">
+      <div className="mt-0.5 space-y-2">
         <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{errorLabel}</p>
         {onRetry ? (
           <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
@@ -575,11 +584,11 @@ export function PortalDashboardMetric({
     );
   } else if (value === null) {
     valueSlot = (
-      <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-200">{emptyLabel}</p>
+      <p className="mt-0.5 text-sm font-semibold text-gray-700 dark:text-gray-200">{emptyLabel}</p>
     );
   } else {
     valueSlot = (
-      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
+      <p className="mt-0.5 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
         {formatValue(value)}
         {total !== undefined && total !== null ? (
           <span className={cn('ml-1 text-sm font-normal', portalMetricMutedTextClassName(accent))}>
@@ -590,17 +599,17 @@ export function PortalDashboardMetric({
     );
   }
 
-  const iconClearanceClassName = Icon ? 'pr-11' : undefined;
+  const iconClearanceClassName = Icon ? 'pr-10' : undefined;
 
   const eyebrowText = eyebrow?.trim() ?? '';
-  const showEyebrow = eyebrowText.length > 0;
+  const showEyebrow = eyebrowText.length > 0 && !isCompact;
 
   const body = (
-    <div className="relative flex h-full flex-col">
+    <div className="relative flex flex-col justify-center">
       {Icon ? (
         <span
           className={cn(
-            'absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-2xl',
+            'absolute right-0 top-0 flex h-8 w-8 items-center justify-center rounded-2xl',
             portalDashboardMetricIconToneClassName[accent],
           )}
         >
@@ -620,7 +629,12 @@ export function PortalDashboardMetric({
         ) : null}
       </div>
       {description ? (
-        <div className={cn('mt-1 text-sm leading-6', portalMetricMutedTextClassName(accent))}>
+        <div
+          className={cn(
+            isCompact ? 'sr-only' : 'mt-0.5 text-sm leading-5',
+            portalMetricMutedTextClassName(accent),
+          )}
+        >
           {description}
         </div>
       ) : null}
@@ -1513,6 +1527,8 @@ interface PortalPanelProps {
   titleRef?: Ref<HTMLHeadingElement> | undefined;
   /** Carga del bloque: cabecera permanece; el consumidor sustituye hijos por esqueleto. */
   busy?: boolean | undefined;
+  /** Densidad del home (DS v1.6). Solo consumidores del inicio. Default: p-5. */
+  compact?: boolean | undefined;
   children: ReactNode;
 }
 
@@ -1529,6 +1545,8 @@ interface PortalActionToolbarProps {
   className?: string | undefined;
   compact?: boolean | undefined;
   align?: 'start' | 'end' | undefined;
+  /** Nombre accesible del grupo de acciones (p. ej. Inicio B0b). */
+  'aria-label'?: string | undefined;
 }
 
 type PortalAlertLive = 'assertive' | 'polite' | 'off';
@@ -1555,6 +1573,8 @@ interface PortalEmptyStateProps {
   action?: ReactNode | undefined;
   icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }> | undefined;
   className?: string | undefined;
+  /** Sin segunda cáscara cuando ya vive dentro de `PortalPanel` (DS §1.9). */
+  embedded?: boolean | undefined;
 }
 
 interface PortalSkeletonBlockProps {
@@ -1625,6 +1645,7 @@ export function PortalPanel({
   titleTabIndex,
   titleRef,
   busy = false,
+  compact = false,
   children,
 }: PortalPanelProps) {
   const Component = as;
@@ -1632,13 +1653,14 @@ export function PortalPanel({
   return (
     <Component
       id={id}
-      className={cn(panelBaseClassName, 'p-5', className)}
+      className={cn(panelBaseClassName, compact ? 'p-4' : 'p-5', className)}
       aria-busy={busy || undefined}
     >
       {(eyebrow || title || description || actions) && (
         <div
           className={cn(
-            'flex flex-col gap-3 border-b border-gray-100 pb-4 dark:border-dark-border',
+            'flex flex-col border-b border-gray-100 dark:border-dark-border',
+            compact ? 'gap-2 pb-3' : 'gap-3 pb-4',
             actions && 'md:flex-row md:items-start md:justify-between',
             headerClassName,
           )}
@@ -1668,7 +1690,10 @@ export function PortalPanel({
         </div>
       )}
       <div
-        className={cn(title || eyebrow || description || actions ? 'pt-4' : '', contentClassName)}
+        className={cn(
+          title || eyebrow || description || actions ? (compact ? 'pt-3' : 'pt-4') : '',
+          contentClassName,
+        )}
       >
         {children}
       </div>
@@ -1708,9 +1733,12 @@ export function PortalActionToolbar({
   className,
   compact = false,
   align = 'start',
+  'aria-label': ariaLabel,
 }: PortalActionToolbarProps) {
   return (
     <div
+      role={ariaLabel ? 'toolbar' : undefined}
+      aria-label={ariaLabel}
       className={cn(
         'flex w-full flex-col items-stretch rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/90 p-1 dark:border-dark-border dark:bg-dark-surface-3/60 sm:w-auto sm:flex-row sm:items-center',
         compact ? 'gap-1' : 'gap-2',
@@ -1763,10 +1791,10 @@ export function PortalAlert({
         <Icon className={cn('h-5 w-5', styles.iconColor)} aria-hidden={true} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className={cn('portal-eyebrow', styles.eyebrowColor)}>{title}</p>
+        <p className={cn('text-sm font-semibold', styles.titleColor)}>{title}</p>
         {description && (
           <div className="mt-1 space-y-2">
-            <div className={cn('text-sm', styles.titleColor)}>{description}</div>
+            <div className={cn('text-sm', styles.bodyColor)}>{description}</div>
             {action && <div>{action}</div>}
           </div>
         )}
@@ -1819,11 +1847,15 @@ export function PortalEmptyState({
   action,
   icon: Icon = Info,
   className,
+  embedded = false,
 }: PortalEmptyStateProps) {
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300',
+        'flex items-start gap-3 text-sm text-gray-600 dark:text-gray-300',
+        embedded
+          ? 'py-1'
+          : 'rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3',
         className,
       )}
     >

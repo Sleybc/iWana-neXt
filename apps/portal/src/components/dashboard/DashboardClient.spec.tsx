@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserRole } from '@iwana/shared';
 import {
@@ -128,6 +128,43 @@ jest.mock('./OnboardingAlerts', () => ({
       </div>
     ),
 }));
+
+/**
+ * Stub de ResizeObserver para el B2 adaptativo: captura el callback registrado
+ * por el componente y permite dispararlo con alturas sintéticas.
+ */
+class ResizeObserverStub {
+  static instances: ResizeObserverStub[] = [];
+  private readonly callback: ResizeObserverCallback;
+  private disconnected = false;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    ResizeObserverStub.instances.push(this);
+  }
+
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {
+    this.disconnected = true;
+  }
+
+  /** Dispara el callback del observador con una altura de contenido (px). */
+  trigger(height: number): void {
+    if (this.disconnected) return;
+    const entry = { contentRect: { height } } as ResizeObserverEntry;
+    this.callback([entry], this as unknown as ResizeObserver);
+  }
+}
+
+/** Fuerza el modo del B2 adaptativo: 200 px entra en banda, 600 px sale. */
+function triggerDominantResize(height: number): void {
+  act(() => {
+    for (const instance of ResizeObserverStub.instances) {
+      instance.trigger(height);
+    }
+  });
+}
 
 const narrowedSummary: DashboardSummary = {
   tenant: {
@@ -263,11 +300,17 @@ describe('DashboardClient', () => {
     jest.clearAllMocks();
     __resetDashboardSessionCacheForTests();
     __resetAuditFeedCacheForTests();
+    ResizeObserverStub.instances.length = 0;
+    global.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
     useAuthMock.mockReturnValue({
       user: { id: 'u-1', role: UserRole.ADMIN, tenantId: 't-1', displayName: 'Admin' },
       isLoading: false,
     });
     mockAdminApis();
+  });
+
+  afterEach(() => {
+    delete (global as { ResizeObserver?: unknown }).ResizeObserver;
   });
 
   it('elimina el gate binario y no muestra «Panel en preparación»', async () => {
@@ -279,7 +322,7 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Ver mi agenda de hoy/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
     });
     expect(screen.queryByText(/Panel en preparación/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Rol en expansión/i)).not.toBeInTheDocument();
@@ -371,94 +414,6 @@ describe('DashboardClient', () => {
     expect(wfmGetSummary).toHaveBeenCalledTimes(1);
   });
 
-  it('recarga silenciosa conserva cifras y expone Actualizando', async () => {
-    const user = userEvent.setup();
-    render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
-    });
-
-    let resolveWfm: (value: unknown) => void = () => undefined;
-    wfmGetSummary.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveWfm = resolve;
-        }),
-    );
-
-    await user.click(screen.getByRole('button', { name: /Actualizar/i }));
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/Actualizando/i).length).toBeGreaterThan(0);
-    });
-    expect(
-      within(screen.getByRole('link', { name: /Visitas de hoy/i })).getByText('3'),
-    ).toBeInTheDocument();
-
-    resolveWfm({
-      todayCount: 3,
-      overdueCount: 1,
-      upcomingCount: 0,
-      activeCount: 0,
-      enRouteCount: 0,
-      atRiskCount: 0,
-      pendingInbox: {
-        totalOpen: 2,
-        readyToScheduleCount: 2,
-        needsContextCount: 0,
-        overdueSlaCount: 1,
-        highPriorityOpenCount: 0,
-      },
-      alerts: [],
-      technicianLoad: [],
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Actualizando/i)).not.toBeInTheDocument();
-    });
-  });
-
-  it('abre el menú móvil y ejecuta la actualización desde su callback visible', async () => {
-    const user = userEvent.setup();
-    render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: 'Más acciones del inicio' }));
-    const menu = screen.getByRole('menu');
-    expect(within(menu).getByRole('menuitem', { name: /Programar visita/i })).toHaveAttribute(
-      'href',
-      '/dashboard/scheduling?open=create',
-    );
-
-    await user.click(within(menu).getByRole('menuitem', { name: /Actualizar/i }));
-    await waitFor(() => {
-      expect(getSummary).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it('C-R3: el menú B0 cierra con Escape y devuelve el foco al disparador', async () => {
-    const user = userEvent.setup();
-    render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
-    });
-
-    const trigger = screen.getByRole('button', { name: 'Más acciones del inicio' });
-    await user.click(trigger);
-    expect(screen.getByRole('menu')).toBeInTheDocument();
-
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => {
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-    });
-    expect(trigger).toHaveFocus();
-  });
-
   it('SALES no pide WFM ni assurance', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'u-3', role: UserRole.SALES, tenantId: 't-1', displayName: 'Comercial' },
@@ -468,7 +423,7 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
     });
 
     expect(wfmGetSummary).not.toHaveBeenCalled();
@@ -478,11 +433,11 @@ describe('DashboardClient', () => {
     expect(within(document.body).queryByText(/Panel en preparación/i)).not.toBeInTheDocument();
   });
 
-  it('B0–B3: acción primaria, indicadores y ficha empresarial subordinada', async () => {
+  it('B0–B3: identidad, indicadores y ficha empresarial subordinada', async () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
     });
 
     expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
@@ -496,7 +451,28 @@ describe('DashboardClient', () => {
     expect(within(companySection).queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
-  it('NOC compone acción operativa e indicadores sin paneles de preparación (D-3)', async () => {
+  it('U-B0bis: el H1 no contiene controles ni hay franja de acciones de página', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
+    });
+
+    const heading = screen.getByRole('heading', { level: 1, name: 'Demo ISP' });
+    const titleBlock = heading.parentElement;
+    expect(titleBlock).toBeTruthy();
+    expect(within(titleBlock!).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(titleBlock!).queryByRole('button')).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('toolbar', { name: 'Acciones del inicio' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Registrar suscriptor/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Actualizar$/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Más acciones del inicio' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('NOC compone indicadores operativos sin paneles de preparación (D-3)', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'NOC' },
       isLoading: false,
@@ -505,7 +481,7 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Programar visita/i })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
     });
     expect(screen.getByLabelText('Indicadores núcleo')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
@@ -540,13 +516,12 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('change-history')).toBeInTheDocument();
+      expect(screen.getByTestId('change-history')).toHaveTextContent(/· 1$/);
     });
 
     expect(auditList).toHaveBeenCalledWith({ limit: 8 }, expect.any(String));
     expect(auditList).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('change-history')).toHaveAttribute('data-minimized', 'true');
-    expect(screen.getByTestId('change-history')).toHaveTextContent(/· 1$/);
     expect(wfmGetSummary).not.toHaveBeenCalled();
     expect(assuranceGetSummary).not.toHaveBeenCalled();
     expect(commercialGetSummary).not.toHaveBeenCalled();
@@ -662,23 +637,106 @@ describe('DashboardClient', () => {
     });
   });
 
-  it('B1 ADMIN expone 4 encabezados de dominio sin eyebrow de categoría (C-6)', async () => {
+  it('B1 ADMIN compone una sola grilla unificada sin eyebrows de dominio (U-D5)', async () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Visitas de hoy')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
     });
 
     const indicators = screen.getByLabelText('Indicadores núcleo');
+    // Sin h2 de dominio dentro de B1.
     for (const label of ['Operaciones de campo', 'Mesa de ayuda', 'Comercial', 'Oportunidades']) {
-      const heading = within(indicators).getByText(label);
-      expect(heading).toHaveClass('portal-eyebrow');
-      expect(heading).not.toHaveClass('text-gray-700');
-      expect(heading).not.toHaveClass('dark:text-gray-200');
+      expect(within(indicators).queryByRole('heading', { name: label })).not.toBeInTheDocument();
     }
+
+    // Una sola grilla unificada (hasta 4 por fila); nunca variante estirada ni por grupo.
+    const unifiedGrids = indicators.querySelectorAll('.xl\\:grid-cols-4');
+    expect(unifiedGrids).toHaveLength(1);
+    const unifiedGrid = unifiedGrids[0] as HTMLElement;
+    expect(unifiedGrid.className).toMatch(/grid-cols-1/);
+    expect(unifiedGrid.className).toMatch(/sm:grid-cols-2/);
+    expect(unifiedGrid.className).not.toMatch(/max-w-\[calc\(50%-0\.5rem\)\]/);
+
+    // Las 7 tarjetas del rol viven en la misma grilla, en orden de composición plano.
+    const cards = Array.from(unifiedGrid.querySelectorAll('a,button'));
+    expect(cards).toHaveLength(7);
+    expect(cards[0]?.textContent).toMatch(/Visitas de hoy/);
+    expect(cards[6]?.textContent).toMatch(/Oportunidades en seguimiento/);
 
     const visits = screen.getByRole('link', { name: /Visitas de hoy/i });
     expect(within(visits).queryByText('Operaciones de campo')).not.toBeInTheDocument();
+  });
+
+  it('B1 ACCOUNTANT: rol con 1 KPI compone la tarjeta en columna 1/4 de la grilla unificada, sin variante estirada (U-D5-03)', async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 'u-accountant',
+        role: UserRole.ACCOUNTANT,
+        tenantId: 't-1',
+        displayName: 'Contable',
+      },
+      isLoading: false,
+    });
+    commercialGetSummary.mockResolvedValue({
+      plansCount: 1,
+      activePlansCount: 1,
+      productsCount: 0,
+      activeProductsCount: 0,
+      servicesCount: 0,
+      activeServicesCount: 0,
+      bundlesCount: 0,
+      activeBundlesCount: 0,
+      promotionsCount: 0,
+      activePromotionsCount: 0,
+      compatibilityRulesCount: 0,
+      activeCompatibilityRulesCount: 0,
+      taxRulesCount: 0,
+      activeTaxRulesCount: 0,
+      offersExpiringSoonCount: 0,
+      offersNearUseLimitCount: 0,
+      offersAtRiskCount: 0,
+      catalogActiveCount: 1,
+      catalogSellableActiveCount: 1,
+      catalogIncompleteActiveCount: 0,
+      missingCurrentPriceCount: 1,
+      activeBundlesWithInactiveItemsCount: 0,
+      taxRulesCoverageGapCount: 0,
+      rulesGapCount: 0,
+      activeOffersCount: 0,
+      attentionItems: [],
+      recentChanges: [],
+    });
+
+    render(<DashboardClient />);
+
+    // El KPI real del rol es I-5 «Planes sin precio vigente» (registry U-D5).
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Planes sin precio vigente/i })).toBeInTheDocument();
+    });
+
+    const indicators = screen.getByLabelText('Indicadores núcleo');
+    // Sin h2 de dominio dentro de B1.
+    for (const label of ['Operaciones de campo', 'Mesa de ayuda', 'Comercial', 'Oportunidades']) {
+      expect(within(indicators).queryByRole('heading', { name: label })).not.toBeInTheDocument();
+    }
+
+    // Una sola grilla unificada (hasta 4 por fila); nunca variante estirada ni por grupo.
+    const unifiedGrids = indicators.querySelectorAll('.xl\\:grid-cols-4');
+    expect(unifiedGrids).toHaveLength(1);
+    const unifiedGrid = unifiedGrids[0] as HTMLElement;
+    expect(unifiedGrid.className).toMatch(/grid-cols-1/);
+    expect(unifiedGrid.className).toMatch(/sm:grid-cols-2/);
+    expect(unifiedGrid.className).not.toMatch(/max-w-\[calc\(50%-0\.5rem\)\]/);
+
+    // El rol con 1 KPI ocupa una columna 1/4: la tarjeta vive en la retícula
+    // unificada y no se estira a ancho completo (misma aserción U-D3/I-7).
+    const plans = screen.getByRole('link', { name: /Planes sin precio vigente/i });
+    expect(plans.closest('.xl\\:grid-cols-4')).toBe(unifiedGrid);
+    expect(plans.className).not.toMatch(/max-w-\[calc\(50%-0\.5rem\)\]/);
+    const cards = Array.from(unifiedGrid.querySelectorAll('a,button'));
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.textContent).toMatch(/Planes sin precio vigente/);
   });
 
   it('promueve help-desk y comercial cuando KPI > 0 y Ver más cuenta el resto (C-8/C-11)', async () => {
@@ -690,10 +748,10 @@ describe('DashboardClient', () => {
     });
 
     expect(screen.getByText(/Atención comercial/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Ver más · 1 bloque/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ver más · 1 resumen/i })).toBeInTheDocument();
     expect(screen.queryByText(/Estado del almacén/i)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Ver más · 1 bloque/i }));
+    await user.click(screen.getByRole('button', { name: /Ver más · 1 resumen/i }));
     expect(screen.getByText(/Estado del almacén/i)).toBeInTheDocument();
   });
 
@@ -749,6 +807,8 @@ describe('DashboardClient', () => {
       expect(screen.getByText('Plan sin precio')).toBeInTheDocument();
     });
     expect(screen.queryByText('Promoción próxima a vencer')).not.toBeInTheDocument();
+    const planLink = screen.getByRole('link', { name: /Plan sin precio/i });
+    expect(planLink.className).toMatch(/focus-visible:ring/);
   });
 
   it('muestra error de empresa y permite reintentar el próximo paso', async () => {
@@ -782,19 +842,6 @@ describe('DashboardClient', () => {
       expect(screen.getByTestId('change-history')).toBeInTheDocument();
     });
     expect(auditList).toHaveBeenCalledTimes(1);
-  });
-
-  it('acciones B0 incluyen anillo de foco (C-1)', async () => {
-    render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
-    });
-
-    const primary = screen.getByRole('link', { name: /Registrar suscriptor/i });
-    expect(primary.className).toMatch(/focus-visible:/);
-    const refresh = screen.getByRole('button', { name: /Actualizar/i });
-    expect(refresh.className).toMatch(/focus-visible:/);
   });
 
   it('ordena los avisos de campo por severidad y conserva el orden entre empates', () => {
@@ -1043,60 +1090,24 @@ describe('DashboardClient', () => {
     expect(openLink).toHaveAttribute('href', '/dashboard/crm/expedientes?view=open');
   });
 
-  it('C-R1: fallo parcial no avanza la hora de B0 y anuncia dato desactualizado', async () => {
-    const user = userEvent.setup();
-    render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
-    });
-
-    const lastRead = document.querySelector('time');
-    expect(lastRead).not.toBeNull();
-    const completeRead = lastRead!.getAttribute('dateTime');
-    expect(completeRead).toBeTruthy();
-
+  it('C-R1: carga incompleta no anuncia dato desactualizado ni hora de lectura completa', async () => {
     const { ApiError } = jest.requireMock('@/lib/api-client') as {
       ApiError: new (status: number, message: string) => Error;
     };
     wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
 
-    await user.click(screen.getByRole('button', { name: /^Actualizar$/ }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          /Algunos datos no se actualizaron. Revisa los avisos o pulsa Actualizar./i,
-        ),
-      ).toBeInTheDocument();
-    });
-
-    const afterPartial = document.querySelector('time');
-    expect(afterPartial).not.toBeNull();
-    expect(afterPartial).toHaveAttribute('dateTime', completeRead);
-  });
-
-  it('C-R1: error + dato previo muestra Reintentar en la métrica', async () => {
-    const user = userEvent.setup();
     render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
-    });
-
-    const { ApiError } = jest.requireMock('@/lib/api-client') as {
-      ApiError: new (status: number, message: string) => Error;
-    };
-    wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
-    await user.click(screen.getByRole('button', { name: /^Actualizar$/ }));
 
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: /Reintentar/i }).length).toBeGreaterThan(0);
     });
-    expect(screen.queryByRole('link', { name: /Visitas de hoy/i })).not.toBeInTheDocument();
+
+    expect(screen.getByText(/Sin lectura aún/i)).toBeInTheDocument();
+    expect(document.querySelector('time')).toBeNull();
+    expect(screen.queryByText(/Algunos datos no se actualizaron/i)).not.toBeInTheDocument();
   });
 
-  it('C-R2: el grupo B1 en error anuncia una vez y recupera el foco al encabezado', async () => {
+  it('C-R2: B1 en error de fuente reintenta en la tarjeta y recupera el valor sin foco artificial', async () => {
     const user = userEvent.setup();
     const { ApiError } = jest.requireMock('@/lib/api-client') as {
       ApiError: new (status: number, message: string) => Error;
@@ -1106,20 +1117,12 @@ describe('DashboardClient', () => {
     render(<DashboardClient />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/No pudimos actualizar las cifras de operaciones de campo/i),
-      ).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /Reintentar/i }).length).toBeGreaterThan(0);
     });
 
-    const groupAlerts = screen.getAllByText(
-      /No pudimos actualizar las cifras de operaciones de campo/i,
-    );
-    expect(groupAlerts).toHaveLength(1);
-    expect(
-      screen.getByText(
-        /Las cifras anteriores siguen visibles. Reintenta en cada tarjeta con aviso./i,
-      ),
-    ).toBeInTheDocument();
+    // Sin anuncio de grupo: el error se resuelve en cada tarjeta (U-D5).
+    expect(screen.queryByText(/No pudimos actualizar las cifras de/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Visitas de hoy/i })).not.toBeInTheDocument();
 
     wfmGetSummary.mockResolvedValue({
       todayCount: 3,
@@ -1142,33 +1145,11 @@ describe('DashboardClient', () => {
     await user.click(screen.getAllByRole('button', { name: /Reintentar/i })[0]!);
 
     await waitFor(() => {
-      expect(
-        screen.queryByText(/No pudimos actualizar las cifras de operaciones de campo/i),
-      ).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
     });
 
-    expect(document.activeElement).toHaveTextContent('Operaciones de campo');
-    expect(document.activeElement).toHaveAttribute('tabindex', '-1');
-  });
-
-  it('C-R4: token B0 sin inline-flex base y menú solo fuera de md', async () => {
-    render(<DashboardClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /Registrar suscriptor/i })).toBeInTheDocument();
-    });
-
-    const refresh = screen.getByRole('button', { name: /^Actualizar$/ });
-    expect(refresh.className).toMatch(/\bhidden\b/);
-    expect(refresh.className).toMatch(/md:inline-flex/);
-    expect(refresh.className).not.toMatch(/inline-flex min-h-11/);
-
-    const overflow = screen.getByRole('button', { name: 'Más acciones del inicio' });
-    const overflowWrap = overflow.parentElement;
-    expect(overflowWrap?.className).toMatch(/md:hidden/);
-    expect(overflowWrap?.className).toMatch(/xl:flex/);
-
-    expect(screen.queryByRole('link', { name: /^Programar visita$/ })).not.toBeInTheDocument();
+    // Sin foco artificial a un encabezado de dominio (los eyebrows ya no existen).
+    expect(document.activeElement).not.toHaveAttribute('tabindex', '-1');
   });
 
   it('C-R5: home y campana comparten una sola lectura audit', async () => {
@@ -1228,5 +1209,191 @@ describe('DashboardClient', () => {
     expect(time).toHaveClass('font-mono');
     expect(time).toHaveClass('tabular-nums');
     expect(time).toHaveAttribute('dateTime');
+  });
+
+  it('U-D / U-D3: KPI en cero sin delta no tinte de urgencia; I-7 no full-bleed; B2 no se estira; métrica vertical compact', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 3,
+      overdueCount: 0,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 0,
+        readyToScheduleCount: 0,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      },
+      alerts: [],
+      technicianLoad: [],
+    });
+    assuranceGetSummary.mockResolvedValue({
+      openCount: 5,
+      assignedCount: 0,
+      inProgressCount: 0,
+      atRiskCount: 0,
+      breachedCount: 0,
+      resolvedTodayCount: 0,
+      fieldServicePendingCount: 0,
+      byPriority: {},
+      byType: {},
+    });
+    commercialGetSummary.mockResolvedValue({
+      plansCount: 1,
+      activePlansCount: 1,
+      productsCount: 0,
+      activeProductsCount: 0,
+      servicesCount: 0,
+      activeServicesCount: 0,
+      bundlesCount: 0,
+      activeBundlesCount: 0,
+      promotionsCount: 0,
+      activePromotionsCount: 0,
+      compatibilityRulesCount: 0,
+      activeCompatibilityRulesCount: 0,
+      taxRulesCount: 0,
+      activeTaxRulesCount: 0,
+      offersExpiringSoonCount: 0,
+      offersNearUseLimitCount: 0,
+      offersAtRiskCount: 0,
+      catalogActiveCount: 1,
+      catalogSellableActiveCount: 1,
+      catalogIncompleteActiveCount: 0,
+      missingCurrentPriceCount: 0,
+      activeBundlesWithInactiveItemsCount: 0,
+      taxRulesCoverageGapCount: 0,
+      rulesGapCount: 0,
+      activeOffersCount: 0,
+      attentionItems: [],
+      recentChanges: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Solicitudes por programar/i })).toBeInTheDocument();
+    });
+
+    const pending = screen.getByRole('link', { name: /Solicitudes por programar/i });
+    expect(pending.className).not.toMatch(/bg-amber/);
+    expect(pending.className).not.toMatch(/bg-rose/);
+    expect(pending.className).toMatch(/min-h-24/);
+    expect(pending.className).toMatch(/flex-col/);
+    expect(pending.className).not.toMatch(/min-h-14/);
+    expect(pending.className).not.toMatch(/flex-row/);
+
+    const atRisk = screen.getByRole('link', { name: /Casos en riesgo de incumplir/i });
+    expect(atRisk.className).not.toMatch(/bg-rose/);
+    expect(atRisk.className).not.toMatch(/bg-amber/);
+
+    const plans = screen.getByRole('link', { name: /Planes sin precio vigente/i });
+    expect(plans.className).not.toMatch(/bg-amber/);
+
+    const offers = screen.getByRole('button', { name: /Ofertas en riesgo/i });
+    expect(offers.className).not.toMatch(/bg-amber/);
+
+    // Grilla unificada: I-7 dentro de la retícula, sin variante estirada ni eyebrow.
+    const opportunities = screen.getByRole('link', { name: /Oportunidades en seguimiento/i });
+    const unifiedGrid = opportunities.closest('.xl\\:grid-cols-4');
+    expect(unifiedGrid?.className).not.toMatch(/max-w-\[calc\(50%-0\.5rem\)\]/);
+    expect(unifiedGrid?.className).toMatch(/xl:grid-cols-4/);
+    expect(screen.queryByRole('heading', { name: 'Oportunidades' })).not.toBeInTheDocument();
+
+    // B2 adaptativo (Opción A): dominante bajo (al día) → modo banda.
+    triggerDominantResize(200);
+    expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
+    const supportGrid = document.querySelector('.xl\\:grid-cols-3');
+    expect(supportGrid?.className).toMatch(/md:grid-cols-2/);
+
+    const emptyTitle = screen.getByText('Sin avisos de campo');
+    expect(emptyTitle.parentElement?.parentElement?.className).not.toMatch(/bg-iwana-surface-soft/);
+    expect(emptyTitle.parentElement?.parentElement?.className).not.toMatch(/rounded-2xl/);
+  });
+
+  it('B2 adaptativo: columna dominante alta conserva la retícula spec 8/4 (Opción A)', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 3,
+      overdueCount: 1,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 2,
+        readyToScheduleCount: 2,
+        needsContextCount: 0,
+        overdueSlaCount: 1,
+        highPriorityOpenCount: 0,
+      },
+      alerts: buildFieldAlerts(6),
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Aviso de campo 5')).toBeInTheDocument();
+    });
+
+    // Entrada a banda con altura baja y salida con altura alta (histéresis).
+    triggerDominantResize(200);
+    expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
+
+    // Rango muerto 420-460: en banda, 430 no sale (sin parpadeo).
+    triggerDominantResize(430);
+    expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
+
+    triggerDominantResize(600);
+    const b2 = document.querySelector('.xl\\:grid-cols-12');
+    expect(b2?.className).toMatch(/items-start/);
+    expect(b2?.querySelector('.xl\\:col-span-8')).not.toBeNull();
+    expect(b2?.querySelector('.xl\\:col-span-4')).not.toBeNull();
+
+    // Rango muerto: desde retícula, 450 no entra a banda (sin parpadeo).
+    triggerDominantResize(450);
+    expect(document.querySelector('.xl\\:grid-cols-12')).not.toBeNull();
+  });
+
+  it('B2 adaptativo: apoyo de 2 paneles usa md:grid-cols-2 en banda (SUPPORT)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-support', role: UserRole.SUPPORT, tenantId: 't-1', displayName: 'Soporte' },
+      isLoading: false,
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: 'Casos de la mesa de ayuda' }),
+      ).toBeInTheDocument();
+    });
+
+    triggerDominantResize(200);
+
+    expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
+    expect(document.querySelector('.xl\\:grid-cols-3')).toBeNull();
+    expect(document.querySelector('.md\\:grid-cols-2')).not.toBeNull();
+  });
+
+  it('B2 adaptativo: apoyo de 1 panel usa contenedor xl:max-w-2xl en banda (NOC)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'NOC' },
+      isLoading: false,
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Visitas de hoy/i })).toBeInTheDocument();
+    });
+
+    triggerDominantResize(200);
+
+    expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
+    expect(document.querySelector('.xl\\:grid-cols-3')).toBeNull();
+    expect(document.querySelector('.md\\:grid-cols-2')).toBeNull();
+    expect(document.querySelector('.xl\\:max-w-2xl')).not.toBeNull();
   });
 });

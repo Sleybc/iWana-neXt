@@ -647,10 +647,10 @@ test.describe('Dashboard empresarial — baseline CA (selectores semánticos D-6
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
     await expect(page.getByLabel('Indicadores núcleo')).toBeVisible();
     await expect(page.getByRole('link', { name: /Visitas de hoy/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Casos abiertos/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toHaveCount(0);
   });
 
   test('CA-03: navegación a configuración no produce 404 de documento', async ({ page }) => {
@@ -688,37 +688,34 @@ test.describe('Dashboard empresarial — baseline CA (selectores semánticos D-6
 });
 
 test.describe('D-3 · Composición por roles representativos', () => {
-  test('ADMIN: acción primaria + ≥2 indicadores + sin panel en preparación', async ({ page }) => {
+  test('ADMIN: indicadores operativos + sin panel en preparación', async ({ page }) => {
     await setupDashboardMocks(page, { role: 'ADMIN' });
     await setAuthSession(page, 'ADMIN');
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Visitas de hoy/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Casos abiertos/i })).toBeVisible();
     await expect(page.getByText(/Panel en preparación/i)).toHaveCount(0);
   });
 
-  test('NOC: programar visita e indicadores de campo/mesa', async ({ page }) => {
+  test('NOC: indicadores de campo/mesa', async ({ page }) => {
     await setupDashboardMocks(page, { role: 'NOC' });
     await setAuthSession(page, 'NOC');
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    await expect(page.getByRole('link', { name: /Programar visita/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Visitas de hoy/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Casos abiertos/i })).toBeVisible();
     await expect(page.getByText(/Panel en preparación/i)).toHaveCount(0);
   });
 
-  test('SALES: registrar suscriptor e indicadores comerciales', async ({ page }) => {
+  test('SALES: indicadores comerciales', async ({ page }) => {
     await setupDashboardMocks(page, { role: 'SALES' });
     await setAuthSession(page, 'SALES');
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
 
-    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Planes sin precio vigente/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Oportunidades en seguimiento/i })).toBeVisible();
     await expect(page.getByText(/Panel en preparación/i)).toHaveCount(0);
@@ -729,11 +726,12 @@ test.describe('D-3 · Composición por roles representativos', () => {
     await setAuthSession(page, 'TECHNICIAN');
     await gotoDashboard(page);
 
-    await expect(page.getByRole('link', { name: /Ver mi agenda de hoy/i })).toBeVisible({
+    await expect(page.getByRole('heading', { level: 1, name: 'ISP Prueba Colombia' })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByText(/Panel en preparación/i)).toHaveCount(0);
     await expect(page.getByLabel('Indicadores núcleo')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Ver mi agenda de hoy/i })).toHaveCount(0);
   });
 });
 
@@ -818,7 +816,7 @@ test.describe('D-1 / D-2 · Axe en temas y estados', () => {
   });
 
   test('estado actualizando · tema oscuro', async ({ page }) => {
-    const options: MockOptions = {};
+    const options: MockOptions = { failWfm: true };
     await applyTheme(page, 'dark');
     await setupDashboardMocks(page, options);
     await setAuthSession(page);
@@ -826,7 +824,11 @@ test.describe('D-1 / D-2 · Axe en temas y estados', () => {
     await expectLoadedDashboard(page);
     await expectThemeApplied(page, 'dark');
 
+    const retry = page.getByRole('button', { name: /Reintentar/i }).first();
+    await expect(retry).toBeVisible();
+
     let release: () => void = () => undefined;
+    options.failWfm = false;
     options.holdWfm = {
       wait: () =>
         new Promise<void>((resolve) => {
@@ -834,7 +836,7 @@ test.describe('D-1 / D-2 · Axe en temas y estados', () => {
         }),
     };
 
-    await page.getByRole('button', { name: /Actualizar/i }).click();
+    await retry.click();
     await expect(page.getByText(/Actualizando/i).first()).toBeVisible({ timeout: 10_000 });
 
     try {
@@ -893,19 +895,22 @@ test.describe('D-4 · Recorrido de teclado móvil 375 px', () => {
 
 test.describe('D-5 / D-7 · Primer viewport, responsive y firmas', () => {
   for (const width of [375, 768, 1280] as const) {
-    test(`viewport ${width}px: acción operativa + ≥2 indicadores sin solape`, async ({ page }) => {
+    test(`viewport ${width}px: identidad + ≥2 indicadores sin solape`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
       await setupDashboardMocks(page);
       await setAuthSession(page);
       await gotoDashboard(page);
       await expectLoadedDashboard(page);
 
-      const primary = page.getByRole('link', { name: /Registrar suscriptor/i });
-      await expect(primary).toBeVisible();
+      const heading = page.getByRole('heading', { level: 1, name: 'ISP Prueba Colombia' });
+      await expect(heading).toBeVisible();
 
-      const primaryBox = await primary.boundingBox();
-      expect(primaryBox).not.toBeNull();
-      expect(primaryBox!.y + primaryBox!.height).toBeLessThanOrEqual(width === 375 ? 812 : 900);
+      const headingBox = await heading.boundingBox();
+      expect(headingBox).not.toBeNull();
+      expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(width === 375 ? 812 : 900);
+
+      await expect(page.getByRole('toolbar', { name: 'Acciones del inicio' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toHaveCount(0);
 
       const visits = page.getByRole('link', { name: /Visitas de hoy/i });
       const cases = page.getByRole('link', { name: /Casos abiertos/i });
@@ -1024,61 +1029,21 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
   });
 });
 
-test.describe('C-R3 / C-R4 · Acciones B0 y teclado del menú', () => {
-  test('375: 1 visible + menú; Escape y flechas devuelven el foco', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
-    await setupDashboardMocks(page);
-    await setAuthSession(page);
-    await gotoDashboard(page);
-    await expectLoadedDashboard(page);
+test.describe('U-B0bis · Encabezado sin franja de acciones', () => {
+  test('H1 sin controles y sin toolbar de página en 375/768/1280', async ({ page }) => {
+    for (const width of [375, 768, 1280] as const) {
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+      await setupDashboardMocks(page);
+      await setAuthSession(page);
+      await gotoDashboard(page);
+      await expectLoadedDashboard(page);
 
-    const primary = page.getByRole('link', { name: /Registrar suscriptor/i });
-    const refresh = page.getByRole('button', { name: /^Actualizar$/ });
-    const more = page.getByRole('button', { name: 'Más acciones del inicio' });
-    await expect(primary).toBeVisible();
-    await expect(refresh).toBeHidden();
-    await expect(more).toBeVisible();
-
-    await more.focus();
-    await page.keyboard.press('Enter');
-    const menu = page.getByRole('menu');
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /Actualizar/i })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /Programar visita/i })).toBeVisible();
-
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Escape');
-    await expect(menu).toHaveCount(0);
-    await expect(more).toBeFocused();
-  });
-
-  test('768: 2 visibles y sin menú', async ({ page }) => {
-    await page.setViewportSize({ width: 768, height: 900 });
-    await setupDashboardMocks(page);
-    await setAuthSession(page);
-    await gotoDashboard(page);
-    await expectLoadedDashboard(page);
-
-    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Actualizar$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Más acciones del inicio' })).toBeHidden();
-  });
-
-  test('1280: 2 visibles + menú con secundaria', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await setupDashboardMocks(page);
-    await setAuthSession(page);
-    await gotoDashboard(page);
-    await expectLoadedDashboard(page);
-
-    await expect(page.getByRole('link', { name: /Registrar suscriptor/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Actualizar$/ })).toBeVisible();
-    const more = page.getByRole('button', { name: 'Más acciones del inicio' });
-    await expect(more).toBeVisible();
-
-    await more.click();
-    const menu = page.getByRole('menu');
-    await expect(menu.getByRole('menuitem', { name: /Programar visita/i })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /Actualizar/i })).toBeHidden();
+      const heading = page.getByRole('heading', { level: 1, name: 'ISP Prueba Colombia' });
+      await expect(heading).toBeVisible();
+      await expect(heading.locator('a, button')).toHaveCount(0);
+      await expect(page.getByRole('toolbar', { name: 'Acciones del inicio' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^Actualizar$/ })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Más acciones del inicio' })).toHaveCount(0);
+    }
   });
 });

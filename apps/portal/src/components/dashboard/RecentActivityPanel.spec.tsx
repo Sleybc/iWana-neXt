@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { auditActionLabel, auditEntityTypeLabel } from '@/lib/audit-vocabulary';
+import { auditActionLabel, auditEntityTypeLabel, auditFeedSummary } from '@/lib/audit-vocabulary';
 import { RecentActivityPanel, resolveAuditEntityHref } from './RecentActivityPanel';
 import type { AuditLogEntry } from '@/lib/api-client';
 
@@ -51,7 +51,7 @@ describe('RecentActivityPanel', () => {
   it('traduce action y entityType a vocabulario amigable', () => {
     render(<RecentActivityPanel entries={[entry()]} status="success" />);
 
-    expect(screen.getByText('Verificación en dos pasos activada en usuario')).toBeInTheDocument();
+    expect(screen.getByText('Verificación en dos pasos activada · usuario')).toBeInTheDocument();
     expect(screen.queryByText('MFA_ENABLED')).not.toBeInTheDocument();
     expect(screen.queryByText(/\ben User\b/)).not.toBeInTheDocument();
   });
@@ -160,13 +160,13 @@ describe('RecentActivityPanel', () => {
       />,
     );
 
-    expect(screen.getByRole('link', { name: /Actualización en oportunidad/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Actualización · oportunidad/i })).toHaveAttribute(
       'href',
       '/dashboard/crm/expedientes/exp-1',
     );
-    expect(screen.getByText('Actualización en usuario')).toBeInTheDocument();
+    expect(screen.getByText('Actualización · usuario')).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: /Actualización en usuario/i }),
+      screen.queryByRole('link', { name: /Actualización · usuario/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -174,7 +174,7 @@ describe('RecentActivityPanel', () => {
     expect(auditActionLabel('CREATE')).toBe('Creación');
     expect(auditActionLabel('UNKNOWN_X')).toBe('Cambio registrado');
     expect(auditEntityTypeLabel('AccessProfile')).toBe('perfil de acceso');
-    expect(auditEntityTypeLabel('FooBar')).toBe('registro');
+    expect(auditEntityTypeLabel('FooBar')).toBe('');
     expect(resolveAuditEntityHref('Subscriber', 'sub-1')).toBe('/dashboard/crm/subscribers/sub-1');
     expect(auditEntityTypeLabel('ExpedienteRecord')).toBe('oportunidad');
     expect(resolveAuditEntityHref('ExpedienteRecord', 'exp-2')).toBe(
@@ -182,5 +182,8 @@ describe('RecentActivityPanel', () => {
     );
     expect(resolveAuditEntityHref('InventoryItem', 'inv-1')).toBeNull();
     expect(resolveAuditEntityHref('Expediente', null)).toBeNull();
+    expect(auditFeedSummary('LOGIN', 'User')).toBe('Inicio de sesión');
+    expect(auditFeedSummary('CREATE', 'FooBar')).toBe('Creación');
+    expect(auditFeedSummary('UPDATE', 'User')).toBe('Actualización · usuario');
   });
 });
