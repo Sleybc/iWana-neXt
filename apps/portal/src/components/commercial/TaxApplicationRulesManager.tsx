@@ -137,6 +137,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -150,7 +151,12 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const [form, setForm] = useState<AppFormState>(INITIAL_FORM);
 
   const load = useCallback(async (params: CommercialListParams, append = false) => {
-    setLoading(true);
+    // En append solo se marca loadingMore: la tabla permanece visible durante la paginación.
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
       const [appsResult, taxRules, taxDefs] = await Promise.all([
@@ -171,10 +177,11 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       }
     } catch (err) {
       setLoadError(
-        err instanceof ApiError ? err.message : 'Error al cargar aplicaciones tributarias',
+        err instanceof ApiError ? err.message : 'No fue posible cargar las reglas de aplicación.',
       );
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -362,7 +369,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
     <PortalPanel
       eyebrow="Tributación"
       title="Reglas de aplicación"
-      description="Vincula reglas tributarias con definiciones del catálogo y prioridades de evaluación."
+      description="Vincula reglas tributarias con definiciones del catálogo y su orden de prioridad."
       actions={
         <>
           <Badge variant={portalActiveCountBadgeVariant}>
@@ -421,8 +428,8 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
           title="Sin reglas de aplicación"
           description={
             rules.length === 0
-              ? 'Crea una regla tributaria y vincúlala a una definición del catálogo para activar el motor.'
-              : 'Vincula una regla comercial con una definición del catálogo para activar el motor tributario.'
+              ? 'Crea una regla tributaria y vincúlala a una definición del catálogo para activar el cálculo de impuestos.'
+              : 'Vincula una regla comercial con una definición del catálogo para activar el cálculo de impuestos.'
           }
           {...(canEdit
             ? {
@@ -474,7 +481,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                     <PortalDataTableHead>Definición</PortalDataTableHead>
                     <PortalDataTableHead>Tratamiento</PortalDataTableHead>
                     <PortalDataTableHead>Prioridad</PortalDataTableHead>
-                    <PortalDataTableHead>Override</PortalDataTableHead>
+                    <PortalDataTableHead>Tasa personalizada</PortalDataTableHead>
                     <PortalDataTableHead>Estado</PortalDataTableHead>
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
@@ -554,7 +561,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             <PortalTablePagination
               hasMore={hasMore}
               onLoadMore={handleLoadMore}
-              loading={loading}
+              loading={loadingMore}
               resourceLabel="aplicaciones"
               shown={applications.length}
               total={totalApplications}
@@ -736,7 +743,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             </div>
 
             <Input
-              label="Override de tasa (%)"
+              label="Tasa personalizada (%)"
               helperText="Tasa específica para esta vinculación. Deja vacío para usar la tasa base de la definición."
               placeholder="Ej. 5"
               type="number"
@@ -766,7 +773,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             {isEditing && (
               <CheckboxCard
                 label="Activa"
-                description="Disponible para evaluación del motor tributario."
+                description="Disponible para el cálculo de impuestos."
                 checked={form.isActive ?? true}
                 onChange={(event) =>
                   setForm((f) => ({ ...f, isActive: event.target.checked }) as AppFormState)

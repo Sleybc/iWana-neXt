@@ -176,7 +176,11 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       setMeta(result.meta ?? { ...EMPTY_LIST_META, nextCursor: null, total: page.length });
       setListParams(params);
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : 'Error al cargar el catálogo');
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : 'No fue posible cargar el catálogo de impuestos. Intenta de nuevo.',
+      );
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -266,7 +270,11 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       await loadDefinitions(refreshParams);
       setSuccessMessage('Definición tributaria creada.');
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Error al crear la definición.');
+      setFormError(
+        err instanceof ApiError
+          ? err.message
+          : 'No fue posible crear la definición. Intenta de nuevo.',
+      );
     } finally {
       setSaving(false);
     }
@@ -288,7 +296,11 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       await loadDefinitions(refreshParams);
       setSuccessMessage('Definición tributaria actualizada.');
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Error al actualizar la definición.');
+      setFormError(
+        err instanceof ApiError
+          ? err.message
+          : 'No fue posible actualizar la definición. Intenta de nuevo.',
+      );
     } finally {
       setSaving(false);
     }
@@ -304,7 +316,11 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       await loadDefinitions(refreshParams);
       setSuccessMessage('Definición tributaria eliminada.');
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Error al eliminar la definición.');
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : 'No fue posible eliminar la definición. Intenta de nuevo.',
+      );
     } finally {
       setDeleting(false);
     }
@@ -323,7 +339,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
     <PortalPanel
       eyebrow="Tributación"
       title="Catálogo de impuestos"
-      description="Consulta y administra definiciones tributarias del tenant (lectura y edición según origen)."
+      description="Consulta y administra definiciones tributarias de tu empresa (lectura y edición según origen)."
       actions={
         <>
           <Button
@@ -372,7 +388,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       ) : definitions.length === 0 ? (
         <PortalEmptyState
           title="Sin definiciones tributarias"
-          description='Usa "Nueva definición" para registrar impuestos operativos del tenant.'
+          description='Usa "Nueva definición" para registrar impuestos operativos de tu empresa.'
           {...(canEdit
             ? {
                 action: (
@@ -437,7 +453,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                           {def.origin === 'SYSTEM' && (
                             <Lock
                               className="h-3.5 w-3.5 shrink-0 text-gray-400"
-                              aria-label="Preset del sistema"
+                              aria-label="Definición incluida por el sistema"
                             />
                           )}
                           <div>

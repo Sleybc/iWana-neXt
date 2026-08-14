@@ -136,6 +136,7 @@ export function PromotionsManager({
   const [bundles, setBundles] = useState<CommercialBundle[]>([]);
   const [targetItems, setTargetItems] = useState<PromotionTargetItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -179,7 +180,12 @@ export function PromotionsManager({
   }
 
   const loadContext = useCallback(async (params: CommercialListParams, append = false) => {
-    setIsLoading(true);
+    // En append solo se marca loadingMore: la tabla permanece visible durante la paginación.
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     setLoadError(null);
     setActionError(null);
 
@@ -233,6 +239,7 @@ export function PromotionsManager({
       setLoadError(mapLoadError(error));
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -508,14 +515,14 @@ export function PromotionsManager({
                           {promotion.code}
                         </span>
                       </td>
-                      <td className={portalDataTableCellClassName}>
+                      <td className={cn(portalDataTableCellClassName, 'font-mono tabular-nums')}>
                         {formatDiscount(promotion.discountType, promotion.discountValue)}
                       </td>
                       <td className={portalDataTableCellClassName}>
                         {formatScope(promotion.appliesTo)}
                       </td>
                       <td className={`${portalDataTableCellClassName} font-mono tabular-nums`}>
-                        {promotion.currentUses} / {promotion.maxUses ?? '∞'}
+                        {promotion.currentUses} / {promotion.maxUses ?? 'Sin límite'}
                       </td>
                       <td className={portalDataTableCellClassName}>
                         {formatRange(promotion.validFrom, promotion.validTo)}
@@ -563,7 +570,7 @@ export function PromotionsManager({
             <PortalTablePagination
               hasMore={hasMore}
               onLoadMore={handleLoadMore}
-              loading={isLoading}
+              loading={loadingMore}
               resourceLabel="promociones"
               shown={visiblePromotions.length}
               total={totalPromotions}

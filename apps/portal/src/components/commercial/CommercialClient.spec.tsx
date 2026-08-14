@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
 import { CommercialClient } from './CommercialClient';
@@ -6,9 +6,10 @@ import { commercialApi } from '@/lib/api-client';
 
 let mockSearchParams = new URLSearchParams();
 const replaceMock = jest.fn();
+const pushMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: replaceMock }),
+  useRouter: () => ({ replace: replaceMock, push: pushMock }),
   usePathname: () => '/dashboard/commercial',
   useSearchParams: () => mockSearchParams,
 }));
@@ -24,8 +25,16 @@ jest.mock('@/components/auth/AuthProvider', () => {
 });
 
 jest.mock('@/components/commercial/CommercialTabLayout', () => ({
-  CommercialTabLayout: ({ activeTab }: { activeTab?: string }) => (
-    <div data-testid="tab-layout" data-active-tab={activeTab} />
+  CommercialTabLayout: ({
+    activeTab,
+    onTabChange,
+  }: {
+    activeTab?: string;
+    onTabChange?: (tab: string) => void;
+  }) => (
+    <div data-testid="tab-layout" data-active-tab={activeTab}>
+      <button onClick={() => onTabChange?.('promotions')}>Ir a promociones</button>
+    </div>
   ),
 }));
 
@@ -93,24 +102,18 @@ describe('CommercialClient', () => {
     mockSearchParams = new URLSearchParams();
   });
 
-  it('ofrece reintentar junto al estado vacío cuando falla la carga', async () => {
+  it('ofrece reintentar cuando falla la carga del resumen', async () => {
     const user = userEvent.setup();
     getDashboardSummary.mockRejectedValue(new Error('network'));
 
     render(<CommercialClient />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Actividad/ })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: /Actividad/ }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Actividad no disponible')).toBeInTheDocument();
-    });
+    const retry = await screen.findByRole('button', { name: 'Reintentar' });
+    expect(screen.getByText('Resumen no disponible')).toBeInTheDocument();
 
     getDashboardSummary.mockClear();
-    await user.click(screen.getByRole('button', { name: 'Reintentar' }));
+    getDashboardSummary.mockResolvedValue(buildSummary());
+    await user.click(retry);
 
     await waitFor(() => {
       expect(getDashboardSummary).toHaveBeenCalledTimes(1);
@@ -131,129 +134,6 @@ describe('CommercialClient', () => {
     expect(screen.getByText('Ofertas en riesgo')).toBeInTheDocument();
   });
 
-  it('abre la actividad comercial desde la cabecera en cualquier tab', async () => {
-    const user = userEvent.setup();
-    mockSearchParams = new URLSearchParams('tab=taxation');
-    getDashboardSummary.mockResolvedValue(
-      buildSummary({
-        attentionItems: [
-          {
-            id: 'b1',
-            name: 'Combo hogar',
-            entityType: 'bundle',
-            reason: 'expiring_soon',
-            destinoTab: 'bundles',
-            validTo: '2026-07-30T00:00:00.000Z',
-            usesRemaining: null,
-          },
-        ],
-      }),
-    );
-
-    render(<CommercialClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Actividad/ })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: /Actividad/ }));
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Requiere atención')).toBeInTheDocument();
-    expect(screen.getByText('Cambios recientes')).toBeInTheDocument();
-  });
-
-  it('mantiene el botón Actividad en ghost y sin badge cuando no hay ítems de atención', async () => {
-    getDashboardSummary.mockResolvedValue(buildSummary());
-
-    render(<CommercialClient />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Actividad comercial' })).toBeInTheDocument();
-    });
-
-    const activityButton = screen.getByRole('button', {
-      name: 'Actividad comercial',
-    });
-    expect(activityButton.classList.contains('border')).toBe(false);
-
-    const badge = within(activityButton).queryByText(/\d+/);
-    expect(badge).toBeNull();
-  });
-
-  it('anuncia en el botón cuántos ítems requieren atención', async () => {
-    mockSearchParams = new URLSearchParams('tab=plans');
-    getDashboardSummary.mockResolvedValue(
-      buildSummary({
-        attentionItems: [
-          {
-            id: 'b1',
-            name: 'Combo hogar',
-            entityType: 'bundle',
-            reason: 'expiring_soon',
-            destinoTab: 'bundles',
-            validTo: null,
-            usesRemaining: null,
-          },
-          {
-            id: 'p1',
-            name: 'Plan fibra',
-            entityType: 'plan',
-            reason: 'missing_current_price',
-            destinoTab: 'plans',
-            validTo: null,
-            usesRemaining: null,
-          },
-        ],
-      }),
-    );
-
-    render(<CommercialClient />);
-
-    await waitFor(() => {
-      const button = screen.getByRole('button', {
-        name: 'Actividad comercial, 2 ítems requieren atención',
-      });
-      expect(button).toBeInTheDocument();
-
-      const badge = within(button).getByText('2');
-      expect(badge.className).toContain('text-amber-700');
-    });
-  });
-
-  it('eleva el botón Actividad a secondary cuando hay ítems de atención', async () => {
-    getDashboardSummary.mockResolvedValue(
-      buildSummary({
-        attentionItems: [
-          {
-            id: 'p1',
-            name: 'Plan fibra',
-            entityType: 'plan',
-            reason: 'missing_current_price',
-            destinoTab: 'plans',
-            validTo: null,
-            usesRemaining: null,
-          },
-        ],
-      }),
-    );
-
-    const { container } = render(<CommercialClient />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: 'Actividad comercial, 1 ítem requiere atención' }),
-      ).toBeInTheDocument();
-    });
-
-    const activityButton = screen.getByRole('button', {
-      name: 'Actividad comercial, 1 ítem requiere atención',
-    });
-    // El variante secondary aplica border; ghost no tiene borde.
-    expect(activityButton.classList.contains('border')).toBe(true);
-    expect(container.querySelector('[aria-label="Actividad comercial"]')).not.toBeInTheDocument();
-  });
-
   it('reescribe ?tab=summary a la URL canónica sin tab', async () => {
     mockSearchParams = new URLSearchParams('tab=summary');
     getDashboardSummary.mockResolvedValue(buildSummary());
@@ -263,5 +143,42 @@ describe('CommercialClient', () => {
     await waitFor(() => {
       expect(replaceMock).toHaveBeenCalledWith('/dashboard/commercial', { scroll: false });
     });
+  });
+
+  it('usa push al cambiar de tab (navegación nueva en el historial)', async () => {
+    const user = userEvent.setup();
+    getDashboardSummary.mockResolvedValue(buildSummary());
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-layout')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Ir a promociones' }));
+
+    expect(pushMock).toHaveBeenCalledWith('/dashboard/commercial?tab=promotions', {
+      scroll: false,
+    });
+    expect(replaceMock).not.toHaveBeenCalledWith('/dashboard/commercial?tab=promotions', {
+      scroll: false,
+    });
+  });
+
+  it('usa replace (no push) al navegar desde una alerta al mismo tab con solo status/focus', async () => {
+    const user = userEvent.setup();
+    mockSearchParams = new URLSearchParams('tab=bundles');
+    getDashboardSummary.mockResolvedValue(buildSummary({ offersAtRiskCount: 1 }));
+
+    render(<CommercialClient />);
+
+    const verOfertas = await screen.findByRole('button', { name: 'Ver ofertas' });
+    await user.click(verOfertas);
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      '/dashboard/commercial?tab=bundles&offerStatus=expiring',
+      { scroll: false },
+    );
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

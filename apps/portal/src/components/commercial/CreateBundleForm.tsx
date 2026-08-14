@@ -251,11 +251,10 @@ export function CreateBundleForm({
             <Input
               label="Nombre"
               placeholder="Combo hogar premium"
-              aria-invalid={errors.name ? 'true' : 'false'}
+              error={errors.name?.message}
               disabled={!canEdit || isSubmitting}
               {...register('name')}
             />
-            {errors.name && <p className="mt-1 text-sm text-error-600">{errors.name.message}</p>}
           </div>
           <div>
             <Input
@@ -263,28 +262,32 @@ export function CreateBundleForm({
               type="number"
               min={0}
               step="0.01"
-              aria-invalid={errors.discountValue ? 'true' : 'false'}
+              error={errors.discountValue?.message}
               disabled={!canEdit || isSubmitting}
               {...register('discountValue')}
             />
-            {errors.discountValue && (
-              <p className="mt-1 text-sm text-error-600">{errors.discountValue.message}</p>
-            )}
           </div>
           <div className="md:col-span-2">
-            <label htmlFor="bundle-description" className="portal-eyebrow-muted">
+            <label
+              htmlFor="bundle-description"
+              className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
               Descripción
             </label>
             <textarea
               id="bundle-description"
               rows={3}
-              className={`mt-2 ${portalTextareaClassName}`}
+              className={`mt-1.5 ${portalTextareaClassName}`}
               placeholder="Incluye internet + router + soporte prioritario"
               disabled={!canEdit || isSubmitting}
+              aria-invalid={errors.description ? 'true' : 'false'}
+              aria-describedby={errors.description ? 'bundle-description-error' : undefined}
               {...register('description')}
             />
             {errors.description && (
-              <p className="mt-1 text-sm text-error-600">{errors.description.message}</p>
+              <p id="bundle-description-error" role="alert" className="mt-1 text-sm text-error-600">
+                {errors.description.message}
+              </p>
             )}
           </div>
           <Select
@@ -323,7 +326,6 @@ export function CreateBundleForm({
             )}
           />
         </div>
-        {errors.validTo && <p className="text-sm text-error-600">{errors.validTo.message}</p>}
       </section>
 
       {isEditMode ? (

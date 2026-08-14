@@ -118,6 +118,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
   });
   const [catalogItems, setCatalogItems] = useState<CatalogSelectableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -141,7 +142,12 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
     : `${totalRules} ${resourceWord}`;
 
   const loadData = useCallback(async (params: CommercialListParams, append = false) => {
-    setIsLoading(true);
+    // En append solo se marca loadingMore: la tabla permanece visible durante la paginación.
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     setLoadError(null);
     setActionError(null);
     try {
@@ -167,6 +173,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
       setLoadError(mapLoadError(error));
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -483,7 +490,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             <PortalTablePagination
               hasMore={hasMore}
               onLoadMore={handleLoadMore}
-              loading={isLoading}
+              loading={loadingMore}
               resourceLabel="reglas"
               shown={replacesRules.length}
               total={totalRules}

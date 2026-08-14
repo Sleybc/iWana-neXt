@@ -181,4 +181,23 @@ describe('CommercialTabLayout', () => {
 
     expect(onTabChange).toHaveBeenCalledWith('promotions');
   });
+
+  it('mantiene sticky el shell de tabs principal bajo el header solo en md+', () => {
+    render(<CommercialTabLayout {...defaultProps} />);
+
+    const mainTabs = screen.getByRole('tablist', { name: 'Secciones comerciales' });
+
+    expect(mainTabs).toHaveClass('md:sticky');
+    expect(mainTabs).toHaveClass('md:top-[69px]');
+    expect(mainTabs).toHaveClass('z-(--z-sticky)');
+  });
+
+  it('no aplica sticky a los subtabs de Tributación', async () => {
+    render(<CommercialTabLayout {...defaultProps} activeTab="taxation" />);
+
+    const subTabs = screen.getByRole('tablist', { name: 'Subsecciones tributarias' });
+
+    expect(subTabs).not.toHaveClass('md:sticky');
+    await waitFor(() => expect(screen.getByTestId('tax-catalog-panel')).toBeInTheDocument());
+  });
 });

@@ -102,7 +102,15 @@ export function CommercialTabLayout({
         onTabChange(value as CommercialTab);
       }}
     >
-      <TabsList aria-label="Secciones comerciales" className={portalModuleTabsShellClassName}>
+      <TabsList
+        aria-label="Secciones comerciales"
+        className={cn(
+          portalModuleTabsShellClassName,
+          // Sticky bajo el TopHeader solo en md+ (header: py-3 ×2 + contenido h-11 + border-b = 69px).
+          // En mobile el shell apila en columna y no debe ser sticky.
+          'md:sticky md:top-[69px] z-(--z-sticky)',
+        )}
+      >
         <div className={portalModuleTabsGroupClassName}>
           <p className="portal-eyebrow px-1" id="commercial-tabs-catalog-label">
             Catálogo

@@ -29,7 +29,7 @@ export const TAX_CONTEXT_LABELS: Record<string, string> = {
 
 export const TAX_SEGMENT_LABELS: Record<string, string> = {
   RESIDENTIAL: 'Residencial',
-  SOHO: 'SOHO',
+  SOHO: 'SOHO (oficina pequeña)',
   PYME: 'PyME',
   CORPORATE: 'Corporativo',
 };

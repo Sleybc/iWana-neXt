@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GoodsReceiptStatus, PurchaseOrderStatus } from '@iwana/shared';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
@@ -138,7 +138,13 @@ describe('GoodsReceiptPanel', () => {
       /Proveedor Alfa/,
     );
     expect(screen.queryByText(/Proveedor no identificado/i)).not.toBeInTheDocument();
-    expect(screen.getByText(formatInventoryDate('2026-08-15'))).toBeInTheDocument();
+    // Alcance al bloque «Entrega esperada»: la fecha también puede aparecer en el
+    // DatePicker de recepción cuando hoy coincide con el fallback (zona horaria).
+    const entregaEsperada = screen.getByText('Entrega esperada').closest('dl');
+    expect(entregaEsperada).not.toBeNull();
+    expect(
+      within(entregaEsperada as HTMLElement).getByText(formatInventoryDate('2026-08-15')),
+    ).toBeInTheDocument();
   });
 
   it('usa la fecha enriquecida de orders[] aunque order.expectedDeliveryDate sea null', () => {

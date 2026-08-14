@@ -220,4 +220,42 @@ describe('BundlesManager', () => {
 
     expect(await screen.findByText('Combo hogar')).toBeInTheDocument();
   });
+
+  it('mantiene la tabla visible y el botón inactivo mientras se carga la página siguiente', async () => {
+    const user = userEvent.setup();
+    let resolveSecondPage!: (value: unknown) => void;
+    const secondPage = new Promise((resolve) => {
+      resolveSecondPage = resolve;
+    });
+
+    mockGetBundles
+      .mockResolvedValueOnce({
+        data: [sampleBundle],
+        meta: { ...EMPTY_LIST_META, nextCursor: 'cursor-2', total: 2 },
+      })
+      .mockImplementationOnce(() => secondPage);
+
+    render(<BundlesManager canEdit />);
+
+    expect(await screen.findByText('Combo hogar')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+
+    // Mientras la página siguiente no resuelve, la tabla no se desmonta y el CTA queda en loading.
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Combo hogar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeDisabled();
+
+    resolveSecondPage({
+      data: [{ ...sampleBundle, id: 'bundle-2', name: 'Combo dúo' }],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 2 },
+    });
+
+    expect(await screen.findByText('Combo dúo')).toBeInTheDocument();
+    expect(screen.getByText('Combo hogar')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(mockGetBundles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'cursor-2' }),
+    );
+  });
 });

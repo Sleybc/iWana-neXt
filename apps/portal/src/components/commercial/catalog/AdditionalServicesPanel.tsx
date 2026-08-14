@@ -155,6 +155,7 @@ export function AdditionalServicesPanel({
 
   const [services, setServices] = useState<AdditionalService[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -239,7 +240,12 @@ export function AdditionalServicesPanel({
   }
 
   const loadServices = useCallback(async (params: CommercialListParams, append = false) => {
-    setLoading(true);
+    // En append solo se marca loadingMore: la tabla permanece visible durante la paginación.
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     setActionError(null);
     try {
@@ -252,6 +258,7 @@ export function AdditionalServicesPanel({
       setLoadError('No se pudieron cargar los servicios adicionales.');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -422,7 +429,6 @@ export function AdditionalServicesPanel({
       description="Administra servicios complementarios, tipos de cobro y tarifas."
       actions={
         <>
-          <Badge variant="neutral">{totalServices} total</Badge>
           <Badge variant={portalActiveCountBadgeVariant}>
             {activeServicesCount} activo{activeServicesCount === 1 ? '' : 's'}
           </Badge>
@@ -689,7 +695,7 @@ export function AdditionalServicesPanel({
               <PortalTablePagination
                 hasMore={hasMore}
                 onLoadMore={handleLoadMore}
-                loading={loading}
+                loading={loadingMore}
                 resourceLabel="servicios"
                 shown={filteredServices.length}
                 total={totalServices}

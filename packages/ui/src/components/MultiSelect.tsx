@@ -43,6 +43,12 @@ export function MultiSelect({
   const [search, setSearch] = React.useState('');
   const searchRef = React.useRef<HTMLInputElement>(null);
 
+  // Ids estables para asociar label, error y trigger (patrón de Select/Input del DS)
+  const generatedId = React.useId();
+  const triggerId = `${generatedId}-trigger`;
+  const labelId = `${generatedId}-label`;
+  const errorId = `${generatedId}-error`;
+
   // Limpiar búsqueda al cerrar
   React.useEffect(() => {
     if (!open) setSearch('');
@@ -86,9 +92,13 @@ export function MultiSelect({
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600 dark:text-gray-300">
+        <label
+          id={labelId}
+          htmlFor={triggerId}
+          className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600 dark:text-gray-300"
+        >
           {label}
-        </span>
+        </label>
       )}
 
       <PopoverPrimitive.Root
@@ -100,8 +110,12 @@ export function MultiSelect({
         <PopoverPrimitive.Trigger asChild>
           <button
             type="button"
+            id={triggerId}
             role="combobox"
             aria-expanded={open}
+            aria-labelledby={label ? labelId : undefined}
+            aria-describedby={error ? errorId : undefined}
+            aria-invalid={error ? true : undefined}
             disabled={disabled}
             className={cn(
               'flex min-h-[42px] w-full flex-wrap items-center gap-1.5 rounded-2xl border px-3 py-2 text-left text-sm transition-colors',
@@ -120,7 +134,7 @@ export function MultiSelect({
                 return (
                   <span
                     key={optValue}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[#EEEEFA] px-2 py-0.5 text-xs font-medium text-[#17163A] dark:bg-iwana-primary-800/50 dark:text-iwana-primary-200"
+                    className="inline-flex items-center gap-1 rounded-lg bg-iwana-primary-100 px-2 py-0.5 text-xs font-medium text-iwana-primary dark:bg-iwana-primary-800/50 dark:text-iwana-primary-200"
                   >
                     {lbl}
                     {!disabled && (
@@ -128,7 +142,7 @@ export function MultiSelect({
                         role="button"
                         tabIndex={0}
                         aria-label={`Quitar ${lbl}`}
-                        className="ml-0.5 rounded-full hover:text-red-500 focus:outline-none"
+                        className="ml-0.5 rounded-full hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:focus-visible:ring-iwana-primary-300"
                         onClick={(e) => remove(e, optValue)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ')
@@ -160,7 +174,7 @@ export function MultiSelect({
             align="start"
             sideOffset={4}
             className={cn(
-              'z-[1200] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg',
+              'z-(--z-popover) w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg',
               'dark:border-dark-border-2 dark:bg-dark-surface-2',
               'data-[state=open]:animate-in data-[state=closed]:animate-out',
               'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
@@ -176,7 +190,7 @@ export function MultiSelect({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="w-full bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none dark:text-gray-100"
+                className="w-full bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:text-gray-100 dark:focus-visible:ring-iwana-primary-300"
               />
               {search && (
                 <button
@@ -218,7 +232,7 @@ export function MultiSelect({
                           className={cn(
                             'flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors',
                             'text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-dark-surface-3',
-                            selected && 'bg-[#F5F5FD] dark:bg-iwana-primary-900/20',
+                            selected && 'bg-iwana-primary-50 dark:bg-iwana-primary-900/20',
                             opt.disabled && 'cursor-not-allowed opacity-40',
                           )}
                         >
@@ -261,7 +275,11 @@ export function MultiSelect({
         </PopoverPrimitive.Portal>
       </PopoverPrimitive.Root>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && (
+        <p id={errorId} className="text-xs text-iwana-error">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

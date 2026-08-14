@@ -119,6 +119,7 @@ export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: Bun
   const [bundles, setBundles] = useState<CommercialBundle[]>([]);
   const [availableItems, setAvailableItems] = useState<BundleCatalogSelectableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -191,7 +192,12 @@ export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: Bun
   };
 
   const loadBundles = useCallback(async (params: CommercialListParams, append = false) => {
-    setIsLoading(true);
+    // En append solo se marca loadingMore: la tabla permanece visible durante la paginación.
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     setLoadError(null);
     setActionError(null);
 
@@ -208,6 +214,7 @@ export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: Bun
       setLoadError(mapLoadError(error));
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -479,7 +486,9 @@ export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: Bun
                       <td className={`${portalDataTableCellClassName} font-mono tabular-nums`}>
                         {bundle.itemCount ?? 0}
                       </td>
-                      <td className={portalDataTableCellClassName}>{formatDiscount(bundle)}</td>
+                      <td className={cn(portalDataTableCellClassName, 'font-mono tabular-nums')}>
+                        {formatDiscount(bundle)}
+                      </td>
                       <td className={portalDataTableCellClassName}>
                         {formatDateRange(bundle.validFrom, bundle.validTo)}
                       </td>
@@ -526,7 +535,7 @@ export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: Bun
             <PortalTablePagination
               hasMore={hasMore}
               onLoadMore={handleLoadMore}
-              loading={isLoading}
+              loading={loadingMore}
               resourceLabel="combos"
               shown={visibleBundles.length}
               total={totalBundles}

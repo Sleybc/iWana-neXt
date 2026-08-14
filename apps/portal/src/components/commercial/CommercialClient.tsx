@@ -1,13 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Activity, AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout';
-import { CommercialActivityPanel } from '@/components/commercial/CommercialActivityPanel';
 import { CommercialAlertsStrip } from '@/components/commercial/CommercialAlertsStrip';
 import {
   applyCommercialFocusToSearchParams,
@@ -22,7 +21,7 @@ import {
   type ResolvedCommercialRoute,
   type TaxationSubTab,
 } from '@/components/commercial/commercial-tab-params';
-import { PortalAlert, PortalSidePeek, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { ApiError, commercialApi, type CommercialDashboardSummary } from '@/lib/api-client';
 
 function CommercialSkeleton() {
@@ -43,6 +42,7 @@ function syncRouteToUrl(
   router: ReturnType<typeof useRouter>,
   searchParams: URLSearchParams,
   route: ResolvedCommercialRoute,
+  method: 'push' | 'replace' = 'replace',
 ) {
   const nextSearchParams = new URLSearchParams(searchParams.toString());
   const nextTab = buildCommercialTabQuery(route);
@@ -57,7 +57,7 @@ function syncRouteToUrl(
   applyCommercialFocusToSearchParams(nextSearchParams, route.focus ?? null);
 
   const nextQuery = nextSearchParams.toString();
-  router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  router[method](nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
 }
 
 function mapSummaryError(error: unknown): string {
@@ -91,11 +91,8 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   const [summary, setSummary] = useState<CommercialDashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [isActivityOpen, setIsActivityOpen] = useState(false);
 
   const canEdit = user?.role === 'ADMIN';
-  const attentionCount = useMemo(() => summary?.attentionItems.length ?? 0, [summary]);
 
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true);
@@ -142,14 +139,16 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
     }
 
     void loadSummary();
-  }, [loadSummary, refreshToken, user]);
+  }, [loadSummary, user]);
 
   const updateRoute = useCallback(
     (nextRoute: ResolvedCommercialRoute) => {
+      // El cambio de tab es una navegación real (push); el resto son ajustes de la misma vista (replace).
+      const method = nextRoute.tab !== route.tab ? 'push' : 'replace';
       setRoute(nextRoute);
-      syncRouteToUrl(pathname, router, searchParams, nextRoute);
+      syncRouteToUrl(pathname, router, searchParams, nextRoute, method);
     },
-    [pathname, router, searchParams],
+    [pathname, route.tab, router, searchParams],
   );
 
   const handleTabChange = useCallback(
@@ -202,10 +201,6 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
     [updateRoute],
   );
 
-  const handleRefresh = useCallback(() => {
-    setRefreshToken((current) => current + 1);
-  }, []);
-
   if (authLoading) {
     return (
       <div className="space-y-6">
@@ -237,32 +232,6 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
       <PageHeader
         title="Comercial"
         subtitle="Gestiona catálogo, precios vigentes y reglas operativas."
-        actions={
-          <>
-            <Button
-              variant={attentionCount > 0 ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setIsActivityOpen(true)}
-              aria-label={
-                attentionCount > 0
-                  ? `Actividad comercial, ${attentionCount} ${attentionCount === 1 ? 'ítem requiere' : 'ítems requieren'} atención`
-                  : 'Actividad comercial'
-              }
-            >
-              <Activity className="h-4 w-4" aria-hidden="true" />
-              Actividad
-              {attentionCount > 0 && (
-                <span className="ml-1 rounded-full bg-iwana-surface-soft px-2 py-0.5 font-mono text-xs tabular-nums text-amber-700 dark:bg-dark-surface-3 dark:text-amber-300">
-                  {attentionCount}
-                </span>
-              )}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleRefresh}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Actualizar
-            </Button>
-          </>
-        }
       />
 
       {summaryError && (
@@ -271,6 +240,11 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
           title="Resumen no disponible"
           description={summaryError}
           icon={AlertTriangle}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadSummary()}>
+              Reintentar
+            </Button>
+          }
         />
       )}
 
@@ -289,23 +263,6 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         onTabChange={handleTabChange}
         onTaxationSubTabChange={handleTaxationSubTabChange}
       />
-
-      <PortalSidePeek
-        open={isActivityOpen}
-        onClose={() => setIsActivityOpen(false)}
-        title="Actividad comercial"
-        description="Qué requiere atención y qué cambió en los últimos 7 días."
-      >
-        <CommercialActivityPanel
-          summary={summary}
-          isLoading={summaryLoading}
-          onNavigateTab={(tab, options) => {
-            setIsActivityOpen(false);
-            handleNavigateTab(tab, options);
-          }}
-          onRetry={handleRefresh}
-        />
-      </PortalSidePeek>
     </div>
   );
 }

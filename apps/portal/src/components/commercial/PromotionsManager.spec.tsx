@@ -242,4 +242,42 @@ describe('PromotionsManager', () => {
     expect(await screen.findByText('Sin promociones en riesgo')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Quitar filtro' })).toBeInTheDocument();
   });
+
+  it('mantiene la tabla visible y el botón inactivo mientras se carga la página siguiente', async () => {
+    const user = userEvent.setup();
+    let resolveSecondPage!: (value: unknown) => void;
+    const secondPage = new Promise((resolve) => {
+      resolveSecondPage = resolve;
+    });
+
+    mockGetPromotions
+      .mockResolvedValueOnce({
+        data: [samplePromotion],
+        meta: { ...EMPTY_LIST_META, nextCursor: 'cursor-2', total: 2 },
+      })
+      .mockImplementationOnce(() => secondPage);
+
+    render(<PromotionsManager canEdit />);
+
+    expect(await screen.findByText('Promo abril')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cargar más' }));
+
+    // Mientras la página siguiente no resuelve, la tabla no se desmonta y el CTA queda en loading.
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Promo abril')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeDisabled();
+
+    resolveSecondPage({
+      data: [{ ...samplePromotion, id: 'promo-2', name: 'Promo mayo', code: 'PROMO50' }],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 2 },
+    });
+
+    expect(await screen.findByText('Promo mayo')).toBeInTheDocument();
+    expect(screen.getByText('Promo abril')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(mockGetPromotions).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'cursor-2' }),
+    );
+  });
 });

@@ -46,7 +46,7 @@ export const planFormSchema = z
 export type PlanFormValues = z.infer<typeof planFormSchema>;
 
 export const BLOCKED_TECHNOLOGIES = new Set(['FTTH']);
-export const TECHNOLOGY_SUGGESTIONS = ['GPON', 'XGS-PON', 'HFC', 'WIFI6', 'WIFI5'];
+export const TECHNOLOGY_SUGGESTIONS = ['GPON', 'XGS-PON', 'HFC', 'WiFi 6', 'WiFi 5'];
 export const TECHNOLOGY_OPTIONS_STORAGE_KEY = 'iwana.portal.commercial.plan-technology-options';
 
 /** Lee tecnologías del localStorage; retorna los defaults si no hay datos o están corruptos. */

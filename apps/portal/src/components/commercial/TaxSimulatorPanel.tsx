@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CircleAlert, FlaskConical } from 'lucide-react';
 import { Badge, Button, Input, Select, cn } from '@iwana/ui';
 import {
@@ -30,19 +30,34 @@ export function TaxSimulatorPanel() {
   const [stratum, setStratum] = useState<string>('');
   const [municipalityCode, setMunicipalityCode] = useState<string>('');
   const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
+  const [definitionsError, setDefinitionsError] = useState<string | null>(null);
+  const [definitionsReloadToken, setDefinitionsReloadToken] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<TaxApplicationSnapshot[] | null>(null);
   const [hasSimulated, setHasSimulated] = useState(false);
 
-  useEffect(() => {
-    void commercialApi
-      .listTaxDefinitions({ isActive: true, limit: COMMERCIAL_PICKER_LIMIT })
-      .then((result) => setDefinitions(result.data))
-      .catch(() => {
-        setDefinitions([]);
+  const loadDefinitions = useCallback(async () => {
+    setDefinitionsError(null);
+    try {
+      const result = await commercialApi.listTaxDefinitions({
+        isActive: true,
+        limit: COMMERCIAL_PICKER_LIMIT,
       });
+      setDefinitions(result.data);
+    } catch (err) {
+      setDefinitions([]);
+      setDefinitionsError(
+        err instanceof ApiError
+          ? err.message
+          : 'No fue posible cargar las definiciones tributarias.',
+      );
+    }
   }, []);
+
+  useEffect(() => {
+    void loadDefinitions();
+  }, [loadDefinitions, definitionsReloadToken]);
 
   const resolveDefinitionLabel = (taxDefinitionId: string): string => {
     const def = definitions.find((item) => item.id === taxDefinitionId);
@@ -91,7 +106,7 @@ export function TaxSimulatorPanel() {
               className={portalSelectTriggerClassName}
             >
               <option value="RESIDENTIAL">Residencial</option>
-              <option value="SOHO">SOHO</option>
+              <option value="SOHO">SOHO (oficina pequeña)</option>
               <option value="PYME">PyME</option>
               <option value="CORPORATE">Corporativo</option>
             </Select>
@@ -138,6 +153,25 @@ export function TaxSimulatorPanel() {
         </div>
       </PortalPanel>
 
+      {definitionsError && (
+        <PortalAlert
+          variant="warning"
+          title="Definiciones tributarias no disponibles"
+          description={definitionsError}
+          icon={CircleAlert}
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setDefinitionsReloadToken((current) => current + 1)}
+            >
+              Reintentar
+            </Button>
+          }
+        />
+      )}
+
       {error && (
         <PortalAlert
           variant="error"
@@ -167,7 +201,7 @@ export function TaxSimulatorPanel() {
             <PortalAlert
               variant="warning"
               title="Sin reglas aplicables"
-              description="No se encontraron aplicaciones tributarias para los parámetros dados. Verifica las reglas de aplicación configuradas."
+              description="No hay reglas tributarias para estos parámetros. Revisa las reglas de aplicación configuradas."
             />
           ) : (
             <div className="flex flex-col gap-2">

@@ -3,7 +3,7 @@ import type {
   CommercialOfferStatusFilter,
   CommercialTab,
 } from '@/components/commercial/commercial-tab-params';
-import { formatCompactNumber } from '@/components/commercial/commercial-format';
+import { formatGroupedNumber } from '@/components/commercial/commercial-format';
 
 export interface CommercialAlert {
   key: string;
@@ -69,7 +69,7 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
   const alerts: CommercialAlert[] = [];
 
   if (summary.offersAtRiskCount > 0) {
-    const count = formatCompactNumber(summary.offersAtRiskCount);
+    const count = formatGroupedNumber(summary.offersAtRiskCount);
     const tab = resolveOffersRiskTab(summary);
     const focusItem = summary.attentionItems.find(
       (item) =>
@@ -80,7 +80,10 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
       key: 'offers-at-risk',
       variant: 'warning',
       title: 'Ofertas en riesgo',
-      description: `${count} ${summary.offersAtRiskCount === 1 ? 'oferta vence' : 'ofertas vencen'} pronto o están cerca del límite de usos.`,
+      description:
+        summary.offersAtRiskCount === 1
+          ? `${count} oferta vence pronto o está cerca del límite de usos.`
+          : `${count} ofertas vencen pronto o están cerca del límite de usos.`,
       ctaLabel: 'Ver ofertas',
       tab,
       status: 'expiring',
@@ -89,7 +92,7 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
   }
 
   if (summary.catalogIncompleteActiveCount > 0) {
-    const count = formatCompactNumber(summary.catalogIncompleteActiveCount);
+    const count = formatGroupedNumber(summary.catalogIncompleteActiveCount);
     const tab = resolveCatalogIncompleteTab(summary);
     const focusItem = summary.attentionItems.find(
       (item) => item.reason === 'missing_current_price' && item.destinoTab === tab,
@@ -106,7 +109,7 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
   }
 
   if (summary.rulesGapCount > 0) {
-    const count = formatCompactNumber(summary.rulesGapCount);
+    const count = formatGroupedNumber(summary.rulesGapCount);
     alerts.push({
       key: 'rules-gap',
       variant: 'error',

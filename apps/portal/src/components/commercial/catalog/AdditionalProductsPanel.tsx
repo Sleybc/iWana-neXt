@@ -171,6 +171,7 @@ export function AdditionalProductsPanel({
 
   const [products, setProducts] = useState<AdditionalProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -273,7 +274,12 @@ export function AdditionalProductsPanel({
   }
 
   const loadProducts = useCallback(async (params: CommercialListParams, append = false) => {
-    setLoading(true);
+    // En append solo se marca loadingMore: la tabla permanece visible durante la paginación.
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     setActionError(null);
     try {
@@ -286,6 +292,7 @@ export function AdditionalProductsPanel({
       setLoadError('No se pudieron cargar los productos adicionales.');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -480,7 +487,6 @@ export function AdditionalProductsPanel({
       description="Consulta, filtra y administra productos complementarios al plan principal."
       actions={
         <>
-          <Badge variant="neutral">{totalProducts} total</Badge>
           <Badge variant={portalActiveCountBadgeVariant}>
             {activeProductsCount} activo{activeProductsCount === 1 ? '' : 's'}
           </Badge>
@@ -800,7 +806,7 @@ export function AdditionalProductsPanel({
               <PortalTablePagination
                 hasMore={hasMore}
                 onLoadMore={handleLoadMore}
-                loading={loading}
+                loading={loadingMore}
                 resourceLabel="productos"
                 shown={products.length}
                 total={totalProducts}

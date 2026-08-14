@@ -65,6 +65,20 @@ describe('buildCommercialAlerts', () => {
     expect(alerts[0]?.description).toContain('oferta vence');
   });
 
+  it('usa el texto singular exacto con una sola oferta en riesgo', () => {
+    const alerts = buildCommercialAlerts(buildSummary({ offersAtRiskCount: 1 }));
+
+    expect(alerts[0]?.description).toBe('1 oferta vence pronto o está cerca del límite de usos.');
+  });
+
+  it('usa el texto plural exacto con dos ofertas en riesgo', () => {
+    const alerts = buildCommercialAlerts(buildSummary({ offersAtRiskCount: 2 }));
+
+    expect(alerts[0]?.description).toBe(
+      '2 ofertas vencen pronto o están cerca del límite de usos.',
+    );
+  });
+
   it('emite alerta de catálogo incompleto sin filtro de estado', () => {
     const alerts = buildCommercialAlerts(
       buildSummary({

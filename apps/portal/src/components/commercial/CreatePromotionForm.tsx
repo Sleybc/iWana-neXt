@@ -269,17 +269,16 @@ export function CreatePromotionForm({
             <Input
               label="Nombre"
               placeholder="Promo reconexión abril"
-              aria-invalid={errors.name ? 'true' : 'false'}
+              error={errors.name?.message}
               disabled={!canEdit || isSubmitting}
               {...register('name')}
             />
-            {errors.name && <p className="mt-1 text-sm text-error-600">{errors.name.message}</p>}
           </div>
           <div>
             <Input
               label="Código"
               placeholder="PROMO25"
-              aria-invalid={errors.code ? 'true' : 'false'}
+              error={errors.code?.message}
               disabled={isEditMode || !canEdit || isSubmitting}
               readOnly={isEditMode}
               {...register('code', {
@@ -295,22 +294,32 @@ export function CreatePromotionForm({
                 El código no se puede modificar.
               </p>
             ) : null}
-            {errors.code && <p className="mt-1 text-sm text-error-600">{errors.code.message}</p>}
           </div>
           <div className="md:col-span-2">
-            <label htmlFor="promotion-description" className="portal-eyebrow-muted">
+            <label
+              htmlFor="promotion-description"
+              className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
               Descripción
             </label>
             <textarea
               id="promotion-description"
               rows={3}
-              className={`mt-2 ${portalTextareaClassName}`}
+              className={`mt-1.5 ${portalTextareaClassName}`}
               placeholder="Beneficio temporal para reactivar cartera"
               disabled={!canEdit || isSubmitting}
+              aria-invalid={errors.description ? 'true' : 'false'}
+              aria-describedby={errors.description ? 'promotion-description-error' : undefined}
               {...register('description')}
             />
             {errors.description && (
-              <p className="mt-1 text-sm text-error-600">{errors.description.message}</p>
+              <p
+                id="promotion-description-error"
+                role="alert"
+                className="mt-1 text-sm text-error-600"
+              >
+                {errors.description.message}
+              </p>
             )}
           </div>
 
@@ -346,13 +355,10 @@ export function CreatePromotionForm({
                   type="number"
                   min={0}
                   step="0.01"
-                  aria-invalid={errors.discountValue ? 'true' : 'false'}
+                  error={errors.discountValue?.message}
                   disabled={!canEdit || isSubmitting}
                   {...register('discountValue')}
                 />
-                {errors.discountValue && (
-                  <p className="mt-1 text-sm text-error-600">{errors.discountValue.message}</p>
-                )}
               </div>
               <Select
                 id="promotion-scope"
@@ -371,13 +377,10 @@ export function CreatePromotionForm({
                   type="number"
                   min={1}
                   step={1}
-                  aria-invalid={errors.maxUses ? 'true' : 'false'}
+                  error={errors.maxUses?.message}
                   disabled={!canEdit || isSubmitting}
                   {...register('maxUses')}
                 />
-                {errors.maxUses && (
-                  <p className="mt-1 text-sm text-error-600">{errors.maxUses.message}</p>
-                )}
               </div>
               <Controller
                 name="validFrom"
@@ -408,7 +411,6 @@ export function CreatePromotionForm({
             </>
           )}
         </div>
-        {errors.validTo && <p className="text-sm text-error-600">{errors.validTo.message}</p>}
       </section>
 
       {!isEditMode && appliesTo === PromotionScope.ITEM && (
@@ -417,8 +419,8 @@ export function CreatePromotionForm({
             id="promotion-target-item"
             label="Ítem objetivo"
             disabled={!canEdit || isSubmitting}
-            aria-invalid={errors.targetItemId ? 'true' : 'false'}
             {...register('targetItemId')}
+            {...(errors.targetItemId?.message ? { error: errors.targetItemId.message } : {})}
           >
             <option value="">Selecciona un ítem</option>
             {items.map((item) => (
@@ -427,9 +429,6 @@ export function CreatePromotionForm({
               </option>
             ))}
           </Select>
-          {errors.targetItemId && (
-            <p className="text-sm text-error-600">{errors.targetItemId.message}</p>
-          )}
         </section>
       )}
 
@@ -439,8 +438,8 @@ export function CreatePromotionForm({
             id="promotion-target-bundle"
             label="Combo objetivo"
             disabled={!canEdit || isSubmitting}
-            aria-invalid={errors.targetBundleId ? 'true' : 'false'}
             {...register('targetBundleId')}
+            {...(errors.targetBundleId?.message ? { error: errors.targetBundleId.message } : {})}
           >
             <option value="">Selecciona un combo</option>
             {bundles
@@ -451,9 +450,6 @@ export function CreatePromotionForm({
                 </option>
               ))}
           </Select>
-          {errors.targetBundleId && (
-            <p className="text-sm text-error-600">{errors.targetBundleId.message}</p>
-          )}
         </section>
       )}
 
