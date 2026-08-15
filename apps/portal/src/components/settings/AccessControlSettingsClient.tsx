@@ -877,11 +877,18 @@ export function AccessControlSettingsClient() {
                 type="button"
                 variant="secondary"
                 size="sm"
+                className="min-h-11"
                 onClick={() => setIsDialogOpen(true)}
               >
                 Editar datos del nuevo perfil
               </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={cancelCreationDraft}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="min-h-11"
+                onClick={cancelCreationDraft}
+              >
                 Cancelar nuevo perfil
               </Button>
             </div>
@@ -1220,7 +1227,7 @@ export function AccessControlSettingsClient() {
                               tabIndex={isActive ? 0 : -1}
                               className={cn(
                                 portalModuleTabTriggerClassName,
-                                'min-h-11 whitespace-nowrap px-3',
+                                'group min-h-11 whitespace-nowrap px-3',
                               )}
                               onClick={() => setActivePermissionModule(module.moduleKey)}
                               onKeyDown={(event) => {
@@ -1246,7 +1253,7 @@ export function AccessControlSettingsClient() {
                               }}
                             >
                               {getAccessModuleLabel(module.moduleKey)}
-                              <span className="ml-2 text-xs font-normal normal-case text-gray-500 dark:text-gray-400">
+                              <span className="ml-2 text-xs font-normal normal-case text-gray-600 group-data-[state=active]:text-white dark:text-gray-300 dark:group-data-[state=active]:text-white">
                                 {selectedCount}/{module.permissions.length}
                               </span>
                             </button>
