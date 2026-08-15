@@ -57,13 +57,10 @@ const COUNTRY_OPTIONS = [
   { value: 'US', label: 'Estados Unidos' },
 ];
 
-// Clases consistentes con el patrón de formularios del admin (TenantCreateForm)
-const INPUT_CLASS =
-  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white';
 const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300';
 const ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';
-const SUBSECTION_LABEL =
-  'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
+const SUBSECTION_LABEL = 'portal-eyebrow';
+const READONLY_FIELD_LABEL = 'portal-eyebrow-muted';
 const SELECT_MENU_CLASS = 'rounded-2xl p-1.5 [&_[role=option]]:min-h-11 [&_[role=option]]:px-3';
 
 // Resuelve la etiqueta legible dado un valor; si no hay match, devuelve el valor crudo
@@ -117,7 +114,7 @@ export function OperationalSettingsForm({
   };
 
   return (
-    <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+    <Card className="rounded-2xl border border-gray-200 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
       <CardHeader>
         <PortalSectionHeader
           className="gap-0"
@@ -136,7 +133,7 @@ export function OperationalSettingsForm({
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
+                <span className={`block ${READONLY_FIELD_LABEL}`}>
                   {ORGANIZATION_SETTINGS_COPY.operationalTimezoneLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -144,7 +141,7 @@ export function OperationalSettingsForm({
                 </span>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
+                <span className={`block ${READONLY_FIELD_LABEL}`}>
                   {ORGANIZATION_SETTINGS_COPY.operationalCountryLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -161,7 +158,7 @@ export function OperationalSettingsForm({
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
+                <span className={`block ${READONLY_FIELD_LABEL}`}>
                   {ORGANIZATION_SETTINGS_COPY.operationalLanguageLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -169,7 +166,7 @@ export function OperationalSettingsForm({
                 </span>
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
+                <span className={`block ${READONLY_FIELD_LABEL}`}>
                   {ORGANIZATION_SETTINGS_COPY.operationalCurrencyLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
@@ -178,7 +175,7 @@ export function OperationalSettingsForm({
               </div>
             </div>
 
-            <p className="text-xs text-gray-400 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               {ORGANIZATION_SETTINGS_COPY.operationalReadOnlyHint}
             </p>
           </div>
@@ -202,6 +199,7 @@ export function OperationalSettingsForm({
                       id="timezone"
                       options={TIMEZONE_OPTIONS}
                       menuClassName={SELECT_MENU_CLASS}
+                      className="min-h-11"
                       name={field.name}
                       value={field.value}
                       onChange={(event) => field.onChange(event.target.value)}
@@ -226,6 +224,7 @@ export function OperationalSettingsForm({
                       id="country"
                       options={COUNTRY_OPTIONS}
                       menuClassName={SELECT_MENU_CLASS}
+                      className="min-h-11"
                       name={field.name}
                       value={field.value}
                       onChange={(event) => field.onChange(event.target.value)}
@@ -257,6 +256,7 @@ export function OperationalSettingsForm({
                       id="language"
                       options={LANGUAGE_OPTIONS}
                       menuClassName={SELECT_MENU_CLASS}
+                      className="min-h-11"
                       name={field.name}
                       value={field.value}
                       onChange={(event) => field.onChange(event.target.value)}
@@ -281,6 +281,7 @@ export function OperationalSettingsForm({
                       id="currency"
                       options={CURRENCY_OPTIONS}
                       menuClassName={SELECT_MENU_CLASS}
+                      className="min-h-11"
                       name={field.name}
                       value={field.value}
                       onChange={(event) => field.onChange(event.target.value)}
@@ -315,10 +316,15 @@ export function OperationalSettingsForm({
 
             {/* Footer y CTA */}
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-400 dark:text-gray-400">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {ORGANIZATION_SETTINGS_COPY.operationalEditableHint}
               </p>
-              <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
+              <Button
+                type="submit"
+                size="lg"
+                loading={isSubmitting}
+                disabled={isSubmitting || !isDirty}
+              >
                 {ORGANIZATION_SETTINGS_COPY.operationalSaveAction}
               </Button>
             </div>

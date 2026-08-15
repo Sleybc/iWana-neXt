@@ -52,9 +52,12 @@ import {
   PortalAlert,
   PortalEmptyState,
   PortalPageSizeSelect,
+  PortalDataTableHead,
   PortalPanel,
   PortalSkeletonBlock,
   PortalTablePager,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
 import {
@@ -67,9 +70,6 @@ import { countryOptionsWithCurrent } from './organization-settings-options';
 const SITES_RESOURCE = { singular: 'sede', plural: 'sedes' } as const;
 const SITES_NAMESPACE = 'sites';
 
-const tableHeadClass =
-  'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 const coordinateTokenPattern = /^[+-]?\d+(?:[.,]\d+)?$/u;
 
 function roundCoordinate(value: number): number {
@@ -325,6 +325,9 @@ function OrganizationSettingsClientInner() {
   const [siteDialogError, setSiteDialogError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [sitePendingDeactivation, setSitePendingDeactivation] =
+    useState<OrganizationSiteSummary | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [dialogTab, setDialogTab] = useState('informacion');
   const hasLoadedSitesOnceRef = useRef(false);
@@ -505,6 +508,7 @@ function OrganizationSettingsClientInner() {
   }, [authLoading, canRead, canReadSites, isLoading, loadSites, user]);
 
   function openCreateDialog() {
+    setSitePendingDeactivation(null);
     setEditingSiteId(null);
     setSiteDialogError(null);
     reset(createDefaultSiteFormValues(profile?.countryCode ?? settings?.country ?? 'CO'));
@@ -517,6 +521,7 @@ function OrganizationSettingsClientInner() {
     setError(null);
     setFeedback(null);
     setSiteDialogError(null);
+    setSitePendingDeactivation(null);
 
     try {
       const site = await organizationApi.get(siteId);
@@ -590,23 +595,37 @@ function OrganizationSettingsClientInner() {
     }
   }
 
-  async function handleDeleteSite(siteId: string, siteName: string) {
-    if (!(globalThis.confirm?.(`Dar de baja la sede ${siteName}?`) ?? true)) {
+  function requestSiteDeactivation(site: OrganizationSiteSummary) {
+    setIsDialogOpen(false);
+    setSitePendingDeactivation(site);
+  }
+
+  function closeDeactivationDialog() {
+    if (isDeactivating) {
       return;
     }
 
-    setIsSaving(true);
+    setSitePendingDeactivation(null);
+  }
+
+  async function confirmSiteDeactivation() {
+    if (!sitePendingDeactivation) {
+      return;
+    }
+
+    setIsDeactivating(true);
     setError(null);
     setFeedback(null);
 
     try {
-      await organizationApi.delete(siteId);
+      await organizationApi.delete(sitePendingDeactivation.id);
+      setSitePendingDeactivation(null);
       setFeedback('Sede dada de baja correctamente.');
       await loadSites({ soft: true });
     } catch (deleteError) {
       setError(mapOrganizationError(deleteError));
     } finally {
-      setIsSaving(false);
+      setIsDeactivating(false);
     }
   }
 
@@ -691,7 +710,7 @@ function OrganizationSettingsClientInner() {
         subtitle={ORGANIZATION_SETTINGS_COPY.pageSubtitle}
         actions={
           canManageSites ? (
-            <Button type="button" onClick={openCreateDialog}>
+            <Button type="button" size="lg" onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" aria-hidden={true} />
               {ORGANIZATION_SETTINGS_COPY.createSiteAction}
             </Button>
@@ -709,14 +728,16 @@ function OrganizationSettingsClientInner() {
           title="No fue posible completar la operación"
           description={error}
           action={
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="lg"
+              className="min-h-11"
               onClick={() => void loadOrganization()}
-              className="inline-flex items-center gap-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
             >
               <RefreshCcw className="h-4 w-4" aria-hidden={true} />
               Reintentar
-            </button>
+            </Button>
           }
         />
       ) : null}
@@ -738,7 +759,13 @@ function OrganizationSettingsClientInner() {
           description={sitesError}
           action={
             canReadSites ? (
-              <Button type="button" variant="link" size="lg" onClick={() => void loadSites()}>
+              <Button
+                type="button"
+                variant="link"
+                size="lg"
+                className="min-h-11"
+                onClick={() => void loadSites()}
+              >
                 <RefreshCcw className="h-4 w-4" aria-hidden={true} />
                 {ORGANIZATION_SETTINGS_COPY.retrySitesAction}
               </Button>
@@ -761,7 +788,13 @@ function OrganizationSettingsClientInner() {
           title="Permisos no confirmados"
           description={ORGANIZATION_SETTINGS_COPY.sitesPermissionsUnavailable}
           action={
-            <Button type="button" variant="link" size="lg" onClick={() => void loadOrganization()}>
+            <Button
+              type="button"
+              variant="link"
+              size="lg"
+              className="min-h-11"
+              onClick={() => void loadOrganization()}
+            >
               <RefreshCcw className="h-4 w-4" aria-hidden={true} />
               {ORGANIZATION_SETTINGS_COPY.retryPermissionsAction}
             </Button>
@@ -790,7 +823,7 @@ function OrganizationSettingsClientInner() {
               }
               action={
                 canManageSites ? (
-                  <Button type="button" onClick={openCreateDialog}>
+                  <Button type="button" size="lg" onClick={openCreateDialog}>
                     {ORGANIZATION_SETTINGS_COPY.createFirstSiteAction}
                   </Button>
                 ) : undefined
@@ -806,101 +839,105 @@ function OrganizationSettingsClientInner() {
                 />
               ) : null}
               <div className={portalDataTableShellClassName} aria-busy={isSitesRefreshing}>
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
-                    <tr>
-                      <th className={tableHeadClass}>Sede</th>
-                      <th className={tableHeadClass}>Tipo</th>
-                      <th className={tableHeadClass}>Ubicación</th>
-                      <th className={tableHeadClass}>Servicios</th>
-                      <th className={tableHeadClass}>Estado</th>
-                      {canManageSites ? <th className={tableHeadClass}>Acciones</th> : null}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
-                    {sites.map((site) => {
-                      const location = formatSiteLocation(site);
+                <div className="overflow-x-auto">
+                  <table className="min-w-[56rem] divide-y divide-gray-200 dark:divide-dark-border">
+                    <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                      <tr>
+                        <PortalDataTableHead>Sede</PortalDataTableHead>
+                        <PortalDataTableHead>Tipo</PortalDataTableHead>
+                        <PortalDataTableHead>Ubicación</PortalDataTableHead>
+                        <PortalDataTableHead>Servicios</PortalDataTableHead>
+                        <PortalDataTableHead>Estado</PortalDataTableHead>
+                        {canManageSites ? (
+                          <PortalDataTableHead>Acciones</PortalDataTableHead>
+                        ) : null}
+                      </tr>
+                    </thead>
+                    <tbody className={portalDataTableBodyClassName}>
+                      {sites.map((site) => {
+                        const location = formatSiteLocation(site);
 
-                      return (
-                        <tr key={site.id}>
-                          <td className={cellClass}>
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {site.name}
-                              </p>
-                              <p className="text-xs uppercase tracking-[0.14em] text-gray-500">
-                                {site.code}
-                              </p>
-                            </div>
-                          </td>
-                          <td className={cellClass}>
-                            {getOrganizationSiteTypeLabel(site.siteType)}
-                          </td>
-                          <td className={cellClass}>
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {location.primary}
-                              </p>
-                              {location.secondary ? (
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {location.secondary}
+                        return (
+                          <tr key={site.id}>
+                            <td className={portalDataTableCellClassName}>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">
+                                  {site.name}
                                 </p>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className={cellClass}>
-                            <div className="flex flex-wrap gap-2">
-                              {site.capabilities.length > 0 ? (
-                                site.capabilities.map((capability) => (
-                                  <span
-                                    key={capability}
-                                    className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
-                                  >
-                                    {getOrganizationSiteCapabilityLabel(capability)}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-sm text-gray-500">
-                                  {ORGANIZATION_SETTINGS_COPY.noServices}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className={cellClass}>
-                            {site.isActive
-                              ? ORGANIZATION_SETTINGS_COPY.activeStatus
-                              : ORGANIZATION_SETTINGS_COPY.inactiveStatus}
-                          </td>
-                          {canManageSites ? (
-                            <td className={cellClass}>
-                              <div className="flex flex-wrap justify-end gap-2">
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => void openEditDialog(site.id)}
-                                >
-                                  {ORGANIZATION_SETTINGS_COPY.editSiteAction}
-                                  <span className="sr-only"> {site.name}</span>
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => void handleDeleteSite(site.id, site.name)}
-                                  disabled={isSaving}
-                                >
-                                  {ORGANIZATION_SETTINGS_COPY.deactivateSiteAction}
-                                  <span className="sr-only"> {site.name}</span>
-                                </Button>
+                                <p className="portal-eyebrow-muted">{site.code}</p>
                               </div>
                             </td>
-                          ) : null}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <td className={portalDataTableCellClassName}>
+                              {getOrganizationSiteTypeLabel(site.siteType)}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">
+                                  {location.primary}
+                                </p>
+                                {location.secondary ? (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {location.secondary}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              <div className="flex flex-wrap gap-2">
+                                {site.capabilities.length > 0 ? (
+                                  site.capabilities.map((capability) => (
+                                    <Badge key={capability} variant="neutral">
+                                      {getOrganizationSiteCapabilityLabel(capability)}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                                    {ORGANIZATION_SETTINGS_COPY.noServices}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              <Badge variant={site.isActive ? 'success' : 'neutral'}>
+                                {site.isActive
+                                  ? ORGANIZATION_SETTINGS_COPY.activeStatus
+                                  : ORGANIZATION_SETTINGS_COPY.inactiveStatus}
+                              </Badge>
+                            </td>
+                            {canManageSites ? (
+                              <td className={portalDataTableCellClassName}>
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    className="min-h-11"
+                                    onClick={() => void openEditDialog(site.id)}
+                                  >
+                                    {ORGANIZATION_SETTINGS_COPY.editSiteAction}
+                                    <span className="sr-only"> {site.name}</span>
+                                  </Button>
+                                  {site.isActive ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="min-h-11"
+                                      onClick={() => requestSiteDeactivation(site)}
+                                    >
+                                      {ORGANIZATION_SETTINGS_COPY.deactivateSiteAction}
+                                      <span className="sr-only"> {site.name}</span>
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            ) : null}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               {showSitesPager && sitesRandomAccess ? (
                 <PortalTablePager
@@ -954,10 +991,10 @@ function OrganizationSettingsClientInner() {
             ) : null}
             <Tabs value={dialogTab} onValueChange={setDialogTab}>
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="informacion">
+                <TabsTrigger value="informacion" className="min-h-11">
                   {ORGANIZATION_SETTINGS_COPY.informationTab}
                 </TabsTrigger>
-                <TabsTrigger value="servicios">
+                <TabsTrigger value="servicios" className="min-h-11">
                   {ORGANIZATION_SETTINGS_COPY.servicesTab}
                 </TabsTrigger>
               </TabsList>
@@ -1123,15 +1160,61 @@ function OrganizationSettingsClientInner() {
 
             <div className="flex justify-end gap-3">
               <DialogClose asChild>
-                <Button type="button" variant="ghost">
+                <Button type="button" variant="ghost" className="min-h-11">
                   Cancelar
                 </Button>
               </DialogClose>
-              <Button type="submit" disabled={isSaving}>
+              <Button type="submit" size="lg" disabled={isSaving}>
                 {editingSiteId ? 'Guardar cambios' : 'Crear sede'}
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={sitePendingDeactivation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeactivationDialog();
+          }
+        }}
+      >
+        <DialogContent
+          aria-labelledby="organization-site-deactivate-dialog-title"
+          className="max-w-md"
+        >
+          <DialogHeader>
+            <DialogTitle id="organization-site-deactivate-dialog-title">
+              {sitePendingDeactivation
+                ? ORGANIZATION_SETTINGS_COPY.deactivateDialogTitle(sitePendingDeactivation.name)
+                : ''}
+            </DialogTitle>
+            <DialogDescription>
+              {ORGANIZATION_SETTINGS_COPY.deactivateDialogDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11"
+              disabled={isDeactivating}
+              onClick={closeDeactivationDialog}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="min-h-11"
+              loading={isDeactivating}
+              disabled={isDeactivating}
+              onClick={() => void confirmSiteDeactivation()}
+            >
+              {ORGANIZATION_SETTINGS_COPY.deactivateConfirmAction}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

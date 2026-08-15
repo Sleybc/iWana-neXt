@@ -60,8 +60,10 @@ describe('OperationalSettingsForm', () => {
       />,
     );
 
-    expect(screen.getByText('Configuración operativa')).toBeInTheDocument();
-    expect(screen.getByText('Región, idioma y moneda base del portal.')).toBeInTheDocument();
+    expect(screen.getByText('Preferencias regionales')).toBeInTheDocument();
+    expect(
+      screen.getByText('Zona horaria, país, idioma y moneda usados en el portal.'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Ubicación')).toBeInTheDocument();
     expect(screen.getByText('Preferencias')).toBeInTheDocument();
     expect(

@@ -66,6 +66,8 @@ describe('CompanyProfileForm', () => {
       screen.getByText('Solo se guardan los campos que puedes editar en esta sección.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar perfil empresarial' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Dígito de verificación (DV)')).toBeInTheDocument();
+    expect(screen.getByLabelText('País de registro')).toBeInTheDocument();
   });
 
   it('should render read-only guidance without save action', () => {

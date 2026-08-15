@@ -505,7 +505,7 @@ describe('OrganizationSettingsClient', () => {
     render(<OrganizationSettingsClient />);
 
     expect(await screen.findByText('Perfil empresarial')).toBeInTheDocument();
-    expect(screen.getByText('Configuración operativa')).toBeInTheDocument();
+    expect(screen.getByText('Preferencias regionales')).toBeInTheDocument();
     expect(screen.getByText('No tienes permisos para consultar las sedes.')).toBeInTheDocument();
     expect(screen.queryByText('Forbidden resource')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Crear sede' })).toBeInTheDocument();
@@ -518,7 +518,9 @@ describe('OrganizationSettingsClient', () => {
     expect(await screen.findByText('Sedes registradas')).toBeInTheDocument();
     expect(screen.getByText('Perfil empresarial y organización')).toBeInTheDocument();
     expect(
-      screen.getByText('Gestiona los datos de tu empresa, ajustes generales y sedes.'),
+      screen.getByText(
+        'Revisa los datos de tu empresa, sus preferencias regionales y las sedes registradas.',
+      ),
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Crear sede' }));
@@ -582,8 +584,29 @@ describe('OrganizationSettingsClient', () => {
     expect(organizationApi.list).not.toHaveBeenCalled();
   });
 
+  it('uses semantic badges and only offers deactivation for active sites', async () => {
+    render(<OrganizationSettingsClient />);
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('row', { name: /Sede centro/i })).toBeInTheDocument();
+    expect(within(table).getByText('Activa')).toHaveClass('text-success-700');
+    expect(within(table).getByText('Gestión administrativa')).toHaveClass('text-gray-600');
+  });
+
+  it('confirms site deactivation in an iWana dialog', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { delete: jest.Mock };
+    };
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: /Dar de baja sede Sede centro/i }));
+
+    const dialog = within(screen.getByRole('dialog', { name: '¿Dar de baja «Sede centro»?' }));
+    expect(dialog.getByText(/información histórica se conservará/)).toBeVisible();
+    fireEvent.click(dialog.getByRole('button', { name: 'Dar de baja' }));
+
+    await waitFor(() => expect(organizationApi.delete).toHaveBeenCalledWith('site-1'));
+  });
+
   it('should soft-delete the site from its row action and refresh the list', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
     const { organizationApi } = jest.requireMock('@/lib/api-client') as {
       organizationApi: {
         list: jest.Mock;
@@ -623,6 +646,9 @@ describe('OrganizationSettingsClient', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Dar de baja sede Sede centro/i }));
 
+    const dialog = within(screen.getByRole('dialog', { name: '¿Dar de baja «Sede centro»?' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Dar de baja' }));
+
     await waitFor(() => {
       expect(organizationApi.delete).toHaveBeenCalledWith('site-1');
     });
@@ -635,8 +661,6 @@ describe('OrganizationSettingsClient', () => {
     expect(
       screen.queryByRole('button', { name: /Dar de baja sede Sede centro/i }),
     ).not.toBeInTheDocument();
-
-    confirmSpy.mockRestore();
   });
 
   it('keeps the sites skeleton visible until the initial list request settles', async () => {

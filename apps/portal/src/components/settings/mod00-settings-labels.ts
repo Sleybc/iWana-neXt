@@ -420,7 +420,8 @@ export const BRANDING_SETTINGS_COPY = {
 
 export const ORGANIZATION_SETTINGS_COPY = {
   pageTitle: 'Perfil empresarial y organización',
-  pageSubtitle: 'Gestiona los datos de tu empresa, ajustes generales y sedes.',
+  pageSubtitle:
+    'Revisa los datos de tu empresa, sus preferencias regionales y las sedes registradas.',
   companyProfileTitle: 'Perfil empresarial',
   companyProfileDescription: 'Datos legales y de contacto de la empresa.',
   companyProfileContactSection: 'Perfil y contacto',
@@ -432,8 +433,8 @@ export const ORGANIZATION_SETTINGS_COPY = {
   companyProfileEditableHint: 'Solo se guardan los campos que puedes editar en esta sección.',
   companyProfileReadOnlyHint: 'Tu rol tiene acceso solo lectura sobre esta sección.',
   companyProfileSaveAction: 'Guardar perfil empresarial',
-  operationalTitle: 'Configuración operativa',
-  operationalDescription: 'Región, idioma y moneda base del portal.',
+  operationalTitle: 'Preferencias regionales',
+  operationalDescription: 'Zona horaria, país, idioma y moneda usados en el portal.',
   operationalLocationSection: 'Ubicación',
   operationalPreferencesSection: 'Preferencias',
   operationalTimezoneLabel: 'Zona horaria',
@@ -468,6 +469,10 @@ export const ORGANIZATION_SETTINGS_COPY = {
   noActions: 'Sin acciones disponibles',
   editSiteAction: 'Editar sede',
   deactivateSiteAction: 'Dar de baja sede',
+  deactivateDialogTitle: (name: string) => `¿Dar de baja «${name}»?`,
+  deactivateDialogDescription:
+    'La sede dejará de estar disponible para la operación. La información histórica se conservará.',
+  deactivateConfirmAction: 'Dar de baja',
   createDialogTitle: 'Crear sede',
   editDialogTitle: 'Editar sede',
   createDialogDescription:

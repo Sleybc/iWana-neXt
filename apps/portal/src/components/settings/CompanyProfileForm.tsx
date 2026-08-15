@@ -50,8 +50,7 @@ interface CompanyProfileFormProps {
   onUpdated: (updated: TenantSelf) => void;
 }
 
-const SECTION_LABEL =
-  'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
+const SECTION_LABEL = 'portal-eyebrow';
 
 function nullable(value: string | undefined): string | null {
   const normalized = value?.trim();
@@ -121,7 +120,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
   };
 
   return (
-    <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+    <Card className="rounded-2xl border border-gray-200 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
       <CardHeader>
         <PortalSectionHeader
           className="gap-0"
@@ -144,6 +143,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     autoComplete="email"
                     disabled={!canEdit}
                     error={errors.contactEmail?.message}
+                    className="h-11"
                     {...register('contactEmail')}
                   />
                 </div>
@@ -153,6 +153,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     label="Razón social"
                     disabled={!canEdit}
                     error={errors.legalName?.message}
+                    className="h-11"
                     {...register('legalName')}
                   />
                 </div>
@@ -163,6 +164,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     disabled={!canEdit}
                     placeholder="+573001234567"
                     error={errors.phone?.message}
+                    className="h-11"
                     {...register('phone')}
                   />
                 </div>
@@ -173,6 +175,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     disabled={!canEdit}
                     placeholder="https://empresa.co"
                     error={errors.website?.message}
+                    className="h-11"
                     {...register('website')}
                   />
                 </div>
@@ -190,26 +193,29 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     label="NIT"
                     disabled={!canEdit}
                     error={errors.nit?.message}
+                    className="h-11"
                     {...register('nit')}
                   />
                 </div>
                 <div className="xl:col-span-2">
                   <Input
                     id="nitDv"
-                    label="DV"
+                    label="Dígito de verificación (DV)"
                     disabled={!canEdit}
                     placeholder="7"
                     error={errors.nitDv?.message}
+                    className="h-11"
                     {...register('nitDv')}
                   />
                 </div>
                 <div className="xl:col-span-3">
                   <Input
                     id="countryCode"
-                    label="País legal"
+                    label="País de registro"
                     disabled={!canEdit}
                     placeholder="CO"
                     error={errors.countryCode?.message}
+                    className="h-11"
                     {...register('countryCode')}
                   />
                 </div>
@@ -219,6 +225,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     label="Ciudad"
                     disabled={!canEdit}
                     error={errors.city?.message}
+                    className="h-11"
                     {...register('city')}
                   />
                 </div>
@@ -228,6 +235,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     label="Departamento"
                     disabled={!canEdit}
                     error={errors.department?.message}
+                    className="h-11"
                     {...register('department')}
                   />
                 </div>
@@ -259,7 +267,12 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                 : ORGANIZATION_SETTINGS_COPY.companyProfileReadOnlyHint}
             </p>
             {canEdit && (
-              <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
+              <Button
+                type="submit"
+                size="lg"
+                loading={isSubmitting}
+                disabled={isSubmitting || !isDirty}
+              >
                 {ORGANIZATION_SETTINGS_COPY.companyProfileSaveAction}
               </Button>
             )}
