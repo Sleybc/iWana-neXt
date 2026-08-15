@@ -1,12 +1,14 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, type SubmitErrorHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Building2, Plus, RefreshCcw } from 'lucide-react';
 import {
+  Badge,
   Button,
+  CheckboxCard,
   Dialog,
   DialogClose,
   DialogContent,
@@ -60,6 +62,7 @@ import {
   getOrganizationSiteCapabilityLabel,
   getOrganizationSiteTypeLabel,
 } from './mod00-settings-labels';
+import { countryOptionsWithCurrent } from './organization-settings-options';
 
 const SITES_RESOURCE = { singular: 'sede', plural: 'sedes' } as const;
 const SITES_NAMESPACE = 'sites';
@@ -145,17 +148,18 @@ function parseCoordinatePair(value: string): { latitude: number; longitude: numb
 }
 
 const siteFormSchema = z.object({
-  name: z.string().trim().min(2, 'Minimo 2 caracteres.').max(160, 'Maximo 160 caracteres.'),
+  name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(160, 'Máximo 160 caracteres.'),
   code: z
     .string()
     .trim()
-    .min(2, 'Minimo 2 caracteres.')
-    .max(40, 'Maximo 40 caracteres.')
+    .min(2, 'Mínimo 2 caracteres.')
+    .max(40, 'Máximo 40 caracteres.')
     .regex(/^[A-Z0-9_-]+$/u, 'Usa mayúsculas, números, guion o guion bajo.'),
   siteType: z.nativeEnum(OrganizationSiteType),
-  address: z.string().trim().max(240, 'Maximo 240 caracteres.').optional(),
-  municipality: z.string().trim().max(120, 'Maximo 120 caracteres.').optional(),
-  department: z.string().trim().max(120, 'Maximo 120 caracteres.').optional(),
+  address: z.string().trim().max(240, 'Máximo 240 caracteres.').optional(),
+  municipality: z.string().trim().max(120, 'Máximo 120 caracteres.').optional(),
+  department: z.string().trim().max(120, 'Máximo 120 caracteres.').optional(),
+  country: z.string().trim().length(2, 'Selecciona el país de la sede.'),
   coordinates: z
     .string()
     .trim()
@@ -164,8 +168,8 @@ const siteFormSchema = z.object({
       (value) => parseCoordinatePair(value) !== null,
       'Usa el formato "latitud, longitud" o "latitud; longitud" si usas coma decimal.',
     ),
-  contactName: z.string().min(1, 'El nombre de contacto es requerido').max(160),
-  contactPhone: z.string().min(1, 'El teléfono de contacto es requerido').max(32),
+  contactName: z.string().trim().min(1, 'El nombre de contacto es requerido.').max(160),
+  contactPhone: z.string().trim().min(1, 'El teléfono de contacto es requerido.').max(32),
   isPrimary: z.boolean(),
   isActive: z.boolean(),
 });
@@ -179,6 +183,15 @@ const siteTypeOptions = Object.values(OrganizationSiteType).map((siteType) => ({
 }));
 
 const capabilityOptions = Object.values(OrganizationSiteCapability);
+const SITE_INVALID_FOCUS_ORDER = [
+  'name',
+  'code',
+  'siteType',
+  'country',
+  'coordinates',
+  'contactName',
+  'contactPhone',
+] as const satisfies ReadonlyArray<keyof SiteFormValues>;
 
 function mapOrganizationError(error: unknown): string {
   if (error instanceof ApiError && error.status === 401) {
@@ -206,7 +219,7 @@ function mapSiteSubmitError(editing: boolean, error: unknown): string {
     : 'No pudimos crear la sede. Revisa la información e intenta nuevamente.';
 }
 
-function createDefaultSiteFormValues(): SiteFormValues {
+function createDefaultSiteFormValues(country = 'CO'): SiteFormValues {
   return {
     name: '',
     code: '',
@@ -214,6 +227,7 @@ function createDefaultSiteFormValues(): SiteFormValues {
     address: '',
     municipality: '',
     department: '',
+    country,
     coordinates: '',
     contactName: '',
     contactPhone: '',
@@ -230,6 +244,7 @@ function toSiteFormValues(site: OrganizationSiteDetail): SiteFormValues {
     address: site.address ?? '',
     municipality: site.municipality ?? '',
     department: site.department ?? '',
+    country: site.country,
     coordinates: formatCoordinatePair(site.latitude, site.longitude),
     contactName: site.contactName ?? '',
     contactPhone: site.contactPhone ?? '',
@@ -335,6 +350,7 @@ function OrganizationSettingsClientInner() {
     handleSubmit,
     reset,
     setError: setFieldError,
+    setFocus,
     formState: { errors },
   } = useForm<SiteFormValues>({
     resolver: zodResolver(siteFormSchema),
@@ -491,7 +507,7 @@ function OrganizationSettingsClientInner() {
   function openCreateDialog() {
     setEditingSiteId(null);
     setSiteDialogError(null);
-    reset(createDefaultSiteFormValues());
+    reset(createDefaultSiteFormValues(profile?.countryCode ?? settings?.country ?? 'CO'));
     setDraftCapabilities([]);
     setDialogTab('informacion');
     setIsDialogOpen(true);
@@ -548,6 +564,7 @@ function OrganizationSettingsClientInner() {
         address: values.address?.trim() || null,
         municipality: values.municipality?.trim() || null,
         department: values.department?.trim() || null,
+        country: values.country.trim().toUpperCase(),
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
         contactName: values.contactName,
@@ -600,6 +617,19 @@ function OrganizationSettingsClientInner() {
         : [...current, capability],
     );
   }
+
+  const onInvalid: SubmitErrorHandler<SiteFormValues> = (formErrors) => {
+    setDialogTab('informacion');
+    const firstField = SITE_INVALID_FOCUS_ORDER.find((field) => formErrors[field]);
+    if (!firstField) {
+      return;
+    }
+
+    setFocus(firstField);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setFocus(firstField));
+    });
+  };
 
   const sitesPageCount = sitesMeta.totalPages ?? (sitesMeta.total > 0 ? 1 : 0);
   const effectiveSitesPage = sitesMeta.page ?? sitesPage;
@@ -913,7 +943,7 @@ function OrganizationSettingsClientInner() {
             </DialogDescription>
           </DialogHeader>
 
-          <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+          <form className="space-y-4" onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate>
             {siteDialogError ? (
               <PortalAlert
                 variant="error"
@@ -932,188 +962,161 @@ function OrganizationSettingsClientInner() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="informacion" className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label
-                      htmlFor="site-name"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Nombre
-                    </label>
-                    <Input id="site-name" {...register('name')} className="h-11" />
-                    {errors.name?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-                    ) : null}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="site-code"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Código
-                    </label>
-                    <Input id="site-code" {...register('code')} className="h-11 uppercase" />
-                    {errors.code?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
-                    ) : null}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="site-type"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Tipo de sede
-                    </label>
+              <TabsContent value="informacion" forceMount className="space-y-6">
+                <section className="space-y-4">
+                  <p className="portal-eyebrow">Datos básicos</p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input
+                      id="site-name"
+                      label="Nombre"
+                      required
+                      error={errors.name?.message}
+                      className="h-11"
+                      containerClassName="md:col-span-2"
+                      {...register('name')}
+                    />
+                    <Input
+                      id="site-code"
+                      label="Código"
+                      required
+                      error={errors.code?.message}
+                      className="h-11 uppercase"
+                      {...register('code')}
+                    />
                     <Controller
                       name="siteType"
                       control={control}
                       render={({ field }) => (
                         <Select
                           id="site-type"
+                          label="Tipo de sede"
+                          required
                           options={siteTypeOptions}
                           name={field.name}
                           value={field.value}
                           onChange={(event) => field.onChange(event.target.value)}
                           onBlur={field.onBlur}
                           ref={field.ref}
+                          error={errors.siteType?.message ?? ''}
                         />
                       )}
                     />
-                    {errors.siteType?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.siteType.message}</p>
-                    ) : null}
                   </div>
-                  <div className="md:col-span-2">
-                    <label
-                      htmlFor="site-address"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Dirección
-                    </label>
-                    <Input id="site-address" {...register('address')} className="h-11" />
-                  </div>
+                </section>
+
+                <section className="space-y-4">
                   <div>
-                    <label
-                      htmlFor="site-municipality"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Municipio
-                    </label>
-                    <Input id="site-municipality" {...register('municipality')} className="h-11" />
+                    <p className="portal-eyebrow">Ubicación y contacto del sitio</p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      Completa estos datos para ubicar la sede y dejar un contacto operativo local.
+                    </p>
                   </div>
-                  <div>
-                    <label
-                      htmlFor="site-department"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Departamento
-                    </label>
-                    <Input id="site-department" {...register('department')} className="h-11" />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label
-                      htmlFor="site-coordinates"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Coordenadas
-                    </label>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Controller
+                      name="country"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          id="site-country"
+                          label="País"
+                          required
+                          options={countryOptionsWithCurrent(field.value)}
+                          value={field.value}
+                          onChange={(event) => field.onChange(event.target.value)}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          error={errors.country?.message ?? ''}
+                        />
+                      )}
+                    />
+                    <Input
+                      id="site-address"
+                      label="Dirección"
+                      error={errors.address?.message}
+                      className="h-11"
+                      containerClassName="md:col-span-2"
+                      {...register('address')}
+                    />
+                    <Input
+                      id="site-municipality"
+                      label="Municipio"
+                      error={errors.municipality?.message}
+                      className="h-11"
+                      {...register('municipality')}
+                    />
+                    <Input
+                      id="site-department"
+                      label="Departamento"
+                      error={errors.department?.message}
+                      className="h-11"
+                      {...register('department')}
+                    />
                     <Input
                       id="site-coordinates"
                       type="text"
+                      label="Coordenadas"
+                      required
                       placeholder="4.5837296, -74.4454695"
-                      {...register('coordinates')}
+                      helperText="Usa el formato latitud, longitud. Si escribes coma decimal, separa ambos valores con punto y coma."
+                      error={errors.coordinates?.message}
                       className="h-11"
+                      containerClassName="md:col-span-2"
+                      {...register('coordinates')}
                     />
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Usa el formato latitud, longitud. Si escribes coma decimal, separa ambos
-                      valores con punto y coma.
-                    </p>
-                    {errors.coordinates?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.coordinates.message}</p>
-                    ) : null}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="site-contact-name"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Nombre de contacto
-                    </label>
                     <Input
                       id="site-contact-name"
                       type="text"
-                      {...register('contactName')}
+                      label="Nombre de contacto"
+                      required
+                      error={errors.contactName?.message}
                       className="h-11"
+                      {...register('contactName')}
                     />
-                    {errors.contactName?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.contactName.message}</p>
-                    ) : null}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="site-contact-phone"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Teléfono de contacto
-                    </label>
                     <Input
                       id="site-contact-phone"
                       type="tel"
-                      {...register('contactPhone')}
+                      label="Teléfono de contacto"
+                      required
+                      error={errors.contactPhone?.message}
                       className="h-11"
+                      {...register('contactPhone')}
                     />
-                    {errors.contactPhone?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.contactPhone.message}</p>
-                    ) : null}
                   </div>
-                </div>
+                </section>
 
-                <div className="grid gap-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-                  <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
-                    <input
-                      type="checkbox"
-                      {...register('isPrimary')}
-                      className="h-4 w-4 rounded border-gray-300 text-iwana-primary"
-                    />
-                    Marcar como sede principal
-                  </label>
-                  <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
-                    <input
-                      type="checkbox"
-                      {...register('isActive')}
-                      className="h-4 w-4 rounded border-gray-300 text-iwana-primary"
-                    />
-                    Mantener activa
-                  </label>
-                </div>
+                <section className="space-y-3">
+                  <p className="portal-eyebrow">Estado de la sede</p>
+                  <CheckboxCard
+                    label="Marcar como sede principal"
+                    description="Identifica esta sede como referencia principal de la empresa."
+                    {...register('isPrimary')}
+                  />
+                  <CheckboxCard label="Mantener activa" {...register('isActive')} />
+                </section>
               </TabsContent>
 
               <TabsContent value="servicios" className="space-y-4">
-                <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-                  Selecciona los servicios que estarán habilitados para esta sede. El cambio se
-                  guardará junto con la información principal.
-                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Selecciona los servicios que opera esta sede.
+                </p>
+                <Badge variant="neutral">
+                  {draftCapabilities.length} de {capabilityOptions.length} servicios seleccionados
+                </Badge>
+                {draftCapabilities.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Aún no has seleccionado servicios para esta sede.
+                  </p>
+                ) : null}
                 <div className="grid gap-3 md:grid-cols-2">
-                  {capabilityOptions.map((capability) => {
-                    const isChecked = draftCapabilities.includes(capability);
-
-                    return (
-                      <label
-                        key={capability}
-                        className="flex items-start gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:text-gray-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          disabled={!canManageSites}
-                          onChange={() => toggleCapability(capability)}
-                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary"
-                        />
-                        <span>{getOrganizationSiteCapabilityLabel(capability)}</span>
-                      </label>
-                    );
-                  })}
+                  {capabilityOptions.map((capability) => (
+                    <CheckboxCard
+                      key={capability}
+                      label={getOrganizationSiteCapabilityLabel(capability)}
+                      checked={draftCapabilities.includes(capability)}
+                      disabled={!canManageSites}
+                      onChange={() => toggleCapability(capability)}
+                    />
+                  ))}
                 </div>
               </TabsContent>
             </Tabs>

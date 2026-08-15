@@ -411,6 +411,47 @@ describe('OrganizationSettingsClient', () => {
     });
   });
 
+  it('hydrates country and sends it in the unified site payload', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { get: jest.Mock; update: jest.Mock };
+    };
+    organizationApi.get.mockResolvedValue(organizationDetail);
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: /Editar sede Sede centro/i }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByRole('combobox', { name: 'País' })).toBeVisible();
+    expect(dialog.getByRole('combobox', { name: 'País' })).toHaveTextContent('Colombia');
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto Test' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(organizationApi.update).toHaveBeenCalledWith(
+        'site-1',
+        expect.objectContaining({ country: 'CO' }),
+      );
+    });
+  });
+
+  it('returns to information and focuses the first invalid field from services', async () => {
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
+
+    expect(
+      await dialog.findByRole('tab', { name: 'Información de la sede', selected: true }),
+    ).toBeVisible();
+    expect(dialog.getByLabelText('Nombre')).toHaveFocus();
+    expect(dialog.getByLabelText('Nombre')).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('should allow clearing all services from the same edit dialog', async () => {
     const { organizationApi } = jest.requireMock('@/lib/api-client') as {
       organizationApi: {
