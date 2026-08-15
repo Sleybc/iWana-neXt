@@ -23,8 +23,8 @@ const SETTINGS_SECTIONS = [
   },
   {
     key: 'access',
-    label: 'Usuarios y acceso',
-    description: 'Perfiles y permisos.',
+    label: 'Perfiles y autenticación',
+    description: 'Administra perfiles de acceso y políticas de autenticación.',
     ownerModule: 'MOD00 / Access control',
     status: 'AVAILABLE',
     route: '/dashboard/settings/access',
@@ -1070,7 +1070,7 @@ test.describe('Configuración empresarial del portal', () => {
     await expect(
       page.getByRole('heading', { name: 'Perfil empresarial y organización' }),
     ).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Preferencias regionales' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
 
     await page.goto('/dashboard/settings', { waitUntil: 'domcontentloaded' });
@@ -1083,7 +1083,7 @@ test.describe('Configuración empresarial del portal', () => {
 
     await page.goto('/dashboard/settings', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
-    await page.getByRole('link', { name: /Usuarios y acceso/i }).click();
+    await page.getByRole('link', { name: /Perfiles y autenticación/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
     await expect(
       page.getByRole('heading', { level: 1, name: /Perfiles de acceso/i }),

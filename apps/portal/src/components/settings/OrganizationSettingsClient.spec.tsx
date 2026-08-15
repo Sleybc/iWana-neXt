@@ -448,7 +448,9 @@ describe('OrganizationSettingsClient', () => {
     expect(
       await dialog.findByRole('tab', { name: 'Información de la sede', selected: true }),
     ).toBeVisible();
-    expect(dialog.getByLabelText('Nombre')).toHaveFocus();
+    await waitFor(() => {
+      expect(dialog.getByLabelText('Nombre')).toHaveFocus();
+    });
     expect(dialog.getByLabelText('Nombre')).toHaveAttribute('aria-invalid', 'true');
   });
 
@@ -787,5 +789,519 @@ describe('OrganizationSettingsClient', () => {
       ),
     ).toBeVisible();
     expect(dialog.queryByText('database payload')).not.toBeInTheDocument();
+    expect(dialog.getByLabelText('Nombre')).toHaveValue('Sede norte');
+    expect(dialog.getByLabelText('Código')).toHaveValue('NORTE');
+  });
+
+  it('shows the page skeleton during the initial organization load', async () => {
+    const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+    };
+    let resolveProfile!: (value: unknown) => void;
+    tenantSelfApi.getProfile.mockReturnValue(new Promise((resolve) => (resolveProfile = resolve)));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(screen.getByText('Cargando información de la empresa y sus sedes')).toBeInTheDocument();
+    expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aún no hay sedes registradas/)).not.toBeInTheDocument();
+
+    resolveProfile(tenantProfile);
+    expect(await screen.findByText('Sedes registradas')).toBeInTheDocument();
+  });
+
+  it('keeps listed sites visible with aria-busy during a silent refresh', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { list: jest.Mock; delete: jest.Mock };
+    };
+    let resolveRefresh!: (value: unknown) => void;
+    let listCalls = 0;
+    organizationApi.list.mockImplementation(async () => {
+      listCalls += 1;
+      if (listCalls === 1) {
+        return {
+          data: organizationSummary,
+          meta: emptyPageListMeta({
+            page: 1,
+            limit: 20,
+            total: organizationSummary.length,
+            totalPages: 1,
+            hasMore: false,
+          }),
+        };
+      }
+
+      return new Promise((resolve) => {
+        resolveRefresh = resolve;
+      });
+    });
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: /Dar de baja sede Sede centro/i }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: '¿Dar de baja «Sede centro»?' })).getByRole(
+        'button',
+        { name: 'Dar de baja' },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(organizationApi.delete).toHaveBeenCalledWith('site-1');
+      expect(screen.getByRole('table').closest('[aria-busy="true"]')).not.toBeNull();
+    });
+    expect(screen.getByRole('row', { name: /Sede centro/i })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Cargando sedes' })).not.toBeInTheDocument();
+
+    resolveRefresh({
+      data: [],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasMore: false,
+      }),
+    });
+    expect(await screen.findByText(/Aún no hay sedes registradas/)).toBeInTheDocument();
+  });
+
+  it('shows an editable empty state when there are no sites', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { list: jest.Mock };
+    };
+    organizationApi.list.mockResolvedValue({
+      data: [],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasMore: false,
+      }),
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'Aún no hay sedes registradas. Crea la primera para organizar la operación de tu empresa.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear primera sede' })).toBeInTheDocument();
+  });
+
+  it('shows a read-only empty state without a create action', async () => {
+    const { accessControlApi, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { getMyEffectivePermissions: jest.Mock };
+      organizationApi: { list: jest.Mock };
+    };
+    accessControlApi.getMyEffectivePermissions.mockResolvedValue({
+      userId: 'user-1',
+      role: UserRole.ADMIN,
+      effectivePermissions: [AccessPermissionKey.ORGANIZATION_SITES_READ],
+      recoveryPermissions: [],
+      profileSources: [],
+    });
+    organizationApi.list.mockResolvedValue({
+      data: [],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasMore: false,
+      }),
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'Aún no hay sedes registradas. Una persona administradora puede crear la primera.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear primera sede' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
+  });
+
+  it('blocks the organization section for a role without read access', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-sales', role: UserRole.SALES },
+      isLoading: false,
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('Tu perfil no tiene acceso a esta sección.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a 401 while loading the company profile', async () => {
+    const { ApiError, tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      tenantSelfApi: { getProfile: jest.Mock };
+    };
+    tenantSelfApi.getProfile.mockRejectedValue(new ApiError(401, 'jwt expired schema tenant_42'));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('Tu sesión expiró. Inicia sesión nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/jwt expired|tenant_42/i)).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a 403 while loading operational settings', async () => {
+    const { ApiError, tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      tenantSelfApi: { getSettings: jest.Mock };
+    };
+    tenantSelfApi.getSettings.mockRejectedValue(new ApiError(403, 'Forbidden resource'));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('No tienes permisos para consultar esta sección.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Forbidden resource')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a 409 conflict inside the open create dialog', async () => {
+    const { ApiError, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      organizationApi: { create: jest.Mock };
+    };
+    organizationApi.create.mockRejectedValue(
+      new ApiError(409, 'duplicate key schema.organization_sites'),
+    );
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
+    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
+    fireEvent.change(dialog.getByLabelText('Coordenadas'), {
+      target: { value: '4.7110, -74.0721' },
+    });
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto operativo' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
+
+    expect(
+      await dialog.findByText('Ya existe una sede con ese código. Usa uno diferente.'),
+    ).toBeVisible();
+    expect(dialog.queryByText(/duplicate key|organization_sites/i)).not.toBeInTheDocument();
+    expect(dialog.getByLabelText('Nombre')).toHaveValue('Sede norte');
+  });
+
+  it('defaults country to CO on create and sends it in the payload', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { create: jest.Mock };
+    };
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
+    const dialog = within(screen.getByRole('dialog'));
+
+    expect(dialog.getByRole('combobox', { name: 'País' })).toHaveTextContent('Colombia');
+    fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
+    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
+    fireEvent.change(dialog.getByLabelText('Coordenadas'), {
+      target: { value: '4.7110, -74.0721' },
+    });
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto operativo' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
+
+    await waitFor(() => {
+      expect(organizationApi.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          country: 'CO',
+          name: 'Sede norte',
+        }),
+      );
+    });
+  });
+
+  it('shows the 0/N and N/N service counters', async () => {
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
+
+    expect(dialog.getByText('0 de 7 servicios seleccionados')).toBeInTheDocument();
+    expect(
+      dialog.getByText('Aún no has seleccionado servicios para esta sede.'),
+    ).toBeInTheDocument();
+
+    for (const checkbox of dialog.getAllByRole('checkbox')) {
+      fireEvent.click(checkbox);
+    }
+
+    expect(dialog.getByText('7 de 7 servicios seleccionados')).toBeInTheDocument();
+    expect(
+      dialog.queryByText('Aún no has seleccionado servicios para esta sede.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('omits deactivation for an inactive site while keeping edit', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { list: jest.Mock };
+    };
+    organizationApi.list.mockResolvedValue({
+      data: [{ ...organizationSummary[0], isActive: false }],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1,
+        hasMore: false,
+      }),
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByText('Inactiva')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Acciones' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Editar sede Sede centro/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Dar de baja sede Sede centro/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('cancels site deactivation without calling delete', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { delete: jest.Mock };
+    };
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: /Dar de baja sede Sede centro/i }));
+
+    const dialog = within(screen.getByRole('dialog', { name: '¿Dar de baja «Sede centro»?' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: '¿Dar de baja «Sede centro»?' }),
+      ).not.toBeInTheDocument();
+    });
+    expect(organizationApi.delete).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: /Dar de baja sede Sede centro/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('retries a failed company profile load', async () => {
+    const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+    };
+    tenantSelfApi.getProfile.mockRejectedValueOnce(new Error('profile boom'));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'No pudimos cargar la información de la empresa. Intenta nuevamente.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    expect(await screen.findByText('Perfil empresarial')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No pudimos cargar la información de la empresa. Intenta nuevamente.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('retries unavailable permissions and then loads sites', async () => {
+    const { accessControlApi, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { getMyEffectivePermissions: jest.Mock };
+      organizationApi: { list: jest.Mock };
+    };
+    accessControlApi.getMyEffectivePermissions.mockRejectedValueOnce(
+      new Error('internal permissions'),
+    );
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('No pudimos confirmar tus permisos para gestionar sedes.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar permisos' }));
+
+    expect(await screen.findByRole('row', { name: /Sede centro/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear sede' })).toBeInTheDocument();
+    expect(organizationApi.list).toHaveBeenCalled();
+  });
+
+  it('retries a failed sites list without exposing internals', async () => {
+    const { ApiError, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      organizationApi: { list: jest.Mock };
+    };
+    organizationApi.list.mockRejectedValueOnce(
+      new ApiError(500, 'relation tenant_42.organization_sites missing'),
+    );
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('No pudimos cargar las sedes. Intenta nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/tenant_42|organization_sites/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar sedes' }));
+
+    expect(await screen.findByRole('row', { name: /Sede centro/i })).toBeInTheDocument();
+  });
+
+  it('shows a session-unavailable state when there is no authenticated user', async () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+      isLoading: false,
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('No pudimos validar tu sesión. Inicia sesión de nuevo.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
+  });
+
+  it('formats a site without address using municipality and department', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { list: jest.Mock };
+    };
+    organizationApi.list.mockResolvedValue({
+      data: [
+        {
+          ...organizationSummary[0],
+          address: '',
+          municipality: 'Medellín',
+          department: 'Antioquia',
+        },
+      ],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1,
+        hasMore: false,
+      }),
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByText('Medellín, Antioquia')).toBeInTheDocument();
+  });
+
+  it('shows a fallback when the site has no location data', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { list: jest.Mock };
+    };
+    organizationApi.list.mockResolvedValue({
+      data: [
+        {
+          ...organizationSummary[0],
+          address: '',
+          municipality: '',
+          department: '',
+        },
+      ],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1,
+        hasMore: false,
+      }),
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByText('Sin ubicación registrada')).toBeInTheDocument();
+  });
+
+  it('accepts semicolon-separated coordinates with decimal commas', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { create: jest.Mock };
+    };
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
+    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
+    fireEvent.change(dialog.getByLabelText('Coordenadas'), {
+      target: { value: '4,7110; -74,0721' },
+    });
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto operativo' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
+
+    await waitFor(() => {
+      expect(organizationApi.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          latitude: 4.711,
+          longitude: -74.0721,
+        }),
+      );
+    });
+  });
+
+  it('keeps a controlled error when the site detail cannot be loaded', async () => {
+    const { ApiError, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      organizationApi: { get: jest.Mock };
+    };
+    organizationApi.get.mockRejectedValue(
+      new ApiError(500, 'relation tenant_42.organization_sites missing'),
+    );
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: /Editar sede Sede centro/i }));
+
+    expect(
+      await screen.findByText('No pudimos cargar las sedes. Intenta nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/tenant_42|organization_sites/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Editar sede' })).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a failed deactivation without exposing internals', async () => {
+    const { ApiError, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      organizationApi: { delete: jest.Mock };
+    };
+    organizationApi.delete.mockRejectedValue(new ApiError(500, 'sql schema tenant_42'));
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: /Dar de baja sede Sede centro/i }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: '¿Dar de baja «Sede centro»?' })).getByRole(
+        'button',
+        { name: 'Dar de baja' },
+      ),
+    );
+
+    expect(
+      await screen.findByText(
+        'No pudimos cargar la información de la empresa. Intenta nuevamente.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/sql schema|tenant_42/i)).not.toBeInTheDocument();
   });
 });

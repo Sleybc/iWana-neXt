@@ -282,8 +282,8 @@ test.describe('Portal settings organization and access', () => {
             },
             {
               key: 'access',
-              label: 'Usuarios y acceso',
-              description: 'Consulta perfiles, permisos y gobierno básico de acceso tenant-aware.',
+              label: 'Perfiles y autenticación',
+              description: 'Administra perfiles de acceso y políticas de autenticación.',
               ownerModule: 'MOD00 / Access control',
               status: 'AVAILABLE',
               route: '/dashboard/settings/access',
@@ -503,6 +503,7 @@ test.describe('Portal settings organization and access', () => {
     await organizationDialog.getByLabel('Coordenadas').fill('4.7110, -74.0721');
     await organizationDialog.getByLabel('Nombre de contacto').fill('Ana Admin');
     await organizationDialog.getByLabel('Teléfono de contacto').fill('+573001112233');
+    await expect(organizationDialog.getByRole('combobox', { name: 'País' })).toHaveText(/Colombia/);
     await organizationDialog.getByRole('tab', { name: 'Servicios' }).click();
     await organizationDialog.getByRole('checkbox', { name: 'Gestión administrativa' }).check();
     await organizationDialog.getByRole('button', { name: 'Crear sede' }).click();
@@ -514,7 +515,7 @@ test.describe('Portal settings organization and access', () => {
     expect(removedCapabilitiesRequests).toBe(0);
 
     await page.goto(`${baseURL}/dashboard/settings`);
-    await page.getByRole('link', { name: 'Usuarios y acceso' }).click();
+    await page.getByRole('link', { name: /Perfiles y autenticación/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
 
     await page.getByRole('button', { name: 'Crear perfil' }).click();

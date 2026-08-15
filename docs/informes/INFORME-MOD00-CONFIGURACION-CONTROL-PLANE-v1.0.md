@@ -1,6 +1,6 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.59
+**Version:** 1.60
 **Estado:** Activo
 **Fecha:** 2026-08-15
 **Modo activo:** Mixto  
@@ -1562,3 +1562,45 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - Typecheck portal y `git diff --check`: en verde. No se agregaron tokens, migraciones, caché ni dependencias.
 
 **Resultado:** G6 queda **GO para el alcance del hub raíz**, con la salvedad de que la URL local sin mocks continúa requiriendo una sesión real para inspección manual fuera del arnés E2E. Los hallazgos de subpantallas de calendario/acceso permanecen fuera de alcance.
+
+---
+
+### v1.60 — 2026-08-15 — Remediación UI/UX Organización
+
+**Autor:** AI-EM-ARCH con AI-PROD-UX, AI-DS-OWNER, AI-FE-PLATFORM, AI-SR-QA y confirmación AI-SR-FULL  
+**Tipo:** Remediación UI/UX de `/dashboard/settings/organization`  
+**Plan:** `docs/plans/2026-08-15-mod00-organizacion-ui-remediation.md`  
+**Spec:** `docs/specs/2026-08-15-mod00-organizacion-ui-remediation.md`  
+**Prompt:** `docs/prompts/PROMPT-MOD00-ORGANIZACION-REMEDIACION-UI-v1.0.md`
+
+## Remediación UI/UX Organización — 2026-08-15
+
+- **Hallazgos cerrados:** P0, P1, P2 y P3 de la pantalla de Organización (estados de carga/vacío/permisos, errores sanitizados, país en el modal unificado, validación entre tabs, tabla responsive, badges, objetivos táctiles ≥44 px, diálogo iWana de baja, copy Firma).
+- **Archivos funcionales modificados:**
+  - `apps/portal/src/components/settings/OrganizationSettingsClient.tsx`
+  - `apps/portal/src/components/settings/CompanyProfileForm.tsx`
+  - `apps/portal/src/components/settings/OperationalSettingsForm.tsx`
+  - `apps/portal/src/components/settings/mod00-settings-labels.ts`
+  - `apps/portal/src/components/settings/organization-settings-options.ts` (nuevo)
+- **Confirmación AI-SR-FULL:** `country` ya existía en `OrganizationSiteDetail`, `CreateOrganizationSiteDto` y `UpdateOrganizationSiteDto`. Sin cambio de backend.
+- **Cobertura final** (Jest `--collectCoverageFrom` de los tres componentes): statements 92.45 %, branches 85.97 %, functions 90.9 %, lines 92.3 %. Ningún archivo crítico bajo 80 % en líneas (`CompanyProfileForm` 100 %, `OrganizationSettingsClient` 91.46 %, `OperationalSettingsForm` 93.02 %).
+- **Suites Jest ejecutadas:** portal completo 185/185 suites, 1356 passed / 1 skipped. Focalizado Organización: 54 pruebas en los tres specs de settings.
+- **Suites E2E ejecutadas:** 18/18 passed (`portal-settings-empresa` 7, `portal-settings-organization-access` 1, `portal-settings-organization-ui` 10).
+- **Resultado axe** (wcag2a + wcag2aa): 0 violaciones en mobile 390×844, tablet 1024×768 y desktop 1440×900, en claro y oscuro. CTA `Crear sede` ≥44 px. `body` sin `overflow-x: scroll`.
+- **Evidencia visual autenticada vigente:** capturas Playwright con sesión tenant ADMIN sembrada (no se reutilizan capturas históricas del hub):
+  - `e2e/tests/portal-settings-organization-ui.spec.ts-snapshots/organization-{mobile,tablet,desktop}-{light,dark}-chromium-win32.png`
+  - La URL `http://localhost:3002/dashboard/settings/organization` no se inspeccionó con sesión real en esta corrida (portal local no estaba levantado); la evidencia autenticada vigente es el arnés E2E.
+- **Veredicto AI-PROD-UX:** GO. Spec correctiva congelada; CA-ORG-UX-01…10 cubiertos por implementación y pruebas.
+- **Veredicto AI-DS-OWNER:** GO. Contrato visual §10 cumplido; `audit-ui.mjs` 0 hallazgos en los tres componentes; CTAs `size="lg"` y objetivos táctiles ≥44 px.
+- **Gate G6:** **GO**. E2E verde, cobertura ≥80 % en las cuatro métricas del conjunto, axe sin violaciones A/AA, contraste conforme al contrato DS y evidencia visual autenticada vigente en el arnés E2E.
+
+**Validación de cierre (Task 7):**
+
+- `pnpm --filter @iwana/portal typecheck` — exit 0
+- `pnpm --filter @iwana/portal lint` — exit 0 (0 errores; 52 warnings preexistentes fuera de alcance)
+- `pnpm --filter @iwana/portal test -- --runInBand` — 185 suites, 1356 passed
+- Playwright Organización — 18 passed
+- `pnpm audit:doc-locations` / `pnpm audit:adr-citations` — BLOQUEANTE 0
+- `pnpm sync:agents:check` — OK
+- `git diff --check` — exit 0
+- Sin API, OpenAPI, migraciones, tokens ni cambios globales de `@iwana/ui`.
