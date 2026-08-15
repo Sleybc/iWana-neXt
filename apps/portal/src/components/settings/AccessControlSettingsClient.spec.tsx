@@ -561,7 +561,7 @@ describe('AccessControlSettingsClient', () => {
     expect(screen.getByText(/Lo que permite este perfil/i)).toBeInTheDocument();
     expect(screen.getByText('Ejecutar órdenes de trabajo asignadas')).toBeInTheDocument();
 
-    const closeButton = screen.getByRole('button', { name: 'Cerrar vista previa' });
+    const closeButton = screen.getByRole('button', { name: 'Cerrar' });
     fireEvent.click(closeButton);
 
     await waitFor(() => {

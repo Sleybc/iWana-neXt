@@ -165,12 +165,12 @@ export const SETTINGS_HUB_SECTION_COPY: Partial<
 };
 
 export const ACCESS_SETTINGS_COPY = {
-  pageTitle: 'Perfiles de acceso y autenticación',
+  pageTitle: 'Perfiles de acceso',
   loadingSubtitle: 'Cargando perfiles de acceso y sus accesos',
   restrictedTitle: 'Vista disponible para administradores',
   restrictedDescription: 'Solo las personas administradoras pueden acceder a esta sección.',
   pageSubtitle:
-    'Administra perfiles de acceso, plantillas iniciales y la verificación en dos pasos (MFA) global de tu empresa desde un solo lugar.',
+    'Crea perfiles de acceso, define lo que puede usar cada uno y apóyate en perfiles sugeridos para empezar más rápido.',
   authPolicyEyebrow: 'Políticas de autenticación',
   authPolicyTitle: 'Verificación en dos pasos global',
   authPolicyDescription:
@@ -186,32 +186,66 @@ export const ACCESS_SETTINGS_COPY = {
   authPolicyLoadError: 'No fue posible cargar la política de verificación en dos pasos.',
   authPolicySaveError:
     'No fue posible guardar la política de verificación en dos pasos. Intenta de nuevo.',
+  authPolicyForbiddenError:
+    'Solo las personas administradoras pueden cambiar la política de autenticación.',
   authPolicyAdminHint:
     'Este ajuste aplica a toda la empresa y solo puede cambiarlo un administrador.',
-  templatesTitle: 'Plantillas iniciales',
+  templatesTitle: 'Perfiles sugeridos',
   templatesDescription:
-    'Estas plantillas del sistema te dan un punto de partida para crear o ajustar perfiles de acceso.',
+    'Estos perfiles sugeridos te ayudan a crear nuevos perfiles de acceso con menos trabajo manual.',
+  templateEyebrow: 'Sugerido',
+  templateFallbackDescription: 'Perfil sugerido',
+  profilesTitle: 'Perfiles personalizados',
   profilesDescription: 'Crea perfiles propios para tu empresa y define qué puede hacer cada uno.',
+  profilesEmptyTitle: 'Aún no has creado perfiles personalizados',
   profilesEmptyDescription:
     'Cuando crees tu primer perfil, aparecerá aquí para que puedas editarlo y revisar sus accesos.',
-  roleColumnLabel: 'Categoría base',
+  createProfileAction: 'Crear perfil',
+  createFromTemplateAction: 'Crear a partir de este perfil',
+  previewAction: 'Ver lo que permite',
+  useSuggestedSelector: 'Usar un perfil sugerido',
+  useSuggestedHelp: 'Empieza con un perfil sugerido y ajusta solo lo necesario.',
+  startFromScratchLabel: 'Empezar desde cero',
+  startFromScratchHelp: 'Crea el perfil desde cero y define sus accesos paso a paso.',
+  chooseSuggestedFeedback:
+    'Elige un perfil sugerido y pulsa «Crear a partir de este perfil» para comenzar.',
+  peekEyebrow: 'Lo que permite este perfil',
+  peekEmptyDescription: 'Sin accesos asignados a este perfil sugerido.',
+  saveChangesAction: 'Guardar cambios',
+  saveDraftAction: 'Guardar perfil',
+  searchEmptyTitle: 'No encontramos accesos en esta sección',
+  clearSearchAction: 'Limpiar búsqueda',
+  permissionFallback: 'Acceso no descrito',
+  keepProfileActiveLabel: 'Mantener perfil activo',
+  retryAction: 'Reintentar',
+  sessionExpiredError: 'Tu sesión expiró. Inicia sesión nuevamente.',
+  forbiddenProfilesError: 'Solo las personas administradoras pueden gestionar perfiles de acceso.',
+  loadProfilesError: 'No pudimos cargar los perfiles de acceso. Intenta nuevamente.',
+  saveProfileError: 'No pudimos guardar los cambios. Intenta nuevamente.',
+  deleteProfileError: 'No pudimos eliminar el perfil. Intenta nuevamente.',
+  deleteDialogTitle: (name: string) => `¿Eliminar el perfil «${name}»?`,
+  deleteDialogDescription:
+    'Las personas que lo tengan asignado dejarán de usarlo. Esta acción no se puede deshacer.',
+  deleteConfirmAction: 'Eliminar perfil',
+  cancelAction: 'Cancelar',
+  roleColumnLabel: 'Tipo de usuario',
   selectedProfileDescription: (profileName: string) =>
     `Administra por sección lo que puede ver o hacer ${profileName}.`,
   draftBannerTitle: 'Nuevo perfil en preparación',
   draftBannerDescription: (sourceName: string | null) =>
     sourceName
-      ? `Estás creando un nuevo perfil basado en ${sourceName}. Los accesos de esa plantilla ya están activos y puedes ajustar el resto antes de guardarlo.`
+      ? `Estás creando un nuevo perfil basado en ${sourceName}. Los accesos de ese perfil sugerido ya están activos y puedes ajustar el resto antes de guardarlo.`
       : 'Estás creando un nuevo perfil. Revisa sus datos y ajusta sus accesos antes de guardarlo.',
   draftSelectedProfileDescription: (profileName: string) =>
-    `Revisa por sección los accesos activos de la plantilla y suma los que necesite el nuevo perfil ${profileName}.`,
+    `Revisa por sección los accesos del perfil sugerido y suma los que necesite el nuevo perfil ${profileName}.`,
   noCompatiblePermissionsTitle: 'Sin accesos disponibles',
   noCompatiblePermissionsDescription: 'No hay accesos activos para mostrar en este momento.',
   noProfileSelectedDescription: 'Elige un perfil de la lista para revisar o cambiar sus accesos.',
   editProfileDescription:
-    'Modifica el nombre, la descripción y la categoría base permitida para este perfil.',
+    'Modifica el nombre, la descripción y el tipo de usuario permitido para este perfil.',
   createProfileDescription:
     'Crea un perfil de acceso para organizar lo que cada equipo puede ver o usar.',
-  roleFieldLabel: 'Categoría base permitida',
+  roleFieldLabel: 'Tipo de usuario permitido',
 } as const;
 
 export const OPERATIONAL_EVENTUALITY_TYPE_LABELS = {
@@ -497,7 +531,7 @@ export const SETTINGS_ACCESS_SHORTCUTS_COPY = {
     },
     access: {
       title: 'Perfiles de acceso',
-      description: 'Administra perfiles de acceso, plantillas iniciales y accesos por sección.',
+      description: 'Administra perfiles de acceso, perfiles sugeridos y accesos por sección.',
     },
     fieldOperations: {
       title: 'Operaciones de campo',
@@ -599,6 +633,7 @@ export function getAccessModuleLabel(moduleKey: string): string {
     users: 'Usuarios',
     access: 'Acceso',
     'access-control': 'Control de acceso',
+    operations: 'Operaciones',
     wfm: 'Operaciones de campo',
     crm: 'CRM',
     commercial: 'Comercial',
@@ -607,5 +642,5 @@ export function getAccessModuleLabel(moduleKey: string): string {
     billing: 'Facturación',
   };
 
-  return labels[moduleKey] ?? moduleKey;
+  return labels[moduleKey] ?? 'Sección';
 }
