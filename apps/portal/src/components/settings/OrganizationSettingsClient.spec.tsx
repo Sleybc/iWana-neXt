@@ -254,7 +254,10 @@ describe('OrganizationSettingsClient', () => {
     expect(within(row).getByText('Oficina')).toBeInTheDocument();
     expect(within(row).getByText('Cra 10 # 10-10')).toBeInTheDocument();
     expect(within(row).getByText('Bogotá, Cundinamarca')).toBeInTheDocument();
-    expect(within(row).getByText('Sin acciones disponibles')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Acciones' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Puedes consultar las sedes, pero no modificarlas.'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
     expect(
       within(row).queryByRole('button', { name: /Editar sede Sede centro/i }),
@@ -462,8 +465,9 @@ describe('OrganizationSettingsClient', () => {
 
     expect(await screen.findByText('Perfil empresarial')).toBeInTheDocument();
     expect(screen.getByText('Configuración operativa')).toBeInTheDocument();
-    expect(screen.getByText('Sedes no disponibles')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
+    expect(screen.getByText('No tienes permisos para consultar las sedes.')).toBeInTheDocument();
+    expect(screen.queryByText('Forbidden resource')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear sede' })).toBeInTheDocument();
     expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
   });
 
@@ -533,7 +537,7 @@ describe('OrganizationSettingsClient', () => {
     render(<OrganizationSettingsClient />);
 
     expect(await screen.findByText('Perfil empresarial')).toBeInTheDocument();
-    expect(screen.getByText('Sedes no disponibles')).toBeInTheDocument();
+    expect(screen.getByText('No tienes permisos para consultar las sedes.')).toBeInTheDocument();
     expect(organizationApi.list).not.toHaveBeenCalled();
   });
 
@@ -592,5 +596,131 @@ describe('OrganizationSettingsClient', () => {
     ).not.toBeInTheDocument();
 
     confirmSpy.mockRestore();
+  });
+
+  it('keeps the sites skeleton visible until the initial list request settles', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { list: jest.Mock };
+    };
+    let resolveList!: (value: unknown) => void;
+    organizationApi.list.mockReturnValue(new Promise((resolve) => (resolveList = resolve)));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByRole('status', { name: 'Cargando sedes' })).toBeInTheDocument();
+    expect(screen.queryByText('Aún no hay sedes registradas.')).not.toBeInTheDocument();
+
+    resolveList({
+      data: [],
+      meta: emptyPageListMeta({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasMore: false,
+      }),
+    });
+    expect(await screen.findByText(/Aún no hay sedes registradas/)).toBeInTheDocument();
+  });
+
+  it('omits the complete actions column for an admin with read-only permissions', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { getMyEffectivePermissions: jest.Mock };
+    };
+    accessControlApi.getMyEffectivePermissions.mockResolvedValue({
+      userId: 'user-1',
+      role: UserRole.ADMIN,
+      effectivePermissions: [AccessPermissionKey.ORGANIZATION_SITES_READ],
+      recoveryPermissions: [],
+      profileSources: [],
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByText('Sede centro')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Acciones' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Puedes consultar las sedes, pero no modificarlas.'),
+    ).toBeInTheDocument();
+  });
+
+  it('resolves site permissions even when the company profile fails to load', async () => {
+    const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+    };
+    tenantSelfApi.getProfile.mockRejectedValue(new Error('profile boom'));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'No pudimos cargar la información de la empresa. Intenta nuevamente.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear sede' })).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: /Sede centro/i })).toBeInTheDocument();
+    expect(screen.queryByText('profile boom')).not.toBeInTheDocument();
+  });
+
+  it('shows a recoverable state when effective permissions cannot be loaded', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { getMyEffectivePermissions: jest.Mock };
+    };
+    accessControlApi.getMyEffectivePermissions.mockRejectedValue(new Error('internal permissions'));
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('No pudimos confirmar tus permisos para gestionar sedes.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reintentar permisos' })).toBeVisible();
+    expect(screen.queryByText('internal permissions')).not.toBeInTheDocument();
+  });
+
+  it('never exposes an internal API message when site loading fails', async () => {
+    const { ApiError, organizationApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      organizationApi: { list: jest.Mock };
+    };
+    organizationApi.list.mockRejectedValue(
+      new ApiError(500, 'relation tenant_42.organization_sites missing'),
+    );
+
+    render(<OrganizationSettingsClient />);
+
+    expect(
+      await screen.findByText('No pudimos cargar las sedes. Intenta nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/tenant_42|organization_sites/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps a controlled save error inside the open site dialog', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: { create: jest.Mock };
+    };
+    organizationApi.create.mockRejectedValue(new Error('database payload'));
+
+    render(<OrganizationSettingsClient />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
+    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
+    fireEvent.change(dialog.getByLabelText('Coordenadas'), {
+      target: { value: '4.7110, -74.0721' },
+    });
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto operativo' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
+
+    expect(
+      await dialog.findByText(
+        'No pudimos crear la sede. Revisa la información e intenta nuevamente.',
+      ),
+    ).toBeVisible();
+    expect(dialog.queryByText('database payload')).not.toBeInTheDocument();
   });
 });

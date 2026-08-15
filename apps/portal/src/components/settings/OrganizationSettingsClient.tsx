@@ -171,6 +171,7 @@ const siteFormSchema = z.object({
 });
 
 type SiteFormValues = z.infer<typeof siteFormSchema>;
+type PermissionsState = 'loading' | 'granted' | 'read-only' | 'denied' | 'unavailable';
 
 const siteTypeOptions = Object.values(OrganizationSiteType).map((siteType) => ({
   value: siteType,
@@ -180,29 +181,29 @@ const siteTypeOptions = Object.values(OrganizationSiteType).map((siteType) => ({
 const capabilityOptions = Object.values(OrganizationSiteCapability);
 
 function mapOrganizationError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    if (error.status === 403) return 'No tienes permisos para gestionar esta sección.';
-    return error.message;
+  if (error instanceof ApiError && error.status === 401) {
+    return 'Tu sesión expiró. Inicia sesión nuevamente.';
   }
-
-  return 'No pudimos cargar la información de esta sección.';
+  if (error instanceof ApiError && error.status === 403) {
+    return 'No tienes permisos para consultar esta sección.';
+  }
+  return 'No pudimos cargar la información de la empresa. Intenta nuevamente.';
 }
 
 function mapSitesError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 403) {
-      return 'No tienes permisos para ver o editar las sedes.';
-    }
-
-    if (error.status === 401) {
-      return 'Tu sesión expiró antes de cargar las sedes.';
-    }
-
-    return error.message;
+  if (error instanceof ApiError && error.status === 403) {
+    return 'No tienes permisos para consultar las sedes.';
   }
+  return 'No pudimos cargar las sedes. Intenta nuevamente.';
+}
 
-  return 'No fue posible cargar las sedes en este momento.';
+function mapSiteSubmitError(editing: boolean, error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return 'Ya existe una sede con ese código. Usa uno diferente.';
+  }
+  return editing
+    ? 'No pudimos actualizar la sede. Revisa la información e intenta nuevamente.'
+    : 'No pudimos crear la sede. Revisa la información e intenta nuevamente.';
 }
 
 function createDefaultSiteFormValues(): SiteFormValues {
@@ -299,11 +300,14 @@ function OrganizationSettingsClientInner() {
   const [draftCapabilities, setDraftCapabilities] = useState<OrganizationSiteCapability[]>([]);
   const [hasManageSitesPermission, setHasManageSitesPermission] = useState(false);
   const [canReadSites, setCanReadSites] = useState(true);
+  const [permissionsState, setPermissionsState] = useState<PermissionsState>('loading');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSitesInitialLoading, setIsSitesInitialLoading] = useState(true);
   const [isSitesRefreshing, setIsSitesRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sitesError, setSitesError] = useState<string | null>(null);
+  const [siteDialogError, setSiteDialogError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
@@ -323,7 +327,7 @@ function OrganizationSettingsClientInner() {
 
   const canEdit = user?.role === UserRole.ADMIN;
   const canRead = user?.role ? organizationReadableRoles.has(user.role as UserRole) : false;
-  const canManageSites = canEdit && hasManageSitesPermission && !sitesError;
+  const canManageSites = permissionsState === 'granted' && hasManageSitesPermission;
 
   const {
     control,
@@ -339,16 +343,18 @@ function OrganizationSettingsClientInner() {
 
   const loadSites = useCallback(
     async (opts?: { soft?: boolean }) => {
+      void opts;
       if (!canReadSites) {
         setSites([]);
         setSitesMeta(EMPTY_LIST_META);
+        setIsSitesInitialLoading(false);
+        setIsSitesRefreshing(false);
         return;
       }
 
-      const soft = opts?.soft === true && hasLoadedSitesOnceRef.current;
-      if (soft) {
-        setIsSitesRefreshing(true);
-      }
+      const initialLoad = !hasLoadedSitesOnceRef.current;
+      if (initialLoad) setIsSitesInitialLoading(true);
+      if (!initialLoad) setIsSitesRefreshing(true);
 
       setSitesError(null);
 
@@ -373,10 +379,13 @@ function OrganizationSettingsClientInner() {
         setSitesMeta(nextMeta);
         hasLoadedSitesOnceRef.current = true;
       } catch (loadError) {
-        setSites([]);
-        setSitesMeta(EMPTY_LIST_META);
+        if (initialLoad) {
+          setSites([]);
+          setSitesMeta(EMPTY_LIST_META);
+        }
         setSitesError(mapSitesError(loadError));
       } finally {
+        setIsSitesInitialLoading(false);
         setIsSitesRefreshing(false);
       }
     },
@@ -389,6 +398,7 @@ function OrganizationSettingsClientInner() {
     setSitesError(null);
     setHasManageSitesPermission(false);
     setCanReadSites(true);
+    setPermissionsState('loading');
 
     try {
       const [profileResult, settingsResult, permissionsResult] = await Promise.allSettled([
@@ -397,42 +407,53 @@ function OrganizationSettingsClientInner() {
         canEdit && user ? accessControlApi.getMyEffectivePermissions() : Promise.resolve(null),
       ]);
 
-      if (profileResult.status !== 'fulfilled') {
-        throw profileResult.reason;
-      }
-
-      if (settingsResult.status !== 'fulfilled') {
-        throw settingsResult.reason;
-      }
-
-      setProfile(profileResult.value);
-      setSettings(settingsResult.value);
-
-      const canReadSitesFromPermissions =
-        permissionsResult.status === 'fulfilled' && permissionsResult.value
-          ? permissionsResult.value.effectivePermissions.includes(
-              AccessPermissionKey.ORGANIZATION_SITES_READ,
-            )
-          : null;
-      const canManageSitesFromPermissions =
-        permissionsResult.status === 'fulfilled' && permissionsResult.value
-          ? permissionsResult.value.effectivePermissions.includes(
-              AccessPermissionKey.ORGANIZATION_SITES_MANAGE,
-            )
-          : false;
-
-      setHasManageSitesPermission(canManageSitesFromPermissions);
-
-      if (canReadSitesFromPermissions === false) {
+      if (permissionsResult.status === 'rejected') {
+        setPermissionsState('unavailable');
+        setHasManageSitesPermission(false);
+      } else if (!permissionsResult.value) {
+        setPermissionsState('read-only');
+        setCanReadSites(true);
+      } else if (
+        !permissionsResult.value.effectivePermissions.includes(
+          AccessPermissionKey.ORGANIZATION_SITES_READ,
+        )
+      ) {
+        setPermissionsState('denied');
         setCanReadSites(false);
         setSites([]);
         setSitesMeta(EMPTY_LIST_META);
         setDraftCapabilities([]);
-        setSitesError('No tienes permisos para ver o editar las sedes.');
-        return;
+        setIsSitesInitialLoading(false);
+      } else if (
+        !permissionsResult.value.effectivePermissions.includes(
+          AccessPermissionKey.ORGANIZATION_SITES_MANAGE,
+        )
+      ) {
+        setPermissionsState('read-only');
+        setCanReadSites(true);
+      } else {
+        setPermissionsState('granted');
+        setCanReadSites(true);
+        setHasManageSitesPermission(true);
       }
 
-      setCanReadSites(true);
+      let sectionError: string | null = null;
+
+      if (profileResult.status === 'fulfilled') {
+        setProfile(profileResult.value);
+      } else {
+        sectionError = mapOrganizationError(profileResult.reason);
+      }
+
+      if (settingsResult.status === 'fulfilled') {
+        setSettings(settingsResult.value);
+      } else if (!sectionError) {
+        sectionError = mapOrganizationError(settingsResult.reason);
+      }
+
+      if (sectionError) {
+        setError(sectionError);
+      }
     } catch (loadError) {
       setError(mapOrganizationError(loadError));
     } finally {
@@ -469,6 +490,7 @@ function OrganizationSettingsClientInner() {
 
   function openCreateDialog() {
     setEditingSiteId(null);
+    setSiteDialogError(null);
     reset(createDefaultSiteFormValues());
     setDraftCapabilities([]);
     setDialogTab('informacion');
@@ -478,6 +500,7 @@ function OrganizationSettingsClientInner() {
   async function openEditDialog(siteId: string) {
     setError(null);
     setFeedback(null);
+    setSiteDialogError(null);
 
     try {
       const site = await organizationApi.get(siteId);
@@ -493,6 +516,7 @@ function OrganizationSettingsClientInner() {
 
   function handleDialogOpenChange(open: boolean) {
     setIsDialogOpen(open);
+    setSiteDialogError(null);
 
     if (!open) {
       setDialogTab('informacion');
@@ -503,6 +527,7 @@ function OrganizationSettingsClientInner() {
     setIsSaving(true);
     setError(null);
     setFeedback(null);
+    setSiteDialogError(null);
 
     try {
       const coordinates = parseCoordinatePair(values.coordinates);
@@ -531,15 +556,18 @@ function OrganizationSettingsClientInner() {
         isActive: values.isActive,
       };
 
-      const site = editingSiteId
-        ? await organizationApi.update(editingSiteId, payload)
-        : await organizationApi.create(payload as CreateOrganizationSiteDto);
+      if (editingSiteId) {
+        await organizationApi.update(editingSiteId, payload);
+      } else {
+        await organizationApi.create(payload as CreateOrganizationSiteDto);
+      }
 
       setIsDialogOpen(false);
+      setSiteDialogError(null);
       setFeedback(editingSiteId ? 'Sede actualizada correctamente.' : 'Sede creada correctamente.');
       await loadSites({ soft: true });
     } catch (submitError) {
-      setError(mapOrganizationError(submitError));
+      setSiteDialogError(mapSiteSubmitError(Boolean(editingSiteId), submitError));
     } finally {
       setIsSaving(false);
     }
@@ -581,9 +609,11 @@ function OrganizationSettingsClientInner() {
     total: sitesMeta.total,
   });
   const sitesRandomAccess = sitesMeta.capabilities.randomAccess;
-  const showSitesPager = !isLoading && !sitesError && sitesMeta.total > 0;
+  const showSitesPager = !isLoading && !isSitesInitialLoading && !sitesError && sitesMeta.total > 0;
   const showSitesPageSize =
     showSitesPager && sitesRandomAccess && sitesMeta.total > Math.min(...[10, 20, 50]);
+  const showSitesPanel =
+    permissionsState !== 'denied' && (isSitesInitialLoading || sites.length > 0 || !sitesError);
 
   if (authLoading || isLoading) {
     return (
@@ -678,28 +708,56 @@ function OrganizationSettingsClientInner() {
           description={sitesError}
           action={
             canReadSites ? (
-              <button
-                type="button"
-                onClick={() => void loadSites()}
-                className="inline-flex items-center gap-2 text-sm font-medium text-amber-800 underline decoration-amber-300 underline-offset-4 hover:no-underline dark:text-amber-200"
-              >
+              <Button type="button" variant="link" size="lg" onClick={() => void loadSites()}>
                 <RefreshCcw className="h-4 w-4" aria-hidden={true} />
-                Reintentar sedes
-              </button>
+                {ORGANIZATION_SETTINGS_COPY.retrySitesAction}
+              </Button>
             ) : undefined
           }
         />
       ) : null}
 
-      {!sitesError ? (
+      {permissionsState === 'denied' ? (
+        <PortalAlert
+          variant="warning"
+          title="Sedes no disponibles"
+          description={ORGANIZATION_SETTINGS_COPY.sitesDeniedDescription}
+        />
+      ) : null}
+
+      {permissionsState === 'unavailable' ? (
+        <PortalAlert
+          variant="warning"
+          title="Permisos no confirmados"
+          description={ORGANIZATION_SETTINGS_COPY.sitesPermissionsUnavailable}
+          action={
+            <Button type="button" variant="link" size="lg" onClick={() => void loadOrganization()}>
+              <RefreshCcw className="h-4 w-4" aria-hidden={true} />
+              {ORGANIZATION_SETTINGS_COPY.retryPermissionsAction}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {showSitesPanel ? (
         <PortalPanel
           title={ORGANIZATION_SETTINGS_COPY.sitesPanelTitle}
           description={ORGANIZATION_SETTINGS_COPY.sitesPanelDescription}
         >
-          {sites.length === 0 && !isSitesRefreshing ? (
+          {isSitesInitialLoading ? (
+            <div role="status" aria-live="polite" aria-label="Cargando sedes" className="space-y-4">
+              <span className="sr-only">Cargando información de la empresa y sus sedes.</span>
+              <PortalSkeletonBlock className="h-14" />
+              <PortalSkeletonBlock className="h-56" />
+            </div>
+          ) : sites.length === 0 && !isSitesRefreshing ? (
             <PortalEmptyState
               title={ORGANIZATION_SETTINGS_COPY.emptySitesTitle}
-              description={ORGANIZATION_SETTINGS_COPY.emptySitesDescription}
+              description={
+                canManageSites
+                  ? ORGANIZATION_SETTINGS_COPY.emptySitesDescription
+                  : ORGANIZATION_SETTINGS_COPY.emptySitesReadOnlyDescription
+              }
               action={
                 canManageSites ? (
                   <Button type="button" onClick={openCreateDialog}>
@@ -711,7 +769,13 @@ function OrganizationSettingsClientInner() {
             />
           ) : (
             <div className="space-y-3">
-              <div className={portalDataTableShellClassName}>
+              {permissionsState === 'read-only' ? (
+                <PortalAlert
+                  variant="info"
+                  title={ORGANIZATION_SETTINGS_COPY.sitesReadOnlyNotice}
+                />
+              ) : null}
+              <div className={portalDataTableShellClassName} aria-busy={isSitesRefreshing}>
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
                   <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                     <tr>
@@ -720,7 +784,7 @@ function OrganizationSettingsClientInner() {
                       <th className={tableHeadClass}>Ubicación</th>
                       <th className={tableHeadClass}>Servicios</th>
                       <th className={tableHeadClass}>Estado</th>
-                      <th className={tableHeadClass}>Acciones</th>
+                      {canManageSites ? <th className={tableHeadClass}>Acciones</th> : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
@@ -777,8 +841,8 @@ function OrganizationSettingsClientInner() {
                               ? ORGANIZATION_SETTINGS_COPY.activeStatus
                               : ORGANIZATION_SETTINGS_COPY.inactiveStatus}
                           </td>
-                          <td className={cellClass}>
-                            {canManageSites ? (
+                          {canManageSites ? (
+                            <td className={cellClass}>
                               <div className="flex flex-wrap justify-end gap-2">
                                 <Button
                                   type="button"
@@ -800,12 +864,8 @@ function OrganizationSettingsClientInner() {
                                   <span className="sr-only"> {site.name}</span>
                                 </Button>
                               </div>
-                            ) : (
-                              <span className="text-sm text-gray-500">
-                                {ORGANIZATION_SETTINGS_COPY.noActions}
-                              </span>
-                            )}
-                          </td>
+                            </td>
+                          ) : null}
                         </tr>
                       );
                     })}
@@ -854,6 +914,14 @@ function OrganizationSettingsClientInner() {
           </DialogHeader>
 
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+            {siteDialogError ? (
+              <PortalAlert
+                variant="error"
+                live="assertive"
+                title={ORGANIZATION_SETTINGS_COPY.siteDialogErrorTitle}
+                description={siteDialogError}
+              />
+            ) : null}
             <Tabs value={dialogTab} onValueChange={setDialogTab}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="informacion">

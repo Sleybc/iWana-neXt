@@ -450,7 +450,16 @@ export const ORGANIZATION_SETTINGS_COPY = {
   sitesPanelTitle: 'Sedes registradas',
   sitesPanelDescription: 'Revisa y administra las sedes de tu empresa.',
   emptySitesTitle: 'Sin sedes registradas',
-  emptySitesDescription: 'Todavía no hay sedes creadas.',
+  emptySitesDescription:
+    'Aún no hay sedes registradas. Crea la primera para organizar la operación de tu empresa.',
+  emptySitesReadOnlyDescription:
+    'Aún no hay sedes registradas. Una persona administradora puede crear la primera.',
+  sitesReadOnlyNotice: 'Puedes consultar las sedes, pero no modificarlas.',
+  sitesDeniedDescription: 'No tienes permisos para consultar las sedes.',
+  sitesPermissionsUnavailable: 'No pudimos confirmar tus permisos para gestionar sedes.',
+  retryPermissionsAction: 'Reintentar permisos',
+  retrySitesAction: 'Reintentar sedes',
+  siteDialogErrorTitle: 'No fue posible guardar la sede',
   createSiteAction: 'Crear sede',
   createFirstSiteAction: 'Crear primera sede',
   noServices: 'Sin servicios activos',
