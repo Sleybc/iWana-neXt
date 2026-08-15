@@ -1,6 +1,6 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.60
+**Version:** 1.62
 **Estado:** Activo
 **Fecha:** 2026-08-15
 **Modo activo:** Mixto  
@@ -1604,3 +1604,51 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - `pnpm sync:agents:check` — OK
 - `git diff --check` — exit 0
 - Sin API, OpenAPI, migraciones, tokens ni cambios globales de `@iwana/ui`.
+
+### v1.61 — 2026-08-15 — CTA Crear sede en el panel Sedes
+
+**Autor:** AI-EM-ARCH con AI-SR-QA, AI-FE-PLATFORM y AI-DS-OWNER
+**Tipo:** Corrección de colocación del CTA de listado
+**Spec:** `docs/specs/2026-08-15-mod00-organizacion-ui-remediation.md` (v1.1)
+
+- **Cambio:** `Crear sede` sale de `PageHeader.actions` y pasa a `PortalPanel.actions` de `Sedes registradas` cuando hay listado, el usuario puede gestionar y ya no hay carga inicial. El empty editable conserva solo `Crear primera sede`. En 403/denegado no hay CTA de creación porque el panel no se pinta.
+- **Archivos:** `OrganizationSettingsClient.tsx`, su spec Jest, E2E `portal-settings-organization-ui.spec.ts` y 6 PNG de evidencia visual. Spec §4 y §10.1 dejan explícito el slot.
+- **Veredicto AI-DS-OWNER:** GO. Sin tokens ni primitives nuevas; lima no se usa como CTA; P3 no bloqueante (`mr-2` redundante) aplicado en el mismo botón.
+- **Jest:** `OrganizationSettingsClient.spec.tsx` — 43 passed.
+- **E2E:** 11 passed (`portal-settings-organization-access` 1, `portal-settings-organization-ui` 10). Axe A/AA: 0 violaciones en 6 combinaciones viewport×tema. Confirmación sin `--update-snapshots`: 11 passed.
+- **Typecheck / lint** del archivo tocado: exit 0.
+- **Gate G6:** se mantiene **GO** para esta corrección de colocación.
+
+### v1.62 — 2026-08-15 — Remediación UI/UX Acceso
+
+**Autor:** AI-EM-ARCH con AI-PROD-UX, AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Remediación UI/UX de `/dashboard/settings/access`
+**Plan:** `docs/plans/2026-08-15-mod00-acceso-ui-remediation.md`
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md`
+**Prompt:** `docs/prompts/PROMPT-MOD00-ACCESO-REMEDIACION-UI-v1.0.md`
+
+## Remediación UI/UX Acceso — 2026-08-15
+
+- **Hallazgos cerrados:** P1 y P2 de la pantalla de Acceso (copy mixto plantilla/sistema, clave `operations`, errores crudos, baja sin confirmación, CTA en PageHeader, MFA en primer viewport, tabs con contraste insuficiente, objetivos táctiles, tabla/checkbox locales, peek `z-10000`).
+- **Archivos funcionales modificados:**
+  - `apps/portal/src/components/settings/AccessControlSettingsClient.tsx`
+  - `apps/portal/src/components/settings/mod00-settings-labels.ts`
+- **IA congelada:** PageHeader solo título/subtítulo → alertas → grid Perfiles personalizados | Accesos → Perfiles sugeridos → MFA al final. `Crear perfil` vive en `PortalPanel.actions` o en el empty; nunca en el header.
+- **Copy:** H1 `Perfiles de acceso`. Prohibido: plantilla(s), Usar como base, Categoría base. `operations` → `Operaciones`. Errores sanitizados; nunca `error.message`.
+- **Cobertura final** (Jest `--collectCoverageFrom=components/settings/AccessControlSettingsClient.tsx`): statements 93.2 %, branches 81.32 %, functions 88.07 %, lines 93.26 %. Suite focalizada: 42/42 passed.
+- **Suites E2E ejecutadas:** 10/10 passed (`portal-settings-access-governance` 3, `portal-settings-access-ui` 7). Confirmación sin `--update-snapshots`.
+- **Resultado axe** (wcag2a + wcag2aa): 0 violaciones en mobile 390×844, tablet 1024×768 y desktop 1440×900, en claro y oscuro. CTA `Crear perfil` ≥44 px. Recuento de pestañas con `text-gray-600` / activo blanco. `body` sin `overflow-x: scroll`.
+- **Evidencia visual autenticada vigente:** capturas Playwright con sesión tenant ADMIN sembrada:
+  - `e2e/tests/portal-settings-access-ui.spec.ts-snapshots/access-{mobile,tablet,desktop}-{light,dark}-chromium-win32.png`
+- **Veredicto AI-PROD-UX:** GO. Spec correctiva congelada; CA-ACC-UX-01…12 cubiertos por implementación y pruebas.
+- **Veredicto AI-DS-OWNER:** GO. Contrato visual §10 cumplido. `audit-ui.mjs`: P0/P1/P3 = 0; 2 P2 `[revisar]` en badges `bg-iwana-secondary-50` (acento, no fondo de superficie; no bloqueantes). Contraste de recuento en tabs y `min-h-11` del banner de borrador corregidos tras el primer fallo axe.
+- **Gate G6:** **GO** para el alcance de Acceso. Typecheck portal exit 0. ESLint de los archivos tocados: 0 errores, 1 warning preexistente (`permissionEntries` / `useMemo`). Sin API, OpenAPI, migraciones, tokens ni cambios globales de `@iwana/ui`.
+
+**Validación de cierre (Task 6):**
+
+- `pnpm --filter @iwana/portal exec tsc --noEmit` — exit 0
+- `pnpm --filter @iwana/portal exec eslint` sobre el cliente, labels y spec — 0 errores
+- Jest AccessControlSettingsClient — 42 passed; cobertura ≥80 % en las cuatro métricas
+- Playwright Acceso — 10 passed; axe 0 violaciones en 6 combinaciones viewport×tema
+- `git diff --check` sobre archivos de Acceso — exit 0
+- Sin API, OpenAPI, migraciones, tokens ni cambios globales de `@iwana/ui`. El código de Organización permanece fuera de estos commits.

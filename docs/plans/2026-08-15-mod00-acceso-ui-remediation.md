@@ -81,7 +81,7 @@ No tocar `OrganizationSettingsClient.tsx` ni snapshots de Organización.
 
 - [x] **Step 1: Spec con IA, copy, errores, diálogo, CA-ACC-UX-01…12 y contrato visual §10**
 - [x] **Step 2: Prompt de ejecución en `docs/prompts/`**
-- [ ] **Step 3: Commit de contrato**
+- [x] **Step 3: Commit de contrato**
 
 ```bash
 git add docs/specs/2026-08-15-mod00-acceso-ui-remediation.md docs/plans/2026-08-15-mod00-acceso-ui-remediation.md docs/prompts/PROMPT-MOD00-ACCESO-REMEDIACION-UI-v1.0.md
@@ -119,7 +119,7 @@ pnpm --filter @iwana/portal exec jest src/components/settings/AccessControlSetti
 
 Expected: los 6 casos nuevos FALLAN por el comportamiento actual. No implementar.
 
-- [ ] **Step 5: Commit RED** `test: add access settings ui remediation red cases`
+- [x] **Step 5: Commit RED** `test: add access settings ui remediation red cases`
 
 ---
 
@@ -146,8 +146,8 @@ Peek de permisos: `entry?.description ?? 'Acceso no descrito'`.
 
 Orden JSX: header → alerts → grid perfiles|accesos → sugeridos → MFA.
 
-- [ ] Run Jest hasta verde de Task 2.
-- [ ] Commit: `fix: align access settings copy and information architecture`
+- [x] Run Jest hasta verde de Task 2.
+- [x] Commit: `fix: align access settings copy and information architecture`
 
 ---
 
@@ -175,9 +175,9 @@ Checklist §10:
 
 Hermana de referencia: `OrganizationSettingsClient.tsx` (CTA en panel, diálogo destructivo, `CheckboxCard`, `PortalDataTableHead`).
 
-- [ ] Jest verde.
-- [ ] `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/src/components/settings/AccessControlSettingsClient.tsx`
-- [ ] Commit: `fix: align access settings with iwana ui`
+- [x] Jest verde.
+- [x] `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/src/components/settings/AccessControlSettingsClient.tsx`
+- [x] Commit: `fix: align access settings with iwana ui`
 
 ---
 
@@ -207,7 +207,7 @@ pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/por
 
 Luego la misma corrida sin `--update-snapshots`.
 
-- [ ] Commit: `test: add access settings visual and a11y evidence`
+- [x] Commit: `test: add access settings visual and a11y evidence`
 
 ---
 
@@ -225,7 +225,7 @@ pnpm --filter @iwana/portal exec jest src/components/settings/AccessControlSetti
 
 Cobertura ≥80 % en las cuatro métricas del cliente. Actualizar informe vivo a v1.62 (no crear informe nuevo). No inventar resultados.
 
-- [ ] Commit: `docs: record access settings ui remediation`
+- [x] Commit: `docs: record access settings ui remediation`
 
 ---
 
