@@ -108,4 +108,26 @@ describe('SettingsSectionGrid', () => {
       '/dashboard/settings/calendar',
     );
   });
+
+  it('renderiza una sección sin ruta una sola vez dentro de las superficies futuras', () => {
+    const sections: SettingsSection[] = [
+      {
+        key: SettingsSectionKey.BRANDING,
+        label: 'Marca',
+        description: 'Identidad visual.',
+        ownerModule: 'Tenant',
+        status: SettingsSectionStatus.AVAILABLE,
+        route: null,
+        requiredPermissions: [],
+      },
+    ];
+
+    render(<SettingsSectionGrid sections={sections} effectivePermissions={[]} />);
+
+    expect(screen.getAllByText('Marca')).toHaveLength(1);
+    expect(
+      screen.getAllByText('Esta sección todavía no está lista para usarse en el portal.'),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: /Marca/i })).not.toBeInTheDocument();
+  });
 });

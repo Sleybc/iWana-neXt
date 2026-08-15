@@ -11,6 +11,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { DiscountType } from '@iwana/shared';
+import { IsCommercialDiscountValue } from '../utils/commercial-money';
 
 export class CreateBundleDto {
   @ApiProperty({ maxLength: 200 })
@@ -30,6 +31,7 @@ export class CreateBundleDto {
   @ApiProperty({ example: '10.00' })
   @IsString()
   @IsNotEmpty()
+  @IsCommercialDiscountValue()
   discountValue: string;
 
   @ApiProperty({ description: 'ISO 8601 fecha de inicio de vigencia' })
@@ -119,6 +121,7 @@ export class UpdateBundleDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @IsCommercialDiscountValue()
   discountValue?: string;
 
   @ApiPropertyOptional()

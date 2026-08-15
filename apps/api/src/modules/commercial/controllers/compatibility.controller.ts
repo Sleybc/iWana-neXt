@@ -13,7 +13,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -24,6 +23,10 @@ import {
   ValidateCombinationDto,
 } from '../dto/compatibility.dto';
 import { CommercialListMetaDto, CommercialListQueryDto } from '../dto/commercial-list-query.dto';
+import {
+  COMMERCIAL_CATALOG_WRITE_ROLES,
+  COMMERCIAL_COMPAT_READ_ROLES,
+} from '../utils/commercial-roles';
 
 @ApiTags('commercial-compatibility')
 @ApiExtraModels(CommercialListMetaDto)
@@ -34,7 +37,7 @@ export class CompatibilityController {
   constructor(private readonly compatibilityService: CompatibilityService) {}
 
   @Get('compatibility-rules')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_COMPAT_READ_ROLES)
   @ApiOperation({
     summary: 'Listar reglas de compatibilidad activas (paginación cursor)',
     description:
@@ -49,7 +52,7 @@ export class CompatibilityController {
   }
 
   @Post('compatibility-rules')
-  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @ApiOperation({ summary: 'Crear regla de compatibilidad entre ítems' })
   @ApiResponse({ status: 201, description: 'Regla creada' })
   @ApiResponse({ status: 400, description: 'source y target deben ser distintos' })
@@ -59,7 +62,7 @@ export class CompatibilityController {
   }
 
   @Delete('compatibility-rules/:id')
-  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @ApiOperation({ summary: 'Desactivar regla de compatibilidad' })
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     await this.compatibilityService.deactivate(id);
@@ -67,7 +70,7 @@ export class CompatibilityController {
   }
 
   @Post('compatibility/validate')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_COMPAT_READ_ROLES)
   @ApiOperation({ summary: 'Validar combinación de ítems contra reglas activas' })
   @ApiResponse({ status: 200, description: 'Resultado de validación con errores y warnings' })
   async validateCombination(@Body() dto: ValidateCombinationDto) {
@@ -76,7 +79,7 @@ export class CompatibilityController {
   }
 
   @Patch('compatibility-rules/:id')
-  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar nota, vigencia o estado de regla de compatibilidad' })
   @ApiResponse({ status: 200, description: 'Regla actualizada' })

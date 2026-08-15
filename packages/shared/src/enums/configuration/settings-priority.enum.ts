@@ -1,0 +1,30 @@
+export enum SettingsPriorityState {
+  ACTION_REQUIRED = 'ACTION_REQUIRED',
+  NONE = 'NONE',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum SettingsPriorityKey {
+  MFA_POLICY_DISABLED = 'MFA_POLICY_DISABLED',
+  MFA_ENROLLMENT_INCOMPLETE = 'MFA_ENROLLMENT_INCOMPLETE',
+  NO_ACTIVE_ORGANIZATION_SITE = 'NO_ACTIVE_ORGANIZATION_SITE',
+  COMPANY_HOURS_NOT_CONFIGURED = 'COMPANY_HOURS_NOT_CONFIGURED',
+  BRANDING_NOT_CUSTOMIZED = 'BRANDING_NOT_CUSTOMIZED',
+}
+
+export enum SettingsPriorityLevel {
+  HIGH = 'HIGH',
+  MEDIUM = 'MEDIUM',
+  LOW = 'LOW',
+}
+
+export enum SettingsPriorityEvaluation {
+  COMPLETE = 'COMPLETE',
+  PARTIAL = 'PARTIAL',
+}
+
+export enum SettingsPrioritySource {
+  TENANT = 'TENANT',
+  USERS = 'USERS',
+  ORGANIZATION = 'ORGANIZATION',
+}

@@ -89,28 +89,23 @@ describe('PromotionService', () => {
       const promo = {
         id: 'promo-1',
         code: 'LIMITADA',
-        isActive: true,
-        currentUses: 4,
+        isActive: false,
+        currentUses: 5,
         maxUses: 5,
-        validFrom: new Date(Date.now() - 3600_000).toISOString(),
-        validTo: new Date(Date.now() + 3600_000).toISOString(),
+        validFrom: new Date(Date.now() - 3600_000),
+        validTo: new Date(Date.now() + 3600_000),
       };
-      const saveMock = jest.fn().mockResolvedValue({ ...promo, currentUses: 5, isActive: false });
 
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
+            query: jest.fn().mockResolvedValue([{ id: 'promo-1' }]),
             findOne: async () => promo,
-            save: saveMock,
           },
         }),
       );
 
       await service.incrementUse('promo-1');
-      expect(saveMock).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ currentUses: 5, isActive: false }),
-      );
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         expect.stringContaining('expired'),
         expect.any(Object),
@@ -123,12 +118,17 @@ describe('PromotionService', () => {
         isActive: true,
         currentUses: 0,
         maxUses: null,
-        validFrom: new Date(Date.now() - 7200_000), // Date, no string
-        validTo: new Date(Date.now() - 3600_000), // ya caducó — Date para comparación correcta
+        validFrom: new Date(Date.now() - 7200_000),
+        validTo: new Date(Date.now() - 3600_000),
       };
 
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({ manager: { findOne: async () => promo } }),
+        cb({
+          manager: {
+            query: jest.fn().mockResolvedValue([]),
+            findOne: async () => promo,
+          },
+        }),
       );
 
       await expect(service.incrementUse('promo-1')).rejects.toThrow(BadRequestException);

@@ -7,6 +7,11 @@ import { CustomerSegment } from '@iwana/shared';
 import { CatalogPriceHistory } from '../entities/catalog-price-history.entity';
 import { CreatePriceDto } from '../dto/create-price.dto';
 import { COMMERCIAL_EVENTS } from '../events/commercial.events';
+import { isPostgresUniqueViolation } from '../utils/postgres-unique';
+
+function sameMoney(left: string, right: string): boolean {
+  return Number.parseFloat(left) === Number.parseFloat(right);
+}
 
 @Injectable()
 export class PriceHistoryService {
@@ -15,15 +20,11 @@ export class PriceHistoryService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  /**
-   * Retorna el precio vigente para un ítem y segmento.
-   * Lanza NotFoundException si no hay precio configurado.
-   */
   async getCurrentPrice(itemId: string, segment: CustomerSegment): Promise<CatalogPriceHistory> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     const price = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.findOne(CatalogPriceHistory, {
-        where: { itemId, customerSegment: segment, isCurrent: true },
+        where: { itemId, tenantId, customerSegment: segment, isCurrent: true },
       }),
     );
     if (!price) {
@@ -35,83 +36,86 @@ export class PriceHistoryService {
   }
 
   async getPriceHistory(itemId: string): Promise<CatalogPriceHistory[]> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.find(CatalogPriceHistory, {
-        where: { itemId },
+        where: { itemId, tenantId },
         order: { validFrom: 'DESC' },
       }),
     );
   }
 
-  /**
-   * Crea un nuevo registro de precio (SCD Tipo 2).
-   * Dentro de una transacción:
-   *   1. Cierra el precio anterior (valid_to = NOW, is_current = false)
-   *   2. Inserta el nuevo (valid_from = NOW, is_current = true)
-   *   3. Emite evento commercial.price.updated
-   *
-   * El unique partial index (item_id, customer_segment) WHERE is_current=true
-   * actúa como guardia de concurrencia a nivel de BD.
-   */
   async createPrice(
     itemId: string,
     dto: CreatePriceDto,
     createdBy: string,
   ): Promise<CatalogPriceHistory> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    let previousPrice: string | null = null;
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const now = new Date();
+    try {
+      const newPrice = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const now = new Date();
 
-      // Obtener precio anterior (puede no existir)
-      const previous = await qr.manager.findOne(CatalogPriceHistory, {
-        where: { itemId, customerSegment: dto.customerSegment, isCurrent: true },
+        const previous = await qr.manager
+          .createQueryBuilder(CatalogPriceHistory, 'ph')
+          .setLock('pessimistic_write')
+          .where('ph.item_id = :itemId', { itemId })
+          .andWhere('ph.customer_segment = :segment', { segment: dto.customerSegment })
+          .andWhere('ph.is_current = true')
+          .andWhere('ph.tenant_id = :tenantId', { tenantId })
+          .getOne();
+
+        if (
+          previous &&
+          sameMoney(previous.basePrice, dto.basePrice) &&
+          sameMoney(previous.installationFee, dto.installationFee)
+        ) {
+          throw new ConflictException(
+            `Ya existe un precio vigente idéntico para item ${itemId} en segmento ${dto.customerSegment}`,
+          );
+        }
+
+        if (previous) {
+          previous.isCurrent = false;
+          previous.validTo = now;
+          await qr.manager.save(CatalogPriceHistory, previous);
+          previousPrice = previous.basePrice;
+        }
+
+        const created = qr.manager.create(CatalogPriceHistory, {
+          itemId,
+          tenantId,
+          customerSegment: dto.customerSegment,
+          basePrice: dto.basePrice,
+          installationFee: dto.installationFee,
+          validFrom: now,
+          validTo: null,
+          isCurrent: true,
+          createdBy,
+          createdAt: now,
+        });
+        await qr.manager.save(CatalogPriceHistory, created);
+        return created;
       });
 
-      // Si ya existe un precio idéntico, lanzar conflicto en lugar de crear duplicado
-      if (
-        previous &&
-        previous.basePrice === dto.basePrice &&
-        previous.installationFee === dto.installationFee
-      ) {
-        throw new ConflictException(
-          `Ya existe un precio vigente idéntico para item ${itemId} en segmento ${dto.customerSegment}`,
-        );
-      }
-
-      // Cerrar precio anterior
-      if (previous) {
-        previous.isCurrent = false;
-        previous.validTo = now;
-        await qr.manager.save(CatalogPriceHistory, previous);
-      }
-
-      // Crear nuevo precio vigente
-      const newPrice = qr.manager.create(CatalogPriceHistory, {
-        itemId,
-        customerSegment: dto.customerSegment,
-        basePrice: dto.basePrice,
-        installationFee: dto.installationFee,
-        validFrom: now,
-        validTo: null,
-        isCurrent: true,
-        createdBy,
-        createdAt: now,
-      });
-      await qr.manager.save(CatalogPriceHistory, newPrice);
-
-      // Emitir evento de precio actualizado
       this.eventEmitter.emit(COMMERCIAL_EVENTS.PRICE_UPDATED, {
         itemId,
         segment: dto.customerSegment,
-        oldPrice: previous?.basePrice ?? null,
+        oldPrice: previousPrice,
         newPrice: dto.basePrice,
         changedBy: createdBy,
         tenantId,
       });
 
       return newPrice;
-    });
+    } catch (error) {
+      if (isPostgresUniqueViolation(error)) {
+        throw new ConflictException(
+          `Ya existe un precio vigente para item ${itemId} en segmento ${dto.customerSegment}`,
+        );
+      }
+      throw error;
+    }
   }
 }

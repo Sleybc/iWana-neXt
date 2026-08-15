@@ -58,6 +58,7 @@ export abstract class CommercialCatalogReadPort {
 
   /**
    * Crea un snapshot inmutable del ítem para ser guardado en cotizaciones/contratos.
+   * `segment` es aditivo; si el caller no lo pasa, el adapter usa RESIDENTIAL.
    */
   abstract createSnapshot(
     tenantId: string,
@@ -78,4 +79,11 @@ export abstract class CommercialCatalogReadPort {
     schemaName: string,
     productId: string,
   ): Promise<CommercialProductReference | null>;
+
+  /** Plan activo por id (CRM / cotización). */
+  abstract getPlanById(
+    tenantId: string,
+    schemaName: string,
+    planId: string,
+  ): Promise<CommercialCatalogItem | null>;
 }

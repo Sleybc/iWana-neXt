@@ -11,6 +11,8 @@ import { UsersController } from './users.controller';
 import { UsersBulkController } from './users-bulk.controller';
 import { UsersBulkCreateProcessor } from './users-bulk-create.processor';
 import { UsersService } from './users.service';
+import { SettingsPriorityUsersReadAdapter } from './ports/settings-priority-users-read.adapter';
+import { SettingsPriorityUsersReadPort } from './ports/settings-priority-users-read.port';
 
 /**
  * Modulo de gestion de usuarios por tenant.
@@ -33,7 +35,12 @@ import { UsersService } from './users.service';
     }),
   ],
   controllers: [UsersController, UsersBulkController],
-  providers: [UsersService, UsersBulkCreateProcessor],
-  exports: [UsersService],
+  providers: [
+    UsersService,
+    UsersBulkCreateProcessor,
+    SettingsPriorityUsersReadAdapter,
+    { provide: SettingsPriorityUsersReadPort, useExisting: SettingsPriorityUsersReadAdapter },
+  ],
+  exports: [UsersService, SettingsPriorityUsersReadPort],
 })
 export class UsersModule {}

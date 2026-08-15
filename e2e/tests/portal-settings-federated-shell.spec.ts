@@ -1,9 +1,61 @@
 import { expect, test, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-shell-demo';
 const MOCK_TENANT_ID = 'tenant-shell-demo';
 const MOCK_SCHEMA_NAME = 'tenant_shell_demo';
+
+interface SettingsPriorityFixture {
+  key:
+    | 'MFA_POLICY_DISABLED'
+    | 'MFA_ENROLLMENT_INCOMPLETE'
+    | 'NO_ACTIVE_ORGANIZATION_SITE'
+    | 'COMPANY_HOURS_NOT_CONFIGURED'
+    | 'BRANDING_NOT_CUSTOMIZED';
+  level: 'HIGH' | 'MEDIUM' | 'LOW';
+  sectionKey: 'access' | 'organization' | 'calendar' | 'branding';
+  targetPath: string;
+  action: string;
+}
+
+const SETTINGS_PRIORITY_FIXTURES: SettingsPriorityFixture[] = [
+  {
+    key: 'MFA_POLICY_DISABLED',
+    level: 'HIGH',
+    sectionKey: 'access',
+    targetPath: '/dashboard/settings/access#politicas-de-autenticacion',
+    action: 'Configurar verificación',
+  },
+  {
+    key: 'MFA_ENROLLMENT_INCOMPLETE',
+    level: 'HIGH',
+    sectionKey: 'access',
+    targetPath: '/dashboard/settings/access#politicas-de-autenticacion',
+    action: 'Revisar autenticación',
+  },
+  {
+    key: 'NO_ACTIVE_ORGANIZATION_SITE',
+    level: 'MEDIUM',
+    sectionKey: 'organization',
+    targetPath: '/dashboard/settings/organization#sedes',
+    action: 'Revisar sedes',
+  },
+  {
+    key: 'COMPANY_HOURS_NOT_CONFIGURED',
+    level: 'MEDIUM',
+    sectionKey: 'calendar',
+    targetPath: '/dashboard/settings/calendar#horario-base',
+    action: 'Configurar horario',
+  },
+  {
+    key: 'BRANDING_NOT_CUSTOMIZED',
+    level: 'LOW',
+    sectionKey: 'branding',
+    targetPath: '/dashboard/settings/branding',
+    action: 'Revisar marca',
+  },
+];
 const MOCK_USER_ID = 'user-admin-shell';
 const MOCK_PUBLIC_BRANDING = {
   displayName: 'ISP Shell Demo',
@@ -39,7 +91,13 @@ async function setAdminSession(page: Page) {
   await seedPortalSession(page, { token: buildAccessToken(), tenantSlug: MOCK_TENANT_SLUG });
 }
 
-async function setupSettingsShellMocks(page: Page) {
+async function setupSettingsShellMocks(
+  page: Page,
+  options: {
+    priority?: SettingsPriorityFixture;
+    effectivePermissions?: string[];
+  } = {},
+) {
   const requestLog = {
     legacyOperatingSiteRequests: 0,
   };
@@ -129,7 +187,7 @@ async function setupSettingsShellMocks(page: Page) {
         data: {
           userId: MOCK_USER_ID,
           role: 'ADMIN',
-          effectivePermissions: [
+          effectivePermissions: options.effectivePermissions ?? [
             'settings.read',
             'organization.sites.read',
             'access.permissions.read',
@@ -240,6 +298,15 @@ async function setupSettingsShellMocks(page: Page) {
             requiredPermissions: ['settings.read', 'access.permissions.read'],
           },
           {
+            key: 'calendar',
+            label: 'Calendario operativo y jornadas',
+            description: 'Horarios de empresa y eventualidades operativas.',
+            ownerModule: 'MOD00 / Organización + MOD09 / WFM',
+            status: 'AVAILABLE',
+            route: '/dashboard/settings/calendar',
+            requiredPermissions: ['settings.read'],
+          },
+          {
             key: 'branding',
             label: 'Marca',
             description: 'Gestiona identidad visual y activos corporativos del tenant autenticado.',
@@ -272,12 +339,34 @@ async function setupSettingsShellMocks(page: Page) {
     });
   });
 
+  await page.route('**/api/v1/configuration/settings-priority', async (route) => {
+    await assertTenantHeader(route);
+    const priority = options.priority ?? SETTINGS_PRIORITY_FIXTURES[0];
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          state: 'ACTION_REQUIRED',
+          item: {
+            key: priority.key,
+            level: priority.level,
+            sectionKey: priority.sectionKey,
+            targetPath: priority.targetPath,
+          },
+          evaluation: 'COMPLETE',
+          unknownSources: [],
+        },
+      }),
+    });
+  });
+
   await page.route('**/api/v1/audit-logs**', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: { items: [], total: 0 } }),
+      body: JSON.stringify({ data: [] }),
     });
   });
 
@@ -425,7 +514,9 @@ test.describe('Portal settings federated shell', () => {
       shellPanel().getByRole('heading', { name: 'Secciones de configuración' }),
     ).toBeVisible();
     await expect(shellPanel().getByRole('link', { name: /Organización/i })).toBeVisible();
-    await expect(shellPanel().getByRole('link', { name: /Usuarios y acceso/i })).toBeVisible();
+    await expect(
+      shellPanel().getByRole('link', { name: /Perfiles y autenticación/i }),
+    ).toBeVisible();
     await expect(shellPanel().getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
     await expect(shellPanel().getByRole('link', { name: /Marca/i })).toBeVisible();
     await expect(shellPanel().getByRole('link', { name: /Operación de campo/i })).toBeVisible();
@@ -447,7 +538,7 @@ test.describe('Portal settings federated shell', () => {
     await page.goto('/dashboard/settings');
     await page.waitForLoadState('networkidle');
     await shellPanel()
-      .getByRole('link', { name: /Usuarios y acceso/i })
+      .getByRole('link', { name: /Perfiles y autenticación/i })
       .click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
     await expect(page.getByRole('heading', { name: /Perfiles de acceso/i })).toBeVisible();
@@ -473,4 +564,60 @@ test.describe('Portal settings federated shell', () => {
     await expect(page.getByRole('heading', { name: 'Marca' })).toBeVisible();
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });
+
+  for (const priority of SETTINGS_PRIORITY_FIXTURES) {
+    test(`ADMIN abre la prioridad ${priority.key} desde el hub`, async ({ page }) => {
+      await setupSettingsShellMocks(page, { priority });
+      await setAdminSession(page);
+
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+
+      const priorityLink = page.getByRole('link', { name: priority.action, exact: true });
+      await expect(priorityLink).toHaveAttribute('href', priority.targetPath);
+      await priorityLink.click();
+      await expect(page).toHaveURL(
+        new RegExp(`${priority.targetPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+      );
+    });
+  }
+
+  test('oculta una prioridad cuyo destino no es operable para la sesión', async ({ page }) => {
+    await setupSettingsShellMocks(page, {
+      priority: SETTINGS_PRIORITY_FIXTURES[0],
+      effectivePermissions: ['settings.read'],
+    });
+    await setAdminSession(page);
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Secciones de configuración')).toBeVisible();
+    await expect(page.getByText('Recomendado ahora')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Configurar verificación' })).toHaveCount(0);
+  });
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`hub de configuración cumple WCAG AA en modo ${theme}`, async ({ page }) => {
+      await setupSettingsShellMocks(page);
+      await setAdminSession(page);
+      await page.addInitScript((selectedTheme) => {
+        window.localStorage.setItem('iwana-theme', selectedTheme);
+      }, theme);
+      await page.emulateMedia({ colorScheme: theme });
+
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: 'Secciones de configuración' })).toBeVisible();
+      if (theme === 'dark') {
+        await expect(page.locator('html.dark')).toBeAttached();
+      } else {
+        await expect(page.locator('html.dark')).toHaveCount(0);
+      }
+
+      const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+
+      expect(result.violations).toEqual([]);
+    });
+  }
 });

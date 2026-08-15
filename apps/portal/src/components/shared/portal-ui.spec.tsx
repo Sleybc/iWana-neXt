@@ -242,6 +242,30 @@ describe('PortalSidePeek a11y', () => {
     expect(saveButton).toBeInTheDocument();
   });
 
+  it('se apila en --z-drawer por encima de barras sticky (ADR-075)', () => {
+    render(
+      <PortalSidePeek open onClose={jest.fn()} title="Nuevo plan">
+        Campo
+      </PortalSidePeek>,
+    );
+
+    const layer = screen.getByRole('presentation');
+    expect(layer).toHaveClass('z-(--z-drawer)');
+    expect(layer).not.toHaveClass('z-40');
+  });
+
+  it('se apila en --z-drawer por encima de barras sticky (ADR-075)', () => {
+    render(
+      <PortalSidePeek open onClose={jest.fn()} title="Nuevo plan">
+        Campo
+      </PortalSidePeek>,
+    );
+
+    const layer = screen.getByRole('presentation');
+    expect(layer).toHaveClass('z-(--z-drawer)');
+    expect(layer).not.toHaveClass('z-40');
+  });
+
   it('al abrir enfoca el panel y al cerrar restaura el foco al trigger', async () => {
     const onClose = jest.fn();
 

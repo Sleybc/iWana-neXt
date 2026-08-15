@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -18,7 +19,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { PlatformRole, UserRole, CustomerSegment } from '@iwana/shared';
+import { CustomerSegment } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -26,6 +27,11 @@ import { BundleService } from '../services/bundle.service';
 import { BundleListItemDto, CreateBundleDto, UpdateBundleDto } from '../dto/bundle.dto';
 import { CommercialListMetaDto } from '../dto/commercial-list-query.dto';
 import { CommercialOfferListQueryDto } from '../dto/commercial-offer-list-query.dto';
+import {
+  COMMERCIAL_CATALOG_WRITE_ROLES,
+  COMMERCIAL_OFFER_READ_ROLES,
+  COMMERCIAL_PRICE_READ_ROLES,
+} from '../utils/commercial-roles';
 
 @ApiTags('commercial-bundles')
 @ApiExtraModels(BundleListItemDto, CommercialListMetaDto)
@@ -36,13 +42,7 @@ export class BundleController {
   constructor(private readonly bundleService: BundleService) {}
 
   @Get()
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.SALES,
-    UserRole.SUPPORT,
-    UserRole.ACCOUNTANT,
-    PlatformRole.SYSTEM_ADMIN,
-  )
+  @Roles(...COMMERCIAL_OFFER_READ_ROLES)
   @ApiOperation({
     summary: 'Listar bundles activos del tenant (paginación cursor)',
     description:
@@ -58,13 +58,7 @@ export class BundleController {
   }
 
   @Get(':id')
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.SALES,
-    UserRole.SUPPORT,
-    UserRole.ACCOUNTANT,
-    PlatformRole.SYSTEM_ADMIN,
-  )
+  @Roles(...COMMERCIAL_OFFER_READ_ROLES)
   @ApiOperation({ summary: 'Obtener bundle por ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.bundleService.findOne(id);
@@ -72,7 +66,7 @@ export class BundleController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @ApiOperation({ summary: 'Crear bundle comercial' })
   @ApiResponse({ status: 201, description: 'Bundle creado' })
   @ApiResponse({ status: 400, description: 'Mínimo 2 ítems requeridos o ítems no activos' })
@@ -82,7 +76,7 @@ export class BundleController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @ApiOperation({ summary: 'Actualizar bundle' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBundleDto) {
     const data = await this.bundleService.update(id, dto);
@@ -90,7 +84,7 @@ export class BundleController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @ApiOperation({ summary: 'Desactivar bundle' })
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     await this.bundleService.deactivate(id);
@@ -98,7 +92,7 @@ export class BundleController {
   }
 
   @Get(':id/price')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(...COMMERCIAL_PRICE_READ_ROLES)
   @ApiOperation({ summary: 'Calcular precio dinámico del bundle para un segmento' })
   @ApiQuery({ name: 'segment', enum: CustomerSegment, required: true })
   @ApiQuery({
@@ -109,7 +103,7 @@ export class BundleController {
   })
   async calculatePrice(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('segment') segment: CustomerSegment,
+    @Query('segment', new ParseEnumPipe(CustomerSegment)) segment: CustomerSegment,
     @Query('optionalItemIds') optionalItemIds?: string[],
   ) {
     const data = await this.bundleService.calculatePrice(id, segment, optionalItemIds ?? []);

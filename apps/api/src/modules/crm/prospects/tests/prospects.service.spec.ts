@@ -24,7 +24,7 @@ describe('ProspectsService', () => {
   let service: ProspectsService;
 
   const planCatalogReadPortMock = {
-    getActivePlans: jest.fn(),
+    getPlanById: jest.fn(),
   };
 
   const auditServiceMock = {
@@ -99,18 +99,16 @@ describe('ProspectsService', () => {
   });
 
   it('schedules installation with plan snapshot and audit trail', async () => {
-    planCatalogReadPortMock.getActivePlans.mockResolvedValue([
-      {
-        id: 'plan-1',
-        name: 'Plan Hogar',
-        technology: 'GPON',
-        downloadSpeedMbps: 500,
-        uploadSpeedMbps: 200,
-        basePrice: 100000,
-        installationFee: 50000,
-        isActive: true,
-      },
-    ]);
+    planCatalogReadPortMock.getPlanById.mockResolvedValue({
+      id: 'plan-1',
+      name: 'Plan Hogar',
+      technology: 'GPON',
+      downloadSpeedMbps: 500,
+      uploadSpeedMbps: 200,
+      basePrice: 100000,
+      installationFee: 50000,
+      isActive: true,
+    });
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
@@ -148,7 +146,7 @@ describe('ProspectsService', () => {
   });
 
   it('lanza BadRequestException cuando el plan no existe en scheduleInstallation', async () => {
-    planCatalogReadPortMock.getActivePlans.mockResolvedValue([]);
+    planCatalogReadPortMock.getPlanById.mockResolvedValue(null);
 
     await expect(
       service.scheduleInstallation('pros-1', {
@@ -160,9 +158,11 @@ describe('ProspectsService', () => {
   });
 
   it('lanza NotFoundException cuando el prospecto no existe en scheduleInstallation', async () => {
-    planCatalogReadPortMock.getActivePlans.mockResolvedValue([
-      { id: 'plan-1', name: 'Plan', isActive: true },
-    ]);
+    planCatalogReadPortMock.getPlanById.mockResolvedValue({
+      id: 'plan-1',
+      name: 'Plan',
+      isActive: true,
+    });
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {

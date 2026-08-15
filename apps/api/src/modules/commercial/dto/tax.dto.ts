@@ -10,11 +10,13 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Max,
   Min,
 } from 'class-validator';
 import { CustomerSegment, TaxType } from '@iwana/shared';
+import { PERCENTAGE_0_100_PATTERN } from '../utils/commercial-money';
 
 export class CreateTaxRuleDto {
   @ApiPropertyOptional({
@@ -67,6 +69,7 @@ export class CreateTaxRuleDto {
   @ApiProperty({ example: '19.00', description: 'Tasa porcentual (0-100)' })
   @IsString()
   @IsNotEmpty()
+  @Matches(PERCENTAGE_0_100_PATTERN, { message: 'ratePercentage debe estar entre 0 y 100' })
   ratePercentage: string;
 
   @ApiPropertyOptional({ description: 'ISO 8601 inicio de vigencia (null = ahora)' })
@@ -132,6 +135,7 @@ export class UpdateTaxRuleDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @Matches(PERCENTAGE_0_100_PATTERN, { message: 'ratePercentage debe estar entre 0 y 100' })
   ratePercentage?: string;
 
   @ApiPropertyOptional({ description: 'ISO 8601 inicio de vigencia' })
@@ -185,11 +189,14 @@ export class CreateTaxRuleApplicationDto {
   @ApiPropertyOptional({ description: 'Tasa override que sobreescribe baseRate del catálogo' })
   @IsOptional()
   @IsNumber()
+  @Min(0)
+  @Max(100)
   rateOverride?: number | null;
 
   @ApiPropertyOptional({ minimum: 0, description: 'Prioridad de la aplicación' })
   @IsOptional()
   @IsInt()
+  @Min(0)
   priority?: number;
 }
 
@@ -202,11 +209,14 @@ export class UpdateTaxRuleApplicationDto {
   @ApiPropertyOptional({ description: 'Tasa override (null = usar baseRate del catálogo)' })
   @IsOptional()
   @IsNumber()
+  @Min(0)
+  @Max(100)
   rateOverride?: number | null;
 
   @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @IsInt()
+  @Min(0)
   priority?: number;
 
   @ApiPropertyOptional()

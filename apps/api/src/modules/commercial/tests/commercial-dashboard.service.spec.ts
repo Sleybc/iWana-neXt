@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
-import { CatalogItemType } from '@iwana/shared';
+import { CatalogItemType, CustomerSegment } from '@iwana/shared';
 import { CommercialDashboardService } from '../services/commercial-dashboard.service';
 
 const tenantId = 'tenant-uuid-test';
@@ -123,81 +123,50 @@ describe('CommercialDashboardService', () => {
           },
         ];
       }
-      if (has(sql, 'GROUP BY type')) {
+      if (has(sql, 'GROUP BY ci.type') || has(sql, 'GROUP BY type')) {
         return [
-          { type: CatalogItemType.PLAN, total: 2, active: 1 },
-          { type: CatalogItemType.PRODUCT, total: 1, active: 1 },
-          { type: CatalogItemType.SERVICE, total: 1, active: 1 },
+          {
+            type: CatalogItemType.PLAN,
+            total: 2,
+            active: 1,
+            sellable: 1,
+            missing_residential_price: 1,
+          },
+          {
+            type: CatalogItemType.PRODUCT,
+            total: 1,
+            active: 1,
+            sellable: 1,
+            missing_residential_price: 0,
+          },
+          {
+            type: CatalogItemType.SERVICE,
+            total: 1,
+            active: 1,
+            sellable: 0,
+            missing_residential_price: 0,
+          },
         ];
       }
-      if (
-        has(sql, 'FROM catalog_bundles') &&
-        has(sql, 'COUNT(*) FILTER (WHERE is_active = true)') &&
-        !has(sql, 'catalog_promotions')
-      ) {
-        return [{ total: 2, active: 1 }];
-      }
-      if (
-        has(sql, 'FROM catalog_promotions') &&
-        has(sql, 'COUNT(*) FILTER') &&
-        !has(sql, 'catalog_bundles')
-      ) {
-        return [{ total: 2, active: 1 }];
-      }
-      if (
-        has(sql, 'FROM catalog_compatibility_rules') &&
-        has(sql, 'COUNT(*) FILTER (WHERE is_active = true)')
-      ) {
-        return [{ total: 2, active: 1 }];
-      }
-      if (
-        has(sql, 'FROM tax_rules') &&
-        has(sql, 'COUNT(*) FILTER (WHERE is_active = true)') &&
-        !has(sql, 'tax_rule_applications')
-      ) {
-        return [{ total: 2, active: 1 }];
-      }
-      if (has(sql, ') at_risk')) {
-        return [{ count: 2 }];
-      }
-      if (
-        has(sql, 'FROM catalog_bundles b') &&
-        has(sql, 'FROM catalog_promotions p') &&
-        has(sql, 'valid_to <= $3') &&
-        !has(sql, 'UNION')
-      ) {
-        return [{ count: 1 }];
-      }
-      if (
-        has(sql, 'FROM catalog_promotions p') &&
-        has(sql, 'current_uses::numeric / p.max_uses::numeric') &&
-        has(sql, 'SELECT COUNT(*)::int AS count') &&
-        !has(sql, 'UNION')
-      ) {
-        return [{ count: 1 }];
-      }
-      if (
-        has(sql, 'FROM catalog_bundles b') &&
-        has(sql, 'b.valid_to IS NULL OR b.valid_to >= $2') &&
-        has(sql, 'FROM catalog_promotions p')
-      ) {
-        return [{ count: 3 }];
-      }
-      if (has(sql, 'NOT EXISTS') && has(sql, 'catalog_price_history')) {
-        return [{ count: 1 }];
-      }
-      if (
-        has(sql, 'EXISTS') &&
-        has(sql, 'catalog_price_history') &&
-        has(sql, 'is_current = true')
-      ) {
-        return [{ count: 2 }];
-      }
-      if (has(sql, 'COUNT(DISTINCT b.id)') && has(sql, 'ci.is_active = false')) {
-        return [{ count: 1 }];
-      }
-      if (has(sql, 'FROM tax_rules tr') && has(sql, 'tax_rule_applications')) {
-        return [{ count: 1 }];
+      if (has(sql, 'bundles_total')) {
+        return [
+          {
+            bundles_total: 2,
+            bundles_active: 1,
+            promotions_total: 2,
+            promotions_active: 1,
+            compatibility_total: 2,
+            compatibility_active: 1,
+            tax_total: 2,
+            tax_active: 1,
+            offers_expiring_soon: 1,
+            offers_near_use_limit: 1,
+            offers_at_risk: 2,
+            active_offers: 3,
+            inactive_bundle_items: 1,
+            tax_coverage: 1,
+          },
+        ];
       }
       return [{ count: 0, total: 0, active: 0 }];
     };
@@ -284,21 +253,36 @@ describe('CommercialDashboardService', () => {
           },
         ];
       }
-      if (has(sql, 'GROUP BY type')) {
+      if (has(sql, 'GROUP BY ci.type') || has(sql, 'GROUP BY type')) {
         return [
-          { type: CatalogItemType.PLAN, total: 5, active: 4 },
-          { type: CatalogItemType.PRODUCT, total: 0, active: 0 },
-          { type: CatalogItemType.SERVICE, total: 0, active: 0 },
+          {
+            type: CatalogItemType.PLAN,
+            total: 5,
+            active: 4,
+            sellable: 4,
+            missing_residential_price: 0,
+          },
         ];
       }
-      if (has(sql, 'FROM tax_rules tr') && has(sql, 'tax_rule_applications')) {
-        return [{ count: 0 }];
-      }
-      if (has(sql, 'NOT EXISTS') && has(sql, 'catalog_price_history')) {
-        return [{ count: 0 }];
-      }
-      if (has(sql, 'EXISTS') && has(sql, 'catalog_price_history')) {
-        return [{ count: 4 }];
+      if (has(sql, 'bundles_total')) {
+        return [
+          {
+            bundles_total: 0,
+            bundles_active: 0,
+            promotions_total: 0,
+            promotions_active: 0,
+            compatibility_total: 0,
+            compatibility_active: 0,
+            tax_total: 0,
+            tax_active: 0,
+            offers_expiring_soon: 0,
+            offers_near_use_limit: 0,
+            offers_at_risk: 0,
+            active_offers: 0,
+            inactive_bundle_items: 0,
+            tax_coverage: 0,
+          },
+        ];
       }
       return [{ count: 0, total: 0, active: 0 }];
     };
@@ -334,11 +318,36 @@ describe('CommercialDashboardService', () => {
           uses_remaining: null,
         }));
       }
-      if (has(sql, 'GROUP BY type')) {
-        return [{ type: CatalogItemType.PLAN, total: 1, active: 1 }];
+      if (has(sql, 'GROUP BY ci.type') || has(sql, 'GROUP BY type')) {
+        return [
+          {
+            type: CatalogItemType.PLAN,
+            total: 1,
+            active: 1,
+            sellable: 1,
+            missing_residential_price: 0,
+          },
+        ];
       }
-      if (has(sql, 'FROM tax_rules tr') && has(sql, 'tax_rule_applications')) {
-        return [{ count: 1 }];
+      if (has(sql, 'bundles_total')) {
+        return [
+          {
+            bundles_total: 0,
+            bundles_active: 0,
+            promotions_total: 0,
+            promotions_active: 0,
+            compatibility_total: 0,
+            compatibility_active: 0,
+            tax_total: 0,
+            tax_active: 0,
+            offers_expiring_soon: 0,
+            offers_near_use_limit: 0,
+            offers_at_risk: 0,
+            active_offers: 0,
+            inactive_bundle_items: 0,
+            tax_coverage: 1,
+          },
+        ];
       }
       return [{ count: 0, total: 0, active: 0 }];
     };
@@ -346,5 +355,65 @@ describe('CommercialDashboardService', () => {
     const summary = await service.getSummary();
     expect(summary.attentionItems).toHaveLength(5);
     expect(summary.recentChanges).toHaveLength(5);
+  });
+
+  it('ejecuta 4 statements y el KPI sin precio filtra solo RESIDENTIAL', async () => {
+    const captured: Array<{ sql: string; params?: unknown[] | undefined }> = [];
+    queryImpl = async (sql: string, params?: unknown[]) => {
+      captured.push({ sql, params });
+      if (isRecentChangesSql(sql)) {
+        return [];
+      }
+      if (isAttentionSql(sql) || (has(sql, 'UNION ALL') && has(sql, 'tax_rules_coverage_gap'))) {
+        return [];
+      }
+      if (has(sql, 'GROUP BY ci.type') || has(sql, 'GROUP BY type')) {
+        return [
+          {
+            type: CatalogItemType.PLAN,
+            total: 1,
+            active: 1,
+            sellable: 0,
+            missing_residential_price: 1,
+          },
+        ];
+      }
+      if (has(sql, 'bundles_total')) {
+        return [
+          {
+            bundles_total: 0,
+            bundles_active: 0,
+            promotions_total: 0,
+            promotions_active: 0,
+            compatibility_total: 0,
+            compatibility_active: 0,
+            tax_total: 0,
+            tax_active: 0,
+            offers_expiring_soon: 0,
+            offers_near_use_limit: 0,
+            offers_at_risk: 0,
+            active_offers: 0,
+            inactive_bundle_items: 0,
+            tax_coverage: 1,
+          },
+        ];
+      }
+      return [{ count: 0, total: 0, active: 0 }];
+    };
+
+    const summary = await service.getSummary();
+
+    expect(captured).toHaveLength(4);
+    expect(captured.length).toBeLessThan(15);
+    expect(summary.missingCurrentPriceCount).toBe(1);
+
+    const catalogQuery = captured.find((row) => has(row.sql, 'missing_residential_price'));
+    expect(catalogQuery).toBeDefined();
+    expect(has(catalogQuery!.sql, 'ph.customer_segment = $2')).toBe(true);
+    expect(catalogQuery!.params?.[1]).toBe(CustomerSegment.RESIDENTIAL);
+
+    const attentionQuery = captured.find((row) => isAttentionSql(row.sql));
+    expect(attentionQuery).toBeDefined();
+    expect(attentionQuery!.params).toContain(CustomerSegment.RESIDENTIAL);
   });
 });

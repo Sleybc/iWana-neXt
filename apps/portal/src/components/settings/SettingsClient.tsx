@@ -3,39 +3,28 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { SettingsSectionKey, type AccessPermissionKey } from '@iwana/shared';
-import { type SettingsSection } from '@/lib/api-client';
+import { type AccessPermissionKey, type SettingsPriorityResponse } from '@iwana/shared';
+import { Button } from '@iwana/ui';
+import type { SettingsSection } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { accessControlApi, ApiError, configurationApi } from '@/lib/api-client';
 import { SETTINGS_HUB_COPY } from './mod00-settings-labels';
 import { SettingsSectionGrid } from './SettingsSectionGrid';
-import {
-  PortalAlert,
-  PortalPanel,
-  PortalSkeletonBlock,
-  interactiveFocusClassName,
-} from '@/components/shared/portal-ui';
+import { PortalAlert, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { getSettingsPriorityPresentation, isSettingsPriorityOperable } from './settings-priority';
 
 function mapRegistryError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 403) {
-      return SETTINGS_HUB_COPY.registryForbidden;
-    }
-
-    return error.message;
+  if (error instanceof ApiError && error.status === 403) {
+    return SETTINGS_HUB_COPY.registryForbidden;
   }
 
   return SETTINGS_HUB_COPY.registryUnavailable;
 }
 
 function mapPermissionsError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 403) {
-      return SETTINGS_HUB_COPY.permissionsForbidden;
-    }
-
-    return error.message;
+  if (error instanceof ApiError && error.status === 403) {
+    return SETTINGS_HUB_COPY.permissionsForbidden;
   }
 
   return SETTINGS_HUB_COPY.permissionsUnavailable;
@@ -43,10 +32,19 @@ function mapPermissionsError(error: unknown): string {
 
 function SettingsSkeleton() {
   return (
-    <div className="space-y-6" aria-busy="true">
-      <PortalSkeletonBlock className="h-24" />
-      <PortalSkeletonBlock className="h-96" />
-    </div>
+    <>
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        aria-label={SETTINGS_HUB_COPY.loadingSubtitle}
+        className="sr-only"
+      />
+      <div className="space-y-6" aria-busy="true">
+        <PortalSkeletonBlock className="h-24" />
+        <PortalSkeletonBlock className="h-96" />
+      </div>
+    </>
   );
 }
 
@@ -54,12 +52,16 @@ export function SettingsClient() {
   const { user, isLoading: authLoading } = useAuth();
   const [sections, setSections] = useState<SettingsSection[]>([]);
   const [effectivePermissions, setEffectivePermissions] = useState<AccessPermissionKey[]>([]);
+  const [priority, setPriority] = useState<SettingsPriorityResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const prioritySection = sections.find(
-    (section) => section.key === SettingsSectionKey.ACCESS && section.route,
-  );
+  const actionablePriority =
+    priority && isSettingsPriorityOperable(priority, sections, effectivePermissions)
+      ? priority
+      : null;
+  const priorityCopy = actionablePriority?.item
+    ? getSettingsPriorityPresentation(actionablePriority.item)
+    : null;
 
   const loadSettings = useCallback(async () => {
     if (!user) {
@@ -72,9 +74,10 @@ export function SettingsClient() {
     setError(null);
 
     try {
-      const [sectionsResult, permissionsResult] = await Promise.allSettled([
+      const [sectionsResult, permissionsResult, priorityResult] = await Promise.allSettled([
         configurationApi.settingsSections.list(),
         accessControlApi.getMyEffectivePermissions(),
+        configurationApi.settingsPriority.get(),
       ]);
 
       if (sectionsResult.status !== 'fulfilled') {
@@ -82,17 +85,15 @@ export function SettingsClient() {
       }
 
       if (permissionsResult.status !== 'fulfilled') {
-        throw new Error(mapPermissionsError(permissionsResult.reason));
+        setError(mapPermissionsError(permissionsResult.reason));
+        return;
       }
 
       setSections(sectionsResult.value);
       setEffectivePermissions(permissionsResult.value.effectivePermissions);
+      setPriority(priorityResult.status === 'fulfilled' ? priorityResult.value : null);
     } catch (loadError) {
-      if (loadError instanceof Error && loadError.message) {
-        setError(loadError.message);
-      } else {
-        setError(mapRegistryError(loadError));
-      }
+      setError(mapRegistryError(loadError));
     } finally {
       setIsLoading(false);
     }
@@ -130,13 +131,9 @@ export function SettingsClient() {
           title="Vista temporalmente no disponible"
           description={error ?? 'No se pudo cargar la configuración empresarial.'}
           action={
-            <button
-              type="button"
-              onClick={() => void loadSettings()}
-              className="text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
-            >
+            <Button type="button" variant="secondary" size="lg" onClick={() => void loadSettings()}>
               {SETTINGS_HUB_COPY.retryAction}
-            </button>
+            </Button>
           }
           icon={AlertTriangle}
         />
@@ -148,25 +145,19 @@ export function SettingsClient() {
     <div className="space-y-6">
       <PageHeader title={SETTINGS_HUB_COPY.pageTitle} subtitle={SETTINGS_HUB_COPY.pageSubtitle} />
 
-      {prioritySection ? (
+      {actionablePriority && priorityCopy ? (
         <PortalPanel
           eyebrow={SETTINGS_HUB_COPY.priorityEyebrow}
-          title={SETTINGS_HUB_COPY.priorityTitle}
-          description={SETTINGS_HUB_COPY.priorityDescription}
-          className="border-iwana-primary/15 bg-iwana-surface-soft"
+          title={priorityCopy.title}
+          description={priorityCopy.description}
+          className="border-iwana-primary/15 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3"
           actions={
-            <Link
-              href={prioritySection.route ?? '/dashboard/settings/access'}
-              className={`${interactiveFocusClassName} inline-flex items-center justify-center rounded-full bg-iwana-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-iwana-primary-800`}
-            >
-              {SETTINGS_HUB_COPY.priorityAction}
-            </Link>
+            <Button asChild={true} size="lg">
+              <Link href={actionablePriority.item.targetPath}>{priorityCopy.actionLabel}</Link>
+            </Button>
           }
-        >
-          <p className="text-sm leading-6 text-gray-600 dark:text-gray-300">
-            Prioriza esta revisión para reforzar la seguridad y el gobierno de acceso de la empresa.
-          </p>
-        </PortalPanel>
+          children={null}
+        />
       ) : null}
 
       <SettingsSectionGrid sections={sections} effectivePermissions={effectivePermissions} />

@@ -112,8 +112,11 @@ export class PotentialsService {
       dto.address,
       dto.coordinates,
     );
-    const plans = await this.planCatalogReadPort.getActivePlans(tenantId, schemaName);
-    const selectedPlan = plans.find((item) => item.id === dto.planId);
+    const selectedPlan = await this.planCatalogReadPort.getPlanById(
+      tenantId,
+      schemaName,
+      dto.planId,
+    );
 
     if (!coverage.available || !selectedPlan) {
       throw new BadRequestException(

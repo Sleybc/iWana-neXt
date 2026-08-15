@@ -358,6 +358,7 @@ describe('AuditLogsPage', () => {
         status: 'ACTIVE',
       },
     ]);
+    const now = Date.now();
     const tableRows = [
       {
         id: 'row-1',
@@ -371,7 +372,7 @@ describe('AuditLogsPage', () => {
         requestId: null,
         oldValue: null,
         newValue: null,
-        createdAt: '2026-08-11T10:00:00.000Z',
+        createdAt: new Date(now - 1_000).toISOString(),
       },
       {
         id: 'row-2',
@@ -385,7 +386,7 @@ describe('AuditLogsPage', () => {
         requestId: null,
         oldValue: null,
         newValue: null,
-        createdAt: '2026-08-11T11:00:00.000Z',
+        createdAt: new Date(now - 2_000).toISOString(),
       },
     ];
     platformAuditListMock.mockImplementation(({ limit }: { limit: number }) => {

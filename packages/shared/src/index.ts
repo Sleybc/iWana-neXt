@@ -49,6 +49,7 @@ export * from './constants/users-bulk-job-names';
 export * from './contracts/queue-payloads';
 export * from './contracts/users-bulk-create.contract';
 export * from './contracts/operations/execution-orders';
+export * from './contracts/configuration/settings-priority.contract';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

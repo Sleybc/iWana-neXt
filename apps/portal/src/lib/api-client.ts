@@ -26,6 +26,7 @@ import {
   OrganizationSiteType,
   SettingsSectionKey,
   SettingsSectionStatus,
+  type SettingsPriorityResponse,
   ScheduleEventStatus,
   SlaBreachStatus,
   SubscriberStatus,
@@ -4510,10 +4511,14 @@ export interface SettingsSection {
   requiredPermissions: AccessPermissionKey[];
 }
 
+/** Read-model agregado de prioridad del hub de configuración (MOD00). */
 export const configurationApi = {
   settingsSections: {
     list: (tenantSlug?: string) =>
       request<SettingsSection[]>('/configuration/settings-sections', undefined, tenantSlug),
+  },
+  settingsPriority: {
+    get: () => request<SettingsPriorityResponse>('/configuration/settings-priority'),
   },
 };
 

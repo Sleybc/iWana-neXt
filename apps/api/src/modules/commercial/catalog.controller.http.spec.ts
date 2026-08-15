@@ -306,4 +306,66 @@ describe('CatalogController HTTP', () => {
       'usr-admin-sub',
     );
   });
+
+  it('POST /api/v1/commercial/catalog/services crea servicio comercial', async () => {
+    catalogServiceMock.create.mockResolvedValue({ id: 'svc-1', type: CatalogItemType.SERVICE });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/commercial/catalog/services')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        name: 'IP pública',
+        chargeType: 'RECURRING',
+      })
+      .expect(201);
+
+    expect(catalogServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CatalogItemType.SERVICE,
+        name: 'IP pública',
+      }),
+    );
+  });
+
+  it('PATCH /api/v1/commercial/catalog/:id actualiza el ítem', async () => {
+    catalogServiceMock.update.mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111' });
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/commercial/catalog/11111111-1111-1111-1111-111111111111')
+      .set('Authorization', 'Bearer admin-token')
+      .send({ name: 'Plan Fibra 400' })
+      .expect(200);
+
+    expect(catalogServiceMock.update).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      expect.objectContaining({ name: 'Plan Fibra 400' }),
+    );
+  });
+
+  it('DELETE /api/v1/commercial/catalog/:id elimina el ítem', async () => {
+    catalogServiceMock.remove.mockResolvedValue(undefined);
+
+    await request(app.getHttpServer())
+      .delete('/api/v1/commercial/catalog/11111111-1111-1111-1111-111111111111')
+      .set('Authorization', 'Bearer admin-token')
+      .expect(200);
+
+    expect(catalogServiceMock.remove).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111');
+  });
+
+  it('POST /api/v1/commercial/catalog/plans retorna 403 con rol de solo lectura', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/commercial/catalog/plans')
+      .set('Authorization', 'Bearer sales-token')
+      .send({
+        name: 'Plan Fibra 300',
+        technology: 'FTTH',
+        downloadSpeedMbps: 300,
+        uploadSpeedMbps: 300,
+        installationRule: InstallationRule.ON_DEMAND,
+      })
+      .expect(403);
+
+    expect(catalogServiceMock.create).not.toHaveBeenCalled();
+  });
 });

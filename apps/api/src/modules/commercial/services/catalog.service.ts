@@ -3,7 +3,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, IsNull, SelectQueryBuilder } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { CatalogItemType, CustomerSegment, type ListResponse } from '@iwana/shared';
+import {
+  CatalogItemType,
+  CustomerSegment,
+  InstallationRule,
+  type ListResponse,
+} from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { PlanDetail } from '../entities/plan-detail.entity';
 import { ProductDetail } from '../entities/product-detail.entity';
@@ -81,7 +86,12 @@ export class CatalogService {
         .andWhere('ci.deleted_at IS NULL');
 
       if (type) qb.andWhere('ci.type = :type', { type });
-      if (name) qb.andWhere('ci.name ILIKE :name', { name: `%${name}%` });
+      if (name) {
+        qb.andWhere('ci.name ILIKE :name ESCAPE :esc', {
+          name: `%${escapePickerLikePattern(name)}%`,
+          esc: '\\',
+        });
+      }
       if (isActive !== undefined) qb.andWhere('ci.is_active = :isActive', { isActive });
 
       // Chip «Sin precio vigente»: activos sin precio current RESIDENTIAL (misma semántica FE).
@@ -131,7 +141,7 @@ export class CatalogService {
           .skip((page - 1) * limit)
           .take(limit)
           .getMany();
-        const hydrated = await Promise.all(rows.map((item) => this._hydrateItem(qr.manager, item)));
+        const hydrated = await this._hydratePage(qr.manager, rows);
         return {
           data: hydrated,
           meta: buildPageMeta({
@@ -150,9 +160,7 @@ export class CatalogService {
 
       const hasNext = rows.length > limit;
       const pageRows = hasNext ? rows.slice(0, limit) : rows;
-      const hydrated = await Promise.all(
-        pageRows.map((item) => this._hydrateItem(qr.manager, item)),
-      );
+      const hydrated = await this._hydratePage(qr.manager, pageRows);
       const last = pageRows[pageRows.length - 1];
 
       return {
@@ -174,7 +182,8 @@ export class CatalogService {
         where: { id, tenantId, deletedAt: IsNull() },
       });
       if (!item) return null;
-      return this._hydrateItem(qr.manager, item);
+      const [hydrated] = await this._hydratePage(qr.manager, [item]);
+      return hydrated ?? { ...item };
     });
     if (!entity) throw new NotFoundException(`CatalogItem ${id} no encontrado`);
     return entity;
@@ -264,7 +273,8 @@ export class CatalogService {
         });
       }
 
-      return this._hydrateItem(qr.manager, item);
+      const [hydrated] = await this._hydratePage(qr.manager, [item]);
+      return hydrated ?? item;
     });
   }
 
@@ -423,7 +433,7 @@ export class CatalogService {
         downloadSpeedMbps: dto.downloadSpeedMbps!,
         uploadSpeedMbps: dto.uploadSpeedMbps!,
         technology: dto.technology!,
-        installationRule: dto.installationRule ?? ('ALWAYS' as any),
+        installationRule: dto.installationRule ?? InstallationRule.ALWAYS,
       });
       await manager.save(PlanDetail, detail);
     } else if (dto.type === CatalogItemType.PRODUCT) {
@@ -443,65 +453,74 @@ export class CatalogService {
     }
   }
 
-  private async _hydrateItem(
+  private async _hydratePage(
     manager: DataSource['manager'],
-    item: CatalogItem,
-  ): Promise<CatalogItemWithDetail> {
-    const base: CatalogItemWithDetail = { ...item };
+    items: CatalogItem[],
+  ): Promise<CatalogItemWithDetail[]> {
+    if (!items.length) return [];
 
-    if (item.type === CatalogItemType.PLAN) {
-      const detail = await manager.findOne(PlanDetail, { where: { itemId: item.id } });
-      const price = await manager.findOne(CatalogPriceHistory, {
-        where: {
-          itemId: item.id,
-          customerSegment: CustomerSegment.RESIDENTIAL,
-          isCurrent: true,
-        },
-      });
-      return {
-        ...base,
-        downloadSpeedMbps: detail?.downloadSpeedMbps,
-        uploadSpeedMbps: detail?.uploadSpeedMbps,
-        technology: detail?.technology,
-        installationRule: detail?.installationRule,
+    const ids = items.map((item) => item.id);
+    const [planDetails, productDetails, serviceDetails, prices] = await Promise.all([
+      manager
+        .createQueryBuilder(PlanDetail, 'pd')
+        .where('pd.item_id = ANY(:ids)', { ids })
+        .getMany(),
+      manager
+        .createQueryBuilder(ProductDetail, 'prd')
+        .where('prd.item_id = ANY(:ids)', { ids })
+        .getMany(),
+      manager
+        .createQueryBuilder(ServiceDetail, 'sd')
+        .where('sd.item_id = ANY(:ids)', { ids })
+        .getMany(),
+      manager
+        .createQueryBuilder(CatalogPriceHistory, 'ph')
+        .where('ph.item_id = ANY(:ids)', { ids })
+        .andWhere('ph.customer_segment = :segment', { segment: CustomerSegment.RESIDENTIAL })
+        .andWhere('ph.is_current = true')
+        .getMany(),
+    ]);
+
+    const planMap = new Map(planDetails.map((row) => [row.itemId, row]));
+    const productMap = new Map(productDetails.map((row) => [row.itemId, row]));
+    const serviceMap = new Map(serviceDetails.map((row) => [row.itemId, row]));
+    const priceMap = new Map(prices.map((row) => [row.itemId, row]));
+
+    return items.map((item) => {
+      const price = priceMap.get(item.id);
+      const base: CatalogItemWithDetail = {
+        ...item,
         currentPrice: price?.basePrice ?? null,
         installationFee: price?.installationFee ?? null,
       };
-    }
 
-    if (item.type === CatalogItemType.PRODUCT) {
-      const detail = await manager.findOne(ProductDetail, { where: { itemId: item.id } });
-      const price = await manager.findOne(CatalogPriceHistory, {
-        where: {
-          itemId: item.id,
-          customerSegment: CustomerSegment.RESIDENTIAL,
-          isCurrent: true,
-        },
-      });
+      if (item.type === CatalogItemType.PLAN) {
+        const detail = planMap.get(item.id);
+        return {
+          ...base,
+          downloadSpeedMbps: detail?.downloadSpeedMbps,
+          uploadSpeedMbps: detail?.uploadSpeedMbps,
+          technology: detail?.technology,
+          installationRule: detail?.installationRule,
+        };
+      }
+
+      if (item.type === CatalogItemType.PRODUCT) {
+        const detail = productMap.get(item.id);
+        return {
+          ...base,
+          category: detail?.category,
+          isLoan: detail?.isLoan,
+          requiresInventory: detail?.requiresInventory,
+        };
+      }
+
+      const detail = serviceMap.get(item.id);
       return {
         ...base,
-        category: detail?.category,
-        isLoan: detail?.isLoan,
-        requiresInventory: detail?.requiresInventory,
-        currentPrice: price?.basePrice ?? null,
-        installationFee: price?.installationFee ?? null,
+        chargeType: detail?.chargeType,
       };
-    }
-
-    const detail = await manager.findOne(ServiceDetail, { where: { itemId: item.id } });
-    const price = await manager.findOne(CatalogPriceHistory, {
-      where: {
-        itemId: item.id,
-        customerSegment: CustomerSegment.RESIDENTIAL,
-        isCurrent: true,
-      },
     });
-    return {
-      ...base,
-      chargeType: detail?.chargeType,
-      currentPrice: price?.basePrice ?? null,
-      installationFee: price?.installationFee ?? null,
-    };
   }
 
   /**

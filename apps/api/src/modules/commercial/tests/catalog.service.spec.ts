@@ -39,6 +39,26 @@ const buildQueryBuilderMock = (items: unknown[], total: number) => {
   return qb;
 };
 
+function hydrateQueryBuilder(details: {
+  pd?: unknown[];
+  prd?: unknown[];
+  sd?: unknown[];
+  ph?: unknown[];
+  list?: ReturnType<typeof buildQueryBuilderMock>;
+}) {
+  return (_entity: unknown, alias?: string) => {
+    if (!alias || alias === 'ci') {
+      return details.list ?? buildQueryBuilderMock([], 0);
+    }
+    const qb = buildQueryBuilderMock([], 0);
+    if (alias === 'pd') qb.getMany.mockResolvedValue(details.pd ?? []);
+    else if (alias === 'prd') qb.getMany.mockResolvedValue(details.prd ?? []);
+    else if (alias === 'sd') qb.getMany.mockResolvedValue(details.sd ?? []);
+    else if (alias === 'ph') qb.getMany.mockResolvedValue(details.ph ?? []);
+    return qb;
+  };
+}
+
 describe('CatalogService', () => {
   let service: CatalogService;
   const mockEventEmitter = { emit: jest.fn() };
@@ -60,27 +80,23 @@ describe('CatalogService', () => {
   describe('findAll', () => {
     it('retorna items paginados con meta.nextCursor y total', async () => {
       const items = [{ id: 'item-1', name: 'Plan Básico', type: CatalogItemType.PLAN }];
+      const listQb = buildQueryBuilderMock(items, 1);
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            createQueryBuilder: () => buildQueryBuilderMock(items, 1),
-            findOne: async (entity: { name?: string }) => {
-              if (entity?.name === 'PlanDetail') {
-                return {
+            createQueryBuilder: hydrateQueryBuilder({
+              list: listQb,
+              pd: [
+                {
                   itemId: 'item-1',
                   downloadSpeedMbps: 100,
                   uploadSpeedMbps: 100,
                   technology: 'FTTH',
                   installationRule: 'ALWAYS',
-                };
-              }
-
-              return {
-                itemId: 'item-1',
-                basePrice: '89900.00',
-                installationFee: '0.00',
-              };
-            },
+                },
+              ],
+              ph: [{ itemId: 'item-1', basePrice: '89900.00', installationFee: '0.00' }],
+            }),
           },
         }),
       );
@@ -99,14 +115,17 @@ describe('CatalogService', () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            createQueryBuilder: () => qb,
-            findOne: async () => ({
-              downloadSpeedMbps: 100,
-              uploadSpeedMbps: 100,
-              technology: 'FTTH',
-              installationRule: 'ALWAYS',
-              basePrice: '1000.00',
-              installationFee: '0.00',
+            createQueryBuilder: hydrateQueryBuilder({
+              list: qb,
+              pd: [
+                {
+                  itemId: 'item-1',
+                  downloadSpeedMbps: 100,
+                  uploadSpeedMbps: 100,
+                  technology: 'FTTH',
+                },
+              ],
+              ph: [{ itemId: 'item-1', basePrice: '1000.00', installationFee: '0.00' }],
             }),
           },
         }),
@@ -131,6 +150,62 @@ describe('CatalogService', () => {
       );
     });
 
+    it('hidrata la página con 4 queries batch independientes del limit', async () => {
+      const items = Array.from({ length: 20 }, (_, i) => ({
+        id: `item-${i}`,
+        name: `Plan ${i}`,
+        type: CatalogItemType.PLAN,
+      }));
+      const listQb = buildQueryBuilderMock(items, 20);
+      const hydrateWheres: string[] = [];
+      const createQueryBuilder = jest.fn((_entity: unknown, alias?: string) => {
+        const qb = hydrateQueryBuilder({
+          list: listQb,
+          pd: items.map((item) => ({
+            itemId: item.id,
+            downloadSpeedMbps: 100,
+            uploadSpeedMbps: 50,
+            technology: 'FTTH',
+            installationRule: 'ALWAYS',
+          })),
+          ph: items.map((item) => ({
+            itemId: item.id,
+            basePrice: '1000.00',
+            installationFee: '0.00',
+          })),
+        })(_entity, alias);
+        if (alias && alias !== 'ci') {
+          const originalWhere = qb.where.bind(qb);
+          qb.where = jest.fn((sql: string, ...rest: unknown[]) => {
+            hydrateWheres.push(sql);
+            return originalWhere(sql, ...rest);
+          });
+        }
+        return qb;
+      });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.findAll({ limit: 20 } as any);
+
+      expect(result.data).toHaveLength(20);
+      expect(result.meta.mode).toBe('cursor');
+      expect(createQueryBuilder).toHaveBeenCalledTimes(5);
+      expect(createQueryBuilder.mock.calls.map((call) => call[1]).sort()).toEqual(
+        ['ci', 'pd', 'ph', 'prd', 'sd'].sort(),
+      );
+      expect(hydrateWheres).toHaveLength(4);
+      expect(hydrateWheres.every((sql) => sql.includes('ANY(:ids)'))).toBe(true);
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({
+          id: 'item-0',
+          currentPrice: '1000.00',
+          downloadSpeedMbps: 100,
+        }),
+      );
+    });
+
     it('indica nextCursor cuando hay más ítems que el limit', async () => {
       const items = [
         { id: 'item-1', name: 'Plan A', type: CatalogItemType.PLAN },
@@ -140,14 +215,19 @@ describe('CatalogService', () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            createQueryBuilder: () => buildQueryBuilderMock(items, 3),
-            findOne: async () => ({
-              downloadSpeedMbps: 100,
-              uploadSpeedMbps: 100,
-              technology: 'FTTH',
-              installationRule: 'ALWAYS',
-              basePrice: '1000.00',
-              installationFee: '0.00',
+            createQueryBuilder: hydrateQueryBuilder({
+              list: buildQueryBuilderMock(items, 3),
+              pd: items.map((item) => ({
+                itemId: item.id,
+                downloadSpeedMbps: 100,
+                uploadSpeedMbps: 100,
+                technology: 'FTTH',
+              })),
+              ph: items.map((item) => ({
+                itemId: item.id,
+                basePrice: '1000.00',
+                installationFee: '0.00',
+              })),
             }),
           },
         }),
@@ -422,21 +502,19 @@ describe('CatalogService', () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            findOne: async (entity: { name?: string }, _opts: unknown) => {
-              if ((entity as { name?: string })?.name === 'PlanDetail') {
-                return {
+            findOne: async () => item,
+            createQueryBuilder: hydrateQueryBuilder({
+              pd: [
+                {
                   itemId: 'item-1',
                   downloadSpeedMbps: 100,
                   uploadSpeedMbps: 20,
                   technology: 'FTTH',
                   installationRule: 'ALWAYS',
-                };
-              }
-              if ((entity as { name?: string })?.name === 'CatalogPriceHistory') {
-                return { basePrice: '89900.00', installationFee: '0.00' };
-              }
-              return item;
-            },
+                },
+              ],
+              ph: [{ itemId: 'item-1', basePrice: '89900.00', installationFee: '0.00' }],
+            }),
           },
         }),
       );
@@ -456,15 +534,11 @@ describe('CatalogService', () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            findOne: async (entity: { name?: string }, _opts: unknown) => {
-              if ((entity as { name?: string })?.name === 'ServiceDetail') {
-                return { itemId: 'item-service-1', chargeType: 'RECURRING' };
-              }
-              if ((entity as { name?: string })?.name === 'CatalogPriceHistory') {
-                return { basePrice: '25000.00', installationFee: '5000.00' };
-              }
-              return item;
-            },
+            findOne: async () => item,
+            createQueryBuilder: hydrateQueryBuilder({
+              sd: [{ itemId: 'item-service-1', chargeType: 'RECURRING' }],
+              ph: [{ itemId: 'item-service-1', basePrice: '25000.00', installationFee: '5000.00' }],
+            }),
           },
         }),
       );
@@ -508,6 +582,17 @@ describe('CatalogService', () => {
             },
             save: saveMock,
             update: updateMock,
+            createQueryBuilder: hydrateQueryBuilder({
+              pd: [
+                {
+                  itemId: 'item-1',
+                  downloadSpeedMbps: 100,
+                  technology: 'FTTH',
+                  installationRule: 'ALWAYS',
+                },
+              ],
+              ph: [{ itemId: 'item-1', basePrice: '89900.00', installationFee: '0.00' }],
+            }),
           },
         }),
       );
@@ -546,6 +631,9 @@ describe('CatalogService', () => {
             },
             save: saveMock,
             update: updateMock,
+            createQueryBuilder: hydrateQueryBuilder({
+              prd: [{ itemId: 'item-2', isLoan: false, category: 'NETWORKING' }],
+            }),
           },
         }),
       );
@@ -579,6 +667,9 @@ describe('CatalogService', () => {
             },
             save: saveMock,
             update: updateMock,
+            createQueryBuilder: hydrateQueryBuilder({
+              sd: [{ itemId: 'item-3', chargeType: 'RECURRING' }],
+            }),
           },
         }),
       );
@@ -616,6 +707,16 @@ describe('CatalogService', () => {
             },
             save: saveMock,
             update: jest.fn().mockResolvedValue({ affected: 1 }),
+            createQueryBuilder: hydrateQueryBuilder({
+              pd: [
+                {
+                  itemId: 'item-1',
+                  downloadSpeedMbps: 100,
+                  technology: 'FTTH',
+                  installationRule: 'ALWAYS',
+                },
+              ],
+            }),
           },
         }),
       );

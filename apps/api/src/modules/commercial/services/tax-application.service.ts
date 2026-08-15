@@ -158,20 +158,29 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
       .andWhere('tr.isActive = true')
       .andWhere('(tr.customerSegment = :segment OR tr.customerSegment IS NULL)', { segment });
 
+    const now = new Date();
+    qb = qb
+      .andWhere('tr.validFrom <= :now', { now })
+      .andWhere('(tr.validTo IS NULL OR tr.validTo >= :now)', { now });
+
     if (stratum !== undefined) {
       qb = qb.andWhere(
         '((tr.stratumFrom IS NULL AND tr.stratumTo IS NULL) OR (:stratum BETWEEN tr.stratumFrom AND tr.stratumTo))',
         { stratum },
       );
+    } else {
+      qb = qb.andWhere('tr.stratumFrom IS NULL AND tr.stratumTo IS NULL');
     }
 
     if (municipalityCode) {
       qb = qb.andWhere('(tr.municipalityCode = :municipalityCode OR tr.municipalityCode IS NULL)', {
         municipalityCode,
       });
+    } else {
+      qb = qb.andWhere('tr.municipalityCode IS NULL');
     }
 
-    return qb.orderBy('tr.priority', 'DESC').getOne();
+    return qb.orderBy('tr.priority', 'DESC').addOrderBy('tr.id', 'DESC').getOne();
   }
 
   /**
@@ -236,12 +245,14 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
   async listApplications(
     query: { cursor?: string; limit?: number } = {},
   ): Promise<CommercialPaginatedResult<TaxRuleApplication>> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     const limit = clampCommercialLimit(query.limit);
     const { cursor } = query;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const qb = qr.manager.createQueryBuilder(TaxRuleApplication, 'app');
+      const qb = qr.manager
+        .createQueryBuilder(TaxRuleApplication, 'app')
+        .where('app.tenant_id = :tenantId', { tenantId });
       const total = await qb.clone().getCount();
 
       if (cursor) {
@@ -306,9 +317,9 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
       isActive?: boolean;
     },
   ): Promise<TaxRuleApplication> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const existing = await qr.manager.findOne(TaxRuleApplication, { where: { id } });
+      const existing = await qr.manager.findOne(TaxRuleApplication, { where: { id, tenantId } });
       if (!existing) throw new NotFoundException(`TaxRuleApplication ${id} no encontrada`);
       if (dto.treatment !== undefined) existing.treatment = dto.treatment;
       if (dto.rateOverride !== undefined)
@@ -320,9 +331,9 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
   }
 
   async deleteApplication(id: string): Promise<void> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await qr.manager.delete(TaxRuleApplication, { id });
+      await qr.manager.delete(TaxRuleApplication, { id, tenantId });
     });
   }
 

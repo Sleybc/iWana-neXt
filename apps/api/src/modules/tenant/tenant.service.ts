@@ -1067,6 +1067,12 @@ export class TenantService {
     return AdditionalProductCategory.CONNECTIVITY;
   }
 
+  /**
+   * Shim de lectura legacy sobre tablas de MOD06.
+   * Retiro planificado: 2026-09-30. No se cablea CommercialCatalogReadPort aquí
+   * (ciclo TenantModule ↔ CommercialModule). El puerto no trae `category`,
+   * requerido por AdditionalProductResponseDto — no romper el DTO del path deprecado.
+   */
   async getAdditionalProducts(
     tenantId: string,
     schemaName: string,

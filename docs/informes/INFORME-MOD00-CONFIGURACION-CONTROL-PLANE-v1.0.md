@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.52
+**Version:** 1.59
 **Estado:** Activo
-**Fecha:** 2026-06-12
+**Fecha:** 2026-08-15
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -1529,3 +1529,36 @@ Se realizo una auditoria completa de la pagina `/settings` de `apps/web` bajo el
 La entrada queda cerrada cuando el plan `2026-06-12-web-settings-ui-audit-fixes.md` este completamente ejecutado (todos los checkboxes marcados), los tests pasen y la ruta `/settings` supere el checklist visual de review (Seccion 13 del perfil AI-SR-UI-SYS).
 
 **Estado actual:** Plan ejecutado completamente el 2026-06-12. Todos los tasks completados y verificados (27/27 tests en verde, typecheck y lint limpios, smoke visual en browser confirmado).
+
+---
+
+### v1.59 — 2026-08-15 — Remediación del hub de Configuración y prioridad dinámica
+
+**Autor:** AI-EM-ARCH con AI-SR-FULL, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Auditoría UI/UX, contrato read-model y ejecución correctiva del hub portal
+
+La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin P0, pero con bloqueos de prioridad, contraste dark, recuperación, cobertura y E2E. La validación visual autenticada quedó pendiente porque la ruta local redirigía al login; la evidencia histórica no se consideró comparable.
+
+**Artefactos congelados:**
+
+- `docs/specs/2026-08-15-mod00-settings-priority-dynamic-design.md`
+- `docs/prompts/PROMPT-MOD00-CONFIGURACION-PRIORITY-REMEDIACION-v1.0.md`
+
+**Decisiones:**
+
+- La recomendación del hub se alimentará de `GET /api/v1/configuration/settings-priority` y no del registry estático.
+- El agregado usará puertos tipados de Tenant, Users y Organization, `Promise.allSettled`, aislamiento por schema y sin migraciones ni caché.
+- El portal ocultará la recomendación para `NONE`, `UNKNOWN`, errores, `403` o destinos no operables.
+- El copy visible usará “Perfiles y autenticación”, “verificación en dos pasos” y las cinco claves de prioridad definidas en la spec.
+- CTA/reintento usarán primitives del design system con foco visible, objetivo táctil mínimo de 44 px y contraste AA en dark mode.
+
+**Validación ejecutada:**
+
+- Backend/shared: 33 pruebas focalizadas en 7 suites, typecheck API/shared y ESLint enfocado en verde.
+- Portal: 27 pruebas focalizadas en verde; cobertura del núcleo 93.75 % statements, 81.66 % branches, 95.45 % functions y 93.57 % lines.
+- E2E portal federado: 9/9 en verde, incluyendo las cinco prioridades, permisos y navegación.
+- axe WCAG 2A/2AA: cero violaciones en claro y oscuro; validado por el E2E en la superficie del hub.
+- `audit-ui.mjs`: P0/P1/P2/P3 = 0 en los componentes del hub.
+- Typecheck portal y `git diff --check`: en verde. No se agregaron tokens, migraciones, caché ni dependencias.
+
+**Resultado:** G6 queda **GO para el alcance del hub raíz**, con la salvedad de que la URL local sin mocks continúa requiriendo una sesión real para inspección manual fuera del arnés E2E. Los hallazgos de subpantallas de calendario/acceso permanecen fuera de alcance.

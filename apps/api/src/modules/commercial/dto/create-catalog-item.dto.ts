@@ -70,10 +70,12 @@ export class CreateCatalogItemDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsBoolean()
   isLoan?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsBoolean()
   requiresInventory?: boolean;
 
   /** Solo para type=SERVICE */

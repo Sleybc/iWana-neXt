@@ -516,7 +516,7 @@ El portal empresarial debe consumir el bounded context Comercial mediante un cli
 
 | #     | Criterio                                                                                                               | Verificación                               |
 | ----- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| CA-01 | CRUD completo de planes, productos y servicios con validación Zod en boundaries                                        | Test unitario + HTTP spec                  |
+| CA-01 | CRUD completo de planes, productos y servicios con validación class-validator + ValidationPipe en boundaries (no Zod; el boundary Nest del repo es class-validator) | Test unitario + HTTP spec                  |
 | CA-02 | Cambio de precio genera nuevo registro SCD, cierra anterior, emite evento                                              | Test unitario + integración                |
 | CA-03 | Pricing por segmento: misma consulta retorna precios diferentes según segmento                                         | Test HTTP con múltiples segmentos          |
 | CA-04 | Bundle calcula precio dinámico = suma de ítems vigentes - descuento                                                    | Test unitario                              |
@@ -536,6 +536,8 @@ El portal empresarial debe consumir el bounded context Comercial mediante un cli
 | CA-18 | `coverage` permanece en `tenantSelfApi` y no se mezcla con el cierre frontend del módulo                               | Revisión de código + validación focalizada |
 | CA-19 | El catálogo de productos del portal se presenta como tabla única con búsqueda y filtros sin subsecciones por categoría | Validación visual + typecheck portal       |
 | CA-20 | El modal de producto separa información básica y configuración comercial usando el contrato vigente de MOD06           | Validación funcional de creación/edición   |
+
+Enmienda 2026-08-14 (cierre Track B MOD06): CA-01 alinea el boundary Nest con class-validator + `ValidationPipe`; no se introduce Zod solo en este módulo.
 
 ---
 

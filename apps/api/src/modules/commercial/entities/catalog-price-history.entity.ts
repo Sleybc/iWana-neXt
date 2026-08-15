@@ -28,6 +28,9 @@ export class CatalogPriceHistory {
   @Column({ type: 'uuid', name: 'item_id' })
   itemId: string;
 
+  @Column({ type: 'uuid', name: 'tenant_id' })
+  tenantId: string;
+
   @Column({ type: 'varchar', length: 30, name: 'customer_segment' })
   customerSegment: CustomerSegment;
 

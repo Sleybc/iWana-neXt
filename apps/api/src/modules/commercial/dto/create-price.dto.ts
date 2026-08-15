@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsString, Matches } from 'class-validator';
 import { CustomerSegment } from '@iwana/shared';
+import { NON_NEGATIVE_DECIMAL_PATTERN } from '../utils/commercial-money';
 
 /**
  * Crea un nuevo registro de precio (SCD Tipo 2).
@@ -15,10 +16,12 @@ export class CreatePriceDto {
   @ApiProperty({ example: '89900.00' })
   @IsString()
   @IsNotEmpty()
+  @Matches(NON_NEGATIVE_DECIMAL_PATTERN, { message: 'basePrice debe ser un monto ≥ 0' })
   basePrice: string;
 
   @ApiPropertyOptional({ example: '0.00', default: '0' })
   @IsString()
   @IsNotEmpty()
+  @Matches(NON_NEGATIVE_DECIMAL_PATTERN, { message: 'installationFee debe ser un monto ≥ 0' })
   installationFee: string = '0';
 }

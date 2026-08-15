@@ -17,6 +17,8 @@ import { OrganizationSiteReadAdapter } from './ports/organization-site-read.adap
 import { OrganizationSiteReadPort } from './ports/organization-site-read.port';
 import { OrganizationOperationalAccessAdapter } from './ports/organization-operational-access.adapter';
 import { OrganizationOperationalAccessPort } from './ports/organization-operational-access.port';
+import { SettingsPriorityOrganizationReadAdapter } from './ports/settings-priority-organization-read.adapter';
+import { SettingsPriorityOrganizationReadPort } from './ports/settings-priority-organization-read.port';
 
 @Module({
   imports: [
@@ -37,12 +39,22 @@ import { OrganizationOperationalAccessPort } from './ports/organization-operatio
     OrganizationService,
     OrganizationSiteReadAdapter,
     OrganizationOperationalAccessAdapter,
+    SettingsPriorityOrganizationReadAdapter,
     { provide: OrganizationSiteReadPort, useExisting: OrganizationSiteReadAdapter },
     {
       provide: OrganizationOperationalAccessPort,
       useExisting: OrganizationOperationalAccessAdapter,
     },
+    {
+      provide: SettingsPriorityOrganizationReadPort,
+      useExisting: SettingsPriorityOrganizationReadAdapter,
+    },
   ],
-  exports: [OrganizationService, OrganizationSiteReadPort, OrganizationOperationalAccessPort],
+  exports: [
+    OrganizationService,
+    OrganizationSiteReadPort,
+    OrganizationOperationalAccessPort,
+    SettingsPriorityOrganizationReadPort,
+  ],
 })
 export class OrganizationModule {}

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
@@ -6,6 +11,7 @@ import { CompatibilityRuleType } from '@iwana/shared';
 import { CompatibilityRule } from '../entities/compatibility-rule.entity';
 import { CreateCompatibilityRuleDto, UpdateCompatibilityRuleDto } from '../dto/compatibility.dto';
 import { CommercialListQueryDto } from '../dto/commercial-list-query.dto';
+import { isPostgresUniqueViolation } from '../utils/postgres-unique';
 import {
   buildDateIdNextCursor,
   clampCommercialLimit,
@@ -89,7 +95,14 @@ export class CompatibilityService {
         description: dto.description ?? null,
         isActive: true,
       });
-      return qr.manager.save(CompatibilityRule, entity);
+      try {
+        return await qr.manager.save(CompatibilityRule, entity);
+      } catch (error) {
+        if (isPostgresUniqueViolation(error)) {
+          throw new ConflictException('Ya existe una regla de compatibilidad activa equivalente');
+        }
+        throw error;
+      }
     });
   }
 

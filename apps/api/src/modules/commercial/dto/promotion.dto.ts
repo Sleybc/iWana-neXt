@@ -12,7 +12,8 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { DiscountType, PromotionScope } from '@iwana/shared';
+import { CustomerSegment, DiscountType, PromotionScope } from '@iwana/shared';
+import { IsCommercialDiscountValue } from '../utils/commercial-money';
 
 export class CreatePromotionDto {
   @ApiProperty({ maxLength: 200 })
@@ -37,6 +38,7 @@ export class CreatePromotionDto {
   @ApiProperty({ example: '15.00' })
   @IsString()
   @IsNotEmpty()
+  @IsCommercialDiscountValue()
   discountValue: string;
 
   @ApiProperty({ enum: PromotionScope })
@@ -56,8 +58,8 @@ export class CreatePromotionDto {
   @ApiPropertyOptional({ description: 'Segmentos de clientes a los que aplica (null = todos)' })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  targetSegments?: string[];
+  @IsEnum(CustomerSegment, { each: true })
+  targetSegments?: CustomerSegment[];
 
   @ApiPropertyOptional({ description: 'Número máximo de usos (null = sin límite)' })
   @IsOptional()

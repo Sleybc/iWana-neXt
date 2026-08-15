@@ -284,4 +284,78 @@ describe('TaxController HTTP', () => {
       .send({ segment: 'RESIDENTIAL' })
       .expect(201);
   });
+
+  it('GET /api/v1/commercial/tax-rules retorna 401 sin JWT', async () => {
+    await request(app.getHttpServer()).get('/api/v1/commercial/tax-rules').expect(401);
+  });
+
+  it('GET /api/v1/commercial/tax-rule-applications lista aplicaciones', async () => {
+    taxApplicationServiceMock.listApplications.mockResolvedValue({
+      data: [],
+      meta: { nextCursor: null, total: 0 },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/tax-rule-applications')
+      .set('Authorization', 'Bearer accountant-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toEqual([]);
+        expect(body.meta.total).toBe(0);
+      });
+  });
+
+  it('POST /api/v1/commercial/tax-rule-applications crea aplicación', async () => {
+    const created = {
+      id: 'app-1',
+      taxRuleId: '11111111-1111-4111-8111-111111111111',
+      taxDefinitionId: '22222222-2222-4222-8222-222222222222',
+      treatment: 'STANDARD',
+    };
+    taxApplicationServiceMock.createApplication.mockResolvedValue(created);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/commercial/tax-rule-applications')
+      .set('Authorization', 'Bearer accountant-token')
+      .send({
+        taxRuleId: '11111111-1111-4111-8111-111111111111',
+        taxDefinitionId: '22222222-2222-4222-8222-222222222222',
+        treatment: 'STANDARD',
+      })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.data.id).toBe('app-1');
+      });
+  });
+
+  it('PATCH /api/v1/commercial/tax-rule-applications/:id actualiza aplicación', async () => {
+    taxApplicationServiceMock.updateApplication.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      isActive: false,
+    });
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/commercial/tax-rule-applications/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', 'Bearer accountant-token')
+      .send({ isActive: false })
+      .expect(200);
+
+    expect(taxApplicationServiceMock.updateApplication).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({ isActive: false }),
+    );
+  });
+
+  it('DELETE /api/v1/commercial/tax-rule-applications/:id elimina aplicación', async () => {
+    taxApplicationServiceMock.deleteApplication.mockResolvedValue(undefined);
+
+    await request(app.getHttpServer())
+      .delete('/api/v1/commercial/tax-rule-applications/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', 'Bearer accountant-token')
+      .expect(204);
+
+    expect(taxApplicationServiceMock.deleteApplication).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+    );
+  });
 });

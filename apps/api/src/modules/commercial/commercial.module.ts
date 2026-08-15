@@ -1,6 +1,6 @@
 ﻿import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { PlanCatalogReadPort } from '../crm/ports/plan-catalog-read.port';
+import { PlanCatalogReadPort } from './ports/plan-catalog-read.port';
 import { CommercialCatalogReadPort } from './ports/commercial-catalog-read.port';
 import { CommercialCompatibilityReadPort } from './ports/commercial-compatibility-read.port';
 import { ITaxApplicationReadPort } from './ports/tax-application-read.port';
@@ -37,6 +37,7 @@ import { CompatibilityController } from './controllers/compatibility.controller'
 import { TaxController } from './controllers/tax.controller';
 
 // ─── Puertos y adaptadores ────────────────────────────────────────────────────
+import { TaxApplicationReadAdapter } from './ports/tax-application-read.adapter';
 import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.adapter';
 import { CommercialCompatibilityReadAdapter } from './ports/commercial-compatibility-read.adapter';
 
@@ -78,11 +79,12 @@ import { TaxationModule } from '../taxation/taxation.module';
     CompatibilityService,
     TaxApplicationService,
     CommercialDashboardService,
+    CommercialCatalogReadAdapter,
+    TaxApplicationReadAdapter,
     {
       provide: ITaxApplicationReadPort,
-      useExisting: TaxApplicationService,
+      useExisting: TaxApplicationReadAdapter,
     },
-    CommercialCatalogReadAdapter,
     {
       provide: CommercialCatalogReadPort,
       useExisting: CommercialCatalogReadAdapter,
@@ -100,8 +102,6 @@ import { TaxationModule } from '../taxation/taxation.module';
   exports: [
     CommercialCatalogReadPort,
     PlanCatalogReadPort,
-    CatalogService,
-    PriceHistoryService,
     CommercialCompatibilityReadPort,
     ITaxApplicationReadPort,
   ],

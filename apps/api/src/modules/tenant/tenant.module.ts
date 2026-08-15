@@ -15,6 +15,8 @@ import { DashboardSummaryService } from './dashboard-summary.service';
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
+import { SettingsPriorityTenantReadAdapter } from './ports/settings-priority-tenant-read.adapter';
+import { SettingsPriorityTenantReadPort } from './ports/settings-priority-tenant-read.port';
 
 /**
  * Modulo de gestion de tenants.
@@ -53,9 +55,21 @@ import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
     }),
   ],
   controllers: [TenantController],
-  providers: [TenantService, TenantProvisioningService, TenantMiddleware, DashboardSummaryService],
+  providers: [
+    TenantService,
+    TenantProvisioningService,
+    TenantMiddleware,
+    DashboardSummaryService,
+    SettingsPriorityTenantReadAdapter,
+    { provide: SettingsPriorityTenantReadPort, useExisting: SettingsPriorityTenantReadAdapter },
+  ],
   // Exportar TenantService para que AuthModule y otros modulos puedan
   // resolver tenants sin acceder al repositorio directamente (boundary)
-  exports: [TenantService, TenantProvisioningService, TenantMiddleware],
+  exports: [
+    TenantService,
+    TenantProvisioningService,
+    TenantMiddleware,
+    SettingsPriorityTenantReadPort,
+  ],
 })
 export class TenantModule {}

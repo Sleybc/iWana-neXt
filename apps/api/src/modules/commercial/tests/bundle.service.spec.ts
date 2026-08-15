@@ -208,6 +208,23 @@ describe('BundleService', () => {
       expect(result.items).toHaveLength(1);
     });
 
+    it('no consulta catálogo cuando el bundle no tiene ítems', async () => {
+      const createQueryBuilder = jest.fn();
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => ({ id: 'bun-1', tenantId: 'ten-1' }),
+            find: async () => [],
+            createQueryBuilder,
+          },
+        }),
+      );
+
+      const result = await service.findOne('bun-1');
+      expect(result.items).toEqual([]);
+      expect(createQueryBuilder).not.toHaveBeenCalled();
+    });
+
     it('lanza NotFoundException si bundle no existe', async () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => null } }),
@@ -303,6 +320,68 @@ describe('BundleService', () => {
       const result = await service.calculatePrice('bun-1', CustomerSegment.RESIDENTIAL, []);
       expect(parseFloat(result.total)).toBe(48000);
       expect(parseFloat(result.discount)).toBe(12000);
+    });
+
+    it('aplica descuento FIXED_AMOUNT sobre el subtotal', async () => {
+      const bundle = {
+        id: 'bun-1',
+        discountType: DiscountType.FIXED_AMOUNT,
+        discountValue: '5000',
+        tenantId: 'ten-1',
+      };
+      const bundleItemRows = [
+        { itemId: 'item-1', isRequired: true },
+        { itemId: 'item-2', isRequired: true },
+      ];
+      const rawPrices = [
+        { item_id: 'item-1', base_price: '50000.00', name: 'Plan A' },
+        { item_id: 'item-2', base_price: '10000.00', name: 'Servicio B' },
+      ];
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => bundle,
+            find: async () => bundleItemRows,
+            createQueryBuilder: () => ({
+              innerJoin: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              select: jest.fn().mockReturnThis(),
+              getRawMany: jest.fn().mockResolvedValue(rawPrices),
+            }),
+          },
+        }),
+      );
+
+      const result = await service.calculatePrice('bun-1', CustomerSegment.RESIDENTIAL, []);
+      expect(parseFloat(result.subtotal)).toBe(60000);
+      expect(parseFloat(result.discount)).toBe(5000);
+      expect(parseFloat(result.total)).toBe(55000);
+    });
+
+    it('rechaza opcionales que no pertenecen al bundle', async () => {
+      const bundle = {
+        id: 'bun-1',
+        discountType: DiscountType.PERCENTAGE,
+        discountValue: '10',
+        tenantId: 'ten-1',
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => bundle,
+            find: async () => [
+              { itemId: 'item-1', isRequired: true },
+              { itemId: 'item-opt', isRequired: false },
+            ],
+          },
+        }),
+      );
+
+      await expect(
+        service.calculatePrice('bun-1', CustomerSegment.RESIDENTIAL, ['item-ajeno']),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('lanza NotFoundException si bundle no existe', async () => {

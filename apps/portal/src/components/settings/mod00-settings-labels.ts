@@ -3,6 +3,7 @@ import {
   BusinessHoursWeekday,
   OrganizationSiteCapability,
   OrganizationSiteType,
+  type SettingsPriorityKey,
 } from '@iwana/shared';
 
 export const ORGANIZATION_SITE_TYPE_LABELS: Record<OrganizationSiteType, string> = {
@@ -54,8 +55,7 @@ export const SETTINGS_HUB_COPY = {
   pageTitle: 'Configuración empresarial',
   loadingSubtitle: 'Cargando opciones de configuración',
   errorSubtitle: 'No pudimos cargar esta vista',
-  pageSubtitle:
-    'Revisa las áreas clave de tu empresa, prioriza pendientes y entra directo a la sección que necesitas.',
+  pageSubtitle: 'Revisa y administra las áreas clave de tu empresa desde un solo lugar.',
   sessionUnavailable: 'No pudimos validar tu sesión en el portal.',
   registryForbidden:
     'Tu perfil puede entrar a esta vista, pero todavía no tiene acceso a las secciones disponibles.',
@@ -63,10 +63,6 @@ export const SETTINGS_HUB_COPY = {
   permissionsForbidden: 'No pudimos confirmar qué secciones puedes usar con esta cuenta.',
   permissionsUnavailable: 'No fue posible validar los accesos de esta cuenta.',
   priorityEyebrow: 'Recomendado ahora',
-  priorityTitle: 'Refuerza el acceso de tu empresa',
-  priorityDescription:
-    'Activa reglas de acceso y revisa quién puede entrar, aprobar cambios o administrar la operación.',
-  priorityAction: 'Revisar accesos',
   panelEyebrow: 'Configuración',
   panelTitle: 'Secciones de configuración',
   panelDescription:
@@ -83,6 +79,38 @@ export const SETTINGS_HUB_COPY = {
   retryAction: 'Reintentar',
   openSectionAction: 'Abrir sección',
 } as const;
+
+export const SETTINGS_PRIORITY_COPY: Record<
+  SettingsPriorityKey,
+  { title: string; description: string; actionLabel: string }
+> = {
+  MFA_POLICY_DISABLED: {
+    title: 'Activa la verificación en dos pasos',
+    description:
+      'Protege el acceso de toda la empresa haciendo obligatoria la verificación en dos pasos.',
+    actionLabel: 'Configurar verificación',
+  },
+  MFA_ENROLLMENT_INCOMPLETE: {
+    title: 'Completa la verificación del equipo',
+    description: 'Aún hay personas activas sin verificación en dos pasos.',
+    actionLabel: 'Revisar autenticación',
+  },
+  NO_ACTIVE_ORGANIZATION_SITE: {
+    title: 'Registra una sede activa',
+    description: 'La empresa necesita al menos una sede activa para organizar su operación.',
+    actionLabel: 'Revisar sedes',
+  },
+  COMPANY_HOURS_NOT_CONFIGURED: {
+    title: 'Define el horario de la empresa',
+    description: 'Configura al menos un día abierto para orientar jornadas y atención.',
+    actionLabel: 'Configurar horario',
+  },
+  BRANDING_NOT_CUSTOMIZED: {
+    title: 'Personaliza la marca de tu empresa',
+    description: 'Añade los recursos visuales que identificarán a tu empresa en el portal.',
+    actionLabel: 'Revisar marca',
+  },
+};
 
 export const SETTINGS_HUB_SECTION_COPY: Partial<
   Record<
@@ -102,9 +130,9 @@ export const SETTINGS_HUB_SECTION_COPY: Partial<
     emphasis: 'primary',
   },
   access: {
-    title: 'Usuarios y acceso',
+    title: 'Perfiles y autenticación',
     description: 'Perfiles de acceso, autenticación y control de quién puede usar cada área.',
-    actionLabel: 'Revisar accesos',
+    actionLabel: 'Revisar perfiles y autenticación',
     emphasis: 'primary',
   },
   calendar: {

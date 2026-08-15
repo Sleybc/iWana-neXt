@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   CatalogItemType,
+  CustomerSegment,
   type CommercialAttentionDestinoTab,
   type CommercialAttentionEntityType,
   type CommercialAttentionItem,
@@ -14,13 +15,18 @@ import {
 } from '@iwana/shared';
 import { DataSource, EntityManager } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
+import {
+  COMMERCIAL_EXPIRING_WINDOW_DAYS,
+  COMMERCIAL_NEAR_USE_RATIO,
+  COMMERCIAL_NEAR_USE_REMAINING,
+} from '../utils/commercial-offer-filters';
 
 /** Ventana fija de producto (UX H8 / Q4): 7 días calendario. */
-const EXPIRING_WINDOW_DAYS = 7;
+const EXPIRING_WINDOW_DAYS = COMMERCIAL_EXPIRING_WINDOW_DAYS;
 /** Umbral G2b: cerca del límite si ratio ≥ 0.8. */
-const NEAR_USE_RATIO = 0.8;
+const NEAR_USE_RATIO = COMMERCIAL_NEAR_USE_RATIO;
 /** Umbral G2b: cerca del límite si quedan ≤ 2 usos. */
-const NEAR_USE_REMAINING = 2;
+const NEAR_USE_REMAINING = COMMERCIAL_NEAR_USE_REMAINING;
 const ATTENTION_LIMIT = 5;
 const RECENT_CHANGES_LIMIT = 5;
 
@@ -41,12 +47,6 @@ const RECENT_ACTION_PRIORITY: Record<CommercialRecentChangeAction, number> = {
   updated: 5,
 };
 
-type CountRow = { count: string | number };
-type CatalogTypeCountRow = {
-  type: string;
-  total: string | number;
-  active: string | number;
-};
 type AttentionRow = {
   id: string;
   name: string;
@@ -176,39 +176,30 @@ export class CommercialDashboardService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const em = qr.manager;
 
-      const [
-        catalogCounts,
-        bundleCounts,
-        promotionCounts,
-        compatibilityCounts,
-        taxRuleCounts,
-        offersExpiringSoonCount,
-        offersNearUseLimitCount,
-        offersAtRiskCount,
-        catalogSellableActiveCount,
-        missingCurrentPriceCount,
-        activeBundlesWithInactiveItemsCount,
-        hasTaxCoverage,
-        activeOffersCount,
-        attentionCandidates,
-        recentChangeRows,
-      ] = await Promise.all([
-        this.countCatalogByType(em, tenantId),
-        this.countBundles(em, tenantId),
-        this.countPromotions(em, tenantId, now),
-        this.countCompatibilityRules(em, tenantId),
-        this.countTaxRules(em, tenantId),
-        this.countOffersExpiringSoon(em, tenantId, now, windowEnd),
-        this.countOffersNearUseLimit(em, tenantId, now),
-        this.countOffersAtRisk(em, tenantId, now, windowEnd),
-        this.countCatalogSellableActive(em, tenantId),
-        this.countMissingCurrentPrice(em, tenantId),
-        this.countActiveBundlesWithInactiveItems(em, tenantId),
-        this.hasActiveTaxRuleCoverage(em, tenantId, now),
-        this.countActiveOffers(em, tenantId, now),
+      const [catalogRows, kpi, attentionCandidates, recentChangeRows] = await Promise.all([
+        this.fetchCatalogCounts(em, tenantId),
+        this.fetchOfferKpis(em, tenantId, now, windowEnd),
         this.fetchAttentionCandidates(em, tenantId, now, windowEnd),
         this.fetchRecentChangeCandidates(em, tenantId, recentWindowStart, now),
       ]);
+
+      const empty = { total: 0, active: 0, sellable: 0, missingResidentialPrice: 0 };
+      const catalogCounts = {
+        plans: { ...empty },
+        products: { ...empty },
+        services: { ...empty },
+      };
+      for (const row of catalogRows) {
+        const bucket = {
+          total: toInt(row.total),
+          active: toInt(row.active),
+          sellable: toInt(row.sellable),
+          missingResidentialPrice: toInt(row.missing_residential_price),
+        };
+        if (row.type === CatalogItemType.PLAN) catalogCounts.plans = bucket;
+        else if (row.type === CatalogItemType.PRODUCT) catalogCounts.products = bucket;
+        else if (row.type === CatalogItemType.SERVICE) catalogCounts.services = bucket;
+      }
 
       const plansCount = catalogCounts.plans.total;
       const activePlansCount = catalogCounts.plans.active;
@@ -218,9 +209,18 @@ export class CommercialDashboardService {
       const activeServicesCount = catalogCounts.services.active;
 
       const catalogActiveCount = activePlansCount + activeProductsCount + activeServicesCount;
+      const missingCurrentPriceCount =
+        catalogCounts.plans.missingResidentialPrice +
+        catalogCounts.products.missingResidentialPrice +
+        catalogCounts.services.missingResidentialPrice;
       const catalogIncompleteActiveCount = missingCurrentPriceCount;
-      const catalogSellable = catalogSellableActiveCount;
+      const catalogSellable =
+        catalogCounts.plans.sellable +
+        catalogCounts.products.sellable +
+        catalogCounts.services.sellable;
 
+      const hasTaxCoverage = toInt(kpi.tax_coverage) > 0;
+      const activeBundlesWithInactiveItemsCount = toInt(kpi.inactive_bundle_items);
       const taxRulesCoverageGapCount =
         activePlansCount > 0 && !hasTaxCoverage ? activePlansCount : 0;
       const rulesGapCount = activeBundlesWithInactiveItemsCount + taxRulesCoverageGapCount;
@@ -238,18 +238,18 @@ export class CommercialDashboardService {
         activeProductsCount,
         servicesCount,
         activeServicesCount,
-        bundlesCount: bundleCounts.total,
-        activeBundlesCount: bundleCounts.active,
-        promotionsCount: promotionCounts.total,
-        activePromotionsCount: promotionCounts.active,
-        compatibilityRulesCount: compatibilityCounts.total,
-        activeCompatibilityRulesCount: compatibilityCounts.active,
-        taxRulesCount: taxRuleCounts.total,
-        activeTaxRulesCount: taxRuleCounts.active,
+        bundlesCount: toInt(kpi.bundles_total),
+        activeBundlesCount: toInt(kpi.bundles_active),
+        promotionsCount: toInt(kpi.promotions_total),
+        activePromotionsCount: toInt(kpi.promotions_active),
+        compatibilityRulesCount: toInt(kpi.compatibility_total),
+        activeCompatibilityRulesCount: toInt(kpi.compatibility_active),
+        taxRulesCount: toInt(kpi.tax_total),
+        activeTaxRulesCount: toInt(kpi.tax_active),
 
-        offersExpiringSoonCount,
-        offersNearUseLimitCount,
-        offersAtRiskCount,
+        offersExpiringSoonCount: toInt(kpi.offers_expiring_soon),
+        offersNearUseLimitCount: toInt(kpi.offers_near_use_limit),
+        offersAtRiskCount: toInt(kpi.offers_at_risk),
 
         catalogActiveCount,
         catalogSellableActiveCount: catalogSellable,
@@ -260,344 +260,150 @@ export class CommercialDashboardService {
         taxRulesCoverageGapCount,
         rulesGapCount,
 
-        activeOffersCount,
+        activeOffersCount: toInt(kpi.active_offers),
         attentionItems,
         recentChanges,
       };
     });
   }
 
-  private async countCatalogByType(
+  private async fetchCatalogCounts(
     em: EntityManager,
     tenantId: string,
-  ): Promise<{
-    plans: { total: number; active: number };
-    products: { total: number; active: number };
-    services: { total: number; active: number };
-  }> {
+  ): Promise<
+    Array<{
+      type: string;
+      total: string | number;
+      active: string | number;
+      sellable: string | number;
+      missing_residential_price: string | number;
+    }>
+  > {
     const rows = await em.query(
       `
-      SELECT type,
+      SELECT ci.type,
              COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE is_active = true)::int AS active
-      FROM catalog_items
-      WHERE tenant_id = $1
-        AND deleted_at IS NULL
-      GROUP BY type
-      `,
-      [tenantId],
-    );
-
-    const empty = { total: 0, active: 0 };
-    const result = { plans: { ...empty }, products: { ...empty }, services: { ...empty } };
-
-    for (const row of rows as CatalogTypeCountRow[]) {
-      const bucket = {
-        total: toInt(row.total),
-        active: toInt(row.active),
-      };
-      if (row.type === CatalogItemType.PLAN) result.plans = bucket;
-      else if (row.type === CatalogItemType.PRODUCT) result.products = bucket;
-      else if (row.type === CatalogItemType.SERVICE) result.services = bucket;
-    }
-
-    return result;
-  }
-
-  private async countBundles(
-    em: EntityManager,
-    tenantId: string,
-  ): Promise<{ total: number; active: number }> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE is_active = true)::int AS active
-      FROM catalog_bundles
-      WHERE tenant_id = $1
-      `,
-      [tenantId],
-    );
-    const row = (rows as CountRow & { total?: string | number; active?: string | number }[])[0];
-    return { total: toInt(row?.total), active: toInt(row?.active) };
-  }
-
-  private async countPromotions(
-    em: EntityManager,
-    tenantId: string,
-    now: Date,
-  ): Promise<{ total: number; active: number }> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE ci.is_active = true)::int AS active,
              COUNT(*) FILTER (
-               WHERE is_active = true
-                 AND valid_from <= $2
-                 AND valid_to >= $2
-                 AND (max_uses IS NULL OR current_uses < max_uses)
-             )::int AS active
-      FROM catalog_promotions
-      WHERE tenant_id = $1
+               WHERE ci.is_active = true
+                 AND EXISTS (
+                   SELECT 1 FROM catalog_price_history ph
+                   WHERE ph.item_id = ci.id AND ph.is_current = true
+                 )
+             )::int AS sellable,
+             COUNT(*) FILTER (
+               WHERE ci.is_active = true
+                 AND NOT EXISTS (
+                   SELECT 1 FROM catalog_price_history ph
+                   WHERE ph.item_id = ci.id
+                     AND ph.is_current = true
+                     AND ph.customer_segment = $2
+                 )
+             )::int AS missing_residential_price
+      FROM catalog_items ci
+      WHERE ci.tenant_id = $1
+        AND ci.deleted_at IS NULL
+      GROUP BY ci.type
       `,
-      [tenantId, now],
+      [tenantId, CustomerSegment.RESIDENTIAL],
     );
-    const row = (rows as { total: string | number; active: string | number }[])[0];
-    return { total: toInt(row?.total), active: toInt(row?.active) };
+    return rows as Array<{
+      type: string;
+      total: string | number;
+      active: string | number;
+      sellable: string | number;
+      missing_residential_price: string | number;
+    }>;
   }
 
-  private async countCompatibilityRules(
-    em: EntityManager,
-    tenantId: string,
-  ): Promise<{ total: number; active: number }> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE is_active = true)::int AS active
-      FROM catalog_compatibility_rules
-      WHERE tenant_id = $1
-      `,
-      [tenantId],
-    );
-    const row = (rows as { total: string | number; active: string | number }[])[0];
-    return { total: toInt(row?.total), active: toInt(row?.active) };
-  }
-
-  private async countTaxRules(
-    em: EntityManager,
-    tenantId: string,
-  ): Promise<{ total: number; active: number }> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE is_active = true)::int AS active
-      FROM tax_rules
-      WHERE tenant_id = $1
-      `,
-      [tenantId],
-    );
-    const row = (rows as { total: string | number; active: string | number }[])[0];
-    return { total: toInt(row?.total), active: toInt(row?.active) };
-  }
-
-  private async countOffersExpiringSoon(
+  private async fetchOfferKpis(
     em: EntityManager,
     tenantId: string,
     now: Date,
     windowEnd: Date,
-  ): Promise<number> {
+  ): Promise<Record<string, string | number>> {
     const rows = await em.query(
       `
-      SELECT (
+      SELECT
+        (SELECT COUNT(*)::int FROM catalog_bundles WHERE tenant_id = $1) AS bundles_total,
+        (SELECT COUNT(*) FILTER (WHERE is_active = true)::int FROM catalog_bundles WHERE tenant_id = $1) AS bundles_active,
+        (SELECT COUNT(*)::int FROM catalog_promotions WHERE tenant_id = $1) AS promotions_total,
+        (SELECT COUNT(*) FILTER (
+           WHERE is_active = true
+             AND valid_from <= $2
+             AND valid_to >= $2
+             AND (max_uses IS NULL OR current_uses < max_uses)
+         )::int FROM catalog_promotions WHERE tenant_id = $1) AS promotions_active,
+        (SELECT COUNT(*)::int FROM catalog_compatibility_rules WHERE tenant_id = $1) AS compatibility_total,
+        (SELECT COUNT(*) FILTER (WHERE is_active = true)::int FROM catalog_compatibility_rules WHERE tenant_id = $1) AS compatibility_active,
+        (SELECT COUNT(*)::int FROM tax_rules WHERE tenant_id = $1) AS tax_total,
+        (SELECT COUNT(*) FILTER (WHERE is_active = true)::int FROM tax_rules WHERE tenant_id = $1) AS tax_active,
         (
-          SELECT COUNT(*)::int
-          FROM catalog_bundles b
-          WHERE b.tenant_id = $1
-            AND b.is_active = true
-            AND b.valid_to IS NOT NULL
-            AND b.valid_to >= $2
-            AND b.valid_to <= $3
-        )
-        +
-        (
-          SELECT COUNT(*)::int
-          FROM catalog_promotions p
-          WHERE p.tenant_id = $1
-            AND p.is_active = true
-            AND p.valid_to >= $2
-            AND p.valid_to <= $3
+          (SELECT COUNT(*)::int FROM catalog_bundles b
+            WHERE b.tenant_id = $1 AND b.is_active = true
+              AND b.valid_to IS NOT NULL AND b.valid_to >= $2 AND b.valid_to <= $3)
+          +
+          (SELECT COUNT(*)::int FROM catalog_promotions p
+            WHERE p.tenant_id = $1 AND p.is_active = true
+              AND p.valid_to >= $2 AND p.valid_to <= $3
+              AND (p.max_uses IS NULL OR p.current_uses < p.max_uses))
+        ) AS offers_expiring_soon,
+        (SELECT COUNT(*)::int FROM catalog_promotions p
+          WHERE p.tenant_id = $1 AND p.is_active = true
+            AND p.valid_from <= $2 AND p.valid_to >= $2
+            AND p.max_uses IS NOT NULL AND p.current_uses < p.max_uses
+            AND (
+              (p.current_uses::numeric / p.max_uses::numeric) >= $4
+              OR (p.max_uses - p.current_uses) <= $5
+            )
+        ) AS offers_near_use_limit,
+        (SELECT COUNT(*)::int FROM (
+          SELECT b.id::text AS oid FROM catalog_bundles b
+          WHERE b.tenant_id = $1 AND b.is_active = true
+            AND b.valid_to IS NOT NULL AND b.valid_to >= $2 AND b.valid_to <= $3
+          UNION
+          SELECT p.id::text AS oid FROM catalog_promotions p
+          WHERE p.tenant_id = $1 AND p.is_active = true
+            AND p.valid_to >= $2 AND p.valid_to <= $3
             AND (p.max_uses IS NULL OR p.current_uses < p.max_uses)
-        )
-      ) AS count
-      `,
-      [tenantId, now, windowEnd],
-    );
-    return toInt((rows as CountRow[])[0]?.count);
-  }
-
-  private async countOffersNearUseLimit(
-    em: EntityManager,
-    tenantId: string,
-    now: Date,
-  ): Promise<number> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM catalog_promotions p
-      WHERE p.tenant_id = $1
-        AND p.is_active = true
-        AND p.valid_from <= $2
-        AND p.valid_to >= $2
-        AND p.max_uses IS NOT NULL
-        AND p.current_uses < p.max_uses
-        AND (
-          (p.current_uses::numeric / p.max_uses::numeric) >= $3
-          OR (p.max_uses - p.current_uses) <= $4
-        )
-      `,
-      [tenantId, now, NEAR_USE_RATIO, NEAR_USE_REMAINING],
-    );
-    return toInt((rows as CountRow[])[0]?.count);
-  }
-
-  private async countOffersAtRisk(
-    em: EntityManager,
-    tenantId: string,
-    now: Date,
-    windowEnd: Date,
-  ): Promise<number> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM (
-        SELECT b.id::text AS oid
-        FROM catalog_bundles b
-        WHERE b.tenant_id = $1
-          AND b.is_active = true
-          AND b.valid_to IS NOT NULL
-          AND b.valid_to >= $2
-          AND b.valid_to <= $3
-        UNION
-        SELECT p.id::text AS oid
-        FROM catalog_promotions p
-        WHERE p.tenant_id = $1
-          AND p.is_active = true
-          AND p.valid_to >= $2
-          AND p.valid_to <= $3
-          AND (p.max_uses IS NULL OR p.current_uses < p.max_uses)
-        UNION
-        SELECT p.id::text AS oid
-        FROM catalog_promotions p
-        WHERE p.tenant_id = $1
-          AND p.is_active = true
-          AND p.valid_from <= $2
-          AND p.valid_to >= $2
-          AND p.max_uses IS NOT NULL
-          AND p.current_uses < p.max_uses
-          AND (
-            (p.current_uses::numeric / p.max_uses::numeric) >= $4
-            OR (p.max_uses - p.current_uses) <= $5
-          )
-      ) at_risk
+          UNION
+          SELECT p.id::text AS oid FROM catalog_promotions p
+          WHERE p.tenant_id = $1 AND p.is_active = true
+            AND p.valid_from <= $2 AND p.valid_to >= $2
+            AND p.max_uses IS NOT NULL AND p.current_uses < p.max_uses
+            AND (
+              (p.current_uses::numeric / p.max_uses::numeric) >= $4
+              OR (p.max_uses - p.current_uses) <= $5
+            )
+        ) at_risk) AS offers_at_risk,
+        (
+          (SELECT COUNT(*)::int FROM catalog_bundles b
+            WHERE b.tenant_id = $1 AND b.is_active = true
+              AND b.valid_from <= $2 AND (b.valid_to IS NULL OR b.valid_to >= $2))
+          +
+          (SELECT COUNT(*)::int FROM catalog_promotions p
+            WHERE p.tenant_id = $1 AND p.is_active = true
+              AND p.valid_from <= $2 AND p.valid_to >= $2
+              AND (p.max_uses IS NULL OR p.current_uses < p.max_uses))
+        ) AS active_offers,
+        (SELECT COUNT(DISTINCT b.id)::int
+          FROM catalog_bundles b
+          INNER JOIN catalog_bundle_items bi ON bi.bundle_id = b.id
+          INNER JOIN catalog_items ci ON ci.id = bi.item_id
+          WHERE b.tenant_id = $1 AND b.is_active = true AND ci.is_active = false
+        ) AS inactive_bundle_items,
+        (SELECT COUNT(*)::int FROM tax_rules tr
+          WHERE tr.tenant_id = $1 AND tr.is_active = true
+            AND tr.valid_from <= $2 AND (tr.valid_to IS NULL OR tr.valid_to >= $2)
+            AND EXISTS (
+              SELECT 1 FROM tax_rule_applications tra
+              WHERE tra.tax_rule_id = tr.id AND tra.is_active = true
+            )
+        ) AS tax_coverage
       `,
       [tenantId, now, windowEnd, NEAR_USE_RATIO, NEAR_USE_REMAINING],
     );
-    return toInt((rows as CountRow[])[0]?.count);
-  }
-
-  private async countCatalogSellableActive(em: EntityManager, tenantId: string): Promise<number> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM catalog_items ci
-      WHERE ci.tenant_id = $1
-        AND ci.is_active = true
-        AND ci.deleted_at IS NULL
-        AND EXISTS (
-          SELECT 1
-          FROM catalog_price_history ph
-          WHERE ph.item_id = ci.id
-            AND ph.is_current = true
-        )
-      `,
-      [tenantId],
-    );
-    return toInt((rows as CountRow[])[0]?.count);
-  }
-
-  private async countMissingCurrentPrice(em: EntityManager, tenantId: string): Promise<number> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM catalog_items ci
-      WHERE ci.tenant_id = $1
-        AND ci.is_active = true
-        AND ci.deleted_at IS NULL
-        AND NOT EXISTS (
-          SELECT 1
-          FROM catalog_price_history ph
-          WHERE ph.item_id = ci.id
-            AND ph.is_current = true
-        )
-      `,
-      [tenantId],
-    );
-    return toInt((rows as CountRow[])[0]?.count);
-  }
-
-  private async countActiveBundlesWithInactiveItems(
-    em: EntityManager,
-    tenantId: string,
-  ): Promise<number> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(DISTINCT b.id)::int AS count
-      FROM catalog_bundles b
-      INNER JOIN catalog_bundle_items bi ON bi.bundle_id = b.id
-      INNER JOIN catalog_items ci ON ci.id = bi.item_id
-      WHERE b.tenant_id = $1
-        AND b.is_active = true
-        AND ci.is_active = false
-      `,
-      [tenantId],
-    );
-    return toInt((rows as CountRow[])[0]?.count);
-  }
-
-  /**
-   * Cobertura tributaria tenant-level (G2b):
-   * ≥1 tax_rule activa en vigencia con ≥1 tax_rule_application activa.
-   */
-  private async hasActiveTaxRuleCoverage(
-    em: EntityManager,
-    tenantId: string,
-    now: Date,
-  ): Promise<boolean> {
-    const rows = await em.query(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM tax_rules tr
-      WHERE tr.tenant_id = $1
-        AND tr.is_active = true
-        AND tr.valid_from <= $2
-        AND (tr.valid_to IS NULL OR tr.valid_to >= $2)
-        AND EXISTS (
-          SELECT 1
-          FROM tax_rule_applications tra
-          WHERE tra.tax_rule_id = tr.id
-            AND tra.is_active = true
-        )
-      `,
-      [tenantId, now],
-    );
-    return toInt((rows as CountRow[])[0]?.count) > 0;
-  }
-
-  private async countActiveOffers(em: EntityManager, tenantId: string, now: Date): Promise<number> {
-    const rows = await em.query(
-      `
-      SELECT (
-        (
-          SELECT COUNT(*)::int
-          FROM catalog_bundles b
-          WHERE b.tenant_id = $1
-            AND b.is_active = true
-            AND b.valid_from <= $2
-            AND (b.valid_to IS NULL OR b.valid_to >= $2)
-        )
-        +
-        (
-          SELECT COUNT(*)::int
-          FROM catalog_promotions p
-          WHERE p.tenant_id = $1
-            AND p.is_active = true
-            AND p.valid_from <= $2
-            AND p.valid_to >= $2
-            AND (p.max_uses IS NULL OR p.current_uses < p.max_uses)
-        )
-      ) AS count
-      `,
-      [tenantId, now],
-    );
-    return toInt((rows as CountRow[])[0]?.count);
+    return (rows[0] ?? {}) as Record<string, string | number>;
   }
 
   private async fetchAttentionCandidates(
@@ -621,7 +427,9 @@ export class CommercialDashboardService {
           AND ci.deleted_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM catalog_price_history ph
-            WHERE ph.item_id = ci.id AND ph.is_current = true
+            WHERE ph.item_id = ci.id
+              AND ph.is_current = true
+              AND ph.customer_segment = $7
           )
         ORDER BY ci.name ASC
         LIMIT $6
@@ -737,7 +545,15 @@ export class CommercialDashboardService {
         LIMIT $6
       )
       `,
-      [tenantId, now, windowEnd, NEAR_USE_RATIO, NEAR_USE_REMAINING, ATTENTION_LIMIT],
+      [
+        tenantId,
+        now,
+        windowEnd,
+        NEAR_USE_RATIO,
+        NEAR_USE_REMAINING,
+        ATTENTION_LIMIT,
+        CustomerSegment.RESIDENTIAL,
+      ],
     );
 
     return rows as AttentionRow[];
@@ -800,6 +616,8 @@ export class CommercialDashboardService {
     const rows = await em.query(
       `
       (
+        SELECT entity_id, entity_name, entity_kind, action, occurred_at
+        FROM (
         SELECT ci.id::text AS entity_id,
                ci.name AS entity_name,
                ci.type::text AS entity_kind,
@@ -833,12 +651,18 @@ export class CommercialDashboardService {
             (ci.created_at >= $2 AND ci.created_at <= $3)
             OR (ci.updated_at >= $2 AND ci.updated_at <= $3)
           )
+        ) catalog_recent
+        WHERE action IS NOT NULL
+        ORDER BY occurred_at DESC
+        LIMIT $4
       )
       UNION ALL
       (
-        SELECT b.id::text,
-               b.name,
-               'bundle'::text,
+        SELECT entity_id, entity_name, entity_kind, action, occurred_at
+        FROM (
+        SELECT b.id::text AS entity_id,
+               b.name AS entity_name,
+               'bundle'::text AS entity_kind,
                CASE
                  WHEN b.updated_at >= $2 AND b.updated_at <= $3 AND b.is_active = false
                    THEN 'deactivated'
@@ -850,7 +674,7 @@ export class CommercialDashboardService {
                    THEN 'updated'
                  WHEN b.created_at >= $2 AND b.created_at <= $3
                    THEN 'created'
-               END,
+               END AS action,
                CASE
                  WHEN b.updated_at >= $2 AND b.updated_at <= $3 AND b.is_active = false
                    THEN b.updated_at
@@ -861,19 +685,25 @@ export class CommercialDashboardService {
                       AND b.updated_at > b.created_at + interval '1 second'
                    THEN b.updated_at
                  ELSE b.created_at
-               END
+               END AS occurred_at
         FROM catalog_bundles b
         WHERE b.tenant_id = $1
           AND (
             (b.created_at >= $2 AND b.created_at <= $3)
             OR (b.updated_at >= $2 AND b.updated_at <= $3)
           )
+        ) bundle_recent
+        WHERE action IS NOT NULL
+        ORDER BY occurred_at DESC
+        LIMIT $4
       )
       UNION ALL
       (
-        SELECT p.id::text,
-               p.name,
-               'promotion'::text,
+        SELECT entity_id, entity_name, entity_kind, action, occurred_at
+        FROM (
+        SELECT p.id::text AS entity_id,
+               p.name AS entity_name,
+               'promotion'::text AS entity_kind,
                CASE
                  WHEN p.updated_at >= $2 AND p.updated_at <= $3 AND p.is_active = false
                    THEN 'deactivated'
@@ -885,7 +715,7 @@ export class CommercialDashboardService {
                    THEN 'updated'
                  WHEN p.created_at >= $2 AND p.created_at <= $3
                    THEN 'created'
-               END,
+               END AS action,
                CASE
                  WHEN p.updated_at >= $2 AND p.updated_at <= $3 AND p.is_active = false
                    THEN p.updated_at
@@ -896,13 +726,17 @@ export class CommercialDashboardService {
                       AND p.updated_at > p.created_at + interval '1 second'
                    THEN p.updated_at
                  ELSE p.created_at
-               END
+               END AS occurred_at
         FROM catalog_promotions p
         WHERE p.tenant_id = $1
           AND (
             (p.created_at >= $2 AND p.created_at <= $3)
             OR (p.updated_at >= $2 AND p.updated_at <= $3)
           )
+        ) promo_recent
+        WHERE action IS NOT NULL
+        ORDER BY occurred_at DESC
+        LIMIT $4
       )
       UNION ALL
       (
@@ -915,6 +749,8 @@ export class CommercialDashboardService {
         WHERE p.tenant_id = $1
           AND p.valid_from >= $2
           AND p.valid_from <= $3
+        ORDER BY p.valid_from DESC
+        LIMIT $4
       )
       UNION ALL
       (
@@ -928,15 +764,19 @@ export class CommercialDashboardService {
           AND p.valid_to >= $2
           AND p.valid_to <= $3
           AND p.valid_to < $3
+        ORDER BY p.valid_to DESC
+        LIMIT $4
       )
       UNION ALL
       (
-        SELECT r.id::text,
+        SELECT entity_id, entity_name, entity_kind, action, occurred_at
+        FROM (
+        SELECT r.id::text AS entity_id,
                COALESCE(
                  NULLIF(BTRIM(r.description), ''),
                  src.name || ' → ' || tgt.name
-               ),
-               'compatibility_rule'::text,
+               ) AS entity_name,
+               'compatibility_rule'::text AS entity_kind,
                CASE
                  WHEN r.updated_at >= $2 AND r.updated_at <= $3 AND r.is_active = false
                    THEN 'deactivated'
@@ -948,7 +788,7 @@ export class CommercialDashboardService {
                    THEN 'updated'
                  WHEN r.created_at >= $2 AND r.created_at <= $3
                    THEN 'created'
-               END,
+               END AS action,
                CASE
                  WHEN r.updated_at >= $2 AND r.updated_at <= $3 AND r.is_active = false
                    THEN r.updated_at
@@ -959,7 +799,7 @@ export class CommercialDashboardService {
                       AND r.updated_at > r.created_at + interval '1 second'
                    THEN r.updated_at
                  ELSE r.created_at
-               END
+               END AS occurred_at
         FROM catalog_compatibility_rules r
         INNER JOIN catalog_items src ON src.id = r.source_item_id
         INNER JOIN catalog_items tgt ON tgt.id = r.target_item_id
@@ -968,12 +808,18 @@ export class CommercialDashboardService {
             (r.created_at >= $2 AND r.created_at <= $3)
             OR (r.updated_at >= $2 AND r.updated_at <= $3)
           )
+        ) compat_recent
+        WHERE action IS NOT NULL
+        ORDER BY occurred_at DESC
+        LIMIT $4
       )
       UNION ALL
       (
-        SELECT tr.id::text,
-               (tr.tax_type || ' ' || tr.rate_percentage::text || '%'),
-               'tax_rule'::text,
+        SELECT entity_id, entity_name, entity_kind, action, occurred_at
+        FROM (
+        SELECT tr.id::text AS entity_id,
+               (tr.tax_type || ' ' || tr.rate_percentage::text || '%') AS entity_name,
+               'tax_rule'::text AS entity_kind,
                CASE
                  WHEN tr.updated_at >= $2 AND tr.updated_at <= $3 AND tr.is_active = false
                    THEN 'deactivated'
@@ -985,7 +831,7 @@ export class CommercialDashboardService {
                    THEN 'updated'
                  WHEN tr.created_at >= $2 AND tr.created_at <= $3
                    THEN 'created'
-               END,
+               END AS action,
                CASE
                  WHEN tr.updated_at >= $2 AND tr.updated_at <= $3 AND tr.is_active = false
                    THEN tr.updated_at
@@ -996,16 +842,20 @@ export class CommercialDashboardService {
                       AND tr.updated_at > tr.created_at + interval '1 second'
                    THEN tr.updated_at
                  ELSE tr.created_at
-               END
+               END AS occurred_at
         FROM tax_rules tr
         WHERE tr.tenant_id = $1
           AND (
             (tr.created_at >= $2 AND tr.created_at <= $3)
             OR (tr.updated_at >= $2 AND tr.updated_at <= $3)
           )
+        ) tax_recent
+        WHERE action IS NOT NULL
+        ORDER BY occurred_at DESC
+        LIMIT $4
       )
       `,
-      [tenantId, windowStart, now],
+      [tenantId, windowStart, now, RECENT_CHANGES_LIMIT],
     );
 
     return (rows as RecentChangeRow[]).filter(

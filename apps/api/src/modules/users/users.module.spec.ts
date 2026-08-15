@@ -24,6 +24,7 @@ import { UsersModule } from './users.module';
 import { UsersController } from './users.controller';
 import { UsersBulkController } from './users-bulk.controller';
 import { UsersBulkCreateProcessor } from './users-bulk-create.processor';
+import { SettingsPriorityUsersReadPort } from './ports/settings-priority-users-read.port';
 import { UsersService } from './users.service';
 
 /**
@@ -49,9 +50,10 @@ describe('UsersModule', () => {
     expect(providers).toContain(UsersBulkCreateProcessor);
   });
 
-  it('solo exporta el servicio: el procesador no cruza el boundary del modulo', () => {
+  it('exporta servicio y puerto de lectura; el procesador no cruza el boundary', () => {
     const exports = Reflect.getMetadata(MODULE_METADATA.EXPORTS, UsersModule) as unknown[];
 
-    expect(exports).toEqual([UsersService]);
+    expect(exports).toEqual([UsersService, SettingsPriorityUsersReadPort]);
+    expect(exports).not.toContain(UsersBulkCreateProcessor);
   });
 });

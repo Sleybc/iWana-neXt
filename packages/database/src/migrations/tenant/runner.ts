@@ -69,6 +69,7 @@ import { DropPiiSha256HashColumns1090000000000 } from './109_drop_pii_sha256_has
 import { RedactAuditPiiCoordsAndFreeText1100000000000 } from './110_redact_audit_pii_coords_and_free_text';
 import { HardenAuditMaintenanceGuard1110000000000 } from './111_harden_audit_maintenance_guard';
 import { SeedOperationsTasksPermissions1120000000000 } from './112_seed_operations_tasks_permissions';
+import { HardenCommercialConstraints1130000000000 } from './113_harden_commercial_constraints';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -218,6 +219,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   RedactAuditPiiCoordsAndFreeText1100000000000,
   HardenAuditMaintenanceGuard1110000000000,
   SeedOperationsTasksPermissions1120000000000,
+  HardenCommercialConstraints1130000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

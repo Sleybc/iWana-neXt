@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull } from 'typeorm';
-import { runInTenantSchema } from '@iwana/db';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { CatalogItemType, CustomerSegment } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { PlanDetail } from '../entities/plan-detail.entity';
@@ -26,54 +26,97 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     super();
   }
 
+  /** Ignora tenant/schema del caller; el aislamiento sale de TenantContext. */
+  private scopedTenant(
+    _callerTenantId: string,
+    _callerSchemaName: string,
+  ): {
+    tenantId: string;
+    schemaName: string;
+  } {
+    return TenantContext.getOrThrow();
+  }
+
   async getActivePlans(tenantId: string, schemaName: string): Promise<CommercialCatalogItem[]> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const ctx = this.scopedTenant(tenantId, schemaName);
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       const items = await qr.manager.find(CatalogItem, {
-        where: { tenantId, type: CatalogItemType.PLAN, isActive: true, deletedAt: IsNull() },
+        where: {
+          tenantId: ctx.tenantId,
+          type: CatalogItemType.PLAN,
+          isActive: true,
+          deletedAt: IsNull(),
+        },
         order: { name: 'ASC' },
       });
+      return this.mapPlans(qr.manager, items);
+    });
+  }
 
-      const itemIds = items.map((item) => item.id);
-      const priceMap = new Map<string, string>();
-      const installationMap = new Map<string, string>();
-      const detailMap = new Map<string, PlanDetail>();
+  async getPlanById(
+    tenantId: string,
+    schemaName: string,
+    planId: string,
+  ): Promise<CommercialCatalogItem | null> {
+    const ctx = this.scopedTenant(tenantId, schemaName);
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+      const item = await qr.manager.findOne(CatalogItem, {
+        where: {
+          id: planId,
+          tenantId: ctx.tenantId,
+          type: CatalogItemType.PLAN,
+          isActive: true,
+          deletedAt: IsNull(),
+        },
+      });
+      if (!item) return null;
+      const [mapped] = await this.mapPlans(qr.manager, [item]);
+      return mapped ?? null;
+    });
+  }
 
-      if (itemIds.length) {
-        const priceRows = await qr.manager
-          .createQueryBuilder(CatalogPriceHistory, 'ph')
-          .where('ph.item_id = ANY(:ids)', { ids: itemIds })
-          .andWhere('ph.customer_segment = :seg', { seg: CustomerSegment.RESIDENTIAL })
-          .andWhere('ph.is_current = true')
-          .getMany();
+  private async mapPlans(
+    manager: EntityManager,
+    items: CatalogItem[],
+  ): Promise<CommercialCatalogItem[]> {
+    const itemIds = items.map((item) => item.id);
+    const priceMap = new Map<string, string>();
+    const installationMap = new Map<string, string>();
+    const detailMap = new Map<string, PlanDetail>();
 
-        for (const row of priceRows) {
-          priceMap.set(row.itemId, row.basePrice);
-          installationMap.set(row.itemId, row.installationFee);
-        }
+    if (itemIds.length) {
+      const priceRows = await manager
+        .createQueryBuilder(CatalogPriceHistory, 'ph')
+        .where('ph.item_id = ANY(:ids)', { ids: itemIds })
+        .andWhere('ph.customer_segment = :seg', { seg: CustomerSegment.RESIDENTIAL })
+        .andWhere('ph.is_current = true')
+        .getMany();
 
-        const planDetails = await qr.manager
-          .createQueryBuilder(PlanDetail, 'pd')
-          .where('pd.item_id = ANY(:ids)', { ids: itemIds })
-          .getMany();
-
-        for (const detail of planDetails) {
-          detailMap.set(detail.itemId, detail);
-        }
+      for (const row of priceRows) {
+        priceMap.set(row.itemId, row.basePrice);
+        installationMap.set(row.itemId, row.installationFee);
       }
 
-      return items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        technology: detailMap.get(item.id)?.technology ?? 'N/A',
-        downloadSpeedMbps: detailMap.get(item.id)?.downloadSpeedMbps ?? 0,
-        uploadSpeedMbps: detailMap.get(item.id)?.uploadSpeedMbps ?? 0,
-        isActive: item.isActive,
-        basePrice: priceMap.has(item.id) ? parseFloat(priceMap.get(item.id)!) : 0,
-        installationFee: installationMap.has(item.id)
-          ? parseFloat(installationMap.get(item.id)!)
-          : 0,
-      }));
-    });
+      const planDetails = await manager
+        .createQueryBuilder(PlanDetail, 'pd')
+        .where('pd.item_id = ANY(:ids)', { ids: itemIds })
+        .getMany();
+
+      for (const detail of planDetails) {
+        detailMap.set(detail.itemId, detail);
+      }
+    }
+
+    return items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      technology: detailMap.get(item.id)?.technology ?? 'N/A',
+      downloadSpeedMbps: detailMap.get(item.id)?.downloadSpeedMbps ?? 0,
+      uploadSpeedMbps: detailMap.get(item.id)?.uploadSpeedMbps ?? 0,
+      isActive: item.isActive,
+      basePrice: priceMap.has(item.id) ? parseFloat(priceMap.get(item.id)!) : 0,
+      installationFee: installationMap.has(item.id) ? parseFloat(installationMap.get(item.id)!) : 0,
+    }));
   }
 
   async createSnapshot(
@@ -82,14 +125,20 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     itemId: string,
     segment: CustomerSegment = CustomerSegment.RESIDENTIAL,
   ): Promise<CommercialItemSnapshot> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const ctx = this.scopedTenant(tenantId, schemaName);
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       const item = await qr.manager.findOne(CatalogItem, {
-        where: { id: itemId, tenantId, isActive: true, deletedAt: IsNull() },
+        where: { id: itemId, tenantId: ctx.tenantId, isActive: true, deletedAt: IsNull() },
       });
       if (!item) throw new NotFoundException(`Ítem de catálogo ${itemId} no encontrado o inactivo`);
 
       const price = await qr.manager.findOne(CatalogPriceHistory, {
-        where: { itemId, customerSegment: segment, isCurrent: true },
+        where: {
+          itemId,
+          tenantId: ctx.tenantId,
+          customerSegment: segment,
+          isCurrent: true,
+        },
       });
       if (!price) {
         throw new NotFoundException(
@@ -116,9 +165,15 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     tenantId: string,
     schemaName: string,
   ): Promise<CommercialProductReference[]> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const ctx = this.scopedTenant(tenantId, schemaName);
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       const items = await qr.manager.find(CatalogItem, {
-        where: { tenantId, type: CatalogItemType.PRODUCT, isActive: true, deletedAt: IsNull() },
+        where: {
+          tenantId: ctx.tenantId,
+          type: CatalogItemType.PRODUCT,
+          isActive: true,
+          deletedAt: IsNull(),
+        },
         order: { name: 'ASC' },
       });
 
@@ -151,11 +206,12 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     schemaName: string,
     productId: string,
   ): Promise<CommercialProductReference | null> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const ctx = this.scopedTenant(tenantId, schemaName);
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       const item = await qr.manager.findOne(CatalogItem, {
         where: {
           id: productId,
-          tenantId,
+          tenantId: ctx.tenantId,
           type: CatalogItemType.PRODUCT,
           deletedAt: IsNull(),
         },

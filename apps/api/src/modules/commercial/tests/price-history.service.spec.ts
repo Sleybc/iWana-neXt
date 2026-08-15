@@ -58,6 +58,44 @@ describe('PriceHistoryService', () => {
         NotFoundException,
       );
     });
+
+    it('retorna precios distintos para RESIDENTIAL y SOHO del mismo ítem', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async (
+              _entity: unknown,
+              options?: { where?: { customerSegment?: CustomerSegment } },
+            ) => {
+              const segment = options?.where?.customerSegment;
+              if (segment === CustomerSegment.RESIDENTIAL) {
+                return {
+                  id: 'pr-res',
+                  basePrice: '89900.00',
+                  isCurrent: true,
+                  customerSegment: segment,
+                };
+              }
+              if (segment === CustomerSegment.SOHO) {
+                return {
+                  id: 'pr-soho',
+                  basePrice: '129900.00',
+                  isCurrent: true,
+                  customerSegment: segment,
+                };
+              }
+              return null;
+            },
+          },
+        }),
+      );
+
+      const residential = await service.getCurrentPrice('item-1', CustomerSegment.RESIDENTIAL);
+      const soho = await service.getCurrentPrice('item-1', CustomerSegment.SOHO);
+      expect(residential.basePrice).toBe('89900.00');
+      expect(soho.basePrice).toBe('129900.00');
+      expect(residential.basePrice).not.toBe(soho.basePrice);
+    });
   });
 
   describe('createPrice — SCD Tipo 2', () => {
@@ -72,7 +110,12 @@ describe('PriceHistoryService', () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            findOne: async () => existing,
+            createQueryBuilder: () => ({
+              setLock: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              getOne: jest.fn().mockResolvedValue(existing),
+            }),
             create: (_entity: unknown, data: Record<string, unknown>) => data,
             save: saveMock,
           },
@@ -100,7 +143,16 @@ describe('PriceHistoryService', () => {
       };
 
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({ manager: { findOne: async () => existing } }),
+        cb({
+          manager: {
+            createQueryBuilder: () => ({
+              setLock: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              getOne: jest.fn().mockResolvedValue(existing),
+            }),
+          },
+        }),
       );
 
       const dto = {
@@ -114,6 +166,40 @@ describe('PriceHistoryService', () => {
       );
     });
 
+    it('trata 49900.00 y 49900.0 como el mismo precio vigente', async () => {
+      const existing = {
+        id: 'pr-old',
+        basePrice: '49900.00',
+        installationFee: '0.00',
+        isCurrent: true,
+      };
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => ({
+              setLock: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              getOne: jest.fn().mockResolvedValue(existing),
+            }),
+          },
+        }),
+      );
+
+      await expect(
+        service.createPrice(
+          'item-1',
+          {
+            customerSegment: CustomerSegment.RESIDENTIAL,
+            basePrice: '49900.0',
+            installationFee: '0',
+          } as never,
+          'user-1',
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
     it('crea primer precio sin necesidad de cerrar anterior', async () => {
       const newPrice = { id: 'pr-new', basePrice: '49900.00', isCurrent: true };
       const saveMock = jest.fn().mockResolvedValue(newPrice);
@@ -121,7 +207,12 @@ describe('PriceHistoryService', () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            findOne: async () => null, // no hay precio previo
+            createQueryBuilder: () => ({
+              setLock: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              getOne: jest.fn().mockResolvedValue(null),
+            }),
             create: (_entity: unknown, data: Record<string, unknown>) => data,
             save: saveMock,
           },

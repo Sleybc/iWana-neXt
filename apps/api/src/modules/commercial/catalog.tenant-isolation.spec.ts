@@ -220,24 +220,18 @@ function buildManager() {
             );
           }
 
-          if (entity?.name === 'PlanDetail') {
-            return planDetails[options?.where?.['itemId'] as keyof typeof planDetails] ?? null;
-          }
-
-          if (entity?.name === 'CatalogPriceHistory') {
-            const itemId = options?.where?.['itemId'] as keyof typeof currentPrices;
-            const segment = options?.where?.['customerSegment'];
-            const isCurrent = options?.where?.['isCurrent'];
-            const price = currentPrices[itemId] ?? null;
-            if (!price || price.customerSegment !== segment || price.isCurrent !== isCurrent) {
-              return null;
-            }
-            return price;
-          }
-
           return null;
         },
       ),
+    createQueryBuilder: jest.fn().mockImplementation((_entity: unknown, alias?: string) => ({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockImplementation(async () => {
+        if (alias === 'pd') return Object.values(planDetails);
+        if (alias === 'ph') return Object.values(currentPrices);
+        return [];
+      }),
+    })),
   };
 }
 

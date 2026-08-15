@@ -30,8 +30,7 @@ export class ProspectsService {
       throw new BadRequestException('La programacion exige ticket y work order.');
     }
 
-    const plans = await this.planCatalogReadPort.getActivePlans(tenantId, schemaName);
-    const plan = plans.find((item) => item.id === dto.planId);
+    const plan = await this.planCatalogReadPort.getPlanById(tenantId, schemaName, dto.planId);
     if (!plan) {
       throw new BadRequestException('El plan seleccionado no esta disponible para el tenant.');
     }

@@ -324,6 +324,40 @@ function buildInMemoryQueryRunner(
       findOne: <T>(entity: EntityCtor, options?: { where?: Record<string, unknown> }) =>
         findOneEntity<T>(entity, options?.where),
       update: updateEntity,
+      createQueryBuilder: (entity: EntityCtor, alias?: string) => {
+        const chain = {
+          setLock: () => chain,
+          where: () => chain,
+          andWhere: () => chain,
+          getOne: async () => {
+            if (entity.name === CatalogPriceHistory.name) {
+              for (const value of getStore().priceHistory.values()) {
+                if (value.isCurrent) return clonePrice(value);
+              }
+            }
+            return null;
+          },
+          getMany: async () => {
+            const store = getStore();
+            if (entity.name === PlanDetail.name || alias === 'pd') {
+              return [...store.planDetails.values()].map(clonePlanDetail);
+            }
+            if (entity.name === ProductDetail.name || alias === 'prd') {
+              return [...store.productDetails.values()].map((value) => ({ ...value }));
+            }
+            if (entity.name === ServiceDetail.name || alias === 'sd') {
+              return [...store.serviceDetails.values()].map((value) => ({ ...value }));
+            }
+            if (entity.name === CatalogPriceHistory.name || alias === 'ph') {
+              return [...store.priceHistory.values()]
+                .filter((price) => price.isCurrent)
+                .map(clonePrice);
+            }
+            return [];
+          },
+        };
+        return chain;
+      },
     },
   } as unknown as { manager: DataSource['manager'] };
 }

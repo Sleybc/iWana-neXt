@@ -14,9 +14,10 @@ import {
   Waypoints,
   Briefcase,
 } from 'lucide-react';
-import { cn } from '@iwana/ui';
+import { Badge, cn } from '@iwana/ui';
 import { AccessPermissionKey, SettingsSectionKey, SettingsSectionStatus } from '@iwana/shared';
 import {
+  PortalEmptyState,
   PortalPanel,
   PortalSectionHeader,
   interactiveFocusClassName,
@@ -24,6 +25,7 @@ import {
 import { type SettingsSection } from '@/lib/api-client';
 import { SETTINGS_HUB_COPY, SETTINGS_HUB_SECTION_COPY } from './mod00-settings-labels';
 import { SettingsUnavailableState } from './SettingsUnavailableState';
+import { hasAllSettingsSectionPermissions } from './settings-priority';
 
 interface SettingsSectionGridProps {
   sections: SettingsSection[];
@@ -56,14 +58,11 @@ const statusLabelMap = {
   [SettingsSectionStatus.NOT_CONFIGURED]: 'No configurado',
 } satisfies Record<SettingsSectionStatus, string>;
 
-function hasAllRequiredPermissions(
-  section: SettingsSection,
-  effectivePermissions: AccessPermissionKey[],
-): boolean {
-  return section.requiredPermissions.every((permission) =>
-    effectivePermissions.includes(permission),
-  );
-}
+const statusVariantMap = {
+  [SettingsSectionStatus.AVAILABLE]: 'success',
+  [SettingsSectionStatus.COMING_SOON]: 'warning',
+  [SettingsSectionStatus.NOT_CONFIGURED]: 'neutral',
+} satisfies Record<SettingsSectionStatus, 'success' | 'warning' | 'neutral'>;
 
 function resolveSectionPresentation(section: SettingsSection): SettingsSectionPresentation {
   const override = SETTINGS_HUB_SECTION_COPY[section.key];
@@ -96,7 +95,7 @@ function sortSectionPresentations(sections: SettingsSectionPresentation[]) {
 export function SettingsSectionGrid({ sections, effectivePermissions }: SettingsSectionGridProps) {
   const presentations = sortSectionPresentations(sections.map(resolveSectionPresentation));
   const mainSections = presentations.filter(
-    ({ section }) => section.status === SettingsSectionStatus.AVAILABLE,
+    ({ section }) => section.status === SettingsSectionStatus.AVAILABLE && Boolean(section.route),
   );
   const futureSections = presentations.filter(
     ({ section }) => section.status !== SettingsSectionStatus.AVAILABLE || !section.route,
@@ -112,17 +111,11 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
         {mainSections.map((presentation) => {
           const { section, title, description, actionLabel, emphasis } = presentation;
           const Icon = iconMap[section.key] ?? Blocks;
-          const isOperable = hasAllRequiredPermissions(section, effectivePermissions);
+          const isOperable = hasAllSettingsSectionPermissions(section, effectivePermissions);
+          const route = section.route;
 
-          if (section.status !== SettingsSectionStatus.AVAILABLE || !section.route) {
-            return (
-              <SettingsUnavailableState
-                key={section.key}
-                title={title}
-                description={description}
-                status={section.status}
-              />
-            );
+          if (!route) {
+            return null;
           }
 
           if (!isOperable) {
@@ -134,9 +127,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                        Acceso restringido
-                      </span>
+                      <Badge variant="warning">Acceso restringido</Badge>
                     </div>
                     <div>
                       <p className="text-base font-semibold text-gray-900 dark:text-white">
@@ -150,7 +141,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                       {SETTINGS_HUB_COPY.restrictedMessage}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-white/80 p-3 text-amber-700 shadow-sm dark:bg-dark-surface-3 dark:text-amber-300">
+                  <div className="rounded-2xl bg-white/80 p-3 text-amber-700 dark:bg-dark-surface-3 dark:text-amber-300">
                     <Lock className="h-5 w-5" aria-hidden={true} />
                   </div>
                 </div>
@@ -161,31 +152,33 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
           return (
             <Link
               key={section.key}
-              href={section.route}
+              href={route}
               className={cn(
                 interactiveFocusClassName,
                 'group rounded-2xl border bg-white p-5 transition hover:border-iwana-primary/35 hover:bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-2 dark:hover:border-iwana-primary/30 dark:hover:bg-dark-surface-3',
-                emphasis === 'primary' ? 'border-iwana-primary/15 shadow-sm' : 'border-gray-200',
+                emphasis === 'primary' ? 'border-iwana-primary/15' : 'border-gray-200',
               )}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                    <Badge variant={statusVariantMap[section.status]}>
                       {statusLabelMap[section.status]}
-                    </span>
+                    </Badge>
                   </div>
                   <div>
-                    <p className="text-base font-semibold text-gray-900 transition group-hover:text-iwana-primary dark:text-white">
+                    <p className="text-base font-semibold text-gray-900 transition group-hover:text-iwana-primary dark:text-white dark:group-hover:text-iwana-primary-300">
                       {title}
                     </p>
                     <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
                       {description}
                     </p>
                   </div>
-                  <p className="text-sm font-medium text-iwana-primary">{actionLabel}</p>
+                  <p className="text-sm font-medium text-iwana-primary dark:text-iwana-primary-300">
+                    {actionLabel}
+                  </p>
                 </div>
-                <div className="rounded-2xl bg-iwana-surface-soft p-3 text-iwana-primary shadow-sm dark:bg-dark-surface-3">
+                <div className="rounded-2xl bg-iwana-surface-soft p-3 text-iwana-primary dark:bg-dark-surface-3 dark:text-iwana-primary-300">
                   <Icon className="h-5 w-5" aria-hidden={true} />
                 </div>
               </div>
@@ -207,7 +200,11 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                 key={section.key}
                 title={title}
                 description={description}
-                status={section.status}
+                status={
+                  section.status === SettingsSectionStatus.AVAILABLE && !section.route
+                    ? SettingsSectionStatus.NOT_CONFIGURED
+                    : section.status
+                }
               />
             ))}
           </div>
@@ -215,19 +212,12 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
       ) : null}
 
       {sections.length === 0 ? (
-        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
-            <Blocks className="h-5 w-5" aria-hidden={true} />
-          </div>
-          <div>
-            <p className="font-medium text-gray-900 dark:text-white">
-              {SETTINGS_HUB_COPY.emptyTitle}
-            </p>
-            <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              {SETTINGS_HUB_COPY.emptyDescription}
-            </p>
-          </div>
-        </div>
+        <PortalEmptyState
+          embedded={true}
+          title={SETTINGS_HUB_COPY.emptyTitle}
+          description={SETTINGS_HUB_COPY.emptyDescription}
+          icon={Blocks}
+        />
       ) : null}
     </PortalPanel>
   );

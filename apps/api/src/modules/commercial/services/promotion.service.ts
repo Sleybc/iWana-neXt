@@ -16,6 +16,7 @@ import {
   PROMOTION_EXPIRING_SQL,
   commercialExpiringParams,
 } from '../utils/commercial-offer-filters';
+import { isPostgresUniqueViolation } from '../utils/postgres-unique';
 import {
   buildDateIdNextCursor,
   clampCommercialLimit,
@@ -100,7 +101,7 @@ export class PromotionService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // Verificar código único por tenant
       const existing = await qr.manager.findOne(CatalogPromotion, {
-        where: { tenantId, code: dto.code },
+        where: { tenantId, code: dto.code.toUpperCase() },
       });
       if (existing) {
         throw new ConflictException(
@@ -118,7 +119,7 @@ export class PromotionService {
         appliesTo: dto.appliesTo,
         targetItemId: dto.targetItemId ?? null,
         targetBundleId: dto.targetBundleId ?? null,
-        targetSegments: (dto.targetSegments ?? null) as any,
+        targetSegments: dto.targetSegments ?? null,
         maxUses: dto.maxUses ?? null,
         currentUses: 0,
         validFrom: new Date(dto.validFrom),
@@ -127,17 +128,24 @@ export class PromotionService {
         createdBy,
       });
 
-      const saved = await qr.manager.save(CatalogPromotion, entity);
-
-      this.eventEmitter.emit(COMMERCIAL_EVENTS.PROMOTION_STARTED, {
-        promotionId: saved.id,
-        code: saved.code,
-        validFrom: saved.validFrom,
-        validTo: saved.validTo,
-        tenantId,
-      });
-
-      return saved;
+      try {
+        const saved = await qr.manager.save(CatalogPromotion, entity);
+        this.eventEmitter.emit(COMMERCIAL_EVENTS.PROMOTION_STARTED, {
+          promotionId: saved.id,
+          code: saved.code,
+          validFrom: saved.validFrom,
+          validTo: saved.validTo,
+          tenantId,
+        });
+        return saved;
+      } catch (error) {
+        if (isPostgresUniqueViolation(error)) {
+          throw new ConflictException(
+            `Ya existe una promoción con código '${dto.code}' en este tenant`,
+          );
+        }
+        throw error;
+      }
     });
   }
 
@@ -174,35 +182,65 @@ export class PromotionService {
    */
   async incrementUse(id: string): Promise<CatalogPromotion> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    let expiredPayload: {
+      promotionId: string;
+      code: string;
+      totalUses: number;
+      tenantId: string;
+    } | null = null;
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.manager.query(
+        `
+        UPDATE catalog_promotions
+        SET current_uses = current_uses + 1,
+            is_active = CASE
+              WHEN max_uses IS NOT NULL AND current_uses + 1 >= max_uses THEN false
+              ELSE is_active
+            END
+        WHERE id = $1
+          AND tenant_id = $2
+          AND is_active = true
+          AND valid_from <= NOW()
+          AND valid_to >= NOW()
+          AND (max_uses IS NULL OR current_uses < max_uses)
+        RETURNING id
+        `,
+        [id, tenantId],
+      )) as Array<{ id: string }>;
+
+      if (!rows[0]) {
+        const promotion = await qr.manager.findOne(CatalogPromotion, { where: { id, tenantId } });
+        if (!promotion || !promotion.isActive) {
+          throw new NotFoundException(`Promoción activa ${id} no encontrada`);
+        }
+        const now = new Date();
+        if (now < promotion.validFrom || now > promotion.validTo) {
+          throw new BadRequestException('La promoción está fuera de su período de vigencia');
+        }
+        throw new BadRequestException('La promoción alcanzó el límite de usos');
+      }
+
       const promotion = await qr.manager.findOne(CatalogPromotion, {
-        where: { id, tenantId, isActive: true },
+        where: { id: rows[0].id, tenantId },
       });
       if (!promotion) {
         throw new NotFoundException(`Promoción activa ${id} no encontrada`);
       }
-
-      // Verificar vigencia temporal
-      const now = new Date();
-      if (now < promotion.validFrom || now > promotion.validTo) {
-        throw new BadRequestException('La promoción está fuera de su período de vigencia');
-      }
-
-      promotion.currentUses += 1;
-
-      // Verificar si se alcanzó el límite
-      if (promotion.maxUses !== null && promotion.currentUses >= promotion.maxUses) {
-        promotion.isActive = false;
-        this.eventEmitter.emit(COMMERCIAL_EVENTS.PROMOTION_EXPIRED, {
+      if (!promotion.isActive) {
+        expiredPayload = {
           promotionId: promotion.id,
           code: promotion.code,
           totalUses: promotion.currentUses,
           tenantId,
-        });
+        };
       }
-
-      return qr.manager.save(CatalogPromotion, promotion);
+      return promotion;
     });
+
+    if (expiredPayload) {
+      this.eventEmitter.emit(COMMERCIAL_EVENTS.PROMOTION_EXPIRED, expiredPayload);
+    }
+    return updated;
   }
 }

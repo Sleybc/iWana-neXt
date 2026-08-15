@@ -130,10 +130,6 @@ export class BundleService {
         order: { sortOrder: 'ASC' },
       });
       const itemIds = bundleItems.map((item) => item.itemId);
-      const items = itemIds.length
-        ? await qr.manager.find(CatalogItem, { where: { id: undefined as never } })
-        : [];
-
       const resolvedItems = itemIds.length
         ? await qr.manager
             .createQueryBuilder(CatalogItem, 'ci')
@@ -258,6 +254,15 @@ export class BundleService {
 
       const bundleItems = await qr.manager.find(CatalogBundleItem, { where: { bundleId } });
       const requiredItemIds = bundleItems.filter((bi) => bi.isRequired).map((bi) => bi.itemId);
+      const optionalIds = new Set(
+        bundleItems.filter((bi) => !bi.isRequired).map((bi) => bi.itemId),
+      );
+      const extraOptional = selectedOptionalItemIds.filter((id) => !optionalIds.has(id));
+      if (extraOptional.length) {
+        throw new BadRequestException(
+          'Los ítems opcionales seleccionados no pertenecen a este combo',
+        );
+      }
       const itemIdsToPrice = [...new Set([...requiredItemIds, ...selectedOptionalItemIds])];
 
       // Obtener precios vigentes para todos los ítems

@@ -86,13 +86,21 @@ export class TenantPlanCatalogReadAdapter extends PlanCatalogReadPort {
     });
   }
 
+  async getPlanById(
+    tenantId: string,
+    schemaName: string,
+    planId: string,
+  ): Promise<PlanCatalogItem | null> {
+    const plans = await this.getActivePlans(tenantId, schemaName);
+    return plans.find((item) => item.id === planId) ?? null;
+  }
+
   async createSnapshot(
     tenantId: string,
     schemaName: string,
     planId: string,
   ): Promise<PlanSnapshot> {
-    const plans = await this.getActivePlans(tenantId, schemaName);
-    const selectedPlan = plans.find((item) => item.id === planId) ?? plans[0];
+    const selectedPlan = await this.getPlanById(tenantId, schemaName, planId);
     if (!selectedPlan) {
       throw new Error('No existen planes activos para crear snapshot.');
     }

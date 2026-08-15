@@ -1443,7 +1443,7 @@ export function PortalSidePeek({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" role="presentation">
+    <div className="fixed inset-0 z-(--z-drawer) flex justify-end" role="presentation">
       <div
         className="absolute inset-0 bg-black/40 dark:bg-black/60"
         aria-hidden="true"

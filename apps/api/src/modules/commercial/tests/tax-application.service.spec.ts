@@ -1,6 +1,6 @@
 ﻿import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
-import { CustomerSegment } from '@iwana/shared';
+import { CustomerSegment, TaxType } from '@iwana/shared';
 import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { TaxApplicationService } from '../services/tax-application.service';
 import { ITaxApplicationReadPort } from '../ports/tax-application-read.port';
@@ -30,6 +30,7 @@ function createMockQueryBuilder(getOneResult: unknown) {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
     getOne: jest.fn().mockResolvedValue(getOneResult),
   };
 }
@@ -280,7 +281,13 @@ describe('TaxApplicationService', () => {
       mockRunInTenantSchema.mockImplementation(
         async (_ds: unknown, schema: string, cb: (m: unknown) => unknown) => {
           capturedSchema = schema;
-          let qb!: { where: jest.Mock; andWhere: jest.Mock; orderBy: jest.Mock; getOne: jest.Mock };
+          let qb!: {
+            where: jest.Mock;
+            andWhere: jest.Mock;
+            orderBy: jest.Mock;
+            addOrderBy: jest.Mock;
+            getOne: jest.Mock;
+          };
           qb = {
             where: jest.fn((_q: string, params: Record<string, string>) => {
               if (params?.tenantId) capturedTenantId = params.tenantId;
@@ -288,7 +295,7 @@ describe('TaxApplicationService', () => {
             }),
             andWhere: jest.fn().mockReturnThis(),
             orderBy: jest.fn().mockReturnThis(),
-            // Sin regla → retorna [] directamente (motor catálogo, sin legacy)
+            addOrderBy: jest.fn().mockReturnThis(),
             getOne: jest.fn().mockResolvedValue(null),
           };
           return cb({
@@ -366,10 +373,146 @@ describe('TaxApplicationService', () => {
 
   // ─── Test 6: Puerto correcto vía DI ─────────────────────────────────────
 
+  describe('vigencia del motor tributario', () => {
+    it('no casa reglas fuera de vigencia ni reglas de estrato si se omite', async () => {
+      const qb = createMockQueryBuilder(null);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            find: jest.fn().mockResolvedValue([]),
+          },
+        }),
+      );
+
+      const result = await service.resolve(CustomerSegment.RESIDENTIAL);
+      expect(result).toEqual([]);
+      expect(qb.andWhere).toHaveBeenCalledWith('tr.validFrom <= :now', expect.any(Object));
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(tr.validTo IS NULL OR tr.validTo >= :now)',
+        expect.any(Object),
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith('tr.stratumFrom IS NULL AND tr.stratumTo IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('tr.municipalityCode IS NULL');
+    });
+  });
+
   describe('ITaxApplicationReadPort token', () => {
     it('TaxApplicationService es inyectable como ITaxApplicationReadPort', () => {
       expect(service).toBeInstanceOf(ITaxApplicationReadPort);
       expect(typeof service.resolve).toBe('function');
+    });
+  });
+
+  describe('CRUD reglas y aplicaciones', () => {
+    it('listRules filtra por tenant_id y pagina', async () => {
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'rule-1', tenantId: tenantCtx.tenantId, createdAt: new Date() },
+          ]),
+      };
+      qb.clone.mockReturnValue(qb);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      const result = await service.listRules({ limit: 20 });
+      expect(qb.where).toHaveBeenCalledWith('rule.tenant_id = :tenantId', {
+        tenantId: tenantCtx.tenantId,
+      });
+      expect(result.data).toHaveLength(1);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('createRule persiste tenantId y createdBy', async () => {
+      const save = jest.fn().mockImplementation(async (_e, data) => ({ id: 'rule-new', ...data }));
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            create: (_e: unknown, data: Record<string, unknown>) => data,
+            save,
+          },
+        }),
+      );
+
+      const result = await service.createRule(
+        { taxType: TaxType.IVA, ratePercentage: '19.00', priority: 10 },
+        'usr-accountant',
+      );
+      expect(result.tenantId).toBe(tenantCtx.tenantId);
+      expect(result.createdBy).toBe('usr-accountant');
+    });
+
+    it('listApplications pagina aplicaciones', async () => {
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      qb.clone.mockReturnValue(qb);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      const result = await service.listApplications();
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+
+    it('createApplication guarda el puente con tenantId', async () => {
+      const save = jest.fn().mockImplementation(async (_e, data) => ({ id: 'app-1', ...data }));
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            create: (_e: unknown, data: Record<string, unknown>) => data,
+            save,
+          },
+        }),
+      );
+
+      const result = await service.createApplication({
+        taxRuleId: '11111111-1111-4111-8111-111111111111',
+        taxDefinitionId: '22222222-2222-4222-8222-222222222222',
+        treatment: 'STANDARD',
+      });
+      expect(result.tenantId).toBe(tenantCtx.tenantId);
+      expect(result.taxRuleId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+
+    it('updateApplication lanza NotFoundException si no existe', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => null } }),
+      );
+
+      await expect(
+        service.updateApplication('11111111-1111-4111-8111-111111111111', { isActive: false }),
+      ).rejects.toThrow('TaxRuleApplication');
+    });
+
+    it('deleteApplication elimina por id', async () => {
+      const del = jest.fn().mockResolvedValue({ affected: 1 });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { delete: del } }),
+      );
+
+      await service.deleteApplication('11111111-1111-4111-8111-111111111111');
+      expect(del).toHaveBeenCalled();
     });
   });
 });

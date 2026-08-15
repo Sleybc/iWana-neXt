@@ -21,8 +21,8 @@ export class SettingsRegistryService {
       },
       {
         key: SettingsSectionKey.ACCESS,
-        label: 'Usuarios y acceso',
-        description: 'Consulta perfiles, permisos y gobierno básico de acceso tenant-aware.',
+        label: 'Perfiles y autenticación',
+        description: 'Consulta perfiles, permisos y políticas de autenticación.',
         ownerModule: 'MOD00 / Access control',
         status: SettingsSectionStatus.AVAILABLE,
         route: '/dashboard/settings/access',
@@ -34,7 +34,7 @@ export class SettingsRegistryService {
       {
         key: SettingsSectionKey.BRANDING,
         label: 'Marca',
-        description: 'Gestiona identidad visual y activos corporativos del tenant autenticado.',
+        description: 'Gestiona la identidad visual y los activos corporativos.',
         ownerModule: 'Tenant / Branding',
         status: SettingsSectionStatus.AVAILABLE,
         route: '/dashboard/settings/branding',
@@ -52,7 +52,7 @@ export class SettingsRegistryService {
       },
       {
         key: SettingsSectionKey.BILLING,
-        label: 'Billing',
+        label: 'Facturación',
         description:
           'Queda reservado para el módulo owner cuando exponga configuración federada real.',
         ownerModule: 'Billing futuro',
@@ -62,7 +62,7 @@ export class SettingsRegistryService {
       },
       {
         key: SettingsSectionKey.INVENTORY,
-        label: 'Inventory',
+        label: 'Inventario',
         description:
           'Se mostrará cuando el owner de inventario publique contratos reales de settings.',
         ownerModule: 'Inventory futuro',
