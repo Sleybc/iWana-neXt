@@ -238,9 +238,7 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    expect(
-      await screen.findByRole('heading', { name: 'Plantillas iniciales' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Perfiles sugeridos' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Perfiles personalizados' })).toBeInTheDocument();
     expect(screen.getByText('Administrador general')).toBeInTheDocument();
 
@@ -253,7 +251,7 @@ describe('AccessControlSettingsClient', () => {
     fireEvent.change(dialog.getByLabelText('Descripción'), {
       target: { value: 'Perfil para soporte' },
     });
-    fireEvent.change(dialog.getByLabelText('Categoría base permitida'), {
+    fireEvent.change(dialog.getByLabelText('Tipo de usuario permitido'), {
       target: { value: UserRole.SUPPORT },
     });
     fireEvent.click(dialog.getByRole('button', { name: 'Crear perfil' }));
@@ -283,7 +281,7 @@ describe('AccessControlSettingsClient', () => {
     render(<AccessControlSettingsClient />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Perfiles de acceso y autenticación' }),
+      await screen.findByRole('heading', { name: /^Perfiles de acceso$/ }),
     ).toBeInTheDocument();
     expect(await screen.findByText('Políticas de autenticación')).toBeInTheDocument();
     expect(
@@ -362,7 +360,7 @@ describe('AccessControlSettingsClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Crear perfil' }));
 
-    expect(screen.getByText('Usar una plantilla')).toBeInTheDocument();
+    expect(screen.getByText('Usar un perfil sugerido')).toBeInTheDocument();
     expect(screen.getByText('Empezar desde cero')).toBeInTheDocument();
   });
 
@@ -393,7 +391,9 @@ describe('AccessControlSettingsClient', () => {
     await screen.findByRole('heading', { name: 'Perfiles personalizados' });
 
     fireEvent.click(
-      screen.getAllByRole('button', { name: /Usar Administrador general como base/i })[0]!,
+      within(
+        screen.getByText('Administrador general').closest('div.rounded-2xl') as HTMLElement,
+      ).getByRole('button', { name: /Crear a partir de este perfil/ }),
     );
 
     const dialog = await screen.findByRole('dialog');
@@ -412,7 +412,7 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    await screen.findByRole('heading', { name: 'Plantillas iniciales' });
+    await screen.findByRole('heading', { name: 'Perfiles sugeridos' });
 
     expect((await screen.findAllByText('Perfil NOC lectura')).length).toBeGreaterThan(0);
   });
@@ -425,7 +425,7 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    await screen.findByRole('heading', { name: 'Perfiles de acceso y autenticación' });
+    await screen.findByRole('heading', { name: /^Perfiles de acceso$/ });
 
     expect(screen.queryByRole('heading', { name: 'Asignación de roles' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Accesos efectivos' })).not.toBeInTheDocument();
@@ -440,13 +440,11 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    expect(
-      await screen.findByRole('heading', { name: 'Plantillas iniciales' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Perfiles sugeridos' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Perfiles personalizados' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Administra perfiles de acceso, plantillas iniciales y la verificación en dos pasos \(MFA\) global/i,
+        'Crea perfiles de acceso, define lo que puede usar cada uno y apóyate en perfiles sugeridos para empezar más rápido.',
       ),
     ).toBeInTheDocument();
   });
@@ -460,8 +458,10 @@ describe('AccessControlSettingsClient', () => {
     render(<AccessControlSettingsClient />);
 
     expect(await screen.findByText('Administrador general')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /Ver accesos de/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: /Usar.*como base/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /Ver lo que permite/ }).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('button', { name: /Crear a partir de este perfil/ }).length,
+    ).toBeGreaterThan(0);
   });
 
   it('enters draft mode from a system template and shows the full assignable catalog with template defaults checked', async () => {
@@ -472,11 +472,13 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    await screen.findByRole('button', { name: /Usar Técnico de campo como base/i });
+    await screen.findByText('Técnico de campo');
     await screen.findByRole('heading', { name: 'Perfiles personalizados' });
 
     fireEvent.click(
-      screen.getAllByRole('button', { name: /Usar Técnico de campo como base/i })[0]!,
+      within(
+        screen.getByText('Técnico de campo').closest('div.rounded-2xl') as HTMLElement,
+      ).getByRole('button', { name: /Crear a partir de este perfil/ }),
     );
 
     await screen.findByRole('status');
@@ -507,11 +509,13 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    await screen.findByRole('button', { name: /Usar Técnico de campo como base/i });
+    await screen.findByText('Técnico de campo');
     await screen.findByRole('heading', { name: 'Perfiles personalizados' });
 
     fireEvent.click(
-      screen.getAllByRole('button', { name: /Usar Técnico de campo como base/i })[0]!,
+      within(
+        screen.getByText('Técnico de campo').closest('div.rounded-2xl') as HTMLElement,
+      ).getByRole('button', { name: /Crear a partir de este perfil/ }),
     );
 
     expect((await screen.findAllByText(/Basado en Técnico de campo/i)).length).toBeGreaterThan(0);
@@ -545,13 +549,16 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    const verAccesosButton = await screen.findByRole('button', {
-      name: /Ver accesos de Técnico de campo/i,
+    const technicianCard = (await screen.findByText('Técnico de campo')).closest(
+      'div.rounded-2xl',
+    ) as HTMLElement;
+    const verAccesosButton = within(technicianCard).getByRole('button', {
+      name: /Ver lo que permite/,
     });
 
     fireEvent.click(verAccesosButton);
 
-    expect(screen.getByText(/Accesos de la plantilla/i)).toBeInTheDocument();
+    expect(screen.getByText(/Lo que permite este perfil/i)).toBeInTheDocument();
     expect(screen.getByText('Ejecutar órdenes de trabajo asignadas')).toBeInTheDocument();
 
     const closeButton = screen.getByRole('button', { name: 'Cerrar vista previa' });
@@ -694,5 +701,188 @@ describe('AccessControlSettingsClient', () => {
     expect(
       screen.getAllByRole('button', { name: 'Eliminar perfil Perfil NOC lectura' }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('places the create-profile action in the custom profiles panel instead of the page header', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    const pageTitle = screen.getByRole('heading', { level: 1 });
+    const pageHeader = pageTitle.closest('div.rounded-2xl') ?? pageTitle.parentElement;
+    expect(
+      within(pageHeader as HTMLElement).queryByRole('button', { name: 'Crear perfil' }),
+    ).not.toBeInTheDocument();
+
+    const customProfilesPanel = screen
+      .getByRole('heading', { name: 'Perfiles personalizados' })
+      .closest('section');
+    expect(customProfilesPanel).not.toBeNull();
+    expect(
+      within(customProfilesPanel as HTMLElement).getByRole('button', { name: 'Crear perfil' }),
+    ).toBeVisible();
+    expect(pageTitle).toHaveTextContent(/^Perfiles de acceso$/);
+  });
+
+  it('shows a single create-profile action in the editable empty state', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockResolvedValue(profiles.filter((profile) => profile.isSystem));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByText('Aún no has creado perfiles personalizados'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Crear primera/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Crear perfil' })).toHaveLength(1);
+  });
+
+  it('does not expose template or category-base copy on the access screen', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    expect(screen.queryByText(/Plantillas iniciales/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Usar como base/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Categoría base/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Plantillas base/)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
+  });
+
+  it('labels the operations module as Operaciones', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: {
+        listPermissions: jest.Mock;
+        listProfiles: jest.Mock;
+      };
+    };
+
+    const operationsPermission = {
+      id: 'perm-operations-tasks-read',
+      tenantId: 'tenant-1',
+      permissionKey: AccessPermissionKey.OPERATIONS_TASKS_READ,
+      moduleKey: 'operations',
+      action: 'read',
+      description: 'Ver tareas de operaciones',
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V1,
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      isSystem: true,
+      isActive: true,
+    };
+
+    const compatibilityMatrix = createCompatibilityMatrix();
+    compatibilityMatrix[UserRole.ADMIN] = [
+      ...compatibilityMatrix[UserRole.ADMIN],
+      AccessPermissionKey.OPERATIONS_TASKS_READ,
+    ];
+    compatibilityMatrix[UserRole.NOC] = [
+      ...compatibilityMatrix[UserRole.NOC],
+      AccessPermissionKey.OPERATIONS_TASKS_READ,
+    ];
+
+    accessControlApi.listPermissions.mockResolvedValue({
+      ...permissionsCatalog,
+      permissions: [...permissionsCatalog.permissions, operationsPermission],
+      compatibilityMatrix,
+    });
+    accessControlApi.listProfiles.mockResolvedValue(
+      profiles.map((profile) =>
+        profile.id === 'profile-1'
+          ? {
+              ...profile,
+              permissions: [...profile.permissions, AccessPermissionKey.OPERATIONS_TASKS_READ],
+            }
+          : profile,
+      ),
+    );
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect((await screen.findAllByText('Perfil NOC lectura')).length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Editar accesos de Perfil NOC lectura' })[0]!,
+    );
+
+    await screen.findByRole('tablist', { name: 'Secciones de acceso' });
+
+    expect(screen.getByRole('tab', { name: /^Operaciones \d/ })).toBeVisible();
+    expect(screen.queryByRole('tab', { name: /^operations \d/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('operations')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes an internal API message when profiles fail to load', async () => {
+    const { ApiError, accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockRejectedValue(
+      new ApiError(500, 'relation "access_profiles" does not exist'),
+    );
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(screen.queryByText('relation "access_profiles" does not exist')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('No pudimos cargar los perfiles de acceso. Intenta nuevamente.'),
+    ).toBeInTheDocument();
+  });
+
+  it('asks for confirmation before deleting a custom profile', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { deleteProfile: jest.Mock };
+    };
+
+    accessControlApi.deleteProfile.mockResolvedValue(undefined);
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Eliminar perfil Perfil NOC lectura' }))[0]!,
+    );
+
+    expect(
+      screen.getByRole('dialog', { name: '¿Eliminar el perfil «Perfil NOC lectura»?' }),
+    ).toBeInTheDocument();
+    expect(accessControlApi.deleteProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(accessControlApi.deleteProfile).not.toHaveBeenCalled();
   });
 });
