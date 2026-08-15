@@ -885,4 +885,453 @@ describe('AccessControlSettingsClient', () => {
 
     expect(accessControlApi.deleteProfile).not.toHaveBeenCalled();
   });
+
+  it('deletes a custom profile only after confirmation', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { deleteProfile: jest.Mock };
+    };
+
+    accessControlApi.deleteProfile.mockResolvedValue(undefined);
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Eliminar perfil Perfil NOC lectura' }))[0]!,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar perfil' }));
+
+    await waitFor(() => {
+      expect(accessControlApi.deleteProfile).toHaveBeenCalledWith('profile-1');
+    });
+  });
+
+  it('saves selected profile accesses with a success message', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { replaceProfilePermissions: jest.Mock };
+    };
+
+    accessControlApi.replaceProfilePermissions.mockResolvedValue({
+      ...profiles[3],
+      permissions: [AccessPermissionKey.ORGANIZATION_SITES_READ],
+    });
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar accesos de Perfil Organización' }))[0]!,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(accessControlApi.replaceProfilePermissions).toHaveBeenCalled();
+    });
+    expect(
+      await screen.findByText('Accesos del perfil actualizados correctamente.'),
+    ).toBeInTheDocument();
+  });
+
+  it('clears an empty access search from the empty state action', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar accesos de Perfil Organización' }))[0]!,
+    );
+    fireEvent.change(await screen.findByLabelText('Buscar acceso dentro de esta sección'), {
+      target: { value: 'centro' },
+    });
+
+    expect(await screen.findByText('No encontramos accesos en esta sección')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda' }));
+
+    expect(screen.getByText('Ver sedes de la organización')).toBeInTheDocument();
+  });
+
+  it('sanitizes a 401 while loading profiles', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+
+    accessControlApi.listProfiles.mockRejectedValue(new ApiError(401, 'jwt expired'));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByText('Tu sesión expiró. Inicia sesión nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('jwt expired')).not.toBeInTheDocument();
+  });
+
+  it('retries loading profiles after a sanitized error', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValue(profiles);
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
+
+    expect((await screen.findAllByText('Perfil NOC lectura')).length).toBeGreaterThan(0);
+  });
+
+  it('shows session unavailable when the portal user is missing', async () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(await screen.findByText('Sesión no disponible')).toBeInTheDocument();
+    expect(screen.getByText('No fue posible resolver la sesión del portal.')).toBeInTheDocument();
+  });
+
+  it('sanitizes a 403 while loading profiles', async () => {
+    const { ApiError, accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockRejectedValue(new ApiError(403, 'forbidden profiles'));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'Solo las personas administradoras pueden gestionar perfiles de acceso.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('forbidden profiles')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a save error when updating profile accesses', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { replaceProfilePermissions: jest.Mock };
+    };
+
+    accessControlApi.replaceProfilePermissions.mockRejectedValue(new Error('ECONNRESET'));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar accesos de Perfil Organización' }))[0]!,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar cambios' }));
+
+    expect(
+      await screen.findByText('No pudimos guardar los cambios. Intenta nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('ECONNRESET')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a delete error after confirming profile deletion', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { deleteProfile: jest.Mock };
+    };
+
+    accessControlApi.deleteProfile.mockRejectedValue(new Error('FK_access_profile_users'));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Eliminar perfil Perfil Organización' }))[0]!,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar perfil' }));
+
+    expect(
+      await screen.findByText('No pudimos eliminar el perfil. Intenta nuevamente.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('FK_access_profile_users')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a 403 while loading the authentication policy', async () => {
+    const { ApiError, tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+      tenantSelfApi: { getSettings: jest.Mock };
+    };
+
+    tenantSelfApi.getSettings.mockRejectedValue(new ApiError(403, 'policy forbidden'));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'Solo las personas administradoras pueden cambiar la política de autenticación.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('policy forbidden')).not.toBeInTheDocument();
+  });
+
+  it('sanitizes a save error when updating the authentication policy', async () => {
+    const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { updateSettings: jest.Mock };
+    };
+
+    tenantSelfApi.updateSettings.mockRejectedValue(new Error('redis timeout'));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(await screen.findByLabelText('Activar verificación en dos pasos obligatoria'));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar política' }));
+
+    expect(
+      await screen.findByText(
+        'No fue posible guardar la política de verificación en dos pasos. Intenta de nuevo.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('redis timeout')).not.toBeInTheDocument();
+  });
+
+  it('opens the profile data dialog from the draft banner and can cancel the draft', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      within(
+        (await screen.findByText('Técnico de campo')).closest('div.rounded-2xl') as HTMLElement,
+      ).getByRole('button', { name: /Crear a partir de este perfil/ }),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar datos del nuevo perfil' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar nuevo perfil' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Nuevo perfil en preparación')).not.toBeInTheDocument();
+    });
+  });
+
+  it('updates an existing custom profile from the edit dialog', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { updateProfile: jest.Mock };
+    };
+
+    accessControlApi.updateProfile.mockResolvedValue({
+      ...profiles[2],
+      name: 'Perfil NOC lectura actualizado',
+    });
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar perfil Perfil NOC lectura' }))[0]!,
+    );
+
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByLabelText('Nombre'), {
+      target: { value: 'Perfil NOC lectura actualizado' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(accessControlApi.updateProfile).toHaveBeenCalledWith(
+        'profile-1',
+        expect.objectContaining({
+          name: 'Perfil NOC lectura actualizado',
+          isActive: true,
+        }),
+      );
+    });
+    expect(await screen.findByText('Perfil actualizado correctamente.')).toBeInTheDocument();
+  });
+
+  it('clears and restores selected profile accesses', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar accesos de Perfil Organización' }))[0]!,
+    );
+
+    const sitesAccess = await screen.findByLabelText('Ver sedes de la organización');
+    expect(sitesAccess).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar accesos' }));
+    expect(sitesAccess).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restablecer cambios' }));
+    expect(sitesAccess).toBeChecked();
+  });
+
+  it('moves between access sections with keyboard arrows', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar accesos de Perfil Organización' }))[0]!,
+    );
+
+    const organizationTab = await screen.findByRole('tab', { name: /Organización/i });
+    organizationTab.focus();
+    fireEvent.keyDown(organizationTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(organizationTab, { key: 'Home' });
+    fireEvent.keyDown(organizationTab, { key: 'End' });
+    fireEvent.keyDown(organizationTab, { key: 'ArrowLeft' });
+
+    expect(screen.getByRole('tablist', { name: 'Secciones de acceso' })).toBeInTheDocument();
+  });
+
+  it('scrolls permission sections to the left when overflow controls appear', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    const scrollByMock = jest.fn(function scrollByMock(
+      this: HTMLElement,
+      options?: ScrollToOptions,
+    ) {
+      const nextLeft = typeof options?.left === 'number' ? options.left : 0;
+      Object.defineProperty(this, 'scrollLeft', {
+        configurable: true,
+        value: Math.max(0, this.scrollLeft + nextLeft),
+        writable: true,
+      });
+      fireEvent.scroll(this);
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+      configurable: true,
+      value: scrollByMock,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Editar accesos de Perfil Organización' }))[0]!,
+    );
+
+    const scrollContainer = await screen.findByTestId('permission-modules-scroll');
+    Object.defineProperty(scrollContainer, 'clientWidth', { configurable: true, value: 240 });
+    Object.defineProperty(scrollContainer, 'scrollWidth', { configurable: true, value: 640 });
+    Object.defineProperty(scrollContainer, 'scrollLeft', {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+
+    fireEvent(window, new Event('resize'));
+    fireEvent.scroll(scrollContainer);
+
+    const scrollLeftButton = await screen.findByRole('button', {
+      name: 'Desplazar secciones a la izquierda',
+    });
+    fireEvent.click(scrollLeftButton);
+
+    expect(scrollByMock).toHaveBeenCalled();
+  });
+
+  it('creates a profile from the suggested preview footer', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const technicianCard = (await screen.findByText('Técnico de campo')).closest(
+      'div.rounded-2xl',
+    ) as HTMLElement;
+    fireEvent.click(within(technicianCard).getByRole('button', { name: /Ver lo que permite/ }));
+
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Crear a partir de este perfil',
+      }),
+    );
+
+    expect(await screen.findByText('Nuevo perfil en preparación')).toBeInTheDocument();
+  });
+
+  it('points the creation selector to suggested profiles', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear perfil' }));
+    fireEvent.click(screen.getByText('Usar un perfil sugerido'));
+
+    expect(
+      await screen.findByText(
+        'Elige un perfil sugerido y pulsa «Crear a partir de este perfil» para comenzar.',
+      ),
+    ).toBeInTheDocument();
+  });
 });

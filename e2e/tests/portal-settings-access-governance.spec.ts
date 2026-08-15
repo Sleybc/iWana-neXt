@@ -354,12 +354,14 @@ test.describe('Portal access governance', () => {
   }) => {
     await bootstrapAccessGovernancePage(page, baseURL);
 
-    await expect(page.getByRole('heading', { name: 'Plantillas iniciales' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
     await expect(page.getByText('Administrador general', { exact: true })).toBeVisible();
 
-    // Las tarjetas de plantilla tienen botones de acción
-    const usarComoBaseButtons = page.getByRole('button', { name: /Usar.*como base/i });
-    await expect(usarComoBaseButtons.first()).toBeVisible();
+    // Las tarjetas de perfil sugerido tienen botones de acción
+    const createFromProfileButtons = page.getByRole('button', {
+      name: /Crear a partir de este perfil/,
+    });
+    await expect(createFromProfileButtons.first()).toBeVisible();
 
     // No hay selector de usuario en esta pantalla (exact para no colisionar con "Menú de usuario" del header)
     await expect(page.getByLabel('Usuario', { exact: true })).not.toBeVisible();
@@ -375,11 +377,14 @@ test.describe('Portal access governance', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
 
     await expect(
-      page.getByText('Falta access.profiles.manage para actualizar el perfil.'),
+      page.getByText('Solo las personas administradoras pueden gestionar perfiles de acceso.'),
     ).toBeVisible();
+    await expect(
+      page.getByText('Falta access.profiles.manage para actualizar el perfil.'),
+    ).toHaveCount(0);
   });
 
   test('visibiliza el anti-lockout cuando el ultimo camino ADMIN perderia manage', async ({
@@ -444,10 +449,13 @@ test.describe('Portal access governance', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
 
     await expect(
-      page.getByText('LAST_ADMIN_ACCESS_LOCKOUT: el ultimo camino ADMIN perderia manage.'),
+      page.getByText('Solo las personas administradoras pueden gestionar perfiles de acceso.'),
     ).toBeVisible();
+    await expect(
+      page.getByText('LAST_ADMIN_ACCESS_LOCKOUT: el ultimo camino ADMIN perderia manage.'),
+    ).toHaveCount(0);
   });
 });
