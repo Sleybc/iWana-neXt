@@ -256,9 +256,7 @@ describe('CalendarSettingsClient', () => {
         'Algunos bloques no se pudieron cargar. Actualiza la vista antes de confirmar el estado operativo o guardar cambios.',
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Guardar horario general' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar horario base' })).not.toBeInTheDocument();
     expect(screen.getByText('Horarios por sede')).toBeInTheDocument();
     expect(screen.getByText('Cierres por fecha y aperturas especiales')).toBeInTheDocument();
   });

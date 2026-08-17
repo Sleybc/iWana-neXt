@@ -1,6 +1,6 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.62
+**Version:** 1.70
 **Estado:** Activo
 **Fecha:** 2026-08-15
 **Modo activo:** Mixto  
@@ -1652,3 +1652,111 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - Playwright Acceso — 10 passed; axe 0 violaciones en 6 combinaciones viewport×tema
 - `git diff --check` sobre archivos de Acceso — exit 0
 - Sin API, OpenAPI, migraciones, tokens ni cambios globales de `@iwana/ui`. El código de Organización permanece fuera de estos commits.
+
+### v1.63 — 2026-08-15 — Cards de perfiles sugeridos sin solape
+
+**Autor:** AI-FE-PLATFORM con AI-DS-OWNER y AI-SR-QA
+**Tipo:** Corrección de layout
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.1)
+
+- **Cambio:** los CTAs de cada perfil sugerido dejan de compartir fila con el título. Título + descripción + meta quedan arriba; `Ver lo que permite` y `Crear a partir de este perfil` van apilados al pie a ancho completo. La grilla pasa de `xl:grid-cols-4` a máximo `md:grid-cols-2`.
+- **Jest:** 43/43, incluye `keeps suggested profile titles readable above stacked card actions`.
+- **E2E:** 7/7 `portal-settings-access-ui` (axe + snapshots actualizados). El título no solapa el CTA de creación.
+- **Typecheck:** exit 0. `audit-ui.mjs`: P0/P1/P3 = 0; 2 P2 `[revisar]` de badges lima sin cambio.
+
+### v1.66 — 2026-08-15 — Cierre de review de identidad Acceso
+
+**Autor:** AI-EM-ARCH con AI-PROD-UX, AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Corrección de hallazgos de review UI
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.4)
+
+- **Cambio:** CTAs de perfiles sugeridos siempre apilados a `w-full` (sin `sm:flex-row`); se quita el eyebrow repetido `Sugerido`; toolbar móvil sin override `bg-gray-50`; empties internos de Accesos `embedded`; loading/restringido/sesión usan `space-y-4`. Grid 4 columnas se conserva.
+- **Jest:** 51/51. Cubre CA-ACC-UX-16/17 (CTAs apilados, sin eyebrow, toolbar sin pozo gris, empty de búsqueda embebido, ritmo de loading).
+- **E2E:** 9/9 `portal-settings-access-ui` (axe + snapshots). Caso con 6 sugeridos a 1440×900: 4 columnas, CTAs dentro de la card, apilados, ≥44 px.
+- **Typecheck:** exit 0. `audit-ui.mjs`: P0/P1 = 0; 2 P2 `[revisar]` de píldora `En edición` (acento válido, spec §10, no se cambia).
+- **Veredicto:** cierra los P2/P3 de la review de identidad. Sin tokens nuevos ni cambios en `portal-ui.tsx`.
+
+### v1.65 — 2026-08-15 — Compactación de densidad de Acceso
+
+**Autor:** AI-EM-ARCH con AI-PROD-UX, AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Compactación de layout
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.3)
+**Plan:** `docs/plans/2026-08-15-mod00-acceso-densidad-ui.md`
+
+- **Cambio:** grid de perfiles sugeridos pasa de `md:grid-cols-2` a `md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`. Cards sugeridas compactas: fondo blanco (sin pozo `bg-iwana-surface-soft`), `px-4 py-3 gap-2`, meta con `truncate`. CTAs al pie: preview `ghost size="sm"` y crear `secondary size="sm"`, ambos `min-h-11 w-full` sin `size="lg"` ni `sm:flex-1`.
+- **Jest:** 48/48. Incluye RED de CA-ACC-UX-16 (grid 4 cols, card sin pozo ni min-h, CTAs `size="sm"` sin `sm:flex-1`).
+- **E2E:** 9/9 `portal-settings-access-ui` (axe + snapshots actualizados). En desktop 1440×900 los CTAs de una card sugerida no saltan de línea.
+- **Typecheck:** exit 0.
+- **Veredicto AI-PROD-UX / AI-DS-OWNER:** GO para grid 4 columnas y CTAs compactos. Sin tokens nuevos ni cambios en `portal-ui.tsx`.
+
+### v1.64 — 2026-08-15 — Densidad operativa de Acceso
+
+**Autor:** AI-EM-ARCH con AI-PROD-UX, AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Compactación de layout
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.2)
+**Plan:** `docs/plans/2026-08-15-mod00-acceso-densidad-ui.md`
+**Prompt:** `docs/prompts/PROMPT-MOD00-ACCESO-DENSIDAD-UI-v1.0.md`
+
+- **Cambio:** `space-y-4`, workspace `items-start`, empty de perfiles `embedded` sin description duplicada del panel, Accesos sin `PortalEmptyState` «Sin perfil seleccionado», paneles `compact` en vacíos/sugeridos/MFA, CTAs sugeridos en `flex-col sm:flex-row` sin `min-h` artificial.
+- **Jest:** 45/45. Incluye empty embebido y ausencia de empty duplicado en Accesos.
+- **E2E:** 8/8 `portal-settings-access-ui` (axe + snapshots). Con 0 perfiles, `Perfiles sugeridos` queda in-viewport en 1440×900. Título sugerido no intersecta el CTA.
+- **Typecheck:** exit 0. ESLint: 0 errores (1 warning previo). `audit-ui.mjs`: P0/P1 = 0; 2 P2 `[revisar]` de badges lima.
+- **Veredicto AI-PROD-UX / AI-DS-OWNER:** GO para densidad embebida. Sin tokens ni cambio de `portal-ui.tsx`. Organización no se tocó.
+
+### v1.67 — 2026-08-15 — Pulido dirigido de Acceso
+
+**Autor:** AI-EM-ARCH (orquestador) con AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Pulido dirigido UI de `/dashboard/settings/access`
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.5)
+**Plan:** `docs/plans/2026-08-15-mod00-acceso-pulido-dirigido-ui.md`
+**Prompt:** `docs/prompts/PROMPT-MOD00-ACCESO-PULIDO-DIRIGIDO-UI-v1.0.md`
+
+- **Cambio:** grilla de sugeridos incondicional `grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` (sin rama por cantidad: una card conserva una columna contenida); copy del editor orientado a tarea (`Revisa lo que «{perfil}» puede/podrá ver o hacer en cada sección.` según perfil guardado o borrador); eliminado `templateEyebrow`; footer MFA apilado en mobile (`flex-col items-stretch`, botón `w-full sm:w-auto`) y en fila desde `sm`. CA-ACC-UX-18…20 añadidos a la spec v1.5.
+- **TDD:** RED 4 nuevos fallidos / 51 verdes → GREEN 55/55.
+- **Jest:** 55/55. Cobertura focalizada: statements 93.57 %, branches 82.03 %, functions 87.96 %, lines 93.64 % (las cuatro ≥80 %).
+- **E2E:** 11/11 `portal-settings-access-ui` (axe + snapshots). Casos observables nuevos: card sugerida única contenida en desktop 1440×900 (ancho <35 % del panel) y footer MFA en 390×844 (ayuda encima del CTA sin solape, botón ≥90 % del ancho del panel). Corrida con `--update-snapshots` verde y segunda corrida verde sin modificar snapshots. Nota de debugging: `waitForLoadState('networkidle')` + `toBeAttached()` antes del scroll por el remount de la doble carga en cascada del cliente (documentado en el test; sin cambio de producción).
+- **Snapshots regenerados:** los 6 de Acceso (`access-{mobile,tablet,desktop}-{light,dark}-chromium-win32.png`). Organización no se tocó.
+- **Typecheck:** exit 0. ESLint de los archivos tocados: 0 errores, 1 warning preexistente. `audit-ui.mjs`: P0/P1 = 0; 2 P2 `[revisar]` de píldora `En edición` — descartadas (pre-existentes, acento válido spec §10, fuera del alcance cerrado).
+- **Gate G6:** **GO** para el alcance cerrado. Sin cambios en API, OpenAPI, migraciones, tenancy, permisos, tokens, `portal-ui.tsx`, `@iwana/ui` ni archivos de Organización. Sin commit ni push (solicitado explícito pendiente).
+- **Veredicto AI-EM-ARCH:** GO. CA-ACC-UX-01…20 verdes; los cambios previos sin commitear del workstream paralelo de Organización quedaron intactos.
+
+### v1.68 — 2026-08-15 — Re-sync contrato: CTA sugerido primary
+
+**Autor:** AI-EM-ARCH (orquestador) con AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Cambio de contrato (re-sync, protocolo §3bis) por aprobación del usuario
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.5 → v1.6)
+
+- **Motivo:** el usuario observó que los CTAs de las cards sugeridas se veían planos (secondary blanco sobre card blanca; en dark `dark-surface-2` sobre `dark-surface-2`). Decisión: `Crear a partir de este perfil` pasa a `variant="primary"`; `Ver lo que permite` permanece `ghost`. Sin tokens, hex, sombras ni primitives nuevos.
+- **Veredicto AI-DS-OWNER:** GO con condiciones — cambio de una sola línea de variante en la card; prohibido `size="lg"`/`sm:flex-1`/`sm:flex-row`/`sm:w-auto`/`h-8` en la card; no tocar peek, `Crear perfil` del panel ni otros botones; verificación visual con 6 sugeridos en 6 combinaciones viewport×tema. CA-ACC-UX-16/17 sin cambios.
+- **Implementación AI-FE-PLATFORM:** variante cambiada solo en la card (línea 1433); spec v1.6 con frase §10 nueva y entrada en §15; regla final `(v1.6+)`. Unit 55/55 sin tocar tests.
+- **Verificación AI-SR-QA:** pre-snapshots 5 passed / 6 failed (solo los 6 snapshots de Acceso, diffs localizados); update + segunda corrida 11/11 verdes y estables. Gates: tsc limpio; eslint 0 errores (1 warning preexistente); cobertura 93.57 / 82.03 / 87.96 / 93.64; `audit-ui.mjs` P0/P1 = 0 (2 P2 preexistentes de `En edición`); `git diff --check` limpio.
+- **Condición 5 DS-OWNER (verificación visual):** confirmada por evidencia programática — CTAs de cards con el color primario exacto (`rgb(23,22,58)` light / `rgb(90,81,144)` dark), `Crear perfil` lg domina (162×47 px vs 43–44 px de los sm), un primary por card precedido del ghost, contraste 17.5:1 light / 7.0:1 dark, axe 0 violaciones. **Residual declarado:** la sanción estética subjetiva no pudo ejecutarse por el modelo de visión (verificación parcial); con catálogo completo hay 6 primarios en la sección (jerarquía sm-vs-lg los contiene). Pendiente de ojo humano/DS-OWNER sobre los PNG antes de producción; si fallara, se discute en v1.7.
+- **Veredicto AI-EM-ARCH:** GO. Sin cambios fuera de alcance; Organización intacta; sin commit ni push (pendiente de solicitud explícita).
+
+### v1.69 — 2026-08-15 — Re-sync contrato: preview con superficie suave
+
+**Autor:** AI-EM-ARCH (orquestador) con AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Cambio de contrato (re-sync, protocolo §3bis) por revisión visual del usuario
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.6 → v1.7)
+
+- **Motivo:** el usuario revisó los PNG y observó que `Ver lo que permite` (ghost transparente sobre card blanca) se leía como texto plano. Referencia citada: los pozos suaves de Calendario ("Cierres por fecha y aperturas especiales"). Análisis de gobernanza previo (auditoría de solo lectura): lo prohibido es `iwana-secondary-50` (#F7FCE8) como fondo base (regla semántica del lima, spec Firma §"Reglas semánticas"; ADR-056 la blinda); el "verde suave" permitido de los formularios es `iwana-surface-soft` (#F8FAF5) — inventario real: ~100 usos de `surface-soft` y solo 3 de `secondary-50` (todos píldoras legítimas), cero violaciones en portal/web.
+- **Decisión:** componer superficie suave local sobre el ghost del preview, sin variante global nueva: `border border-gray-200/80 bg-iwana-surface-soft hover:bg-iwana-secondary-50 dark:border-dark-border dark:bg-dark-surface-3 dark:hover:bg-dark-surface-4` (hover lima = acento de interacción permitido). Cero tokens nuevos; no toca `Button.tsx` ni `@iwana/ui`.
+- **Veredicto AI-DS-OWNER:** GO — ruta A (composición local; `secondary` descartada por v1.6, `outline` por radio xl, pozo de card por densidad v1.3). CA-ACC-UX-10/16/17 sin cambio textual.
+- **TDD AI-FE-PLATFORM:** RED (1 fallido/55 verdes) → GREEN **56/56**. Cambio de una sola línea de className; spec v1.7 con frase §10 nueva y entrada en §15; regla final `(v1.7+)`.
+- **Verificación AI-SR-QA:** E2E 11/11; snapshots regenerados con comparación exacta (umbral 0) y confirmados píxel-exactos contra el render v1.7. Contraste real de los 4 pares del preview: 9.81:1 / 9.84:1 (light reposo/hover) y 9.75:1 / 8.58:1 (dark reposo/hover) — AA con margen. Gates: tsc limpio; eslint 0 errores (1 warning preexistente); cobertura 93.57 / 82.03 / 87.96 / 93.64; `audit-ui.mjs` P0/P1 = 0 (3 P2 descartados por regla anti-falso-positivo: hover del preview y píldoras «En edición»); `git diff --check` limpio.
+- **Hallazgo de proceso (residual para el orquestador):** el umbral por defecto del comparador de snapshots (0.2) enmascara cambios de superficie suave — v1.6→v1.7 pasó inadvertido con PNG obsoletos hasta comparar con umbral 0. Evaluar bajar el umbral o añadir snapshot por elemento para que la regresión visual detecte estos cambios de contrato; queda fuera del alcance de este re-sync.
+- **Veredicto AI-EM-ARCH:** GO. Organización intacta; sin commit ni push (pendiente de solicitud explícita).
+
+### v1.70 — 2026-08-15 — Cambio de contrato: CheckboxCard con superficie suave global
+
+**Autor:** AI-EM-ARCH (orquestador) con AI-DS-OWNER, AI-FE-PLATFORM y AI-SR-QA
+**Tipo:** Cambio de design system global (opción B elegida por el CTO) por revisión visual del usuario
+**Spec:** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.7 → v1.8)
+
+- **Motivo:** el usuario observó el toggle «Verificación en dos pasos global» (CheckboxCard) con fondo gris (`bg-gray-50/60`) y pidió el verde suave #F8FAF5. Decisión CTO: cambiar la primitive global (no solo MFA de Acceso) para unificar todo el portal y web.
+- **Veredicto AI-DS-OWNER:** GO — `bg-iwana-surface-soft/60` + hover lima pleno `bg-iwana-surface-soft` + borde `gray-100` → `gray-200` (modo claro), dark intacto (`dark:bg-dark-surface-3/60`, `dark:hover:dark-surface-3`, `dark:border-dark-border`), disabled conserva `opacity-60`. Contraste teórico AA: gray-900 ≈16.9:1, gray-500 ≈4.6:1. Condición verificada: hosts de apps/web son `bg-white`/`dark:bg-dark-surface-2` (TenantSettingsForm fuerza `bg-white` explícito — gana por tailwind-merge, comportamiento intencional).
+- **TDD AI-FE-PLATFORM:** RED (1 fallido) → GREEN. Cambio de una línea en `packages/ui/src/components/CheckboxCard.tsx:34`; test nuevo en `ui-primitives-a11y.spec.tsx` (10/10); consumidores Access + Organization 99/99; lint/typecheck de `@iwana/ui` y portal limpios. Spec v1.8 (§10 enmienda, §15 entrada).
+- **Verificación AI-SR-QA:** E2E acceso 11/11; 3 PNG light regenerados con comparación exacta (umbral 0) y los 6 verificados píxel-exactos contra render v1.8 (mobile/tablet/desktop × light/dark = 0 diffs); dark intacto (v1.8 no toca dark). Contraste real medido sobre render: reposo 17.23:1 (label) / 4.70:1 (descripción); hover 16.89:1 / 4.60:1 — AA. Barrido de impacto: organization-ui + commercial-ui-evidence 11/11 con 0 PNG stale (el cambio no les afecta); web-tenant-create-happy-path no re-corrible por API `:3000` caída (infra, no atribuible). Gates: audit-ui P0/P1 = 0 en el cambio (7 P1 `[revisar]` preexistentes ajenos); `git diff --check` limpio; temporales QA borrados.
+- **Hallazgo de proceso (falso verde v2):** el server dev sirvió bundle stale v1.7 y la suite pasó 11/11 contra el render viejo; solo tras server fresco (`PW_FORCE_FRESH_SERVER`) el DOM confirmó v1.8 y los PNG se regeneraron correctos. Se añade a la deuda de proceso: tras cambios de primitive, verificar servidor fresco + DOM antes de snapshots.
+- **Gate cobertura focalizada (AI-EM-ARCH, `--collectCoverageFrom=components/settings/AccessControlSettingsClient.tsx`):** 93.57 / 82.03 / 87.96 / 93.64 · 56/56 — sin retroceso vs baseline v1.68 (el 71.52% branches reportado por SR-QA corresponde al global del portal, denominador distinto, preexistente).
+- **Veredicto AI-EM-ARCH:** GO. Sin commits ni push (pendiente de solicitud explícita); workstream de Organización intacto.

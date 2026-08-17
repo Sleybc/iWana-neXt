@@ -708,14 +708,6 @@ function OrganizationSettingsClientInner() {
       <PageHeader
         title={ORGANIZATION_SETTINGS_COPY.pageTitle}
         subtitle={ORGANIZATION_SETTINGS_COPY.pageSubtitle}
-        actions={
-          canManageSites ? (
-            <Button type="button" size="lg" onClick={openCreateDialog}>
-              <Plus className="mr-2 h-4 w-4" aria-hidden={true} />
-              {ORGANIZATION_SETTINGS_COPY.createSiteAction}
-            </Button>
-          ) : undefined
-        }
       />
 
       {feedback ? (
@@ -806,6 +798,14 @@ function OrganizationSettingsClientInner() {
         <PortalPanel
           title={ORGANIZATION_SETTINGS_COPY.sitesPanelTitle}
           description={ORGANIZATION_SETTINGS_COPY.sitesPanelDescription}
+          actions={
+            canManageSites && sites.length > 0 && !isSitesInitialLoading ? (
+              <Button type="button" size="lg" onClick={openCreateDialog}>
+                <Plus className="h-4 w-4" aria-hidden={true} />
+                {ORGANIZATION_SETTINGS_COPY.createSiteAction}
+              </Button>
+            ) : undefined
+          }
         >
           {isSitesInitialLoading ? (
             <div role="status" aria-live="polite" aria-label="Cargando sedes" className="space-y-4">

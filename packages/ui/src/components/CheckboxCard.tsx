@@ -31,7 +31,7 @@ const CheckboxCard = React.forwardRef<HTMLInputElement, CheckboxCardProps>(
   ) => (
     <label
       className={cn(
-        'flex cursor-pointer items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3 transition-colors hover:border-gray-200 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3/60 dark:hover:bg-dark-surface-3',
+        'flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-iwana-surface-soft/60 p-3 transition-colors hover:border-gray-200 hover:bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3/60 dark:hover:bg-dark-surface-3',
         disabled && 'cursor-not-allowed opacity-60',
         className,
       )}

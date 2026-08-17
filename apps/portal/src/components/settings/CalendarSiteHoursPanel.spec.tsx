@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BusinessHoursWeekday, OrganizationSiteType } from '@iwana/shared';
 import { CalendarSiteHoursPanel } from './CalendarSiteHoursPanel';
 
@@ -357,10 +357,7 @@ describe('CalendarSiteHoursPanel', () => {
     });
   });
 
-  it('permite volver al horario base y confirma el cambio con feedback visible', async () => {
-    const originalConfirm = globalThis.confirm;
-    globalThis.confirm = jest.fn(() => true);
-
+  it('permite volver al horario base confirmando en el diálogo y muestra feedback visible', async () => {
     getMock.mockResolvedValueOnce({
       ...buildSiteDetail('site-1', '08:00'),
       businessHoursMode: 'OVERRIDE' as const,
@@ -378,15 +375,38 @@ describe('CalendarSiteHoursPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Volver al horario base' }));
 
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('¿Quitar el horario personalizado?')).toBeInTheDocument();
+
+    fireEvent.click(dialog.getByRole('button', { name: 'Volver al horario base' }));
+
     await waitFor(() => {
-      expect(globalThis.confirm).toHaveBeenCalled();
       expect(clearSiteOverrideMock).toHaveBeenCalledWith('site-1');
       expect(
-        screen.getByText('La sede volvió a usar el horario general de la empresa.'),
+        screen.getByText('La sede volvió a usar el horario base de la empresa.'),
       ).toBeInTheDocument();
     });
+  });
 
-    globalThis.confirm = originalConfirm;
+  it('cancela el diálogo de quitar horario sin llamar al API', async () => {
+    getMock.mockResolvedValueOnce({
+      ...buildSiteDetail('site-1', '08:00'),
+      businessHoursMode: 'OVERRIDE' as const,
+    });
+
+    render(<CalendarSiteHoursPanel sites={[baseSite]} canEdit={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Volver al horario base' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver al horario base' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(clearSiteOverrideMock).not.toHaveBeenCalled();
   });
 
   it('oculta las acciones cuando el panel está en solo lectura', async () => {
@@ -416,6 +436,20 @@ describe('CalendarSiteHoursPanel', () => {
     expect(
       screen.getByText('Crea al menos una sede para configurar su horario.'),
     ).toBeInTheDocument();
+  });
+
+  it('muestra el estado vacío de solo lectura cuando no hay sedes y el perfil no puede editar', () => {
+    render(<CalendarSiteHoursPanel sites={[]} canEdit={false} />);
+
+    expect(screen.getByText('Sin sedes registradas')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Aún no hay sedes registradas. Una persona administradora puede crear la primera.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Crea al menos una sede para configurar su horario.'),
+    ).not.toBeInTheDocument();
   });
 
   it('ignora respuestas antiguas cuando cambia la sede seleccionada antes de que termine la carga previa', async () => {

@@ -76,12 +76,12 @@ describe('CalendarOrganizationHoursPanel', () => {
     );
 
     expect(screen.getByTestId('organization-draft')).toHaveTextContent('08:00');
-    expect(screen.getByText('Horario de referencia activo')).toBeInTheDocument();
-    expect(screen.getByText('Horario de referencia activo').closest('[role="status"]')).toBeNull();
+    expect(screen.getByText('Referencia para las sedes')).toBeInTheDocument();
+    expect(screen.getByText('Referencia para las sedes').closest('[role="status"]')).toBeNull();
     expect(
       screen.getByText('Las sedes sin ajuste propio usarán este horario como base operativa.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Guardar horario general' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar horario base' })).toBeInTheDocument();
   });
 
   it('mantiene visible el feedback de guardado cuando el padre sincroniza el nuevo horario', async () => {
@@ -111,7 +111,7 @@ describe('CalendarOrganizationHoursPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar draft' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario general' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario base' }));
 
     await waitFor(() => {
       expect(organizationApi.replaceCompanyHours).toHaveBeenCalledWith({
@@ -136,7 +136,7 @@ describe('CalendarOrganizationHoursPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Horario general actualizado correctamente.')).toBeInTheDocument();
+      expect(screen.getByText('Horario base actualizado correctamente.')).toBeInTheDocument();
     });
   });
 
@@ -158,7 +158,7 @@ describe('CalendarOrganizationHoursPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario general' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario base' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Cambiar draft' })).toBeDisabled();
@@ -174,10 +174,27 @@ describe('CalendarOrganizationHoursPanel', () => {
       />,
     );
 
-    expect(
-      screen.queryByRole('button', { name: 'Guardar horario general' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar horario base' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cambiar draft' })).toBeDisabled();
+  });
+
+  it('muestra la alerta de solo lectura cuando el perfil no puede editar', () => {
+    render(
+      <CalendarOrganizationHoursPanel
+        companyHours={mondayHours}
+        canEdit={false}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('Tu perfil puede consultar estos horarios, pero no modificarlos.'),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByText('Tu perfil puede consultar estos horarios, pero no modificarlos.')
+        .closest('[role="status"]'),
+    ).not.toBeNull();
   });
 
   it('muestra feedback de error si el guardado falla', async () => {
@@ -197,11 +214,11 @@ describe('CalendarOrganizationHoursPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario general' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario base' }));
 
     await waitFor(() => {
       expect(
-        screen.getByText('No fue posible guardar el horario general. Intenta nuevamente.'),
+        screen.getByText('No fue posible guardar el horario base. Intenta nuevamente.'),
       ).toBeInTheDocument();
     });
   });

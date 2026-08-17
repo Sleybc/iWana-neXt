@@ -417,21 +417,7 @@ export function AccessControlSettingsClient() {
     [previewTemplateId, systemTemplates],
   );
 
-  const templatesGridClassName = useMemo(() => {
-    if (systemTemplates.length >= 4) {
-      return 'grid gap-3 md:grid-cols-2 xl:grid-cols-4';
-    }
-
-    if (systemTemplates.length === 3) {
-      return 'grid gap-3 md:grid-cols-2 xl:grid-cols-3';
-    }
-
-    if (systemTemplates.length === 2) {
-      return 'grid gap-3 md:grid-cols-2';
-    }
-
-    return 'grid gap-3';
-  }, [systemTemplates.length]);
+  const templatesGridClassName = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
   const customRoles = useMemo(() => profiles.filter((profile) => !profile.isSystem), [profiles]);
 
@@ -798,7 +784,7 @@ export function AccessControlSettingsClient() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <PageHeader
           title={ACCESS_SETTINGS_COPY.pageTitle}
           subtitle={ACCESS_SETTINGS_COPY.loadingSubtitle}
@@ -811,7 +797,7 @@ export function AccessControlSettingsClient() {
 
   if (!user) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <PageHeader title={ACCESS_SETTINGS_COPY.pageTitle} subtitle="Sesión no disponible" />
         <PortalAlert
           variant="error"
@@ -824,7 +810,7 @@ export function AccessControlSettingsClient() {
 
   if (!isAdmin) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <PageHeader title={ACCESS_SETTINGS_COPY.pageTitle} subtitle="Acceso restringido" />
         <PortalAlert
           variant="info"
@@ -836,7 +822,7 @@ export function AccessControlSettingsClient() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title={ACCESS_SETTINGS_COPY.pageTitle}
         subtitle={ACCESS_SETTINGS_COPY.pageSubtitle}
@@ -896,10 +882,13 @@ export function AccessControlSettingsClient() {
         />
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         <PortalPanel
+          compact={customRoles.length === 0}
           title={ACCESS_SETTINGS_COPY.profilesTitle}
-          description={ACCESS_SETTINGS_COPY.profilesDescription}
+          description={
+            customRoles.length === 0 ? undefined : ACCESS_SETTINGS_COPY.profilesDescription
+          }
           actions={
             customRoles.length > 0 ? (
               <Button type="button" size="lg" onClick={openCreateDialog}>
@@ -911,6 +900,7 @@ export function AccessControlSettingsClient() {
         >
           {customRoles.length === 0 ? (
             <PortalEmptyState
+              embedded={true}
               title={ACCESS_SETTINGS_COPY.profilesEmptyTitle}
               description={ACCESS_SETTINGS_COPY.profilesEmptyDescription}
               action={
@@ -961,10 +951,7 @@ export function AccessControlSettingsClient() {
                         </span>
                       </div>
 
-                      <PortalActionToolbar
-                        compact={true}
-                        className="mt-4 bg-gray-50/90 dark:bg-dark-surface-3"
-                      >
+                      <PortalActionToolbar compact={true} className="mt-4">
                         <Button
                           type="button"
                           variant="ghost"
@@ -1117,8 +1104,9 @@ export function AccessControlSettingsClient() {
           )}
         </PortalPanel>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           <PortalPanel
+            compact={!profileForPermissions}
             eyebrow="Accesos"
             title={creationDraft ? 'Accesos del nuevo perfil' : 'Accesos del perfil'}
             description={
@@ -1359,6 +1347,7 @@ export function AccessControlSettingsClient() {
                         </div>
                       ) : (
                         <PortalEmptyState
+                          embedded={true}
                           title={ACCESS_SETTINGS_COPY.searchEmptyTitle}
                           description="Ajusta el texto de búsqueda o cambia de sección para seguir editando accesos."
                           action={
@@ -1379,16 +1368,12 @@ export function AccessControlSettingsClient() {
                 </div>
               ) : (
                 <PortalEmptyState
+                  embedded={true}
                   title={ACCESS_SETTINGS_COPY.noCompatiblePermissionsTitle}
                   description={ACCESS_SETTINGS_COPY.noCompatiblePermissionsDescription}
                 />
               )
-            ) : (
-              <PortalEmptyState
-                title="Sin perfil seleccionado"
-                description={ACCESS_SETTINGS_COPY.noProfileSelectedDescription}
-              />
-            )}
+            ) : null}
           </PortalPanel>
         </div>
       </div>
@@ -1396,6 +1381,7 @@ export function AccessControlSettingsClient() {
       {systemTemplates.length > 0 ? (
         <div id="templates-section">
           <PortalPanel
+            compact={true}
             title={ACCESS_SETTINGS_COPY.templatesTitle}
             description={ACCESS_SETTINGS_COPY.templatesDescription}
           >
@@ -1407,55 +1393,51 @@ export function AccessControlSettingsClient() {
                 return (
                   <div
                     key={profile.id}
-                    className="flex h-full flex-col gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3"
+                    className="flex h-full flex-col gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface-2"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <span className="portal-eyebrow-muted mb-1 inline-block">
-                          {ACCESS_SETTINGS_COPY.templateEyebrow}
-                        </span>
-                        <p className="text-base font-semibold leading-6 text-gray-900 dark:text-white">
-                          {visibleProfileName}
-                        </p>
-                      </div>
-
-                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="min-h-11 whitespace-nowrap"
-                          aria-label={`${ACCESS_SETTINGS_COPY.previewAction} ${visibleProfileName}`}
-                          onClick={(event) => {
-                            previewTriggerRef.current = event.currentTarget;
-                            setPreviewTemplateId(profile.id);
-                          }}
-                        >
-                          {ACCESS_SETTINGS_COPY.previewAction}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="min-h-11 whitespace-nowrap"
-                          aria-label={`${ACCESS_SETTINGS_COPY.createFromTemplateAction} ${visibleProfileName}`}
-                          onClick={() => beginCreationFromTemplate(profile)}
-                        >
-                          {ACCESS_SETTINGS_COPY.createFromTemplateAction}
-                        </Button>
-                      </div>
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold leading-6 text-pretty text-gray-900 dark:text-white">
+                        {visibleProfileName}
+                      </p>
                     </div>
 
-                    <div className="min-h-[3.25rem]">
+                    <div>
                       <p className="line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
                         {profile.description || ACCESS_SETTINGS_COPY.templateFallbackDescription}
                       </p>
                     </div>
 
-                    <div className="mt-auto text-xs text-gray-500 dark:text-gray-400">
+                    <div className="truncate text-xs text-gray-500 dark:text-gray-400">
                       <span>
                         {getSystemBaseRoleLabel(profile.baseRoleConstraint)} ·{' '}
                         {templatePermissionKeys.length} accesos
                       </span>
+                    </div>
+
+                    <div className="mt-auto flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-11 w-full justify-center border border-gray-200/80 bg-iwana-surface-soft hover:bg-iwana-secondary-50 dark:border-dark-border dark:bg-dark-surface-3 dark:hover:bg-dark-surface-4"
+                        aria-label={`${ACCESS_SETTINGS_COPY.previewAction} ${visibleProfileName}`}
+                        onClick={(event) => {
+                          previewTriggerRef.current = event.currentTarget;
+                          setPreviewTemplateId(profile.id);
+                        }}
+                      >
+                        {ACCESS_SETTINGS_COPY.previewAction}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        className="min-h-11 w-full justify-center"
+                        aria-label={`${ACCESS_SETTINGS_COPY.createFromTemplateAction} ${visibleProfileName}`}
+                        onClick={() => beginCreationFromTemplate(profile)}
+                      >
+                        {ACCESS_SETTINGS_COPY.createFromTemplateAction}
+                      </Button>
                     </div>
                   </div>
                 );
@@ -1467,6 +1449,7 @@ export function AccessControlSettingsClient() {
 
       <div id="politicas-de-autenticacion">
         <PortalPanel
+          compact={true}
           eyebrow={ACCESS_SETTINGS_COPY.authPolicyEyebrow}
           title={ACCESS_SETTINGS_COPY.authPolicyTitle}
           description={ACCESS_SETTINGS_COPY.authPolicyDescription}
@@ -1506,13 +1489,14 @@ export function AccessControlSettingsClient() {
               />
             ) : null}
 
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {ACCESS_SETTINGS_COPY.authPolicyAdminHint}
               </p>
               <Button
                 type="button"
                 size="lg"
+                className="w-full sm:w-auto"
                 onClick={() => void handleSaveAuthenticationPolicy()}
                 disabled={!tenantSettings || !isPolicyDirty || isPolicySaving}
                 loading={isPolicySaving}

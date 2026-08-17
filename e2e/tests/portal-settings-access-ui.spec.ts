@@ -155,8 +155,82 @@ const permissionsCatalog = {
   },
 };
 
-async function setupAccessUiMocks(page: Page) {
+const extraSuggestedProfiles: Array<Record<string, unknown>> = [
+  {
+    id: 'template-noc',
+    name: 'Monitoreo operativo',
+    description: 'Perfil sugerido para consultar operación y sedes.',
+    baseRoleConstraint: 'NOC',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: ['settings.read'],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-support',
+    name: 'Soporte inicial',
+    description: 'Perfil sugerido para atender casos de primer nivel.',
+    baseRoleConstraint: 'SUPPORT',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: ['settings.read'],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-tech',
+    name: 'Técnico de campo',
+    description: 'Perfil sugerido para agenda y ejecución de campo.',
+    baseRoleConstraint: 'TECHNICIAN',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-contractor',
+    name: 'Contratista',
+    description: 'Perfil sugerido para trabajo contratado en campo.',
+    baseRoleConstraint: 'CONTRACTOR',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-auditor',
+    name: 'Auditor',
+    description: 'Perfil sugerido para revisión de registros y accesos.',
+    baseRoleConstraint: 'AUDITOR',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: ['settings.read'],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+];
+
+async function setupAccessUiMocks(
+  page: Page,
+  options?: { includeCustomProfiles?: boolean; includeFullSuggestedCatalog?: boolean },
+) {
   const deleteIds: string[] = [];
+  const includeCustomProfiles = options?.includeCustomProfiles !== false;
+  const systemProfiles = options?.includeFullSuggestedCatalog
+    ? [...profiles.filter((profile) => profile.isSystem === true), ...extraSuggestedProfiles]
+    : profiles.filter((profile) => profile.isSystem === true);
+  const customProfiles = includeCustomProfiles
+    ? profiles.filter((profile) => profile.isSystem !== true)
+    : [];
+  const mockedProfiles = [...systemProfiles, ...customProfiles];
 
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
@@ -296,7 +370,7 @@ async function setupAccessUiMocks(page: Page) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: profiles }),
+        body: JSON.stringify({ data: mockedProfiles }),
       });
       return;
     }
@@ -384,6 +458,25 @@ test.describe('Portal settings access UI', () => {
       page.getByRole('button', { name: /Crear a partir de este perfil/ }).first(),
     ).toBeVisible();
 
+    const suggestedPanel = page
+      .getByRole('heading', { name: 'Perfiles sugeridos' })
+      .locator('xpath=ancestor::section[1]');
+    const suggestedTitle = suggestedPanel.getByText('Administrador general', { exact: true });
+    const suggestedCreate = suggestedPanel.getByRole('button', {
+      name: 'Crear a partir de este perfil Administrador general',
+    });
+    const titleBox = await suggestedTitle.boundingBox();
+    const createBox = await suggestedCreate.boundingBox();
+    expect(titleBox).toBeTruthy();
+    expect(createBox).toBeTruthy();
+    const overlaps =
+      titleBox!.x < createBox!.x + createBox!.width &&
+      titleBox!.x + titleBox!.width > createBox!.x &&
+      titleBox!.y < createBox!.y + createBox!.height &&
+      titleBox!.y + titleBox!.height > createBox!.y;
+    expect(overlaps).toBe(false);
+    expect(titleBox!.y + titleBox!.height).toBeLessThanOrEqual(createBox!.y);
+
     const mfaHeading = page.getByRole('heading', { name: 'Verificación en dos pasos global' });
     await mfaHeading.scrollIntoViewIfNeeded();
     await expect(mfaHeading).toBeVisible();
@@ -401,6 +494,126 @@ test.describe('Portal settings access UI', () => {
     await deleteDialog.getByRole('button', { name: 'Cancelar' }).click();
     await expect(deleteDialog).toHaveCount(0);
     expect(deleteIds).toHaveLength(0);
+  });
+
+  test('con 0 perfiles personalizados muestra sugeridos en el primer viewport desktop', async ({
+    page,
+  }) => {
+    await setupAccessUiMocks(page, { includeCustomProfiles: false });
+    await seedAdminSession(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openAccessSettings(page);
+
+    await expect(page.getByText('Aún no has creado perfiles personalizados')).toBeVisible();
+    await expect(page.getByText('Sin perfil seleccionado')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeInViewport();
+  });
+
+  test('en desktop 1440×900 con 6 sugeridos los CTAs caben apilados en cada card', async ({
+    page,
+  }) => {
+    await setupAccessUiMocks(page, {
+      includeCustomProfiles: false,
+      includeFullSuggestedCatalog: true,
+    });
+    await seedAdminSession(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openAccessSettings(page);
+
+    const suggestedPanel = page
+      .getByRole('heading', { name: 'Perfiles sugeridos' })
+      .locator('xpath=ancestor::section[1]');
+    const cards = suggestedPanel.locator('div.rounded-2xl').filter({
+      has: page.getByRole('button', { name: /Crear a partir de este perfil/ }),
+    });
+    await expect(cards).toHaveCount(6);
+
+    const firstFour = await Promise.all(
+      [0, 1, 2, 3].map(async (index) => cards.nth(index).boundingBox()),
+    );
+    expect(firstFour.every((box) => box)).toBeTruthy();
+    expect(Math.abs(firstFour[0]!.y - firstFour[3]!.y)).toBeLessThan(4);
+
+    const card = cards.filter({ hasText: 'Administrador general' }).first();
+    const previewButton = card.getByRole('button', {
+      name: /Ver lo que permite Administrador general/,
+    });
+    const createButton = card.getByRole('button', {
+      name: 'Crear a partir de este perfil Administrador general',
+    });
+
+    const cardBox = await card.boundingBox();
+    const previewBox = await previewButton.boundingBox();
+    const createBox = await createButton.boundingBox();
+    expect(cardBox).toBeTruthy();
+    expect(previewBox).toBeTruthy();
+    expect(createBox).toBeTruthy();
+
+    expect(createBox!.y).toBeGreaterThan(previewBox!.y + previewBox!.height - 1);
+    expect(previewBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+    expect(previewBox!.x + previewBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
+    expect(createBox!.x + createBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
+    expect(previewBox!.height).toBeGreaterThanOrEqual(44);
+    expect(createBox!.height).toBeGreaterThanOrEqual(44);
+    expect(previewBox!.height).toBeLessThanOrEqual(52);
+    expect(createBox!.height).toBeLessThanOrEqual(52);
+  });
+
+  test('con una sola sugerencia la card ocupa una columna contenida en desktop', async ({
+    page,
+  }) => {
+    await setupAccessUiMocks(page, { includeCustomProfiles: false });
+    await seedAdminSession(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openAccessSettings(page);
+
+    const suggestedPanel = page
+      .getByRole('heading', { name: 'Perfiles sugeridos' })
+      .locator('xpath=ancestor::section[1]');
+    const suggestedCards = suggestedPanel.locator('div.rounded-2xl').filter({
+      has: page.getByRole('button', { name: /Crear a partir de este perfil/ }),
+    });
+    await expect(suggestedCards).toHaveCount(1);
+
+    const panelBox = await suggestedPanel.boundingBox();
+    const cardBox = await suggestedCards.first().boundingBox();
+
+    expect(cardBox).toBeTruthy();
+    expect(panelBox).toBeTruthy();
+    expect(cardBox!.width).toBeLessThan(panelBox!.width * 0.35);
+    expect(cardBox!.x).toBeGreaterThanOrEqual(panelBox!.x);
+    expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width);
+  });
+
+  test('en mobile el pie MFA apila la ayuda encima del CTA sin solape', async ({ page }) => {
+    await setupAccessUiMocks(page);
+    await seedAdminSession(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openAccessSettings(page);
+    // El cliente hace dos cargas en cascada (la segunda la dispara el cambio de
+    // selectedProfileId) y vuelve a montar el árbol completo; esperar el silencio
+    // de red evita que scrollIntoViewIfNeeded atrape el botón durante el remount.
+    await page.waitForLoadState('networkidle');
+
+    const mfaPanel = page
+      .getByRole('heading', { name: 'Verificación en dos pasos global' })
+      .locator('xpath=ancestor::section[1]');
+    const hint = mfaPanel.getByText(
+      'Este ajuste aplica a toda la empresa y solo puede cambiarlo un administrador.',
+    );
+    const savePolicy = mfaPanel.getByRole('button', { name: 'Guardar política' });
+    await expect(savePolicy).toBeAttached();
+    await savePolicy.scrollIntoViewIfNeeded();
+
+    const panelBox = await mfaPanel.boundingBox();
+    const hintBox = await hint.boundingBox();
+    const saveBox = await savePolicy.boundingBox();
+
+    expect(panelBox).toBeTruthy();
+    expect(hintBox).toBeTruthy();
+    expect(saveBox).toBeTruthy();
+    expect(saveBox!.y).toBeGreaterThanOrEqual(hintBox!.y + hintBox!.height);
+    expect(saveBox!.width).toBeGreaterThanOrEqual(panelBox!.width * 0.9);
   });
 
   for (const viewport of viewports) {

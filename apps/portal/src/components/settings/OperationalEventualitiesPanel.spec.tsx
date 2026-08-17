@@ -1,5 +1,5 @@
 import type { ChangeEvent } from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { emptyPageListMeta } from '@/lib/list-meta';
 import { OperationalEventualitiesPanel } from './OperationalEventualitiesPanel';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
@@ -75,10 +75,12 @@ jest.mock('@/components/shared/portal-ui', () => ({
     page,
     pageCount,
     onPageChange,
+    pageSizeControl,
   }: {
     page: number;
     pageCount: number;
     onPageChange: (page: number) => void;
+    pageSizeControl?: React.ReactNode;
   }) => (
     <div data-testid="portal-table-pager">
       <button type="button" onClick={() => onPageChange(Math.max(1, page - 1))}>
@@ -88,6 +90,7 @@ jest.mock('@/components/shared/portal-ui', () => ({
       <button type="button" onClick={() => onPageChange(Math.min(pageCount, page + 1))}>
         Siguiente
       </button>
+      {pageSizeControl}
     </div>
   ),
   PortalPageSizeSelect: ({
@@ -107,7 +110,19 @@ jest.mock('@/components/shared/portal-ui', () => ({
       <option value={50}>50</option>
     </select>
   ),
+  PortalSkeletonBlock: ({ className }: { className?: string }) => (
+    <div data-testid="portal-skeleton-block" className={className} />
+  ),
+  PortalDataTableHead: ({ children }: { children: React.ReactNode }) => <th>{children}</th>,
   portalDataTableShellClassName: 'portal-table-shell',
+  portalDataTableHeadRowClassName: 'portal-table-head-row',
+  portalDataTableBodyClassName: 'portal-table-body',
+  portalDataTableCellClassName: 'portal-table-cell',
+  portalCheckboxClassName: 'portal-checkbox',
+  portalDatePickerButtonClassName: 'portal-date-picker-button',
+  portalFieldClassName: 'portal-field',
+  portalSelectTriggerClassName: 'portal-select-trigger',
+  portalWellClassName: 'portal-well',
 }));
 
 jest.mock('@iwana/ui', () => {
@@ -281,11 +296,12 @@ describe('OperationalEventualitiesPanel', () => {
     it('muestra estado de carga y luego la tabla', async () => {
       render(<OperationalEventualitiesPanel canEdit={false} />);
 
-      expect(screen.getByText('Cargando cambios puntuales de disponibilidad.')).toBeInTheDocument();
+      expect(screen.getByTestId('portal-skeleton-block')).toBeInTheDocument();
 
       await waitFor(() => {
         expect(screen.getByTestId('eventualities-table')).toBeInTheDocument();
       });
+      expect(screen.queryByTestId('portal-skeleton-block')).not.toBeInTheDocument();
       expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
     });
 
@@ -600,9 +616,7 @@ describe('OperationalEventualitiesPanel', () => {
       expect(screen.getByText('Cambio puntual confirmado.')).toBeInTheDocument();
     });
 
-    it('pide confirmación antes de eliminar y muestra feedback al completar', async () => {
-      const originalConfirm = globalThis.confirm;
-      globalThis.confirm = jest.fn(() => true);
+    it('pide confirmación en el diálogo antes de eliminar y muestra feedback al completar', async () => {
       mockList.mockResolvedValue({
         data: [{ ...MOCK_ITEMS[0], status: 'confirmed' }],
         meta: emptyPageListMeta({
@@ -625,11 +639,212 @@ describe('OperationalEventualitiesPanel', () => {
         fireEvent.click(screen.getByTestId('delete-eventuality-ev-1'));
       });
 
-      expect(globalThis.confirm).toHaveBeenCalled();
-      expect(mockDelete).toHaveBeenCalledWith('ev-1');
-      expect(screen.getByText('Cambio puntual eliminado.')).toBeInTheDocument();
+      expect(
+        screen.getByText('¿Eliminar este cambio puntual de disponibilidad?'),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar' }),
+      ).toBeInTheDocument();
 
-      globalThis.confirm = originalConfirm;
+      await act(async () => {
+        fireEvent.click(
+          within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar' }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(mockDelete).toHaveBeenCalledWith('ev-1');
+        expect(screen.getByText('Cambio puntual eliminado.')).toBeInTheDocument();
+      });
+    });
+
+    it('cancela la eliminación en el diálogo sin borrar el cambio puntual', async () => {
+      mockList.mockResolvedValue({
+        data: [{ ...MOCK_ITEMS[0], status: 'confirmed' }],
+        meta: emptyPageListMeta({
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+        }),
+      });
+      mockDelete.mockResolvedValue(undefined);
+
+      render(<OperationalEventualitiesPanel canEdit={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('delete-eventuality-ev-1')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('delete-eventuality-ev-1'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('muestra alerta de error cuando falla la creación', async () => {
+      mockCreate.mockRejectedValue(new Error('error'));
+
+      render(<OperationalEventualitiesPanel canEdit={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('add-eventuality-btn')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('add-eventuality-btn'));
+
+      fireEvent.change(screen.getByLabelText('Persona afectada *'), {
+        target: { value: 'tech-1' },
+      });
+      fireEvent.change(screen.getByLabelText('Tipo de ajuste *'), {
+        target: { value: 'extra_availability' },
+      });
+      fireEvent.change(screen.getByLabelText('Inicio del cambio *'), {
+        target: { value: '2025-07-01' },
+      });
+      fireEvent.change(screen.getByTestId('eventuality-starts-at-time'), {
+        target: { value: '07:00' },
+      });
+      fireEvent.change(screen.getByLabelText('Fin del cambio *'), {
+        target: { value: '2025-07-01' },
+      });
+      fireEvent.change(screen.getByTestId('eventuality-ends-at-time'), {
+        target: { value: '09:00' },
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('save-eventuality-btn'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('No se pudo registrar el cambio puntual.')).toBeInTheDocument();
+      });
+    });
+
+    it('muestra alerta de error cuando falla la eliminación', async () => {
+      mockList.mockResolvedValue({
+        data: [{ ...MOCK_ITEMS[0], status: 'confirmed' }],
+        meta: emptyPageListMeta({
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+        }),
+      });
+      mockDelete.mockRejectedValue(new Error('error'));
+
+      render(<OperationalEventualitiesPanel canEdit={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('delete-eventuality-ev-1')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('delete-eventuality-ev-1'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('No se pudo eliminar el cambio puntual.')).toBeInTheDocument();
+      });
+    });
+
+    it('navega con el paginador y solicita la página indicada', async () => {
+      mockList.mockResolvedValue({
+        data: MOCK_ITEMS,
+        meta: emptyPageListMeta({
+          page: 1,
+          limit: 20,
+          total: 3,
+          totalPages: 2,
+          hasMore: true,
+        }),
+      });
+
+      const { rerender } = render(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('eventualities-table')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+
+      // setPage escribe en la URL (history.push) con el namespace de la tabla
+      await waitFor(() => {
+        expect(pushMock).toHaveBeenCalled();
+      });
+      expect(String(pushMock.mock.calls[0]?.[0])).toContain('eventualities.page=2');
+
+      mockList.mockResolvedValue({
+        data: [{ ...MOCK_ITEMS[0], id: 'ev-2' }],
+        meta: emptyPageListMeta({
+          page: 2,
+          limit: 20,
+          total: 3,
+          totalPages: 2,
+          hasMore: true,
+        }),
+      });
+      searchParamsMock = new URLSearchParams('eventualities.page=2');
+      rerender(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(mockList).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, limit: 20 }));
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anterior' }));
+
+      await waitFor(() => {
+        expect(pushMock).toHaveBeenCalledTimes(2);
+      });
+      // Volver a página 1 limpia el parámetro de la URL (default del hook)
+      expect(String(pushMock.mock.calls[1]?.[0])).not.toContain('page=');
+
+      searchParamsMock = new URLSearchParams('');
+      rerender(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(mockList).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
+      });
+    });
+
+    it('cambia el tamaño de página con el selector y recarga el listado', async () => {
+      mockList.mockResolvedValue({
+        data: MOCK_ITEMS,
+        meta: emptyPageListMeta({
+          page: 1,
+          limit: 20,
+          total: 25,
+          totalPages: 2,
+          hasMore: true,
+        }),
+      });
+
+      const { rerender } = render(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('portal-page-size')).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByTestId('portal-page-size'), {
+        target: { value: '50' },
+      });
+
+      // setPageSize escribe en la URL (history.replace) y resetea a página 1
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalled();
+      });
+      expect(String(replaceMock.mock.calls[0]?.[0])).toContain('eventualities.size=50');
+
+      searchParamsMock = new URLSearchParams('eventualities.size=50');
+      rerender(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(mockList).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, limit: 50 }));
+      });
     });
 
     it('bloquea las acciones de fila mientras una actualización está en curso', async () => {

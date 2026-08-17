@@ -238,6 +238,28 @@ describe('OrganizationSettingsClient', () => {
     expect(screen.queryByText('Ir a Calendario operativo y jornadas →')).not.toBeInTheDocument();
   });
 
+  it('places the create-site action in the sites panel instead of the page header', async () => {
+    render(<OrganizationSettingsClient />);
+    expect(await screen.findByRole('row', { name: /Sede centro/i })).toBeInTheDocument();
+
+    const pageTitle = screen.getByRole('heading', {
+      level: 1,
+      name: 'Perfil empresarial y organización',
+    });
+    const pageHeader = pageTitle.closest('div.rounded-2xl') ?? pageTitle.parentElement;
+    expect(
+      within(pageHeader as HTMLElement).queryByRole('button', { name: 'Crear sede' }),
+    ).not.toBeInTheDocument();
+
+    const sitesPanel = screen
+      .getByRole('heading', { name: 'Sedes registradas' })
+      .closest('section');
+    expect(sitesPanel).not.toBeNull();
+    expect(
+      within(sitesPanel as HTMLElement).getByRole('button', { name: 'Crear sede' }),
+    ).toBeVisible();
+  });
+
   it('should render the compact site table in read-only mode without edit or delete actions', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'user-2', role: UserRole.SUPPORT },
@@ -510,7 +532,7 @@ describe('OrganizationSettingsClient', () => {
     expect(screen.getByText('Preferencias regionales')).toBeInTheDocument();
     expect(screen.getByText('No tienes permisos para consultar las sedes.')).toBeInTheDocument();
     expect(screen.queryByText('Forbidden resource')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Crear sede' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
     expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
   });
 
@@ -888,6 +910,7 @@ describe('OrganizationSettingsClient', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Crear primera sede' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
   });
 
   it('shows a read-only empty state without a create action', async () => {

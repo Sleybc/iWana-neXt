@@ -4,8 +4,10 @@ import { Fragment, useEffect, useState } from 'react';
 import { BusinessHoursWeekday } from '@iwana/shared';
 import {
   BUSINESS_HOURS_WEEKDAY_ORDER,
+  CALENDAR_SETTINGS_COPY,
   getBusinessHoursWeekdayLabel,
 } from './mod00-settings-labels';
+import { portalCheckboxClassName } from '@/components/shared/portal-ui';
 import { TimeFieldSelect } from './TimeFieldSelect';
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
@@ -72,7 +74,14 @@ function getBusinessHoursControlLabel(
   weekday: BusinessHoursWeekday,
   controlType: BusinessHoursControlType,
 ): string {
-  return `${getBusinessHoursWeekdayLabel(weekday)}, ${controlType}`;
+  const suffix =
+    controlType === 'abierto'
+      ? CALENDAR_SETTINGS_COPY.editorOpenAriaSuffix
+      : controlType === 'desde'
+        ? CALENDAR_SETTINGS_COPY.editorStartsAtAriaSuffix
+        : CALENDAR_SETTINGS_COPY.editorEndsAtAriaSuffix;
+
+  return `${getBusinessHoursWeekdayLabel(weekday)}, ${suffix}`;
 }
 
 function supportsMatchMedia(): boolean {
@@ -146,10 +155,16 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
           checked={entry.isOpen}
           disabled={!canEdit}
           onChange={(e) => updateEntry(entry.weekday, { isOpen: e.target.checked })}
-          className="h-4 w-4 rounded border-gray-300 text-iwana-primary"
+          className={portalCheckboxClassName}
           data-testid={`bh-open-${getDayTestIdPrefix(entry.weekday)}`}
         />
-        {compact ? null : <span>{entry.isOpen ? 'Sí' : 'No'}</span>}
+        {compact ? null : (
+          <span>
+            {entry.isOpen
+              ? CALENDAR_SETTINGS_COPY.editorOpenYesLabel
+              : CALENDAR_SETTINGS_COPY.editorOpenNoLabel}
+          </span>
+        )}
       </label>
     );
   }
@@ -196,7 +211,9 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
                       {dayLabel}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {entry.isOpen ? 'Horario activo' : 'Día cerrado'}
+                      {entry.isOpen
+                        ? CALENDAR_SETTINGS_COPY.editorActiveStatusLabel
+                        : CALENDAR_SETTINGS_COPY.editorClosedDayStatusLabel}
                     </p>
                   </div>
                   {renderOpenControl(entry)}
@@ -208,7 +225,7 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
                       htmlFor={getTimeControlId(entry.weekday, 'opens')}
                       className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
                     >
-                      Desde
+                      {CALENDAR_SETTINGS_COPY.editorStartsAtMobileLabel}
                     </label>
                     {renderTimeControl(entry, 'opens')}
                   </div>
@@ -217,7 +234,7 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
                       htmlFor={getTimeControlId(entry.weekday, 'closes')}
                       className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
                     >
-                      Hasta
+                      {CALENDAR_SETTINGS_COPY.editorEndsAtMobileLabel}
                     </label>
                     {renderTimeControl(entry, 'closes')}
                   </div>
@@ -237,16 +254,16 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
     >
       <div className="grid min-w-[640px] grid-cols-[minmax(120px,1.35fr)_120px_152px_152px] gap-px bg-gray-200 dark:bg-dark-border">
         <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
-          Día
+          {CALENDAR_SETTINGS_COPY.editorWeekdayColumn}
         </div>
         <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
-          Abierto
+          {CALENDAR_SETTINGS_COPY.editorOpenColumn}
         </div>
         <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
-          Inicio
+          {CALENDAR_SETTINGS_COPY.editorStartsAtColumn}
         </div>
         <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
-          Fin
+          {CALENDAR_SETTINGS_COPY.editorEndsAtColumn}
         </div>
 
         {days.map((entry) => (

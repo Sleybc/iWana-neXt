@@ -1,5 +1,5 @@
 import type { ChangeEvent } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OrganizationSiteType } from '@iwana/shared';
 import { CalendarExceptionsPanel } from './CalendarExceptionsPanel';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
@@ -281,7 +281,7 @@ describe('CalendarExceptionsPanel', () => {
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
-  it('bloquea aperturas especiales sin horas completas', () => {
+  it('valida aperturas especiales sin horas completas al enviar', async () => {
     render(
       <CalendarExceptionsPanel
         exceptions={[]}
@@ -301,10 +301,26 @@ describe('CalendarExceptionsPanel', () => {
     });
     fireEvent.click(screen.getByLabelText('Abrir ese día'));
 
-    expect(screen.getByRole('button', { name: 'Agregar festivo o cierre' })).toBeDisabled();
+    // El botón de crear siempre está habilitado (contrato: validación al enviar)
+    const createButton = screen.getByRole('button', { name: 'Agregar festivo o cierre' });
+    expect(createButton).toBeEnabled();
+
+    // El helper de horas es persistente mientras «Abrir ese día» está marcado
+    expect(
+      screen.getByText('Si marcas «Abrir ese día», define la hora de inicio y de fin.'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Si abres ese día, define hora de inicio y de fin.'),
+      ).toBeInTheDocument();
+    });
+    expect(createExceptionMock).not.toHaveBeenCalled();
   });
 
-  it('bloquea el guardado si el horario de apertura especial es inválido', () => {
+  it('valida el orden del horario de apertura especial al enviar', async () => {
     render(
       <CalendarExceptionsPanel
         exceptions={[]}
@@ -326,6 +342,155 @@ describe('CalendarExceptionsPanel', () => {
     fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '12:00' } });
     fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '10:00' } });
 
-    expect(screen.getByRole('button', { name: 'Agregar festivo o cierre' })).toBeDisabled();
+    const createButton = screen.getByRole('button', { name: 'Agregar festivo o cierre' });
+    expect(createButton).toBeEnabled();
+
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('La hora de cierre debe ser posterior a la hora de inicio.'),
+      ).toBeInTheDocument();
+    });
+    expect(createExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it('elimina una excepción tras confirmar en el diálogo', async () => {
+    const onDeleted = jest.fn();
+    deleteExceptionMock.mockResolvedValue(undefined);
+
+    render(
+      <CalendarExceptionsPanel
+        exceptions={[
+          {
+            id: 'exc-1',
+            exceptionDate: '2026-01-01',
+            name: 'Año nuevo',
+            description: null,
+            isOpen: false,
+            isRecurring: true,
+            opensAt: null,
+            closesAt: null,
+            organizationSiteId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]}
+        sites={sites}
+        canEdit={true}
+        onCreated={jest.fn()}
+        onDeleted={onDeleted}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+
+    expect(screen.getByText('¿Eliminar este festivo o cierre especial?')).toBeInTheDocument();
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar' }));
+
+    await waitFor(() => {
+      expect(deleteExceptionMock).toHaveBeenCalledWith('exc-1');
+      expect(onDeleted).toHaveBeenCalledWith('exc-1');
+    });
+    expect(screen.getByText('Festivo o cierre especial eliminado.')).toBeInTheDocument();
+  });
+
+  it('cancela la eliminación sin borrar la excepción', async () => {
+    const onDeleted = jest.fn();
+    deleteExceptionMock.mockResolvedValue(undefined);
+
+    render(
+      <CalendarExceptionsPanel
+        exceptions={[
+          {
+            id: 'exc-1',
+            exceptionDate: '2026-01-01',
+            name: 'Año nuevo',
+            description: null,
+            isOpen: false,
+            isRecurring: true,
+            opensAt: null,
+            closesAt: null,
+            organizationSiteId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]}
+        sites={sites}
+        canEdit={true}
+        onCreated={jest.fn()}
+        onDeleted={onDeleted}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(deleteExceptionMock).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it('oculta el alta y las acciones de fila en modo solo lectura', () => {
+    render(
+      <CalendarExceptionsPanel
+        exceptions={[
+          {
+            id: 'exc-1',
+            exceptionDate: '2026-01-01',
+            name: 'Año nuevo',
+            description: null,
+            isOpen: false,
+            isRecurring: true,
+            opensAt: null,
+            closesAt: null,
+            organizationSiteId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]}
+        sites={sites}
+        canEdit={false}
+        onCreated={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Año nuevo')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Registrar fecha especial' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Eliminar' })).not.toBeInTheDocument();
+  });
+
+  it('muestra alerta de error cuando falla la creación de la excepción', async () => {
+    createExceptionMock.mockRejectedValue(new Error('error'));
+
+    render(
+      <CalendarExceptionsPanel
+        exceptions={[]}
+        sites={sites}
+        canEdit={true}
+        onCreated={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar fecha especial' }));
+    fireEvent.change(screen.getByLabelText('Nombre del cierre o apertura'), {
+      target: { value: 'Apertura especial' },
+    });
+    fireEvent.change(screen.getByLabelText('Fecha afectada'), {
+      target: { value: '2026-02-01' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar festivo o cierre' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('No fue posible crear el festivo o cierre especial. Intenta nuevamente.'),
+      ).toBeInTheDocument();
+    });
   });
 });

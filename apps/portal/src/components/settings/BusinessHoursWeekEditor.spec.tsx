@@ -129,14 +129,14 @@ describe('BusinessHoursWeekEditor', () => {
       );
     });
 
-    it('muestra valores de hora guardados', () => {
+    it('muestra valores de hora guardados en los inputs nativos', () => {
       renderEditor();
 
       const opensInput = screen.getByTestId('bh-opens-monday');
       const closesInput = screen.getByTestId('bh-closes-monday');
 
-      expect(opensInput).toHaveTextContent('07:00');
-      expect(closesInput).toHaveTextContent('17:00');
+      expect(opensInput).toHaveValue('07:00');
+      expect(closesInput).toHaveValue('17:00');
     });
 
     it('deshabilita inputs de tiempo cuando el día está cerrado', () => {
@@ -163,14 +163,18 @@ describe('BusinessHoursWeekEditor', () => {
       renderEditor({ isMobile: true });
 
       expect(screen.getByRole('checkbox', { name: 'Lunes, abierto' })).toBeInTheDocument();
-      expect(screen.getByLabelText('Lunes, desde')).toHaveTextContent('07:00');
-      expect(screen.getByLabelText('Lunes, hasta')).toHaveTextContent('17:00');
+      expect(screen.getByLabelText('Lunes, desde')).toHaveValue('07:00');
+      expect(screen.getByLabelText('Lunes, hasta')).toHaveValue('17:00');
     });
 
-    it('ya no renderiza inputs nativos type=time', () => {
+    it('renderiza inputs nativos type=time como selector de hora', () => {
       const { container } = renderEditor();
 
-      expect(container.querySelector('input[type="time"]')).toBeNull();
+      const opensInput = screen.getByTestId('bh-opens-monday');
+
+      expect(container.querySelector('input[type="time"]')).not.toBeNull();
+      expect(opensInput).toHaveAttribute('type', 'time');
+      expect(opensInput).toHaveAttribute('aria-label', 'Lunes, desde');
     });
   });
 
@@ -178,8 +182,7 @@ describe('BusinessHoursWeekEditor', () => {
     it('mantiene onChange al cambiar hora de apertura en mobile', () => {
       const { onChange } = renderEditor({ isMobile: true });
 
-      fireEvent.click(screen.getByTestId('bh-opens-monday'));
-      fireEvent.click(screen.getByTestId('bh-opens-monday-hour-08'));
+      fireEvent.change(screen.getByTestId('bh-opens-monday'), { target: { value: '08:00' } });
 
       expect(onChange).toHaveBeenCalledTimes(1);
       const result = onChange.mock.calls[0][0] as BusinessHourDay[];
@@ -212,11 +215,10 @@ describe('BusinessHoursWeekEditor', () => {
       expect(satOpens).not.toBeDisabled();
     });
 
-    it('permite ajustar minutos sin separar el control visual', () => {
+    it('permite ajustar la hora completa sin separar el control visual', () => {
       const { onChange } = renderEditor();
 
-      fireEvent.click(screen.getByTestId('bh-opens-monday'));
-      fireEvent.click(screen.getByTestId('bh-opens-monday-minute-15'));
+      fireEvent.change(screen.getByTestId('bh-opens-monday'), { target: { value: '07:15' } });
 
       expect(onChange).toHaveBeenCalledTimes(1);
       const result = onChange.mock.calls[0][0] as BusinessHourDay[];

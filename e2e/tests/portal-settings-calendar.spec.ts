@@ -768,25 +768,13 @@ test.describe('portal-settings-calendar', () => {
     const mondayStart = page.getByTestId('calendar-shell-primary').getByTestId('bh-opens-monday');
     await expect(mondayStart).toBeVisible({ timeout: 10_000 });
 
+    // El selector es un input nativo type="time" estilizado (contrato de remediación)
+    await expect(mondayStart).toHaveAttribute('type', 'time');
+    await expect(mondayStart).toHaveValue('07:00');
+
     const triggerBox = await mondayStart.boundingBox();
     expect(triggerBox).not.toBeNull();
     expect(triggerBox?.width ?? 0).toBeLessThanOrEqual(100);
-
-    await mondayStart.click();
-
-    const hourOption = page.getByTestId('bh-opens-monday-hour-07');
-    const minuteOption = page.getByTestId('bh-opens-monday-minute-00');
-
-    await expect(hourOption).toBeVisible();
-    await expect(minuteOption).toBeVisible();
-
-    const hourBox = await hourOption.boundingBox();
-    const minuteBox = await minuteOption.boundingBox();
-
-    expect(hourBox).not.toBeNull();
-    expect(minuteBox).not.toBeNull();
-    expect(hourBox?.width ?? 0).toBeLessThanOrEqual(88);
-    expect(minuteBox?.width ?? 0).toBeLessThanOrEqual(88);
   });
 
   test('la vista mobile mantiene el editor semanal usable y los formularios secundarios cerrados por defecto', async ({
@@ -838,14 +826,10 @@ test.describe('portal-settings-calendar', () => {
     await page.getByRole('option', { name: 'Carlos Técnico' }).click();
 
     await selectDateFromPicker(page, eventualityForm, 'eventuality-starts-at-id', '2026-05-25');
-    await page.getByTestId('eventuality-starts-at-time').click();
-    await page.getByTestId('eventuality-starts-at-time-hour-07').click();
-    await page.getByTestId('eventuality-starts-at-time-minute-00').click();
+    await eventualityForm.getByTestId('eventuality-starts-at-time').fill('07:00');
 
     await selectDateFromPicker(page, eventualityForm, 'eventuality-ends-at-id', '2026-05-25');
-    await page.getByTestId('eventuality-ends-at-time').click();
-    await page.getByTestId('eventuality-ends-at-time-hour-09').click();
-    await page.getByTestId('eventuality-ends-at-time-minute-00').click();
+    await eventualityForm.getByTestId('eventuality-ends-at-time').fill('09:00');
 
     await page.getByTestId('eventuality-reason').fill('Refuerzo de emergencia');
 

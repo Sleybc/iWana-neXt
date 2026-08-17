@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { organizationApi, type OrganizationCompanyBusinessHoursDay } from '@/lib/api-client';
-import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalPanel, portalWellClassName } from '@/components/shared/portal-ui';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 import {
   BusinessHoursWeekEditor,
@@ -16,9 +16,15 @@ interface Props {
   companyHours: OrganizationCompanyBusinessHoursDay[];
   canEdit: boolean;
   onUpdated: (hours: OrganizationCompanyBusinessHoursDay[]) => void;
+  className?: string | undefined;
 }
 
-export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdated }: Props) {
+export function CalendarOrganizationHoursPanel({
+  companyHours,
+  canEdit,
+  onUpdated,
+  className,
+}: Props) {
   const [draft, setDraft] = useState<BusinessHourDay[]>(() =>
     buildBusinessHoursDraft(companyHours),
   );
@@ -72,7 +78,7 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
 
   return (
     <PortalPanel
-      className="border-iwana-primary/15 shadow-sm shadow-iwana-primary/5"
+      className={className}
       eyebrow={CALENDAR_SETTINGS_COPY.organizationEyebrow}
       title={CALENDAR_SETTINGS_COPY.organizationTitle}
       description={CALENDAR_SETTINGS_COPY.organizationDescription}
@@ -88,8 +94,11 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
     >
       {feedback ? <PortalAlert variant="success" title={feedback} /> : null}
       {error ? <PortalAlert variant="error" title={error} /> : null}
+      {!canEdit ? (
+        <PortalAlert variant="info" title={CALENDAR_SETTINGS_COPY.calendarReadOnlyHint} />
+      ) : null}
 
-      <div className="rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/70 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3/50">
+      <div className={portalWellClassName}>
         <p className="portal-eyebrow text-iwana-secondary-700 dark:text-iwana-secondary-400">
           {CALENDAR_SETTINGS_COPY.organizationStatusTitle}
         </p>

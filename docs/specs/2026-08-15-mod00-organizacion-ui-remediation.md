@@ -1,13 +1,13 @@
 # Design — MOD00 Organización — Remediación UI/UX
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-08-15  
-**Autor:** AI-PROD-UX  
-**Superficie:** `apps/portal` → `/dashboard/settings/organization`  
-**Congela para:** AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX)  
-**ADR rector:** `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`  
-**ADR relacionado:** `docs/adrs/ADR-043-Edicion-Atomica-Sede-Capacidades.md`  
+**Version:** 1.1
+**Estado:** Aprobado
+**Fecha:** 2026-08-15
+**Autor:** AI-PROD-UX
+**Superficie:** `apps/portal` → `/dashboard/settings/organization`
+**Congela para:** AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX)
+**ADR rector:** `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
+**ADR relacionado:** `docs/adrs/ADR-043-Edicion-Atomica-Sede-Capacidades.md`
 **PRD:** `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`  
 **HLD:** `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`  
 **Specs antecedentes:** `docs/specs/2026-05-23-mod00-organization-site-modal-unificado-design.md` y `docs/specs/2026-05-23-mod00-sedes-nodos-nms-design.md`  
@@ -83,6 +83,8 @@ Orden de lectura, de arriba hacia abajo:
 2. Panel de perfil empresarial.
 3. Panel `Preferencias regionales`.
 4. Panel `Sedes registradas` (tabla compacta o empty state; nunca ambos a la vez).
+
+El CTA de listado con datos (`Crear sede`) vive en `PortalPanel.actions` del panel `Sedes registradas`, no en `PageHeader.actions`; el empty editable conserva `Crear primera sede` solo en `PortalEmptyState`.
 
 El detalle operativo profundo (horarios, responsables, NMS) sigue fuera de esta superficie. Las acciones de sede viven en la fila y en el modal unificado, no en un panel lateral permanente.
 
@@ -315,6 +317,7 @@ Contrato congelado. Se usan primitivas y clases **ya existentes**. Prohibido cre
 | Superficie | Aplicación |
 | --- | --- |
 | `Crear sede` / `Crear primera sede` / guardar perfil o preferencias | `Button size="lg"` |
+
 | `Reintentar permisos` / `Reintentar sedes` | `Button variant="link"` + `min-h-11`; no `<button>` local |
 | `Editar sede` / `Dar de baja sede` | `Button size="sm"` + `min-h-11` |
 | Sede principal y capacidades | `CheckboxCard` |
@@ -326,6 +329,8 @@ Contrato congelado. Se usan primitivas y clases **ya existentes**. Prohibido cre
 | Perfil empresarial y preferencias regionales | `shadow-iwana-card` o `PortalPanel` |
 | Eyebrows de sección | `portal-eyebrow` o `portal-eyebrow-muted` |
 | Tabla | wrapper local `overflow-x-auto`; la página no hace overflow-x |
+
+`Crear sede` de listado con datos usa el slot `actions` de `PortalPanel`; no se coloca en `PageHeader`. El empty editable conserva `Crear primera sede` solo en `PortalEmptyState`.
 
 La tabla puede desplazarse **dentro** de su wrapper. El `body` de la página no debe quedar en `overflow-x: scroll`. No se modifica `PortalDataTableShell` ni `@iwana/ui` para lograrlo.
 

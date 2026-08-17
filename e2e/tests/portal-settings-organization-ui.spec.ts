@@ -444,7 +444,19 @@ test.describe('Portal settings organization UI', () => {
     await expect(
       page.getByRole('heading', { name: 'Perfil empresarial y organización' }),
     ).toBeVisible();
+    await expect(page.getByRole('table')).toBeVisible();
     await expect(page.getByRole('row', { name: /Sede centro/i })).toBeVisible();
+
+    const sitesPanel = page
+      .getByRole('heading', { name: 'Sedes registradas' })
+      .locator('xpath=ancestor::section[1]');
+    await expect(sitesPanel.getByRole('button', { name: 'Crear sede' })).toBeVisible();
+    await expect(
+      page
+        .getByRole('heading', { level: 1, name: 'Perfil empresarial y organización' })
+        .locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]')
+        .getByRole('button', { name: 'Crear sede' }),
+    ).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Crear sede' }).click();
     await fillCreateSiteForm(page);

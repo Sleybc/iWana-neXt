@@ -1,19 +1,19 @@
 # Design — MOD00 Acceso — Remediación UI/UX
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-08-15  
-**Autor:** AI-PROD-UX  
-**Superficie:** `apps/portal` → `/dashboard/settings/access`  
-**Congela para:** AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX)  
-**ADR rector:** `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`  
-**PRD:** `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`  
-**HLD:** `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`  
-**Specs antecedentes:** `docs/specs/2026-05-25-mod00-roles-de-empresa-design.md` y `docs/specs/2026-05-27-mod00-access-copy-design.md`  
-**Plan:** `docs/plans/2026-08-15-mod00-acceso-ui-remediation.md`  
-**Informe vivo:** `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`  
-**Identidad:** `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md`  
-**Vocabulario:** skill `system-vocabulary-review`  
+**Version:** 1.8
+**Estado:** Aprobado
+**Fecha:** 2026-08-15
+**Autor:** AI-PROD-UX
+**Superficie:** `apps/portal` → `/dashboard/settings/access`
+**Congela para:** AI-FE-PLATFORM y AI-SR-QA (protocolo §3bis, track UX)
+**ADR rector:** `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
+**PRD:** `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
+**HLD:** `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
+**Specs antecedentes:** `docs/specs/2026-05-25-mod00-roles-de-empresa-design.md` y `docs/specs/2026-05-27-mod00-access-copy-design.md`
+**Plan:** `docs/plans/2026-08-15-mod00-acceso-ui-remediation.md`
+**Informe vivo:** `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
+**Identidad:** `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md`
+**Vocabulario:** skill `system-vocabulary-review`
 **Hermana visual:** `docs/specs/2026-08-15-mod00-organizacion-ui-remediation.md`
 
 **Qué es este documento.** Contrato correctivo de experiencia, copy y superficies para `/dashboard/settings/access`. Corrige hallazgos P1–P3 de la auditoría del 2026-08-15 sin cambiar alcance funcional, contratos de API ni tokens. Donde esta spec y las specs de mayo discrepen en copy, IA, accesibilidad o primitivas de esta ruta, **prevalece este documento**. El ownership (perfiles aquí, asignación de usuarios en `/dashboard/users`) no cambia.
@@ -80,11 +80,11 @@ Orden de lectura, de arriba hacia abajo:
 
 1. Encabezado de página: título + subtítulo. **Sin** `PageHeader.actions`.
 2. Alertas de operación (éxito / error recuperable / borrador de nuevo perfil).
-3. Workspace: grid `xl:grid-cols-[perfiles personalizados | accesos del perfil]`.
+3. Workspace: grid `xl:grid-cols-[perfiles personalizados | accesos del perfil]` con `items-start` (las columnas no se estiran a la misma altura en vacío).
 4. Perfiles sugeridos (cards de apoyo a la creación).
 5. Verificación en dos pasos global (política secundaria, al final).
 
-El CTA de listado con datos (`Crear perfil`) vive en `PortalPanel.actions` de **Perfiles personalizados**, no en `PageHeader`. El empty editable conserva `Crear perfil` solo en `PortalEmptyState`. No se duplican.
+El CTA de listado con datos (`Crear perfil`) vive en `PortalPanel.actions` de **Perfiles personalizados**, no en `PageHeader`. El empty editable conserva `Crear perfil` solo en `PortalEmptyState embedded`. No se duplican. Cuando no hay perfiles personalizados, el panel omite su `description` (el empty carga el mensaje).
 
 La política MFA no comparte título de página con los perfiles y no usa borde lima.
 
@@ -95,9 +95,10 @@ La política MFA no comparte título de página con los perfiles y no usa borde 
 | Estado | Superficie | Copy / acción |
 | --- | --- | --- |
 | Carga inicial | Skeleton | `Cargando perfiles de acceso y sus accesos` |
-| Vacío editable | `PortalEmptyState` | `Aún no has creado perfiles personalizados` + descripción de §6 + `Crear perfil` |
-| Sin perfil seleccionado (hay listado) | Copy en el panel de accesos | `Elige un perfil de la lista para revisar o cambiar sus accesos.` Sin segundo CTA |
-| Búsqueda sin resultados | `PortalEmptyState` + acción | `No encontramos accesos en esta sección` + `Limpiar búsqueda` |
+| Vacío editable | `PortalEmptyState embedded` en panel `compact` | `Aún no has creado perfiles personalizados` + descripción de §6 + `Crear perfil`. Sin pozo anidado (`rounded-2xl` extra). |
+| Sin perfil seleccionado | Solo `description` del panel Accesos | `Elige un perfil de la lista para revisar o cambiar sus accesos.` Sin `PortalEmptyState` ni título `Sin perfil seleccionado`. Sin segundo CTA. |
+| Búsqueda sin resultados | `PortalEmptyState embedded` + acción | `No encontramos accesos en esta sección` + `Limpiar búsqueda` |
+| Sin accesos compatibles | `PortalEmptyState embedded` | `Sin accesos disponibles` + `No hay accesos activos para mostrar en este momento.` |
 | Error de carga | `PortalAlert` + reintento | Mensaje sanitizado de §6.4 + `Reintentar` |
 | Error de política MFA | `PortalAlert` en el panel | Mensaje sanitizado de §6.4 |
 | Error de submit de perfil | Conservar diálogo abierto | Mensaje sanitizado; no `error.message` |
@@ -120,7 +121,6 @@ Fuente: spec de mayo 2026-05-27, elevada a contrato de esta ruta. En esta pantal
 | Panel description | `Crea perfiles propios para tu empresa y define qué puede hacer cada uno.` |
 | Panel | `Perfiles sugeridos` |
 | Panel description | `Estos perfiles sugeridos te ayudan a crear nuevos perfiles de acceso con menos trabajo manual.` |
-| Eyebrow de card sugerida | `Sugerido` |
 | Fallback descripción sugerido | `Perfil sugerido` |
 | Panel | `Accesos del perfil` / `Accesos del nuevo perfil` |
 | Panel MFA title | `Verificación en dos pasos global` (se conserva) |
@@ -213,16 +213,22 @@ Se usa la **misma barra** que Organización. Prohibido crear tokens o primitivas
 - CTA de sección: `Button size="lg"`.
 - Reintentos: `Button variant="link"` + `min-h-11`.
 - Acciones de fila: `Button size="sm"` + `min-h-11`. Sin override `h-8`.
-- Selecciones (MFA, accesos, mantener activo): `CheckboxCard`.
+- Selecciones (MFA, accesos, mantener activo): `CheckboxCard` con superficie global `iwana-surface-soft` en claro (`bg-iwana-surface-soft/60`, hover `bg-iwana-surface-soft`, borde `gray-200`), dark intacto (`dark:bg-dark-surface-3/60`, `dark:hover:bg-dark-surface-3`, `dark:border-dark-border`); veredicto AI-DS-OWNER (v1.8).
 - Encabezados de tabla: `PortalDataTableHead` + class-tokens de `portal-ui.tsx`. Sin pager (cardinalidad de settings).
 - Tabs de sección: `portalModuleTabsTrackClassName` + `portalModuleTabTriggerClassName` (activo = `bg-iwana-primary text-white`). Lima no marca la sección actual.
 - Peek: `PortalSidePeek` con `shadow-iwana-soft`. Prohibido `z-10000`, `shadow-2xl` y glass en cabecera del panel.
 - Superficies: `PortalPanel` con borde `border-gray-200`. Prohibido `border-iwana-secondary` como marco de panel o card.
 - Fila en edición: barra lima izquierda + píldora `En edición` (`bg-iwana-secondary-50` + `text-iwana-secondary-700`) — acento válido.
 - MFA activa: badge tonal `bg-iwana-secondary-100 text-iwana-secondary-900`, no borde lima del panel.
+- Footer MFA: apilado en mobile (`flex flex-col items-stretch`, botón `w-full`) y en fila desde `sm` (`sm:flex-row sm:items-center sm:justify-between`, botón `sm:w-auto`). En 390×844 la ayuda queda encima del CTA, sin solape.
 - Reposo: `shadow-iwana-soft` / `shadow-iwana-card`. Prohibido `shadow-[var(--shadow-iwana)]` y `shadow-2xl`.
 - Foco: `interactiveFocusClassName` en controles custom (selector de creación).
 - Objetivos táctiles: ≥44 px (`min-h-11` o `size="lg"`).
+- Densidad: ritmo de página `space-y-4`. `PortalPanel compact` en sugeridos, MFA y paneles vacíos. Workspace con tabla/editor puede quedar `p-5`.
+- Empty de perfiles: `PortalEmptyState embedded` (sin card-dentro-de-card). Accesos sin selección: sin empty ilustrado. Empty de búsqueda y de “sin accesos compatibles”: también `embedded`.
+- Loading, sesión no disponible y acceso restringido usan el mismo ritmo `space-y-4` que la vista cargada.
+- Toolbar de acciones en card móvil: `PortalActionToolbar compact` sin override `bg-gray-50`. El pozo es el del primitive (`iwana-surface-soft`).
+- Cards de perfiles sugeridos: título → `line-clamp-2` (sin `min-h` artificial) → meta → CTAs apilados `flex-col gap-2` y `w-full` (nunca `sm:flex-row` ni `sm:w-auto`). Preview `ghost size="sm" min-h-11` con superficie suave compuesta localmente (sin variante global nueva; tailwind-merge del `cn` de `Button` resuelve los hover): `border border-gray-200/80 bg-iwana-surface-soft hover:bg-iwana-secondary-50 dark:border-dark-border dark:bg-dark-surface-3 dark:hover:bg-dark-surface-4`. El hover lima es acento de interacción permitido («hover marcado»), nunca fondo base. Sin override de foco: ring primario del ghost base con offset coincidente con el fondo de la card. Crear `primary size="sm" min-h-11` (sin `size="lg"` ni `sm:flex-1`). El `primary` de card alinea la variante del CTA de creación con el del pie del peek y resuelve el `secondary` plano; `primary size="lg"` queda reservado al `Crear perfil` del panel de listado y al pie del peek. La grilla de perfiles sugeridos usa **siempre** `grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`, incluso con una sola card: la card ocupa una columna responsive en desktop y el ancho completo en mobile. Sin `max-w-*`, sin estilos inline ni ramas por cantidad de cards. Sin eyebrow por card: el panel ya se titula `Perfiles sugeridos`. El título no comparte fila con los botones.
 
 `Crear perfil` de listado con datos usa `PortalPanel.actions`. El empty editable no duplica el CTA del header de página.
 
@@ -265,6 +271,14 @@ Viewports de verificación: 390×844, 1024×768, 1440×900, claro y oscuro.
 | CA-ACC-UX-10 | Controles interactivos alcanzan al menos 44 px. |
 | CA-ACC-UX-11 | Claro y oscuro cumplen WCAG AA. |
 | CA-ACC-UX-12 | La política MFA queda debajo de perfiles sugeridos. |
+| CA-ACC-UX-13 | Vacío de perfiles sin pozo anidado; un solo `Crear perfil`; el panel no duplica su description. |
+| CA-ACC-UX-14 | Con 0 perfiles personalizados, el heading `Perfiles sugeridos` es visible sin scroll en desktop 1440×900. |
+| CA-ACC-UX-15 | La caja del título de una card sugerida no intersecta la caja de su CTA de creación. |
+| CA-ACC-UX-16 | En desktop ≥1440 px con ≥4 perfiles sugeridos, cada CTA de una card queda dentro del ancho de esa card, apilado, con altura ≥44 px y sin salto de línea. |
+| CA-ACC-UX-17 | Empties internos de Accesos van `embedded`; las cards sugeridas no repiten el eyebrow `Sugerido`; la toolbar móvil no usa pozo `bg-gray-50`. |
+| CA-ACC-UX-18 | Con una sugerencia, la card ocupa una columna responsive en desktop y ancho completo en mobile. |
+| CA-ACC-UX-19 | El editor muestra `Revisa lo que «{perfil}» puede/podrá ver o hacer en cada sección.` según sea perfil guardado o borrador. |
+| CA-ACC-UX-20 | En 390×844 la ayuda MFA queda encima del CTA, sin solape, y `Guardar política` ocupa el ancho disponible; desde `sm` vuelven a fila. |
 
 ---
 
@@ -284,9 +298,9 @@ No se requiere PRD, HLD ni ADR nuevos.
 
 ## 15. Desbloqueo de tracks
 
-Esta spec v1.0 queda **aprobada y congelada** el 2026-08-15.
+Esta spec v1.7 queda **aprobada** el 2026-08-15. v1.1 aclaró el layout de cards sugeridas. v1.2 congeló densidad embebida (`compact` / `embedded`, `items-start`, CA-ACC-UX-13…15). v1.3 compactó cards sugeridas (grid 4 cols, CTAs `size="sm"`). v1.4 cierra la review de identidad: CTAs sugeridos siempre apilados a ancho de card, empties internos `embedded`, sin eyebrow repetido, toolbar móvil sin pozo gris, ritmo `space-y-4` también en loading, CA-ACC-UX-16…17. v1.5 añade card sugerida única contenida (grilla responsive incondicional `md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`), copy orientado a tarea del editor (`Revisa lo que «{perfil}» puede/podrá ver o hacer en cada sección.` para perfil guardado y borrador) y footer MFA responsive (apilado en mobile, en fila desde `sm`), con CA-ACC-UX-18…20. v1.6 cambia la variante del CTA de creación de la card sugerida (`secondary` → `primary`), veredicto AI-DS-OWNER, sin cambio en CA-ACC-UX-16/17; notificación a AI-FE-PLATFORM y AI-SR-QA vía orquestador. v1.7 compone una superficie suave local en el preview de cards sugeridas para que el botón se lea como botón sobre card blanca; veredicto AI-DS-OWNER; sin cambio en CA-ACC-UX-10/16/17; notificación a AI-FE-PLATFORM y AI-SR-QA vía orquestador. v1.8 hace global la superficie suave del `CheckboxCard` (selecciones MFA, accesos y «mantener activo»): en claro `bg-iwana-surface-soft/60` + hover `bg-iwana-surface-soft` + borde `gray-200`, dark intacto; veredicto AI-DS-OWNER; sin cambio en CA-ACC-UX ni en restricciones v1.3/v1.4; notificación a AI-FE-PLATFORM y AI-SR-QA vía orquestador.
 
 - AI-DS-OWNER verifica el §10.
 - AI-FE-PLATFORM implementa contra §4–§11.
-- AI-SR-QA escribe RED y E2E contra copy literal y CA-ACC-UX-01…12.
-- Un cambio posterior se versiona (v1.1+) y se notifica; no se parchea solo en código.
+- AI-SR-QA escribe RED y E2E contra copy literal y CA-ACC-UX-01…20.
+- Un cambio posterior se versiona (v1.8+) y se notifica; no se parchea solo en código.

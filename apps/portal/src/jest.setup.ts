@@ -1,5 +1,9 @@
 // Extiende los matchers de Jest con los de @testing-library/jest-dom
 import '@testing-library/jest-dom';
+// Matcher de axe-core para auditorías WCAG en pruebas unitarias (T3 Wave 3)
+import { toHaveNoViolations } from 'jest-axe';
+
+expect.extend(toHaveNoViolations);
 
 // jsdom no implementa AbortSignal.timeout (disponible en Node 17.3+/browsers
 // modernos). El cliente central lo usa como timeout duro de fetch (ADR-081,

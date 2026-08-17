@@ -1,7 +1,19 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, DatePicker, Select, type SelectOption } from '@iwana/ui';
+import { cn } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  DatePicker,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Select,
+  type SelectOption,
+} from '@iwana/ui';
 import type { ListMeta } from '@iwana/shared';
 import {
   wfmApi,
@@ -21,8 +33,18 @@ import {
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalPanel,
+  PortalSkeletonBlock,
   PortalTablePager,
+  PortalDataTableHead,
+  portalCheckboxClassName,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
+  portalDatePickerButtonClassName,
+  portalFieldClassName,
+  portalSelectTriggerClassName,
+  portalWellClassName,
 } from '@/components/shared/portal-ui';
 import {
   CALENDAR_SETTINGS_COPY,
@@ -34,21 +56,14 @@ import { TimeFieldSelect } from './TimeFieldSelect';
 const EVENTUALITIES_RESOURCE = { singular: 'eventualidad', plural: 'eventualidades' } as const;
 const EVENTUALITIES_NAMESPACE = 'eventualities';
 
-const STATUS_BADGE_CLASSES: Record<OperationalEventualityStatus, string> = {
-  pending:
-    'inline-flex rounded-full px-2.5 py-1 text-xs font-medium leading-5 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-  confirmed:
-    'inline-flex rounded-full px-2.5 py-1 text-xs font-medium leading-5 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  cancelled:
-    'inline-flex rounded-full px-2.5 py-1 text-xs font-medium leading-5 bg-gray-100 text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400',
+const STATUS_BADGE_VARIANTS: Record<
+  OperationalEventualityStatus,
+  'warning' | 'success' | 'neutral'
+> = {
+  pending: 'warning',
+  confirmed: 'success',
+  cancelled: 'neutral',
 };
-
-const inputClass =
-  'h-10 w-full rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-gray-100';
-
-const selectClassName = 'rounded-2xl shadow-sm dark:bg-dark-surface-2';
-const datePickerButtonClassName =
-  'h-10 rounded-2xl border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-2 dark:text-gray-100';
 
 interface EmptyDraft {
   userId: string;
@@ -132,28 +147,28 @@ function isCompleteLocalDateTime(value: string): boolean {
 
 interface Props {
   canEdit: boolean;
+  className?: string | undefined;
 }
 
-export function OperationalEventualitiesPanel({ canEdit }: Props) {
+export function OperationalEventualitiesPanel({ canEdit, className }: Props) {
   return (
     <Suspense
       fallback={
         <PortalPanel
+          className={className}
           title={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
           description={CALENDAR_SETTINGS_COPY.eventualitiesDescription}
         >
-          <p className="text-sm text-gray-500">
-            {CALENDAR_SETTINGS_COPY.eventualitiesLoadingStatus}
-          </p>
+          <PortalSkeletonBlock className="h-48" />
         </PortalPanel>
       }
     >
-      <OperationalEventualitiesPanelInner canEdit={canEdit} />
+      <OperationalEventualitiesPanelInner canEdit={canEdit} className={className} />
     </Suspense>
   );
 }
 
-function OperationalEventualitiesPanelInner({ canEdit }: Props) {
+function OperationalEventualitiesPanelInner({ canEdit, className }: Props) {
   const [items, setItems] = useState<OperationalEventuality[]>([]);
   const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [users, setUsers] = useState<InternalUser[]>([]);
@@ -167,6 +182,7 @@ function OperationalEventualitiesPanelInner({ canEdit }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState<EmptyDraft>(EMPTY_DRAFT);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const [eventualityToDelete, setEventualityToDelete] = useState<string | null>(null);
   const hasLoadedOnceRef = useRef(false);
   const eventualityFormRegionId = 'operational-eventuality-form-region';
   const eventualityFormHeadingId = 'operational-eventuality-form-heading';
@@ -346,11 +362,7 @@ function OperationalEventualitiesPanelInner({ canEdit }: Props) {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!(globalThis.confirm?.(CALENDAR_SETTINGS_COPY.eventualitiesDeleteConfirm) ?? true)) {
-      return;
-    }
-
+  async function handleDeleteConfirmed(id: string) {
     setError(null);
     setFeedback(null);
     setPendingActionId(id);
@@ -364,6 +376,10 @@ function OperationalEventualitiesPanelInner({ canEdit }: Props) {
     } finally {
       setPendingActionId((current) => (current === id ? null : current));
     }
+  }
+
+  function handleDelete(id: string) {
+    setEventualityToDelete(id);
   }
 
   function getUserName(userId: string): string {
@@ -417,350 +433,403 @@ function OperationalEventualitiesPanelInner({ canEdit }: Props) {
   }
 
   return (
-    <PortalPanel
-      eyebrow={CALENDAR_SETTINGS_COPY.eventualitiesEyebrow}
-      title={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
-      description={CALENDAR_SETTINGS_COPY.eventualitiesDescription}
-      contentClassName="space-y-4"
-    >
-      {feedback ? <PortalAlert variant="success" title={feedback} /> : null}
-      {error ? <PortalAlert variant="error" title={error} /> : null}
-      {usersUnavailable ? (
-        <PortalAlert
-          variant="warning"
-          title={CALENDAR_SETTINGS_COPY.eventualitiesUsersUnavailableTitle}
-          description={CALENDAR_SETTINGS_COPY.eventualitiesUsersUnavailableDescription}
-        />
-      ) : null}
+    <>
+      <PortalPanel
+        className={className}
+        eyebrow={CALENDAR_SETTINGS_COPY.eventualitiesEyebrow}
+        title={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
+        description={CALENDAR_SETTINGS_COPY.eventualitiesDescription}
+        contentClassName="space-y-4"
+      >
+        {feedback ? <PortalAlert variant="success" title={feedback} /> : null}
+        {error ? <PortalAlert variant="error" live="assertive" title={error} /> : null}
+        {usersUnavailable ? (
+          <PortalAlert
+            variant="warning"
+            title={CALENDAR_SETTINGS_COPY.eventualitiesUsersUnavailableTitle}
+            description={CALENDAR_SETTINGS_COPY.eventualitiesUsersUnavailableDescription}
+          />
+        ) : null}
 
-      {isLoading ? (
-        <PortalAlert variant="info" title={CALENDAR_SETTINGS_COPY.eventualitiesLoadingStatus} />
-      ) : items.length === 0 ? (
-        <PortalEmptyState
-          title={CALENDAR_SETTINGS_COPY.eventualitiesEmptyTitle}
-          description={CALENDAR_SETTINGS_COPY.eventualitiesEmptyDescription}
-        />
-      ) : (
-        <div className="space-y-3">
-          <div className={portalDataTableShellClassName}>
-            <table
-              className="min-w-full divide-y divide-gray-200 dark:divide-dark-border"
-              data-testid="eventualities-table"
-            >
-              <thead className="bg-gray-50 dark:bg-dark-surface-2">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {CALENDAR_SETTINGS_COPY.eventualitiesTableUserColumn}
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {CALENDAR_SETTINGS_COPY.eventualitiesTableTypeColumn}
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {CALENDAR_SETTINGS_COPY.eventualitiesTableStartsAtColumn}
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {CALENDAR_SETTINGS_COPY.eventualitiesTableEndsAtColumn}
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {CALENDAR_SETTINGS_COPY.eventualitiesTableStatusColumn}
-                  </th>
-                  {canEdit && (
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      {CALENDAR_SETTINGS_COPY.eventualitiesTableActionsColumn}
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface">
-                {items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                      {getUserName(item.userId)}
-                    </td>
-                    <td className="px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                      {OPERATIONAL_EVENTUALITY_TYPE_LABELS[item.type] ?? item.type}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                      {formatDateLocal(item.startsAt)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 align-middle text-sm text-gray-700 dark:text-gray-200">
-                      {formatDateLocal(item.endsAt)}
-                    </td>
-                    <td className="px-4 py-3.5 align-middle">
-                      <span className={STATUS_BADGE_CLASSES[item.status]}>
-                        {OPERATIONAL_EVENTUALITY_STATUS_LABELS[item.status] ?? item.status}
-                      </span>
-                    </td>
+        {isLoading ? (
+          <PortalSkeletonBlock className="h-48" />
+        ) : items.length === 0 ? (
+          <PortalEmptyState
+            title={CALENDAR_SETTINGS_COPY.eventualitiesEmptyTitle}
+            description={CALENDAR_SETTINGS_COPY.eventualitiesEmptyDescription}
+          />
+        ) : (
+          <div className="space-y-3">
+            <div className={portalDataTableShellClassName}>
+              <table
+                className="min-w-full divide-y divide-gray-200 dark:divide-dark-border"
+                data-testid="eventualities-table"
+              >
+                <thead className={portalDataTableHeadRowClassName}>
+                  <tr>
+                    <PortalDataTableHead>
+                      {CALENDAR_SETTINGS_COPY.eventualitiesTableUserColumn}
+                    </PortalDataTableHead>
+                    <PortalDataTableHead>
+                      {CALENDAR_SETTINGS_COPY.eventualitiesTableTypeColumn}
+                    </PortalDataTableHead>
+                    <PortalDataTableHead>
+                      {CALENDAR_SETTINGS_COPY.eventualitiesTableStartsAtColumn}
+                    </PortalDataTableHead>
+                    <PortalDataTableHead>
+                      {CALENDAR_SETTINGS_COPY.eventualitiesTableEndsAtColumn}
+                    </PortalDataTableHead>
+                    <PortalDataTableHead>
+                      {CALENDAR_SETTINGS_COPY.eventualitiesTableStatusColumn}
+                    </PortalDataTableHead>
                     {canEdit && (
-                      <td className="px-4 py-3.5 align-middle">
-                        <div className="flex items-center gap-2">
-                          {item.status === 'pending' && (
-                            <>
-                              <button
-                                className="text-xs font-medium text-green-600 hover:underline dark:text-green-400"
-                                onClick={() => void handleUpdateStatus(item.id, 'confirmed')}
-                                disabled={pendingActionId === item.id}
-                                data-testid={`confirm-eventuality-${item.id}`}
-                              >
-                                {CALENDAR_SETTINGS_COPY.eventualitiesConfirmAction}
-                              </button>
-                              <button
-                                className="text-xs font-medium text-red-500 hover:underline dark:text-red-400"
-                                onClick={() => void handleUpdateStatus(item.id, 'cancelled')}
-                                disabled={pendingActionId === item.id}
-                                data-testid={`cancel-eventuality-${item.id}`}
-                              >
-                                {CALENDAR_SETTINGS_COPY.eventualitiesCancelAction}
-                              </button>
-                            </>
-                          )}
-                          {item.status !== 'pending' && (
-                            <button
-                              className="text-xs font-medium text-gray-400 hover:underline dark:text-gray-400"
-                              onClick={() => void handleDelete(item.id)}
-                              disabled={pendingActionId === item.id}
-                              data-testid={`delete-eventuality-${item.id}`}
-                            >
-                              {CALENDAR_SETTINGS_COPY.eventualitiesDeleteAction}
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                      <PortalDataTableHead>
+                        {CALENDAR_SETTINGS_COPY.eventualitiesTableActionsColumn}
+                      </PortalDataTableHead>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {showPager && randomAccess ? (
-            <PortalTablePager
-              page={effectivePage}
-              pageCount={Math.max(1, pageCount)}
-              onPageChange={setPage}
-              from={from}
-              to={to}
-              total={meta.total}
-              resource={EVENTUALITIES_RESOURCE}
-              loading={isRefreshing}
-              pageSizeControl={
-                showPageSize ? (
-                  <PortalPageSizeSelect
-                    value={pageSize}
-                    onChange={setPageSize}
-                    disabled={isRefreshing}
-                  />
-                ) : undefined
-              }
-            />
-          ) : null}
-        </div>
-      )}
-
-      {canOpenCreateForm && (
-        <div className="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-border/70">
-          <div className="flex flex-col gap-3 rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3/40 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p id={eventualityFormHeadingId} className="portal-eyebrow">
-                {CALENDAR_SETTINGS_COPY.eventualitiesFormTitle}
-              </p>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                {CALENDAR_SETTINGS_COPY.eventualitiesFormDescription}
-              </p>
+                </thead>
+                <tbody className={portalDataTableBodyClassName}>
+                  {items.map((item) => (
+                    <tr key={item.id}>
+                      <td className={portalDataTableCellClassName}>{getUserName(item.userId)}</td>
+                      <td className={portalDataTableCellClassName}>
+                        {OPERATIONAL_EVENTUALITY_TYPE_LABELS[item.type] ?? item.type}
+                      </td>
+                      <td className={`whitespace-nowrap ${portalDataTableCellClassName}`}>
+                        {formatDateLocal(item.startsAt)}
+                      </td>
+                      <td className={`whitespace-nowrap ${portalDataTableCellClassName}`}>
+                        {formatDateLocal(item.endsAt)}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        <Badge variant={STATUS_BADGE_VARIANTS[item.status]}>
+                          {OPERATIONAL_EVENTUALITY_STATUS_LABELS[item.status] ?? item.status}
+                        </Badge>
+                      </td>
+                      {canEdit && (
+                        <td className={portalDataTableCellClassName}>
+                          <div className="flex items-center gap-2">
+                            {item.status === 'pending' && (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => void handleUpdateStatus(item.id, 'confirmed')}
+                                  disabled={pendingActionId === item.id}
+                                  data-testid={`confirm-eventuality-${item.id}`}
+                                >
+                                  {CALENDAR_SETTINGS_COPY.eventualitiesConfirmAction}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                                  onClick={() => void handleUpdateStatus(item.id, 'cancelled')}
+                                  disabled={pendingActionId === item.id}
+                                  data-testid={`cancel-eventuality-${item.id}`}
+                                >
+                                  {CALENDAR_SETTINGS_COPY.eventualitiesCancelAction}
+                                </Button>
+                              </>
+                            )}
+                            {item.status !== 'pending' && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                                onClick={() => handleDelete(item.id)}
+                                disabled={pendingActionId === item.id}
+                                data-testid={`delete-eventuality-${item.id}`}
+                              >
+                                {CALENDAR_SETTINGS_COPY.eventualitiesDeleteAction}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {!showForm ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                aria-expanded={false}
-                aria-controls={eventualityFormRegionId}
-                onClick={() => setShowForm(true)}
-                data-testid="add-eventuality-btn"
-              >
-                {CALENDAR_SETTINGS_COPY.eventualitiesShowFormAction}
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-expanded={true}
-                aria-controls={eventualityFormRegionId}
-                onClick={handleCloseForm}
-              >
-                {CALENDAR_SETTINGS_COPY.eventualitiesHideFormAction}
-              </Button>
-            )}
+            {showPager && randomAccess ? (
+              <PortalTablePager
+                page={effectivePage}
+                pageCount={Math.max(1, pageCount)}
+                onPageChange={setPage}
+                from={from}
+                to={to}
+                total={meta.total}
+                resource={EVENTUALITIES_RESOURCE}
+                loading={isRefreshing}
+                pageSizeControl={
+                  showPageSize ? (
+                    <PortalPageSizeSelect
+                      value={pageSize}
+                      onChange={setPageSize}
+                      disabled={isRefreshing}
+                    />
+                  ) : undefined
+                }
+              />
+            ) : null}
           </div>
+        )}
 
-          {showForm ? (
+        {canOpenCreateForm && (
+          <div className="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-border/70">
             <div
-              id={eventualityFormRegionId}
-              role="region"
-              aria-labelledby={eventualityFormHeadingId}
-              data-testid="eventuality-form"
-              className="rounded-2xl border border-gray-200 bg-iwana-surface-soft/60 p-4 dark:border-dark-border dark:bg-dark-surface-3/50"
+              className={cn(
+                portalWellClassName,
+                'p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+              )}
             >
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label
-                      htmlFor={eventualityUserId}
-                      className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                    >
-                      {CALENDAR_SETTINGS_COPY.eventualitiesUserLabel}
-                    </label>
-                    <Select
-                      id={eventualityUserId}
-                      className={selectClassName}
-                      value={draft.userId}
-                      onChange={(e) => updateDraft('userId', e.target.value)}
-                      options={userOptions}
-                      data-testid="eventuality-user-select"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor={eventualityTypeId}
-                      className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                    >
-                      {CALENDAR_SETTINGS_COPY.eventualitiesTypeLabel}
-                    </label>
-                    <Select
-                      id={eventualityTypeId}
-                      className={selectClassName}
-                      value={draft.type}
-                      onChange={(e) =>
-                        updateDraft('type', e.target.value as OperationalEventualityType | '')
-                      }
-                      options={eventualityTypeOptions}
-                      data-testid="eventuality-type-select"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor={eventualityStartsAtId}
-                      className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                    >
-                      {CALENDAR_SETTINGS_COPY.eventualitiesStartsAtLabel}
-                    </label>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
-                      <DatePicker
-                        id={eventualityStartsAtId}
-                        placeholder="dd/mm/aaaa"
-                        value={toDateFromLocalDateValue(getLocalDatePart(draft.startsAt))}
-                        onChange={(date) => updateDraftDateTimeField('startsAt', 'date', date)}
-                        className="w-full"
-                        buttonClassName={datePickerButtonClassName}
+              <div className="min-w-0">
+                <p id={eventualityFormHeadingId} className="portal-eyebrow">
+                  {CALENDAR_SETTINGS_COPY.eventualitiesFormTitle}
+                </p>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  {CALENDAR_SETTINGS_COPY.eventualitiesFormDescription}
+                </p>
+              </div>
+              {!showForm ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-expanded={false}
+                  aria-controls={eventualityFormRegionId}
+                  onClick={() => setShowForm(true)}
+                  data-testid="add-eventuality-btn"
+                >
+                  {CALENDAR_SETTINGS_COPY.eventualitiesShowFormAction}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-expanded={true}
+                  aria-controls={eventualityFormRegionId}
+                  onClick={handleCloseForm}
+                >
+                  {CALENDAR_SETTINGS_COPY.eventualitiesHideFormAction}
+                </Button>
+              )}
+            </div>
+
+            {showForm ? (
+              <div
+                id={eventualityFormRegionId}
+                role="region"
+                aria-labelledby={eventualityFormHeadingId}
+                data-testid="eventuality-form"
+                className={cn(portalWellClassName, 'p-4')}
+              >
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor={eventualityUserId}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {CALENDAR_SETTINGS_COPY.eventualitiesUserLabel}
+                      </label>
+                      <Select
+                        id={eventualityUserId}
+                        className={cn(portalSelectTriggerClassName, 'h-11')}
+                        value={draft.userId}
+                        onChange={(e) => updateDraft('userId', e.target.value)}
+                        options={userOptions}
+                        data-testid="eventuality-user-select"
                       />
-                      <TimeFieldSelect
-                        id={`${eventualityStartsAtId}-time`}
-                        value={getLocalTimePart(draft.startsAt)}
-                        disabled={false}
-                        ariaLabel={`${CALENDAR_SETTINGS_COPY.eventualitiesStartsAtLabel} · hora`}
-                        onChange={(nextValue) =>
-                          updateDraftDateTimeField('startsAt', 'time', nextValue)
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={eventualityTypeId}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {CALENDAR_SETTINGS_COPY.eventualitiesTypeLabel}
+                      </label>
+                      <Select
+                        id={eventualityTypeId}
+                        className={cn(portalSelectTriggerClassName, 'h-11')}
+                        value={draft.type}
+                        onChange={(e) =>
+                          updateDraft('type', e.target.value as OperationalEventualityType | '')
                         }
-                        dataTestId="eventuality-starts-at-time"
+                        options={eventualityTypeOptions}
+                        data-testid="eventuality-type-select"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={eventualityStartsAtId}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {CALENDAR_SETTINGS_COPY.eventualitiesStartsAtLabel}
+                      </label>
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                        <DatePicker
+                          id={eventualityStartsAtId}
+                          placeholder="dd/mm/aaaa"
+                          value={toDateFromLocalDateValue(getLocalDatePart(draft.startsAt))}
+                          onChange={(date) => updateDraftDateTimeField('startsAt', 'date', date)}
+                          className="w-full"
+                          buttonClassName={portalDatePickerButtonClassName}
+                        />
+                        <TimeFieldSelect
+                          id={`${eventualityStartsAtId}-time`}
+                          value={getLocalTimePart(draft.startsAt)}
+                          disabled={false}
+                          ariaLabel={`${CALENDAR_SETTINGS_COPY.eventualitiesStartsAtLabel} · hora`}
+                          onChange={(nextValue) =>
+                            updateDraftDateTimeField('startsAt', 'time', nextValue)
+                          }
+                          dataTestId="eventuality-starts-at-time"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={eventualityEndsAtId}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {CALENDAR_SETTINGS_COPY.eventualitiesEndsAtLabel}
+                      </label>
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                        <DatePicker
+                          id={eventualityEndsAtId}
+                          placeholder="dd/mm/aaaa"
+                          value={toDateFromLocalDateValue(getLocalDatePart(draft.endsAt))}
+                          onChange={(date) => updateDraftDateTimeField('endsAt', 'date', date)}
+                          className="w-full"
+                          buttonClassName={portalDatePickerButtonClassName}
+                        />
+                        <TimeFieldSelect
+                          id={`${eventualityEndsAtId}-time`}
+                          value={getLocalTimePart(draft.endsAt)}
+                          disabled={false}
+                          ariaLabel={`${CALENDAR_SETTINGS_COPY.eventualitiesEndsAtLabel} · hora`}
+                          onChange={(nextValue) =>
+                            updateDraftDateTimeField('endsAt', 'time', nextValue)
+                          }
+                          dataTestId="eventuality-ends-at-time"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={eventualityReasonId}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {CALENDAR_SETTINGS_COPY.eventualitiesReasonLabel}
+                      </label>
+                      <input
+                        id={eventualityReasonId}
+                        type="text"
+                        className={cn(portalFieldClassName, 'h-11')}
+                        maxLength={320}
+                        value={draft.reason}
+                        onChange={(e) => updateDraft('reason', e.target.value)}
+                        placeholder={CALENDAR_SETTINGS_COPY.eventualitiesReasonPlaceholder}
+                        data-testid="eventuality-reason"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={eventualityOriginId}
+                        className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      >
+                        {CALENDAR_SETTINGS_COPY.eventualitiesOriginLabel}
+                      </label>
+                      <input
+                        id={eventualityOriginId}
+                        type="text"
+                        className={cn(portalFieldClassName, 'h-11')}
+                        maxLength={80}
+                        value={draft.origin}
+                        onChange={(e) => updateDraft('origin', e.target.value)}
+                        placeholder={CALENDAR_SETTINGS_COPY.eventualitiesOriginPlaceholder}
+                        data-testid="eventuality-origin"
                       />
                     </div>
                   </div>
-                  <div>
-                    <label
-                      htmlFor={eventualityEndsAtId}
-                      className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                    >
-                      {CALENDAR_SETTINGS_COPY.eventualitiesEndsAtLabel}
-                    </label>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
-                      <DatePicker
-                        id={eventualityEndsAtId}
-                        placeholder="dd/mm/aaaa"
-                        value={toDateFromLocalDateValue(getLocalDatePart(draft.endsAt))}
-                        onChange={(date) => updateDraftDateTimeField('endsAt', 'date', date)}
-                        className="w-full"
-                        buttonClassName={datePickerButtonClassName}
-                      />
-                      <TimeFieldSelect
-                        id={`${eventualityEndsAtId}-time`}
-                        value={getLocalTimePart(draft.endsAt)}
-                        disabled={false}
-                        ariaLabel={`${CALENDAR_SETTINGS_COPY.eventualitiesEndsAtLabel} · hora`}
-                        onChange={(nextValue) =>
-                          updateDraftDateTimeField('endsAt', 'time', nextValue)
-                        }
-                        dataTestId="eventuality-ends-at-time"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor={eventualityReasonId}
-                      className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                    >
-                      {CALENDAR_SETTINGS_COPY.eventualitiesReasonLabel}
-                    </label>
+                  <div className="mt-3 flex items-center gap-2">
                     <input
-                      id={eventualityReasonId}
-                      type="text"
-                      className={inputClass}
-                      maxLength={320}
-                      value={draft.reason}
-                      onChange={(e) => updateDraft('reason', e.target.value)}
-                      placeholder={CALENDAR_SETTINGS_COPY.eventualitiesReasonPlaceholder}
-                      data-testid="eventuality-reason"
+                      id="requires-hr-review"
+                      type="checkbox"
+                      className={portalCheckboxClassName}
+                      checked={draft.requiresHrReview}
+                      onChange={(e) => updateDraft('requiresHrReview', e.target.checked)}
+                      data-testid="eventuality-requires-hr"
                     />
-                  </div>
-                  <div>
                     <label
-                      htmlFor={eventualityOriginId}
-                      className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                      htmlFor="requires-hr-review"
+                      className="text-sm text-gray-700 dark:text-gray-300"
                     >
-                      {CALENDAR_SETTINGS_COPY.eventualitiesOriginLabel}
+                      {CALENDAR_SETTINGS_COPY.eventualitiesRequiresReviewLabel}
                     </label>
-                    <input
-                      id={eventualityOriginId}
-                      type="text"
-                      className={inputClass}
-                      maxLength={80}
-                      value={draft.origin}
-                      onChange={(e) => updateDraft('origin', e.target.value)}
-                      placeholder={CALENDAR_SETTINGS_COPY.eventualitiesOriginPlaceholder}
-                      data-testid="eventuality-origin"
-                    />
                   </div>
-                </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <input
-                    id="requires-hr-review"
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 text-iwana-secondary focus:ring-iwana-secondary"
-                    checked={draft.requiresHrReview}
-                    onChange={(e) => updateDraft('requiresHrReview', e.target.checked)}
-                    data-testid="eventuality-requires-hr"
-                  />
-                  <label
-                    htmlFor="requires-hr-review"
-                    className="text-sm text-gray-700 dark:text-gray-300"
-                  >
-                    {CALENDAR_SETTINGS_COPY.eventualitiesRequiresReviewLabel}
-                  </label>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    size="sm"
-                    onClick={handleCreate}
-                    disabled={isSaving}
-                    data-testid="save-eventuality-btn"
-                  >
-                    {isSaving
-                      ? CALENDAR_SETTINGS_COPY.eventualitiesSavingAction
-                      : CALENDAR_SETTINGS_COPY.eventualitiesSaveAction}
-                  </Button>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={handleCreate}
+                      disabled={isSaving}
+                      data-testid="save-eventuality-btn"
+                    >
+                      {isSaving
+                        ? CALENDAR_SETTINGS_COPY.eventualitiesSavingAction
+                        : CALENDAR_SETTINGS_COPY.eventualitiesSaveAction}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </PortalPanel>
+            ) : null}
+          </div>
+        )}
+      </PortalPanel>
+
+      <Dialog
+        open={eventualityToDelete !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setEventualityToDelete(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <p className="portal-eyebrow">Confirmación</p>
+            <DialogTitle className="mt-1">
+              {CALENDAR_SETTINGS_COPY.eventualitiesDeleteConfirm}
+            </DialogTitle>
+            <DialogDescription>
+              {CALENDAR_SETTINGS_COPY.eventualitiesDeleteDialogDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setEventualityToDelete(null)}>
+              {CALENDAR_SETTINGS_COPY.cancelAction}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                const id = eventualityToDelete;
+                setEventualityToDelete(null);
+                if (id) {
+                  void handleDeleteConfirmed(id);
+                }
+              }}
+            >
+              {CALENDAR_SETTINGS_COPY.eventualitiesDeleteAction}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

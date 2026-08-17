@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   Button,
+  CheckboxCard,
   Dialog,
   DialogClose,
   DialogContent,
@@ -153,6 +154,21 @@ describe('shared ui primitives', () => {
       expect(field.className).not.toContain('disabled:opacity-50');
       expect(field).toHaveClass('disabled:bg-gray-50');
     }
+  });
+
+  it('should render the checkbox card label with light surface tokens and intact dark classes', () => {
+    render(<CheckboxCard label="Notificaciones" description="Recibe alertas por correo" />);
+
+    const label = screen.getByRole('checkbox').closest('label');
+
+    expect(label).not.toBeNull();
+    expect(label).toHaveClass('bg-iwana-surface-soft/60');
+    expect(label).toHaveClass('hover:bg-iwana-surface-soft');
+    expect(label).toHaveClass('border-gray-200');
+    expect(label).not.toHaveClass('bg-gray-50');
+    expect(label).toHaveClass('dark:border-dark-border');
+    expect(label).toHaveClass('dark:bg-dark-surface-3/60');
+    expect(label).toHaveClass('dark:hover:bg-dark-surface-3');
   });
 
   it('should move focus into the dialog and restore it to the trigger when closed', async () => {

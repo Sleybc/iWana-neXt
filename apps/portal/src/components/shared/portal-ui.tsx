@@ -367,6 +367,22 @@ export const portalFieldClassName = cn(
 
 export const portalSelectTriggerClassName = portalFieldClassName;
 
+/** Checkbox de formulario del portal — acento iWana (lima solo si el contrato lo exige). */
+export const portalCheckboxClassName = cn(
+  'h-4 w-4 shrink-0 accent-iwana-primary dark:accent-iwana-secondary',
+  interactiveFocusClassName,
+);
+
+/** Superficie "well" para sub-bloques dentro de un PortalPanel (estado/selector/form). */
+export const portalWellClassName =
+  'rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3';
+
+/** Trigger de DatePicker del portal — superficie de campo con hover de escala primaria. */
+export const portalDatePickerButtonClassName = cn(
+  'inline-flex h-11 w-full items-center justify-start gap-2 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm hover:border-iwana-primary-200 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white',
+  interactiveFocusClassName,
+);
+
 /** Chip de filtro (categoría / estado) — lima AA solo en activo. */
 export function portalFilterChipClassName(active: boolean): string {
   return cn(

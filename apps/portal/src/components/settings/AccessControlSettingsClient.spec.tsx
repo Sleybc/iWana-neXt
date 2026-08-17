@@ -222,6 +222,31 @@ describe('AccessControlSettingsClient', () => {
 
     expect(screen.getByText('Vista disponible para administradores')).toBeInTheDocument();
     expect(accessControlApi.listProfiles).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Vista disponible para administradores').closest('div.space-y-4'),
+    ).not.toBeNull();
+    expect(
+      screen.getByText('Vista disponible para administradores').closest('div.space-y-6'),
+    ).toBeNull();
+  });
+
+  it('uses the same page rhythm while access settings are loading', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockImplementation(() => new Promise(() => undefined));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const loading = await screen.findByText('Cargando perfiles de acceso y sus accesos');
+    expect(loading.closest('div.space-y-4')).not.toBeNull();
+    expect(loading.closest('div.space-y-6')).toBeNull();
   });
 
   it('should create a profile and show creation feedback', async () => {
@@ -462,6 +487,121 @@ describe('AccessControlSettingsClient', () => {
     expect(
       screen.getAllByRole('button', { name: /Crear a partir de este perfil/ }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('keeps suggested profile titles readable above stacked card actions', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const card = (await screen.findByText('Administrador general')).closest(
+      'div.rounded-2xl',
+    ) as HTMLElement;
+    const title = within(card).getByText('Administrador general');
+    const preview = within(card).getByRole('button', { name: /Ver lo que permite/ });
+    const create = within(card).getByRole('button', { name: /Crear a partir de este perfil/ });
+
+    expect(title.parentElement?.contains(preview)).toBe(false);
+    expect(title.parentElement?.contains(create)).toBe(false);
+    expect(title.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders suggested cards without an inner well or artificial min-height', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const card = (await screen.findByText('Administrador general')).closest(
+      'div.rounded-2xl',
+    ) as HTMLElement;
+
+    expect(card.className).not.toContain('bg-iwana-surface-soft');
+    expect(card.className).not.toContain('dark:bg-dark-surface-3');
+    expect(card.className).not.toMatch(/min-h-\[/);
+    expect(card.className).toContain('bg-white');
+  });
+
+  it('uses compact sm CTAs on suggested cards without lg sizing or flex-1', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const card = (await screen.findByText('Administrador general')).closest(
+      'div.rounded-2xl',
+    ) as HTMLElement;
+    const preview = within(card).getByRole('button', { name: /Ver lo que permite/ });
+    const create = within(card).getByRole('button', { name: /Crear a partir de este perfil/ });
+
+    expect(preview.className).toContain('h-8');
+    expect(create.className).toContain('h-8');
+    expect(create.className).not.toContain('h-12');
+    expect(preview.className).not.toMatch(/sm:flex-1/);
+    expect(create.className).not.toMatch(/sm:flex-1/);
+    expect(preview.className).toContain('w-full');
+    expect(create.className).toContain('w-full');
+    expect(preview.className).not.toMatch(/sm:w-auto/);
+    expect(create.className).not.toMatch(/sm:w-auto/);
+    expect(preview.parentElement?.className).toContain('flex-col');
+    expect(preview.parentElement?.className).not.toMatch(/sm:flex-row/);
+  });
+
+  it('composes a soft surface on the suggested preview button so it reads as a button', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const card = (await screen.findByText('Administrador general')).closest(
+      'div.rounded-2xl',
+    ) as HTMLElement;
+    const preview = within(card).getByRole('button', { name: /Ver lo que permite/ });
+
+    expect(preview.className).toContain('bg-iwana-surface-soft');
+    expect(preview.className).toContain('hover:bg-iwana-secondary-50');
+    expect(preview.className).toContain('dark:bg-dark-surface-3');
+    expect(preview.className).not.toMatch(/sm:flex-row/);
+    expect(preview.className).not.toMatch(/sm:w-auto/);
+  });
+
+  it('does not repeat the suggested eyebrow on each catalog card', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles sugeridos' });
+    expect(screen.queryByText('Sugerido')).not.toBeInTheDocument();
+  });
+
+  it('keeps the mobile action toolbar without a gray well override', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const mobileEdit = (
+      await screen.findAllByRole('button', {
+        name: 'Editar accesos de Perfil NOC lectura',
+      })
+    ).find((button) => button.className.includes('w-full'));
+
+    expect(mobileEdit).toBeDefined();
+    expect(mobileEdit?.parentElement?.className).not.toContain('bg-gray-50');
   });
 
   it('enters draft mode from a system template and shows the full assignable catalog with template defaults checked', async () => {
@@ -750,6 +890,143 @@ describe('AccessControlSettingsClient', () => {
     expect(screen.getAllByRole('button', { name: 'Crear perfil' })).toHaveLength(1);
   });
 
+  it('embeds the custom-profile empty state without a nested well', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockResolvedValue(profiles.filter((profile) => profile.isSystem));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const emptyTitle = await screen.findByText('Aún no has creado perfiles personalizados');
+    expect(emptyTitle.closest('.bg-iwana-surface-soft')).toBeNull();
+    expect(
+      screen.queryByText(
+        'Crea perfiles propios para tu empresa y define qué puede hacer cada uno.',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not render a second no-profile-selected empty in the accesses panel', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockResolvedValue(profiles.filter((profile) => profile.isSystem));
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Accesos del perfil' });
+    expect(screen.queryByText('Sin perfil seleccionado')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Elige un perfil de la lista para revisar o cambiar sus accesos.'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the suggested grid with 4 columns on xl screens', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles sugeridos' });
+
+    const grid = screen.getByText('Administrador general').closest('div.grid');
+    expect(grid).not.toBeNull();
+    expect(grid?.className).toContain('xl:grid-cols-4');
+  });
+
+  it('keeps a single suggested profile inside the responsive catalog grid', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    accessControlApi.listProfiles.mockResolvedValue([
+      profiles.find((profile) => profile.isSystem)!,
+    ]);
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const grid = (await screen.findByText('Administrador general')).closest('div.grid');
+    expect(grid).not.toBeNull();
+    expect(grid?.className).toContain('md:grid-cols-2');
+    expect(grid?.className).toContain('lg:grid-cols-3');
+    expect(grid?.className).toContain('xl:grid-cols-4');
+  });
+
+  it('describes the selected profile from the reviewers task', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'Revisa lo que «Perfil NOC lectura» puede ver o hacer en cada sección.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('describes the draft profile from the upcoming task', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Crear a partir de este perfil Administrador general',
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        'Revisa lo que «Basado en Administrador general» podrá ver o hacer en cada sección.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('stacks the MFA footer on mobile and returns to a row from sm', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const savePolicy = await screen.findByRole('button', { name: 'Guardar política' });
+    const footer = savePolicy.parentElement;
+
+    expect(footer?.className).toContain('flex-col');
+    expect(footer?.className).toContain('items-stretch');
+    expect(footer?.className).toContain('sm:flex-row');
+    expect(footer?.className).toContain('sm:items-center');
+    expect(savePolicy.className).toContain('w-full');
+    expect(savePolicy.className).toContain('sm:w-auto');
+  });
+
   it('does not expose template or category-base copy on the access screen', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'admin-1', role: UserRole.ADMIN },
@@ -956,6 +1233,8 @@ describe('AccessControlSettingsClient', () => {
     });
 
     expect(await screen.findByText('No encontramos accesos en esta sección')).toBeInTheDocument();
+    const searchEmpty = screen.getByText('No encontramos accesos en esta sección');
+    expect(searchEmpty.closest('.bg-iwana-surface-soft')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda' }));
 
     expect(screen.getByText('Ver sedes de la organización')).toBeInTheDocument();

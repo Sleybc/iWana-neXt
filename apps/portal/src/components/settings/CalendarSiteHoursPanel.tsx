@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
-import { Button, Select, type SelectOption } from '@iwana/ui';
+import { cn } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Select,
+  type SelectOption,
+} from '@iwana/ui';
 import {
   organizationApi,
   type OrganizationSiteBusinessHourSnapshot,
@@ -14,6 +25,7 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  portalWellClassName,
 } from '@/components/shared/portal-ui';
 import {
   BusinessHoursWeekEditor,
@@ -27,9 +39,10 @@ const selectClassName = 'rounded-2xl shadow-sm dark:bg-dark-surface-2 md:min-w-[
 interface Props {
   sites: OrganizationSiteSummary[];
   canEdit: boolean;
+  className?: string | undefined;
 }
 
-export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
+export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
   const siteOptions: SelectOption[] = sites.map((site) => ({
     value: site.id,
     label: `${site.name} (${site.code})`,
@@ -41,6 +54,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const siteSelectorId = 'calendar-site-selector';
   const siteSelectorHintId = 'calendar-site-selector-hint';
   const siteSelectorStatusId = 'calendar-site-selector-status';
@@ -167,10 +181,6 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
   async function handleClearOverride() {
     if (!siteDetail) return;
 
-    if (!(globalThis.confirm?.(CALENDAR_SETTINGS_COPY.siteClearConfirm) ?? true)) {
-      return;
-    }
-
     const siteId = siteDetail.id;
     const requestId = mutationRequestIdRef.current + 1;
     mutationRequestIdRef.current = requestId;
@@ -209,35 +219,46 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
   if (sites.length === 0) {
     return (
       <PortalPanel
+        className={className}
         eyebrow={CALENDAR_SETTINGS_COPY.siteEyebrow}
         title={CALENDAR_SETTINGS_COPY.sitePanelTitle}
         description={CALENDAR_SETTINGS_COPY.sitePanelDescription}
       >
         <PortalEmptyState
           title={CALENDAR_SETTINGS_COPY.siteEmptyTitle}
-          description={CALENDAR_SETTINGS_COPY.siteEmptyDescription}
+          description={
+            canEdit
+              ? CALENDAR_SETTINGS_COPY.siteEmptyDescription
+              : CALENDAR_SETTINGS_COPY.siteEmptyReadOnlyDescription
+          }
         />
       </PortalPanel>
     );
   }
 
   return (
-    <PortalPanel
-      eyebrow={CALENDAR_SETTINGS_COPY.siteEyebrow}
-      title={CALENDAR_SETTINGS_COPY.sitePanelTitle}
-      description={CALENDAR_SETTINGS_COPY.sitePanelDescription}
-      actions={
-        canEdit && siteDetail && siteDetail.id === selectedSiteId && !isLoadingDetail ? (
-          <Button type="button" onClick={() => void handleSaveOverride()} disabled={isSaving}>
-            <Save className="mr-2 h-4 w-4" aria-hidden={true} />
-            {CALENDAR_SETTINGS_COPY.siteSaveAction}
-          </Button>
-        ) : undefined
-      }
-      contentClassName="space-y-4"
-    >
-      <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft/70 p-4 dark:border-dark-border dark:bg-dark-surface-3/60">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <>
+      <PortalPanel
+        className={className}
+        eyebrow={CALENDAR_SETTINGS_COPY.siteEyebrow}
+        title={CALENDAR_SETTINGS_COPY.sitePanelTitle}
+        description={CALENDAR_SETTINGS_COPY.sitePanelDescription}
+        actions={
+          canEdit && siteDetail && siteDetail.id === selectedSiteId && !isLoadingDetail ? (
+            <Button type="button" onClick={() => void handleSaveOverride()} disabled={isSaving}>
+              <Save className="mr-2 h-4 w-4" aria-hidden={true} />
+              {CALENDAR_SETTINGS_COPY.siteSaveAction}
+            </Button>
+          ) : undefined
+        }
+        contentClassName="space-y-4"
+      >
+        <div
+          className={cn(
+            portalWellClassName,
+            'p-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between',
+          )}
+        >
           <div className="min-w-0 md:max-w-xl">
             <label
               htmlFor={siteSelectorId}
@@ -278,82 +299,124 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
             ) : null}
           </div>
         </div>
-      </div>
 
-      {feedback ? <PortalAlert variant="success" title={feedback} /> : null}
-      {error ? (
-        <PortalAlert
-          variant="error"
-          title={error}
-          action={
-            !siteDetail && selectedSiteId ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleRetryDetail}
-                disabled={isLoadingDetail}
-              >
-                {CALENDAR_SETTINGS_COPY.siteDetailRetryAction}
-              </Button>
-            ) : undefined
-          }
-        />
-      ) : null}
-
-      {isLoadingDetail ? (
-        <PortalSkeletonBlock className="h-48" />
-      ) : siteDetail && siteDetail.id === selectedSiteId ? (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/60 p-4 dark:border-dark-border dark:bg-dark-surface-3/50">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0 space-y-3">
-                <div className="space-y-1">
-                  <p className="portal-eyebrow">{CALENDAR_SETTINGS_COPY.siteSelectedEyebrow}</p>
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    {CALENDAR_SETTINGS_COPY.siteSelectedTitle(siteDetail.name, siteDetail.code)}
-                  </h3>
-                </div>
-
-                <div className="space-y-2">
-                  <p
-                    className={
-                      siteDetail.businessHoursMode === 'OVERRIDE'
-                        ? 'inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/25 dark:text-amber-200'
-                        : 'inline-flex rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-iwana-secondary-400'
-                    }
-                  >
-                    {siteDetail.businessHoursMode === 'OVERRIDE'
-                      ? CALENDAR_SETTINGS_COPY.siteOverrideAlertTitle
-                      : CALENDAR_SETTINGS_COPY.siteBaseAlertTitle}
-                  </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {siteDetail.businessHoursMode === 'OVERRIDE'
-                      ? CALENDAR_SETTINGS_COPY.siteOverrideAlertDescription
-                      : CALENDAR_SETTINGS_COPY.siteBaseAlertDescription}
-                  </p>
-                </div>
-              </div>
-
-              {canEdit && siteDetail.businessHoursMode === 'OVERRIDE' ? (
+        {feedback ? <PortalAlert variant="success" title={feedback} /> : null}
+        {error ? (
+          <PortalAlert
+            variant="error"
+            live="assertive"
+            title={error}
+            action={
+              !siteDetail && selectedSiteId ? (
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => void handleClearOverride()}
-                  disabled={isSaving}
+                  onClick={handleRetryDetail}
+                  disabled={isLoadingDetail}
                 >
-                  {CALENDAR_SETTINGS_COPY.siteClearAction}
+                  {CALENDAR_SETTINGS_COPY.siteDetailRetryAction}
                 </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <BusinessHoursWeekEditor
-            days={draft}
-            canEdit={canEdit && !isSaving}
-            onChange={setDraft}
+              ) : undefined
+            }
           />
-        </div>
-      ) : null}
-    </PortalPanel>
+        ) : null}
+
+        {!canEdit ? (
+          <PortalAlert variant="info" title={CALENDAR_SETTINGS_COPY.calendarReadOnlyHint} />
+        ) : null}
+
+        {isLoadingDetail ? (
+          <PortalSkeletonBlock className="h-48" />
+        ) : siteDetail && siteDetail.id === selectedSiteId ? (
+          <>
+            <div className="space-y-4">
+              <div
+                className={cn(
+                  portalWellClassName,
+                  'p-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between',
+                )}
+              >
+                <div className="min-w-0 space-y-3">
+                  <div className="space-y-1">
+                    <p className="portal-eyebrow">{CALENDAR_SETTINGS_COPY.siteSelectedEyebrow}</p>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                      {CALENDAR_SETTINGS_COPY.siteSelectedTitle(siteDetail.name, siteDetail.code)}
+                    </h3>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Badge
+                      variant={siteDetail.businessHoursMode === 'OVERRIDE' ? 'warning' : 'neutral'}
+                    >
+                      {siteDetail.businessHoursMode === 'OVERRIDE'
+                        ? CALENDAR_SETTINGS_COPY.siteOverrideAlertTitle
+                        : CALENDAR_SETTINGS_COPY.siteBaseAlertTitle}
+                    </Badge>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      {siteDetail.businessHoursMode === 'OVERRIDE'
+                        ? CALENDAR_SETTINGS_COPY.siteOverrideAlertDescription
+                        : CALENDAR_SETTINGS_COPY.siteBaseAlertDescription}
+                    </p>
+                  </div>
+                </div>
+
+                {canEdit && siteDetail.businessHoursMode === 'OVERRIDE' ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setClearDialogOpen(true)}
+                    disabled={isSaving}
+                  >
+                    {CALENDAR_SETTINGS_COPY.siteClearAction}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            <BusinessHoursWeekEditor
+              days={draft}
+              canEdit={canEdit && !isSaving}
+              onChange={setDraft}
+            />
+          </>
+        ) : null}
+      </PortalPanel>
+
+      <Dialog
+        open={clearDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setClearDialogOpen(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <p className="portal-eyebrow">Confirmación</p>
+            <DialogTitle className="mt-1">
+              {CALENDAR_SETTINGS_COPY.siteClearDialogTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {CALENDAR_SETTINGS_COPY.siteClearDialogDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setClearDialogOpen(false)}>
+              {CALENDAR_SETTINGS_COPY.cancelAction}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setClearDialogOpen(false);
+                void handleClearOverride();
+              }}
+            >
+              {CALENDAR_SETTINGS_COPY.siteClearAction}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

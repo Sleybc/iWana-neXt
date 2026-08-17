@@ -11,7 +11,12 @@ import {
   type OrganizationCompanyBusinessHoursDay,
   type OrganizationSiteSummary,
 } from '@/lib/api-client';
-import { PortalAlert, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalPanel,
+  PortalSkeletonBlock,
+  portalWellClassName,
+} from '@/components/shared/portal-ui';
 import {
   CALENDAR_SETTINGS_COPY,
   getCalendarOperationalStatusSummary,
@@ -112,10 +117,10 @@ export function CalendarSettingsClient() {
         sitesResult.status === 'rejected' &&
         exceptionsResult.status === 'rejected'
       ) {
-        setError('No fue posible cargar el calendario operativo. Intenta nuevamente.');
+        setError(CALENDAR_SETTINGS_COPY.calendarLoadError);
       }
     } catch {
-      setError('No fue posible cargar el calendario operativo.');
+      setError(CALENDAR_SETTINGS_COPY.calendarLoadError);
     } finally {
       setIsLoading(false);
     }
@@ -134,7 +139,10 @@ export function CalendarSettingsClient() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" aria-busy={true}>
+        <p className="sr-only" role="status">
+          {CALENDAR_SETTINGS_COPY.calendarLoadingAnnouncement}
+        </p>
         <PageHeader
           title={CALENDAR_SETTINGS_COPY.pageTitle}
           subtitle={CALENDAR_SETTINGS_COPY.loadingSubtitle}
@@ -183,17 +191,19 @@ export function CalendarSettingsClient() {
     title,
     description,
     unavailableDescription,
+    className,
   }: {
     eyebrow: string;
     title: string;
     description: string;
     unavailableDescription: string;
+    className?: string | undefined;
   }) {
     return (
-      <PortalPanel eyebrow={eyebrow} title={title} description={description}>
+      <PortalPanel className={className} eyebrow={eyebrow} title={title} description={description}>
         <PortalAlert
           variant="warning"
-          title="Bloque temporalmente no disponible"
+          title={CALENDAR_SETTINGS_COPY.calendarBlockUnavailableTitle}
           description={unavailableDescription}
         />
       </PortalPanel>
@@ -217,10 +227,7 @@ export function CalendarSettingsClient() {
         }
       />
 
-      <div
-        data-testid="calendar-operational-status"
-        className="rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/75 px-4 py-2.5 dark:border-dark-border dark:bg-dark-surface-3/60"
-      >
+      <div data-testid="calendar-operational-status" className={`${portalWellClassName} py-2.5`}>
         <p className="portal-eyebrow text-iwana-secondary-700 dark:text-iwana-secondary-400">
           {CALENDAR_SETTINGS_COPY.pageStatusEyebrow}
         </p>
@@ -230,7 +237,8 @@ export function CalendarSettingsClient() {
       {error ? (
         <PortalAlert
           variant="error"
-          title="No fue posible cargar el calendario"
+          live="assertive"
+          title={CALENDAR_SETTINGS_COPY.calendarLoadFailedTitle}
           description={error}
           action={
             <button
@@ -239,7 +247,7 @@ export function CalendarSettingsClient() {
               className="inline-flex items-center gap-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
             >
               <RefreshCcw className="h-4 w-4" aria-hidden={true} />
-              Reintentar
+              {CALENDAR_SETTINGS_COPY.calendarRetryAction}
             </button>
           }
         />
@@ -252,11 +260,13 @@ export function CalendarSettingsClient() {
       >
         <div
           data-testid="calendar-shell-primary"
-          className="space-y-0 [&>*:first-child]:rounded-b-none [&>*:last-child]:rounded-t-none [&>*:last-child]:border-t-0"
+          role="group"
           aria-label="Columna izquierda del calendario operativo"
+          className="contents xl:flex xl:flex-col xl:space-y-0 [&>*:first-child]:rounded-b-none [&>*:last-child]:rounded-t-none [&>*:last-child]:border-t-0"
         >
           {resourceErrors.companyHours ? (
             renderUnavailablePanel({
+              className: 'order-1',
               eyebrow: CALENDAR_SETTINGS_COPY.organizationEyebrow,
               title: CALENDAR_SETTINGS_COPY.organizationTitle,
               description: CALENDAR_SETTINGS_COPY.organizationDescription,
@@ -264,6 +274,7 @@ export function CalendarSettingsClient() {
             })
           ) : (
             <CalendarOrganizationHoursPanel
+              className="order-1"
               companyHours={companyHours}
               canEdit={canEdit}
               onUpdated={setCompanyHours}
@@ -272,6 +283,7 @@ export function CalendarSettingsClient() {
 
           {resourceErrors.sites || resourceErrors.exceptions ? (
             renderUnavailablePanel({
+              className: 'order-3',
               eyebrow: CALENDAR_SETTINGS_COPY.exceptionsEyebrow,
               title: CALENDAR_SETTINGS_COPY.exceptionsTitle,
               description: CALENDAR_SETTINGS_COPY.exceptionsDescription,
@@ -282,6 +294,7 @@ export function CalendarSettingsClient() {
             })
           ) : (
             <CalendarExceptionsPanel
+              className="order-3"
               exceptions={exceptions}
               sites={sites}
               canEdit={canEdit}
@@ -293,21 +306,23 @@ export function CalendarSettingsClient() {
 
         <div
           data-testid="calendar-shell-secondary"
-          className="space-y-0 [&>*:first-child]:rounded-b-none [&>*:last-child]:rounded-t-none [&>*:last-child]:border-t-0"
+          role="group"
           aria-label="Columna derecha del calendario operativo"
+          className="contents xl:flex xl:flex-col xl:space-y-0 [&>*:first-child]:rounded-b-none [&>*:last-child]:rounded-t-none [&>*:last-child]:border-t-0"
         >
           {resourceErrors.sites ? (
             renderUnavailablePanel({
+              className: 'order-2',
               eyebrow: CALENDAR_SETTINGS_COPY.siteEyebrow,
               title: CALENDAR_SETTINGS_COPY.sitePanelTitle,
               description: CALENDAR_SETTINGS_COPY.sitePanelDescription,
               unavailableDescription: resourceErrors.sites,
             })
           ) : (
-            <CalendarSiteHoursPanel sites={sites} canEdit={canEdit} />
+            <CalendarSiteHoursPanel className="order-2" sites={sites} canEdit={canEdit} />
           )}
 
-          <OperationalEventualitiesPanel canEdit={canEdit} />
+          <OperationalEventualitiesPanel className="order-4" canEdit={canEdit} />
         </div>
       </section>
     </div>

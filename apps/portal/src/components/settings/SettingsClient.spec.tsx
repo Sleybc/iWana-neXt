@@ -25,12 +25,6 @@ jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
 }));
 
-jest.mock('./WfmOperatingHoursManager', () => ({
-  WfmOperatingHoursManager: ({ canEdit }: { canEdit: boolean }) => (
-    <div>Horarios operativos {canEdit ? 'editable' : 'solo lectura'}</div>
-  ),
-}));
-
 jest.mock('@/lib/api-client', () => ({
   ApiError: class MockApiError extends Error {
     status: number;
