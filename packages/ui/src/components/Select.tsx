@@ -665,7 +665,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         </div>
 
         {error ? (
-          <p id={`${selectId}-error`} className="text-xs text-iwana-error">
+          <p id={`${selectId}-error`} className="text-xs text-iwana-error-700 dark:text-red-300">
             {error}
           </p>
         ) : null}

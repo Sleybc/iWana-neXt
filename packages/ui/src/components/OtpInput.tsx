@@ -87,7 +87,7 @@ export function OtpInput({
             'focus:outline-none focus:ring-2 focus:ring-offset-1',
             'disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-500 dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-400',
             error
-              ? 'border-iwana-error text-iwana-error focus:ring-iwana-error dark:border-iwana-error dark:text-iwana-error'
+              ? 'border-iwana-error text-iwana-error-700 focus:ring-iwana-error dark:border-iwana-error dark:text-red-300'
               : 'border-gray-300 text-iwana-primary focus:border-iwana-primary focus:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white dark:focus:border-iwana-primary-300 dark:focus:ring-iwana-primary-300',
             digits[i] &&
               !error &&

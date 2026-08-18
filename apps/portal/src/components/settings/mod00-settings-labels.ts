@@ -491,6 +491,8 @@ export const BRANDING_SETTINGS_COPY = {
   readOnlyNoticeTitle: 'Consulta sin edición',
   readOnlyNoticeDescription:
     'Tu perfil puede consultar la marca de la empresa, pero no modificarla. Una persona administradora puede actualizar los activos y los textos públicos.',
+  restoreDialogConfirmMessage:
+    'Confirma solo si deseas restaurar toda la configuración a la marca base.',
 } as const;
 
 export const ORGANIZATION_SETTINGS_COPY = {

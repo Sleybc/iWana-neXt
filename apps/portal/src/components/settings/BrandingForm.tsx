@@ -1051,14 +1051,14 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
             </div>
             <DialogTitle id="branding-restore-title">Restaurar marca base</DialogTitle>
             <DialogDescription>
-              Esta acción eliminará logos, sellos, favicons, fondos y metadata pública para volver a
+              Esta acción eliminará logos, sellos, favicons, fondos y textos públicos para volver a
               la identidad base del portal.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-100">
-              Confirma solo si deseas limpiar toda la configuración de marca de esta empresa.
+              {BRANDING_SETTINGS_COPY.restoreDialogConfirmMessage}
             </div>
 
             {serverError && isResettingBase === false ? (

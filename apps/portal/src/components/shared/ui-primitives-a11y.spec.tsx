@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   Button,
   CheckboxCard,
+  DatePicker,
   Dialog,
   DialogClose,
   DialogContent,
@@ -13,7 +14,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FormField,
   Input,
+  MultiSelect,
   OtpInput,
   Select,
   Tabs,
@@ -78,6 +81,88 @@ describe('shared ui primitives', () => {
     expect(alert).toHaveClass('text-iwana-error-700');
     expect(alert).toHaveClass('dark:text-red-300');
     expect(alert.className.split(/\s+/)).not.toContain('text-iwana-error');
+  });
+
+  it('should render select error messages with the AA error token while keeping the base token on the border', () => {
+    render(
+      <Select
+        label="Área"
+        error="Selecciona un área."
+        options={[{ value: 'ops', label: 'Operaciones' }]}
+      />,
+    );
+
+    const message = screen.getByText('Selecciona un área.');
+    const trigger = screen.getByRole('combobox', { name: 'Área' });
+
+    expect(message).toHaveClass('text-iwana-error-700');
+    expect(message).toHaveClass('dark:text-red-300');
+    expect(message.className.split(/\s+/)).not.toContain('text-iwana-error');
+    expect(trigger).toHaveClass('border-iwana-error');
+  });
+
+  it('should render multi-select error messages with the AA error token', () => {
+    render(
+      <MultiSelect
+        label="Áreas"
+        error="Selecciona al menos un área."
+        value={[]}
+        onChange={() => undefined}
+        options={[{ value: 'ops', label: 'Operaciones' }]}
+      />,
+    );
+
+    const message = screen.getByText('Selecciona al menos un área.');
+    const trigger = screen.getByRole('combobox', { name: 'Áreas' });
+
+    expect(message).toHaveClass('text-iwana-error-700');
+    expect(message).toHaveClass('dark:text-red-300');
+    expect(message.className.split(/\s+/)).not.toContain('text-iwana-error');
+    expect(trigger).toHaveClass('border-red-400');
+  });
+
+  it('should render date picker error messages with the AA error token', () => {
+    render(<DatePicker label="Fecha" error="Selecciona una fecha." />);
+
+    const message = screen.getByRole('alert');
+    const trigger = screen.getByRole('button', { name: 'Fecha' });
+
+    expect(message).toHaveClass('text-iwana-error-700');
+    expect(message).toHaveClass('dark:text-red-300');
+    expect(message.className.split(/\s+/)).not.toContain('text-iwana-error');
+    expect(trigger).toHaveClass('border-red-500');
+  });
+
+  it('should render form field error messages with the AA error token while keeping the base token on the required marker', () => {
+    const { container } = render(
+      <FormField label="Nombre" error="El nombre es obligatorio." required>
+        <input />
+      </FormField>,
+    );
+
+    const message = screen.getByRole('alert');
+    const requiredMarker = container.querySelector('label span');
+
+    expect(message).toHaveClass('text-iwana-error-700');
+    expect(message).toHaveClass('dark:text-red-300');
+    expect(message.className.split(/\s+/)).not.toContain('text-iwana-error');
+    expect(requiredMarker).not.toBeNull();
+    expect(requiredMarker).toHaveClass('text-iwana-error');
+  });
+
+  it('should render otp digit text in error state with the AA error token while keeping the base token on the border', () => {
+    render(<OtpInput value="123" onChange={() => undefined} error />);
+
+    const fields = screen.getAllByRole('textbox');
+
+    expect(fields).toHaveLength(6);
+    for (const field of fields) {
+      expect(field).toHaveClass('text-iwana-error-700');
+      expect(field).toHaveClass('dark:text-red-300');
+      expect(field.className.split(/\s+/)).not.toContain('text-iwana-error');
+      expect(field).toHaveClass('border-iwana-error');
+      expect(field).toHaveClass('focus:ring-iwana-error');
+    }
   });
 
   it('should merge consumer aria-describedby with internal error ids without duplicates', () => {

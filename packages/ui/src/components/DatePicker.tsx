@@ -117,7 +117,11 @@ export function DatePicker({
       </Popover>
 
       {error && (
-        <p id={errorId} className="text-xs text-iwana-error flex items-center gap-1" role="alert">
+        <p
+          id={errorId}
+          className="flex items-center gap-1 text-xs text-iwana-error-700 dark:text-red-300"
+          role="alert"
+        >
           <svg className="h-3 w-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path
               fillRule="evenodd"

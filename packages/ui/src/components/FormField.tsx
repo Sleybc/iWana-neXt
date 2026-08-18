@@ -22,11 +22,7 @@ function FormField({ label, error, hint, required, className, children }: FormFi
 
   // Inyectar id y aria-describedby al primer hijo si es un elemento React
   const child = React.Children.only(children);
-  const describedBy = error
-    ? `${fieldId}-error`
-    : hint
-      ? `${fieldId}-hint`
-      : undefined;
+  const describedBy = error ? `${fieldId}-error` : hint ? `${fieldId}-hint` : undefined;
 
   const enrichedChild = React.isValidElement(child)
     ? React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
@@ -51,7 +47,11 @@ function FormField({ label, error, hint, required, className, children }: FormFi
       </label>
       {enrichedChild}
       {error && (
-        <p id={`${fieldId}-error`} role="alert" className="text-xs text-iwana-error">
+        <p
+          id={`${fieldId}-error`}
+          role="alert"
+          className="text-xs text-iwana-error-700 dark:text-red-300"
+        >
           {error}
         </p>
       )}

@@ -276,7 +276,7 @@ export function MultiSelect({
       </PopoverPrimitive.Root>
 
       {error && (
-        <p id={errorId} className="text-xs text-iwana-error">
+        <p id={errorId} className="text-xs text-iwana-error-700 dark:text-red-300">
           {error}
         </p>
       )}
