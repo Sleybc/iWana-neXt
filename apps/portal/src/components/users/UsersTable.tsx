@@ -16,6 +16,7 @@ import {
   PortalActionToolbar,
   PortalDataTableHead,
   PortalEmptyState,
+  PortalPageSizeSelect,
   PortalResultsStrip,
   PortalSearchField,
   PortalSkeletonBlock,
@@ -61,6 +62,11 @@ interface UsersTableProps {
   to?: number | undefined;
   /** ADR-065 page navigation callback. */
   onPageChange?: ((page: number) => void) | undefined;
+  /** ADR-065 page-size callback. */
+  pageSize?: number | undefined;
+  onPageSizeChange?: ((pageSize: number) => void) | undefined;
+  /** La modalidad la declara `meta.capabilities.randomAccess`, nunca la UI local. */
+  isPageMode?: boolean | undefined;
   /** Criterios controlados desde UsersClient (única fuente de verdad). */
   searchValue: string;
   statusFilter: string;
@@ -183,6 +189,9 @@ export function UsersTable({
   from,
   to,
   onPageChange,
+  pageSize,
+  onPageSizeChange,
+  isPageMode = false,
   searchValue,
   statusFilter,
   roleFilter,
@@ -249,16 +258,15 @@ export function UsersTable({
         )}
       </div>
 
-      <PortalResultsStrip
-        badge={
-          <Badge
-            variant="neutral"
-            className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-          >
-            {resultsStripLabel}
-          </Badge>
-        }
-      />
+      {!isPageMode ? (
+        <PortalResultsStrip
+          badge={
+            <Badge variant="neutral" className="rounded-full px-3 py-1 text-[11px]">
+              {resultsStripLabel}
+            </Badge>
+          }
+        />
+      ) : null}
 
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {loadingAnnouncement}
@@ -463,7 +471,8 @@ export function UsersTable({
           </table>
         </div>
 
-        {onPageChange &&
+        {isPageMode &&
+        onPageChange &&
         page !== undefined &&
         pageCount !== undefined &&
         from !== undefined &&
@@ -478,6 +487,15 @@ export function UsersTable({
             total={total}
             resource={{ singular: 'usuario', plural: 'usuarios' }}
             loading={isLoading}
+            pageSizeControl={
+              pageSize !== undefined && onPageSizeChange ? (
+                <PortalPageSizeSelect
+                  value={pageSize}
+                  onChange={onPageSizeChange}
+                  disabled={isLoading}
+                />
+              ) : undefined
+            }
           />
         ) : (
           <PortalTablePagination

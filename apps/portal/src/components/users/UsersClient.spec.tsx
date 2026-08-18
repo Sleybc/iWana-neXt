@@ -13,14 +13,17 @@ const listProfilesMock = jest.fn();
 const getEffectivePermissionsMock = jest.fn();
 const useAuthMock = jest.fn();
 
-const mockSearchParams = new URLSearchParams();
+let mockSearchParams = new URLSearchParams();
 const mockReplace = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => mockSearchParams,
   usePathname: () => '/dashboard/users',
   useRouter: () => ({
-    replace: mockReplace,
+    replace: (href: string) => {
+      mockReplace(href);
+      mockSearchParams = new URLSearchParams(String(href).split('?')[1] ?? '');
+    },
   }),
 }));
 
@@ -128,9 +131,7 @@ const emptyList = { data: [], meta: { ...EMPTY_LIST_META, nextCursor: null, tota
 describe('UsersClient Ola B1', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    for (const key of [...mockSearchParams.keys()]) {
-      mockSearchParams.delete(key);
-    }
+    mockSearchParams = new URLSearchParams();
     mockReplace.mockReset();
     listMock.mockReset().mockResolvedValue(emptyList);
     createMock.mockReset();
@@ -161,7 +162,7 @@ describe('UsersClient Ola B1', () => {
   });
 
   it('FE-01: filtro + búsqueda simultáneos llegan juntos al listado', async () => {
-    render(<UsersClient />);
+    const { rerender } = render(<UsersClient />);
 
     await waitFor(() => {
       expect(listMock).toHaveBeenCalled();
@@ -179,6 +180,7 @@ describe('UsersClient Ola B1', () => {
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Estado' }));
     fireEvent.click(screen.getByRole('option', { name: 'Suspendido' }));
+    rerender(<UsersClient />);
 
     await waitFor(() => {
       expect(listMock).toHaveBeenLastCalledWith({
@@ -194,6 +196,7 @@ describe('UsersClient Ola B1', () => {
     await act(async () => {
       jest.advanceTimersByTime(300);
     });
+    rerender(<UsersClient />);
 
     await waitFor(() => {
       expect(listMock).toHaveBeenLastCalledWith({
@@ -217,13 +220,17 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => expect(listMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Nuevo usuario' })[0]!);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
+    });
 
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(1);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
+    });
 
     await waitFor(() => {
       expect(createMock).toHaveBeenCalledTimes(2);
@@ -243,7 +250,9 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => expect(listMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Nuevo usuario' })[0]!);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar alta mock' }));
+    });
 
     await waitFor(() => {
       expect(
@@ -302,7 +311,46 @@ describe('UsersClient Ola B1', () => {
 
     // Cargar más no aparece porque el pager está activo
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Filas por página')).toBeInTheDocument();
     // El pager muestra el rango (visible + sr-only → múltiples matches)
     expect(screen.getAllByText(/Mostrando 1–10 de 15 usuarios/).length).toBeGreaterThan(0);
+  });
+
+  it('ADR-065: usa strip y Cargar más cuando randomAccess es false', async () => {
+    listMock
+      .mockResolvedValueOnce({
+        data: [],
+        meta: {
+          ...EMPTY_LIST_META,
+          nextCursor: 'cursor-2',
+          total: 5,
+          capabilities: { randomAccess: false, sortableFields: [] },
+          mode: 'cursor' as const,
+        },
+      })
+      .mockResolvedValueOnce({
+        data: [],
+        meta: {
+          ...EMPTY_LIST_META,
+          nextCursor: null,
+          total: 5,
+          capabilities: { randomAccess: false, sortableFields: [] },
+          mode: 'cursor' as const,
+        },
+      });
+
+    render(<UsersClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('0 de 5 usuarios')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cargar más' }));
+
+    await waitFor(() => {
+      expect(listMock).toHaveBeenLastCalledWith({ limit: 20, cursor: 'cursor-2' });
+    });
   });
 });

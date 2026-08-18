@@ -2,7 +2,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Copy, Plus, ShieldAlert, Upload } from 'lucide-react';
 import {
   Button,
@@ -34,18 +33,11 @@ import {
 } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { listPageWindow } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { isPlatformOnlyRole, UserRole } from '@iwana/shared';
 import { PortalAlert, PortalPanel, PortalSuccessAlert } from '@/components/shared/portal-ui';
-import {
-  buildUsersListParams,
-  emptyUsersQuery,
-  parseUsersQueryFromSearchParams,
-  serializeUsersQuery,
-  USERS_PAGE_SIZE,
-  usersQueryToSearchParams,
-  type UsersQueryState,
-} from './users-query';
 
 const PARTIAL_CREATE_PROFILES_ERROR =
   'El usuario se creó, pero no se pudieron asignar los roles de empresa. Reintenta solo la asignación desde editar usuario; no vuelvas a crearlo.';
@@ -57,6 +49,7 @@ const GENERIC_OPERATION_ERROR = 'No fue posible completar la operación. Intenta
 
 /** Status HTTP cuyos mensajes de API son seguros para mostrar al usuario (FE-16). */
 const USER_FACING_API_STATUSES = new Set([400, 409, 422]);
+const USERS_FILTER_KEYS = ['search', 'status', 'role'] as const;
 
 function mapError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -69,9 +62,6 @@ function mapError(error: unknown): string {
 }
 
 export function UsersClient() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { user } = useAuth();
   // `user !== null` primero: TypeScript usa esta condicion con alias para
   // estrechar `user` en el JSX de abajo. Sin ella, `user?.id` vuelve a ser
@@ -83,15 +73,13 @@ export function UsersClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Única fuente de verdad de criterios enviados al servidor (+ limit/cursor en listParams). */
-  const [query, setQuery] = useState<UsersQueryState>(() =>
-    parseUsersQueryFromSearchParams(searchParams),
-  );
-  const [listParams, setListParams] = useState<ListUsersParams>({ limit: USERS_PAGE_SIZE });
-  /** Texto del input de búsqueda (inmediato); se sincroniza a `query.search` con debounce. */
-  const [searchDraft, setSearchDraft] = useState(
-    () => parseUsersQueryFromSearchParams(searchParams).search,
-  );
+  const { page, pageSize, filters, setPage, setPageSize, setFilters, setQuery } =
+    useTableQueryState({ filterKeys: USERS_FILTER_KEYS });
+  const [listParams, setListParams] = useState<ListUsersParams>({
+    limit: PORTAL_DEFAULT_PAGE_SIZE,
+  });
+  /** Texto inmediato del input; el filtro aplicado permanece en la dirección. */
+  const [searchDraft, setSearchDraft] = useState(filters.search ?? '');
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -116,11 +104,6 @@ export function UsersClient() {
   const [selectedUserCompanyRoleIds, setSelectedUserCompanyRoleIds] = useState<string[]>([]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queryRef = useRef(query);
-  queryRef.current = query;
-  const hasHydratedFromUrlRef = useRef(false);
-  /** Serialización que nosotros empujamos con router.replace; evita rehidratar sobre estado local. */
-  const lastPushedUrlRef = useRef<string | null>(null);
   /** Trigger de fila (edit/delete/reset) para restaurar foco al cerrar dialogs. */
   const actionTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -142,14 +125,13 @@ export function UsersClient() {
     }
   };
 
-  const urlQuerySerialized = useMemo(
-    () => serializeUsersQuery(parseUsersQueryFromSearchParams(searchParams)),
-    [searchParams],
-  );
-
   useEffect(() => {
     setActiveBulkJobId(readActiveBulkJobId());
   }, []);
+
+  useEffect(() => {
+    setSearchDraft(filters.search ?? '');
+  }, [filters.search]);
 
   // append=true cuando el usuario pulsa "Cargar más"; en ese caso se concatenan los
   // resultados al final de la lista en lugar de reemplazarla.
@@ -168,63 +150,29 @@ export function UsersClient() {
     }
   }, []);
 
-  const syncQueryToUrl = useCallback(
-    (nextQuery: UsersQueryState) => {
-      const nextSerialized = serializeUsersQuery(nextQuery);
-      if (nextSerialized === urlQuerySerialized) {
-        return;
-      }
-      lastPushedUrlRef.current = nextSerialized;
-      const qs = usersQueryToSearchParams(nextQuery).toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    },
-    [pathname, router, urlQuerySerialized],
-  );
-
-  const applyQueryPatch = useCallback(
-    (patch: Partial<UsersQueryState>) => {
-      const { nextQuery, params } = buildUsersListParams(queryRef.current, patch, USERS_PAGE_SIZE);
-      setQuery(nextQuery);
-      if (patch.search !== undefined) {
-        setSearchDraft(patch.search);
-      }
-      syncQueryToUrl(nextQuery);
-      void loadUsers(params);
-    },
-    [loadUsers, syncQueryToUrl],
-  );
+  const isPageMode = meta?.capabilities.randomAccess === true;
+  const requestParams = useMemo((): ListUsersParams => {
+    const params: ListUsersParams = { limit: pageSize };
+    if (filters.search) params.search = filters.search;
+    if (filters.status) params.status = filters.status;
+    if (filters.role) params.role = filters.role;
+    // La página solo existe para recursos que el servidor declara de acceso aleatorio.
+    if (isPageMode && page > 1) params.page = page;
+    return params;
+  }, [filters, isPageMode, page, pageSize]);
 
   useEffect(() => {
     if (!isAdmin) {
       return;
     }
+    void loadUsers(requestParams);
+  }, [isAdmin, loadUsers, requestParams]);
 
-    const currentSerialized = serializeUsersQuery(queryRef.current);
-
-    // URL ya alineada con el estado local: no recargar.
-    if (hasHydratedFromUrlRef.current && currentSerialized === urlQuerySerialized) {
-      lastPushedUrlRef.current = urlQuerySerialized;
-      return;
+  useEffect(() => {
+    if (meta && !isPageMode && page > 1) {
+      setQuery({ page: null }, { history: 'replace' });
     }
-
-    // Acabamos de empujar esta query; el searchParams aún no refleja el replace.
-    if (
-      hasHydratedFromUrlRef.current &&
-      lastPushedUrlRef.current !== null &&
-      lastPushedUrlRef.current === currentSerialized &&
-      currentSerialized !== urlQuerySerialized
-    ) {
-      return;
-    }
-
-    hasHydratedFromUrlRef.current = true;
-    lastPushedUrlRef.current = urlQuerySerialized;
-    const fromUrl = parseUsersQueryFromSearchParams(new URLSearchParams(urlQuerySerialized));
-    setSearchDraft(fromUrl.search);
-    const { nextQuery, params } = buildUsersListParams(emptyUsersQuery(), fromUrl, USERS_PAGE_SIZE);
-    setQuery(nextQuery);
-    void loadUsers(params);
-  }, [isAdmin, loadUsers, urlQuerySerialized]);
+  }, [isPageMode, meta, page, setQuery]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -274,17 +222,9 @@ export function UsersClient() {
   /** ADR-065: navegación a página arbitraria (push para soportar Atrás del navegador). */
   const handlePageChange = useCallback(
     (nextPage: number) => {
-      const { nextQuery, params } = buildUsersListParams(
-        queryRef.current,
-        { page: String(nextPage) },
-        USERS_PAGE_SIZE,
-      );
-      setQuery(nextQuery);
-      const qs = usersQueryToSearchParams(nextQuery).toString();
-      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-      void loadUsers(params);
+      setPage(nextPage);
     },
-    [loadUsers, pathname, router],
+    [setPage],
   );
 
   /**
@@ -295,25 +235,22 @@ export function UsersClient() {
     setSearchDraft(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      applyQueryPatch({ search: value });
+      setFilters({ search: value });
     }, 300);
   };
 
   const handleStatusChange = (value: string) => {
-    applyQueryPatch({ status: value });
+    setFilters({ status: value });
   };
 
   const handleRoleChange = (value: string) => {
-    applyQueryPatch({ role: value });
+    setFilters({ role: value });
   };
 
   const handleClearFilters = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearchDraft('');
-    const { nextQuery, params } = buildUsersListParams(emptyUsersQuery(), {}, USERS_PAGE_SIZE);
-    setQuery(nextQuery);
-    syncQueryToUrl(nextQuery);
-    void loadUsers(params);
+    setFilters({ search: null, status: null, role: null });
   };
 
   const handleCreate = async (dto: CreateInternalUserDto, companyRoleIds: string[]) => {
@@ -346,8 +283,7 @@ export function UsersClient() {
         setIsCreateOpen(false);
       }
 
-      const { params } = buildUsersListParams(queryRef.current, {}, USERS_PAGE_SIZE);
-      void loadUsers(params);
+      void loadUsers(listParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -562,15 +498,14 @@ export function UsersClient() {
     }
   };
 
-  // ADR-065: props page-based derivadas del meta del servidor.
-  // Mientras el backend emita solo cursor, meta.page / meta.totalPages son null
-  // y el PortalTablePager no se activa (fallback a PortalTablePagination).
+  // ADR-065: la modalidad se deriva exclusivamente de capabilities.randomAccess.
+  // La ausencia de page/totalPages solo deja al pager sin datos de navegación;
+  // nunca convierte una respuesta cursor en una tabla numerada.
   const metaPage = meta?.page;
   const metaTotalPages = meta?.totalPages;
-  const isPageMode = metaPage != null && metaTotalPages != null;
   const effectivePage = metaPage ?? 1;
   const pageCount = metaTotalPages ?? 1;
-  const metaLimit = meta?.limit ?? USERS_PAGE_SIZE;
+  const metaLimit = meta?.limit ?? pageSize;
   const metaTotal = meta?.total ?? 0;
   const { from, to } = listPageWindow({ page: effectivePage, limit: metaLimit, total: metaTotal });
 
@@ -693,9 +628,12 @@ export function UsersClient() {
           from={isPageMode ? from : undefined}
           to={isPageMode ? to : undefined}
           onPageChange={isPageMode ? handlePageChange : undefined}
+          pageSize={isPageMode ? pageSize : undefined}
+          onPageSizeChange={isPageMode ? setPageSize : undefined}
+          isPageMode={isPageMode}
           searchValue={searchDraft}
-          statusFilter={query.status}
-          roleFilter={query.role}
+          statusFilter={filters.status ?? ''}
+          roleFilter={filters.role ?? ''}
           onSearchChange={handleSearchChange}
           onStatusChange={handleStatusChange}
           onRoleChange={handleRoleChange}
@@ -729,8 +667,7 @@ export function UsersClient() {
         resumeJobId={activeBulkJobId}
         onActiveJobChange={setActiveBulkJobId}
         onSuccess={() => {
-          const { params } = buildUsersListParams(queryRef.current, {}, USERS_PAGE_SIZE);
-          void loadUsers(params);
+          void loadUsers(listParams);
         }}
       />
 

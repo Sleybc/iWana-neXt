@@ -1368,7 +1368,23 @@ export class UsersService {
     return this.toDto(successor);
   }
 
-  /** Reinicia el password de un usuario por acción administrativa. */
+  /**
+   * Reinicia el password de un usuario por acción administrativa.
+   *
+   * Además de rotar el hash, reinicia TODO el estado de credencial heredado:
+   * sin esta limpieza, el primer ingreso con la clave temporal fallaba en las
+   * compuertas del login aunque la contraseña fuera correcta:
+   * - `lockedUntil` / `failedLoginAttempts`: la cuenta bloqueada por intentos
+   *   fallidos rechaza el login antes de comparar la contraseña.
+   * - `passwordResetExpiresAt`: una expiración vieja (emitida por el bootstrap
+   *   de soporte, único flujo que la fija) ya vencida hacía que el login
+   *   rechazara toda clave temporal nueva como "expirada". En este módulo las
+   *   temporales no expiran, igual que en `create()` — ver `buildInitialUserState`.
+   * - `passwordResetToken` / `passwordResetTokenExpiresAt`: un token de
+   *   recuperación previo no debe seguir canjeable tras un reset administrativo.
+   * Mismo contrato que `buildInitialUserState` (H-04) y que
+   * `AuthService.regenerateTenantAdminCredentials`.
+   */
   async resetPassword(
     id: string,
     actorId: string,
@@ -1416,6 +1432,12 @@ export class UsersService {
       const temporaryPassword = password ?? crypto.randomBytes(TEMP_PASSWORD_BYTES).toString('hex');
       user.passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
       user.passwordResetRequired = true;
+      // Estado heredado que bloquearía el primer ingreso con la clave nueva.
+      user.passwordResetToken = null;
+      user.passwordResetTokenExpiresAt = null;
+      user.passwordResetExpiresAt = null;
+      user.failedLoginAttempts = 0;
+      user.lockedUntil = null;
       await qr.manager.save(User, user);
 
       await this.auditService.log({

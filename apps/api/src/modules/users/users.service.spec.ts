@@ -432,11 +432,55 @@ describe('UsersService', () => {
       expect(typeof result.temporaryPassword).toBe('string');
       expect(result.temporaryPassword).toHaveLength(32);
       expect(mgr.save).toHaveBeenCalled();
+      // El reset administrativo reinicia el estado de credencial completo,
+      // no solo el hash — ver el test de regresion siguiente.
+      expect(mgr.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          passwordResetRequired: true,
+          passwordResetToken: null,
+          passwordResetTokenExpiresAt: null,
+          passwordResetExpiresAt: null,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        }),
+      );
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.PASSWORD_CHANGED,
           entityType: 'UserPasswordReset',
           entityId: 'usr-target',
+        }),
+      );
+    });
+
+    it('limpia bloqueo y expiracion heredados que impedirían el primer ingreso con la clave temporal', async () => {
+      // Regresion del bug reportado: la clave temporal generada desde la consola
+      // no permitia ingresar porque el reset no tocaba lockedUntil (login la
+      // rechaza antes de comparar el hash) ni passwordResetExpiresAt (expiracion
+      // vieja del bootstrap de soporte, ya vencida, la marcaba como expirada).
+      const targetUser = buildUserEntity({
+        id: 'usr-target',
+        role: UserRole.NOC,
+        failedLoginAttempts: 5,
+        lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
+        passwordResetToken: 'token-recuperacion-vigente',
+        passwordResetTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        passwordResetExpiresAt: new Date(Date.now() - 60 * 1000),
+      });
+      const mgr = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
+
+      await service.resetPassword('usr-target', 'usr-admin', UserRole.ADMIN, '127.0.0.1');
+
+      expect(mgr.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          passwordResetToken: null,
+          passwordResetTokenExpiresAt: null,
+          passwordResetExpiresAt: null,
+          passwordResetRequired: true,
         }),
       );
     });

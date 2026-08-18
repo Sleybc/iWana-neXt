@@ -245,6 +245,9 @@ describe('UsersTable', () => {
       from: 1,
       to: 2,
       onPageChange: jest.fn(),
+      isPageMode: true,
+      pageSize: 20,
+      onPageSizeChange: jest.fn(),
     };
 
     it('muestra PortalTablePager en vez de Cargar más con props page-based', () => {
@@ -285,6 +288,7 @@ describe('UsersTable', () => {
         from: 1,
         to: 2,
         onPageChange,
+        isPageMode: true,
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
@@ -302,7 +306,7 @@ describe('UsersTable', () => {
       expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
     });
 
-    it('strip de resultados y pager coexisten en modo page-based', () => {
+    it('evita duplicar el conteo del strip en modo page-based', () => {
       renderTable({
         users: twoUsers,
         meta: { ...EMPTY_LIST_META, nextCursor: null, total: 4 },
@@ -311,12 +315,15 @@ describe('UsersTable', () => {
         from: 1,
         to: 2,
         onPageChange: jest.fn(),
+        isPageMode: true,
+        pageSize: 20,
+        onPageSizeChange: jest.fn(),
       });
 
-      // Strip de la tabla muestra el total (sin nextCursor → hasMore=false)
-      expect(screen.getByText('4 usuarios')).toBeInTheDocument();
+      expect(screen.queryByText('4 usuarios')).not.toBeInTheDocument();
       // El pager muestra el rango (visible + sr-only → múltiples matches)
       expect(screen.getAllByText(/Mostrando 1–2 de 4 usuarios/).length).toBeGreaterThan(0);
+      expect(screen.getByLabelText('Filas por página')).toBeInTheDocument();
     });
   });
 });
