@@ -70,6 +70,50 @@ describe('shared ui primitives', () => {
     expect(toggle).toBeDisabled();
   });
 
+  it('should render input error messages with the AA error token instead of the raw base token', () => {
+    render(<Input id="brand-url" label="URL" error="Ingresa una URL válida." />);
+
+    const alert = screen.getByRole('alert');
+
+    expect(alert).toHaveClass('text-iwana-error-700');
+    expect(alert).toHaveClass('dark:text-red-300');
+    expect(alert.className.split(/\s+/)).not.toContain('text-iwana-error');
+  });
+
+  it('should merge consumer aria-describedby with internal error ids without duplicates', () => {
+    render(
+      <Input
+        id="brand-url"
+        label="URL"
+        error="Ingresa una URL válida."
+        aria-describedby="brand-url-error guidance-a guidance-a"
+      />,
+    );
+
+    const input = screen.getByLabelText('URL');
+    const ids = (input.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
+
+    expect(ids).toEqual(['brand-url-error', 'guidance-a']);
+    expect(screen.getByRole('alert')).toHaveAttribute('id', 'brand-url-error');
+  });
+
+  it('should merge consumer aria-describedby with the helper id when there is no error', () => {
+    render(
+      <Input
+        id="brand-url"
+        label="URL"
+        helperText="Escribe una URL HTTPS."
+        aria-describedby="guidance-b"
+      />,
+    );
+
+    const input = screen.getByLabelText('URL');
+    const ids = (input.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
+
+    expect(ids).toEqual(['brand-url-helper', 'guidance-b']);
+    expect(document.getElementById('brand-url-helper')).toBeInTheDocument();
+  });
+
   it('should render disabled select triggers without the global opacity utility', () => {
     render(
       <Select

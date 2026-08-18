@@ -86,6 +86,10 @@
   --color-iwana-success: #22C55E;
   --color-iwana-warning: #F59E0B;
   --color-iwana-error:   #EF4444;
+  /* Texto de error AA sobre blanco (4,83:1) — solo para texto de error;
+     el token base --color-iwana-error se conserva para bordes e iconos.
+     Decisión DS-OWNER (Task 0/A5, plan 2026-08-18). */
+  --color-iwana-error-700: #DC2626;
   --color-iwana-info:    #3B82F6;
 
   /* Colores semanticos TailAdmin — compatibles con Tailwind 4 CSS-first */

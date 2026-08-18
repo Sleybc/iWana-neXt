@@ -328,7 +328,7 @@ test.describe('Portal branding upload', () => {
     await page.goto('/dashboard/settings/branding');
     await page.waitForLoadState('networkidle');
 
-    const restoreButton = page.getByRole('button', { name: 'Restaurar base' }).first();
+    const restoreButton = page.getByRole('button', { name: 'Restaurar marca base' }).first();
     await restoreButton.focus();
     await page.keyboard.press('Enter');
 
@@ -352,7 +352,7 @@ test.describe('Portal branding upload', () => {
 
     await expect(page.getByRole('heading', { name: 'Identidad visual' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Guardar marca' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Restaurar base' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Restaurar marca base' }).first()).toBeVisible();
     await expect(page.locator('#seal-light-file')).toHaveCount(1);
     await expect(page.getByLabel('URL HTTPS para sello compacto · variante clara')).toBeVisible();
   });

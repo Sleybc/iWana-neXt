@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CircleAlert,
   ExternalLink,
+  ImageOff,
   ImageUp,
   RotateCcw,
   Save,
@@ -25,6 +26,8 @@ import {
   DialogTitle,
   Input,
   SectionAccordion,
+  cn,
+  interactiveFocusClassName,
 } from '@iwana/ui';
 import {
   tenantSelfApi,
@@ -35,7 +38,7 @@ import {
 } from '@/lib/api-client';
 import { BRANDING_SLOT_RULES, validateBrandingFileForUpload } from '@/lib/branding-validation';
 import { TenantSeal } from '@/components/layout/TenantSeal';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { PortalAlert, portalCheckboxClassName } from '@/components/shared/portal-ui';
 import { SettingsSectionPanel } from './SettingsSectionPanel';
 import { BRANDING_SETTINGS_COPY } from './mod00-settings-labels';
 
@@ -212,7 +215,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
   },
   {
     usage: 'login_background',
-    title: 'Fondo del login',
+    title: 'Fondo del inicio de sesión',
     description: BRANDING_SETTINGS_COPY.loginBackgroundDescription,
     guidance: BRANDING_SLOT_RULES.login_background.helpText,
     widePreview: true,
@@ -292,14 +295,14 @@ function normalizeOptionalText(value: string | null | undefined): string {
 
 function resolveSourceLabel(profile: TenantSelf, variant: BrandingVariantConfig): string {
   if (profile[variant.assetField]) {
-    return 'Activo subido';
+    return BRANDING_SETTINGS_COPY.slotSourceUploaded;
   }
 
   if (profile[variant.resolvedUrlField]) {
-    return 'URL externa';
+    return BRANDING_SETTINGS_COPY.slotSourceExternalUrl;
   }
 
-  return 'Sin configurar';
+  return BRANDING_SETTINGS_COPY.slotSourceNone;
 }
 
 function resolveUsageLabel(usage: BrandingUsage): string {
@@ -321,6 +324,23 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
   const [identityAccordionOpenIds, setIdentityAccordionOpenIds] = useState<Set<string>>(
     () => new Set(),
   );
+  // URLs de preview que fallaron al cargar en el <img>. Se registran por URL
+  // (sin probing ni fetch — decisión SEC-ENG): al cambiar la URL del slot el
+  // estado de error se reinicia de forma natural porque la nueva URL no está
+  // en el conjunto. El estado de error es distinto del estado vacío.
+  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(() => new Set());
+
+  const handleImageLoadError = (url: string) => {
+    setFailedImageUrls((prev) => {
+      if (prev.has(url)) {
+        return prev;
+      }
+
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+  };
 
   const {
     register,
@@ -365,6 +385,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
     metadataTitle: effectiveMetadataTitle,
     metadataDescription: effectiveMetadataDescription,
   };
+
+  const faviconPreviewUrl = watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl || '';
 
   const applyUpdatedProfile = (updated: TenantSelf, successMessage: string) => {
     reset(buildDefaultValues(updated));
@@ -496,7 +518,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
       } as UpdateTenantSelfBrandingDto);
       applyUpdatedProfile(updated, `Se eliminó la imagen de ${variant.label.toLowerCase()}.`);
     } catch {
-      const errorMessage = 'No fue posible limpiar este activo de marca.';
+      const errorMessage = 'No fue posible eliminar la imagen de esta variante.';
       setServerError(errorMessage);
       setLiveMessage(errorMessage);
     } finally {
@@ -569,6 +591,14 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
         />
       )}
 
+      {!canEdit && (
+        <PortalAlert
+          variant="info"
+          title={BRANDING_SETTINGS_COPY.readOnlyNoticeTitle}
+          description={BRANDING_SETTINGS_COPY.readOnlyNoticeDescription}
+        />
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-8">
         <SettingsSectionPanel
           title="Identidad visual"
@@ -584,7 +614,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                   disabled={!canEdit || isSubmitting || isResettingBase}
                 >
                   <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                  Restaurar base
+                  Restaurar marca base
                 </Button>
                 <Button
                   type="submit"
@@ -681,7 +711,11 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                 id={slotSourceId}
                                 className="mt-1 text-xs text-gray-600 dark:text-gray-300"
                               >
-                                Fuente actual: {resolveSourceLabel(profile, variant)}
+                                {BRANDING_SETTINGS_COPY.slotSourcePrefix}
+                                {resolveSourceLabel(profile, variant)}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                {BRANDING_SETTINGS_COPY.slotPrecedenceHint}
                               </p>
                               <p id={slotStatusId} className="sr-only">
                                 {isSlotUploading
@@ -692,18 +726,42 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
                             <label
                               htmlFor={`${slotKey}-file`}
-                              className="group relative block cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3"
+                              tabIndex={canEdit ? 0 : -1}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  document.getElementById(`${slotKey}-file`)?.click();
+                                }
+                              }}
+                              className={cn(
+                                'group relative block cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3',
+                                interactiveFocusClassName,
+                              )}
                             >
-                              {previewUrl ? (
+                              {previewUrl && !failedImageUrls.has(previewUrl) ? (
                                 <div className={group.widePreview ? 'h-32 p-2' : 'h-32 p-4'}>
                                   <img
                                     src={previewUrl}
                                     alt={`${group.title} ${variant.label}`}
                                     className="h-full w-full object-contain"
+                                    onError={() => handleImageLoadError(previewUrl)}
                                   />
                                 </div>
+                              ) : previewUrl && failedImageUrls.has(previewUrl) ? (
+                                <div className="flex h-32 flex-col items-center justify-center gap-1 px-4 text-center">
+                                  <ImageOff
+                                    className="h-8 w-8 text-gray-500 dark:text-gray-400"
+                                    aria-hidden="true"
+                                  />
+                                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200">
+                                    {BRANDING_SETTINGS_COPY.slotImageLoadErrorTitle}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {BRANDING_SETTINGS_COPY.slotImageLoadErrorDescription}
+                                  </p>
+                                </div>
                               ) : (
-                                <div className="flex h-32 flex-col items-center justify-center gap-2 text-gray-400">
+                                <div className="flex h-32 flex-col items-center justify-center gap-2 text-gray-500 dark:text-gray-400">
                                   <ImageUp className="h-8 w-8" aria-hidden="true" />
                                   <span className="text-xs">Subir imagen</span>
                                 </div>
@@ -720,7 +778,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
                               {isSlotUploading && (
                                 <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 text-sm text-gray-500 dark:bg-dark-surface-2/80 dark:text-gray-300">
-                                  Subiendo...
+                                  Subiendo…
                                 </div>
                               )}
                             </label>
@@ -751,9 +809,9 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                 href={assetDirectory}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                aria-label={`Abrir directorio del recurso para ${group.title}, ${variant.label.toLowerCase()}`}
-                                className="flex items-center gap-1.5 overflow-hidden rounded-md border border-gray-100 bg-white px-3 py-2 text-xs text-gray-500 transition-colors hover:text-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:text-iwana-primary"
-                                title={`Abrir directorio: ${assetDirectory}`}
+                                aria-label={`Abrir el enlace en el navegador para ${group.title}, ${variant.label.toLowerCase()}`}
+                                className="flex items-center gap-1.5 overflow-hidden rounded-md border border-gray-100 bg-white px-3 py-2 text-xs text-gray-500 transition-colors hover:text-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:text-iwana-primary-300"
+                                title="Abrir el enlace en el navegador"
                               >
                                 <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                                 <span className="min-w-0 truncate font-mono">{assetDirectory}</span>
@@ -770,8 +828,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                   ? fieldError.message
                                   : undefined
                               }
-                              helperText="Déjalo vacío para conservar la fuente actual. Guarda la marca para aplicar URLs externas."
-                              aria-describedby={`${variant.urlField}-helper ${slotDescriptionId} ${slotGuidanceId}`}
+                              helperText={BRANDING_SETTINGS_COPY.slotUrlHelperText}
+                              aria-describedby={`${variant.urlField}-error ${variant.urlField}-helper ${slotDescriptionId} ${slotGuidanceId}`}
                               {...register(variant.urlField)}
                             />
 
@@ -787,7 +845,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                 loading={isSlotClearing}
                               >
                                 <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                Limpiar variante
+                                Eliminar imagen
                               </Button>
                             </div>
                           </div>
@@ -811,11 +869,9 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
-                  <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Vista previa de navegación
-                  </p>
+                  <p className="mb-3 portal-eyebrow-muted">Vista previa de navegación</p>
                   <div className="flex min-h-[88px] flex-1 items-center rounded-2xl border border-gray-200 bg-iwana-surface-soft px-3 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                    <div className="flex min-h-12 w-fit items-center gap-3 rounded-2xl bg-iwana-primary px-3 py-2">
+                    <div className="flex min-h-12 w-fit items-center gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface-2">
                       <TenantSeal
                         sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
                         sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
@@ -823,7 +879,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                         size="sm"
                       />
                       {watchedShowTenantName && (
-                        <span className="max-w-[180px] truncate text-sm font-bold text-white">
+                        <span className="max-w-[180px] truncate text-sm font-bold text-iwana-primary dark:text-white">
                           {identityPreview.productName}
                         </span>
                       )}
@@ -832,20 +888,24 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 </div>
 
                 <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
-                  <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Vista previa de pestaña
-                  </p>
+                  <p className="mb-3 portal-eyebrow-muted">Vista previa de pestaña</p>
                   <div className="flex min-h-[88px] flex-1 items-center rounded-2xl border border-gray-200 bg-iwana-surface-soft px-3 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                     <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface-2">
                       <div className="h-8 w-8 overflow-hidden rounded-md bg-white dark:bg-dark-surface-2">
-                        {watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl ? (
-                          <img
-                            src={
-                              watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl || ''
-                            }
-                            alt={BRANDING_SETTINGS_COPY.faviconAlt}
-                            className="h-full w-full object-contain"
-                          />
+                        {faviconPreviewUrl ? (
+                          failedImageUrls.has(faviconPreviewUrl) ? (
+                            <ImageOff
+                              className="h-full w-full p-1 text-gray-500 dark:text-gray-400"
+                              aria-label={BRANDING_SETTINGS_COPY.slotImageLoadErrorTitle}
+                            />
+                          ) : (
+                            <img
+                              src={faviconPreviewUrl}
+                              alt={BRANDING_SETTINGS_COPY.faviconAlt}
+                              className="h-full w-full object-contain"
+                              onError={() => handleImageLoadError(faviconPreviewUrl)}
+                            />
+                          )
                         ) : (
                           <TenantSeal
                             sealLightUrl={
@@ -872,7 +932,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 <input
                   type="checkbox"
                   disabled={!canEdit}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary accent-iwana-primary disabled:cursor-not-allowed"
+                  className={cn(portalCheckboxClassName, 'mt-0.5 disabled:cursor-not-allowed')}
                   {...register('showTenantName')}
                 />
                 <div>
@@ -899,7 +959,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <Input
-                          label="Producto"
+                          label="Nombre comercial"
                           placeholder="Ej: ISP Demo"
                           disabled={!canEdit || isSubmitting}
                           error={
@@ -911,7 +971,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                           {...register('brandingProductName')}
                         />
                         <Input
-                          label="Superficie"
+                          label="Nombre del portal"
                           placeholder="Ej: Portal empresarial"
                           disabled={!canEdit || isSubmitting}
                           error={
@@ -919,11 +979,11 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                               ? errors.brandingSurfaceName.message
                               : undefined
                           }
-                          helperText="Nombre de la superficie pública del acceso."
+                          helperText="Se muestra en el acceso público como nombre del portal."
                           {...register('brandingSurfaceName')}
                         />
                         <Input
-                          label="Título público"
+                          label="Título en navegador"
                           placeholder="Ej: ISP Demo — Portal empresarial"
                           disabled={!canEdit || isSubmitting}
                           error={
@@ -931,7 +991,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                               ? errors.brandingMetadataTitle.message
                               : undefined
                           }
-                          helperText="Se usa como título en login y pestaña del navegador."
+                          helperText="Se muestra como título en la pestaña del navegador y en el inicio de sesión."
                           {...register('brandingMetadataTitle')}
                         />
                         <Input
@@ -943,40 +1003,32 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                               ? errors.brandingMetadataDescription.message
                               : undefined
                           }
-                          helperText="Narrativa pública usada en el login del portal."
+                          helperText="Se muestra en el inicio de sesión del portal."
                           {...register('brandingMetadataDescription')}
                         />
                       </div>
 
                       <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-sm dark:border-dark-border dark:bg-dark-surface-2 md:grid-cols-2">
                         <div>
-                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                            Producto
-                          </dt>
+                          <dt className="portal-eyebrow-muted">Nombre comercial</dt>
                           <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
                             {identityPreview.productName}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                            Superficie
-                          </dt>
+                          <dt className="portal-eyebrow-muted">Nombre del portal</dt>
                           <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
                             {identityPreview.surfaceName}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                            Título en navegador
-                          </dt>
+                          <dt className="portal-eyebrow-muted">Título en navegador</dt>
                           <dd className="mt-1 font-medium text-gray-900 dark:text-white">
                             {identityPreview.metadataTitle}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                            Descripción
-                          </dt>
+                          <dt className="portal-eyebrow-muted">Descripción</dt>
                           <dd className="mt-1 text-gray-600 dark:text-gray-300">
                             {identityPreview.metadataDescription}
                           </dd>
@@ -1031,7 +1083,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 disabled={isResettingBase}
                 onClick={() => void handleRestoreBaseBranding()}
               >
-                Restaurar base
+                Restaurar marca base
               </Button>
             </div>
           </div>

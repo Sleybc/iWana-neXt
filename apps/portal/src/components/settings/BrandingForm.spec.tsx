@@ -95,7 +95,7 @@ async function expandIdentityAccordion(): Promise<void> {
   }
 
   await waitFor(() => {
-    expect(screen.getByLabelText('Producto')).toBeVisible();
+    expect(screen.getByLabelText('Nombre comercial')).toBeVisible();
   });
 }
 
@@ -203,13 +203,13 @@ describe('BrandingForm', () => {
 
     await expandIdentityAccordion();
 
-    fireEvent.change(screen.getByLabelText('Producto'), {
+    fireEvent.change(screen.getByLabelText('Nombre comercial'), {
       target: { value: 'ISP Demo Pro' },
     });
-    fireEvent.change(screen.getByLabelText('Superficie'), {
+    fireEvent.change(screen.getByLabelText('Nombre del portal'), {
       target: { value: 'Portal empresarial' },
     });
-    fireEvent.change(screen.getByLabelText('Título público'), {
+    fireEvent.change(screen.getByLabelText('Título en navegador'), {
       target: { value: 'ISP Demo Pro — Portal empresarial' },
     });
     fireEvent.change(screen.getByLabelText('Descripción pública'), {
@@ -243,7 +243,7 @@ describe('BrandingForm', () => {
     expect(screen.getByText('Sello compacto')).toBeInTheDocument();
     expect(screen.getByText('Logo horizontal')).toBeInTheDocument();
     expect(screen.getByText('Favicon')).toBeInTheDocument();
-    expect(screen.getByText('Fondo del login')).toBeInTheDocument();
+    expect(screen.getByText('Fondo del inicio de sesión')).toBeInTheDocument();
   });
 
   it('muestra nombres e identidad en un acordeón colapsado inicialmente', async () => {
@@ -252,7 +252,7 @@ describe('BrandingForm', () => {
     const identityToggle = screen.getByRole('button', { name: /Nombres e identidad/i });
 
     expect(identityToggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByLabelText('Producto')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nombre comercial')).not.toBeInTheDocument();
 
     fireEvent.click(identityToggle);
 
@@ -261,9 +261,9 @@ describe('BrandingForm', () => {
         'aria-expanded',
         'true',
       );
-      expect(screen.getByLabelText('Producto')).toBeVisible();
-      expect(screen.getByLabelText('Superficie')).toBeVisible();
-      expect(screen.getByLabelText('Título público')).toBeVisible();
+      expect(screen.getByLabelText('Nombre comercial')).toBeVisible();
+      expect(screen.getByLabelText('Nombre del portal')).toBeVisible();
+      expect(screen.getByLabelText('Título en navegador')).toBeVisible();
       expect(screen.getByLabelText('Descripción pública')).toBeVisible();
     });
   });
@@ -349,12 +349,14 @@ describe('BrandingForm', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Restaurar base' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar marca base' }));
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(tenantSelfApiMock.updateBranding).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Restaurar base' })[1] as HTMLElement);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Restaurar marca base' })[1] as HTMLElement,
+    );
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith(
@@ -386,5 +388,279 @@ describe('BrandingForm', () => {
       screen.getByLabelText('URL HTTPS para sello compacto · variante clara'),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/Requisitos recomendados:/i).length).toBeGreaterThan(0);
+  });
+
+  it('asocia el mensaje de error del campo de URL al input con aria-describedby', async () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const urlInput = screen.getByLabelText('URL HTTPS para sello compacto · variante clara');
+
+    fireEvent.change(urlInput, { target: { value: 'ftp://sin-https.co/recurso.svg' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar marca' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('La URL debe usar HTTPS.');
+    });
+
+    const alert = screen.getByRole('alert');
+    const describedByIds = (urlInput.getAttribute('aria-describedby') ?? '').split(/\s+/);
+
+    expect(describedByIds).toContain(alert.id);
+    expect(document.getElementById(alert.id)).toBeInTheDocument();
+  });
+
+  it('muestra la fuente activa con precedencia de archivo y copy congelado sin términos técnicos', () => {
+    render(
+      <BrandingForm
+        profile={buildProfile({
+          sealLightUrl: 'https://cdn.demo.co/seal-light.svg',
+          sealLightAssetId: 'asset-1',
+        })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    // El archivo subido tiene prioridad sobre la URL: la fuente se lee del asset.
+    expect(screen.getByText('Fuente actual: Activo subido')).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        'El archivo subido tiene prioridad sobre la URL. Subir un archivo lo aplica de inmediato; escribir una URL HTTPS lo aplica al guardar la marca.',
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/URL externa/i)).not.toBeInTheDocument();
+  });
+
+  it('resuelve la fuente del slot como enlace externo sin exponer vocabulario técnico', () => {
+    render(
+      <BrandingForm
+        profile={buildProfile({ sealLightUrl: 'https://cdn.demo.co/seal-light.svg' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Fuente actual: Enlace externo')).toBeInTheDocument();
+    expect(screen.getAllByText('Fuente actual: Sin configurar').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/URL externa/i)).not.toBeInTheDocument();
+  });
+
+  it('usa el helper congelado de URL en cada variante de slot', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    expect(
+      screen.getAllByText(
+        'Déjalo vacío para conservar el archivo subido. Escribe una URL HTTPS y guarda la marca para aplicarla.',
+      ),
+    ).toHaveLength(8);
+  });
+
+  it('muestra el aviso de consulta sin edición cuando el perfil no puede editar', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit={false} onUpdated={jest.fn()} />);
+
+    expect(screen.getByText('Consulta sin edición')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Tu perfil puede consultar la marca de la empresa, pero no modificarla. Una persona administradora puede actualizar los activos y los textos públicos.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('muestra el estado de error de imagen distinto del estado vacío y se recupera al cambiar la URL', () => {
+    const { rerender } = render(
+      <BrandingForm
+        profile={buildProfile({ sealLightUrl: 'https://cdn.demo.co/seal-light.svg' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    const sealImage = screen.getByAltText('Sello compacto Variante clara');
+
+    // Un segundo error sobre la misma URL no produce re-render adicional (dedupe).
+    fireEvent.error(sealImage);
+    fireEvent.error(sealImage);
+
+    expect(screen.getByText('La imagen no está disponible')).toBeInTheDocument();
+    expect(
+      screen.getByText('Revisa la URL de esta variante o sube un archivo nuevo.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByAltText('Sello compacto Variante clara')).not.toBeInTheDocument();
+
+    // Al cambiar la URL del slot, el error se reinicia y la imagen vuelve a intentarse.
+    rerender(
+      <BrandingForm
+        profile={buildProfile({ sealLightUrl: 'https://cdn.demo.co/nueva-imagen.svg' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('La imagen no está disponible')).not.toBeInTheDocument();
+    expect(screen.getByAltText('Sello compacto Variante clara')).toBeInTheDocument();
+  });
+
+  it('muestra el estado de error de imagen en la vista previa de pestaña cuando el favicon falla', () => {
+    render(
+      <BrandingForm
+        profile={buildProfile({ faviconLightUrl: 'https://cdn.demo.co/favicon-light.png' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.error(screen.getByAltText('Favicon de la empresa'));
+
+    expect(screen.getByLabelText('La imagen no está disponible')).toBeInTheDocument();
+    expect(screen.queryByAltText('Favicon de la empresa')).not.toBeInTheDocument();
+  });
+
+  it('elimina la imagen del slot y confirma con el mensaje aprobado', async () => {
+    tenantSelfApiMock.updateBranding.mockResolvedValue(buildProfile());
+
+    render(
+      <BrandingForm
+        profile={buildProfile({ sealLightUrl: 'https://cdn.demo.co/seal-light.svg' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Eliminar imagen' })[0] as HTMLElement);
+
+    await waitFor(() => {
+      expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
+        sealLightUrl: null,
+        sealLightAssetId: null,
+      });
+    });
+
+    expect(screen.getAllByText('Se eliminó la imagen de variante clara.').length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('muestra el error del servidor cuando guardar la marca falla', async () => {
+    tenantSelfApiMock.updateBranding.mockRejectedValue(new Error('Fallo de red'));
+
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('URL HTTPS para sello compacto · variante clara'), {
+      target: { value: 'https://cdn.demo.co/seal-light.svg' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar marca' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText('No fue posible guardar la marca. Intenta de nuevo.').length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  it('envía la URL vacía como eliminación cuando el slot solo tenía una URL externa', async () => {
+    tenantSelfApiMock.updateBranding.mockResolvedValue(buildProfile());
+
+    render(
+      <BrandingForm
+        profile={buildProfile({ sealLightUrl: 'https://cdn.demo.co/seal-light.svg' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('URL HTTPS para sello compacto · variante clara'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar marca' }));
+
+    await waitFor(() => {
+      expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
+        sealLightUrl: null,
+        sealLightAssetId: null,
+      });
+    });
+  });
+
+  it('envía showTenantName como único cambio cuando solo se alterna el toggle', async () => {
+    tenantSelfApiMock.updateBranding.mockResolvedValue(buildProfile({ showTenantName: false }));
+
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Mostrar nombre comercial/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar marca' }));
+
+    await waitFor(() => {
+      expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({ showTenantName: false });
+    });
+  });
+
+  it('no inicia subida cuando el selector de archivo no entrega archivo', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const fileInput = document.getElementById('seal-light-file') as HTMLInputElement;
+
+    fireEvent.change(fileInput, { target: { files: [] } });
+
+    expect(validateBrandingFileForUploadMock).not.toHaveBeenCalled();
+    expect(tenantSelfApiMock.uploadBrandingAsset).not.toHaveBeenCalled();
+  });
+
+  it('muestra el error cuando la subida del activo falla', async () => {
+    tenantSelfApiMock.uploadBrandingAsset.mockRejectedValue(new Error('Fallo de subida'));
+
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const fileInput = document.getElementById('seal-light-file') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['x'], 'seal.svg', { type: 'image/svg+xml' })] },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(
+          'No fue posible subir el activo. Revisa los requisitos del archivo y vuelve a intentar.',
+        ).length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  it('muestra el error cuando la restauración de la marca base falla', async () => {
+    tenantSelfApiMock.updateBranding.mockRejectedValue(new Error('Fallo de red'));
+
+    render(
+      <BrandingForm
+        profile={buildProfile({ sealLightUrl: 'https://cdn.demo.co/seal-light.svg' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar marca base' }));
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Restaurar marca base' })[1] as HTMLElement,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('No fue posible restaurar la marca base.').length).toBeGreaterThan(
+        0,
+      );
+    });
+  });
+
+  it('abre el selector de archivo con teclado desde el área de carga del slot', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const fileInput = document.getElementById('seal-light-file') as HTMLInputElement;
+    const clickSpy = jest.spyOn(fileInput, 'click').mockImplementation(() => undefined);
+    const uploadLabel = document.querySelector('label[for="seal-light-file"]') as HTMLLabelElement;
+
+    fireEvent.keyDown(uploadLabel, { key: 'Enter' });
+    fireEvent.keyDown(uploadLabel, { key: ' ' });
+
+    expect(clickSpy).toHaveBeenCalledTimes(2);
+    expect(uploadLabel).toHaveAttribute('tabindex', '0');
+
+    clickSpy.mockRestore();
   });
 });

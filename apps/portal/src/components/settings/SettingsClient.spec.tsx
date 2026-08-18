@@ -145,6 +145,27 @@ describe('SettingsSubTabs', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Planes' }));
     expect(onChange).toHaveBeenCalledWith('plans');
   });
+
+  it('should apply the shared focus contract to subtabs instead of the lime ring', () => {
+    render(
+      <SettingsSubTabs
+        items={[
+          { id: 'identity', label: 'Identidad visual' },
+          { id: 'plans', label: 'Planes' },
+        ]}
+        activeTab="identity"
+        onChange={jest.fn()}
+      />,
+    );
+
+    const tab = screen.getByRole('tab', { name: 'Planes' });
+
+    expect(tab).toHaveClass('focus-visible:ring-2');
+    expect(tab).toHaveClass('focus-visible:ring-iwana-primary');
+    expect(tab).toHaveClass('focus-visible:ring-offset-2');
+    expect(tab).toHaveClass('dark:focus-visible:ring-iwana-primary-300');
+    expect(tab.className.split(/\s+/)).not.toContain('focus-visible:ring-iwana-secondary');
+  });
 });
 
 describe('SettingsClient', () => {

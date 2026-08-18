@@ -93,4 +93,73 @@ describe('BrandingSettingsClient', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/tenant/i)).not.toBeInTheDocument();
   });
+
+  it('should render the named loading state while the profile is pending', () => {
+    const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+    };
+    tenantSelfApi.getProfile.mockReturnValue(new Promise(() => undefined));
+
+    render(<BrandingSettingsClient />);
+
+    expect(screen.getByText('Cargando identidad visual de la empresa')).toBeInTheDocument();
+    expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
+  });
+
+  it('should show the session unavailable state without an authenticated user', async () => {
+    useAuthMock.mockReturnValue({ user: null, isLoading: false });
+
+    render(<BrandingSettingsClient />);
+
+    expect(
+      await screen.findByText('No fue posible resolver la sesión del portal.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Error al cargar la vista')).toBeInTheDocument();
+  });
+
+  it('should map an expired session api error to friendly copy', async () => {
+    const { tenantSelfApi, ApiError } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+      ApiError: new (status: number, message: string) => Error;
+    };
+    tenantSelfApi.getProfile.mockRejectedValue(new ApiError(401, 'unauthorized'));
+
+    render(<BrandingSettingsClient />);
+
+    expect(
+      await screen.findByText('Tu sesión expiró. Inicia sesión nuevamente.'),
+    ).toBeInTheDocument();
+  });
+
+  it('should map a forbidden api error to friendly copy', async () => {
+    const { tenantSelfApi, ApiError } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+      ApiError: new (status: number, message: string) => Error;
+    };
+    tenantSelfApi.getProfile.mockRejectedValue(new ApiError(403, 'forbidden'));
+
+    render(<BrandingSettingsClient />);
+
+    expect(
+      await screen.findByText('No tienes permisos para consultar la marca de la empresa.'),
+    ).toBeInTheDocument();
+  });
+
+  it('should surface the api message for other api errors and fallback copy for unknown errors', async () => {
+    const { tenantSelfApi, ApiError } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: { getProfile: jest.Mock };
+      ApiError: new (status: number, message: string) => Error;
+    };
+
+    tenantSelfApi.getProfile.mockRejectedValueOnce(new ApiError(500, 'Fallo interno temporal'));
+    const { unmount } = render(<BrandingSettingsClient />);
+    expect(await screen.findByText('Fallo interno temporal')).toBeInTheDocument();
+    unmount();
+
+    tenantSelfApi.getProfile.mockRejectedValueOnce(new Error('Fallo de red'));
+    render(<BrandingSettingsClient />);
+    expect(
+      await screen.findByText('No fue posible cargar la configuración de marca.'),
+    ).toBeInTheDocument();
+  });
 });

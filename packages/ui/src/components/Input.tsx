@@ -5,6 +5,19 @@ import * as React from 'react';
 import { cn } from '../lib/utils';
 
 /**
+ * Mezcla los ids de descripción internos del Input con los ids que pasa el
+ * consumidor por `aria-describedby`. El id interno del error (o del helper)
+ * nunca se pierde y los ids repetidos se deduplican preservando el orden.
+ */
+function mergeAriaDescribedBy(...parts: Array<string | undefined>): string | undefined {
+  const ids = parts
+    .flatMap((part) => (part ?? '').split(/\s+/))
+    .filter((value, index, all) => value !== '' && all.indexOf(value) === index);
+
+  return ids.length > 0 ? ids.join(' ') : undefined;
+}
+
+/**
  * Componente Input del sistema de diseño iWana neXt.
  * Con soporte para label, helper text, error message y password toggle.
  */
@@ -34,6 +47,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       startIcon,
       startIconClassName,
       endAdornment,
+      'aria-describedby': ariaDescribedByProp,
       ...props
     },
     ref,
@@ -43,6 +57,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const inputId = id || generatedId;
     const isPassword = type === 'password';
     const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
+    const internalDescribedBy = error
+      ? `${inputId}-error`
+      : helperText
+        ? `${inputId}-helper`
+        : undefined;
+    const mergedDescribedBy = mergeAriaDescribedBy(internalDescribedBy, ariaDescribedByProp);
 
     return (
       <div className={cn('flex flex-col gap-1.5 w-full', containerClassName)}>
@@ -85,9 +106,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               className,
             )}
             aria-invalid={error ? true : undefined}
-            aria-describedby={
-              error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined
-            }
+            aria-describedby={mergedDescribedBy}
             {...props}
           />
           {endAdornment ? (
@@ -147,7 +166,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <p
             id={`${inputId}-error`}
             role="alert"
-            className="flex items-center gap-1 text-xs text-iwana-error"
+            className="flex items-center gap-1 text-xs text-iwana-error-700 dark:text-red-300"
           >
             <svg
               className="h-3 w-3 shrink-0"

@@ -478,6 +478,19 @@ export const BRANDING_SETTINGS_COPY = {
   identitySectionDescription:
     'Definen cómo aparece tu empresa en el navegador y en la comunicación pública del portal.',
   productHelperText: 'Nombre visible de la empresa en el acceso público.',
+  slotSourcePrefix: 'Fuente actual: ',
+  slotSourceUploaded: 'Activo subido',
+  slotSourceExternalUrl: 'Enlace externo',
+  slotSourceNone: 'Sin configurar',
+  slotPrecedenceHint:
+    'El archivo subido tiene prioridad sobre la URL. Subir un archivo lo aplica de inmediato; escribir una URL HTTPS lo aplica al guardar la marca.',
+  slotUrlHelperText:
+    'Déjalo vacío para conservar el archivo subido. Escribe una URL HTTPS y guarda la marca para aplicarla.',
+  slotImageLoadErrorTitle: 'La imagen no está disponible',
+  slotImageLoadErrorDescription: 'Revisa la URL de esta variante o sube un archivo nuevo.',
+  readOnlyNoticeTitle: 'Consulta sin edición',
+  readOnlyNoticeDescription:
+    'Tu perfil puede consultar la marca de la empresa, pero no modificarla. Una persona administradora puede actualizar los activos y los textos públicos.',
 } as const;
 
 export const ORGANIZATION_SETTINGS_COPY = {
