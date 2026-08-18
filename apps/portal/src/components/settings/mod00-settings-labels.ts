@@ -265,11 +265,11 @@ export const CALENDAR_SETTINGS_COPY = {
   pageTitle: 'Calendario operativo y jornadas',
   loadingSubtitle: 'Cargando tu calendario',
   pageSubtitle:
-    'Ordena el horario base de tu empresa y luego ajusta sedes, cierres por fecha y cambios puntuales desde una sola vista.',
-  pageStatusEyebrow: 'Estado operativo',
-  pagePartialStatus:
-    'Algunos bloques no se pudieron cargar. Actualiza la vista antes de confirmar el estado operativo o guardar cambios.',
-  refreshAction: 'Actualizar',
+    'Consulta en una sola vista los horarios habituales y los cambios por fecha que afectan la operación.',
+  calendarRoutineLaneTitle: 'Horarios habituales',
+  calendarDateChangesLaneTitle: 'Cambios por fecha',
+  refreshPendingChangesWarning:
+    'Tienes cambios pendientes en un horario. Guárdalos antes de actualizar para no perderlos.',
   calendarLoadingAnnouncement: 'Cargando calendario operativo',
   calendarLoadError: 'No fue posible cargar el calendario operativo. Intenta nuevamente.',
   calendarBlockUnavailableTitle: 'Bloque temporalmente no disponible',
@@ -283,7 +283,7 @@ export const CALENDAR_SETTINGS_COPY = {
   restrictedDescription:
     'Tu perfil no puede consultar el calendario operativo. Solicita apoyo a una persona administradora si necesitas usarlo.',
   calendarReadOnlyHint: 'Tu perfil puede consultar estos horarios, pero no modificarlos.',
-  organizationEyebrow: 'Paso 1 · Horario base',
+  organizationEyebrow: 'Base empresarial',
   organizationTitle: 'Horario base de la empresa',
   organizationDescription:
     'Define el horario semanal que servirá como referencia para toda la empresa y para las sedes que no tengan un ajuste propio.',
@@ -293,9 +293,11 @@ export const CALENDAR_SETTINGS_COPY = {
   organizationSaveAction: 'Guardar horario base',
   organizationSaveSuccess: 'Horario base actualizado correctamente.',
   organizationSaveError: 'No fue posible guardar el horario base. Intenta nuevamente.',
+  organizationHoursValidationError:
+    'Revisa los horarios marcados: cada día abierto necesita inicio y fin, y el fin debe ser posterior.',
   organizationLoadError:
     'No pudimos cargar el horario base. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
-  siteEyebrow: 'Paso 2 · Horarios por sede',
+  siteEyebrow: 'Por sede',
   sitePanelTitle: 'Horarios por sede',
   sitePanelDescription:
     'Revisa qué sede sigue el horario base y cuál necesita un ajuste propio antes de guardar cambios.',
@@ -304,14 +306,21 @@ export const CALENDAR_SETTINGS_COPY = {
     'Elige una sede para revisar si usa el horario base o si necesita un horario propio.',
   siteEmptyTitle: 'Sin sedes registradas',
   siteEmptyDescription: 'Crea al menos una sede para configurar su horario.',
+  createSiteAction: 'Crear sede',
   siteEmptyReadOnlyDescription:
     'Aún no hay sedes registradas. Una persona administradora puede crear la primera.',
   siteDetailLoadError: 'No fue posible cargar el detalle de la sede. Intenta nuevamente.',
   siteDetailRetryAction: 'Reintentar detalle de la sede',
   siteLoadingStatus: 'Cargando detalle de la sede seleccionada.',
+  siteChangeDialogTitle: '¿Cambiar de sede sin guardar?',
+  siteChangeDialogDescription:
+    'Tienes cambios pendientes en esta sede. Si cambias ahora, se descartarán. Puedes cancelar y guardarlos primero.',
+  siteChangeDialogConfirm: 'Descartar y cambiar de sede',
   siteSaveAction: 'Guardar horario de la sede',
   siteSaveSuccess: 'Horario personalizado guardado correctamente.',
   siteSaveError: 'No fue posible guardar el horario personalizado. Intenta nuevamente.',
+  siteHoursValidationError:
+    'Revisa los horarios marcados: cada día abierto necesita inicio y fin, y el fin debe ser posterior.',
   siteLoadError:
     'No pudimos cargar las sedes. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
   siteClearAction: 'Volver al horario base',
@@ -332,7 +341,7 @@ export const CALENDAR_SETTINGS_COPY = {
   siteBaseAlertTitle: 'Usa el horario base',
   siteBaseAlertDescription:
     'Si guardas cambios en este bloque, crearás un horario propio solo para esta sede.',
-  exceptionsEyebrow: 'Paso 3 · Cierres por fecha',
+  exceptionsEyebrow: 'Por fecha',
   exceptionsTitle: 'Cierres por fecha y aperturas especiales',
   exceptionsDescription:
     'Registra fechas concretas en las que la atención cambia por festivos, cierres o aperturas extraordinarias.',
@@ -354,7 +363,11 @@ export const CALENDAR_SETTINGS_COPY = {
   exceptionsCreateAction: 'Agregar festivo o cierre',
   exceptionsCreated: 'Festivo o cierre especial creado correctamente.',
   exceptionsCreateError: 'No fue posible crear el festivo o cierre especial. Intenta nuevamente.',
+  exceptionsNameRequired: 'Escribe un nombre para la fecha especial.',
+  exceptionsDateRequired: 'Selecciona la fecha afectada.',
   exceptionsOpenHoursRequired: 'Si abres ese día, define hora de inicio y de fin.',
+  exceptionsOpenAtRequired: 'Define la hora de inicio.',
+  exceptionsCloseAtRequired: 'Define la hora de fin.',
   exceptionsOpenHoursOrder: 'La hora de cierre debe ser posterior a la hora de inicio.',
   exceptionsOpenHoursHelper: 'Si marcas «Abrir ese día», define la hora de inicio y de fin.',
   exceptionsLoadError:
@@ -375,16 +388,19 @@ export const CALENDAR_SETTINGS_COPY = {
   exceptionsClosedStatus: 'Cerrado',
   exceptionsEmptyTitle: 'Sin festivos ni cierres especiales',
   exceptionsEmptyDescription: 'No hay festivos ni cierres especiales registrados para tu empresa.',
-  eventualitiesEyebrow: 'Paso 4 · Cambios puntuales',
+  eventualitiesEyebrow: 'Cambios puntuales',
   eventualitiesTitle: 'Cambios puntuales de disponibilidad',
   eventualitiesDescription:
     'Registra ajustes temporales para personas o turnos sin alterar el horario base de la empresa.',
   eventualitiesLoadingStatus: 'Cargando cambios puntuales de disponibilidad.',
   eventualitiesLoadError:
     'No se pudieron cargar los cambios puntuales de disponibilidad. Intenta de nuevo.',
+  eventualitiesCursorUnavailable:
+    'El servidor no habilitó carga progresiva para este listado. Actualiza la vista o solicita soporte técnico.',
   eventualitiesUsersUnavailableTitle: 'Directorio de personal no disponible',
   eventualitiesUsersUnavailableDescription:
     'Puedes revisar la lista actual, pero espera a que esta vista se actualice antes de registrar un nuevo cambio puntual.',
+  eventualitiesDirectoryRetryAction: 'Reintentar directorio',
   eventualitiesValidationRequired: 'Completa los campos obligatorios.',
   eventualitiesValidationDates: 'La fecha de inicio debe ser anterior a la fecha de fin.',
   eventualitiesFormTitle: 'Registrar un cambio puntual',
@@ -398,6 +414,10 @@ export const CALENDAR_SETTINGS_COPY = {
   eventualitiesTableEndsAtColumn: 'Fin',
   eventualitiesTableStatusColumn: 'Estado',
   eventualitiesTableActionsColumn: 'Acciones',
+  eventualitiesMobileScheduleLabel: 'Horario',
+  eventualitiesMobileScopeLabel: 'Alcance',
+  eventualitiesMobileScopeOrganization: 'Organización',
+  eventualitiesMobileScopeSite: 'Sede asociada',
   eventualitiesConfirmAction: 'Confirmar',
   eventualitiesCancelAction: 'Cancelar',
   eventualitiesDeleteAction: 'Eliminar',
@@ -412,7 +432,7 @@ export const CALENDAR_SETTINGS_COPY = {
   eventualitiesReasonPlaceholder: 'Motivo (opcional)',
   eventualitiesOriginLabel: 'Origen del aviso',
   eventualitiesOriginPlaceholder: 'Origen (opcional)',
-  eventualitiesRequiresReviewLabel: 'Requiere revisión administrativa',
+  eventualitiesRequiresReviewLabel: 'Requiere revisión de RR. HH.',
   eventualitiesSaveAction: 'Guardar cambio',
   eventualitiesSavingAction: 'Guardando cambio…',
   eventualitiesCreated: 'Cambio puntual registrado.',
@@ -427,6 +447,8 @@ export const CALENDAR_SETTINGS_COPY = {
   eventualitiesDeleteError: 'No se pudo eliminar el cambio puntual.',
   eventualitiesEmptyTitle: 'Sin cambios puntuales registrados',
   eventualitiesEmptyDescription: 'No hay cambios puntuales de disponibilidad registrados.',
+  eventualitiesOperationalScopeHint:
+    'Estos cambios son evidencia operativa puntual; no son gestión laboral ni modifican jornadas o condiciones laborales.',
   editorWeekdayColumn: 'Día',
   editorOpenColumn: 'Abierto',
   editorStartsAtColumn: 'Inicio',
@@ -440,6 +462,8 @@ export const CALENDAR_SETTINGS_COPY = {
   editorOpenAriaSuffix: 'abierto',
   editorStartsAtAriaSuffix: 'desde',
   editorEndsAtAriaSuffix: 'hasta',
+  editorTimeRequiredError: 'Define una hora de inicio y de fin para este día abierto.',
+  editorCloseAfterStartError: 'La hora de fin debe ser posterior a la hora de inicio.',
 } as const;
 
 export const FIELD_OPERATIONS_SETTINGS_COPY = {
@@ -583,38 +607,6 @@ export const SETTINGS_ACCESS_SHORTCUTS_COPY = {
     },
   },
 } as const;
-
-interface CalendarOperationalStatusInput {
-  openDaysCount: number;
-  activeSitesCount: number;
-  exceptionCount: number;
-}
-
-function formatCalendarCount(value: number, singular: string, plural: string): string {
-  return `${value} ${value === 1 ? singular : plural}`;
-}
-
-export function getCalendarOperationalStatusSummary({
-  openDaysCount,
-  activeSitesCount,
-  exceptionCount,
-}: CalendarOperationalStatusInput): string {
-  return [
-    formatCalendarCount(
-      openDaysCount,
-      'día abierto en horario base',
-      'días abiertos en horario base',
-    ),
-    formatCalendarCount(activeSitesCount, 'sede activa', 'sedes activas'),
-    formatCalendarCount(
-      exceptionCount,
-      'cierre por fecha registrado',
-      'cierres por fecha registrados',
-    ),
-  ]
-    .join(', ')
-    .replace(/, ([^,]*)$/, ' y $1.');
-}
 
 export function getOrganizationSiteTypeLabel(value: OrganizationSiteType): string {
   return ORGANIZATION_SITE_TYPE_LABELS[value] ?? value;

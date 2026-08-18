@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Save } from 'lucide-react';
+import { BusinessHoursWeekday } from '@iwana/shared';
 import { cn } from '@iwana/ui';
 import {
   Badge,
@@ -29,7 +31,11 @@ import {
 } from '@/components/shared/portal-ui';
 import {
   BusinessHoursWeekEditor,
+  areBusinessHoursEqual,
   buildBusinessHoursDraft,
+  getBusinessHoursFieldId,
+  validateBusinessHours,
+  type BusinessHoursValidationErrors,
   type BusinessHourDay,
 } from './BusinessHoursWeekEditor';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
@@ -39,10 +45,11 @@ const selectClassName = 'rounded-2xl shadow-sm dark:bg-dark-surface-2 md:min-w-[
 interface Props {
   sites: OrganizationSiteSummary[];
   canEdit: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
   className?: string | undefined;
 }
 
-export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
+export function CalendarSiteHoursPanel({ sites, canEdit, onDirtyChange, className }: Props) {
   const siteOptions: SelectOption[] = sites.map((site) => ({
     value: site.id,
     label: `${site.name} (${site.code})`,
@@ -54,17 +61,48 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<BusinessHoursValidationErrors>({});
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [siteChangePendingId, setSiteChangePendingId] = useState<string | null>(null);
   const siteSelectorId = 'calendar-site-selector';
   const siteSelectorHintId = 'calendar-site-selector-hint';
   const siteSelectorStatusId = 'calendar-site-selector-status';
   const selectedSiteIdRef = useRef(selectedSiteId);
   const loadRequestIdRef = useRef(0);
   const mutationRequestIdRef = useRef(0);
+  const hasSelectedSite = Boolean(
+    selectedSiteId && sites.some((site) => site.id === selectedSiteId),
+  );
+  const isDraftDirty =
+    siteDetail !== null && !areBusinessHoursEqual(draft, siteDetail.businessHours);
+
+  useEffect(() => {
+    onDirtyChange?.(siteDetail !== null && !areBusinessHoursEqual(draft, siteDetail.businessHours));
+  }, [draft, onDirtyChange, siteDetail]);
 
   function syncSelectedSiteId(nextSiteId: string) {
     selectedSiteIdRef.current = nextSiteId;
     setSelectedSiteId(nextSiteId);
+  }
+
+  function handleSiteSelectionChange(nextSiteId: string) {
+    if (nextSiteId === selectedSiteId) return;
+    if (isDraftDirty) {
+      setSiteChangePendingId(nextSiteId);
+      return;
+    }
+
+    applySiteSelection(nextSiteId);
+  }
+
+  function applySiteSelection(nextSiteId: string) {
+    setSiteChangePendingId(null);
+    syncSelectedSiteId(nextSiteId);
+    setSiteDetail(null);
+    setDraft(buildBusinessHoursDraft([]));
+    setValidationErrors({});
+    setFeedback(null);
+    setError(null);
   }
 
   function isActiveRequest(siteId: string, requestId: number) {
@@ -116,6 +154,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
       setIsLoadingDetail(false);
       setFeedback(null);
       setError(null);
+      setValidationErrors({});
       return;
     }
 
@@ -131,17 +170,38 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
       setDraft(buildBusinessHoursDraft([]));
       setFeedback(null);
       setError(null);
+      setValidationErrors({});
     }
   }, [selectedSiteId, sites]);
 
   useEffect(() => {
-    if (selectedSiteId && sites.some((site) => site.id === selectedSiteId)) {
+    if (selectedSiteId && hasSelectedSite) {
       void loadDetail(selectedSiteId);
     }
-  }, [selectedSiteId, loadDetail]);
+  }, [hasSelectedSite, selectedSiteId, loadDetail]);
 
   async function handleSaveOverride() {
     if (!siteDetail) return;
+    const nextValidationErrors = validateBusinessHours(draft);
+    if (Object.keys(nextValidationErrors).length > 0) {
+      setValidationErrors(nextValidationErrors);
+      setError(CALENDAR_SETTINGS_COPY.siteHoursValidationError);
+      const firstErrorDay = Object.keys(nextValidationErrors)[0];
+      const firstField = nextValidationErrors[firstErrorDay as keyof BusinessHoursValidationErrors]
+        ?.opensAt
+        ? 'opens'
+        : 'closes';
+      requestAnimationFrame(() =>
+        document
+          .getElementById(
+            getBusinessHoursFieldId('site', firstErrorDay as BusinessHoursWeekday, firstField),
+          )
+          ?.focus(),
+      );
+      return;
+    }
+
+    setValidationErrors({});
     const siteId = siteDetail.id;
     const requestId = mutationRequestIdRef.current + 1;
     mutationRequestIdRef.current = requestId;
@@ -166,6 +226,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
 
       setSiteDetail(updated);
       setDraft(buildBusinessHoursDraft(updated.businessHours));
+      onDirtyChange?.(false);
       setFeedback(CALENDAR_SETTINGS_COPY.siteSaveSuccess);
     } catch {
       if (!isActiveMutation(siteId, requestId)) {
@@ -198,6 +259,8 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
 
       setSiteDetail(updated);
       setDraft(buildBusinessHoursDraft(updated.businessHours));
+      setValidationErrors({});
+      onDirtyChange?.(false);
       setFeedback(CALENDAR_SETTINGS_COPY.siteClearSuccess);
     } catch {
       if (!isActiveMutation(siteId, requestId)) {
@@ -230,6 +293,15 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
             canEdit
               ? CALENDAR_SETTINGS_COPY.siteEmptyDescription
               : CALENDAR_SETTINGS_COPY.siteEmptyReadOnlyDescription
+          }
+          action={
+            canEdit ? (
+              <Button asChild variant="secondary" size="sm">
+                <Link href="/dashboard/settings/organization">
+                  {CALENDAR_SETTINGS_COPY.createSiteAction}
+                </Link>
+              </Button>
+            ) : undefined
           }
         />
       </PortalPanel>
@@ -282,7 +354,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
               }
               aria-label={CALENDAR_SETTINGS_COPY.siteSelectorLabel}
               value={selectedSiteId}
-              onChange={(e) => syncSelectedSiteId(e.target.value)}
+              onChange={(e) => handleSiteSelectionChange(e.target.value)}
               disabled={isSaving}
               options={siteOptions}
               className={selectClassName}
@@ -376,11 +448,53 @@ export function CalendarSiteHoursPanel({ sites, canEdit, className }: Props) {
             <BusinessHoursWeekEditor
               days={draft}
               canEdit={canEdit && !isSaving}
-              onChange={setDraft}
+              validationErrors={validationErrors}
+              idPrefix="site"
+              onChange={(nextDraft) => {
+                setDraft(nextDraft);
+                setValidationErrors({});
+                setError(null);
+              }}
             />
           </>
         ) : null}
       </PortalPanel>
+
+      <Dialog
+        open={siteChangePendingId !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSiteChangePendingId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{CALENDAR_SETTINGS_COPY.siteChangeDialogTitle}</DialogTitle>
+            <DialogDescription>
+              {CALENDAR_SETTINGS_COPY.siteChangeDialogDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11"
+              onClick={() => setSiteChangePendingId(null)}
+            >
+              {CALENDAR_SETTINGS_COPY.cancelAction}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="min-h-11"
+              onClick={() => {
+                if (siteChangePendingId) applySiteSelection(siteChangePendingId);
+              }}
+            >
+              {CALENDAR_SETTINGS_COPY.siteChangeDialogConfirm}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={clearDialogOpen}

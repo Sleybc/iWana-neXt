@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import { axe } from 'jest-axe';
 import { emptyPageListMeta } from '@/lib/list-meta';
 import { OperationalEventualitiesPanel } from './OperationalEventualitiesPanel';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
@@ -65,10 +66,19 @@ jest.mock('@/components/shared/portal-ui', () => ({
       {title} — {description}
     </div>
   ),
-  PortalAlert: ({ title, description }: { title: string; description?: React.ReactNode }) => (
+  PortalAlert: ({
+    title,
+    description,
+    action,
+  }: {
+    title: string;
+    description?: React.ReactNode;
+    action?: React.ReactNode;
+  }) => (
     <div data-testid="portal-alert">
       <span>{title}</span>
       {description ? <span>{description}</span> : null}
+      {action}
     </div>
   ),
   PortalTablePager: ({
@@ -119,7 +129,6 @@ jest.mock('@/components/shared/portal-ui', () => ({
   portalDataTableBodyClassName: 'portal-table-body',
   portalDataTableCellClassName: 'portal-table-cell',
   portalCheckboxClassName: 'portal-checkbox',
-  portalDatePickerButtonClassName: 'portal-date-picker-button',
   portalFieldClassName: 'portal-field',
   portalSelectTriggerClassName: 'portal-select-trigger',
   portalWellClassName: 'portal-well',
@@ -303,6 +312,35 @@ describe('OperationalEventualitiesPanel', () => {
       });
       expect(screen.queryByTestId('portal-skeleton-block')).not.toBeInTheDocument();
       expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 20 }));
+      expect(mockList).toHaveBeenCalledTimes(1);
+    });
+
+    it('no presenta violaciones de accesibilidad con el panel real', async () => {
+      const { container } = render(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('eventualities-table')).toBeInTheDocument();
+      });
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('hace una sola llamada inicial aunque cambie el modo de acceso del listado', async () => {
+      mockList.mockResolvedValueOnce({
+        data: MOCK_ITEMS,
+        meta: {
+          ...emptyPageListMeta({ page: 1, limit: 20, total: 1, totalPages: 1, hasMore: false }),
+          capabilities: { randomAccess: false, sortableFields: [] },
+        },
+      });
+
+      render(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('eventualities-table')).toBeInTheDocument();
+      });
+
+      expect(mockList).toHaveBeenCalledTimes(1);
     });
 
     it('muestra estado vacío cuando no hay cambios puntuales', async () => {
@@ -379,10 +417,32 @@ describe('OperationalEventualitiesPanel', () => {
         screen.getByText(CALENDAR_SETTINGS_COPY.eventualitiesUsersUnavailableDescription),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(CALENDAR_SETTINGS_COPY.eventualitiesUnknownUserLabel),
+        within(screen.getByTestId('eventualities-desktop-table')).getByText(
+          CALENDAR_SETTINGS_COPY.eventualitiesUnknownUserLabel,
+        ),
       ).toBeInTheDocument();
       expect(screen.queryByTestId('add-eventuality-btn')).not.toBeInTheDocument();
     });
+  });
+
+  it('distingue error de estado vacío y permite reintentar el listado', async () => {
+    mockList.mockRejectedValueOnce(new Error('Network error')).mockResolvedValueOnce({
+      data: MOCK_ITEMS,
+      meta: emptyPageListMeta({ page: 1, limit: 20, total: 1, totalPages: 1, hasMore: false }),
+    });
+
+    render(<OperationalEventualitiesPanel canEdit={false} />);
+
+    await waitFor(() => expect(screen.getByTestId('portal-alert')).toBeInTheDocument());
+    expect(screen.queryByTestId('portal-empty-state')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('portal-alert')).toHaveLength(1);
+    expect(screen.queryByTestId('eventualities-load-error-state')).not.toBeInTheDocument();
+
+    const retry = screen.getAllByRole('button', { name: 'Reintentar' })[0];
+    expect(retry).toBeDefined();
+    fireEvent.click(retry!);
+
+    await waitFor(() => expect(screen.getByTestId('eventualities-table')).toBeInTheDocument());
   });
 
   describe('control de acceso', () => {
@@ -409,6 +469,22 @@ describe('OperationalEventualitiesPanel', () => {
         expect(screen.queryByTestId(`confirm-eventuality-ev-1`)).not.toBeInTheDocument();
       });
     });
+  });
+
+  it('muestra una lista apilada en mobile con horario, alcance, estado y acciones operables', async () => {
+    render(<OperationalEventualitiesPanel canEdit={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eventualities-mobile-list')).toBeInTheDocument();
+    });
+
+    const mobileList = screen.getByTestId('eventualities-mobile-list');
+    const mobileCard = within(mobileList).getByTestId('eventuality-mobile-card-ev-1');
+    expect(mobileCard).toHaveTextContent('Carlos Pérez');
+    expect(mobileCard).toHaveTextContent('Organización');
+    expect(mobileCard).toHaveTextContent('Pendiente');
+    expect(within(mobileCard).getByRole('button', { name: 'Confirmar' })).toHaveClass('min-h-11');
+    expect(within(mobileCard).getByRole('button', { name: 'Cancelar' })).toHaveClass('min-h-11');
   });
 
   describe('formulario de creación', () => {
@@ -556,6 +632,34 @@ describe('OperationalEventualitiesPanel', () => {
   });
 
   describe('acciones sobre cambios puntuales', () => {
+    it('protege el listado si el servidor declara randomAccess=false sin contrato cursor', async () => {
+      mockList.mockResolvedValueOnce({
+        data: MOCK_ITEMS,
+        meta: {
+          ...emptyPageListMeta({
+            page: null,
+            limit: 20,
+            total: 2,
+            totalPages: null,
+            hasMore: true,
+          }),
+          mode: 'cursor',
+          capabilities: { randomAccess: false, sortableFields: [] },
+          nextCursor: 'cursor-no-admitido-por-el-cliente',
+        },
+      });
+
+      render(<OperationalEventualitiesPanel canEdit={false} />);
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(CALENDAR_SETTINGS_COPY.eventualitiesCursorUnavailable),
+        ).toBeInTheDocument(),
+      );
+      expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+      expect(mockList).toHaveBeenCalledTimes(1);
+    });
+
     it('confirma un cambio puntual pendiente', async () => {
       mockUpdateStatus.mockResolvedValue({ ...MOCK_ITEMS[0], status: 'confirmed' });
 

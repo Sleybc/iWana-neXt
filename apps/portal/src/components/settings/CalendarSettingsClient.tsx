@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCcw } from 'lucide-react';
 import { UserRole } from '@iwana/shared';
+import { Button } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -15,12 +16,9 @@ import {
   PortalAlert,
   PortalPanel,
   PortalSkeletonBlock,
-  portalWellClassName,
+  interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
-import {
-  CALENDAR_SETTINGS_COPY,
-  getCalendarOperationalStatusSummary,
-} from './mod00-settings-labels';
+import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 import { CalendarOrganizationHoursPanel } from './CalendarOrganizationHoursPanel';
 import { CalendarSiteHoursPanel } from './CalendarSiteHoursPanel';
 import { CalendarExceptionsPanel } from './CalendarExceptionsPanel';
@@ -40,6 +38,12 @@ interface CalendarResourceErrors {
   exceptions: string | null;
 }
 
+interface CalendarResourceLoaded {
+  companyHours: boolean;
+  sites: boolean;
+  exceptions: boolean;
+}
+
 const emptyResourceErrors: CalendarResourceErrors = {
   companyHours: null,
   sites: null,
@@ -52,28 +56,41 @@ export function CalendarSettingsClient() {
   const [sites, setSites] = useState<OrganizationSiteSummary[]>([]);
   const [exceptions, setExceptions] = useState<OrganizationBusinessHoursExceptionSnapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resourceErrors, setResourceErrors] = useState<CalendarResourceErrors>(emptyResourceErrors);
+  const [loadedResources, setLoadedResources] = useState<CalendarResourceLoaded>({
+    companyHours: false,
+    sites: false,
+    exceptions: false,
+  });
+  const [pendingChanges, setPendingChanges] = useState({ organization: false, site: false });
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+  const loadRequestSequenceRef = useRef(0);
+
+  const handleOrganizationDirtyChange = useCallback((isDirty: boolean) => {
+    setPendingChanges((current) =>
+      current.organization === isDirty ? current : { ...current, organization: isDirty },
+    );
+  }, []);
+  const handleSiteDirtyChange = useCallback((isDirty: boolean) => {
+    setPendingChanges((current) =>
+      current.site === isDirty ? current : { ...current, site: isDirty },
+    );
+  }, []);
 
   const canEdit = user?.role === UserRole.ADMIN;
   const canRead = user?.role ? calendarReadableRoles.has(user.role as UserRole) : false;
-  const activeSitesCount = sites.filter((site) => site.isActive).length;
-  const openDaysCount = companyHours.filter((day) => day.isOpen).length;
-  const hasPartialLoadFailure = Object.values(resourceErrors).some(
-    (resourceError) => resourceError,
-  );
-  const operationalStatusSummary = hasPartialLoadFailure
-    ? CALENDAR_SETTINGS_COPY.pagePartialStatus
-    : getCalendarOperationalStatusSummary({
-        openDaysCount,
-        activeSitesCount,
-        exceptionCount: exceptions.length,
-      });
+  const loadData = useCallback(async (options?: { initial?: boolean }) => {
+    const requestSequence = loadRequestSequenceRef.current + 1;
+    loadRequestSequenceRef.current = requestSequence;
+    const initial = options?.initial === true;
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
+    if (initial) setIsLoading(true);
+    else setIsRefreshing(true);
     setError(null);
     setResourceErrors(emptyResourceErrors);
+    setRefreshNotice(null);
 
     try {
       // Carga los tres recursos en paralelo para minimizar latencia
@@ -83,22 +100,21 @@ export function CalendarSettingsClient() {
         organizationApi.getExceptions(),
       ]);
 
+      if (loadRequestSequenceRef.current !== requestSequence) return;
+
       if (hoursResult.status === 'fulfilled') {
         setCompanyHours(hoursResult.value);
-      } else {
-        setCompanyHours([]);
+        setLoadedResources((current) => ({ ...current, companyHours: true }));
       }
 
       if (sitesResult.status === 'fulfilled') {
         setSites(sitesResult.value.data);
-      } else {
-        setSites([]);
+        setLoadedResources((current) => ({ ...current, sites: true }));
       }
 
       if (exceptionsResult.status === 'fulfilled') {
         setExceptions(exceptionsResult.value);
-      } else {
-        setExceptions([]);
+        setLoadedResources((current) => ({ ...current, exceptions: true }));
       }
 
       setResourceErrors({
@@ -122,7 +138,10 @@ export function CalendarSettingsClient() {
     } catch {
       setError(CALENDAR_SETTINGS_COPY.calendarLoadError);
     } finally {
-      setIsLoading(false);
+      if (loadRequestSequenceRef.current === requestSequence) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, []);
 
@@ -134,8 +153,17 @@ export function CalendarSettingsClient() {
       return;
     }
 
-    void loadData();
+    void loadData({ initial: true });
   }, [authLoading, canRead, loadData, user]);
+
+  function handleRefresh() {
+    if (pendingChanges.organization || pendingChanges.site) {
+      setRefreshNotice(CALENDAR_SETTINGS_COPY.refreshPendingChangesWarning);
+      return;
+    }
+
+    void loadData();
+  }
 
   if (authLoading || isLoading) {
     return (
@@ -205,6 +233,18 @@ export function CalendarSettingsClient() {
           variant="warning"
           title={CALENDAR_SETTINGS_COPY.calendarBlockUnavailableTitle}
           description={unavailableDescription}
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className={interactiveFocusClassName}
+              onClick={handleRefresh}
+            >
+              <RefreshCcw className="h-4 w-4" aria-hidden={true} />
+              {CALENDAR_SETTINGS_COPY.calendarRetryAction}
+            </Button>
+          }
         />
       </PortalPanel>
     );
@@ -215,24 +255,9 @@ export function CalendarSettingsClient() {
       <PageHeader
         title={CALENDAR_SETTINGS_COPY.pageTitle}
         subtitle={CALENDAR_SETTINGS_COPY.pageSubtitle}
-        actions={
-          <button
-            type="button"
-            onClick={() => void loadData()}
-            className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1.5 text-sm font-medium text-gray-500 transition hover:border-gray-200 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:border-dark-border dark:hover:bg-dark-surface-3 dark:hover:text-white"
-          >
-            <RefreshCcw className="h-4 w-4" aria-hidden={true} />
-            {CALENDAR_SETTINGS_COPY.refreshAction}
-          </button>
-        }
       />
 
-      <div data-testid="calendar-operational-status" className={`${portalWellClassName} py-2.5`}>
-        <p className="portal-eyebrow text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          {CALENDAR_SETTINGS_COPY.pageStatusEyebrow}
-        </p>
-        <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">{operationalStatusSummary}</p>
-      </div>
+      {refreshNotice ? <PortalAlert variant="warning" title={refreshNotice} /> : null}
 
       {error ? (
         <PortalAlert
@@ -241,89 +266,134 @@ export function CalendarSettingsClient() {
           title={CALENDAR_SETTINGS_COPY.calendarLoadFailedTitle}
           description={error}
           action={
-            <button
+            <Button
               type="button"
-              onClick={() => void loadData()}
-              className="inline-flex items-center gap-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
+              variant="secondary"
+              size="sm"
+              onClick={handleRefresh}
+              className={interactiveFocusClassName}
             >
               <RefreshCcw className="h-4 w-4" aria-hidden={true} />
               {CALENDAR_SETTINGS_COPY.calendarRetryAction}
-            </button>
+            </Button>
           }
         />
       ) : null}
 
       <section
         data-testid="calendar-shell-grid"
-        className="grid gap-4 xl:grid-cols-2 xl:items-start"
+        className="grid gap-8 xl:grid-cols-2 xl:items-start xl:gap-6"
         aria-label="Distribución del calendario operativo"
+        aria-busy={isRefreshing}
       >
-        <div
-          data-testid="calendar-shell-primary"
-          role="group"
-          aria-label="Columna izquierda del calendario operativo"
-          className="contents xl:flex xl:flex-col xl:space-y-0 [&>*:first-child]:rounded-b-none [&>*:last-child]:rounded-t-none [&>*:last-child]:border-t-0"
+        <section
+          data-testid="calendar-lane-1-2"
+          className="min-w-0"
+          aria-labelledby="calendar-lane-1-2-title"
         >
-          {resourceErrors.companyHours ? (
-            renderUnavailablePanel({
-              className: 'order-1',
-              eyebrow: CALENDAR_SETTINGS_COPY.organizationEyebrow,
-              title: CALENDAR_SETTINGS_COPY.organizationTitle,
-              description: CALENDAR_SETTINGS_COPY.organizationDescription,
-              unavailableDescription: resourceErrors.companyHours,
-            })
-          ) : (
-            <CalendarOrganizationHoursPanel
-              className="order-1"
-              companyHours={companyHours}
-              canEdit={canEdit}
-              onUpdated={setCompanyHours}
-            />
-          )}
+          <p id="calendar-lane-1-2-title" className="portal-eyebrow-muted">
+            {CALENDAR_SETTINGS_COPY.calendarRoutineLaneTitle}
+          </p>
+          <div className="mt-3 flex flex-col gap-4">
+            <div
+              data-testid="calendar-step-1"
+              role="group"
+              aria-label={CALENDAR_SETTINGS_COPY.organizationTitle}
+              className="min-w-0"
+            >
+              {resourceErrors.companyHours && !loadedResources.companyHours ? (
+                renderUnavailablePanel({
+                  eyebrow: CALENDAR_SETTINGS_COPY.organizationEyebrow,
+                  title: CALENDAR_SETTINGS_COPY.organizationTitle,
+                  description: CALENDAR_SETTINGS_COPY.organizationDescription,
+                  unavailableDescription: resourceErrors.companyHours,
+                })
+              ) : (
+                <CalendarOrganizationHoursPanel
+                  companyHours={companyHours}
+                  canEdit={canEdit && !isRefreshing}
+                  onUpdated={setCompanyHours}
+                  onDirtyChange={handleOrganizationDirtyChange}
+                />
+              )}
+              {resourceErrors.companyHours && loadedResources.companyHours ? (
+                <PortalAlert variant="warning" title={resourceErrors.companyHours} />
+              ) : null}
+            </div>
 
-          {resourceErrors.sites || resourceErrors.exceptions ? (
-            renderUnavailablePanel({
-              className: 'order-3',
-              eyebrow: CALENDAR_SETTINGS_COPY.exceptionsEyebrow,
-              title: CALENDAR_SETTINGS_COPY.exceptionsTitle,
-              description: CALENDAR_SETTINGS_COPY.exceptionsDescription,
-              unavailableDescription:
-                resourceErrors.exceptions ??
-                resourceErrors.sites ??
-                CALENDAR_SETTINGS_COPY.exceptionsLoadError,
-            })
-          ) : (
-            <CalendarExceptionsPanel
-              className="order-3"
-              exceptions={exceptions}
-              sites={sites}
-              canEdit={canEdit}
-              onCreated={(exc) => setExceptions((current) => [...current, exc])}
-              onDeleted={(id) => setExceptions((current) => current.filter((e) => e.id !== id))}
-            />
-          )}
-        </div>
+            <div
+              data-testid="calendar-step-2"
+              role="group"
+              aria-label={CALENDAR_SETTINGS_COPY.sitePanelTitle}
+              className="min-w-0"
+            >
+              {resourceErrors.sites && !loadedResources.sites ? (
+                renderUnavailablePanel({
+                  eyebrow: CALENDAR_SETTINGS_COPY.siteEyebrow,
+                  title: CALENDAR_SETTINGS_COPY.sitePanelTitle,
+                  description: CALENDAR_SETTINGS_COPY.sitePanelDescription,
+                  unavailableDescription: resourceErrors.sites,
+                })
+              ) : (
+                <CalendarSiteHoursPanel
+                  sites={sites}
+                  canEdit={canEdit && !isRefreshing}
+                  onDirtyChange={handleSiteDirtyChange}
+                />
+              )}
+              {resourceErrors.sites && loadedResources.sites ? (
+                <PortalAlert variant="warning" title={resourceErrors.sites} />
+              ) : null}
+            </div>
+          </div>
+        </section>
 
-        <div
-          data-testid="calendar-shell-secondary"
-          role="group"
-          aria-label="Columna derecha del calendario operativo"
-          className="contents xl:flex xl:flex-col xl:space-y-0 [&>*:first-child]:rounded-b-none [&>*:last-child]:rounded-t-none [&>*:last-child]:border-t-0"
+        <section
+          data-testid="calendar-lane-3-4"
+          className="min-w-0"
+          aria-labelledby="calendar-lane-3-4-title"
         >
-          {resourceErrors.sites ? (
-            renderUnavailablePanel({
-              className: 'order-2',
-              eyebrow: CALENDAR_SETTINGS_COPY.siteEyebrow,
-              title: CALENDAR_SETTINGS_COPY.sitePanelTitle,
-              description: CALENDAR_SETTINGS_COPY.sitePanelDescription,
-              unavailableDescription: resourceErrors.sites,
-            })
-          ) : (
-            <CalendarSiteHoursPanel className="order-2" sites={sites} canEdit={canEdit} />
-          )}
+          <p id="calendar-lane-3-4-title" className="portal-eyebrow-muted">
+            {CALENDAR_SETTINGS_COPY.calendarDateChangesLaneTitle}
+          </p>
+          <div className="mt-3 flex flex-col gap-4">
+            <div
+              data-testid="calendar-step-3"
+              role="group"
+              aria-label={CALENDAR_SETTINGS_COPY.exceptionsTitle}
+              className="min-w-0"
+            >
+              {resourceErrors.exceptions && !loadedResources.exceptions ? (
+                renderUnavailablePanel({
+                  eyebrow: CALENDAR_SETTINGS_COPY.exceptionsEyebrow,
+                  title: CALENDAR_SETTINGS_COPY.exceptionsTitle,
+                  description: CALENDAR_SETTINGS_COPY.exceptionsDescription,
+                  unavailableDescription: resourceErrors.exceptions,
+                })
+              ) : (
+                <CalendarExceptionsPanel
+                  exceptions={exceptions}
+                  sites={sites}
+                  canEdit={canEdit && !isRefreshing}
+                  onCreated={(exc) => setExceptions((current) => [...current, exc])}
+                  onDeleted={(id) => setExceptions((current) => current.filter((e) => e.id !== id))}
+                />
+              )}
+              {resourceErrors.exceptions && loadedResources.exceptions ? (
+                <PortalAlert variant="warning" title={resourceErrors.exceptions} />
+              ) : null}
+            </div>
 
-          <OperationalEventualitiesPanel className="order-4" canEdit={canEdit} />
-        </div>
+            <div
+              data-testid="calendar-step-4"
+              role="group"
+              aria-label={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
+              className="min-w-0"
+            >
+              <OperationalEventualitiesPanel canEdit={canEdit && !isRefreshing} />
+            </div>
+          </div>
+        </section>
       </section>
     </div>
   );

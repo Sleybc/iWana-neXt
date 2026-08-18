@@ -7,6 +7,7 @@ import type { DropdownProps } from 'react-day-picker';
 import { es } from 'react-day-picker/locale';
 
 import { cn } from '../lib/utils';
+import { interactiveFocusClassName } from '../focus';
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
@@ -17,12 +18,16 @@ export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 function CalendarDropdown({ value, onChange, options, ...rest }: DropdownProps) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeIndex, setActiveIndex] = React.useState(0);
 
   // Cierra al hacer click fuera
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener('mousedown', handler);
@@ -30,13 +35,88 @@ function CalendarDropdown({ value, onChange, options, ...rest }: DropdownProps) 
   }, []);
 
   const selected = options?.find((o) => o.value === Number(value));
+  const enabledOptions = React.useMemo(
+    () => options?.filter((option) => !option.disabled) ?? [],
+    [options],
+  );
+
+  React.useEffect(() => {
+    if (!open) return;
+    const selectedIndex = enabledOptions.findIndex((option) => option.value === Number(value));
+    const nextIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    setActiveIndex(nextIndex);
+    requestAnimationFrame(() => optionRefs.current[nextIndex]?.focus());
+  }, [enabledOptions, open, value]);
+
+  function closeDropdown(): void {
+    setOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  function selectOption(option: NonNullable<DropdownProps['options']>[number]): void {
+    if (option.disabled || !onChange) return;
+    const synth = {
+      target: { value: String(option.value) },
+    } as React.ChangeEvent<HTMLSelectElement>;
+    onChange(synth);
+    closeDropdown();
+  }
+
+  function moveActive(delta: number): void {
+    if (enabledOptions.length === 0) return;
+    const nextIndex = Math.min(enabledOptions.length - 1, Math.max(0, activeIndex + delta));
+    setActiveIndex(nextIndex);
+    requestAnimationFrame(() => optionRefs.current[nextIndex]?.focus());
+  }
+
+  function handleTriggerKeyDown(event: React.KeyboardEvent<HTMLButtonElement>): void {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+      return;
+    }
+    if (event.key === 'Escape' && open) {
+      event.preventDefault();
+      closeDropdown();
+    }
+  }
+
+  function handleOptionKeyDown(event: React.KeyboardEvent<HTMLButtonElement>): void {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveActive(event.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      const nextIndex = event.key === 'Home' ? 0 : Math.max(0, enabledOptions.length - 1);
+      setActiveIndex(nextIndex);
+      requestAnimationFrame(() => optionRefs.current[nextIndex]?.focus());
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      const option = enabledOptions[activeIndex];
+      if (option) selectOption(option);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeDropdown();
+    }
+  }
 
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 rounded px-1.5 py-1 text-sm font-semibold text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-dark-surface-3"
+        ref={triggerRef}
+        onClick={() => (open ? closeDropdown() : setOpen(true))}
+        onKeyDown={handleTriggerKeyDown}
+        className={cn(
+          'flex items-center gap-1 rounded px-1.5 py-1 text-sm font-semibold text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-surface-3',
+          interactiveFocusClassName,
+        )}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={rest['aria-label']}
@@ -48,35 +128,39 @@ function CalendarDropdown({ value, onChange, options, ...rest }: DropdownProps) 
       {open && (
         <ul
           role="listbox"
-          className="absolute top-full left-0 z-10 mt-1 max-h-52 min-w-[6rem] overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-border-2 dark:bg-dark-surface-2"
+          aria-label={rest['aria-label']}
+          className="absolute top-full left-0 z-(--z-popover) mt-1 max-h-52 min-w-[6rem] overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-(--shadow-iwana-lg) dark:border-dark-border-2 dark:bg-dark-surface-2"
         >
-          {options?.map((opt) => (
-            <li
-              key={opt.value}
-              role="option"
-              aria-selected={opt.value === Number(value)}
-              aria-disabled={opt.disabled}
-              className={cn(
-                'cursor-pointer px-3 py-1.5 text-sm transition-colors',
-                opt.value === Number(value)
-                  ? 'bg-iwana-primary font-medium text-white'
-                  : 'text-gray-800 hover:bg-gray-100 dark:text-white dark:hover:bg-dark-surface-3',
-                opt.disabled && 'cursor-not-allowed opacity-40',
-              )}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                if (!opt.disabled && onChange) {
-                  const synth = {
-                    target: { value: String(opt.value) },
-                  } as React.ChangeEvent<HTMLSelectElement>;
-                  onChange(synth);
-                  setOpen(false);
-                }
-              }}
-            >
-              {opt.label}
-            </li>
-          ))}
+          {(options ?? []).map((opt) => {
+            const enabledIndex = enabledOptions.findIndex((option) => option.value === opt.value);
+
+            return (
+              <button
+                key={opt.value}
+                ref={(element) => {
+                  if (enabledIndex >= 0) optionRefs.current[enabledIndex] = element;
+                }}
+                type="button"
+                role="option"
+                aria-selected={opt.value === Number(value)}
+                aria-disabled={opt.disabled}
+                tabIndex={enabledIndex === activeIndex ? 0 : -1}
+                disabled={opt.disabled}
+                className={cn(
+                  'block w-full cursor-pointer px-3 py-1.5 text-left text-sm transition-colors focus-visible:ring-inset',
+                  interactiveFocusClassName,
+                  opt.value === Number(value)
+                    ? 'bg-iwana-primary font-medium text-white'
+                    : 'text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-surface-3',
+                  opt.disabled && 'cursor-not-allowed opacity-40',
+                )}
+                onClick={() => selectOption(opt)}
+                onKeyDown={handleOptionKeyDown}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -127,13 +211,15 @@ function Calendar({
         button_previous: cn(
           'inline-flex h-7 w-7 items-center justify-center rounded-md',
           'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100',
-          'dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white dark:hover:bg-dark-surface-2',
+          'dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-2',
+          interactiveFocusClassName,
           'disabled:opacity-30 disabled:cursor-not-allowed',
         ),
         button_next: cn(
           'inline-flex h-7 w-7 items-center justify-center rounded-md',
           'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100',
-          'dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white dark:hover:bg-dark-surface-2',
+          'dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-2',
+          interactiveFocusClassName,
           'disabled:opacity-30 disabled:cursor-not-allowed',
         ),
 
@@ -148,9 +234,9 @@ function Calendar({
         day: 'h-9 w-9 p-0 text-center text-sm',
         day_button: cn(
           'inline-flex h-9 w-9 items-center justify-center rounded-lg text-sm font-normal',
-          'text-gray-900 dark:text-white',
+          'text-gray-900 dark:text-gray-400',
           'hover:bg-gray-100 dark:hover:bg-dark-surface-3',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary',
+          interactiveFocusClassName,
           'transition-colors duration-150',
         ),
 

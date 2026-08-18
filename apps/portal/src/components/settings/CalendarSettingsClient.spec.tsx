@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { UserRole } from '@iwana/shared';
 import { CalendarSettingsClient } from './CalendarSettingsClient';
 
@@ -36,9 +36,29 @@ jest.spyOn(console, 'error').mockImplementation(() => undefined);
 jest.mock('./OperationalEventualitiesPanel', () => ({
   OperationalEventualitiesPanel: () => (
     <div data-testid="operational-eventualities-panel">
-      <p>Paso 4 · Cambios puntuales</p>
+      <p>Cambios puntuales</p>
       <p>Cambios puntuales de disponibilidad</p>
     </div>
+  ),
+}));
+
+jest.mock('./CalendarOrganizationHoursPanel', () => ({
+  CalendarOrganizationHoursPanel: ({
+    onDirtyChange,
+  }: {
+    onDirtyChange?: (isDirty: boolean) => void;
+  }) => (
+    <section>
+      <p>Base empresarial</p>
+      <h2>Horario base de la empresa</h2>
+      <p>
+        Define el horario semanal que servirá como referencia para toda la empresa y para las sedes
+        que no tengan un ajuste propio.
+      </p>
+      <button type="button" onClick={() => onDirtyChange?.(true)}>
+        Simular cambios pendientes
+      </button>
+    </section>
   ),
 }));
 
@@ -125,27 +145,20 @@ describe('CalendarSettingsClient', () => {
 
     expect(
       await screen.findByText(
-        'Ordena el horario base de tu empresa y luego ajusta sedes, cierres por fecha y cambios puntuales desde una sola vista.',
+        'Consulta en una sola vista los horarios habituales y los cambios por fecha que afectan la operación.',
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Ordena el horario base de tu empresa y luego ajusta sedes, cierres por fecha y cambios puntuales desde una sola vista.',
+        'Consulta en una sola vista los horarios habituales y los cambios por fecha que afectan la operación.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Estado operativo')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        '1 día abierto en horario base, 1 sede activa y 1 cierre por fecha registrado.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('calendar-operational-status')).toBeInTheDocument();
   });
 
   it('renderiza el panel de horario base de empresa', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Paso 1 · Horario base')).toBeInTheDocument();
+    expect(await screen.findByText('Base empresarial')).toBeInTheDocument();
     expect(await screen.findByText('Horario base de la empresa')).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -157,7 +170,7 @@ describe('CalendarSettingsClient', () => {
   it('renderiza el panel de horario por sede', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Paso 2 · Horarios por sede')).toBeInTheDocument();
+    expect(await screen.findByText('Por sede')).toBeInTheDocument();
     expect(await screen.findByText('Horarios por sede')).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -169,29 +182,40 @@ describe('CalendarSettingsClient', () => {
   it('renderiza el panel de festivos y cierres especiales', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Paso 3 · Cierres por fecha')).toBeInTheDocument();
+    expect(await screen.findByText('Por fecha')).toBeInTheDocument();
     expect(await screen.findByText('Cierres por fecha y aperturas especiales')).toBeInTheDocument();
   });
 
-  it('agrupa horarios estructurales y relega capas operativas secundarias', async () => {
+  it('agrupa los carriles 1–2 y 3–4 y mantiene el orden DOM', async () => {
     render(<CalendarSettingsClient />);
 
     await screen.findByText('Horario base de la empresa');
 
     expect(screen.getByTestId('calendar-shell-grid')).toBeInTheDocument();
-
-    const primaryGroup = screen.getByTestId('calendar-shell-primary');
-    const secondaryGroup = screen.getByTestId('calendar-shell-secondary');
-
-    expect(within(primaryGroup).getByText('Horario base de la empresa')).toBeInTheDocument();
     expect(
-      within(primaryGroup).getByText('Cierres por fecha y aperturas especiales'),
-    ).toBeInTheDocument();
-    expect(within(secondaryGroup).getByText('Horarios por sede')).toBeInTheDocument();
-    expect(within(secondaryGroup).queryByText('Programación de visitas')).not.toBeInTheDocument();
+      Array.from(
+        screen.getByTestId('calendar-lane-1-2').querySelectorAll('[data-testid^="calendar-step-"]'),
+      ).map((step) => step.getAttribute('data-testid')),
+    ).toEqual(['calendar-step-1', 'calendar-step-2']);
     expect(
-      within(secondaryGroup).getByText('Cambios puntuales de disponibilidad'),
-    ).toBeInTheDocument();
+      Array.from(
+        screen.getByTestId('calendar-lane-3-4').querySelectorAll('[data-testid^="calendar-step-"]'),
+      ).map((step) => step.getAttribute('data-testid')),
+    ).toEqual(['calendar-step-3', 'calendar-step-4']);
+
+    const steps = Array.from(
+      screen.getByTestId('calendar-shell-grid').querySelectorAll('[data-testid^="calendar-step-"]'),
+    );
+    expect(steps.map((step) => step.getAttribute('data-testid'))).toEqual([
+      'calendar-step-1',
+      'calendar-step-2',
+      'calendar-step-3',
+      'calendar-step-4',
+    ]);
+    expect(steps[0]).toHaveTextContent('Horario base de la empresa');
+    expect(steps[1]).toHaveTextContent('Horarios por sede');
+    expect(steps[2]).toHaveTextContent('Cierres por fecha y aperturas especiales');
+    expect(steps[3]).toHaveTextContent('Cambios puntuales de disponibilidad');
   });
 
   it('llama a getCompanyHours, list y getExceptions al montar', async () => {
@@ -251,14 +275,38 @@ describe('CalendarSettingsClient', () => {
         'No pudimos cargar el horario base. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Algunos bloques no se pudieron cargar. Actualiza la vista antes de confirmar el estado operativo o guardar cambios.',
-      ),
-    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Guardar horario base' })).not.toBeInTheDocument();
     expect(screen.getByText('Horarios por sede')).toBeInTheDocument();
     expect(screen.getByText('Cierres por fecha y aperturas especiales')).toBeInTheDocument();
+  });
+
+  it('reintenta una carga parcial desde el bloque afectado', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: {
+        getCompanyHours: jest.Mock;
+      };
+    };
+
+    organizationApi.getCompanyHours
+      .mockRejectedValueOnce(new Error('error'))
+      .mockResolvedValue(mockCompanyHours);
+
+    render(<CalendarSettingsClient />);
+    await screen.findByText(
+      'No pudimos cargar el horario base. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
+    );
+
+    screen.getAllByRole('button', { name: 'Reintentar' })[0]?.click();
+
+    await waitFor(() => expect(organizationApi.getCompanyHours).toHaveBeenCalledTimes(2));
+  });
+
+  it('no muestra Actualizar dentro del contenedor del título', async () => {
+    render(<CalendarSettingsClient />);
+    await screen.findByText('Calendario operativo y jornadas');
+
+    expect(screen.queryByRole('button', { name: 'Actualizar' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Resumen del calendario')).not.toBeInTheDocument();
   });
 
   it('muestra alerta de acceso restringido para roles sin permiso', () => {

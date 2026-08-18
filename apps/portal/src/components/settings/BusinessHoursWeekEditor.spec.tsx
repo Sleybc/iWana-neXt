@@ -1,9 +1,11 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { BusinessHoursWeekday } from '@iwana/shared';
 import {
   BusinessHoursWeekEditor,
   buildBusinessHoursDraft,
   normalizeBusinessHourTime,
+  validateBusinessHours,
   type BusinessHourDay,
 } from './BusinessHoursWeekEditor';
 
@@ -129,17 +131,34 @@ describe('BusinessHoursWeekEditor', () => {
       );
     });
 
-    it('muestra valores de hora guardados en los inputs nativos', () => {
+    it('muestra los valores guardados en los triggers de hora', () => {
       renderEditor();
 
-      const opensInput = screen.getByTestId('bh-opens-monday');
-      const closesInput = screen.getByTestId('bh-closes-monday');
+      const opensTrigger = screen.getByTestId('bh-opens-monday');
+      const closesTrigger = screen.getByTestId('bh-closes-monday');
 
-      expect(opensInput).toHaveValue('07:00');
-      expect(closesInput).toHaveValue('17:00');
+      expect(opensTrigger).toHaveTextContent('07:00');
+      expect(closesTrigger).toHaveTextContent('17:00');
+      expect(opensTrigger).not.toHaveAttribute('type', 'time');
+      expect(opensTrigger).not.toHaveTextContent('Selecciona una hora');
     });
 
-    it('deshabilita inputs de tiempo cuando el día está cerrado', () => {
+    it('usa placeholder compacto y grilla sin min-w de 640px en desktop', () => {
+      renderEditor();
+
+      const layout = screen.getByTestId('bh-layout-desktop');
+      const grid = layout.firstElementChild;
+      const saturdayOpens = screen.getByTestId('bh-opens-saturday');
+
+      expect(grid?.className).toContain('min-w-0');
+      expect(grid?.className).toContain('grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)]');
+      expect(grid?.className).not.toContain('min-w-[640px]');
+      expect(screen.getByText('Abierto')).toHaveClass('whitespace-nowrap');
+      expect(saturdayOpens).toHaveTextContent('--:--');
+      expect(saturdayOpens).not.toHaveTextContent('Selecciona una hora');
+    });
+
+    it('deshabilita los triggers de tiempo cuando el día está cerrado', () => {
       renderEditor();
 
       const satOpens = screen.getByTestId('bh-opens-saturday');
@@ -159,35 +178,92 @@ describe('BusinessHoursWeekEditor', () => {
       expect(mondayOpens).toBeDisabled();
     });
 
-    it('expone nombres accesibles por día para checkbox e inputs de hora', () => {
+    it('expone nombres accesibles por día para checkbox y triggers de hora', () => {
       renderEditor({ isMobile: true });
 
       expect(screen.getByRole('checkbox', { name: 'Lunes, abierto' })).toBeInTheDocument();
-      expect(screen.getByLabelText('Lunes, desde')).toHaveValue('07:00');
-      expect(screen.getByLabelText('Lunes, hasta')).toHaveValue('17:00');
+      expect(screen.getByRole('button', { name: 'Lunes, desde' })).toHaveTextContent('07:00');
+      expect(screen.getByRole('button', { name: 'Lunes, hasta' })).toHaveTextContent('17:00');
     });
 
-    it('renderiza inputs nativos type=time como selector de hora', () => {
-      const { container } = renderEditor();
+    it('muestra correctamente los límites 00:00 y 23:59', () => {
+      const days = FULL_WEEK.map((day) =>
+        day.weekday === BusinessHoursWeekday.MONDAY
+          ? { ...day, opensAt: '00:00', closesAt: '23:59' }
+          : day,
+      );
+      renderEditor({ days });
 
-      const opensInput = screen.getByTestId('bh-opens-monday');
-
-      expect(container.querySelector('input[type="time"]')).not.toBeNull();
-      expect(opensInput).toHaveAttribute('type', 'time');
-      expect(opensInput).toHaveAttribute('aria-label', 'Lunes, desde');
+      expect(screen.getByTestId('bh-opens-monday')).toHaveTextContent('00:00');
+      expect(screen.getByTestId('bh-closes-monday')).toHaveTextContent('23:59');
     });
   });
 
   describe('interacción', () => {
-    it('mantiene onChange al cambiar hora de apertura en mobile', () => {
-      const { onChange } = renderEditor({ isMobile: true });
+    it('permite seleccionar hora y minuto por click', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderEditor();
 
-      fireEvent.change(screen.getByTestId('bh-opens-monday'), { target: { value: '08:00' } });
+      await user.click(screen.getByTestId('bh-opens-monday'));
+
+      const dialog = await screen.findByRole('dialog', { name: 'Selecciona una hora' });
+      await user.click(
+        within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
+          name: '08',
+        }),
+      );
+      await user.click(
+        within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole('option', {
+          name: '37',
+        }),
+      );
 
       expect(onChange).toHaveBeenCalledTimes(1);
       const result = onChange.mock.calls[0][0] as BusinessHourDay[];
       const monday = result.find((d) => d.weekday === BusinessHoursWeekday.MONDAY);
-      expect(monday?.opensAt).toBe('08:00');
+      expect(monday?.opensAt).toBe('08:37');
+    });
+
+    it('permite confirmar un minuto con el teclado', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderEditor();
+
+      await user.click(screen.getByTestId('bh-opens-monday'));
+      const dialog = await screen.findByRole('dialog', { name: 'Selecciona una hora' });
+      const minute00 = within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole(
+        'option',
+        { name: '00' },
+      );
+
+      await waitFor(() => expect(minute00).toHaveFocus());
+      await user.keyboard('{ArrowDown}{Enter}');
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      const result = onChange.mock.calls[0][0] as BusinessHourDay[];
+      const monday = result.find((d) => d.weekday === BusinessHoursWeekday.MONDAY);
+      expect(monday?.opensAt).toBe('07:01');
+    });
+
+    it('cierra con Escape sin cambiar el horario', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderEditor();
+
+      await user.click(screen.getByTestId('bh-opens-monday'));
+      const dialog = await screen.findByRole('dialog', { name: 'Selecciona una hora' });
+      await user.click(
+        within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
+          name: '22',
+        }),
+      );
+      await user.keyboard('{Escape}');
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('dialog', { name: 'Selecciona una hora' }),
+        ).not.toBeInTheDocument();
+      });
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByTestId('bh-opens-monday')).toHaveTextContent('07:00');
     });
 
     it('al desmarcar un día limpia opensAt y closesAt', () => {
@@ -213,17 +289,6 @@ describe('BusinessHoursWeekEditor', () => {
 
       const satOpens = screen.getByTestId('bh-opens-saturday');
       expect(satOpens).not.toBeDisabled();
-    });
-
-    it('permite ajustar la hora completa sin separar el control visual', () => {
-      const { onChange } = renderEditor();
-
-      fireEvent.change(screen.getByTestId('bh-opens-monday'), { target: { value: '07:15' } });
-
-      expect(onChange).toHaveBeenCalledTimes(1);
-      const result = onChange.mock.calls[0][0] as BusinessHourDay[];
-      const monday = result.find((day) => day.weekday === BusinessHoursWeekday.MONDAY);
-      expect(monday?.opensAt).toBe('07:15');
     });
   });
 });
@@ -311,5 +376,49 @@ describe('normalizeBusinessHourTime', () => {
 
   it('devuelve vacío para formato inválido', () => {
     expect(normalizeBusinessHourTime('hora-invalida')).toBe('');
+  });
+});
+
+describe('validateBusinessHours', () => {
+  it('marca cada campo requerido de un día abierto', () => {
+    const errors = validateBusinessHours([
+      {
+        weekday: BusinessHoursWeekday.MONDAY,
+        isOpen: true,
+        opensAt: null,
+        closesAt: null,
+      },
+    ]);
+
+    expect(errors[BusinessHoursWeekday.MONDAY]).toEqual({
+      opensAt: 'required',
+      closesAt: 'required',
+    });
+  });
+
+  it('marca el cierre cuando no es posterior al inicio', () => {
+    const errors = validateBusinessHours([
+      {
+        weekday: BusinessHoursWeekday.TUESDAY,
+        isOpen: true,
+        opensAt: '18:00',
+        closesAt: '08:00',
+      },
+    ]);
+
+    expect(errors[BusinessHoursWeekday.TUESDAY]).toEqual({ closesAt: 'order' });
+  });
+
+  it('no exige horas para un día cerrado', () => {
+    expect(
+      validateBusinessHours([
+        {
+          weekday: BusinessHoursWeekday.SUNDAY,
+          isOpen: false,
+          opensAt: null,
+          closesAt: null,
+        },
+      ]),
+    ).toEqual({});
   });
 });

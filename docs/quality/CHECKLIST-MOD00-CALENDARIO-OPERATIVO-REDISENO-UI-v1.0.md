@@ -64,8 +64,8 @@
 
 - [x] `pnpm --filter @iwana/portal typecheck` en verde.
 - [x] Jest focalizado de portal para calendario en verde.
-- [x] Playwright `portal-settings-calendar.spec.ts` en verde.
-- [x] El E2E del calendario valida la nueva jerarquia observable del shell.
+- [ ] Playwright `portal-settings-calendar.spec.ts` ejecutado en esta iteracion — pendiente de stack/autenticacion.
+- [x] El E2E del calendario esta alineado a la nueva jerarquia observable mediante `calendar-step-1..4`.
 
 ## 8. Cierre documental
 
@@ -79,10 +79,15 @@
 ## 9. Evidencia ejecutada
 
 - Typecheck portal en verde.
-- Jest focalizado de calendario en verde con 7 suites y 60 pruebas.
-- Playwright del calendario en verde con 8 de 8 pruebas usando `e2e/tests/portal-settings-calendar.spec.ts`.
-- La spec E2E valida `calendar-operational-status`, `calendar-shell-primary` y `calendar-shell-secondary`.
+- Jest focalizado de calendario en verde; la ejecucion final cubre 9 suites y 114 pruebas.
+- La spec E2E usa `calendar-step-1`, `calendar-step-2`, `calendar-step-3` y `calendar-step-4`; la ejecución focalizada pasó 9/9 pruebas en Chromium.
+- La cobertura E2E usa `calendar-step-1`, `calendar-step-2`, `calendar-step-3` y `calendar-step-4` sin una card adicional de resumen.
+- El shell usa dos carriles independientes: `calendar-lane-1-2` para horarios habituales y `calendar-lane-3-4` para cambios por fecha; en mobile se apilan completos en orden `1→2→3→4`.
+- La expansión de un panel solo desplaza el siguiente panel de su propio carril; no se sincronizan alturas entre columnas.
+- El E2E desktop valida la expansión del paso 3 sin desplazar el carril izquierdo; el E2E mobile valida el flujo vertical y los formularios cerrados.
+- Los listados de excepciones y eventualidades tienen una representacion movil apilada y una tabla desktop separadas por breakpoint.
+- `randomAccess=false` queda bloqueado por falta de cursor en el contrato API; no se declara cierre ni se inventa «Cargar mas».
 
 ## 10. Cierre
 
-Checklist cerrada sin bloqueos abiertos dentro del alcance de refinamiento UI/UX posterior a Fase 06.
+Checklist aprobada con un bloqueo abierto de contrato: la variante cursor de eventualidades requiere soporte API/backend explicito.

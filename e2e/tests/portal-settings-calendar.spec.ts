@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -202,6 +202,25 @@ async function selectDateFromPicker(
 
   const escapedLabel = escapeRegExp(targetLabel);
   await popover.getByRole('button', { name: new RegExp(`\\b${escapedLabel}\\b`, 'i') }).click();
+}
+
+async function selectTimeFromPicker(page: Page, trigger: Locator, value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error(`Hora inválida para TimeFieldSelect: ${value}`);
+  }
+
+  const [, hour, minute] = match;
+  await trigger.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Selecciona una hora' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('listbox', { name: 'Hora' }).getByRole('option', { name: hour }).click();
+  await dialog
+    .getByRole('listbox', { name: 'Minutos' })
+    .getByRole('option', { name: minute })
+    .click();
+  await expect(dialog).toBeHidden();
 }
 
 async function setupCalendarMocks(page: Page) {
@@ -677,9 +696,10 @@ test.describe('portal-settings-calendar', () => {
     await expect(page).toHaveURL(/\/dashboard\/settings\/calendar/, { timeout: 10_000 });
   });
 
-  test('ADMIN ve la grilla compacta con Paso 3 bajo Paso 1 y Paso 4 bajo Paso 2', async ({
+  test('ADMIN ve dos carriles independientes en desktop y conserva el orden accesible', async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await setAdminSession(page);
     await setupCalendarMocks(page);
 
@@ -689,72 +709,113 @@ test.describe('portal-settings-calendar', () => {
       timeout: 10_000,
     });
 
-    const statusBlock = page.getByTestId('calendar-operational-status');
     const shellGrid = page.getByTestId('calendar-shell-grid');
-    const primaryGroup = page.getByTestId('calendar-shell-primary');
-    const secondaryGroup = page.getByTestId('calendar-shell-secondary');
-    const primaryPanels = primaryGroup.locator(':scope > section');
-    const secondaryPanels = secondaryGroup.locator(':scope > section');
-    const organizationHeading = primaryGroup.getByRole('heading', {
+    const routineLane = page.getByTestId('calendar-lane-1-2');
+    const dateChangesLane = page.getByTestId('calendar-lane-3-4');
+    const steps = ['1', '2', '3', '4'].map((step) => page.getByTestId(`calendar-step-${step}`));
+    const organizationStep = steps[0]!;
+    const siteStep = steps[1]!;
+    const exceptionsStep = steps[2]!;
+    const eventualitiesStep = steps[3]!;
+    const organizationHeading = organizationStep.getByRole('heading', {
       name: 'Horario base de la empresa',
     });
-    const exceptionsHeading = primaryGroup.getByRole('heading', {
+    const exceptionsHeading = exceptionsStep.getByRole('heading', {
       name: 'Cierres por fecha y aperturas especiales',
     });
-    const siteHeading = secondaryGroup.getByRole('heading', { name: 'Horarios por sede' });
-    const eventualitiesHeading = secondaryGroup.getByRole('heading', {
+    const siteHeading = siteStep.getByRole('heading', { name: 'Horarios por sede' });
+    const eventualitiesHeading = eventualitiesStep.getByRole('heading', {
       name: 'Cambios puntuales de disponibilidad',
     });
 
-    await expect(statusBlock).toBeVisible({ timeout: 10_000 });
     await expect(shellGrid).toBeVisible({ timeout: 10_000 });
     await expect(organizationHeading).toBeVisible();
     await expect(exceptionsHeading).toBeVisible();
     await expect(siteHeading).toBeVisible();
-    await expect(
-      primaryGroup.getByRole('heading', { name: 'Programación de visitas' }),
-    ).toHaveCount(0);
     await expect(eventualitiesHeading).toBeVisible();
 
+    const accessibleDomOrder = await shellGrid
+      .locator('[data-testid^="calendar-step-"]')
+      .evaluateAll((groups) => groups.map((group) => group.getAttribute('data-testid')));
+    expect(accessibleDomOrder).toEqual([
+      'calendar-step-1',
+      'calendar-step-2',
+      'calendar-step-3',
+      'calendar-step-4',
+    ]);
+
+    await expect(routineLane).toBeVisible();
+    await expect(dateChangesLane).toBeVisible();
+
     const shellBox = await shellGrid.boundingBox();
-    const primaryBox = await primaryGroup.boundingBox();
-    const secondaryBox = await secondaryGroup.boundingBox();
-    const organizationPanelBox = await primaryPanels.nth(0).boundingBox();
-    const exceptionsPanelBox = await primaryPanels.nth(1).boundingBox();
-    const sitePanelBox = await secondaryPanels.nth(0).boundingBox();
-    const eventualitiesPanelBox = await secondaryPanels.nth(1).boundingBox();
-    const organizationBox = await organizationHeading.boundingBox();
-    const exceptionsBox = await exceptionsHeading.boundingBox();
-    const siteBox = await siteHeading.boundingBox();
-    const eventualitiesBox = await eventualitiesHeading.boundingBox();
+    const routineLaneBox = await routineLane.boundingBox();
+    const dateChangesLaneBox = await dateChangesLane.boundingBox();
+    const organizationBox = await organizationStep.boundingBox();
+    const siteBox = await siteStep.boundingBox();
+    const exceptionsBox = await exceptionsStep.boundingBox();
+    const eventualitiesBox = await eventualitiesStep.boundingBox();
 
     expect(shellBox).not.toBeNull();
-    expect(primaryBox).not.toBeNull();
-    expect(secondaryBox).not.toBeNull();
-    expect(organizationPanelBox).not.toBeNull();
-    expect(exceptionsPanelBox).not.toBeNull();
-    expect(sitePanelBox).not.toBeNull();
-    expect(eventualitiesPanelBox).not.toBeNull();
+    expect(routineLaneBox).not.toBeNull();
+    expect(dateChangesLaneBox).not.toBeNull();
     expect(organizationBox).not.toBeNull();
-    expect(exceptionsBox).not.toBeNull();
     expect(siteBox).not.toBeNull();
+    expect(exceptionsBox).not.toBeNull();
     expect(eventualitiesBox).not.toBeNull();
 
-    expect((primaryBox?.x ?? -1) < (secondaryBox?.x ?? -1)).toBe(true);
-    expect((exceptionsBox?.y ?? -1) > (organizationBox?.y ?? -1)).toBe(true);
-    expect((eventualitiesBox?.y ?? -1) > (siteBox?.y ?? -1)).toBe(true);
+    expect(Math.abs((organizationBox?.x ?? -1) - (siteBox?.x ?? -1))).toBeLessThanOrEqual(2);
+    expect(Math.abs((exceptionsBox?.x ?? -1) - (eventualitiesBox?.x ?? -1))).toBeLessThanOrEqual(2);
+    expect((routineLaneBox?.x ?? -1) < (dateChangesLaneBox?.x ?? -1)).toBe(true);
+    expect((siteBox?.y ?? -1) >= (organizationBox?.y ?? -1)).toBe(true);
+    expect((eventualitiesBox?.y ?? -1) >= (exceptionsBox?.y ?? -1)).toBe(true);
+
+    const routineLaneBefore = await routineLane.boundingBox();
+    const dateChangesLaneBefore = await dateChangesLane.boundingBox();
+    const organizationBefore = await organizationStep.boundingBox();
+    const siteBefore = await siteStep.boundingBox();
+    const step4Before = await eventualitiesStep.boundingBox();
+    await exceptionsStep.getByRole('button', { name: 'Registrar fecha especial' }).click();
+    await expect(page.getByTestId('exception-form')).toBeVisible();
+
+    const organizationAfter = await organizationStep.boundingBox();
+    const siteAfter = await siteStep.boundingBox();
+    const routineLaneAfter = await routineLane.boundingBox();
+    const dateChangesLaneAfter = await dateChangesLane.boundingBox();
+    const step4After = await eventualitiesStep.boundingBox();
     expect(
-      Math.abs(
-        (organizationPanelBox?.y ?? 0) +
-          (organizationPanelBox?.height ?? 0) -
-          (exceptionsPanelBox?.y ?? 0),
-      ),
-    ).toBeLessThanOrEqual(1);
+      Math.abs((organizationAfter?.y ?? -1) - (organizationBefore?.y ?? -1)),
+    ).toBeLessThanOrEqual(2);
+    expect(Math.abs((siteAfter?.y ?? -1) - (siteBefore?.y ?? -1))).toBeLessThanOrEqual(2);
     expect(
-      Math.abs(
-        (sitePanelBox?.y ?? 0) + (sitePanelBox?.height ?? 0) - (eventualitiesPanelBox?.y ?? 0),
-      ),
-    ).toBeLessThanOrEqual(1);
+      Math.abs((routineLaneAfter?.y ?? -1) - (routineLaneBefore?.y ?? -1)),
+    ).toBeLessThanOrEqual(2);
+    expect(
+      Math.abs((routineLaneAfter?.height ?? -1) - (routineLaneBefore?.height ?? -1)),
+    ).toBeLessThanOrEqual(2);
+    expect((dateChangesLaneAfter?.height ?? -1) > (dateChangesLaneBefore?.height ?? -1)).toBe(true);
+    expect((step4After?.y ?? -1) > (step4Before?.y ?? -1)).toBe(true);
+
+    const focusOrder: string[] = [];
+    await page
+      .getByTestId('calendar-step-1')
+      .locator('button:visible, input:visible, select:visible, textarea:visible, a:visible')
+      .first()
+      .focus();
+    for (let index = 0; index < 180 && focusOrder.length < 4; index += 1) {
+      const activeStep = await page.evaluate(
+        () =>
+          document.activeElement?.closest<HTMLElement>('[data-testid^="calendar-step-"]')?.dataset
+            .testid,
+      );
+      if (activeStep && focusOrder.at(-1) !== activeStep) focusOrder.push(activeStep);
+      if (focusOrder.length < 4) await page.keyboard.press('Tab');
+    }
+    expect(focusOrder).toEqual([
+      'calendar-step-1',
+      'calendar-step-2',
+      'calendar-step-3',
+      'calendar-step-4',
+    ]);
   });
 
   test('ADMIN ve un selector de hora compacto sin columnas sobredimensionadas', async ({
@@ -765,16 +826,31 @@ test.describe('portal-settings-calendar', () => {
 
     await page.goto('/dashboard/settings/calendar');
 
-    const mondayStart = page.getByTestId('calendar-shell-primary').getByTestId('bh-opens-monday');
+    const mondayStart = page.getByTestId('calendar-step-1').getByTestId('bh-opens-monday');
     await expect(mondayStart).toBeVisible({ timeout: 10_000 });
 
-    // El selector es un input nativo type="time" estilizado (contrato de remediación)
-    await expect(mondayStart).toHaveAttribute('type', 'time');
-    await expect(mondayStart).toHaveValue('07:00');
+    await expect(mondayStart).toHaveAttribute('type', 'button');
+    await expect(mondayStart).toHaveText(/07:00/);
 
     const triggerBox = await mondayStart.boundingBox();
     expect(triggerBox).not.toBeNull();
-    expect(triggerBox?.width ?? 0).toBeLessThanOrEqual(100);
+    expect(triggerBox?.width ?? 0).toBeLessThanOrEqual(96);
+
+    await mondayStart.click();
+    const dialog = page.getByRole('dialog', { name: 'Selecciona una hora' });
+    await expect(dialog).toBeVisible();
+
+    const dialogBox = await dialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox?.width ?? 0).toBeLessThanOrEqual(192);
+    expect(dialogBox?.height ?? 0).toBeLessThanOrEqual(200);
+
+    await expect(
+      page
+        .getByTestId('calendar-step-1')
+        .getByTestId('bh-layout-desktop')
+        .getByText('Abierto', { exact: true }),
+    ).toBeVisible();
   });
 
   test('la vista mobile mantiene el editor semanal usable y los formularios secundarios cerrados por defecto', async ({
@@ -789,7 +865,13 @@ test.describe('portal-settings-calendar', () => {
     await expect(page.getByTestId('bh-layout-mobile').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('exception-form')).not.toBeVisible();
     await expect(page.getByTestId('eventuality-form')).not.toBeVisible();
-    await expect(page.getByTestId('wfm-blackout-form')).not.toBeVisible();
+
+    const steps = ['1', '2', '3', '4'].map((step) => page.getByTestId(`calendar-step-${step}`));
+    const boxes = await Promise.all(steps.map((step) => step.boundingBox()));
+    expect(boxes.every((box) => box !== null)).toBe(true);
+    expect((boxes[0]?.y ?? -1) < (boxes[1]?.y ?? -1)).toBe(true);
+    expect((boxes[1]?.y ?? -1) < (boxes[2]?.y ?? -1)).toBe(true);
+    expect((boxes[2]?.y ?? -1) < (boxes[3]?.y ?? -1)).toBe(true);
   });
 
   test('ADMIN ve la tabla de eventualidades con datos existentes', async ({ page }) => {
@@ -802,8 +884,9 @@ test.describe('portal-settings-calendar', () => {
     await expect(page.getByTestId('eventualities-table')).toBeVisible({ timeout: 10_000 });
 
     // La eventualidad de fixture debe aparecer
-    await expect(page.getByText('Disponibilidad extra')).toBeVisible();
-    await expect(page.getByText('Carlos Técnico')).toBeVisible();
+    const eventualitiesTable = page.getByTestId('eventualities-table');
+    await expect(eventualitiesTable.getByText('Disponibilidad extra')).toBeVisible();
+    await expect(eventualitiesTable.getByText('Carlos Técnico')).toBeVisible();
   });
 
   test('ADMIN puede registrar una nueva eventualidad operativa', async ({ page }) => {
@@ -826,10 +909,18 @@ test.describe('portal-settings-calendar', () => {
     await page.getByRole('option', { name: 'Carlos Técnico' }).click();
 
     await selectDateFromPicker(page, eventualityForm, 'eventuality-starts-at-id', '2026-05-25');
-    await eventualityForm.getByTestId('eventuality-starts-at-time').fill('07:00');
+    await selectTimeFromPicker(
+      page,
+      eventualityForm.getByTestId('eventuality-starts-at-time'),
+      '07:00',
+    );
 
     await selectDateFromPicker(page, eventualityForm, 'eventuality-ends-at-id', '2026-05-25');
-    await eventualityForm.getByTestId('eventuality-ends-at-time').fill('09:00');
+    await selectTimeFromPicker(
+      page,
+      eventualityForm.getByTestId('eventuality-ends-at-time'),
+      '09:00',
+    );
 
     await page.getByTestId('eventuality-reason').fill('Refuerzo de emergencia');
 

@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { OrganizationSiteType } from '@iwana/shared';
 import { CalendarExceptionsPanel } from './CalendarExceptionsPanel';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
@@ -87,27 +88,60 @@ jest.mock('@iwana/ui', () => {
     DatePicker: ({
       id,
       name,
+      label,
       value,
       onChange,
       disabled,
     }: {
       id?: string;
       name?: string;
+      label?: string;
       value?: Date;
       onChange?: (date: Date | undefined) => void;
       disabled?: boolean;
     }) => (
-      <input
-        id={id}
-        name={name}
-        type="text"
-        value={toInputDate(value)}
-        disabled={disabled}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => onChange?.(toDate(event.target.value))}
-      />
+      <label>
+        {label}
+        <input
+          id={id}
+          name={name}
+          type="text"
+          value={toInputDate(value)}
+          disabled={disabled}
+          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+            onChange?.(toDate(event.target.value))
+          }
+        />
+      </label>
     ),
   };
 });
+
+async function selectExceptionTime(label: string, value: string): Promise<void> {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error(`Hora inválida en test: ${value}`);
+  }
+
+  const hour = match[1];
+  const minute = match[2];
+  if (!hour || !minute) {
+    throw new Error(`Hora inválida en test: ${value}`);
+  }
+  const user = userEvent.setup();
+  await user.click(screen.getByLabelText(label));
+  const dialog = await screen.findByRole('dialog', { name: 'Selecciona una hora' });
+  await user.click(
+    within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
+      name: hour,
+    }),
+  );
+  await user.click(
+    within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole('option', {
+      name: minute,
+    }),
+  );
+}
 
 describe('CalendarExceptionsPanel', () => {
   beforeEach(() => {
@@ -153,6 +187,7 @@ describe('CalendarExceptionsPanel', () => {
 
     expect(screen.getByLabelText('Desde')).toBeInTheDocument();
     expect(screen.getByLabelText('Hasta')).toBeInTheDocument();
+    expect(document.querySelector('input[type="time"]')).toBeNull();
   });
 
   it('expone el disclosure con aria y deja un solo control de cierre', () => {
@@ -223,8 +258,8 @@ describe('CalendarExceptionsPanel', () => {
     });
     fireEvent.click(screen.getByLabelText('Abrir ese día'));
     fireEvent.click(screen.getByLabelText('Repetir cada año'));
-    fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '08:00' } });
-    fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '12:00' } });
+    await selectExceptionTime('Desde', '08:00');
+    await selectExceptionTime('Hasta', '12:00');
     fireEvent.click(screen.getByRole('button', { name: 'Agregar festivo o cierre' }));
 
     await waitFor(() => {
@@ -271,7 +306,9 @@ describe('CalendarExceptionsPanel', () => {
     );
 
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('Año nuevo')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('exceptions-desktop-table')).getByText('Año nuevo'),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('exception-form')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Registrar fecha especial' })).toBeInTheDocument();
 
@@ -279,6 +316,39 @@ describe('CalendarExceptionsPanel', () => {
 
     expect(screen.getByTestId('exception-form')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  it('muestra una lista apilada en mobile con estado, alcance y acción operable', () => {
+    render(
+      <CalendarExceptionsPanel
+        exceptions={[
+          {
+            id: 'exc-mobile-1',
+            exceptionDate: '2026-01-01',
+            name: 'Año nuevo',
+            description: null,
+            isOpen: true,
+            isRecurring: true,
+            opensAt: '08:00',
+            closesAt: '12:00',
+            organizationSiteId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]}
+        sites={sites}
+        canEdit={true}
+        onCreated={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    const mobileList = screen.getByTestId('exceptions-mobile-list');
+    const mobileCard = within(mobileList).getByTestId('exception-mobile-card-exc-mobile-1');
+    expect(mobileCard).toHaveTextContent('Año nuevo');
+    expect(mobileCard).toHaveTextContent('Todas las sedes');
+    expect(mobileCard).toHaveTextContent('Abierto');
+    expect(within(mobileCard).getByRole('button', { name: 'Eliminar' })).toHaveClass('min-h-11');
+    expect(screen.getByTestId('exceptions-desktop-table')).toBeInTheDocument();
   });
 
   it('valida aperturas especiales sin horas completas al enviar', async () => {
@@ -339,8 +409,8 @@ describe('CalendarExceptionsPanel', () => {
       target: { value: '2026-02-01' },
     });
     fireEvent.click(screen.getByLabelText('Abrir ese día'));
-    fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '12:00' } });
-    fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '10:00' } });
+    await selectExceptionTime('Desde', '12:00');
+    await selectExceptionTime('Hasta', '10:00');
 
     const createButton = screen.getByRole('button', { name: 'Agregar festivo o cierre' });
     expect(createButton).toBeEnabled();
@@ -382,7 +452,11 @@ describe('CalendarExceptionsPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+    fireEvent.click(
+      within(screen.getByTestId('exceptions-desktop-table')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
 
     expect(screen.getByText('¿Eliminar este festivo o cierre especial?')).toBeInTheDocument();
 
@@ -422,7 +496,11 @@ describe('CalendarExceptionsPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
+    fireEvent.click(
+      within(screen.getByTestId('exceptions-desktop-table')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }));
 
     await waitFor(() => {
@@ -457,7 +535,9 @@ describe('CalendarExceptionsPanel', () => {
     );
 
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('Año nuevo')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('exceptions-desktop-table')).getByText('Año nuevo'),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Registrar fecha especial' }),
     ).not.toBeInTheDocument();

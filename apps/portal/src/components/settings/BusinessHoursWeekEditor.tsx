@@ -23,11 +23,22 @@ interface Props {
   days: BusinessHourDay[];
   canEdit: boolean;
   onChange: (days: BusinessHourDay[]) => void;
+  validationErrors?: BusinessHoursValidationErrors;
+  idPrefix?: string | undefined;
 }
 
 type BusinessHoursControlType = 'abierto' | 'desde' | 'hasta';
 const MOBILE_LAYOUT_QUERY = '(max-width: 767px)';
 const BUSINESS_HOUR_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?:[:][0-5]\d)?$/;
+
+export interface BusinessHoursDayErrors {
+  opensAt?: string;
+  closesAt?: string;
+}
+
+export type BusinessHoursValidationErrors = Partial<
+  Record<BusinessHoursWeekday, BusinessHoursDayErrors>
+>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,6 +79,37 @@ export function buildBusinessHoursDraft(hours: BusinessHourDay[]): BusinessHourD
   });
 }
 
+/** Valida el contrato común de horarios para organización y sedes. */
+export function validateBusinessHours(days: BusinessHourDay[]): BusinessHoursValidationErrors {
+  const errors: BusinessHoursValidationErrors = {};
+
+  days.forEach((entry) => {
+    if (!entry.isOpen) return;
+
+    const dayErrors: BusinessHoursDayErrors = {};
+    const opensAt = normalizeBusinessHourTime(entry.opensAt);
+    const closesAt = normalizeBusinessHourTime(entry.closesAt);
+
+    if (!opensAt) dayErrors.opensAt = 'required';
+    if (!closesAt) dayErrors.closesAt = 'required';
+    if (opensAt && closesAt && closesAt <= opensAt) {
+      dayErrors.closesAt = 'order';
+    }
+
+    if (dayErrors.opensAt || dayErrors.closesAt) {
+      errors[entry.weekday] = dayErrors;
+    }
+  });
+
+  return errors;
+}
+
+export function areBusinessHoursEqual(left: BusinessHourDay[], right: BusinessHourDay[]): boolean {
+  return (
+    JSON.stringify(buildBusinessHoursDraft(left)) === JSON.stringify(buildBusinessHoursDraft(right))
+  );
+}
+
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
 function getBusinessHoursControlLabel(
@@ -92,8 +134,12 @@ function getDayTestIdPrefix(weekday: BusinessHoursWeekday): string {
   return weekday.toLowerCase();
 }
 
-function getTimeControlId(weekday: BusinessHoursWeekday, control: 'opens' | 'closes'): string {
-  return `bh-${control}-field-${getDayTestIdPrefix(weekday)}`;
+export function getBusinessHoursFieldId(
+  idPrefix: string,
+  weekday: BusinessHoursWeekday,
+  control: 'opens' | 'closes',
+): string {
+  return `${idPrefix}-${control}-field-${getDayTestIdPrefix(weekday)}`;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -102,7 +148,13 @@ function getTimeControlId(weekday: BusinessHoursWeekday, control: 'opens' | 'clo
  * Editor semanal reutilizable de horarios de apertura/cierre.
  * Sin lógica de guardado — el padre gestiona la persistencia.
  */
-export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
+export function BusinessHoursWeekEditor({
+  days,
+  canEdit,
+  onChange,
+  validationErrors = {},
+  idPrefix = 'bh',
+}: Props) {
   const [isMobileLayout, setIsMobileLayout] = useState(false);
 
   useEffect(() => {
@@ -171,21 +223,36 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
 
   function renderTimeControl(entry: BusinessHourDay, control: 'opens' | 'closes') {
     const isOpeningTime = control === 'opens';
+    const field = isOpeningTime ? 'opensAt' : 'closesAt';
+    const error = validationErrors[entry.weekday]?.[field];
+    const errorId = `${idPrefix}-${field}-error-${getDayTestIdPrefix(entry.weekday)}`;
 
     return (
-      <TimeFieldSelect
-        id={getTimeControlId(entry.weekday, control)}
-        ariaLabel={getBusinessHoursControlLabel(entry.weekday, isOpeningTime ? 'desde' : 'hasta')}
-        value={normalizeBusinessHourTime(isOpeningTime ? entry.opensAt : entry.closesAt)}
-        disabled={!canEdit || !entry.isOpen}
-        compact={!isMobileLayout}
-        onChange={(nextValue) =>
-          updateEntry(entry.weekday, {
-            [isOpeningTime ? 'opensAt' : 'closesAt']: normalizeBusinessHourTime(nextValue) || null,
-          })
-        }
-        dataTestId={`bh-${control}-${getDayTestIdPrefix(entry.weekday)}`}
-      />
+      <div className="min-w-0 space-y-1">
+        <TimeFieldSelect
+          id={getBusinessHoursFieldId(idPrefix, entry.weekday, control)}
+          ariaLabel={getBusinessHoursControlLabel(entry.weekday, isOpeningTime ? 'desde' : 'hasta')}
+          value={normalizeBusinessHourTime(isOpeningTime ? entry.opensAt : entry.closesAt)}
+          disabled={!canEdit || !entry.isOpen}
+          compact={!isMobileLayout}
+          ariaInvalid={Boolean(error)}
+          ariaDescribedBy={error ? errorId : undefined}
+          onChange={(nextValue) =>
+            updateEntry(entry.weekday, {
+              [isOpeningTime ? 'opensAt' : 'closesAt']:
+                normalizeBusinessHourTime(nextValue) || null,
+            })
+          }
+          dataTestId={`bh-${control}-${getDayTestIdPrefix(entry.weekday)}`}
+        />
+        {error ? (
+          <p id={errorId} role="alert" className="text-xs text-red-700 dark:text-red-300">
+            {error === 'order'
+              ? CALENDAR_SETTINGS_COPY.editorCloseAfterStartError
+              : CALENDAR_SETTINGS_COPY.editorTimeRequiredError}
+          </p>
+        ) : null}
+      </div>
     );
   }
 
@@ -222,7 +289,7 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <label
-                      htmlFor={getTimeControlId(entry.weekday, 'opens')}
+                      htmlFor={getBusinessHoursFieldId(idPrefix, entry.weekday, 'opens')}
                       className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
                     >
                       {CALENDAR_SETTINGS_COPY.editorStartsAtMobileLabel}
@@ -231,7 +298,7 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
                   </div>
                   <div className="space-y-1.5">
                     <label
-                      htmlFor={getTimeControlId(entry.weekday, 'closes')}
+                      htmlFor={getBusinessHoursFieldId(idPrefix, entry.weekday, 'closes')}
                       className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
                     >
                       {CALENDAR_SETTINGS_COPY.editorEndsAtMobileLabel}
@@ -252,17 +319,17 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
       className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border"
       data-testid="bh-layout-desktop"
     >
-      <div className="grid min-w-[640px] grid-cols-[minmax(120px,1.35fr)_120px_152px_152px] gap-px bg-gray-200 dark:bg-dark-border">
-        <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
+      <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)] gap-px bg-gray-200 dark:bg-dark-border">
+        <div className="whitespace-nowrap bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
           {CALENDAR_SETTINGS_COPY.editorWeekdayColumn}
         </div>
-        <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
+        <div className="whitespace-nowrap bg-gray-50 px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
           {CALENDAR_SETTINGS_COPY.editorOpenColumn}
         </div>
-        <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
+        <div className="whitespace-nowrap bg-gray-50 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
           {CALENDAR_SETTINGS_COPY.editorStartsAtColumn}
         </div>
-        <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
+        <div className="whitespace-nowrap bg-gray-50 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
           {CALENDAR_SETTINGS_COPY.editorEndsAtColumn}
         </div>
 
@@ -270,17 +337,17 @@ export function BusinessHoursWeekEditor({ days, canEdit, onChange }: Props) {
           <Fragment key={entry.weekday}>
             <div
               data-testid={`bh-row-${getDayTestIdPrefix(entry.weekday)}`}
-              className="bg-white px-4 py-3 text-sm font-medium text-gray-900 dark:bg-dark-surface-2 dark:text-white"
+              className="whitespace-nowrap bg-white px-4 py-2 text-sm font-medium text-gray-900 dark:bg-dark-surface-2 dark:text-white"
             >
               {getBusinessHoursWeekdayLabel(entry.weekday)}
             </div>
-            <div className="flex items-center justify-center bg-white px-4 py-3 dark:bg-dark-surface-2">
+            <div className="flex items-center justify-center bg-white px-3 py-2 dark:bg-dark-surface-2">
               {renderOpenControl(entry, { compact: true })}
             </div>
-            <div className="flex items-center justify-center bg-white px-3 py-3 dark:bg-dark-surface-2">
+            <div className="flex items-start bg-white px-3 py-2 dark:bg-dark-surface-2">
               {renderTimeControl(entry, 'opens')}
             </div>
-            <div className="flex items-center justify-center bg-white px-3 py-3 dark:bg-dark-surface-2">
+            <div className="flex items-start bg-white px-3 py-2 dark:bg-dark-surface-2">
               {renderTimeControl(entry, 'closes')}
             </div>
           </Fragment>

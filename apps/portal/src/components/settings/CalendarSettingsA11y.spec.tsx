@@ -35,10 +35,12 @@ jest.mock('@/lib/api-client', () => ({
   },
 }));
 
+// El paso 4 conserva un mock mínimo: este archivo valida axe en los pasos 1–3.
+// El panel real tiene su contrato async y navegación URL cubiertos en su suite focalizada.
 jest.mock('./OperationalEventualitiesPanel', () => ({
   OperationalEventualitiesPanel: () => (
     <div data-testid="operational-eventualities-panel">
-      <p>Paso 4 · Cambios puntuales</p>
+      <p>Cambios puntuales</p>
     </div>
   ),
 }));
@@ -168,12 +170,13 @@ describe('a11y WCAG 2.2 AA — calendario operativo (jest-axe)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('CalendarSettingsClient completo sin violaciones de axe', async () => {
+  it('CalendarSettingsClient pasos 1–3 sin violaciones de axe (paso 4 con mock de contrato)', async () => {
     const { container } = render(<CalendarSettingsClient />);
 
-    // Espera a que carguen los datos de los pasos 1-3 (paso 4 mockeado)
+    // La cobertura axe de esta integración corresponde a los pasos 1–3; el paso 4 se prueba con
+    // su panel real en OperationalEventualitiesPanel.spec.tsx.
     await waitFor(() => {
-      expect(screen.getByText('Estado operativo')).toBeInTheDocument();
+      expect(screen.getByText('Horario base de la empresa')).toBeInTheDocument();
     });
 
     const results = await axe(container);

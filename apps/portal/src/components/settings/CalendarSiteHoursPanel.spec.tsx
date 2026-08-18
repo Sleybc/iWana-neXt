@@ -323,6 +323,53 @@ describe('CalendarSiteHoursPanel', () => {
     });
   });
 
+  it('conserva sede y draft al cancelar el cambio, y descarta ambos al confirmar', async () => {
+    getMock.mockResolvedValueOnce(buildSiteDetail('site-1', '08:00'));
+    getMock.mockResolvedValueOnce(buildSiteDetail('site-2', '10:00'));
+
+    render(
+      <CalendarSiteHoursPanel
+        sites={[baseSite, { ...baseSite, id: 'site-2', name: 'Sede norte', code: 'NORTE' }]}
+        canEdit={true}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('site-draft')).toHaveTextContent('08:00');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar draft de sede' }));
+    expect(screen.getByTestId('site-draft')).toHaveTextContent('10:00');
+
+    fireEvent.change(screen.getByLabelText('Sede'), { target: { value: 'site-2' } });
+
+    const firstDialog = within(screen.getByRole('dialog'));
+    expect(firstDialog.getByText('¿Cambiar de sede sin guardar?')).toBeInTheDocument();
+    fireEvent.click(firstDialog.getByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Sede' })).toHaveTextContent(
+        'Sede centro (CENTRO)',
+      );
+      expect(screen.getByTestId('site-draft')).toHaveTextContent('10:00');
+    });
+    expect(getMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('Sede'), { target: { value: 'site-2' } });
+    const secondDialog = within(screen.getByRole('dialog'));
+    fireEvent.click(secondDialog.getByRole('button', { name: 'Descartar y cambiar de sede' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Sede' })).toHaveTextContent(
+        'Sede norte (NORTE)',
+      );
+      expect(screen.getByTestId('site-draft')).toHaveTextContent('10:00');
+    });
+    expect(screen.getByTestId('site-draft')).not.toHaveTextContent('19:00');
+    expect(getMock).toHaveBeenCalledTimes(2);
+  });
+
   it('bloquea el selector mientras guarda para evitar mezclar sedes durante la mutación', async () => {
     const saveDeferred = createDeferred<ReturnType<typeof buildSiteDetail>>();
 

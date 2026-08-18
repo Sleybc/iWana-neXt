@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
+import { BusinessHoursWeekday } from '@iwana/shared';
 import { Button } from '@iwana/ui';
 import { organizationApi, type OrganizationCompanyBusinessHoursDay } from '@/lib/api-client';
 import { PortalAlert, PortalPanel, portalWellClassName } from '@/components/shared/portal-ui';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 import {
   BusinessHoursWeekEditor,
+  areBusinessHoursEqual,
   buildBusinessHoursDraft,
+  getBusinessHoursFieldId,
+  validateBusinessHours,
+  type BusinessHoursValidationErrors,
   type BusinessHourDay,
 } from './BusinessHoursWeekEditor';
 
@@ -16,6 +21,7 @@ interface Props {
   companyHours: OrganizationCompanyBusinessHoursDay[];
   canEdit: boolean;
   onUpdated: (hours: OrganizationCompanyBusinessHoursDay[]) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   className?: string | undefined;
 }
 
@@ -23,6 +29,7 @@ export function CalendarOrganizationHoursPanel({
   companyHours,
   canEdit,
   onUpdated,
+  onDirtyChange,
   className,
 }: Props) {
   const [draft, setDraft] = useState<BusinessHourDay[]>(() =>
@@ -31,7 +38,12 @@ export function CalendarOrganizationHoursPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<BusinessHoursValidationErrors>({});
   const preserveFeedbackOnNextSyncRef = useRef(false);
+
+  useEffect(() => {
+    onDirtyChange?.(!areBusinessHoursEqual(draft, companyHours));
+  }, [companyHours, draft, onDirtyChange]);
 
   useEffect(() => {
     setDraft(buildBusinessHoursDraft(companyHours));
@@ -47,11 +59,36 @@ export function CalendarOrganizationHoursPanel({
 
   function handleDraftChange(nextDraft: BusinessHourDay[]) {
     setDraft(nextDraft);
+    setValidationErrors({});
     setFeedback(null);
     setError(null);
   }
 
   async function handleSave() {
+    const nextValidationErrors = validateBusinessHours(draft);
+    if (Object.keys(nextValidationErrors).length > 0) {
+      setValidationErrors(nextValidationErrors);
+      setError(CALENDAR_SETTINGS_COPY.organizationHoursValidationError);
+      const firstErrorDay = Object.keys(nextValidationErrors)[0];
+      const firstField = nextValidationErrors[firstErrorDay as keyof BusinessHoursValidationErrors]
+        ?.opensAt
+        ? 'opens'
+        : 'closes';
+      requestAnimationFrame(() =>
+        document
+          .getElementById(
+            getBusinessHoursFieldId(
+              'organization',
+              firstErrorDay as BusinessHoursWeekday,
+              firstField,
+            ),
+          )
+          ?.focus(),
+      );
+      return;
+    }
+
+    setValidationErrors({});
     setIsSaving(true);
     setError(null);
     setFeedback(null);
@@ -68,6 +105,7 @@ export function CalendarOrganizationHoursPanel({
       setDraft(buildBusinessHoursDraft(updated));
       preserveFeedbackOnNextSyncRef.current = true;
       onUpdated(updated);
+      onDirtyChange?.(false);
       setFeedback(CALENDAR_SETTINGS_COPY.organizationSaveSuccess);
     } catch {
       setError(CALENDAR_SETTINGS_COPY.organizationSaveError);
@@ -110,6 +148,8 @@ export function CalendarOrganizationHoursPanel({
       <BusinessHoursWeekEditor
         days={draft}
         canEdit={canEdit && !isSaving}
+        validationErrors={validationErrors}
+        idPrefix="organization"
         onChange={handleDraftChange}
       />
     </PortalPanel>
