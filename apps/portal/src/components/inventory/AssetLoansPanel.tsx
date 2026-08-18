@@ -15,6 +15,7 @@ import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-m
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
+  PortalDataTableHead,
   PortalAlert,
   PortalEmptyState,
   PortalPageSizeSelect,
@@ -22,9 +23,11 @@ import {
   PortalTablePager,
   PortalTablePagination,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
+  portalDataTableBodyClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
   portalDataBusyRegionClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   ASSET_LOAN_STATUS_LABELS,
@@ -243,20 +246,24 @@ function AssetLoansPanelInner({
             }
             aria-busy={refreshing || undefined}
           >
-            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-              <thead className="bg-gray-50 dark:bg-dark-surface-2">
+            <table className="min-w-full text-sm">
+              <thead className={portalDataTableHeadRowClassName}>
                 <tr>
-                  <th className={portalDataTableHeadClassName}>Activo</th>
-                  <th className={portalDataTableHeadClassName}>Suscriptor</th>
-                  <th className={portalDataTableHeadClassName}>Contrato</th>
-                  <th className={portalDataTableHeadClassName}>Instalado el</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  <th className={portalDataTableHeadClassName}>Acción</th>
+                  <PortalDataTableHead>Activo</PortalDataTableHead>
+                  <PortalDataTableHead>Suscriptor</PortalDataTableHead>
+                  <PortalDataTableHead>Contrato</PortalDataTableHead>
+                  <PortalDataTableHead>Instalado el</PortalDataTableHead>
+                  <PortalDataTableHead>Estado</PortalDataTableHead>
+                  <PortalDataTableHead>Acción</PortalDataTableHead>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+              <tbody className={portalDataTableBodyClassName}>
                 {loans.map((loan) => (
-                  <tr key={loan.id} data-testid={`asset-loan-row-${loan.id}`}>
+                  <tr
+                    key={loan.id}
+                    className={portalTableRowHoverClassName}
+                    data-testid={`asset-loan-row-${loan.id}`}
+                  >
                     <td className={portalDataTableCellClassName}>
                       {resolveAssetLabel(loan, assets, items)}
                     </td>

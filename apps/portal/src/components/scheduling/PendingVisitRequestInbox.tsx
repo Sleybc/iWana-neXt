@@ -10,11 +10,17 @@ import type {
   WfmVisitRequestFilterOptionsResponse,
 } from '@/lib/api-client';
 import {
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
   PortalResultsStrip,
   PortalTablePagination,
   interactiveFocusClassName,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatWfmDateTime,
@@ -473,23 +479,23 @@ export function PendingVisitRequestInbox({
         </div>
       ) : (
         <div>
-          <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2 lg:block">
+          <div className={`${portalDataTableShellClassName} hidden lg:block`}>
             <div className="overflow-x-auto">
               <table className="min-w-[1080px] w-full text-sm">
-                <thead className="bg-gray-50 text-xs uppercase tracking-[0.16em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Prioridad</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Estado</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Origen</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Solicitud</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Municipio</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">
+                    <PortalDataTableHead className="align-middle">Prioridad</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Estado</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Origen</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Solicitud</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Municipio</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">
                       Tiempo comprometido
-                    </th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Acción</th>
+                    </PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Acción</PortalDataTableHead>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={portalDataTableBodyClassName}>
                   {visibleItems.map((visitRequest) => {
                     const presentationStatus = getVisitRequestPresentationStatus(visitRequest);
                     const displayName = getVisitRequestDisplayName(visitRequest, crmCustomerNames);
@@ -502,11 +508,11 @@ export function PendingVisitRequestInbox({
                     return (
                       <tr
                         key={visitRequest.id}
-                        className={`cursor-pointer border-t border-gray-100 transition-colors dark:border-dark-border ${
-                          isSelected
-                            ? 'bg-iwana-primary-50/70 dark:bg-iwana-primary-900/15'
-                            : 'hover:bg-gray-50 dark:hover:bg-dark-surface-3'
-                        }`}
+                        className={cn(
+                          'cursor-pointer',
+                          portalTableRowHoverClassName,
+                          isSelected && 'bg-iwana-primary-50/70 dark:bg-iwana-primary-900/15',
+                        )}
                         onClick={() => {
                           if (needsDecision && onDecideExhaustedAttempts) {
                             onDecideExhaustedAttempts(visitRequest.id);
@@ -515,12 +521,12 @@ export function PendingVisitRequestInbox({
                           onOpenDispatch(visitRequest.id);
                         }}
                       >
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           <Badge variant={getWorkOrderPriorityVariant(visitRequest.priority)}>
                             {getWorkOrderPriorityLabel(visitRequest.priority)}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {retryChip && (
                               <Badge
@@ -540,12 +546,12 @@ export function PendingVisitRequestInbox({
                             </p>
                           )}
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           <Badge variant="neutral">
                             {getVisitRequestOriginLabel(visitRequest.originContext)}
                           </Badge>
                         </td>
-                        <td className="max-w-[280px] px-4 py-3 align-middle">
+                        <td className={`${portalDataTableCellClassName} max-w-[280px]`}>
                           <div className="min-w-0">
                             <span className="block truncate font-semibold text-gray-900 dark:text-white">
                               {displayName}
@@ -556,18 +562,22 @@ export function PendingVisitRequestInbox({
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 align-middle text-sm text-gray-600 dark:text-gray-300">
+                        <td
+                          className={`${portalDataTableCellClassName} text-sm text-gray-600 dark:text-gray-300`}
+                        >
                           {formatVisitRequestTerritory(
                             visitRequest.municipality,
                             visitRequest.sector,
                           )}
                         </td>
-                        <td className="px-4 py-3 align-middle text-xs text-gray-500 dark:text-gray-400">
+                        <td
+                          className={`${portalDataTableCellClassName} text-xs text-gray-500 dark:text-gray-400`}
+                        >
                           {visitRequest.slaDueAt
                             ? formatWfmDateTime(visitRequest.slaDueAt)
                             : formatWfmDateTime(visitRequest.createdAt)}
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           <VisitRequestDispatchButton
                             visitRequestId={visitRequest.id}
                             displayName={displayName}

@@ -16,6 +16,7 @@ import { useTableQueryState } from '@/lib/use-table-query-state';
 import { portalModuleTabTriggerClassName } from '@/components/shared/portal-ui';
 import {
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalPanel,
@@ -24,7 +25,11 @@ import {
   PortalTablePager,
   PortalTablePagination,
   portalDataTableShellClassName,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataBusyRegionClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { formatInventoryDate, getSerializedAssetStatusLabel } from './inventory-labels';
 import { AssetLoansPanel } from './AssetLoansPanel';
@@ -212,48 +217,40 @@ function AssetsListSection({
               }
               aria-busy={isRefreshing || undefined}
             >
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-                <thead className="bg-gray-50 dark:bg-dark-surface-2">
+              <table className="min-w-full text-sm">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Serial
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Producto
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Estado
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Ubicación
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Compra
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Acción
-                    </th>
+                    <PortalDataTableHead>Serial</PortalDataTableHead>
+                    <PortalDataTableHead>Producto</PortalDataTableHead>
+                    <PortalDataTableHead>Estado</PortalDataTableHead>
+                    <PortalDataTableHead>Ubicación</PortalDataTableHead>
+                    <PortalDataTableHead>Compra</PortalDataTableHead>
+                    <PortalDataTableHead>Acción</PortalDataTableHead>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                <tbody className={portalDataTableBodyClassName}>
                   {assets.map((asset) => (
-                    <tr key={asset.id} data-testid={`asset-row-${asset.id}`}>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
+                    <tr
+                      key={asset.id}
+                      className={portalTableRowHoverClassName}
+                      data-testid={`asset-row-${asset.id}`}
+                    >
+                      <td className={`${portalDataTableCellClassName} font-mono text-xs`}>
                         {asset.serialNumber ?? asset.assetTag ?? 'Sin serial'}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className={portalDataTableCellClassName}>
                         {itemMap.get(asset.inventoryItemId)?.name ?? 'Producto no encontrado'}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className={portalDataTableCellClassName}>
                         {getSerializedAssetStatusLabel(asset.currentStatus)}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className={portalDataTableCellClassName}>
                         {locationMap.get(asset.currentLocationId ?? '')?.name ?? 'Sin ubicación'}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className={portalDataTableCellClassName}>
                         {formatInventoryDate(asset.purchaseDate)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className={portalDataTableCellClassName}>
                         <Button
                           type="button"
                           size="sm"

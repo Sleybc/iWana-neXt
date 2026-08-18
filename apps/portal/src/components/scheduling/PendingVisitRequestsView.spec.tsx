@@ -341,4 +341,52 @@ describe('PendingVisitRequestsView', () => {
       );
     });
   });
+
+  it('ejecuta Cargar más, conserva la primera página y expone el estado loading', async () => {
+    const firstPage = {
+      items: [
+        buildVisitRequest({
+          id: 'vr-page-1',
+          title: 'Solicitud página uno',
+          customerDisplayName: 'Cliente página uno',
+        }),
+      ],
+      meta: { total: 2, page: 1, limit: 20, totalPages: 2 },
+    };
+    const secondPage = {
+      items: [
+        buildVisitRequest({
+          id: 'vr-page-2',
+          title: 'Solicitud página dos',
+          customerDisplayName: 'Cliente página dos',
+        }),
+      ],
+      meta: { total: 2, page: 2, limit: 20, totalPages: 2 },
+    };
+    let releasePageTwo: (value: typeof secondPage) => void = () => undefined;
+    const pageTwo = new Promise<typeof secondPage>((resolve) => {
+      releasePageTwo = resolve;
+    });
+
+    wfmApi.visitRequests.list.mockImplementation((params?: { page?: number }) =>
+      params?.page === 2 ? pageTwo : Promise.resolve(firstPage),
+    );
+
+    render(<PendingVisitRequestsView />);
+
+    expect((await screen.findAllByText('Cliente página uno')).length).toBeGreaterThan(0);
+    const loadMore = screen.getByRole('button', { name: 'Cargar más' });
+    expect(loadMore).toBeEnabled();
+
+    fireEvent.click(loadMore);
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeDisabled();
+    expect(screen.getAllByText('Cliente página uno').length).toBeGreaterThan(0);
+
+    releasePageTwo(secondPage);
+    expect((await screen.findAllByText('Cliente página dos')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(wfmApi.visitRequests.list).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, limit: 20 }),
+    );
+  });
 });

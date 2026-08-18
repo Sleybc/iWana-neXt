@@ -184,11 +184,17 @@ function AssuranceClientInner() {
     [assignees],
   );
 
+  const randomAccess = ticketsMeta.capabilities.randomAccess === true;
+
   const listFilters = useMemo((): ListAssuranceTicketsParams => {
     const next: ListAssuranceTicketsParams = {
-      page,
       limit: pageSize,
     };
+    // En modo cursor la posición posterior vive solo en memoria; no se envía
+    // una página ficticia ni se serializa el cursor en la dirección.
+    if (randomAccess && page > 1) {
+      next.page = page;
+    }
     if (urlFilters.status) {
       next.status = urlFilters.status as ListAssuranceTicketsParams['status'];
     }
@@ -206,7 +212,7 @@ function AssuranceClientInner() {
         urlFilters.slaBreachStatus as ListAssuranceTicketsParams['slaBreachStatus'];
     }
     return next;
-  }, [page, pageSize, urlFilters]);
+  }, [page, pageSize, randomAccess, urlFilters]);
 
   /** Filtro local solo sobre la página actual — no miente al pie numerado. */
   const visibleTickets = useMemo(() => {
@@ -339,8 +345,10 @@ function AssuranceClientInner() {
   }, [listFilters, loadTicketsPage]);
 
   const handleLoadMoreTickets = useCallback(() => {
-    void setPage(page + 1);
-  }, [page, setPage]);
+    // El contrato actual de Assurance solo expone paginación numerada en sus
+    // parámetros tipados. No simulamos páginas ni fabricamos un cursor local.
+    if (!randomAccess) return;
+  }, [randomAccess]);
 
   const refreshSelectedTicket = useCallback(async (ticketId: string) => {
     const [ticketResult, commentsResult, timelineResult] = await Promise.allSettled([
@@ -377,8 +385,6 @@ function AssuranceClientInner() {
     limit: ticketsMeta.limit || pageSize,
     total: ticketsMeta.total,
   });
-  const randomAccess = ticketsMeta.capabilities.randomAccess;
-
   const openTicket = useCallback(
     async (ticket: AssuranceTicket) => {
       setIsDrawerOpen(true);

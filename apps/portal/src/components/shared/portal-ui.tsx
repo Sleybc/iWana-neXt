@@ -49,7 +49,7 @@ export const portalTableRowHoverClassName =
   'transition-colors hover:bg-iwana-surface-soft/80 dark:hover:bg-dark-surface-3';
 
 export const portalDataTableShellClassName =
-  'overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
+  'overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
 
 /** Fila `<thead>` / `<tr>` de tablas operativas (fondo soft). */
 export const portalDataTableHeadRowClassName =
@@ -203,6 +203,7 @@ export function PortalDataTableSortableHead({
   if (!isSmUp) {
     return (
       <PortalDataTableHead
+        aria-sort={ariaSort}
         className={cn(align === 'right' ? 'text-right' : undefined, className)}
         {...props}
       >
@@ -376,12 +377,6 @@ export const portalCheckboxClassName = cn(
 /** Superficie "well" para sub-bloques dentro de un PortalPanel (estado/selector/form). */
 export const portalWellClassName =
   'rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3';
-
-/** Trigger de DatePicker del portal — superficie de campo con hover de escala primaria. */
-export const portalDatePickerButtonClassName = cn(
-  'inline-flex h-11 w-full items-center justify-start gap-2 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm hover:border-iwana-primary-200 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white',
-  interactiveFocusClassName,
-);
 
 /** Chip de filtro (categoría / estado) — lima AA solo en activo. */
 export function portalFilterChipClassName(active: boolean): string {

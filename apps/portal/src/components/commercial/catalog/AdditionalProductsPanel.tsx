@@ -279,6 +279,9 @@ export function AdditionalProductsPanel({
       setLoadingMore(true);
     } else {
       setLoading(true);
+      // Un cambio de filtro inicia una nueva ventana; el cursor anterior no se reutiliza.
+      setProducts([]);
+      setMeta(null);
     }
     setLoadError(null);
     setActionError(null);
@@ -690,7 +693,7 @@ export function AdditionalProductsPanel({
           ) : (
             <div className={portalDataTableShellClassName}>
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                <table className="min-w-full">
                   <thead className={portalDataTableHeadRowClassName}>
                     <tr>
                       <PortalDataTableHead>Producto</PortalDataTableHead>

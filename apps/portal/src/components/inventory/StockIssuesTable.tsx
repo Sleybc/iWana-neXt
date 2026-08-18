@@ -6,6 +6,7 @@ import { StockIssueStatus } from '@iwana/shared';
 import type { StockIssueRecord, StockLocationRecord } from '@/lib/api-client';
 import {
   PortalActionToolbar,
+  portalDataTableBodyClassName,
   PortalEmptyState,
   PortalSkeletonBlock,
   interactiveFocusClassName,
@@ -99,7 +100,7 @@ export function StockIssuesTable({
       <table className="w-full min-w-[960px] text-sm">
         <caption className="sr-only">Salidas de bodega</caption>
         <thead>
-          <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
+          <tr>
             <th scope="col" className={portalDataTableHeadClassName}>
               Número
             </th>
@@ -129,7 +130,7 @@ export function StockIssuesTable({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={portalDataTableBodyClassName}>
           {issues.map((issue) => {
             const source = locationMap.get(issue.sourceLocationId);
             const destination = issue.destinationLocationId
@@ -143,10 +144,7 @@ export function StockIssuesTable({
             const linesCount = (issue as StockIssueRecord & { linesCount?: number }).linesCount;
 
             return (
-              <tr
-                key={issue.id}
-                className={`border-b border-gray-100 dark:border-dark-border ${portalTableRowHoverClassName}`}
-              >
+              <tr key={issue.id} className={portalTableRowHoverClassName}>
                 <td className={portalDataTableCellClassName}>
                   <button
                     type="button"

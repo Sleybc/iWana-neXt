@@ -44,6 +44,7 @@ import {
   interactiveFocusClassName,
   portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
   portalModuleTabTriggerClassName,
   portalModuleTabsTrackClassName,
@@ -991,8 +992,8 @@ export function AccessControlSettingsClient() {
               </div>
 
               <div className={`${portalDataTableShellClassName} hidden md:block`}>
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                <table className="min-w-full">
+                  <thead className={portalDataTableHeadRowClassName}>
                     <tr>
                       <PortalDataTableHead>Perfil</PortalDataTableHead>
                       <PortalDataTableHead>

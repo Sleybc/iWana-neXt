@@ -58,6 +58,7 @@ import {
   PortalTablePager,
   portalDataTableBodyClassName,
   portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
 import {
@@ -840,8 +841,8 @@ function OrganizationSettingsClientInner() {
               ) : null}
               <div className={portalDataTableShellClassName} aria-busy={isSitesRefreshing}>
                 <div className="overflow-x-auto">
-                  <table className="min-w-[56rem] divide-y divide-gray-200 dark:divide-dark-border">
-                    <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                  <table className="min-w-[56rem]">
+                    <thead className={portalDataTableHeadRowClassName}>
                       <tr>
                         <PortalDataTableHead>Sede</PortalDataTableHead>
                         <PortalDataTableHead>Tipo</PortalDataTableHead>

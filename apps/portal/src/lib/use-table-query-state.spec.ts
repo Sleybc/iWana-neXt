@@ -63,6 +63,44 @@ describe('useTableQueryState', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it('resetea solo la página y conserva filtros no modificados y parámetros ajenos', () => {
+    searchParamsMock = new URLSearchParams(
+      'page=4&size=50&search=ana&status=ACTIVE&tab=usuarios&tenantView=compact',
+    );
+    const { result } = renderHook(() => useTableQueryState({ filterKeys: ['search', 'status'] }));
+
+    act(() => {
+      result.current.setFilters({ status: 'SUSPENDED' });
+    });
+
+    const href = String(replaceMock.mock.calls[0]?.[0]);
+    const params = new URLSearchParams(href.split('?')[1] ?? '');
+    expect(params.get('page')).toBeNull();
+    expect(params.get('search')).toBe('ana');
+    expect(params.get('status')).toBe('SUSPENDED');
+    expect(params.get('size')).toBe('50');
+    expect(params.get('tab')).toBe('usuarios');
+    expect(params.get('tenantView')).toBe('compact');
+  });
+
+  it('hidrata el tamaño y hace replace al cambiarlo', () => {
+    searchParamsMock = new URLSearchParams('page=4&size=10');
+    const { result } = renderHook(() => useTableQueryState());
+
+    expect(result.current.pageSize).toBe(10);
+
+    act(() => {
+      result.current.setPageSize(50);
+    });
+
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    const href = String(replaceMock.mock.calls[0]?.[0]);
+    const params = new URLSearchParams(href.split('?')[1] ?? '');
+    expect(params.get('size')).toBe('50');
+    expect(params.get('page')).toBeNull();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
   it('hace replace y resetea página al ordenar', () => {
     searchParamsMock = new URLSearchParams('page=5');
     const { result } = renderHook(() => useTableQueryState());
@@ -75,6 +113,28 @@ describe('useTableQueryState', () => {
     expect(href).toContain('sortBy=name');
     expect(href).toContain('sortDir=asc');
     expect(href).not.toContain('page=');
+  });
+
+  it('limpia sortBy y sortDir al quitar el orden, conserva filtros y usa replace', () => {
+    searchParamsMock = new URLSearchParams(
+      'page=3&size=10&sortBy=name&sortDir=desc&search=ana&view=table',
+    );
+    const { result } = renderHook(() => useTableQueryState({ filterKeys: ['search'] }));
+
+    act(() => {
+      result.current.setSort(null);
+    });
+
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    const href = String(replaceMock.mock.calls[0]?.[0]);
+    const params = new URLSearchParams(href.split('?')[1] ?? '');
+    expect(params.get('sortBy')).toBeNull();
+    expect(params.get('sortDir')).toBeNull();
+    expect(params.get('page')).toBeNull();
+    expect(params.get('size')).toBe('10');
+    expect(params.get('search')).toBe('ana');
+    expect(params.get('view')).toBe('table');
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('soporta namespace para params', () => {

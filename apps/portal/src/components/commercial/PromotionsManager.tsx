@@ -185,6 +185,9 @@ export function PromotionsManager({
       setLoadingMore(true);
     } else {
       setIsLoading(true);
+      // El filtro de ofertas cambia la ventana; el cursor solo vive en memoria.
+      setPromotions([]);
+      setMeta(null);
     }
     setLoadError(null);
     setActionError(null);

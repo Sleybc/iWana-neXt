@@ -142,4 +142,41 @@ describe('AssetsWorkspace ADR-065 lista', () => {
     expect(screen.queryByTestId('asset-row-asset-p1-0')).not.toBeInTheDocument();
     expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, limit: 20 }));
   });
+
+  it('ADR-065: hidrata URL de inventario y al cambiar tamaño reinicia la página', async () => {
+    const user = userEvent.setup();
+    searchParamsMock = new URLSearchParams('assets.page=2&assets.size=10&vista=activos');
+    listAssetsMock.mockResolvedValue({
+      data: [buildAsset({ id: 'asset-hydrated' })],
+      meta: {
+        total: 40,
+        page: 2,
+        limit: 10,
+        totalPages: 4,
+        hasMore: true,
+        mode: 'page',
+        nextCursor: null,
+        capabilities: { randomAccess: true, sortableFields: [] },
+      },
+    });
+
+    render(<AssetsWorkspace items={[]} locations={[]} onOpenAssetDetail={jest.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('asset-row-asset-hydrated')).toBeInTheDocument();
+    });
+    expect(listAssetsMock).toHaveBeenCalledWith({ page: 2, limit: 10 });
+    const pageSize = screen.getByRole('combobox', { name: 'Filas por página' });
+    expect(pageSize).toHaveTextContent('10');
+
+    await user.click(pageSize);
+    await user.click(screen.getByRole('option', { name: '50' }));
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      expect.stringContaining('assets.size=50'),
+      expect.objectContaining({ scroll: false }),
+    );
+    expect(String(replaceMock.mock.calls.at(-1)?.[0])).not.toContain('assets.page=');
+    expect(String(replaceMock.mock.calls.at(-1)?.[0])).toContain('vista=activos');
+  });
 });

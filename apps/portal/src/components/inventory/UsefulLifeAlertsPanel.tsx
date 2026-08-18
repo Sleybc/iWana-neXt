@@ -13,16 +13,19 @@ import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-m
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
+  PortalDataTableHead,
   PortalAlert,
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalSkeletonBlock,
   PortalTablePager,
   PortalTablePagination,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
   portalDataBusyRegionClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
@@ -263,21 +266,25 @@ function UsefulLifeAlertsPanelInner({
             }
             aria-busy={refreshing || undefined}
           >
-            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-              <thead className="bg-gray-50 dark:bg-dark-surface-2">
+            <table className="min-w-full text-sm">
+              <thead className={portalDataTableHeadRowClassName}>
                 <tr>
-                  <th className={portalDataTableHeadClassName}>Activo</th>
-                  <th className={portalDataTableHeadClassName}>Producto</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  <th className={portalDataTableHeadClassName}>Meses restantes</th>
-                  <th className={portalDataTableHeadClassName}>Compra</th>
-                  <th className={portalDataTableHeadClassName}>Garantía</th>
-                  <th className={portalDataTableHeadClassName}>Acción</th>
+                  <PortalDataTableHead>Activo</PortalDataTableHead>
+                  <PortalDataTableHead>Producto</PortalDataTableHead>
+                  <PortalDataTableHead>Estado</PortalDataTableHead>
+                  <PortalDataTableHead>Meses restantes</PortalDataTableHead>
+                  <PortalDataTableHead>Compra</PortalDataTableHead>
+                  <PortalDataTableHead>Garantía</PortalDataTableHead>
+                  <PortalDataTableHead>Acción</PortalDataTableHead>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+              <tbody className={portalDataTableBodyClassName}>
                 {alerts.map((alert) => (
-                  <tr key={alert.id} data-testid={`useful-life-alert-row-${alert.id}`}>
+                  <tr
+                    key={alert.id}
+                    className={portalTableRowHoverClassName}
+                    data-testid={`useful-life-alert-row-${alert.id}`}
+                  >
                     <td className={`${portalDataTableCellClassName} font-mono text-xs`}>
                       {resolveAssetLabel(alert)}
                     </td>

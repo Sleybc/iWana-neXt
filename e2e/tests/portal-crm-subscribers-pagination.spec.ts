@@ -329,13 +329,16 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await captureEvidence(page, '1280-page2-light.png');
 
     await page.goBack();
+    await expect(page).toHaveURL(/\/dashboard\/crm\/subscribers(?:\?|$)/);
     await expect(page).not.toHaveURL(/page=2/);
     await expect(page.getByText('Ana PáginaUno0')).toBeVisible();
 
-    await page.getByRole('combobox', { name: 'Filas por página' }).click();
+    const pageSizeSelect = page.getByRole('combobox', { name: 'Filas por página' });
+    await pageSizeSelect.click();
     await page.getByRole('option', { name: '10' }).click();
     await expect(page).toHaveURL(/size=10/);
     await expect(page).not.toHaveURL(/page=/);
+    await expect(pageSizeSelect).toHaveValue('10');
     await expect(visiblePagerCount(page, 'Mostrando 1–10 de 45 suscriptores')).toBeVisible();
 
     await page.getByRole('combobox', { name: 'Estado' }).click();

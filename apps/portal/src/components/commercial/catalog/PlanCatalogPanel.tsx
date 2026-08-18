@@ -220,6 +220,11 @@ export function PlanCatalogPanel({
   const loadPlans = useCallback(async (params: CommercialListParams, append = false) => {
     setIsLoading(true);
     setLoadError(null);
+    if (!append) {
+      // Un cambio de filtro inicia una nueva ventana; el cursor anterior no se reutiliza.
+      setPlans([]);
+      setMeta(null);
+    }
     try {
       const result = await commercialApi.getPlans(params);
       const page = result.data ?? [];

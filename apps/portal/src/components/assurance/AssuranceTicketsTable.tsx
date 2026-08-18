@@ -1,16 +1,21 @@
 'use client';
 
-import { Search } from 'lucide-react';
 import { Badge, Button, Select } from '@iwana/ui';
 import type { AssuranceTicket, ListAssuranceTicketsParams } from '@/lib/api-client';
 import {
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPageSizeSelect,
+  PortalSearchField,
   PortalSectionHeader,
   PortalTablePager,
   PortalTablePagination,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
   portalDataBusyRegionClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   ASSURANCE_QUEUE_OPTIONS,
@@ -94,7 +99,7 @@ export function AssuranceTicketsTable({
     filters.assignedUserId,
   );
   const showPager = !isLoading && total > 0;
-  const showPageSize = showPager && randomAccess && total > Math.min(10, 20, 50);
+  const showPageSize = showPager && randomAccess;
 
   return (
     <div className="space-y-4">
@@ -114,23 +119,13 @@ export function AssuranceTicketsTable({
           />
 
           <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_220px_220px_220px_220px_auto] lg:items-end">
-            <div className="relative">
-              <label htmlFor="assurance-search" className="sr-only">
-                Filtrar en esta página
-              </label>
-              <Search
-                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                aria-hidden="true"
-              />
-              <input
-                id="assurance-search"
-                type="search"
-                value={searchValue}
-                placeholder="Filtrar en esta página por número, asunto o referencia…"
-                onChange={(event) => onSearchChange(event.target.value)}
-                className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
-              />
-            </div>
+            <PortalSearchField
+              id="assurance-search"
+              label="Filtrar en esta página"
+              value={searchValue}
+              placeholder="Filtrar en esta página por número, asunto o referencia…"
+              onChange={onSearchChange}
+            />
 
             <Select
               id="assurance-filter-status"
@@ -204,8 +199,8 @@ export function AssuranceTicketsTable({
           aria-busy={refreshing || undefined}
         >
           <table className="w-full min-w-[980px] text-sm" aria-label="Cola operativa de tickets">
-            <thead>
-              <tr className="border-b border-gray-100 bg-[#f6f8f4] dark:border-dark-border dark:bg-dark-surface-3">
+            <thead className={portalDataTableHeadRowClassName}>
+              <tr>
                 {[
                   'Ticket',
                   'Tipo',
@@ -216,21 +211,16 @@ export function AssuranceTicketsTable({
                   'Actualización',
                   'Acciones',
                 ].map((label) => (
-                  <th
-                    key={label}
-                    className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
-                  >
-                    {label}
-                  </th>
+                  <PortalDataTableHead key={label}>{label}</PortalDataTableHead>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={portalDataTableBodyClassName}>
               {isLoading && tickets.length === 0 ? (
                 <tr>
                   <td
                     colSpan={8}
-                    className="px-4 py-12 text-center text-gray-500 dark:text-gray-400"
+                    className={`${portalDataTableCellClassName} py-12 text-center text-gray-500 dark:text-gray-400`}
                   >
                     Cargando tickets de la mesa de ayuda...
                   </td>
@@ -239,7 +229,7 @@ export function AssuranceTicketsTable({
 
               {!isLoading && tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
+                  <td colSpan={8} className={`${portalDataTableCellClassName} py-12 text-center`}>
                     {hasActiveFilters ? (
                       <PortalEmptyState
                         title="Sin resultados"
@@ -290,11 +280,8 @@ export function AssuranceTicketsTable({
               ) : null}
 
               {tickets.map((ticket) => (
-                <tr
-                  key={ticket.id}
-                  className="border-b border-gray-50 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3"
-                >
-                  <td className="align-middle px-4 py-3">
+                <tr key={ticket.id} className={portalTableRowHoverClassName}>
+                  <td className={portalDataTableCellClassName}>
                     <div className="flex flex-col gap-1">
                       <button
                         type="button"
@@ -308,20 +295,20 @@ export function AssuranceTicketsTable({
                       </span>
                     </div>
                   </td>
-                  <td className="align-middle px-4 py-3">
+                  <td className={portalDataTableCellClassName}>
                     <Badge variant="primary">{getAssuranceTicketTypeLabel(ticket.type)}</Badge>
                   </td>
-                  <td className="align-middle px-4 py-3">
+                  <td className={portalDataTableCellClassName}>
                     <Badge variant={getAssuranceTicketStatusVariant(ticket.status)}>
                       {getAssuranceTicketStatusLabel(ticket.status)}
                     </Badge>
                   </td>
-                  <td className="align-middle px-4 py-3">
+                  <td className={portalDataTableCellClassName}>
                     <Badge variant={getAssuranceTicketPriorityVariant(ticket.priority)}>
                       {getAssuranceTicketPriorityLabel(ticket.priority)}
                     </Badge>
                   </td>
-                  <td className="align-middle px-4 py-3">
+                  <td className={portalDataTableCellClassName}>
                     <div className="space-y-1">
                       <p className="font-medium text-gray-900 dark:text-white">
                         {getAssuranceQueueLabel(ticket.queueName)}
@@ -334,15 +321,17 @@ export function AssuranceTicketsTable({
                       </p>
                     </div>
                   </td>
-                  <td className="align-middle px-4 py-3">
+                  <td className={portalDataTableCellClassName}>
                     <Badge variant={getAssuranceSlaStatusVariant(ticket.slaBreachStatus)}>
                       {getAssuranceSlaStatusLabel(ticket.slaBreachStatus)}
                     </Badge>
                   </td>
-                  <td className="align-middle px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                  <td
+                    className={`${portalDataTableCellClassName} text-xs text-gray-500 dark:text-gray-400`}
+                  >
                     {formatAssuranceDateTime(ticket.updatedAt)}
                   </td>
-                  <td className="align-middle px-4 py-3 text-right">
+                  <td className={`${portalDataTableCellClassName} text-right`}>
                     <Button type="button" variant="secondary" onClick={() => onOpenTicket(ticket)}>
                       Ver detalle
                     </Button>

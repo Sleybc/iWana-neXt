@@ -144,6 +144,8 @@ describe('AssuranceTicketsTable ADR-065', () => {
     expect(screen.getAllByText(/Mostrando 1\u201320 de 45 tickets/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: /paginación/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('Filtrar en esta página')).toBeInTheDocument();
+    expect(screen.getByLabelText('Filas por página')).toBeInTheDocument();
   });
 
   it('ADR-065: sin randomAccess conserva Cargar más', () => {

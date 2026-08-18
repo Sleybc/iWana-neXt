@@ -5,9 +5,14 @@ import { PurchaseRequestPriority } from '@iwana/shared';
 import type { PurchaseRequestRecord } from '@/lib/api-client';
 import {
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalSkeletonBlock,
   interactiveFocusClassName,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
@@ -79,36 +84,20 @@ export function PurchaseRequestsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-        <thead className="bg-gray-50 dark:bg-dark-surface-2">
+      <table className="min-w-full text-sm">
+        <thead className={portalDataTableHeadRowClassName}>
           <tr>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Solicitud
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Tipo de compra
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Prioridad
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Área
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Estado
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Requerida
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Alertas
-            </th>
-            <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Acción
-            </th>
+            <PortalDataTableHead>Solicitud</PortalDataTableHead>
+            <PortalDataTableHead>Tipo de compra</PortalDataTableHead>
+            <PortalDataTableHead>Prioridad</PortalDataTableHead>
+            <PortalDataTableHead>Área</PortalDataTableHead>
+            <PortalDataTableHead>Estado</PortalDataTableHead>
+            <PortalDataTableHead>Requerida</PortalDataTableHead>
+            <PortalDataTableHead>Alertas</PortalDataTableHead>
+            <PortalDataTableHead>Acción</PortalDataTableHead>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200 dark:divide-dark-border">
+        <tbody className={portalDataTableBodyClassName}>
           {requests.map((request) => {
             const isSelected = selectedRequestId === request.id;
             const isOverdue = isPurchaseRequestOverdue(request);
@@ -118,9 +107,11 @@ export function PurchaseRequestsTable({
             return (
               <tr
                 key={request.id}
-                className={`${isSelected ? 'bg-iwana-primary-50/60 dark:bg-iwana-primary-950/30' : 'hover:bg-gray-50 dark:hover:bg-dark-surface-2'}`}
+                className={`${portalTableRowHoverClassName} ${
+                  isSelected ? 'bg-iwana-primary-50/60 dark:bg-iwana-primary-950/30' : ''
+                }`}
               >
-                <td className="px-4 py-3">
+                <td className={portalDataTableCellClassName}>
                   <button
                     type="button"
                     className={`text-left font-semibold text-gray-900 underline-offset-4 hover:underline dark:text-white ${interactiveFocusClassName}`}
@@ -132,38 +123,38 @@ export function PurchaseRequestsTable({
                     </span>
                   </button>
                 </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                <td className={portalDataTableCellClassName}>
                   {getPurchaseRequestTypeLabel(request.requestType)}
                 </td>
-                <td className="px-4 py-3">
+                <td className={portalDataTableCellClassName}>
                   <Badge variant={getPurchaseRequestPriorityBadgeVariant(request.priority)}>
                     {getPurchaseRequestPriorityLabel(request.priority)}
                   </Badge>
                 </td>
                 <td
-                  className="px-4 py-3 text-gray-700 dark:text-gray-300"
+                  className={portalDataTableCellClassName}
                   title={request.requestingArea ?? undefined}
                 >
                   {request.requestingArea ?? 'Sin área'}
                 </td>
-                <td className="px-4 py-3">
+                <td className={portalDataTableCellClassName}>
                   <Badge variant={getPurchaseRequestStatusBadgeVariant(request.status)}>
                     {getPurchaseRequestStatusLabel(request.status)}
                   </Badge>
                 </td>
                 <td
-                  className={`px-4 py-3 ${isOverdue ? 'font-medium text-rose-700 dark:text-rose-300' : 'text-gray-700 dark:text-gray-300'}`}
+                  className={`${portalDataTableCellClassName} ${isOverdue ? 'font-medium text-rose-700 dark:text-rose-300' : ''}`}
                 >
                   {formatInventoryDate(request.neededByDate)}
                 </td>
-                <td className="px-4 py-3">
+                <td className={portalDataTableCellClassName}>
                   <div className="flex flex-wrap gap-1">
                     {isUrgent ? <Badge variant="error">Urgente</Badge> : null}
                     {isOverdue ? <Badge variant="warning">Vencida</Badge> : null}
                     {hasException ? <Badge variant="info">Excepción</Badge> : null}
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                <td className={portalDataTableCellClassName}>
                   <Button
                     type="button"
                     variant="secondary"

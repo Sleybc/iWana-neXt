@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
 import {
   PortalActionToolbar,
   PortalAlert,
@@ -563,6 +564,22 @@ describe('PortalPageSizeSelect', () => {
     await user.click(option);
     expect(onChange).toHaveBeenCalledWith(50);
   });
+
+  it('respeta opciones explícitas y estado disabled', async () => {
+    const onChange = jest.fn();
+    render(<PortalPageSizeSelect value={10} options={[10, 50]} onChange={onChange} disabled />);
+
+    const select = screen.getByRole('combobox', { name: 'Filas por página' });
+    expect(select).toBeDisabled();
+    expect(select).toHaveTextContent('10');
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+
+    // @iwana/ui usa un combobox button + listbox, no un <select> nativo.
+    const user = userEvent.setup();
+    render(<PortalPageSizeSelect value={10} options={[10, 50]} onChange={onChange} />);
+    await user.click(screen.getAllByRole('combobox', { name: 'Filas por página' })[1]!);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['10', '50']);
+  });
 });
 
 describe('PortalDataTableSortableHead', () => {
@@ -651,5 +668,120 @@ describe('PortalDataTableSortableHead', () => {
       </table>,
     );
     expect(screen.getByRole('button', { name: /Ordenar por Nombre/ })).toBeDisabled();
+  });
+
+  it('en mobile conserva scope y aria-sort, pero no monta un botón de orden', () => {
+    mockMatchMediaSmUp(false);
+
+    render(
+      <table>
+        <thead>
+          <tr>
+            <PortalDataTableSortableHead field="name" activeSort={null} onSortChange={jest.fn()}>
+              Nombre
+            </PortalDataTableSortableHead>
+          </tr>
+        </thead>
+      </table>,
+    );
+
+    const header = screen.getByRole('columnheader', { name: 'Nombre' });
+    expect(header).toHaveAttribute('scope', 'col');
+    expect(header).toHaveAttribute('aria-sort', 'none');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+
+describe('PortalTablePager — contrato de pie y a11y', () => {
+  const resource = { singular: 'usuario', plural: 'usuarios' };
+
+  it('monta el control de tamaño junto al rango del pager', async () => {
+    const user = userEvent.setup();
+    const onPageSizeChange = jest.fn();
+
+    render(
+      <PortalTablePager
+        page={1}
+        pageCount={2}
+        onPageChange={jest.fn()}
+        from={1}
+        to={20}
+        total={35}
+        resource={resource}
+        pageSizeControl={
+          <PortalPageSizeSelect value={20} onChange={onPageSizeChange} options={[10, 20, 50]} />
+        }
+      />,
+    );
+
+    expect(screen.getByText('Mostrando 1–20 de 35 usuarios')).toBeInTheDocument();
+    const select = screen.getByRole('combobox', { name: 'Filas por página' });
+    await user.click(select);
+    await user.click(screen.getByRole('option', { name: '50' }));
+    expect(onPageSizeChange).toHaveBeenCalledWith(50);
+  });
+
+  it('restaura el foco dentro de la navegación después de cambiar de página', async () => {
+    const user = userEvent.setup();
+    const onPageChange = jest.fn();
+    const { rerender } = render(
+      <PortalTablePager
+        page={1}
+        pageCount={2}
+        onPageChange={onPageChange}
+        from={1}
+        to={20}
+        total={35}
+        resource={resource}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    rerender(
+      <PortalTablePager
+        page={2}
+        pageCount={2}
+        onPageChange={onPageChange}
+        from={21}
+        to={35}
+        total={35}
+        resource={resource}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('navigation').contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it('pasa axe sin violaciones sobre una tabla representativa con pager', async () => {
+    const { container } = render(
+      <div>
+        <table aria-label="Listado de usuarios">
+          <caption className="sr-only">Usuarios de prueba</caption>
+          <thead>
+            <tr>
+              <PortalDataTableHead>Nombre</PortalDataTableHead>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Registro de prueba</td>
+            </tr>
+          </tbody>
+        </table>
+        <PortalTablePager
+          page={1}
+          pageCount={2}
+          onPageChange={jest.fn()}
+          from={1}
+          to={20}
+          total={35}
+          resource={resource}
+        />
+      </div>,
+    );
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

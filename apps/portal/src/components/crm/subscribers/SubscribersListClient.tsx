@@ -23,7 +23,11 @@ import {
   PortalPageSizeSelect,
   PortalTablePager,
   portalDataBusyRegionClassName,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   CUSTOMER_SEGMENT_META,
@@ -53,8 +57,6 @@ const SORTABLE_COLUMN_LABELS: Record<string, string> = {
 };
 
 const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
-
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 function mapError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -441,8 +443,8 @@ function SubscribersListClientInner() {
               aria-busy={refreshing || undefined}
             >
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-[#f6f8f4] dark:border-dark-border dark:bg-dark-surface-3">
+                <thead className={portalDataTableHeadRowClassName}>
+                  <tr>
                     {renderHead(null, 'Suscriptor')}
                     {renderHead(null, 'Documento / NIT')}
                     {renderHead('personType', 'Tipo')}
@@ -453,7 +455,7 @@ function SubscribersListClientInner() {
                     {renderHead('createdAt', 'Creado')}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={portalDataTableBodyClassName}>
                   {initialLoading && (
                     <tr>
                       <td
@@ -508,11 +510,8 @@ function SubscribersListClientInner() {
 
                   {!initialLoading &&
                     records.map((subscriber) => (
-                      <tr
-                        key={subscriber.id}
-                        className="border-b border-gray-100 last:border-b-0 hover:bg-iwana-surface-soft/80 dark:border-dark-border dark:hover:bg-dark-surface-3/50"
-                      >
-                        <td className={cellClass}>
+                      <tr key={subscriber.id} className={portalTableRowHoverClassName}>
+                        <td className={portalDataTableCellClassName}>
                           <Link
                             href={`/dashboard/crm/subscribers/${subscriber.id}`}
                             className="group block"
@@ -525,8 +524,10 @@ function SubscribersListClientInner() {
                             </p>
                           </Link>
                         </td>
-                        <td className={cellClass}>{formatDocumentDisplay(subscriber)}</td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
+                          {formatDocumentDisplay(subscriber)}
+                        </td>
+                        <td className={portalDataTableCellClassName}>
                           <Badge
                             variant={PERSON_TYPE_META[subscriber.personType].variant}
                             className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
@@ -534,7 +535,7 @@ function SubscribersListClientInner() {
                             {PERSON_TYPE_META[subscriber.personType].label}
                           </Badge>
                         </td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           <Badge
                             variant="neutral"
                             className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
@@ -542,13 +543,13 @@ function SubscribersListClientInner() {
                             {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
                           </Badge>
                         </td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           {formatVatTreatmentLabel(subscriber.vatTreatment)}
                         </td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           {formatSubscriberLocation(subscriber.city, subscriber.department)}
                         </td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           <Badge
                             variant={SUBSCRIBER_STATUS_META[subscriber.status].variant}
                             className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
@@ -556,7 +557,9 @@ function SubscribersListClientInner() {
                             {SUBSCRIBER_STATUS_META[subscriber.status].label}
                           </Badge>
                         </td>
-                        <td className={cellClass}>{formatSubscriberDate(subscriber.createdAt)}</td>
+                        <td className={portalDataTableCellClassName}>
+                          {formatSubscriberDate(subscriber.createdAt)}
+                        </td>
                       </tr>
                     ))}
                 </tbody>

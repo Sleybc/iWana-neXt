@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.70
+**Version:** 1.74
 **Estado:** Activo
-**Fecha:** 2026-08-15
+**Fecha:** 2026-08-17
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -1282,7 +1282,7 @@ Se ejecuta la iteracion complementaria definida en `docs/plans/2026-05-30-mod00-
 - `CalendarExceptionsPanel` y `OperationalEventualitiesPanel` consolidan el patron list-first con disclosures accesibles, sin duplicar acciones de cierre y manteniendo los formularios subordinados.
 - `CalendarWfmPanel` y `WfmOperatingHoursManager` eliminan contexto duplicado, reducen la sensacion de panel dentro de panel y conservan la gestion global de cierres aun cuando falle la carga de sedes de visitas.
 - `OperationalEventualitiesPanel` degrada de forma parcial cuando falla el directorio de personas: mantiene visible la tabla con fallback de nombre y bloquea solo el alta hasta recuperar los datos necesarios.
-- `e2e/tests/portal-settings-calendar.spec.ts` ahora valida la lectura por capas con `calendar-operational-status`, `calendar-shell-primary` y `calendar-shell-secondary`, en vez de depender solo del orden de headings.
+- La evidencia histórica de esta iteración refería `calendar-shell-primary`/`calendar-shell-secondary`; la suite vigente de `e2e/tests/portal-settings-calendar.spec.ts` usa `calendar-operational-status` y `calendar-step-1..4`.
 
 **Validacion ejecutada:**
 
@@ -1760,3 +1760,41 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - **Hallazgo de proceso (falso verde v2):** el server dev sirvió bundle stale v1.7 y la suite pasó 11/11 contra el render viejo; solo tras server fresco (`PW_FORCE_FRESH_SERVER`) el DOM confirmó v1.8 y los PNG se regeneraron correctos. Se añade a la deuda de proceso: tras cambios de primitive, verificar servidor fresco + DOM antes de snapshots.
 - **Gate cobertura focalizada (AI-EM-ARCH, `--collectCoverageFrom=components/settings/AccessControlSettingsClient.tsx`):** 93.57 / 82.03 / 87.96 / 93.64 · 56/56 — sin retroceso vs baseline v1.68 (el 71.52% branches reportado por SR-QA corresponde al global del portal, denominador distinto, preexistente).
 - **Veredicto AI-EM-ARCH:** GO. Sin commits ni push (pendiente de solicitud explícita); workstream de Organización intacto.
+
+### v1.71 — 2026-08-17 — Densidad del selector de hora del calendario
+
+**Autor:** ejecutor (sesion Cursor) subordinado a AI-EM-ARCH
+**Tipo:** Pulido visual de control reutilizable
+**Spec:** `docs/specs/2026-08-16-mod00-calendario-settings-ds-contrato.md` (addendum de densidad)
+
+- **Motivo:** el popover de `TimeFieldSelect` (~288×324 px, opciones `min-h-11`, titulo visible) tapaba la tabla del horario base y reintroducia scroll horizontal. Causa: la remediacion de a11y del 2026-08-17 copio escala de superficie del DatePicker a un control de celda.
+- **Cambio:** popover `w-52 p-2 rounded-xl shadow-iwana-active`, opciones `h-8`, listas `max-h-40`, preview `HH:mm` sin titulo redundante; trigger compacto `h-9 w-[6.75rem]` con `--:--` y sin reloj; grilla desktop `min-w-0` sin `min-w-[640px]`. Se conserva precision `00-23` / `00-59`, teclado, Escape y listboxes accesibles.
+- **Jest (dirigido):** 5 suites / 66 passed (`TimeFieldSelect`, `BusinessHoursWeekEditor`, `CalendarSettingsA11y`, `CalendarOrganizationHoursPanel`, `OperationalEventualitiesPanel`).
+- **Typecheck:** exit 0. ESLint de archivos tocados: 0 errores. `audit-ui.mjs` sobre `TimeFieldSelect.tsx` y `BusinessHoursWeekEditor.tsx`: sin hallazgos.
+- E2E: `ADMIN ve un selector de hora compacto…` **1 passed** (1.2 s) con browsers en `%LOCALAPPDATA%\ms-playwright` (Chromium 145.0.7632.6).
+- **Fuera de alcance:** copiar horario a toda la semana.
+
+### v1.72 — 2026-08-17 — TimeFieldSelect en festivos y cierres
+
+**Autor:** ejecutor (sesion Cursor) subordinado a AI-EM-ARCH
+**Tipo:** Cierre de residual de UI
+**Spec:** `docs/specs/2026-08-16-mod00-calendario-settings-ds-contrato.md` (addendum de densidad)
+
+- **Cambio:** `CalendarExceptionsPanel` deja los `input type="time"` nativos y usa `TimeFieldSelect` en modo default (`Desde` / `Hasta`), el mismo popover compacto del horario base.
+- **Jest:** `CalendarExceptionsPanel.spec.tsx` 10/10 (incluye ausencia de `input[type=time]` y seleccion real de `08:00` / `12:00` y orden `12:00` / `10:00`).
+- **Fuera de alcance:** copiar horario a toda la semana.
+
+### v1.73 — 2026-08-17 — Browsers Playwright permanentes
+
+- Variable de usuario `PLAYWRIGHT_BROWSERS_PATH=%LOCALAPPDATA%\ms-playwright`.
+- `pnpm playwright:install` (`e2e/install-browsers.mjs`) ignora el sandbox `cursor-sandbox-cache` de Cursor.
+- `e2e/load-env.ts` reescribe esa inyeccion al arrancar cualquier suite E2E (no CI).
+- MCP Playwright del plugin Cursor: operativo (navega independiente del cache del repo).
+- E2E de densidad: **1 passed**.
+
+### v1.74 — 2026-08-17 — Proporcion de la grilla semanal
+
+- Dia deja de comerse el `1fr`; el sobrante va a Inicio/Fin. Encabezado `Abierto` con `whitespace-nowrap` (ya no recorta a «ABIER»).
+- Trigger compacto `h-8 w-[5.5rem]` centrado, chevron pegado al valor. Popover `w-44` / `max-h-32` / opciones `h-7`.
+- Jest dirigido 32/32. E2E densidad **1 passed** (trigger ≤96 px, dialog ≤192×200, `Abierto` visible).
+

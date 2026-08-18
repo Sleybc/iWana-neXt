@@ -36,6 +36,7 @@
     "test:e2e:headed": "playwright test --config e2e/playwright.web.config.ts --headed",
     "test:e2e:portal": "playwright test --config e2e/playwright.portal.config.ts",
     "test:e2e:all": "pnpm test:e2e && pnpm test:e2e:portal",
+    "playwright:install": "node e2e/install-browsers.mjs",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && node scripts/clean-paths.mjs node_modules .turbo test-results apps/portal/test-results apps/api/coverage",
     "prepare": "husky",

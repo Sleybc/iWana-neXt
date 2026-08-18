@@ -432,7 +432,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+              <table className="min-w-full">
                 <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Definición</PortalDataTableHead>

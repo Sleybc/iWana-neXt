@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   ScheduleEventStatus,
   VisitRequestStatus,
@@ -95,6 +95,13 @@ jest.mock('@/components/layout/PageHeader', () => ({
 }));
 
 jest.mock('@/components/shared/portal-ui', () => ({
+  PortalDataTableHead: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <th className={className}>{children}</th>,
   PortalAlert: ({ title, description }: { title: string; description: string }) => (
     <div role="alert">
       <strong>{title}</strong>
@@ -126,7 +133,25 @@ jest.mock('@/components/shared/portal-ui', () => ({
   PortalSkeletonBlock: ({ className }: { className?: string }) => (
     <div data-testid="skeleton" className={className} />
   ),
-  PortalTablePagination: () => <div data-testid="pagination" />,
+  PortalTablePagination: ({
+    hasMore,
+    onLoadMore,
+    loading,
+  }: {
+    hasMore: boolean;
+    onLoadMore: () => void;
+    loading: boolean;
+  }) =>
+    hasMore ? (
+      <button type="button" onClick={onLoadMore} disabled={loading}>
+        Cargar más
+      </button>
+    ) : null,
+  portalDataTableBodyClassName: 'portal-data-table-body',
+  portalDataTableCellClassName: 'portal-data-table-cell',
+  portalDataTableHeadRowClassName: 'portal-data-table-head-row',
+  portalDataTableShellClassName: 'portal-data-table-shell',
+  portalTableRowHoverClassName: 'portal-table-row-hover',
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -307,5 +332,34 @@ describe('UnrealizedVisitsView', () => {
     render(<UnrealizedVisitsView />);
 
     expect(await screen.findByText('Requiere decisión')).toBeInTheDocument();
+  });
+
+  it('ejecuta Cargar más para la segunda página y bloquea el control durante la carga', async () => {
+    const visitRequests = Array.from({ length: 21 }, (_, index) =>
+      buildVisitRequest({ id: `vr-page-${index + 1}`, title: `Soporte página ${index + 1}` }),
+    );
+    const pageResponse = {
+      items: visitRequests,
+      meta: { total: visitRequests.length, page: 1, limit: 100, totalPages: 1 },
+    };
+    listVisitRequestsMock.mockResolvedValue(pageResponse);
+
+    render(<UnrealizedVisitsView />);
+    expect(await screen.findByText('Soporte página 1')).toBeInTheDocument();
+
+    let releaseReload: (value: typeof pageResponse) => void = () => undefined;
+    const reload = new Promise<typeof pageResponse>((resolve) => {
+      releaseReload = resolve;
+    });
+    listVisitRequestsMock.mockImplementationOnce(() => reload);
+
+    const loadMore = screen.getByRole('button', { name: 'Cargar más' });
+    fireEvent.click(loadMore);
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeDisabled();
+
+    releaseReload(pageResponse);
+    expect(await screen.findByText('Soporte página 21')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(listVisitRequestsMock.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

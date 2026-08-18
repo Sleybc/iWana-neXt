@@ -197,6 +197,9 @@ export function BundlesManager({ canEdit, focusId = null, onFocusConsumed }: Bun
       setLoadingMore(true);
     } else {
       setIsLoading(true);
+      // El filtro de ofertas cambia la ventana; el cursor solo vive en memoria.
+      setBundles([]);
+      setMeta(null);
     }
     setLoadError(null);
     setActionError(null);

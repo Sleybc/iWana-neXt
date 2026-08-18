@@ -17,15 +17,18 @@ import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
   interactiveFocusClassName,
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalPanel,
   PortalSkeletonBlock,
   PortalTablePager,
   PortalTablePagination,
+  portalDataTableBodyClassName,
   portalDataTableCellClassName,
-  portalDataTableHeadClassName,
+  portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
+  portalTableRowHoverClassName,
   portalTextareaClassName,
   portalDataBusyRegionClassName,
 } from '@/components/shared/portal-ui';
@@ -330,20 +333,24 @@ function WriteOffHistorySectionInner({
             }
             aria-busy={refreshing || undefined}
           >
-            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-              <thead className="bg-gray-50 dark:bg-dark-surface-2">
+            <table className="min-w-full text-sm">
+              <thead className={portalDataTableHeadRowClassName}>
                 <tr>
-                  <th className={portalDataTableHeadClassName}>Referencia</th>
-                  <th className={portalDataTableHeadClassName}>Motivo</th>
-                  <th className={portalDataTableHeadClassName}>Estado</th>
-                  <th className={portalDataTableHeadClassName}>Solicitante</th>
-                  <th className={portalDataTableHeadClassName}>Solicitada el</th>
-                  <th className={portalDataTableHeadClassName}>Movimiento</th>
+                  <PortalDataTableHead>Referencia</PortalDataTableHead>
+                  <PortalDataTableHead>Motivo</PortalDataTableHead>
+                  <PortalDataTableHead>Estado</PortalDataTableHead>
+                  <PortalDataTableHead>Solicitante</PortalDataTableHead>
+                  <PortalDataTableHead>Solicitada el</PortalDataTableHead>
+                  <PortalDataTableHead>Movimiento</PortalDataTableHead>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+              <tbody className={portalDataTableBodyClassName}>
                 {history.map((writeOff) => (
-                  <tr key={writeOff.id} data-testid={`write-off-history-row-${writeOff.id}`}>
+                  <tr
+                    key={writeOff.id}
+                    className={portalTableRowHoverClassName}
+                    data-testid={`write-off-history-row-${writeOff.id}`}
+                  >
                     <td className={portalDataTableCellClassName}>
                       {resolveSubjectLabel(writeOff, items, assets)}
                     </td>
@@ -633,26 +640,30 @@ export function WriteOffsPanel({
         ) : (
           <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-                <thead className="bg-gray-50 dark:bg-dark-surface-2">
+              <table className="min-w-full text-sm">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
-                    <th className={portalDataTableHeadClassName}>Referencia</th>
-                    <th className={portalDataTableHeadClassName}>Bodega</th>
-                    <th className={portalDataTableHeadClassName}>Cantidad</th>
-                    <th className={portalDataTableHeadClassName}>Motivo</th>
-                    <th className={portalDataTableHeadClassName}>Solicitante</th>
-                    <th className={portalDataTableHeadClassName}>Solicitada el</th>
-                    <th className={portalDataTableHeadClassName}>Acciones</th>
+                    <PortalDataTableHead>Referencia</PortalDataTableHead>
+                    <PortalDataTableHead>Bodega</PortalDataTableHead>
+                    <PortalDataTableHead>Cantidad</PortalDataTableHead>
+                    <PortalDataTableHead>Motivo</PortalDataTableHead>
+                    <PortalDataTableHead>Solicitante</PortalDataTableHead>
+                    <PortalDataTableHead>Solicitada el</PortalDataTableHead>
+                    <PortalDataTableHead>Acciones</PortalDataTableHead>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                <tbody className={portalDataTableBodyClassName}>
                   {pending.map((writeOff) => {
                     const isSelfRequest = currentUserId === writeOff.requestedByUserId;
                     const isProcessing = processingWriteOffId === writeOff.id;
                     const isRejecting = rejectingId === writeOff.id;
 
                     return (
-                      <tr key={writeOff.id} data-testid={`write-off-pending-row-${writeOff.id}`}>
+                      <tr
+                        key={writeOff.id}
+                        className={portalTableRowHoverClassName}
+                        data-testid={`write-off-pending-row-${writeOff.id}`}
+                      >
                         <td className={portalDataTableCellClassName}>
                           {resolveSubjectLabel(writeOff, items, assets)}
                         </td>

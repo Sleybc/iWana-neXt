@@ -144,4 +144,31 @@ describe('AdditionalProductsPanel', () => {
       ).toBe(true);
     });
   });
+
+  it('reinicia el cursor en memoria al cambiar un filtro URL', async () => {
+    const user = userEvent.setup();
+    mockGetAdditionalProducts
+      .mockResolvedValueOnce({
+        data: [sampleProduct],
+        meta: { ...EMPTY_LIST_META, nextCursor: 'cursor-products-2', total: 2 },
+      })
+      .mockResolvedValueOnce({
+        data: [sampleProduct],
+        meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+      });
+
+    render(<AdditionalProductsPanel canEdit />);
+
+    expect(await screen.findByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Red/i }));
+
+    await waitFor(() => {
+      expect(
+        mockGetAdditionalProducts.mock.calls.some(
+          (call) => call[0]?.category === 'NETWORKING' && call[0]?.cursor === undefined,
+        ),
+      ).toBe(true);
+    });
+    expect(mockReplace).toHaveBeenCalled();
+  });
 });

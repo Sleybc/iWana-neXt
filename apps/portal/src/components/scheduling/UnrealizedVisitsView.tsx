@@ -25,11 +25,17 @@ import { ApiError, wfmApi } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
+  PortalDataTableHead,
   PortalEmptyState,
   PortalPanel,
   PortalResultsStrip,
   PortalSkeletonBlock,
   PortalTablePagination,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatWfmDateRange,
@@ -432,21 +438,21 @@ export function UnrealizedVisitsView() {
         )}
 
         {!isLoading && !isBootstrapping && !error && items.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
+          <div className={portalDataTableShellClassName}>
             <div className="overflow-x-auto">
               <table className="min-w-[960px] w-full text-sm">
-                <thead className="bg-gray-50 text-xs uppercase tracking-[0.16em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
+                <thead className={portalDataTableHeadRowClassName}>
                   <tr>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Trabajo</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Tipo</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Fecha</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Técnico</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Causa</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Intento</th>
-                    <th className="px-4 py-3 text-left align-middle font-semibold">Acción</th>
+                    <PortalDataTableHead className="align-middle">Trabajo</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Tipo</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Fecha</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Técnico</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Causa</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Intento</PortalDataTableHead>
+                    <PortalDataTableHead className="align-middle">Acción</PortalDataTableHead>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={portalDataTableBodyClassName}>
                   {items.map((item) => {
                     const technician = techniciansById.get(item.technicianId);
                     const technicianDisplay = technician
@@ -458,11 +464,8 @@ export function UnrealizedVisitsView() {
                         : null;
 
                     return (
-                      <tr
-                        key={`${item.type}:${item.id}`}
-                        className="border-t border-gray-100 transition-colors hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
-                      >
-                        <td className="max-w-[240px] px-4 py-3 align-middle">
+                      <tr key={`${item.type}:${item.id}`} className={portalTableRowHoverClassName}>
+                        <td className={`${portalDataTableCellClassName} max-w-[240px]`}>
                           <span className="block truncate font-medium text-gray-900 dark:text-white">
                             {item.title}
                           </span>
@@ -470,20 +473,24 @@ export function UnrealizedVisitsView() {
                             {item.reference}
                           </span>
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           <Badge variant={getWfmWorkTypeVariant(item.workType)}>
                             {getWfmWorkTypeLabel(item.workType)}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 align-middle text-xs text-gray-600 dark:text-gray-300">
+                        <td
+                          className={`${portalDataTableCellClassName} text-xs text-gray-600 dark:text-gray-300`}
+                        >
                           {item.endDate
                             ? formatWfmDateRange(item.date, item.endDate)
                             : formatWfmDateTime(item.date)}
                         </td>
-                        <td className="px-4 py-3 align-middle text-sm text-gray-600 dark:text-gray-300">
+                        <td
+                          className={`${portalDataTableCellClassName} text-sm text-gray-600 dark:text-gray-300`}
+                        >
                           {technicianDisplay}
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           {item.causeLabel ? (
                             <Badge variant="warning">{item.causeLabel}</Badge>
                           ) : !item.isClassified ? (
@@ -497,7 +504,7 @@ export function UnrealizedVisitsView() {
                             <Badge variant="neutral">Sin causa</Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           {retryChip ? (
                             <Badge
                               variant={retryChip.variant}
@@ -509,7 +516,7 @@ export function UnrealizedVisitsView() {
                             <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className={portalDataTableCellClassName}>
                           <div className="flex flex-wrap gap-1.5">
                             <Button
                               type="button"
@@ -553,7 +560,7 @@ export function UnrealizedVisitsView() {
         <PortalTablePagination
           hasMore={hasMore}
           onLoadMore={() => setPage((p) => p + 1)}
-          loading={false}
+          loading={isLoading}
           resourceLabel="visitas"
           shown={items.length}
           total={total}
