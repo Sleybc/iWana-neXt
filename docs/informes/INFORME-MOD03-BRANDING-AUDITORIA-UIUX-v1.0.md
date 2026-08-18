@@ -241,11 +241,11 @@ Ejecutado el prompt [`PROMPT-MOD03-BRANDING-AUDITORIA-REMEDIACION-v1.0.md`](../p
 ### 8.4 Deuda residual registrada (diferida, no bloqueante)
 
 - **P2-SEC-1:** proxy de URLs externas de marca — backlog SEC-ENG (sin cambios en este ciclo; el renderizado sigue directo, Task 8 sin probing).
-- **P2:** patrón de texto de error con token base en primitivos fuera del backlog — `Select.tsx:668`, `MultiSelect.tsx:279`, `DatePicker.tsx:120`, `FormField.tsx:54`, `OtpInput.tsx:90` (`text-iwana-error` como texto) → próximo ciclo: `-700 dark:text-red-300` conservando base en bordes/iconos.
+- **P2:** patrón de texto de error con token base en primitivos fuera del backlog — `Select.tsx:668`, `MultiSelect.tsx:279`, `DatePicker.tsx:120`, `FormField.tsx:54`, `OtpInput.tsx:90` (`text-iwana-error` como texto) → próximo ciclo: `-700 dark:text-red-300` conservando base en bordes/iconos. **→ Cerrado en ciclo P2 (§8.7).**
 - **P2:** `SettingsSubTabs` remediada pero sin montaje productivo en la ruta (contrato cubierto por unit `SettingsClient.spec.tsx` y por el label de upload que comparte `interactiveFocusClassName`).
 - **P2:** overlay de foco del label de upload — caption blanco ≈2.99:1 < 4.5:1 en light (P2 conocido, fuera del backlog; control operable con doble señal).
 - **P2:** N2 (red-500 crudos en `Input`: asterisco/borde — cumplen 3:1 no-texto), N3 (red-* crudos en diálogo Restaurar), N5 (tab activo navy en `SettingsSubTabs` — control compartido).
-- **P3:** copy R1 (`BrandingForm.tsx:1062`, verbo "limpiar" vs "Restaurar marca base" en el diálogo) y R2 (`:1055`, "metadata" → "textos públicos" en pasada posterior).
+- **P3:** copy R1 (`BrandingForm.tsx:1062`, verbo "limpiar" vs "Restaurar marca base" en el diálogo) y R2 (`:1055`, "metadata" → "textos públicos" en pasada posterior). **→ Cerrados en ciclo P2 (§8.7).**
 - **P3:** `h1`→`h3` y `shadow-iwana-card`/foco `details` (v1.0 §3) — deuda transversal de settings, fuera del alcance.
 
 ### 8.5 Copy congelado A2 (registro documental literal — requisito PROD-UX R3)
@@ -260,3 +260,29 @@ Ajustes 9b: Producto→**Nombre comercial**; Superficie→**Nombre del portal**;
 - E2E: `portal-settings-branding-smoke.spec.ts` **6/6** (light/error-light/error-dark/mobile-light con foco/mobile-dark/readonly, axe wcag2a/wcag2aa 0 violaciones por vista); regresión `portal-branding-upload.spec.ts` **3/3**. Capturas en `.playwright-mcp/audit-branding-v1-1/` (7 PNG).
 - Greps C4: `dark:hover:text-iwana-primary` sin sufijo = 0 · `bg-iwana-primary` en `BrandingForm` = 0 · `ring-iwana-secondary` en `SettingsSubTabs` = 0 · `text-iwana-error` crudo en `Input.tsx` = 0. `audit-ui.mjs`: sin hallazgos.
 - Sin commit (pendiente del equipo). Sin PII/secretos; diff limitado a los 9 archivos de la Fase B.
+
+---
+
+## 9. Ciclo P2 residuales (2026-08-18)
+
+Segundo lote de la deuda registrada en §8.4, ejecutado por AI-FE-PLATFORM con TDD (RED 5 fallos → GREEN) y verificado en sesión (jest 44/44, eslint exit 0). Commits: `f07c182c` (code) + docs.
+
+### 9.1 Cerrados en este ciclo
+
+| Deuda | Evidencia |
+| --- | --- |
+| P2 error-token en 5 primitivos | `Select.tsx:668` (borde `border-iwana-error` conservado), `MultiSelect.tsx:279`, `DatePicker.tsx:122` (icono `currentColor`), `FormField.tsx:57` (marcador required conserva base), `OtpInput.tsx:90` (borde `border-iwana-error` + `focus:ring-iwana-error` conservados) — texto de error `text-iwana-error-700 dark:text-red-300`; +5 tests en `ui-primitives-a11y.spec.tsx` |
+| P3 R1 copy diálogo Restaurar | `BrandingForm.tsx:1061` "…restaurar toda la configuración a la marca base." — nueva clave `restoreDialogConfirmMessage` en `BRANDING_SETTINGS_COPY` |
+| P3 R2 "metadata" → "textos públicos" | `BrandingForm.tsx:1054` DialogDescription |
+
+### 9.2 Deuda nueva registrada (diferida)
+
+- **P2:** asterisco required de `FormField.tsx:47` (`text-iwana-error`, marcador visual aria-hidden) — pendiente decisión DS-OWNER si debe migrar a `-700`.
+- **P2:** bordes de error con paleta cruda `border-red-400` (`MultiSelect.tsx:125`) y `border-red-500` (`DatePicker.tsx:82`) — candidatos a migración a `border-iwana-error` (remediación futura).
+- **P2 (transversal, otro frente):** asterisco `text-iwana-error` en `apps/portal/src/components/commercial/TaxApplicationRulesManager.tsx:124` — en progreso de otro agente; registrar al cerrar ese frente.
+
+### 9.3 Estado consolidado del módulo Marca
+
+- P0: 0 · P1: 0 · P2: 7 (SEC-1, subtabs sin montaje, overlay de foco, N2, N3, N5, asterisco FormField) · P3: 2 (transversal h1→h3, bordes red-400/500).
+- Puntaje: 100 − 7·3 − 2·1 = **77/100** (aceptable; deuda diferida con registro, ninguna bloqueante).
+- Verificación: `ui-primitives-a11y.spec.tsx` 18/18 + `BrandingForm.spec.tsx` 26/26 (44/44); eslint 0; hooks lint-staged/commitlint verdes en `f07c182c`.
