@@ -58,7 +58,8 @@ export class CatalogController {
       'Orden default: name ASC, id ASC. `sort` = CATEGORY_NAME | ACTIVE_NAME | RECENTLY_UPDATED ' +
       '(keyset coherente; cambiar sort reinicia cursor). ' +
       'Filtros servidor: `type`, `name`, `isActive`, `missingPrice`, `category` (productos), ' +
-      '`model` (SALE|LOAN), `charge` (servicios). `sortableFields: []` (sin p95).',
+      '`model` (SALE|LOAN), `charge` (servicios). Planes en modo page: `sortBy`/`sortDir` y ' +
+      '`sortableFields` de columnas de dato. Productos/servicios y modo cursor: `sortableFields: []`.',
   })
   @ApiResponse({
     status: 200,

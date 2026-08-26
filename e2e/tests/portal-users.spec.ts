@@ -90,7 +90,18 @@ const MOCK_USERS = [
 
 const MOCK_USERS_RESPONSE = {
   data: MOCK_USERS,
-  meta: { nextCursor: null, total: 2 },
+  meta: {
+    nextCursor: null,
+    total: 2,
+    totalIsEstimate: false,
+    page: null,
+    limit: 20,
+    totalPages: null,
+    hasMore: false,
+    mode: 'cursor',
+    capabilities: { randomAccess: false, sortableFields: [] },
+    sort: null,
+  },
 };
 
 const MOCK_ACCESS_PERMISSIONS = {

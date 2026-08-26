@@ -217,8 +217,8 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
                 Hay interés comercial registrado
               </p>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                El expediente tiene un plan de interés. Puedes convertirlo en un contrato de
-                servicio contratado.
+                El interés comercial de la oportunidad tiene un plan. Puedes convertirlo en un
+                contrato de servicio.
               </p>
             </div>
             <button
@@ -318,7 +318,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
               <FileText className="h-4 w-4" aria-hidden />
             </span>
             <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-              Interés comercial del expediente
+              Interés comercial de la oportunidad
             </span>
             {showExpedientePanel ? (
               <ChevronUp className="h-4 w-4 text-gray-400" aria-hidden />

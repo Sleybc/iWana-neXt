@@ -149,6 +149,8 @@
      Consumo: z-(--z-modal) o zIndex: 'var(--z-modal)'. Prohibido z literal. */
   --z-base:    0;
   --z-sticky:  100;
+  /* Offset sticky bajo el TopHeader del portal (py-3 + h-11 + border-b). */
+  --portal-sticky-offset: 69px;
   --z-overlay: 200;
   --z-drawer:  300;
   --z-modal:   400;

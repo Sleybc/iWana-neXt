@@ -314,8 +314,8 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
   return (
     <PortalPanel
       eyebrow="Reglas"
-      title="Compatibilidad"
-      description="Define reglas de reemplazo entre ítems del catálogo para guiar ventas."
+      title="Reemplazos"
+      description="Define qué sucesor sugerir cuando un plan, producto o servicio queda obsoleto."
       actions={
         <>
           <Badge variant={portalActiveCountBadgeVariant}>
@@ -358,7 +358,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
       ) : replacesRules.length === 0 ? (
         <PortalEmptyState
           title="Sin reglas de reemplazo"
-          description="Crea la primera regla para guiar a los agentes cuando sugieran ítems obsoletos."
+          description="Crea la primera regla para guiar a los agentes cuando un plan, producto o servicio queda obsoleto."
           icon={ArrowRight}
           {...(canEdit
             ? {

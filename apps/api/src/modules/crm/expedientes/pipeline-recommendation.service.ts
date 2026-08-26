@@ -6,6 +6,18 @@ import { ExpedienteStatus } from '@iwana/shared';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 import { CompletenessCalculator, type CompletenessResult } from './completeness-calculator.service';
 import type { MissingRequirement } from './expediente-section-completeness.types';
+import type { ExpedienteSensitiveFieldPresence } from './expediente-section-completeness.types';
+
+const PIPELINE_STATUS_ORDER: Record<ExpedienteStatus, number> = {
+  [ExpedienteStatus.NUEVO_POTENCIAL]: 0,
+  [ExpedienteStatus.PRECALIFICADO]: 1,
+  [ExpedienteStatus.VALIDANDO_COBERTURA]: 2,
+  [ExpedienteStatus.EN_COTIZACION]: 3,
+  [ExpedienteStatus.LISTO_PARA_INSTALACION]: 4,
+  [ExpedienteStatus.INSTALACION_AGENDADA]: 5,
+  [ExpedienteStatus.CLIENTE_ACTIVO]: 6,
+  [ExpedienteStatus.DESCARTADO]: -1,
+};
 
 /**
  * Resultado de la recomendación del pipeline asistido.
@@ -52,6 +64,14 @@ export class PipelineRecommendationService {
 
     const completeness = await this.completenessCalculator.calculate(expedienteId);
 
+    return this.getRecommendationFromContext(expediente, completeness);
+  }
+
+  async getRecommendationFromContext(
+    expediente: ExpedienteRecord,
+    completeness: CompletenessResult,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): Promise<PipelineRecommendation> {
     // Separar soportes documentales (informativos) del resto (potencialmente bloqueantes)
     const informationalRequirements = completeness.missingRequirements.filter(
       (r) => r.sectionKey === 'documentSupport',
@@ -63,7 +83,11 @@ export class PipelineRecommendationService {
     // Porcentaje funcional sin contar la sección de soportes documentales
     const functionalOverall = this.calculateFunctionalOverall(completeness);
 
-    const suggestedStatus = this.calculateSuggestedStatus(expediente, functionalOverall);
+    const suggestedStatus = this.calculateSuggestedStatus(
+      expediente,
+      functionalOverall,
+      sensitiveFieldPresence,
+    );
 
     const { reason, blocking } = this.buildReasonAndBlocking(
       expediente,
@@ -72,14 +96,15 @@ export class PipelineRecommendationService {
       functionalOverall,
     );
 
-    const isSameAsCurrentOrDescartado =
-      suggestedStatus === expediente.status || expediente.status === ExpedienteStatus.DESCARTADO;
+    const canAdvance =
+      expediente.status !== ExpedienteStatus.DESCARTADO &&
+      PIPELINE_STATUS_ORDER[suggestedStatus] > PIPELINE_STATUS_ORDER[expediente.status];
 
     return {
       currentStatus: expediente.status,
-      suggestedStatus: isSameAsCurrentOrDescartado ? null : suggestedStatus,
-      recommendationReason: isSameAsCurrentOrDescartado ? null : reason,
-      blockingRequirements: blocking,
+      suggestedStatus: canAdvance ? suggestedStatus : null,
+      recommendationReason: canAdvance ? reason : null,
+      blockingRequirements: canAdvance ? blocking : [],
       informationalRequirements,
     };
   }
@@ -107,6 +132,7 @@ export class PipelineRecommendationService {
   private calculateSuggestedStatus(
     expediente: ExpedienteRecord,
     functionalOverall: number,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
   ): ExpedienteStatus {
     // Hito CLIENTE_ACTIVO: ticket + OT + datos funcionales completos
     if (expediente.ticketId && expediente.workOrderId && functionalOverall >= 100) {
@@ -129,15 +155,23 @@ export class PipelineRecommendationService {
     }
 
     // Hito VALIDANDO_COBERTURA: ubicación suficiente para verificar cobertura
-    const hasCoordinates = expediente.latitude != null && expediente.longitude != null;
-    const hasAddress = expediente.address && expediente.municipality;
+    const hasCoordinates =
+      (sensitiveFieldPresence?.hasLatitude ?? expediente.latitude != null) &&
+      (sensitiveFieldPresence?.hasLongitude ?? expediente.longitude != null);
+    const hasAddress =
+      (sensitiveFieldPresence?.hasAddress ?? Boolean(expediente.address)) &&
+      (sensitiveFieldPresence?.hasMunicipality ?? Boolean(expediente.municipality));
     if (hasCoordinates || hasAddress) {
       return ExpedienteStatus.VALIDANDO_COBERTURA;
     }
 
     // Hito PRECALIFICADO: datos mínimos de identificación y contacto
-    const hasIdentity = expediente.documentType && expediente.documentNumberEncrypted;
-    const hasContact = expediente.phonePrimaryEncrypted || expediente.emailPrimaryEncrypted;
+    const hasIdentity =
+      expediente.documentType &&
+      (sensitiveFieldPresence?.documentNumber ?? expediente.documentNumberEncrypted);
+    const hasContact =
+      (sensitiveFieldPresence?.phonePrimary ?? expediente.phonePrimaryEncrypted) ||
+      (sensitiveFieldPresence?.emailPrimary ?? expediente.emailPrimaryEncrypted);
     if (hasIdentity && hasContact) {
       return ExpedienteStatus.PRECALIFICADO;
     }

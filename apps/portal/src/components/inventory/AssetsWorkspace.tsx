@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Badge, Tabs, TabsContent, TabsList, TabsTrigger } from '@iwana/ui';
+import { Handshake, MonitorSmartphone, Timer } from 'lucide-react';
 import type { ListMeta } from '@iwana/shared';
 import {
   ApiError,
@@ -13,7 +14,6 @@ import {
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
-import { portalModuleTabTriggerClassName } from '@/components/shared/portal-ui';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -30,6 +30,9 @@ import {
   portalDataTableHeadRowClassName,
   portalDataBusyRegionClassName,
   portalTableRowHoverClassName,
+  portalResourceTabIconClassName,
+  portalResourceTabListClassName,
+  portalResourceTabTriggerClassName,
 } from '@/components/shared/portal-ui';
 import { formatInventoryDate, getSerializedAssetStatusLabel } from './inventory-labels';
 import { AssetLoansPanel } from './AssetLoansPanel';
@@ -323,14 +326,35 @@ export function AssetsWorkspace({
         value={initialSubview}
         onValueChange={(value) => onSubviewChange?.(value as AssetsSubview)}
       >
-        <TabsList>
-          <TabsTrigger value="list" className={portalModuleTabTriggerClassName}>
+        <TabsList aria-label="Vistas de activos" className={portalResourceTabListClassName}>
+          <TabsTrigger
+            value="list"
+            className={portalResourceTabTriggerClassName(initialSubview === 'list')}
+          >
+            <MonitorSmartphone
+              className={portalResourceTabIconClassName(initialSubview === 'list')}
+              aria-hidden="true"
+            />
             Lista de activos
           </TabsTrigger>
-          <TabsTrigger value="loans" className={portalModuleTabTriggerClassName}>
+          <TabsTrigger
+            value="loans"
+            className={portalResourceTabTriggerClassName(initialSubview === 'loans')}
+          >
+            <Handshake
+              className={portalResourceTabIconClassName(initialSubview === 'loans')}
+              aria-hidden="true"
+            />
             Comodatos
           </TabsTrigger>
-          <TabsTrigger value="useful-life" className={portalModuleTabTriggerClassName}>
+          <TabsTrigger
+            value="useful-life"
+            className={portalResourceTabTriggerClassName(initialSubview === 'useful-life')}
+          >
+            <Timer
+              className={portalResourceTabIconClassName(initialSubview === 'useful-life')}
+              aria-hidden="true"
+            />
             Vida útil
           </TabsTrigger>
         </TabsList>

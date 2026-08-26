@@ -19,6 +19,9 @@ import { StatusChange } from './entities/status-change.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 import { AuditModule } from '../../audit/audit.module';
 import { SubscribersModule } from '../subscribers/subscribers.module';
+import { AttributionsModule } from '../attributions/attributions.module';
+import { ResponsibilitiesModule } from '../responsibilities/responsibilities.module';
+import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.service';
 
 @Module({
   imports: [
@@ -32,6 +35,8 @@ import { SubscribersModule } from '../subscribers/subscribers.module';
     ]),
     AuditModule,
     SubscribersModule,
+    AttributionsModule,
+    ResponsibilitiesModule,
   ],
   controllers: [ExpedientesController, PipelineController],
   providers: [
@@ -40,6 +45,7 @@ import { SubscribersModule } from '../subscribers/subscribers.module';
     CompletenessCalculator,
     ExpedienteSectionCompletenessService,
     PipelineRecommendationService,
+    ExpedienteDetailBootstrapService,
     { provide: CrmActorReadPort, useClass: CrmActorReadAdapter },
     { provide: CrmQuoteReadPort, useClass: CrmQuoteReadAdapter },
   ],

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
 import { CircleAlert, Loader2, MapPin, MapPinCheck, MapPinX, Radar } from 'lucide-react';
 import { crmApi, type CoverageCheckRecord, type CreateCoverageCheckDto } from '@/lib/api-client';
+import { getSafeCrmErrorMessage } from './crm-error-message';
 
 const RESULT_OPTIONS = [
   { value: 'VIABLE', label: 'Viable', variant: 'success' as const },
@@ -92,8 +93,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
       setError(null);
       const response = await crmApi.listCoverageChecks(expedienteId);
       setChecks(response.data);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError('No fue posible cargar las verificaciones de cobertura.');
     } finally {
       setLoading(false);
@@ -116,8 +116,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
         distanceM: undefined,
       });
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'No fue posible registrar la verificación.');
+      setError(getSafeCrmErrorMessage(err, 'No fue posible registrar la verificación.'));
     } finally {
       setSubmitting(false);
     }

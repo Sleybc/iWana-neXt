@@ -21,6 +21,8 @@ interface SectionAccordionProps {
   openIds?: Set<string>;
   onOpenIdsChange?: (ids: Set<string>) => void;
   variant?: 'default' | 'card';
+  /** Monta lazy la primera apertura y conserva el contenido al contraer. */
+  keepMounted?: boolean;
   className?: string;
 }
 
@@ -73,6 +75,7 @@ function SectionAccordion({
   openIds: openIdsProp,
   onOpenIdsChange,
   variant = 'default',
+  keepMounted = false,
   className,
 }: SectionAccordionProps) {
   const [internalOpen, setInternalOpen] = React.useState<string | null>(defaultOpen ?? null);
@@ -85,6 +88,23 @@ function SectionAccordion({
 
   const isControlledMulti = openIdsProp !== undefined;
   const currentOpenIds = isControlledMulti ? openIdsProp : internalOpenIds;
+  const [mountedIds, setMountedIds] = React.useState<Set<string>>(() => new Set(currentOpenIds));
+
+  React.useEffect(() => {
+    if (!keepMounted) return;
+
+    setMountedIds((previous) => {
+      const next = new Set(previous);
+      let changed = false;
+      currentOpenIds.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      });
+      return changed ? next : previous;
+    });
+  }, [currentOpenIds, keepMounted]);
 
   const handleToggleSingle = (id: string, disabled?: boolean) => {
     if (disabled) return;
@@ -162,6 +182,7 @@ function SectionAccordion({
                     )}
                     <button
                       type="button"
+                      id={`section-header-${item.id}`}
                       onClick={() => handleToggleMulti(item.id, item.disabled)}
                       disabled={item.disabled}
                       aria-label={`Contraer sección ${item.label}`}
@@ -176,55 +197,75 @@ function SectionAccordion({
                       <ChevronDownIcon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                     </button>
                   </div>
-                  <div id={`section-panel-${item.id}`} role="region" className="p-6 pt-4">
+                  <div
+                    id={`section-panel-${item.id}`}
+                    role="region"
+                    aria-labelledby={`section-header-${item.id}`}
+                    hidden={!isOpen}
+                    className="p-6 pt-4"
+                  >
                     {item.children}
                   </div>
                 </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => handleToggleMulti(item.id, item.disabled)}
-                  disabled={item.disabled}
-                  aria-expanded="false"
-                  aria-controls={`section-panel-${item.id}`}
-                  className={cn(
-                    'w-full px-6 py-4 flex items-center justify-between text-left',
-                    'transition-colors group',
-                    item.disabled && 'opacity-50 cursor-not-allowed',
-                  )}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className="w-8 h-8 rounded-full bg-gray-100 text-iwana-secondary
-                        flex items-center justify-center shrink-0
-                        group-hover:bg-iwana-secondary/20 transition-colors
-                        dark:bg-dark-surface-3 dark:text-iwana-secondary dark:group-hover:bg-iwana-secondary/20"
-                      aria-hidden="true"
-                    >
-                      <PlusIcon className="h-4 w-4" />
+                <>
+                  <button
+                    type="button"
+                    id={`section-header-${item.id}`}
+                    onClick={() => handleToggleMulti(item.id, item.disabled)}
+                    disabled={item.disabled}
+                    aria-expanded="false"
+                    aria-controls={`section-panel-${item.id}`}
+                    className={cn(
+                      'w-full px-6 py-4 flex items-center justify-between text-left',
+                      'transition-colors group',
+                      item.disabled && 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className="w-8 h-8 rounded-full bg-gray-100 text-iwana-secondary
+                          flex items-center justify-center shrink-0
+                          group-hover:bg-iwana-secondary/20 transition-colors
+                          dark:bg-dark-surface-3 dark:text-iwana-secondary dark:group-hover:bg-iwana-secondary/20"
+                        aria-hidden="true"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                      </div>
+                      <h3
+                        className="font-bold text-sm text-gray-700
+                          group-hover:text-iwana-primary transition-colors
+                          dark:text-gray-300 dark:group-hover:text-iwana-secondary"
+                      >
+                        {item.label}
+                      </h3>
                     </div>
-                    <h3
-                      className="font-bold text-sm text-gray-700
-                        group-hover:text-iwana-primary transition-colors
-                        dark:text-gray-300 dark:group-hover:text-iwana-secondary"
+                    {item.progress != null && (
+                      <span
+                        className={cn(
+                          'px-2 py-0.5 rounded-full text-[11px] font-semibold',
+                          isComplete
+                            ? 'bg-[#EDF8CC] text-[#48531D] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
+                            : 'bg-gray-100 text-gray-400 dark:bg-dark-surface-3 dark:text-gray-400',
+                        )}
+                      >
+                        {isComplete && <CheckIcon className="h-2.5 w-2.5 inline mr-0.5" />}
+                        {item.progress}%
+                      </span>
+                    )}
+                  </button>
+                  {keepMounted && mountedIds.has(item.id) ? (
+                    <div
+                      id={`section-panel-${item.id}`}
+                      role="region"
+                      aria-labelledby={`section-header-${item.id}`}
+                      hidden
+                      className="p-6 pt-4"
                     >
-                      {item.label}
-                    </h3>
-                  </div>
-                  {item.progress != null && (
-                    <span
-                      className={cn(
-                        'px-2 py-0.5 rounded-full text-[11px] font-semibold',
-                        isComplete
-                          ? 'bg-[#EDF8CC] text-[#48531D] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
-                          : 'bg-gray-100 text-gray-400 dark:bg-dark-surface-3 dark:text-gray-400',
-                      )}
-                    >
-                      {isComplete && <CheckIcon className="h-2.5 w-2.5 inline mr-0.5" />}
-                      {item.progress}%
-                    </span>
-                  )}
-                </button>
+                      {item.children}
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           );
@@ -258,6 +299,7 @@ function SectionAccordion({
           >
             <button
               type="button"
+              id={`section-header-${item.id}`}
               aria-controls={`section-panel-${item.id}`}
               onClick={() => !item.disabled && handleToggleSingle(item.id)}
               disabled={item.disabled}
@@ -335,16 +377,17 @@ function SectionAccordion({
               </div>
             </button>
 
-            {isOpen && (
+            {isOpen || (keepMounted && mountedIds.has(item.id)) ? (
               <div
                 id={`section-panel-${item.id}`}
                 role="region"
                 aria-labelledby={`section-header-${item.id}`}
+                hidden={!isOpen}
                 className="p-6 bg-gray-50/30"
               >
                 {item.children}
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}

@@ -82,7 +82,11 @@ export function ExecutionOrderSummary({
 }: ExecutionOrderSummaryProps) {
   if (loading) {
     return (
-      <section aria-label="Cargando resumen de la OT" aria-busy="true" className="space-y-3">
+      <section
+        aria-label="Cargando resumen de la orden de trabajo"
+        aria-busy="true"
+        className="space-y-3"
+      >
         <SkeletonBlock className="h-7 w-2/3" />
         <SkeletonBlock className="h-28 w-full" />
         <SkeletonBlock className="h-5 w-full" />
@@ -125,7 +129,7 @@ export function ExecutionOrderSummary({
       <PortalAlert
         variant="warning"
         live="assertive"
-        title="Visita sin OT vinculada"
+        title="Visita sin orden vinculada"
         description={
           onRefreshDetail
             ? 'La visita todavía no tiene una orden de trabajo asociada. Actualiza el detalle para consultar el vínculo más reciente.'
@@ -160,7 +164,7 @@ export function ExecutionOrderSummary({
             </Button>
           ) : canOpen && onOpen ? (
             <Button type="button" variant="secondary" onClick={onOpen}>
-              Abrir OT
+              Abrir orden de trabajo
             </Button>
           ) : undefined
         }
@@ -209,7 +213,7 @@ export function ExecutionOrderSummary({
   const resolvedSyncState = syncState ?? detailSyncState(order);
 
   return (
-    <section aria-label="Resumen de la OT" className="space-y-4">
+    <section aria-label="Resumen de la orden de trabajo" className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="neutral">
           <span className="font-mono">{number}</span>
@@ -262,7 +266,7 @@ export function ExecutionOrderSummary({
       </p>
       {canOpen && onOpen ? (
         <Button type="button" variant="secondary" onClick={onOpen}>
-          Abrir OT
+          Abrir orden de trabajo
         </Button>
       ) : null}
     </section>

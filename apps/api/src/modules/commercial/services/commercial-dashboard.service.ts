@@ -20,6 +20,7 @@ import {
   COMMERCIAL_NEAR_USE_RATIO,
   COMMERCIAL_NEAR_USE_REMAINING,
 } from '../utils/commercial-offer-filters';
+import { ITaxApplicationReadPort } from '../../taxation/ports/tax-application-read.port';
 
 /** Ventana fija de producto (UX H8 / Q4): 7 días calendario. */
 const EXPIRING_WINDOW_DAYS = COMMERCIAL_EXPIRING_WINDOW_DAYS;
@@ -165,13 +166,17 @@ function isRecentAction(value: string): value is CommercialRecentChangeAction {
 
 @Injectable()
 export class CommercialDashboardService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly taxApplicationPort: ITaxApplicationReadPort,
+  ) {}
 
   async getSummary(): Promise<CommercialDashboardSummary> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const now = new Date();
     const windowEnd = new Date(now.getTime() + EXPIRING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const recentWindowStart = new Date(now.getTime() - EXPIRING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const hasTaxCoverage = await this.taxApplicationPort.hasActiveCoverage();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const em = qr.manager;
@@ -219,10 +224,9 @@ export class CommercialDashboardService {
         catalogCounts.products.sellable +
         catalogCounts.services.sellable;
 
-      const hasTaxCoverage = toInt(kpi.tax_coverage) > 0;
+      const hasTaxCoverageFlag = hasTaxCoverage;
       const activeBundlesWithInactiveItemsCount = toInt(kpi.inactive_bundle_items);
-      const taxRulesCoverageGapCount =
-        activePlansCount > 0 && !hasTaxCoverage ? activePlansCount : 0;
+      const taxRulesCoverageGapCount = hasTaxCoverageFlag ? 0 : 1;
       const rulesGapCount = activeBundlesWithInactiveItemsCount + taxRulesCoverageGapCount;
 
       const attentionItems = this.prioritizeAttentionItems(
@@ -391,15 +395,7 @@ export class CommercialDashboardService {
           INNER JOIN catalog_bundle_items bi ON bi.bundle_id = b.id
           INNER JOIN catalog_items ci ON ci.id = bi.item_id
           WHERE b.tenant_id = $1 AND b.is_active = true AND ci.is_active = false
-        ) AS inactive_bundle_items,
-        (SELECT COUNT(*)::int FROM tax_rules tr
-          WHERE tr.tenant_id = $1 AND tr.is_active = true
-            AND tr.valid_from <= $2 AND (tr.valid_to IS NULL OR tr.valid_to >= $2)
-            AND EXISTS (
-              SELECT 1 FROM tax_rule_applications tra
-              WHERE tra.tax_rule_id = tr.id AND tra.is_active = true
-            )
-        ) AS tax_coverage
+        ) AS inactive_bundle_items
       `,
       [tenantId, now, windowEnd, NEAR_USE_RATIO, NEAR_USE_REMAINING],
     );
@@ -512,36 +508,6 @@ export class CommercialDashboardService {
           AND p.valid_to <= $3
           AND (p.max_uses IS NULL OR p.current_uses < p.max_uses)
         ORDER BY p.valid_to ASC
-        LIMIT $6
-      )
-      UNION ALL
-      (
-        SELECT ci.id::text,
-               ci.name,
-               ci.type::text,
-               'tax_rules_coverage_gap'::text,
-               NULL::timestamptz,
-               NULL::int
-        FROM catalog_items ci
-        WHERE ci.tenant_id = $1
-          AND ci.type = 'PLAN'
-          AND ci.is_active = true
-          AND ci.deleted_at IS NULL
-          AND NOT EXISTS (
-            SELECT 1
-            FROM tax_rules tr
-            WHERE tr.tenant_id = $1
-              AND tr.is_active = true
-              AND tr.valid_from <= $2
-              AND (tr.valid_to IS NULL OR tr.valid_to >= $2)
-              AND EXISTS (
-                SELECT 1
-                FROM tax_rule_applications tra
-                WHERE tra.tax_rule_id = tr.id
-                  AND tra.is_active = true
-              )
-          )
-        ORDER BY ci.name ASC
         LIMIT $6
       )
       `,

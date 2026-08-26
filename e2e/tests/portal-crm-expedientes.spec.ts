@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Request, type Response } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -31,7 +31,7 @@ const mockExpediente = {
   documentType: 'NIT',
   documentNumberEncrypted: 'enc-documento-demo',
   personType: 'PERSONA_NATURAL',
-  firstName: 'Laura',
+  firstName: 'Usuario',
   lastName: 'Perez',
   primaryContactName: null,
   primaryContactRole: null,
@@ -47,6 +47,7 @@ const mockExpediente = {
   department: 'Cundinamarca',
   interestedPlanId: 'plan-500',
   additionalProductIds: ['prod-router'],
+  additionalServiceIds: ['srv-ip-publica'],
   completenessCommercial: 70,
   completenessLegal: 50,
   completenessTechnical: 40,
@@ -78,7 +79,7 @@ const mockResponsibility = {
   currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
   currentResponsible: {
     userId: 'user-uuid-admin-test',
-    name: 'Laura Pérez',
+    name: 'Usuario de prueba',
     role: 'ADMIN',
   },
   expedienteId: mockExpediente.id,
@@ -91,7 +92,7 @@ const mockAttribution = {
   attributionRole: 'ORIGINATOR',
   actorId: 'user-uuid-admin-test',
   actorRole: 'ADMIN',
-  actorName: 'Laura Pérez',
+  actorName: 'Usuario de prueba',
   acquisitionChannel: 'REFERRAL',
   notes: null,
   attributedAt: '2026-03-26T10:00:00.000Z',
@@ -105,15 +106,15 @@ const mockAttribution = {
 const mockUsers = [
   {
     id: 'user-uuid-admin-test',
-    firstName: 'Laura',
-    lastName: 'Pérez',
+    firstName: 'Usuario',
+    lastName: 'Prueba',
     email: 'laura@iwana.co',
     role: 'ADMIN',
   },
   {
     id: 'user-uuid-advisor-1',
-    firstName: 'Carlos',
-    lastName: 'García',
+    firstName: 'Usuario',
+    lastName: 'Alterno',
     email: 'carlos@iwana.co',
     role: 'ADVISOR',
   },
@@ -215,6 +216,75 @@ async function setupCrmMocks(
     },
   ];
 
+  const buildBootstrapResponse = (record: typeof mockExpediente) => {
+    const isReady = options.installationReady;
+    const overall = isReady ? 80 : 48;
+    const readiness = isReady
+      ? {
+          status: 'READY_COMPLETE',
+          canTransition: true,
+          title: 'Listo para instalación',
+          message: 'La instalación puede coordinarse.',
+        }
+      : {
+          status: 'NOT_READY',
+          canTransition: false,
+          title: 'No listo para instalación',
+          message: 'Completa la información técnica pendiente.',
+        };
+
+    return {
+      data: {
+        expediente: {
+          id: record.id,
+          status: record.status,
+          previousStatus: record.previousStatus,
+          statusChangedAt: record.statusChangedAt,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          fullName: record.fullName,
+          documentType: record.documentType,
+          personType: record.personType,
+          dataConsentRevoked: Boolean(record.dataConsentRevoked),
+          hasLocation: Boolean(record.address),
+          source: record.source,
+          acquisitionChannel: record.acquisitionChannel,
+          interestedPlanId: record.interestedPlanId,
+          additionalProductIds: record.additionalProductIds ?? [],
+          additionalServiceIds: record.additionalServiceIds ?? [],
+        },
+        completeness: {
+          commercial: record.completenessCommercial,
+          legal: record.completenessLegal,
+          technical: record.completenessTechnical,
+          operational: record.completenessOperational,
+          overall,
+          sectionCompleteness: [],
+          installationReadiness: readiness,
+          missingRequirements: [],
+        },
+        pipelineRecommendation: {
+          currentStatus: record.status,
+          suggestedStatus: record.status,
+          recommendationReason: 'Revisa la siguiente acción operativa disponible.',
+          blockingRequirements: [],
+          informationalRequirements: [],
+        },
+        operationalMetadata: {
+          createdBy: { userId: 'user-uuid-admin-test', name: 'Equipo de pruebas' },
+          lastEditedBy: { userId: 'user-uuid-admin-test', name: 'Equipo de pruebas' },
+          lastActivityAt: record.updatedAt,
+        },
+        currentAttribution: null,
+        responsibility: null,
+        subscriberSummary:
+          record.id === convertedExpediente.id
+            ? { id: 'sub-1', status: 'ACTIVE', fullName: record.fullName }
+            : null,
+      },
+    };
+  };
+
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -268,8 +338,8 @@ async function setupCrmMocks(
         body: JSON.stringify({
           data: {
             id: 'user-uuid-admin-test',
-            firstName: 'Laura',
-            lastName: 'Pérez',
+            firstName: 'Usuario',
+            lastName: 'Prueba',
           },
         }),
       });
@@ -299,6 +369,31 @@ async function setupCrmMocks(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: [] }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/bootstrap`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          buildBootstrapResponse(
+            options.installationReady ? installationReadyExpediente : mockExpediente,
+          ),
+        ),
+      });
+      return;
+    }
+
+    if (
+      pathname.endsWith(`/crm/expedientes/${convertedExpediente.id}/bootstrap`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildBootstrapResponse(convertedExpediente)),
       });
       return;
     }
@@ -482,7 +577,22 @@ async function setupCrmMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data, total: data.length }),
+        body: JSON.stringify({
+          data,
+          total: data.length,
+          meta: {
+            nextCursor: null,
+            total: data.length,
+            totalIsEstimate: false,
+            page: 1,
+            limit: 20,
+            totalPages: 1,
+            hasMore: false,
+            mode: 'page',
+            capabilities: { randomAccess: true, sortableFields: [] },
+            sort: null,
+          },
+        }),
       });
       return;
     }
@@ -497,38 +607,71 @@ async function setupCrmMocks(
     }
 
     if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/timeline`) && method === 'GET') {
+      const timelineEvents = [
+        {
+          kind: 'pipeline',
+          id: 'timeline-1',
+          fromStatus: 'CONTACTADO',
+          toStatus: 'NUEVO_POTENCIAL',
+          changedAt: '2026-03-26T11:30:00.000Z',
+          reason: null,
+          actor: { userId: 'user-uuid-admin-test', name: 'Usuario de prueba', role: 'ADMIN' },
+        },
+        {
+          kind: 'system',
+          id: 'activity-1',
+          occurredAt: '2026-03-26T11:40:00.000Z',
+          type: 'CREATED',
+          sectionLabel: null,
+          reason: null,
+          actor: { userId: 'user-uuid-admin-test', name: 'Usuario de prueba', role: 'ADMIN' },
+        },
+        ...(contactAttemptCreated
+          ? [
+              {
+                kind: 'contact',
+                id: 'attempt-1',
+                attemptedAt: '2026-03-26T11:40:00.000Z',
+                channel: 'TELEFONO',
+                result: 'EXITOSO',
+                durationMinutes: 5,
+                notes: 'Seguimiento inicial validado',
+                actor: {
+                  userId: 'user-uuid-admin-test',
+                  name: 'Usuario de prueba',
+                  role: 'ADMIN',
+                },
+              },
+            ]
+          : []),
+      ];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            changes: [
-              {
-                id: 'timeline-1',
-                fromStatus: 'CONTACTADO',
-                toStatus: 'NUEVO_POTENCIAL',
-                changedAt: '2026-03-26T11:30:00.000Z',
-                reason: null,
-                actor: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
-              },
-            ],
-            activities: [
-              {
-                id: 'activity-1',
-                type: contactAttemptCreated ? 'CONTACT_ATTEMPT' : 'CREATED',
-                occurredAt: '2026-03-26T11:40:00.000Z',
-                actor: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
-                sectionLabel: contactAttemptCreated ? 'Intento de contacto' : null,
-                fromStatus: null,
-                toStatus: null,
-                reason: contactAttemptCreated ? 'Seguimiento inicial validado' : null,
-              },
-            ],
+            events: timelineEvents,
             metadata: {
-              createdBy: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
-              lastEditedBy: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
+              createdBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
+              lastEditedBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
               lastActivityAt: '2026-03-26T11:40:00.000Z',
             },
+          },
+          meta: {
+            page: 1,
+            limit: 5,
+            total: timelineEvents.length,
+            totalPages: 1,
+            truncated: false,
+            hasMore: false,
           },
         }),
       });
@@ -560,17 +703,17 @@ async function setupCrmMocks(
               id: 'history-1',
               previousResponsible: {
                 userId: 'user-uuid-advisor-1',
-                name: 'Carlos García',
+                name: 'Usuario alterno',
                 role: 'ADVISOR',
               },
               newResponsible: {
                 userId: 'user-uuid-admin-test',
-                name: 'Laura Pérez',
+                name: 'Usuario de prueba',
                 role: 'ADMIN',
               },
               changedByActor: {
                 userId: 'user-uuid-admin-test',
-                name: 'Laura Pérez',
+                name: 'Usuario de prueba',
                 role: 'ADMIN',
               },
               changedAt: '2026-03-26T10:30:00.000Z',
@@ -655,7 +798,7 @@ async function setupCrmMocks(
                   durationMinutes: 5,
                   notes: 'Seguimiento inicial validado',
                   advisorId: 'user-uuid-admin-test',
-                  actorName: 'Laura Pérez',
+                  actorName: 'Usuario de prueba',
                 },
               ]
             : [],
@@ -682,7 +825,7 @@ async function setupCrmMocks(
             durationMinutes: 5,
             notes: 'Seguimiento inicial validado',
             advisorId: 'user-uuid-admin-test',
-            actorName: 'Laura Pérez',
+            actorName: 'Usuario de prueba',
           },
         }),
       });
@@ -1006,19 +1149,138 @@ async function setupCrmMocks(
 }
 
 test.describe('CRM expedientes - cierre Sprint 02', () => {
+  test('mide el critical path de apertura en frío y caliente', async ({ page }) => {
+    type MeasuredRequest = {
+      path: string;
+      method: string;
+      status: number | null;
+      bytes: number | null;
+    };
+
+    type OpenMeasurement = {
+      mode: 'cold' | 'warm';
+      clickToShellMs: number;
+      requests: MeasuredRequest[];
+    };
+
+    const sanitizeRequestPath = (rawUrl: string): string => {
+      const path = new URL(rawUrl).pathname;
+      return [mockExpediente.id, convertedExpediente.id, 'user-uuid-admin-test'].reduce(
+        (sanitizedPath, identifier) => sanitizedPath.replaceAll(identifier, ':id'),
+        path,
+      );
+    };
+
+    const measureOpen = async (mode: OpenMeasurement['mode']): Promise<OpenMeasurement> => {
+      const requestsByHandle = new Map<Request, MeasuredRequest>();
+      const requests: MeasuredRequest[] = [];
+      const responseReads: Promise<void>[] = [];
+
+      const onRequest = (request: Request): void => {
+        if (!request.url().includes('/api/v1/')) {
+          return;
+        }
+
+        const measuredRequest: MeasuredRequest = {
+          path: sanitizeRequestPath(request.url()),
+          method: request.method(),
+          status: null,
+          bytes: null,
+        };
+        requestsByHandle.set(request, measuredRequest);
+        requests.push(measuredRequest);
+      };
+
+      const onResponse = (response: Response): void => {
+        const measuredRequest = requestsByHandle.get(response.request());
+        if (!measuredRequest) {
+          return;
+        }
+
+        measuredRequest.status = response.status();
+        responseReads.push(
+          response
+            .body()
+            .then((body) => {
+              measuredRequest.bytes = body.byteLength;
+            })
+            .catch(() => {
+              measuredRequest.bytes = null;
+            }),
+        );
+      };
+
+      page.on('request', onRequest);
+      page.on('response', onResponse);
+      const startedAt = Date.now();
+      await page.getByRole('link', { name: 'Abrir' }).first().click();
+      await expect(page.getByText('Acción recomendada ahora', { exact: true })).toBeVisible();
+      const clickToShellMs = Date.now() - startedAt;
+      page.off('request', onRequest);
+      page.off('response', onResponse);
+      await Promise.all(responseReads);
+
+      return { mode, clickToShellMs, requests };
+    };
+
+    await setupCrmMocks(page);
+    await setAuthSession(page);
+    await page.goto('/dashboard/crm/expedientes');
+    await expect(page.getByRole('link', { name: 'Abrir' }).first()).toBeVisible();
+
+    const cold = await measureOpen('cold');
+
+    await page.goto('/dashboard/crm/expedientes');
+    await expect(page.getByRole('link', { name: 'Abrir' }).first()).toBeVisible();
+    const warm = await measureOpen('warm');
+
+    for (const measurement of [cold, warm]) {
+      const bootstrapRequests = measurement.requests.filter((request) =>
+        request.path.endsWith('/crm/expedientes/:id/bootstrap'),
+      );
+
+      expect(bootstrapRequests).toHaveLength(1);
+      expect(measurement.requests.some((request) => request.path.includes('/timeline'))).toBe(
+        false,
+      );
+      expect(measurement.requests.some((request) => request.path.includes('/history'))).toBe(false);
+      expect(measurement.requests.some((request) => request.path.includes('/wfm/'))).toBe(false);
+      expect(measurement.clickToShellMs).toBeGreaterThanOrEqual(0);
+      if (bootstrapRequests[0]?.bytes !== null) {
+        expect(bootstrapRequests[0]?.bytes).toBeGreaterThan(0);
+      }
+    }
+
+    console.log(
+      `CRM_EXPEDIENTE_PERFORMANCE ${JSON.stringify({
+        baselineLcpMs: 2165,
+        environment: 'playwright mocked API',
+        measurements: [cold, warm].map((measurement) => ({
+          mode: measurement.mode,
+          clickToShellMs: measurement.clickToShellMs,
+          requestCount: measurement.requests.length,
+          totalResponseBytes: measurement.requests.every((request) => request.bytes !== null)
+            ? measurement.requests.reduce((total, request) => total + (request.bytes ?? 0), 0)
+            : null,
+          requests: measurement.requests,
+        })),
+      })}`,
+    );
+  });
+
   test('CRM permite crear, listar y abrir detalle del expediente', async ({ page }) => {
     await setupCrmMocks(page);
     await setAuthSession(page);
     await page.goto('/dashboard/crm/expedientes');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('CRM operativo', { exact: true })).toBeVisible();
-    await expect(page.getByText('Pipeline de oportunidades', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Oportunidades', exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Vistas de oportunidades' })).toBeVisible();
     await expect(page.getByText('Empresa Demo SAS')).toBeVisible();
     await page.getByRole('link', { name: /empresa demo sas/i }).click();
     await expect(page).toHaveURL(new RegExp(`/dashboard/crm/expedientes/${mockExpediente.id}`));
     await expect(page.getByRole('heading', { name: /empresa demo sas/i })).toBeVisible();
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
       '1012345678',
@@ -1050,14 +1312,14 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto('/dashboard/crm/expedientes');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('900123456')).toHaveCount(0);
+    await expect(page.getByText('1012345678')).toHaveCount(0);
     await page.getByRole('link', { name: /empresa demo sas/i }).click();
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
       '1012345678',
     );
-    await page.getByRole('button', { name: 'Vista general' }).click();
+    await page.getByRole('tab', { name: 'Vista general' }).click();
     await expect(
       page.getByText(/consentimiento de tratamiento de datos fue revocado/i),
     ).toBeVisible();
@@ -1083,10 +1345,10 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto('/dashboard/crm/expedientes');
     await page.waitForLoadState('networkidle');
 
-    await page.getByPlaceholder('Buscar por nombre del potencial...').fill('Empresa Demo');
-    await page.getByLabel('Documento exacto').fill('900123456');
-    await page.getByLabel('Documento exacto').press('Tab');
-    await page.waitForTimeout(300);
+    await page.getByPlaceholder('Buscar por nombre…').fill('Empresa Demo');
+    await page.getByLabel('Documento').fill('900123456');
+    await page.getByLabel('Documento').press('Tab');
+    await page.waitForTimeout(500);
 
     expect(mocks.getCapturedExpedientesQuery()).toContain('search=Empresa+Demo');
     expect(mocks.getCapturedExpedientesQuery()).toContain('documentNumber=900123456');
@@ -1117,20 +1379,17 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
     await page.getByText('Viabilidad técnica', { exact: true }).scrollIntoViewIfNeeded();
     await page.locator('#technical-feasibility').click();
     await page.getByRole('option', { name: 'Viable', exact: true }).click();
-    await page.getByText('Fibra óptica', { exact: true }).click();
+    await page.getByRole('checkbox', { name: 'Fibra óptica', exact: true }).check({ force: true });
+    await page.getByRole('checkbox', { name: 'Radio enlace', exact: true }).check({ force: true });
     await page.locator('#technical-technicalConfidence').click();
     await page.getByRole('option', { name: 'Alta', exact: true }).click();
     await page.locator('#technical-evaluationSource').click();
     await page.getByRole('option', { name: 'Visita técnica', exact: true }).click();
-    await page
-      .getByLabel('Observación técnica')
-      .fill('Solución viable con ajuste menor de acometida.');
-
     await page
       .getByRole('button', { name: /guardar cambios/i })
       .last()
@@ -1139,11 +1398,10 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
 
     expect(mocks.getCapturedTechnicalPayload()).toMatchObject({
       feasibility: 'VIABLE',
-      candidateTechnologies: ['FIBER'],
+      candidateTechnologies: ['FIBER', 'RADIO'],
       availableTechnology: 'FIBER',
       technicalConfidence: 'HIGH',
       evaluationSource: 'TECHNICAL_SITE_VISIT',
-      technicalObservations: 'Solución viable con ajuste menor de acometida.',
     });
   });
 
@@ -1155,7 +1413,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: /soportes documentales/i }).click();
@@ -1199,10 +1457,10 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Nombres')).toBeVisible();
-    await expect(page.getByLabel('Nombres')).toHaveValue('Laura');
+    await expect(page.getByLabel('Nombres')).toHaveValue('Usuario');
     await expect(page.getByLabel('Apellidos')).toBeVisible();
     await expect(page.getByLabel('Apellidos')).toHaveValue('Perez');
     await expect(page.getByRole('combobox', { name: 'Tipo de documento' })).toContainText('NIT');
@@ -1224,7 +1482,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Tipo de persona' })).toContainText(
       'Persona jurídica',
@@ -1242,18 +1500,17 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.goto('/dashboard/crm/expedientes');
 
     // Esperar a que carguen las pestañas de la lista operativa
-    await expect(page.getByRole('button', { name: /abiertas/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /abiertas/i })).toBeVisible();
     await expect(page.getByText('Empresa Demo SAS')).toBeVisible();
 
-    // Navegar a Convertidas
-    await page.getByRole('button', { name: /convertidas/i }).click();
+    await page.getByRole('tab', { name: /en instalación/i }).click();
     await expect(page.getByText('Empresa convertida SAS')).toBeVisible();
 
     // Abrir detalle del expediente convertido
     await page.getByRole('link', { name: /empresa convertida sas/i }).click();
 
     // Banner de conversión visible
-    await expect(page.getByText('Este expediente ya fue convertido a suscriptor.')).toBeVisible();
+    await expect(page.getByText('Esta oportunidad ya fue convertida a suscriptor.')).toBeVisible();
 
     // CTA hacia el suscriptor
     await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toBeVisible();

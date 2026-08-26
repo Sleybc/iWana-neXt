@@ -358,10 +358,41 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('No hay suscriptores con estos filtros.')).toBeInTheDocument();
+      expect(screen.getByText('No se encontraron resultados')).toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: 'Limpiar filtros' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Limpiar filtros' }).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Mostrando/)).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
+  });
+
+  it('coloca el alta en el contenedor de la tabla, no en el título de página', async () => {
+    listMock.mockResolvedValue({
+      data: [subscriberFixture('sub-1', { firstName: 'Ana', lastName: 'Pérez' })],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const pageTitle = screen.getByRole('heading', { name: 'Suscriptores' });
+    expect(pageTitle.parentElement?.parentElement?.querySelector('button')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Nuevo suscriptor' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nuevo suscriptor' })).toHaveAttribute(
+      'href',
+      '/dashboard/crm/subscribers/new',
+    );
+  });
+
+  it('no duplica el alta en el empty state y lo deja a ancho de tabla', async () => {
+    listMock.mockResolvedValue({
+      data: [],
+      total: 0,
+      meta: pageMeta({ page: 1, total: 0, totalPages: 0 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    expect(await screen.findByText('Aún no hay suscriptores')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Nuevo suscriptor' })).toHaveLength(1);
   });
 });

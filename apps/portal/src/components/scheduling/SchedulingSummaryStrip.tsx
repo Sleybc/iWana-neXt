@@ -117,6 +117,8 @@ export function SchedulingSummaryStrip({
           value={activeValue}
           description="Tareas en curso que ya están comprometiendo capacidad de la jornada."
           detail={`Programadas hoy: ${formatMetric(summary?.todayCount, isLoading)}`}
+          actionHref="/dashboard/scheduling/agenda"
+          actionLabel="Ir a agenda"
         />
 
         <SummaryCard
@@ -126,6 +128,8 @@ export function SchedulingSummaryStrip({
           description="Eventos que ya quedaron por fuera de su franja prevista."
           detail="Conviene intervenir antes de que afecten el resto del día."
           accent="danger"
+          actionHref="/dashboard/scheduling/unrealized-visits"
+          actionLabel="Visitas sin realizar"
         />
 
         <SummaryCard

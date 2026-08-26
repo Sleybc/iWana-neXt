@@ -305,6 +305,8 @@ export function SearchablePicker({
   const failedRetryCountRef = useRef(0);
   /** Evita reabrir el listbox cuando el propio select/clear enfoca el input. */
   const suppressOpenOnFocusRef = useRef(false);
+  /** El query refleja la selección (label, no editado): no se busca con él. */
+  const userEditedQueryRef = useRef(false);
   const labelsRef = useRef(labels);
   labelsRef.current = labels;
   const resourceRef = useRef(resource);
@@ -326,6 +328,8 @@ export function SearchablePicker({
   const [error, setError] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  /** Controller del preload (minChars=0): no lo aborta el search effect al cerrar. */
+  const preloadAbortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
 
   const trimmed = query.trim();
@@ -344,10 +348,16 @@ export function SearchablePicker({
   }, []);
 
   const executeSearch = useCallback(
-    async (q: string) => {
-      abortPending();
+    async (q: string, kind: 'user' | 'preload' = 'user') => {
+      if (kind === 'user') {
+        abortPending();
+      }
       const controller = new AbortController();
-      abortRef.current = controller;
+      if (kind === 'preload') {
+        preloadAbortRef.current = controller;
+      } else {
+        abortRef.current = controller;
+      }
       const requestId = ++requestIdRef.current;
       const currentLabels = labelsRef.current;
       const currentResource = resourceRef.current;
@@ -405,9 +415,14 @@ export function SearchablePicker({
   useEffect(() => {
     if (disabled || !open) {
       abortPending();
-      if (!open) {
+      if (!open && !preloadAbortRef.current) {
         setLoading(false);
       }
+      return;
+    }
+
+    // Query sin editar (label de la selección): no buscar — conserva los items precargados.
+    if (!userEditedQueryRef.current) {
       return;
     }
 
@@ -444,16 +459,22 @@ export function SearchablePicker({
   const [preloaded, setPreloaded] = useState(false);
   useEffect(() => {
     if (minChars > 0 || disabled) return;
-    void executeSearchRef.current('').then(() => setPreloaded(true));
+    void executeSearchRef.current('', 'preload').then(() => setPreloaded(true));
+    return () => {
+      preloadAbortRef.current?.abort();
+      preloadAbortRef.current = null;
+    };
   }, [minChars, disabled]);
 
   // Sync display when value/selectedItem change from outside while not editing.
   useEffect(() => {
     if (!editing && selectedItem) {
       setQuery(selectedItem.label);
+      userEditedQueryRef.current = false;
     }
     if (!editing && !value) {
       setQuery('');
+      userEditedQueryRef.current = false;
     }
   }, [value, selectedItem, editing]);
 
@@ -485,6 +506,7 @@ export function SearchablePicker({
       setLoading(false);
       if (opts?.restoreSelection && value && selectedItem) {
         setQuery(selectedItem.label);
+        userEditedQueryRef.current = false;
       }
     },
     [abortPending, value, selectedItem],
@@ -504,6 +526,7 @@ export function SearchablePicker({
   function selectItem(item: SearchablePickerItem) {
     onChange(item);
     setQuery(item.label);
+    userEditedQueryRef.current = false;
     setEditing(false);
     setOpen(false);
     setError(false);
@@ -519,6 +542,7 @@ export function SearchablePicker({
   function handleClear() {
     onChange(null);
     setQuery('');
+    userEditedQueryRef.current = false;
     setEditing(false);
     setOpen(false);
     resetLookupUi();
@@ -542,7 +566,8 @@ export function SearchablePicker({
 
   function handleRetry() {
     failedRetryCountRef.current += 1;
-    void executeSearch(trimmed);
+    // Si el query es el label de la selección, reintenta la lista completa (preload).
+    void executeSearch(userEditedQueryRef.current ? trimmed : '');
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -633,6 +658,7 @@ export function SearchablePicker({
         }}
         onChange={(event) => {
           const next = event.target.value;
+          userEditedQueryRef.current = true;
           setEditing(true);
           setQuery(next);
           setOpen(true);

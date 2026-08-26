@@ -250,7 +250,7 @@ Ejecutado el prompt [`PROMPT-MOD03-BRANDING-AUDITORIA-REMEDIACION-v1.0.md`](../p
 
 ### 8.5 Copy congelado A2 (registro documental literal — requisito PROD-UX R3)
 
-`BRANDING_SETTINGS_COPY` (+11 claves): `slotSourcePrefix` **"Fuente actual: "**; `slotSourceUploaded` **"Activo subido"**; `slotSourceExternalUrl` **"Enlace externo"**; `slotSourceNone` **"Sin configurar"**; `slotPrecedenceHint` **"El archivo subido tiene prioridad sobre la URL. Subir un archivo lo aplica de inmediato; escribir una URL HTTPS lo aplica al guardar la marca."**; `slotUrlHelperText` **"Déjalo vacío para conservar el archivo subido. Escribe una URL HTTPS y guarda la marca para aplicarla."**; `readOnlyNoticeTitle` **"Consulta sin edición"**; `readOnlyNoticeDescription` **"Tu perfil puede consultar la marca de la empresa, pero no modificarla. Una persona administradora puede actualizar los activos y los textos públicos."**; `slotImageLoadErrorTitle` **"La imagen no está disponible"**; `slotImageLoadErrorDescription` **"Revisa la URL de esta variante o sube un archivo nuevo."**
+`BRANDING_SETTINGS_COPY`: `slotSourcePrefix` **"Fuente actual: "**; `slotSourceUploaded` **"Activo subido"**; `slotSourceExternalUrl` **"Enlace externo"**; `slotSourceNone` **"Sin configurar"**; `slotPrecedenceHint` **"El archivo subido tiene prioridad. La URL se aplica al guardar."**; `readOnlyNoticeTitle` **"Consulta sin edición"**; `readOnlyNoticeDescription` **"Tu perfil puede consultar la marca de la empresa, pero no modificarla. Una persona administradora puede actualizar los activos y los textos públicos."**; `slotImageLoadErrorTitle` **"La imagen no está disponible"**; `slotImageLoadErrorDescription` **"Revisa la URL de esta variante o sube un archivo nuevo."**. La ayuda de URL dejó de repetirse en cada campo: la regla vive una sola vez sobre la grilla.
 
 Ajustes 9b: Producto→**Nombre comercial**; Superficie→**Nombre del portal**; Título público→**Título en navegador**; Fondo del login→**Fondo del inicio de sesión**; Limpiar variante→**Eliminar imagen**; Restaurar base→**Restaurar marca base** (unificado en toolbar, título y botón del diálogo); `Subiendo...`→**Subiendo…** (U+2026); aria-label "Abrir directorio del recurso"→**"Abrir el enlace en el navegador"**. Blindado por `BrandingForm.spec.tsx` (13 tests nuevos).
 
@@ -259,7 +259,7 @@ Ajustes 9b: Producto→**Nombre comercial**; Superficie→**Nombre del portal**;
 - Unit: portal **1472 suites** / **189 targeted** (FE-PLATFORM Fase B), web **36 suites** (regresión `packages/ui` Input — cubre la nota de riesgo del primitivo compartido), coverage `BrandingForm.tsx` 96/88/100/96 y `BrandingSettingsClient.tsx` 100 (≥80 en 4 métricas).
 - E2E: `portal-settings-branding-smoke.spec.ts` **6/6** (light/error-light/error-dark/mobile-light con foco/mobile-dark/readonly, axe wcag2a/wcag2aa 0 violaciones por vista); regresión `portal-branding-upload.spec.ts` **3/3**. Capturas en `.playwright-mcp/audit-branding-v1-1/` (7 PNG).
 - Greps C4: `dark:hover:text-iwana-primary` sin sufijo = 0 · `bg-iwana-primary` en `BrandingForm` = 0 · `ring-iwana-secondary` en `SettingsSubTabs` = 0 · `text-iwana-error` crudo en `Input.tsx` = 0. `audit-ui.mjs`: sin hallazgos.
-- Sin commit (pendiente del equipo). Sin PII/secretos; diff limitado a los 9 archivos de la Fase B.
+- Sin PII/secretos; la remediación principal quedó consolidada en los commits `6e2f904e`, `1c541ebd`, `f07c182c` y `9a724567`.
 
 ---
 
@@ -286,3 +286,19 @@ Segundo lote de la deuda registrada en §8.4, ejecutado por AI-FE-PLATFORM con T
 - P0: 0 · P1: 0 · P2: 7 (SEC-1, subtabs sin montaje, overlay de foco, N2, N3, N5, asterisco FormField) · P3: 2 (transversal h1→h3, bordes red-400/500).
 - Puntaje: 100 − 7·3 − 2·1 = **77/100** (aceptable; deuda diferida con registro, ninguna bloqueante).
 - Verificación: `ui-primitives-a11y.spec.tsx` 18/18 + `BrandingForm.spec.tsx` 26/26 (44/44); eslint 0; hooks lint-staged/commitlint verdes en `f07c182c`.
+
+---
+
+## 10. Ajuste de densidad de activos visuales (2026-08-19)
+
+Se redujo el texto repetido de las cuatro tarjetas de activos sin retirar información operativa:
+
+- Descripciones de propósito acortadas y paralelas: **"Menú lateral y espacios compactos."**, **"Acceso público y superficies amplias."**, **"Pestaña del navegador."** y **"Fondo del acceso público."**.
+- Requisitos técnicos movidos a cuatro elementos `<details>` cerrados por defecto; siguen disponibles y asociados a los controles mediante `aria-describedby`.
+- Encabezado interno de cada tarjeta con `min-h-24` para que títulos, descripciones y requisitos de las cuatro columnas comiencen con el mismo ritmo vertical.
+- La precedencia de fuentes se muestra una sola vez sobre la grilla: **"El archivo subido tiene prioridad. La URL se aplica al guardar."**
+- El estado de cada variante conserva solo la etiqueta útil (`Activo subido`, `Enlace externo` o `Sin configurar`); el contexto completo queda accesible para lectores de pantalla.
+- Eliminada la frase repetida de carga/URL y la ayuda repetida de cada campo; las acciones siguen siendo visibles y el formulario conserva sus labels, foco y estados de error.
+- La barra de acciones recupera la jerarquía semántica: **Guardar marca** usa `primary` azul noche; **Restaurar marca base** usa `outline` neutro; el rojo queda reservado para eliminar o confirmar una restauración destructiva.
+
+Verificación del ajuste: `BrandingForm.spec.tsx` + `ui-primitives-a11y.spec.tsx` **44/44**, eslint sin errores, `audit-ui.mjs` sin hallazgos. Validación en navegador: cuatro requisitos cerrados por defecto, precedencia visible una vez, `Guardar marca` computado como azul noche con texto blanco cuando está habilitado y capturas en `.playwright-mcp/branding-compact-desktop-final.png`.

@@ -14,6 +14,10 @@ describe('getVisitRequestOriginLabel', () => {
   it('renders a friendly label for task-originated visit requests', () => {
     expect(getVisitRequestOriginLabel(WorkOrderSourceContext.TASKS)).toBe('Tareas');
   });
+
+  it('renders a product label for commercial-origin visit requests', () => {
+    expect(getVisitRequestOriginLabel(WorkOrderSourceContext.CRM)).toBe('Oportunidades');
+  });
 });
 
 describe('pending-visits-ui territory formatting', () => {

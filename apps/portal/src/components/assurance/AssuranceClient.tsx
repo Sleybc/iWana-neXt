@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import {
   Badge,
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -461,13 +460,6 @@ function AssuranceClientInner() {
       <PageHeader
         title="Mesa de ayuda"
         subtitle="Opera tickets, SLA y escalamientos a campo sin salir del portal empresarial."
-        actions={
-          canManageAssurance ? (
-            <Button type="button" variant="primary" onClick={() => setIsCreateOpen(true)}>
-              Nuevo ticket
-            </Button>
-          ) : undefined
-        }
       />
 
       {feedback && (

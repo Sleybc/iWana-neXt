@@ -363,6 +363,7 @@ export async function createCrmVisitRequestAndRoute(input: {
   customerLabel: string;
   municipality?: string;
   address?: string;
+  sector?: string;
   latitude?: number | string | null;
   longitude?: number | string | null;
   nextAction: VisitRequestNextAction;
@@ -414,6 +415,7 @@ export async function createCrmVisitRequestAndRoute(input: {
         ticketId: ticketResult.ticket.id,
         municipality: input.municipality ?? null,
         address: input.address ?? null,
+        sector: input.sector ?? null,
         latitude: hasCoordinatePair ? latitude : null,
         longitude: hasCoordinatePair ? longitude : null,
         ...(isAdditional

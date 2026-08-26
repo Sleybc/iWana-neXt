@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { AlertTriangle, CalendarPlus, ChevronDown, Clock3, Sparkles, X } from 'lucide-react';
-import { Badge, Button, DatePicker, Input, Select } from '@iwana/ui';
+import { Badge, Button, DatePicker, Input, OperationalSidePeek, Select } from '@iwana/ui';
 import type {
   InternalUser,
   UpdateWfmVisitRequestContextDto,
@@ -10,6 +10,7 @@ import type {
   WfmVisitRequest,
 } from '@/lib/api-client';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
+import { TimeFieldSelect } from '@/components/shared/TimeFieldSelect';
 import {
   filterRecommendationCandidateUsers,
   formatWfmDateTime,
@@ -30,6 +31,7 @@ import {
   toLocalDateTimeParts,
   toLocalDateValue,
   toLocalTimeValue,
+  QUICK_DURATION_OPTIONS,
 } from './schedule-event-time';
 import { getOperatingWindowMessage, useOperatingWindow } from './useOperatingWindow';
 import {
@@ -61,10 +63,11 @@ interface VisitRequestRecommendationPanelProps {
   isLoadingEligibleAssignees?: boolean;
   onRecommend: (payload: VisitRecommendationDraft) => Promise<void>;
   onSelectRecommendation: (recommendationId: string) => void;
+  onCancelRecommendations?: () => void;
   onManualSelectionChange?: (draft: MatrixManualScheduleDraft | null) => void;
   onSaveContext: (payload: UpdateWfmVisitRequestContextDto) => Promise<void>;
   onOpenConfirm: () => void;
-  presentation?: 'drawer' | 'inline';
+  presentation?: 'drawer' | 'inline' | 'peek';
   compactRail?: boolean;
   drawerScope?: DispatchDrawerScope;
   open?: boolean;
@@ -106,6 +109,22 @@ function toNullableIsoFromLocalDateAndTime(dateLocal: string, timeLocal: string)
   return toIsoFromLocalDateAndTime(dateLocal, timeLocal) ?? null;
 }
 
+function formatDurationLabel(value: string): string {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes < 1) {
+    return 'Sin definir';
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainderMinutes = minutes % 60;
+
+  if (hours === 0) {
+    return `${remainderMinutes} min`;
+  }
+
+  return remainderMinutes > 0 ? `${hours} h ${remainderMinutes} min` : `${hours} h`;
+}
+
 function buildContextPayload(draft: ContextDraft): UpdateWfmVisitRequestContextDto {
   return {
     description: toNullableTrimmedText(draft.description),
@@ -123,13 +142,10 @@ function buildContextPayload(draft: ContextDraft): UpdateWfmVisitRequestContextD
   };
 }
 
-const durationOptions = [
-  { value: '30', label: '30 min' },
-  { value: '60', label: '1 h' },
-  { value: '90', label: '1 h 30 min' },
-  { value: '120', label: '2 h' },
-  { value: '180', label: '3 h' },
-  { value: '240', label: '4 h' },
+const quickDurationOptions = [
+  { minutes: 30, label: '30 min' },
+  ...QUICK_DURATION_OPTIONS,
+  { minutes: 240, label: '4 h' },
 ];
 
 const horizonOptions = [
@@ -173,6 +189,7 @@ export function VisitRequestRecommendationPanel({
   isLoadingEligibleAssignees = false,
   onRecommend,
   onSelectRecommendation,
+  onCancelRecommendations,
   onManualSelectionChange = () => undefined,
   onSaveContext,
   onOpenConfirm,
@@ -193,9 +210,13 @@ export function VisitRequestRecommendationPanel({
   const [manualTechnicianId, setManualTechnicianId] = useState('');
   const [manualDate, setManualDate] = useState('');
   const [manualStartTime, setManualStartTime] = useState('');
-  const [manualDuration, setManualDuration] = useState('');
   const [manualErrors, setManualErrors] = useState<string[]>([]);
-  const hasDurationSelection = durationMinutes.trim().length > 0;
+  const durationInputId = useId();
+  const [durationMode, setDurationMode] = useState<'quick' | 'custom'>('quick');
+  const durationValue = Number(durationMinutes);
+  const hasDurationSelection = Number.isFinite(durationValue) && durationValue >= 15;
+  const durationHours = Math.floor(Math.max(durationValue || 0, 0) / 60);
+  const durationRemainderMinutes = Math.max(durationValue || 0, 0) % 60;
   const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
     workType: selectedVisitRequest?.workType,
     dateLocal: contextDraft.requestedWindowStartDate || null,
@@ -219,17 +240,23 @@ export function VisitRequestRecommendationPanel({
     enabled: Boolean(selectedVisitRequest) && (isManualFormOpen || Boolean(manualSelectionDraft)),
   });
   const manualOperatingWindowMessage = getOperatingWindowMessage(manualOperatingWindow);
-  const manualSuggestedTimeOptions = getScheduleTimeOptionsForWorkType(
-    selectedVisitRequest?.workType,
-    manualOperatingWindow,
-    Number(manualDuration),
-  ).slice(0, 16);
+  const manualSuggestedTimeOptions =
+    manualDate &&
+    manualTechnicianId &&
+    selectedVisitRequest?.workType === 'INSTALLATION' &&
+    manualOperatingWindow?.status === 'OPEN'
+      ? getScheduleTimeOptionsForWorkType(
+          selectedVisitRequest.workType,
+          manualOperatingWindow,
+          durationValue,
+        ).slice(0, 16)
+      : [];
 
   const manualEndPreview = (() => {
-    if (!manualStartTime || !manualDuration) {
+    if (!manualStartTime || !durationMinutes) {
       return null;
     }
-    const duration = Number(manualDuration);
+    const duration = durationValue;
     if (!Number.isFinite(duration) || duration <= 0) {
       return null;
     }
@@ -243,11 +270,7 @@ export function VisitRequestRecommendationPanel({
     }
     return formatWfmDateTime(endDate.toISOString());
   })();
-  const manualScheduleWindow = buildScheduleWindow(
-    manualDate,
-    manualStartTime,
-    Number(manualDuration),
-  );
+  const manualScheduleWindow = buildScheduleWindow(manualDate, manualStartTime, durationValue);
   const manualWindowWarning =
     selectedVisitRequest?.workType === 'INSTALLATION' && manualDate
       ? manualOperatingWindow?.status === 'CLOSED'
@@ -287,8 +310,7 @@ export function VisitRequestRecommendationPanel({
       errors.push('Define una hora de inicio válida para la agenda manual.');
     }
 
-    const duration = Number(manualDuration);
-    if (!manualDuration || !Number.isFinite(duration) || duration < 15) {
+    if (!durationMinutes || !Number.isFinite(durationValue) || durationValue < 15) {
       errors.push('La duración mínima es de 15 minutos.');
     }
 
@@ -328,7 +350,7 @@ export function VisitRequestRecommendationPanel({
           'Selección manual en revisión',
         riskMessages: matrixCellSelection?.riskMessages ?? manualSelectionDraft?.riskMessages ?? [],
         startTime: manualStartTime,
-        duration: manualDuration,
+        duration: durationMinutes,
         source,
       },
       errors: [],
@@ -376,7 +398,11 @@ export function VisitRequestRecommendationPanel({
         : '',
     );
     setManualStartTime('');
-    setManualDuration(defaultDuration);
+    setDurationMode(
+      quickDurationOptions.some((option) => option.minutes === Number(defaultDuration))
+        ? 'quick'
+        : 'custom',
+    );
     setManualErrors([]);
   }, [selectedVisitRequest?.id, selectedVisitRequest?.workType]);
 
@@ -389,7 +415,14 @@ export function VisitRequestRecommendationPanel({
     setManualTechnicianId(manualSelectionDraft.technicianId);
     setManualDate(manualSelectionDraft.date);
     setManualStartTime(manualSelectionDraft.startTime);
-    setManualDuration(manualSelectionDraft.duration);
+    setDurationMinutes(manualSelectionDraft.duration);
+    setDurationMode(
+      quickDurationOptions.some(
+        (option) => option.minutes === Number(manualSelectionDraft.duration),
+      )
+        ? 'quick'
+        : 'custom',
+    );
     setManualErrors([]);
   }, [
     manualSelectionDraft?.date,
@@ -441,7 +474,7 @@ export function VisitRequestRecommendationPanel({
         'Selección manual en revisión',
       riskMessages: matrixCellSelection?.riskMessages ?? manualSelectionDraft?.riskMessages ?? [],
       startTime: manualStartTime,
-      duration: manualDuration,
+      duration: durationMinutes,
       source,
     };
 
@@ -462,7 +495,7 @@ export function VisitRequestRecommendationPanel({
     onManualSelectionChange(nextDraft);
   }, [
     manualDate,
-    manualDuration,
+    durationMinutes,
     manualStartTime,
     manualTechnicianId,
     manualSelectionDraft,
@@ -506,6 +539,38 @@ export function VisitRequestRecommendationPanel({
     : hasReadyManualSelection
       ? 'Confirmar agenda seleccionada'
       : 'Selecciona una franja para continuar';
+  const isPeek = presentation === 'peek';
+  const dispatchDescription =
+    customerDisplayName ?? getVisitRequestReferenceLabel(selectedVisitRequest);
+
+  const footerContent = (
+    <>
+      {detailedAgendaHref ? (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Si ninguna recomendación sirve, puedes{' '}
+          <a
+            href={detailedAgendaHref}
+            className="font-medium text-iwana-secondary-700 underline-offset-4 hover:underline dark:text-iwana-secondary-400"
+          >
+            abrir la agenda detallada
+          </a>{' '}
+          para buscar otra opción manualmente.
+        </p>
+      ) : detailedAgendaFallbackMessage ? (
+        <p className="text-xs text-gray-500 dark:text-gray-400">{detailedAgendaFallbackMessage}</p>
+      ) : null}
+      <Button
+        type="button"
+        className="min-h-11 w-full"
+        variant="primary"
+        disabled={(!selectedRecommendation && !hasReadyManualSelection) || isTerminalVisitRequest}
+        onClick={onOpenConfirm}
+      >
+        <Clock3 className="h-4 w-4" aria-hidden="true" />
+        {footerLabel}
+      </Button>
+    </>
+  );
 
   const panel = (
     <aside
@@ -513,53 +578,57 @@ export function VisitRequestRecommendationPanel({
       aria-modal={presentation === 'drawer' ? true : undefined}
       aria-labelledby={presentation === 'drawer' ? 'visit-request-dispatch-title' : undefined}
       className={
-        presentation === 'inline'
-          ? compactRail
-            ? 'flex h-full min-h-[520px] flex-1 flex-col overflow-hidden bg-white dark:bg-dark-surface-2'
-            : 'flex h-full min-h-[720px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2'
-          : 'relative z-10 flex h-dvh w-full max-w-[560px] flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-1'
+        isPeek
+          ? 'contents'
+          : presentation === 'inline'
+            ? compactRail
+              ? 'flex h-full min-h-[520px] flex-1 flex-col overflow-hidden bg-white dark:bg-dark-surface-2'
+              : 'flex h-full min-h-[720px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2'
+            : 'relative z-10 flex h-dvh w-full max-w-[560px] flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-1'
       }
     >
-      <header className="border-b border-gray-200 px-3 py-3 dark:border-dark-border">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Despacho de la solicitud
-            </p>
-            <p
-              id="visit-request-dispatch-title"
-              className="mt-1 text-base font-semibold text-gray-900 dark:text-white"
-            >
-              {displayTitle}
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {customerDisplayName ?? getVisitRequestReferenceLabel(selectedVisitRequest)}
-            </p>
-            {customerDisplayName && (
-              <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-400">
-                {getVisitRequestReferenceLabel(selectedVisitRequest)}
+      {!isPeek ? (
+        <header className="border-b border-gray-200 px-3 py-3 dark:border-dark-border">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                Despacho de la solicitud
               </p>
-            )}
+              <p
+                id="visit-request-dispatch-title"
+                className="mt-1 text-base font-semibold text-gray-900 dark:text-white"
+              >
+                {displayTitle}
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {customerDisplayName ?? getVisitRequestReferenceLabel(selectedVisitRequest)}
+              </p>
+              {customerDisplayName && (
+                <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-400">
+                  {getVisitRequestReferenceLabel(selectedVisitRequest)}
+                </p>
+              )}
+            </div>
+            {presentation === 'drawer' || onClose ? (
+              <button
+                type="button"
+                onClick={() => onClose?.()}
+                className="rounded-full border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
+                aria-label="Cerrar panel"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
-          {presentation === 'drawer' || onClose ? (
-            <button
-              type="button"
-              onClick={() => onClose?.()}
-              className="rounded-full border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
-              aria-label="Cerrar panel"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {presentationStatus === 'NEEDS_CONTEXT' && missingFields.length > 0
-            ? `Para recomendar faltan: ${missingFields.join(', ')}.`
-            : getVisitRequestStatusDescription(presentationStatus)}
-        </p>
-      </header>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {presentationStatus === 'NEEDS_CONTEXT' && missingFields.length > 0
+              ? `Para recomendar faltan: ${missingFields.join(', ')}.`
+              : getVisitRequestStatusDescription(presentationStatus)}
+          </p>
+        </header>
+      ) : null}
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div className={isPeek ? 'space-y-3' : 'flex-1 space-y-3 overflow-y-auto p-3'}>
         <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border dark:bg-dark-surface-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
@@ -725,16 +794,106 @@ export function VisitRequestRecommendationPanel({
               </p>
             </div>
           </div>
-          <div className="grid gap-3">
-            <Select
-              id="visit-request-duration-minutes"
-              label="Duración estimada"
-              value={durationMinutes}
-              disabled={isTerminalVisitRequest}
-              placeholder="Selecciona una duración"
-              options={durationOptions}
-              onChange={(event) => setDurationMinutes(event.target.value)}
-            />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Duración estimada
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Duración rápida o personalizada.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-1 dark:border-dark-border-2 dark:bg-dark-surface-2">
+                <Button
+                  type="button"
+                  variant={durationMode === 'quick' ? 'primary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={durationMode === 'quick'}
+                  disabled={isTerminalVisitRequest}
+                  onClick={() => setDurationMode('quick')}
+                >
+                  Duración rápida
+                </Button>
+                <Button
+                  type="button"
+                  variant={durationMode === 'custom' ? 'primary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={durationMode === 'custom'}
+                  disabled={isTerminalVisitRequest}
+                  onClick={() => setDurationMode('custom')}
+                >
+                  Personalizada
+                </Button>
+              </div>
+            </div>
+
+            {durationMode === 'quick' ? (
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Duración rápida">
+                {quickDurationOptions.map((option) => {
+                  const isActive = durationValue === option.minutes;
+
+                  return (
+                    <Button
+                      key={option.minutes}
+                      type="button"
+                      variant={isActive ? 'primary' : 'secondary'}
+                      size="sm"
+                      aria-pressed={isActive}
+                      disabled={isTerminalVisitRequest}
+                      onClick={() => {
+                        setDurationMinutes(String(option.minutes));
+                        setManualErrors([]);
+                      }}
+                    >
+                      {option.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  id={`${durationInputId}-hours`}
+                  type="number"
+                  min={0}
+                  max={12}
+                  step={1}
+                  label="Horas"
+                  value={String(durationHours)}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) => {
+                    const nextHours = Number.parseInt(event.target.value || '0', 10);
+                    const safeHours = Number.isNaN(nextHours)
+                      ? 0
+                      : Math.min(Math.max(nextHours, 0), 12);
+                    setDurationMinutes(String(safeHours * 60 + durationRemainderMinutes));
+                    setManualErrors([]);
+                  }}
+                />
+                <Input
+                  id={`${durationInputId}-minutes`}
+                  type="number"
+                  min={0}
+                  max={45}
+                  step={15}
+                  label="Minutos"
+                  value={String(durationRemainderMinutes)}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) => {
+                    const nextMinutes = Number.parseInt(event.target.value || '0', 10);
+                    const normalizedMinutes = Number.isNaN(nextMinutes)
+                      ? 0
+                      : Math.min(Math.max(nextMinutes, 0), 45);
+                    const roundedMinutes = Math.round(normalizedMinutes / 15) * 15;
+                    setDurationMinutes(String(durationHours * 60 + roundedMinutes));
+                    setManualErrors([]);
+                  }}
+                />
+              </div>
+            )}
+
             <Select
               id="visit-request-search-horizon"
               label="Horizonte de búsqueda"
@@ -855,6 +1014,19 @@ export function VisitRequestRecommendationPanel({
                   </button>
                 );
               })}
+              {onCancelRecommendations ? (
+                <div className="flex justify-end border-t border-gray-100 pt-2 dark:border-dark-border">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onCancelRecommendations}
+                    aria-label="Cancelar recomendaciones"
+                  >
+                    Cancelar recomendaciones
+                  </Button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -952,82 +1124,85 @@ export function VisitRequestRecommendationPanel({
               />
 
               <div className="grid gap-3">
-                <Input
+                <DatePicker
                   id="visit-request-manual-date"
                   label="Fecha"
-                  type="date"
-                  value={manualDate}
+                  value={toDateFromLocalDateValue(manualDate)}
                   disabled={isTerminalVisitRequest}
-                  onChange={(event) => {
-                    setManualDate(event.target.value);
+                  onChange={(date) => {
+                    setManualDate(date ? toLocalDateValue(date) : '');
                     setManualErrors([]);
                   }}
                 />
-                <Input
-                  id="visit-request-manual-start-time"
-                  label="Hora de inicio"
-                  type="time"
-                  value={manualStartTime}
-                  disabled={isTerminalVisitRequest}
-                  onChange={(event) => {
-                    setManualStartTime(event.target.value);
-                    setManualErrors([]);
-                  }}
-                />
-                <Input
-                  id="visit-request-manual-duration"
-                  label="Duración (min)"
-                  type="number"
-                  min={15}
-                  step={15}
-                  value={manualDuration}
-                  disabled={isTerminalVisitRequest}
-                  onChange={(event) => {
-                    setManualDuration(event.target.value);
-                    setManualErrors([]);
-                  }}
-                />
+                <div className="flex w-full flex-col gap-1.5">
+                  <label
+                    htmlFor="visit-request-manual-start-time"
+                    className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Hora de inicio
+                  </label>
+                  <TimeFieldSelect
+                    id="visit-request-manual-start-time"
+                    value={manualStartTime}
+                    disabled={isTerminalVisitRequest}
+                    ariaLabel="Hora de inicio"
+                    onChange={(value) => {
+                      setManualStartTime(value);
+                      setManualErrors([]);
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-iwana-surface-soft px-3 py-2.5 dark:border-dark-border dark:bg-dark-surface-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                      Duración aplicada
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                      {formatDurationLabel(durationMinutes)}
+                    </p>
+                  </div>
+                  <p className="text-right text-xs text-gray-500 dark:text-gray-400">
+                    Definida en el paso 1
+                  </p>
+                </div>
               </div>
 
-              <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50/60 p-3 dark:border-dark-border dark:bg-dark-surface-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-                    Horas sugeridas
-                  </p>
-                  {selectedVisitRequest.workType === 'INSTALLATION' &&
-                    isLoadingManualOperatingWindow && (
-                      <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                        Validando ventana...
-                      </span>
-                    )}
-                </div>
-                {manualSuggestedTimeOptions.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {manualSuggestedTimeOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary ${
-                          manualStartTime === option.value
-                            ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-100'
-                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-1 dark:text-gray-200 dark:hover:bg-dark-surface-2'
-                        }`}
-                        onClick={() => {
-                          setManualStartTime(option.value);
-                          setManualErrors([]);
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+              {(manualSuggestedTimeOptions.length > 0 || isLoadingManualOperatingWindow) && (
+                <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50/60 p-3 dark:border-dark-border dark:bg-dark-surface-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                      Horas sugeridas
+                    </p>
+                    {selectedVisitRequest.workType === 'INSTALLATION' &&
+                      isLoadingManualOperatingWindow && (
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                          Validando ventana...
+                        </span>
+                      )}
                   </div>
-                ) : (
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    No hay horas sugeridas para la duración actual. Puedes escribir una hora manual
-                    y validarla al confirmar.
-                  </p>
-                )}
-              </div>
+                  {manualSuggestedTimeOptions.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {manualSuggestedTimeOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary ${
+                            manualStartTime === option.value
+                              ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-100'
+                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-1 dark:text-gray-200 dark:hover:bg-dark-surface-2'
+                          }`}
+                          onClick={() => {
+                            setManualStartTime(option.value);
+                            setManualErrors([]);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {manualEndPreview && (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1252,36 +1427,33 @@ export function VisitRequestRecommendationPanel({
         </div>
       </div>
 
-      <footer className="space-y-3 border-t border-gray-200 p-3 dark:border-dark-border">
-        {detailedAgendaHref ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Si ninguna recomendación sirve, puedes{' '}
-            <a
-              href={detailedAgendaHref}
-              className="font-medium text-iwana-secondary-700 underline-offset-4 hover:underline dark:text-iwana-secondary-400"
-            >
-              abrir la agenda detallada
-            </a>{' '}
-            para buscar otra opción manualmente.
-          </p>
-        ) : detailedAgendaFallbackMessage ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {detailedAgendaFallbackMessage}
-          </p>
-        ) : null}
-        <Button
-          type="button"
-          className="w-full"
-          variant="primary"
-          disabled={(!selectedRecommendation && !hasReadyManualSelection) || isTerminalVisitRequest}
-          onClick={onOpenConfirm}
-        >
-          <Clock3 className="h-4 w-4" aria-hidden="true" />
-          {footerLabel}
-        </Button>
-      </footer>
+      {!isPeek ? (
+        <footer className="space-y-3 border-t border-gray-200 p-3 dark:border-dark-border">
+          {footerContent}
+        </footer>
+      ) : null}
     </aside>
   );
+
+  if (isPeek) {
+    return (
+      <OperationalSidePeek
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            onClose?.();
+          }
+        }}
+        title={displayTitle}
+        description={dispatchDescription}
+        eyebrow="Despacho de la solicitud"
+        busy={isSavingContext}
+        footer={<div className="space-y-3">{footerContent}</div>}
+      >
+        {panel}
+      </OperationalSidePeek>
+    );
+  }
 
   if (presentation === 'inline') {
     return panel;

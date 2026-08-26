@@ -6,7 +6,11 @@ import {
   WorkOrderSourceContext,
   VisitRequestStatus,
 } from '@iwana/shared';
-import { ScheduleCalendar } from './ScheduleCalendar';
+import {
+  ScheduleCalendar,
+  getDailyDispatchTableMinWidth,
+  getDailyTimelineWidthPercent,
+} from './ScheduleCalendar';
 import { buildDailyDraftFromDrop, serializePendingVisitDragPayload } from './daily-schedule-draft';
 
 const technician = {
@@ -135,6 +139,12 @@ describe('ScheduleCalendar', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /Crear evento para Luisa Campos a las 06:00/i }),
     );
+    expect(
+      screen.getByRole('button', { name: /Crear evento para Luisa Campos a las 06:30/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Crear evento para Luisa Campos a las 06:15/i }),
+    ).not.toBeInTheDocument();
 
     expect(onCreateEventSlot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,6 +168,63 @@ describe('ScheduleCalendar', () => {
     expect(screen.getByText('Instalación agenda')).toBeInTheDocument();
     expect(screen.queryByText('Programado')).not.toBeInTheDocument();
     expect(screen.queryByText('Programada')).not.toBeInTheDocument();
+  });
+
+  it('calcula un mínimo de tabla diario con horas amplias y columna de responsable compacta', () => {
+    expect(getDailyDispatchTableMinWidth(14)).toBe(136 + 14 * 160);
+  });
+
+  it('mantiene el ancho de un bloque proporcional a su duración real', () => {
+    const dayMinutes = 14 * 60;
+
+    expect(getDailyTimelineWidthPercent(30, dayMinutes)).toBeCloseTo((30 / dayMinutes) * 100);
+    expect(getDailyTimelineWidthPercent(30, dayMinutes) * 2).toBeCloseTo(
+      getDailyTimelineWidthPercent(60, dayMinutes),
+    );
+    expect(getDailyTimelineWidthPercent(30, dayMinutes)).toBeLessThan(5);
+  });
+
+  it('compacta la columna de responsable y deja que las horas usen el ancho disponible', () => {
+    render(
+      <ScheduleCalendar
+        days={[day as any]}
+        technicians={[technician as any]}
+        view="day"
+        techniciansById={new Map([['tech-1', technician as any]])}
+        onSelectEvent={jest.fn()}
+      />,
+    );
+
+    const table = screen.getByRole('table');
+    expect(table).toHaveClass('w-full', 'table-fixed');
+    expect(table).not.toHaveClass('min-w-[1912px]');
+    expect(table).toHaveStyle({
+      minWidth: `${getDailyDispatchTableMinWidth(14)}px`,
+    });
+
+    const responsibleCell = screen
+      .getByRole('button', { name: 'Ver nombre completo de Luisa Campos' })
+      .closest('td');
+    expect(responsibleCell).toHaveClass('sticky', 'left-0', 'z-30');
+    expect(responsibleCell).not.toHaveClass('z-10');
+  });
+
+  it('muestra el nombre completo del responsable al hacer clic en la columna compacta', () => {
+    render(
+      <ScheduleCalendar
+        days={[day as any]}
+        technicians={[technician as any]}
+        view="day"
+        techniciansById={new Map([['tech-1', technician as any]])}
+        onSelectEvent={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver nombre completo de Luisa Campos' }));
+
+    expect(screen.getByRole('dialog', { name: 'Nombre completo' })).toHaveTextContent(
+      'Luisa Campos',
+    );
   });
 
   it('convierte mes en mapa de carga con drill-down al día', () => {

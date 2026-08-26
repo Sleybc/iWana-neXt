@@ -70,6 +70,10 @@ import { RedactAuditPiiCoordsAndFreeText1100000000000 } from './110_redact_audit
 import { HardenAuditMaintenanceGuard1110000000000 } from './111_harden_audit_maintenance_guard';
 import { SeedOperationsTasksPermissions1120000000000 } from './112_seed_operations_tasks_permissions';
 import { HardenCommercialConstraints1130000000000 } from './113_harden_commercial_constraints';
+import { BackfillTaxRuleApplications1140000000000 } from './114_backfill_tax_rule_applications';
+import { SeedDefaultIvaTaxRules1150000000000 } from './115_seed_default_iva_tax_rules';
+import { AddCustomerSegmentToExpedienteRecords1160000000000 } from './116_add_customer_segment_to_expediente_records';
+import { RepairOrganizationCompanyBusinessHoursSeed1170000000000 } from './117_repair_organization_company_business_hours_seed';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -220,6 +224,10 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   HardenAuditMaintenanceGuard1110000000000,
   SeedOperationsTasksPermissions1120000000000,
   HardenCommercialConstraints1130000000000,
+  BackfillTaxRuleApplications1140000000000,
+  SeedDefaultIvaTaxRules1150000000000,
+  AddCustomerSegmentToExpedienteRecords1160000000000,
+  RepairOrganizationCompanyBusinessHoursSeed1170000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

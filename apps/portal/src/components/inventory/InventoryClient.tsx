@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Button,
-  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,6 +25,7 @@ import {
   WriteOffStatus,
   StockMovementOrigin,
 } from '@iwana/shared';
+import { Package, Tags } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   ApiError,
@@ -86,13 +86,12 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
-  interactiveFocusClassName,
+  PortalModuleSubnav,
+  PortalNavListRow,
   portalDataTableShellClassName,
-  portalModuleTabTriggerClassName,
-  portalModuleTabsDividerClassName,
-  portalModuleTabsGroupClassName,
-  portalModuleTabsShellClassName,
-  portalModuleTabsTrackClassName,
+  portalResourceTabIconClassName,
+  portalResourceTabListClassName,
+  portalResourceTabTriggerClassName,
   portalTextareaClassName,
 } from '@/components/shared/portal-ui';
 import { InventoryDashboard } from './InventoryDashboard';
@@ -101,7 +100,6 @@ import { InventoryCatalogDrawer } from './InventoryCatalogDrawer';
 import { InventoryCategoryDrawer } from './InventoryCategoryDrawer';
 import { InventoryCatalogCategoriesPanel } from './InventoryCatalogCategoriesPanel';
 import { InventoryCatalogProductsPanel } from './InventoryCatalogProductsPanel';
-import { InventoryCatalogSummaryPreview } from './InventoryCatalogSummaryPreview';
 import { PurchaseWorkspace } from './PurchaseWorkspace';
 import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { SuppliersPanel } from './SuppliersPanel';
@@ -133,14 +131,17 @@ import {
   suggestNextCategorySortOrder,
 } from './inventory-category-code';
 import {
-  STOCK_AVAILABLE_LABEL,
-  STOCK_RESERVED_HELP_TEXT,
   formatInventoryDate,
   formatInventoryQuantity,
   getSerializedAssetStatusLabel,
 } from './inventory-labels';
 import { type CatalogFilters, EMPTY_CATALOG_FILTERS } from './catalog-filters';
-import { resolveInventoryTab, shouldOpenLocationCreateFromUrl } from './inventory-tab-params';
+import {
+  resolveInventoryTab,
+  shouldOpenLocationCreateFromUrl,
+  type InventoryTab,
+} from './inventory-tab-params';
+import { INVENTORY_NAV_GROUPS } from './inventory-nav';
 import {
   EMPTY_INVENTORY_LIST_META,
   INVENTORY_LIST_PAGE_SIZE,
@@ -151,17 +152,7 @@ import {
 } from './inventory-list-pagination';
 import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 
-export type InventoryTab =
-  | 'catalog'
-  | 'stock'
-  | 'purchasing'
-  | 'suppliers'
-  | 'locations'
-  | 'issues'
-  | 'counts'
-  | 'assets'
-  | 'movements'
-  | 'writeoffs';
+export type { InventoryTab };
 
 const ASSET_DETAIL_SECTION_LIMIT = 20;
 
@@ -264,7 +255,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     [],
   );
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [locationEditItem, setLocationEditItem] = useState<StockLocationRecord | null>(null);
@@ -473,35 +463,37 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const navigateToReplenishment = useCallback(() => {
     setStockSubviewPrefill('replenishment');
     setActiveTab('stock');
-  }, []);
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    nextSearchParams.set('tab', 'stock');
+    const nextQuery = nextSearchParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   // Resumen: reposición desde API dedicada (no materializa catálogo+balances).
-  const lowStockItems = useMemo(
+  const lowStockAlerts = useMemo(
     () =>
-      replenishmentPreview
-        .filter((row) => row.criticality === 'out' || row.criticality === 'below-minimum')
-        .slice(0, 6),
+      replenishmentPreview.filter(
+        (row) => row.criticality === 'out' || row.criticality === 'below-minimum',
+      ),
     [replenishmentPreview],
   );
+  const lowStockItems = lowStockAlerts.slice(0, 6);
 
   const monitoredAssets = useMemo(
     () =>
-      assets
-        .filter((asset) =>
-          [
-            SerializedAssetStatus.IN_REPAIR,
-            SerializedAssetStatus.IN_TESTING,
-            SerializedAssetStatus.LOST,
-          ].includes(asset.currentStatus),
-        )
-        .slice(0, 6),
+      assets.filter((asset) =>
+        [
+          SerializedAssetStatus.IN_REPAIR,
+          SerializedAssetStatus.IN_TESTING,
+          SerializedAssetStatus.LOST,
+        ].includes(asset.currentStatus),
+      ),
     [assets],
   );
+  const monitoredAssetPreview = monitoredAssets.slice(0, 6);
 
   const loadBootstrap = useCallback(async (silent = false) => {
-    if (silent) {
-      setIsRefreshing(true);
-    } else {
+    if (!silent) {
       setIsLoading(true);
     }
 
@@ -541,7 +533,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setError(mapInventoryError(loadError));
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   }, []);
 
@@ -842,7 +833,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     if (!tabFromUrl) {
       if (!initialTab) {
-        setActiveTab((current) => (current === 'catalog' ? current : 'catalog'));
+        setActiveTab((current) => (current === 'overview' ? current : 'overview'));
       }
       return;
     }
@@ -987,7 +978,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setActiveTab(nextTab);
 
       const nextSearchParams = new URLSearchParams(searchParams.toString());
-      if (nextTab === 'catalog') {
+      if (nextTab === 'overview') {
         nextSearchParams.delete('tab');
       } else {
         nextSearchParams.set('tab', nextTab);
@@ -2209,16 +2200,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       <PageHeader
         title="Inventario"
         subtitle="Compras, bodegas, activos y movimientos en un solo lugar."
-        actions={
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void loadData(true)}
-            loading={isRefreshing}
-          >
-            Actualizar
-          </Button>
-        }
       />
 
       {error && (
@@ -2235,559 +2216,551 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         />
       )}
 
-      {!isLoading && summary && (
+      <PortalModuleSubnav
+        groups={INVENTORY_NAV_GROUPS}
+        value={activeTab}
+        onValueChange={handleTabChange}
+        ariaLabel="Secciones de inventario"
+      />
+
+      {activeTab === 'overview' ? (
         <div className="space-y-6 mb-6">
           <InventoryDashboard summary={summary} isLoading={isLoading} />
 
-          <div className="grid gap-6 xl:grid-cols-2">
+          {isLoading ? (
+            <PortalSkeletonBlock className="min-h-56 rounded-2xl" />
+          ) : summary && summary.itemsCount === 0 ? (
             <PortalPanel
-              eyebrow="Abastecimiento"
-              title="Productos bajo mínimo"
-              description={`Productos cuyo disponible ya llegó al mínimo definido para reponer. ${STOCK_RESERVED_HELP_TEXT}`}
-              actions={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={navigateToReplenishment}
-                  data-testid="summary-replenishment-cta"
-                >
-                  Ver reposición
-                </Button>
-              }
+              eyebrow="Atención"
+              title="Atención ahora"
+              description="Excepciones de reposición y seriales que requieren seguimiento."
             >
-              {lowStockItems.length === 0 ? (
-                <PortalEmptyState
-                  title="Sin alertas de reposición"
-                  description="El material disponible está por encima del mínimo definido."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {lowStockItems.map((row) => (
-                    <div
-                      key={row.itemId}
-                      className="rounded-xl border border-gray-100 px-3 py-3 dark:border-dark-border"
-                    >
-                      <p className="font-medium text-gray-900 dark:text-white">{row.itemName}</p>
-                      <p className="mt-1 text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                        {row.itemSku} · {STOCK_AVAILABLE_LABEL.toLowerCase()}{' '}
-                        {formatInventoryQuantity(row.available)} · mínimo{' '}
-                        {formatInventoryQuantity(row.minimumStock)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <PortalEmptyState
+                title="Aún no hay inventario"
+                description="Crea el primer producto para empezar a operar compras y existencias."
+                action={
+                  <Button type="button" onClick={() => handleTabChange('catalog')}>
+                    Ir al catálogo
+                  </Button>
+                }
+              />
             </PortalPanel>
-
+          ) : summary ? (
             <PortalPanel
-              eyebrow="Riesgos"
-              title="Activos a vigilar"
-              description="Seriales en prueba, reparación o pérdida que requieren seguimiento inmediato."
+              eyebrow="Atención"
+              title="Atención ahora"
+              description="Excepciones de reposición y seriales que requieren seguimiento."
             >
-              {monitoredAssets.length === 0 ? (
-                <PortalEmptyState
-                  title="Sin activos críticos"
-                  description="No hay activos en estados que demanden seguimiento inmediato."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {monitoredAssets.slice(0, 6).map((asset) => (
-                    <button
-                      key={asset.id}
+              <div className="grid gap-6 xl:grid-cols-2">
+                <section className="space-y-3" aria-labelledby="overview-low-stock-heading">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3
+                      id="overview-low-stock-heading"
+                      className="text-sm font-semibold text-gray-900 dark:text-white"
+                    >
+                      Productos bajo mínimo
+                    </h3>
+                    <Button
                       type="button"
-                      className={cn(
-                        'w-full rounded-xl border border-gray-100 px-3 py-3 text-left transition hover:border-iwana-primary/40 dark:border-dark-border',
-                        interactiveFocusClassName,
-                      )}
-                      onClick={() => void openAssetDetail(asset.id)}
+                      variant="secondary"
+                      onClick={navigateToReplenishment}
+                      data-testid="summary-replenishment-cta"
                     >
-                      <p className="font-medium text-gray-900 dark:text-white">
-                        {asset.serialNumber ?? asset.assetTag ?? 'Sin código'}
-                      </p>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {getSerializedAssetStatusLabel(asset.currentStatus)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
+                      Ver reposición
+                    </Button>
+                  </div>
+                  {lowStockItems.length === 0 ? (
+                    <PortalEmptyState
+                      title="Sin alertas de reposición"
+                      description="El material disponible está por encima del mínimo definido."
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {lowStockItems.map((row) => (
+                        <PortalNavListRow
+                          key={row.itemId}
+                          title={row.itemName}
+                          meta={`${row.itemSku} · mínimo ${formatInventoryQuantity(row.minimumStock)}`}
+                          trailing={formatInventoryQuantity(row.available)}
+                        />
+                      ))}
+                      {lowStockAlerts.length > lowStockItems.length ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Mostrando {lowStockItems.length} de {lowStockAlerts.length}.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-3" aria-labelledby="overview-watch-assets-heading">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3
+                      id="overview-watch-assets-heading"
+                      className="text-sm font-semibold text-gray-900 dark:text-white"
+                    >
+                      Activos a vigilar
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => handleTabChange('assets')}
+                      data-testid="summary-assets-cta"
+                    >
+                      Ver activos
+                    </Button>
+                  </div>
+                  {monitoredAssetPreview.length === 0 ? (
+                    <PortalEmptyState
+                      title="Sin activos críticos"
+                      description="No hay activos en estados que demanden seguimiento inmediato."
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {monitoredAssetPreview.map((asset) => (
+                        <PortalNavListRow
+                          key={asset.id}
+                          title={asset.serialNumber ?? asset.assetTag ?? 'Sin código'}
+                          meta={getSerializedAssetStatusLabel(asset.currentStatus)}
+                          onClick={() => void openAssetDetail(asset.id)}
+                        />
+                      ))}
+                      {monitoredAssets.length > monitoredAssetPreview.length ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Mostrando {monitoredAssetPreview.length} de {monitoredAssets.length}.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                </section>
+              </div>
             </PortalPanel>
-          </div>
-
-          <InventoryCatalogSummaryPreview
-            items={items}
-            totalCount={itemsMeta.total}
-            isLoading={isLoading}
-            onOpenCatalog={() => setActiveTab('catalog')}
-          />
-        </div>
-      )}
-
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList aria-label="Secciones de inventario" className={portalModuleTabsShellClassName}>
-          <div className={portalModuleTabsGroupClassName}>
-            <p className="portal-eyebrow px-1" id="inventory-tabs-operation-label">
-              Operación
-            </p>
-            <div
-              role="group"
-              aria-labelledby="inventory-tabs-operation-label"
-              className={portalModuleTabsTrackClassName}
-            >
-              <TabsTrigger value="catalog" className={portalModuleTabTriggerClassName}>
-                Catálogo
-              </TabsTrigger>
-              <TabsTrigger value="stock" className={portalModuleTabTriggerClassName}>
-                Existencias
-              </TabsTrigger>
-              <TabsTrigger value="purchasing" className={portalModuleTabTriggerClassName}>
-                Compras
-              </TabsTrigger>
-              <TabsTrigger value="suppliers" className={portalModuleTabTriggerClassName}>
-                Proveedores
-              </TabsTrigger>
-              <TabsTrigger value="locations" className={portalModuleTabTriggerClassName}>
-                Bodegas
-              </TabsTrigger>
-              <TabsTrigger value="issues" className={portalModuleTabTriggerClassName}>
-                Salidas
-              </TabsTrigger>
-              <TabsTrigger value="counts" className={portalModuleTabTriggerClassName}>
-                Conteos
-              </TabsTrigger>
-            </div>
-          </div>
-          <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
-          <div className={portalModuleTabsGroupClassName}>
-            <p className="portal-eyebrow-muted px-1" id="inventory-tabs-traceability-label">
-              Seguimiento
-            </p>
-            <div
-              role="group"
-              aria-labelledby="inventory-tabs-traceability-label"
-              className={portalModuleTabsTrackClassName}
-            >
-              <TabsTrigger value="assets" className={portalModuleTabTriggerClassName}>
-                Activos
-              </TabsTrigger>
-              <TabsTrigger value="movements" className={portalModuleTabTriggerClassName}>
-                Movimientos
-              </TabsTrigger>
-              <TabsTrigger value="writeoffs" className={portalModuleTabTriggerClassName}>
-                Bajas
-              </TabsTrigger>
-            </div>
-          </div>
-        </TabsList>
-
-        <TabsContent value="catalog" className="space-y-6">
-          {catalogFeedback ? (
-            <PortalAlert
-              variant="success"
-              title="Catálogo actualizado"
-              description={catalogFeedback}
-            />
           ) : null}
+        </div>
+      ) : null}
 
-          <PortalPanel
-            eyebrow="Catálogo"
-            title={
-              catalogSubView === 'products' ? 'Catálogo de productos' : 'Categorías del catálogo'
-            }
-            description={
-              catalogSubView === 'products'
-                ? 'Consulta, filtra y administra productos para compras e inventario. Maestro operativo: SKU, stock y trazabilidad.'
-                : 'Administra las categorías usadas por los productos del catálogo.'
-            }
-            actions={
-              catalogSubView === 'products' ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    loading={isRefreshingCatalog}
-                    onClick={() => void loadCatalogItems(catalogFilters, { silent: true })}
-                  >
-                    Actualizar
-                  </Button>
-                  <Button type="button" variant="primary" onClick={openCreateProductDialog}>
-                    Nuevo producto
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    loading={isRefreshingCategories}
-                    onClick={() => void loadCategories({ silent: true })}
-                  >
-                    Actualizar
-                  </Button>
-                  <Button type="button" variant="primary" onClick={() => openCategoryDrawer()}>
-                    Nueva categoría
-                  </Button>
-                </div>
-              )
-            }
-            contentClassName="space-y-4"
-          >
-            <Tabs
-              value={catalogSubView}
-              onValueChange={(value) => setCatalogSubView(value as CatalogSubView)}
-            >
-              <TabsList
-                aria-label="Vista del catálogo"
-                className="flex h-auto w-full max-w-md justify-start border-0 bg-transparent p-0 shadow-none"
-              >
-                <div className={cn(portalModuleTabsTrackClassName, 'w-full')}>
-                  <TabsTrigger value="products" className={portalModuleTabTriggerClassName}>
-                    Productos
-                  </TabsTrigger>
-                  <TabsTrigger value="categories" className={portalModuleTabTriggerClassName}>
-                    Categorías
-                  </TabsTrigger>
-                </div>
-              </TabsList>
+      {activeTab !== 'overview' ? (
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsContent value="catalog" className="space-y-6">
+            {catalogFeedback ? (
+              <PortalAlert
+                variant="success"
+                title="Catálogo actualizado"
+                description={catalogFeedback}
+              />
+            ) : null}
 
-              <TabsContent value="products" className="mt-4">
-                {catalogError ? (
-                  <PortalAlert
-                    variant="error"
-                    title="No fue posible cargar el catálogo"
-                    description={catalogError}
-                  />
-                ) : null}
-
-                <InventoryCatalogProductsPanel
-                  filters={catalogFilters}
-                  items={catalogItems}
-                  totalCount={catalogMeta.total}
-                  hasMore={inventoryHasMore(catalogMeta)}
-                  isLoadingMore={isLoadingMoreCatalog}
-                  onLoadMore={() => void loadCatalogItems(catalogFilters, { append: true })}
-                  categoryOptions={activeCategoryOptions}
-                  supplierLabels={supplierLabels}
-                  isLoading={isLoadingCatalog}
-                  isRefreshing={isRefreshingCatalog}
-                  onFiltersChange={setCatalogFilters}
-                  onClearFilters={() => setCatalogFilters(EMPTY_CATALOG_FILTERS)}
-                  onCreateProduct={openCreateProductDialog}
-                  onRowClick={(item) => void openCatalogItemDetail(item)}
-                  onDelete={handleDeleteCatalogItem}
-                  deletingItemId={deletingCatalogItemId}
-                  createAction={
+            <PortalPanel
+              eyebrow="Catálogo"
+              title={
+                catalogSubView === 'products' ? 'Catálogo de productos' : 'Categorías del catálogo'
+              }
+              description={
+                catalogSubView === 'products'
+                  ? 'Consulta, filtra y administra productos para compras e inventario. Maestro operativo: SKU, stock y trazabilidad.'
+                  : 'Administra las categorías usadas por los productos del catálogo.'
+              }
+              actions={
+                catalogSubView === 'products' ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={isRefreshingCatalog}
+                      onClick={() => void loadCatalogItems(catalogFilters, { silent: true })}
+                    >
+                      Actualizar
+                    </Button>
                     <Button type="button" variant="primary" onClick={openCreateProductDialog}>
                       Nuevo producto
                     </Button>
-                  }
-                />
-              </TabsContent>
-
-              <TabsContent value="categories" className="mt-4">
-                {categoriesError ? (
-                  <PortalAlert
-                    variant="error"
-                    title="No fue posible cargar las categorías"
-                    description={categoriesError}
-                  />
-                ) : null}
-
-                <InventoryCatalogCategoriesPanel
-                  categories={categories}
-                  totalCount={categoriesMeta.total}
-                  hasMore={inventoryHasMore(categoriesMeta)}
-                  isLoadingMore={isLoadingMoreCategories}
-                  onLoadMore={() => void loadCategories({ append: true })}
-                  search={categoriesSearch}
-                  onSearchChange={setCategoriesSearch}
-                  isLoading={isLoadingCategories}
-                  isRefreshing={isRefreshingCategories}
-                  onCreateCategory={() => openCategoryDrawer()}
-                  onRowClick={(category) => void openCategoryDetail(category)}
-                  createAction={
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={isRefreshingCategories}
+                      onClick={() => void loadCategories({ silent: true })}
+                    >
+                      Actualizar
+                    </Button>
                     <Button type="button" variant="primary" onClick={() => openCategoryDrawer()}>
                       Nueva categoría
                     </Button>
-                  }
-                />
-              </TabsContent>
-            </Tabs>
-          </PortalPanel>
-        </TabsContent>
-
-        <TabsContent value="purchasing" className="space-y-6">
-          {catalogOptionsError ? (
-            <PortalAlert
-              variant="error"
-              title="No fue posible cargar el catálogo de compras"
-              description={catalogOptionsError}
-            />
-          ) : null}
-          <PurchaseWorkspace
-            items={items}
-            catalogOptions={catalogOptions}
-            supplierLabels={supplierLabels}
-            isCatalogSearching={isCatalogSearching}
-            locations={locations}
-            latestOrder={latestOrder}
-            latestOrderLines={latestOrderLines}
-            latestReceipt={latestReceipt}
-            listRevision={purchaseListRevision}
-            isSubmittingRequest={isSubmittingRequest}
-            isSubmittingQuote={isSubmittingQuote}
-            isSubmittingApprove={isSubmittingApprove}
-            isSubmittingAwards={isSubmittingAwards}
-            isSubmittingReject={isSubmittingReject}
-            isSubmittingCancel={isSubmittingCancel}
-            isSubmittingOrder={isSubmittingOrder}
-            isSubmittingReceipt={isSubmittingReceipt}
-            isSubmittingUpdateRequest={isSubmittingUpdateRequest}
-            isSubmittingApproveOrder={isSubmittingApproveOrder}
-            isSubmittingCancelOrder={isSubmittingCancelOrder}
-            isSubmittingCloseOrder={isSubmittingCloseOrder}
-            createError={createRequestError}
-            quoteError={quoteError}
-            approveError={approveError}
-            awardsError={awardsError}
-            rejectError={rejectError}
-            cancelError={cancelError}
-            orderError={orderError}
-            receiptError={receiptError}
-            updateRequestError={updateRequestError}
-            approveOrderError={approveOrderError}
-            cancelOrderError={cancelOrderError}
-            closeOrderError={closeOrderError}
-            counterPurchaseError={counterPurchaseError}
-            latestCounterPurchase={latestCounterPurchase}
-            isSubmittingCounterPurchase={isSubmittingCounterPurchase}
-            onCreateRequest={handleCreateRequest}
-            onAddQuote={handleAddQuote}
-            onApproveRequest={handleApproveRequest}
-            onCreateAwards={handleCreateAwards}
-            onRejectRequest={handleRejectRequest}
-            onCancelRequest={handleCancelRequest}
-            onUpdateRequest={handleUpdateRequest}
-            onCreateOrder={handleCreateOrder}
-            onReceiveOrder={handleReceiveOrder}
-            onApproveOrder={handleApproveOrder}
-            onCancelOrder={handleCancelOrder}
-            onCloseOrder={handleCloseOrder}
-            onCounterPurchase={handleCounterPurchase}
-            onDismissCounterPurchaseSuccess={() => {
-              setLatestCounterPurchase(null);
-              setCounterPurchaseError(null);
-            }}
-            onPrepareOrderDrawer={loadOrderDetailForRequest}
-            onSelectOrder={loadOrderDetail}
-            onRefresh={async () => {
-              setPurchaseListRevision((value) => value + 1);
-              await loadData(true);
-            }}
-            onCatalogSearch={handleCatalogSearch}
-            createInitialValues={pendingComposerPrefill}
-            onCreateInitialValuesConsumed={() => setPendingComposerPrefill(null)}
-          />
-        </TabsContent>
-
-        <TabsContent value="suppliers" className="space-y-6">
-          <PortalPanel
-            eyebrow="Abastecimiento"
-            title="Proveedores"
-            description="Administra la ficha comercial de los proveedores vinculados a compras."
-            actions={
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setSuppliersListRevision((value) => value + 1)}
+                  </div>
+                )
+              }
+              contentClassName="space-y-4"
+            >
+              <Tabs
+                value={catalogSubView}
+                onValueChange={(value) => setCatalogSubView(value as CatalogSubView)}
+              >
+                <TabsList
+                  aria-label="Vista del catálogo"
+                  className={portalResourceTabListClassName}
                 >
-                  Actualizar
-                </Button>
-                <Button type="button" variant="primary" onClick={() => openSupplierDrawer()}>
-                  Nuevo proveedor
-                </Button>
-              </div>
-            }
-            contentClassName="space-y-4"
-          >
-            <SuppliersPanel
-              listRevision={suppliersListRevision}
-              onCreate={() => openSupplierDrawer()}
-              onRowClick={(supplier) => void openSupplierDetail(supplier)}
-              createAction={
-                <Button type="button" variant="primary" onClick={() => openSupplierDrawer()}>
-                  Nuevo proveedor
+                  <TabsTrigger
+                    value="products"
+                    className={portalResourceTabTriggerClassName(catalogSubView === 'products')}
+                  >
+                    <Package
+                      className={portalResourceTabIconClassName(catalogSubView === 'products')}
+                      aria-hidden="true"
+                    />
+                    Productos
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="categories"
+                    className={portalResourceTabTriggerClassName(catalogSubView === 'categories')}
+                  >
+                    <Tags
+                      className={portalResourceTabIconClassName(catalogSubView === 'categories')}
+                      aria-hidden="true"
+                    />
+                    Categorías
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="products" className="mt-4">
+                  {catalogError ? (
+                    <PortalAlert
+                      variant="error"
+                      title="No fue posible cargar el catálogo"
+                      description={catalogError}
+                    />
+                  ) : null}
+
+                  <InventoryCatalogProductsPanel
+                    filters={catalogFilters}
+                    items={catalogItems}
+                    totalCount={catalogMeta.total}
+                    hasMore={inventoryHasMore(catalogMeta)}
+                    isLoadingMore={isLoadingMoreCatalog}
+                    onLoadMore={() => void loadCatalogItems(catalogFilters, { append: true })}
+                    categoryOptions={activeCategoryOptions}
+                    supplierLabels={supplierLabels}
+                    isLoading={isLoadingCatalog}
+                    isRefreshing={isRefreshingCatalog}
+                    onFiltersChange={setCatalogFilters}
+                    onClearFilters={() => setCatalogFilters(EMPTY_CATALOG_FILTERS)}
+                    onCreateProduct={openCreateProductDialog}
+                    onRowClick={(item) => void openCatalogItemDetail(item)}
+                    onDelete={handleDeleteCatalogItem}
+                    deletingItemId={deletingCatalogItemId}
+                    createAction={
+                      <Button type="button" variant="primary" onClick={openCreateProductDialog}>
+                        Nuevo producto
+                      </Button>
+                    }
+                  />
+                </TabsContent>
+
+                <TabsContent value="categories" className="mt-4">
+                  {categoriesError ? (
+                    <PortalAlert
+                      variant="error"
+                      title="No fue posible cargar las categorías"
+                      description={categoriesError}
+                    />
+                  ) : null}
+
+                  <InventoryCatalogCategoriesPanel
+                    categories={categories}
+                    totalCount={categoriesMeta.total}
+                    hasMore={inventoryHasMore(categoriesMeta)}
+                    isLoadingMore={isLoadingMoreCategories}
+                    onLoadMore={() => void loadCategories({ append: true })}
+                    search={categoriesSearch}
+                    onSearchChange={setCategoriesSearch}
+                    isLoading={isLoadingCategories}
+                    isRefreshing={isRefreshingCategories}
+                    onCreateCategory={() => openCategoryDrawer()}
+                    onRowClick={(category) => void openCategoryDetail(category)}
+                    createAction={
+                      <Button type="button" variant="primary" onClick={() => openCategoryDrawer()}>
+                        Nueva categoría
+                      </Button>
+                    }
+                  />
+                </TabsContent>
+              </Tabs>
+            </PortalPanel>
+          </TabsContent>
+
+          <TabsContent value="purchasing" className="space-y-6">
+            {catalogOptionsError ? (
+              <PortalAlert
+                variant="error"
+                title="No fue posible cargar el catálogo de compras"
+                description={catalogOptionsError}
+              />
+            ) : null}
+            <PurchaseWorkspace
+              items={items}
+              catalogOptions={catalogOptions}
+              supplierLabels={supplierLabels}
+              isCatalogSearching={isCatalogSearching}
+              locations={locations}
+              latestOrder={latestOrder}
+              latestOrderLines={latestOrderLines}
+              latestReceipt={latestReceipt}
+              listRevision={purchaseListRevision}
+              isSubmittingRequest={isSubmittingRequest}
+              isSubmittingQuote={isSubmittingQuote}
+              isSubmittingApprove={isSubmittingApprove}
+              isSubmittingAwards={isSubmittingAwards}
+              isSubmittingReject={isSubmittingReject}
+              isSubmittingCancel={isSubmittingCancel}
+              isSubmittingOrder={isSubmittingOrder}
+              isSubmittingReceipt={isSubmittingReceipt}
+              isSubmittingUpdateRequest={isSubmittingUpdateRequest}
+              isSubmittingApproveOrder={isSubmittingApproveOrder}
+              isSubmittingCancelOrder={isSubmittingCancelOrder}
+              isSubmittingCloseOrder={isSubmittingCloseOrder}
+              createError={createRequestError}
+              quoteError={quoteError}
+              approveError={approveError}
+              awardsError={awardsError}
+              rejectError={rejectError}
+              cancelError={cancelError}
+              orderError={orderError}
+              receiptError={receiptError}
+              updateRequestError={updateRequestError}
+              approveOrderError={approveOrderError}
+              cancelOrderError={cancelOrderError}
+              closeOrderError={closeOrderError}
+              counterPurchaseError={counterPurchaseError}
+              latestCounterPurchase={latestCounterPurchase}
+              isSubmittingCounterPurchase={isSubmittingCounterPurchase}
+              onCreateRequest={handleCreateRequest}
+              onAddQuote={handleAddQuote}
+              onApproveRequest={handleApproveRequest}
+              onCreateAwards={handleCreateAwards}
+              onRejectRequest={handleRejectRequest}
+              onCancelRequest={handleCancelRequest}
+              onUpdateRequest={handleUpdateRequest}
+              onCreateOrder={handleCreateOrder}
+              onReceiveOrder={handleReceiveOrder}
+              onApproveOrder={handleApproveOrder}
+              onCancelOrder={handleCancelOrder}
+              onCloseOrder={handleCloseOrder}
+              onCounterPurchase={handleCounterPurchase}
+              onDismissCounterPurchaseSuccess={() => {
+                setLatestCounterPurchase(null);
+                setCounterPurchaseError(null);
+              }}
+              onPrepareOrderDrawer={loadOrderDetailForRequest}
+              onSelectOrder={loadOrderDetail}
+              onRefresh={async () => {
+                setPurchaseListRevision((value) => value + 1);
+                await loadData(true);
+              }}
+              onCatalogSearch={handleCatalogSearch}
+              createInitialValues={pendingComposerPrefill}
+              onCreateInitialValuesConsumed={() => setPendingComposerPrefill(null)}
+            />
+          </TabsContent>
+
+          <TabsContent value="suppliers" className="space-y-6">
+            <PortalPanel
+              eyebrow="Abastecimiento"
+              title="Proveedores"
+              description="Administra la ficha comercial de los proveedores vinculados a compras."
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setSuppliersListRevision((value) => value + 1)}
+                  >
+                    Actualizar
+                  </Button>
+                  <Button type="button" variant="primary" onClick={() => openSupplierDrawer()}>
+                    Nuevo proveedor
+                  </Button>
+                </div>
+              }
+              contentClassName="space-y-4"
+            >
+              <SuppliersPanel
+                listRevision={suppliersListRevision}
+                onCreate={() => openSupplierDrawer()}
+                onRowClick={(supplier) => void openSupplierDetail(supplier)}
+                createAction={
+                  <Button type="button" variant="primary" onClick={() => openSupplierDrawer()}>
+                    Nuevo proveedor
+                  </Button>
+                }
+              />
+            </PortalPanel>
+          </TabsContent>
+
+          <TabsContent value="stock" className="space-y-6">
+            <PortalPanel
+              eyebrow="Operación"
+              title="Existencias"
+              description="Consulta saldos por producto o bodega y audita el kardex de movimientos."
+              contentClassName="space-y-4"
+            >
+              <StockWorkspace
+                items={items}
+                balances={balances}
+                locations={locations}
+                userLabelById={userLabelById}
+                custodyFilter={locationCustodyFilter}
+                canAdjust={canAdjustStock}
+                itemsTotal={itemsMeta.total}
+                itemsHasMore={inventoryHasMore(itemsMeta)}
+                locationsTotal={locationsMeta.total}
+                locationsHasMore={inventoryHasMore(locationsMeta)}
+                isLoadingMoreItems={isLoadingMoreItems}
+                isLoadingMoreLocations={isLoadingMoreLocations}
+                onLoadMoreItems={() => void loadStockLists({ appendItems: true })}
+                onLoadMoreLocations={() => void loadStockLists({ appendLocations: true })}
+                balancesHasMore={inventoryHasMore(balancesMeta)}
+                isLoadingMoreBalances={isLoadingMoreBalances}
+                onLoadMoreBalances={() => void loadMoreBalances()}
+                productFilters={stockProductFilters}
+                onProductFiltersChange={setStockProductFilters}
+                locationListFilters={locationListFilters}
+                onLocationListFiltersChange={setLocationListFilters}
+                {...stockKardexInitial}
+                onCustodyFilterChange={handleLocationCustodyFilterChange}
+                onAdjustmentRegistered={(movementNumber) => {
+                  setMovementNotice(`Ajuste registrado: ${movementNumber}`);
+                  void loadData(true);
+                }}
+                onGeneratePurchaseRequest={(values) => {
+                  setPendingComposerPrefill(values);
+                  handleTabChange('purchasing');
+                }}
+              />
+            </PortalPanel>
+          </TabsContent>
+
+          <TabsContent value="locations" className="space-y-6">
+            <PortalPanel
+              eyebrow="Red logística"
+              title="Bodegas"
+              description="Administra bodegas, capacidad y responsables. Las existencias viven en la pestaña Existencias."
+              actions={
+                <Button type="button" variant="secondary" onClick={() => setActiveTab('stock')}>
+                  Ir a existencias
                 </Button>
               }
-            />
-          </PortalPanel>
-        </TabsContent>
+              contentClassName="space-y-4"
+            >
+              <StockLocationsPanel
+                locations={locations}
+                balances={balances}
+                userLabelById={userLabelById}
+                totalCount={locationsMeta.total}
+                hasMore={inventoryHasMore(locationsMeta)}
+                isLoadingMore={isLoadingMoreLocations}
+                onLoadMore={() => void loadLocationsTab(true)}
+                balancesHasMore={inventoryHasMore(balancesMeta)}
+                isLoadingMoreBalances={isLoadingMoreBalances}
+                onLoadMoreBalances={() => void loadMoreBalances()}
+                onCreateLocation={openLocationCreateDialog}
+                onEditLocation={(location) => {
+                  setLocationEditItem(location);
+                  setLocationSubmitError(null);
+                  setLocationDialogOpen(true);
+                }}
+              />
+            </PortalPanel>
+          </TabsContent>
 
-        <TabsContent value="stock" className="space-y-6">
-          <PortalPanel
-            eyebrow="Operación"
-            title="Existencias"
-            description="Consulta saldos por producto o bodega y audita el kardex de movimientos."
-            contentClassName="space-y-4"
-          >
-            <StockWorkspace
+          <TabsContent value="issues" className="space-y-6">
+            <StockIssuesWorkspace
+              error={error}
+              listRevision={issuesListRevision}
+              onCreate={handleCreateIssue}
+              onUpdate={handleUpdateIssue}
+              onCancel={handleCancelIssue}
+              onDispatch={handleDispatchIssue}
+              onOpenDetail={handleOpenIssueDetail}
+              onRefresh={async () => {
+                setIssuesListRevision((value) => value + 1);
+                await loadData(true);
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="counts" className="space-y-6">
+            <StockCountsWorkspace
+              locations={locations}
+              categories={categories}
+              canClose={canAdjustStock}
+              listRevision={countsListRevision}
+              error={error}
+              onCreate={handleCreateCount}
+              onUpdate={handleUpdateCount}
+              onClose={handleCloseCount}
+              onCancel={handleCancelCount}
+              onOpenDetail={handleOpenCountDetail}
+              onRefresh={async () => {
+                setCountsListRevision((value) => value + 1);
+                await loadData(true);
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="assets" className="space-y-6">
+            <AssetsWorkspace
               items={items}
-              balances={balances}
               locations={locations}
-              userLabelById={userLabelById}
-              custodyFilter={locationCustodyFilter}
-              canAdjust={canAdjustStock}
-              itemsTotal={itemsMeta.total}
-              itemsHasMore={inventoryHasMore(itemsMeta)}
-              locationsTotal={locationsMeta.total}
-              locationsHasMore={inventoryHasMore(locationsMeta)}
-              isLoadingMoreItems={isLoadingMoreItems}
-              isLoadingMoreLocations={isLoadingMoreLocations}
-              onLoadMoreItems={() => void loadStockLists({ appendItems: true })}
-              onLoadMoreLocations={() => void loadStockLists({ appendLocations: true })}
-              balancesHasMore={inventoryHasMore(balancesMeta)}
-              isLoadingMoreBalances={isLoadingMoreBalances}
-              onLoadMoreBalances={() => void loadMoreBalances()}
-              productFilters={stockProductFilters}
-              onProductFiltersChange={setStockProductFilters}
-              locationListFilters={locationListFilters}
-              onLocationListFiltersChange={setLocationListFilters}
-              {...stockKardexInitial}
-              onCustodyFilterChange={handleLocationCustodyFilterChange}
-              onAdjustmentRegistered={(movementNumber) => {
-                setMovementNotice(`Ajuste registrado: ${movementNumber}`);
-                void loadData(true);
-              }}
-              onGeneratePurchaseRequest={(values) => {
-                setPendingComposerPrefill(values);
-                handleTabChange('purchasing');
-              }}
+              enrichmentAssets={assets}
+              listRevision={assetsListRevision}
+              initialSubview={assetsSubview}
+              onSubviewChange={setAssetsSubview}
+              onOpenAssetDetail={(assetId) => void openAssetDetail(assetId)}
+              onNavigateToReplenishment={navigateToReplenishment}
             />
-          </PortalPanel>
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent value="locations" className="space-y-6">
-          <PortalPanel
-            eyebrow="Red logística"
-            title="Bodegas"
-            description="Administra bodegas, capacidad y responsables. Las existencias viven en la pestaña Existencias."
-            actions={
-              <Button type="button" variant="secondary" onClick={() => setActiveTab('stock')}>
-                Ir a existencias
-              </Button>
-            }
-            contentClassName="space-y-4"
-          >
-            <StockLocationsPanel
-              locations={locations}
-              balances={balances}
-              userLabelById={userLabelById}
-              totalCount={locationsMeta.total}
-              hasMore={inventoryHasMore(locationsMeta)}
-              isLoadingMore={isLoadingMoreLocations}
-              onLoadMore={() => void loadLocationsTab(true)}
-              balancesHasMore={inventoryHasMore(balancesMeta)}
-              isLoadingMoreBalances={isLoadingMoreBalances}
-              onLoadMoreBalances={() => void loadMoreBalances()}
-              onCreateLocation={openLocationCreateDialog}
-              onEditLocation={(location) => {
-                setLocationEditItem(location);
-                setLocationSubmitError(null);
-                setLocationDialogOpen(true);
-              }}
+          <TabsContent value="movements" className="space-y-6">
+            <MovementsWorkspace
+              saleForm={saleForm}
+              onSaleFormChange={setSaleForm}
+              returnForm={returnForm}
+              onReturnFormChange={setReturnForm}
+              isSubmittingMovement={isSubmittingMovement}
+              movementError={movementError}
+              onSale={() => void handleSale()}
+              onReturn={() => void handleReturn()}
             />
-          </PortalPanel>
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent value="issues" className="space-y-6">
-          <StockIssuesWorkspace
-            error={error}
-            listRevision={issuesListRevision}
-            onCreate={handleCreateIssue}
-            onUpdate={handleUpdateIssue}
-            onCancel={handleCancelIssue}
-            onDispatch={handleDispatchIssue}
-            onOpenDetail={handleOpenIssueDetail}
-            onRefresh={async () => {
-              setIssuesListRevision((value) => value + 1);
-              await loadData(true);
-            }}
-          />
-        </TabsContent>
-
-        <TabsContent value="counts" className="space-y-6">
-          <StockCountsWorkspace
-            locations={locations}
-            categories={categories}
-            canClose={canAdjustStock}
-            listRevision={countsListRevision}
-            error={error}
-            onCreate={handleCreateCount}
-            onUpdate={handleUpdateCount}
-            onClose={handleCloseCount}
-            onCancel={handleCancelCount}
-            onOpenDetail={handleOpenCountDetail}
-            onRefresh={async () => {
-              setCountsListRevision((value) => value + 1);
-              await loadData(true);
-            }}
-          />
-        </TabsContent>
-
-        <TabsContent value="assets" className="space-y-6">
-          <AssetsWorkspace
-            items={items}
-            locations={locations}
-            enrichmentAssets={assets}
-            listRevision={assetsListRevision}
-            initialSubview={assetsSubview}
-            onSubviewChange={setAssetsSubview}
-            onOpenAssetDetail={(assetId) => void openAssetDetail(assetId)}
-            onNavigateToReplenishment={navigateToReplenishment}
-          />
-        </TabsContent>
-
-        <TabsContent value="movements" className="space-y-6">
-          <MovementsWorkspace
-            saleForm={saleForm}
-            onSaleFormChange={setSaleForm}
-            returnForm={returnForm}
-            onReturnFormChange={setReturnForm}
-            isSubmittingMovement={isSubmittingMovement}
-            movementError={movementError}
-            onSale={() => void handleSale()}
-            onReturn={() => void handleReturn()}
-          />
-        </TabsContent>
-
-        <TabsContent value="writeoffs" className="space-y-6">
-          <WriteOffsPanel
-            pending={pendingWriteOffs}
-            requestForm={writeOffForm}
-            onRequestFormChange={setWriteOffForm}
-            isSubmittingRequest={isSubmittingWriteOff}
-            requestError={writeOffError}
-            requestSuccess={writeOffSuccess}
-            onSubmitRequest={() => void handleWriteOff()}
-            userLabelById={userLabelById}
-            {...(user?.id ? { currentUserId: user.id } : {})}
-            isLoadingPending={isLoadingPendingWriteOffs}
-            pendingError={pendingWriteOffsError}
-            actionError={writeOffActionError}
-            processingWriteOffId={processingWriteOffId}
-            canApprove={canApproveWriteOff}
-            onRefreshPending={() => void loadPendingWriteOffs()}
-            historyRevision={writeOffHistoryRevision}
-            onApprove={(writeOffId) => void handleApproveWriteOff(writeOffId)}
-            onReject={(writeOffId, rejectionNotes) =>
-              void handleRejectWriteOff(writeOffId, rejectionNotes)
-            }
-            onOpenMovement={(stockMovementId) => void handleOpenWriteOffMovement(stockMovementId)}
-          />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="writeoffs" className="space-y-6">
+            <WriteOffsPanel
+              pending={pendingWriteOffs}
+              requestForm={writeOffForm}
+              onRequestFormChange={setWriteOffForm}
+              isSubmittingRequest={isSubmittingWriteOff}
+              requestError={writeOffError}
+              requestSuccess={writeOffSuccess}
+              onSubmitRequest={() => void handleWriteOff()}
+              userLabelById={userLabelById}
+              {...(user?.id ? { currentUserId: user.id } : {})}
+              isLoadingPending={isLoadingPendingWriteOffs}
+              pendingError={pendingWriteOffsError}
+              actionError={writeOffActionError}
+              processingWriteOffId={processingWriteOffId}
+              canApprove={canApproveWriteOff}
+              onRefreshPending={() => void loadPendingWriteOffs()}
+              historyRevision={writeOffHistoryRevision}
+              onApprove={(writeOffId) => void handleApproveWriteOff(writeOffId)}
+              onReject={(writeOffId, rejectionNotes) =>
+                void handleRejectWriteOff(writeOffId, rejectionNotes)
+              }
+              onOpenMovement={(stockMovementId) => void handleOpenWriteOffMovement(stockMovementId)}
+            />
+          </TabsContent>
+        </Tabs>
+      ) : null}
 
       <StockLocationFormDialog
         open={locationDialogOpen}

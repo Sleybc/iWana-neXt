@@ -58,6 +58,8 @@ Candidatos a `randomAccess: false` según el barrido: kárdex de movimientos, au
 | Anuncio a lector de pantalla | `Página 3 de 7. Mostrando 41–60 de 128 usuarios.` |
 | Página fuera de rango | `Esa página ya no existe. Mostrando la última página disponible.` |
 
+> **Excepción local de catálogo (2026-08-19).** La tabla de planes en Comercial puede pasar `options={[5, 10, 20, 30, 50, 100]}` a `PortalPageSizeSelect`. El copy default del portal **no cambia**: QA no debe fallar CA contra «solo 10/20/50» en esa superficie. El token global sigue `[10, 20, 50]`. Sin opción «Todos».
+
 Separador de rango: **raya corta** `–` (U+2013), no guion ni «a» — `21–40`. Separador de miles: **punto** (`1.000`).
 
 > **Corrección de la spec (2026-07-26, AI-EM-ARCH).** La v1.0 de este documento fijaba **guion** para el rango, mientras `formatPagerCount` (`portal-ui.tsx:616-631`) emite U+2013 desde su implementación. La contradicción produjo dos specs E2E que nacían rojas (BL-3 del re-gate). Se resuelve **alineando la spec al código, no al revés**: la raya corta es el signo tipográfico para intervalos numéricos, el primitive ya lo emitía en todas sus ramas y las specs de aceptación ya lo asertan, de modo que cambiar el código habría generado churn sin mejorar el resultado. Lo que no se admite es que ambos artefactos sigan discrepando.

@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In, QueryRunner } from 'typeorm';
+import { DataSource, FindOneOptions, In, QueryRunner } from 'typeorm';
 import { PlatformUser, runInTenantSchema, TenantContext, User } from '@iwana/db';
 import { clampPage, clampLimit } from '../../../common/pagination';
 import { OperationalResponsibilityHistory } from './entities/operational-responsibility-history.entity';
@@ -32,7 +32,7 @@ export interface OperationalHistoryItem {
 interface ResponsibilityLookupManager {
   findOne(
     entity: typeof ExpedienteRecord,
-    options: { where: { id: string } },
+    options: FindOneOptions<ExpedienteRecord>,
   ): Promise<ExpedienteRecord | null>;
   query(query: string, parameters?: unknown[]): Promise<unknown[]>;
 }
@@ -228,7 +228,10 @@ export class ResponsibilitiesService {
     currentResponsibleAssignedAt: Date | null;
   } | null> {
     try {
-      const entity = await qr.manager.findOne(ExpedienteRecord, { where: { id: expedienteId } });
+      const entity = await qr.manager.findOne(ExpedienteRecord, {
+        where: { id: expedienteId },
+        select: ['id', 'currentResponsibleUserId', 'currentResponsibleAssignedAt'],
+      });
       if (!entity) {
         return null;
       }
@@ -298,7 +301,10 @@ export class ResponsibilitiesService {
    * no confirmados por la transacción padre.
    */
   private async resolveActorWithQr(qr: QueryRunner, userId: string): Promise<ResponsibilityActor> {
-    const tenantUser = await qr.manager.findOne(User, { where: { id: userId } });
+    const tenantUser = await qr.manager.findOne(User, {
+      where: { id: userId },
+      select: ['id', 'firstName', 'lastName', 'role'],
+    });
     if (tenantUser) {
       return {
         userId: tenantUser.id,
@@ -307,7 +313,10 @@ export class ResponsibilitiesService {
       };
     }
 
-    const platformUser = await qr.manager.findOne(PlatformUser, { where: { id: userId } });
+    const platformUser = await qr.manager.findOne(PlatformUser, {
+      where: { id: userId },
+      select: ['id', 'firstName', 'lastName'],
+    });
     if (platformUser) {
       return {
         userId: platformUser.id,
@@ -352,6 +361,6 @@ export class ResponsibilitiesService {
     email: string;
   }): string | null {
     const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-    return fullName || user.email || null;
+    return fullName || null;
   }
 }

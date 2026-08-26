@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
 import { ExpedienteSections } from './ExpedienteSections';
+
+const mockCommercialInterestMount = jest.fn();
 
 jest.mock('./IdentificationSection', () => ({
   IdentificationSection: () => <div>Mock identificación</div>,
@@ -15,7 +17,13 @@ jest.mock('./LocationSection', () => ({
 }));
 
 jest.mock('./CommercialInterestSection', () => ({
-  CommercialInterestSection: () => <div>Mock interés comercial</div>,
+  CommercialInterestSection: () => {
+    const React = require('react') as typeof import('react');
+    React.useEffect(() => {
+      mockCommercialInterestMount();
+    }, []);
+    return <div>Mock interés comercial</div>;
+  },
 }));
 
 jest.mock('./TechnicalFeasibilitySection', () => ({
@@ -102,6 +110,10 @@ describe('ExpedienteSections', () => {
     ],
   };
 
+  beforeEach(() => {
+    mockCommercialInterestMount.mockClear();
+  });
+
   it('should mostrar prioridad visual por sección según el avance', () => {
     render(
       <ExpedienteSections
@@ -120,8 +132,66 @@ describe('ExpedienteSections', () => {
       />,
     );
 
-    expect(screen.getByText('Crítica')).toBeInTheDocument();
-    expect(screen.getByText('Atención')).toBeInTheDocument();
+    expect(screen.getByText('Pendiente')).toBeInTheDocument();
+    expect(screen.getByText('En progreso')).toBeInTheDocument();
     expect(screen.getAllByText('Completa').length).toBeGreaterThan(0);
+  });
+
+  it('usa tokens iWana en el shell y en el guardado de las secciones', () => {
+    render(
+      <ExpedienteSections
+        expediente={expediente}
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn(async () => undefined)}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn(async () => undefined)}
+      />,
+    );
+
+    const sectionShell = screen.getByText('Mock identificación').closest('div.rounded-2xl');
+    const saveButton = screen.getAllByRole('button', { name: 'Guardar cambios' })[0];
+
+    expect(sectionShell).not.toBeNull();
+    expect(sectionShell).toHaveClass('border-gray-200');
+    expect(sectionShell).toHaveClass('shadow-iwana-soft');
+    expect(saveButton).toHaveClass('bg-iwana-primary');
+    expect(saveButton).not.toHaveClass('rounded-xl');
+  });
+
+  it('conserva montada la sección de interés al cerrarla y reabrirla', async () => {
+    render(
+      <ExpedienteSections
+        expediente={expediente}
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn(async () => undefined)}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn(async () => undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Interés del cliente 50%/ }));
+    await waitFor(() => expect(mockCommercialInterestMount).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Contraer sección Interés del cliente' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Interés del cliente 50%/ })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Interés del cliente 50%/ }));
+
+    expect(mockCommercialInterestMount).toHaveBeenCalledTimes(1);
   });
 });

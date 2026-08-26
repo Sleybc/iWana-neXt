@@ -27,7 +27,7 @@ const QUICK_ACCESSES: readonly QuickAccessDefinition[] = [
   {
     id: 'commercial',
     label: 'Comercial',
-    description: 'Catálogo, precios vigentes y reglas comerciales',
+    description: 'Catálogo, precios vigentes, combos y promociones',
     href: '/dashboard/commercial',
     roles: [UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.NOC, UserRole.ACCOUNTANT],
   },
@@ -67,7 +67,7 @@ const QUICK_ACCESSES: readonly QuickAccessDefinition[] = [
   },
   {
     id: 'users',
-    label: 'Usuarios y accesos',
+    label: 'Usuarios',
     description: 'Cuentas del equipo y perfiles de acceso',
     href: '/dashboard/users',
     roles: [UserRole.ADMIN],

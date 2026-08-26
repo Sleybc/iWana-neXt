@@ -28,8 +28,19 @@ export interface StoredDocumentSupportItem {
 
 export type StoredDocumentSupportMap = Record<string, StoredDocumentSupportItem>;
 
+export const DOCUMENT_SUPPORT_KEYS = [
+  'identity_document',
+  'utility_bill',
+  'chamber_of_commerce',
+  'rut',
+  'legal_representative_id',
+] as const;
+
+export type DocumentSupportKey = (typeof DOCUMENT_SUPPORT_KEYS)[number];
+export type DocumentSupportApprovedFlags = Partial<Record<DocumentSupportKey, boolean>>;
+
 export interface DocumentSupportDefinition {
-  key: string;
+  key: DocumentSupportKey;
   label: string;
   hint: string;
 }

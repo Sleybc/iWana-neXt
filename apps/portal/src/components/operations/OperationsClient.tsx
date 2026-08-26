@@ -922,11 +922,6 @@ export function OperationsClient() {
       <PageHeader
         title="Operaciones"
         subtitle="Crea, despacha y sigue tareas con responsable y destinatario explícitos."
-        actions={
-          <Button asChild={true} variant="secondary">
-            <Link href="/dashboard/scheduling">Abrir Programación</Link>
-          </Button>
-        }
       />
 
       {error && (

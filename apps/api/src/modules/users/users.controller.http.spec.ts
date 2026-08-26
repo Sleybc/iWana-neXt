@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { buildCursorMeta } from '../../common/pagination';
 
 jest.mock('../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -186,14 +187,22 @@ describe('UsersController HTTP', () => {
   });
 
   it('GET /api/v1/users retorna 200 con lista paginada', async () => {
-    usersServiceMock.findAll.mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } });
+    usersServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: buildCursorMeta({ nextCursor: null, total: 0, limit: 50 }),
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/users')
       .set('Authorization', 'Bearer admin-token')
       .expect(200)
       .expect(({ body }) => {
+        expect(body.data.data).toBeInstanceOf(Array);
         expect(body.data.meta.total).toBe(0);
+        expect(body.data.meta.capabilities.randomAccess).toBe(false);
+        expect(body.data.meta.mode).toBe('cursor');
+        expect(body.data.meta.limit).toBe(50);
+        expect(body.data.meta.hasMore).toBe(false);
       });
   });
 
@@ -212,7 +221,10 @@ describe('UsersController HTTP', () => {
   });
 
   it('GET /api/v1/users propaga filtros status, role y search', async () => {
-    usersServiceMock.findAll.mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } });
+    usersServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: buildCursorMeta({ nextCursor: null, total: 0, limit: 50 }),
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/users?status=ACTIVE&role=ADMIN&search=ana')

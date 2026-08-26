@@ -264,8 +264,8 @@ const workOrderPriorityMeta: Record<
 };
 
 const sourceContextLabels: Record<WorkOrderSourceContext, string> = {
-  [WorkOrderSourceContext.CRM]: 'CRM',
-  [WorkOrderSourceContext.ASSURANCE]: 'Aseguramiento',
+  [WorkOrderSourceContext.CRM]: 'Oportunidades',
+  [WorkOrderSourceContext.ASSURANCE]: 'Mesa de ayuda',
   [WorkOrderSourceContext.PROVISIONING]: 'Provisionamiento',
   [WorkOrderSourceContext.TASKS]: 'Tareas',
   [WorkOrderSourceContext.MANUAL]: 'Manual',
@@ -428,11 +428,16 @@ export function getSchedulingVisibleDescription(description: string | null | und
     return 'Sin descripción operativa.';
   }
 
-  return description.replace(
-    /el expediente ([0-9a-f]{8}-[0-9a-f-]{27,})/gi,
-    (_match, expedienteId: string) =>
-      `la oportunidad ${formatSchedulingExpedienteLabel(expedienteId)}`,
-  );
+  return description
+    .replace(
+      /el expediente ([0-9a-f]{8}-[0-9a-f-]{27,})/gi,
+      (_match, expedienteId: string) =>
+        `la oportunidad ${formatSchedulingExpedienteLabel(expedienteId)}`,
+    )
+    .replace(/al expediente /gi, 'a la oportunidad ')
+    .replace(/del expediente /gi, 'de la oportunidad ')
+    .replace(/desde CRM para /gi, 'para ')
+    .replace(/originado desde CRM /gi, 'originado ');
 }
 
 export function getTechnicianAvailabilityLabel(type: TechnicianAvailabilityType): string {

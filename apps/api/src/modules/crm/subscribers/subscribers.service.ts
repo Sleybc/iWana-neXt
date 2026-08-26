@@ -685,7 +685,21 @@ export class SubscribersService {
   async findSummaryByExpedienteId(
     expedienteId: string,
   ): Promise<{ id: string; status: SubscriberStatus; fullName: string } | null> {
-    const subscriber = await this.findByExpedienteId(expedienteId);
+    const { schemaName } = TenantContext.getOrThrow();
+    const subscriber = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.findOne(Subscriber, {
+        where: { expedienteId },
+        select: [
+          'id',
+          'status',
+          'firstName',
+          'lastName',
+          'businessName',
+          'commercialName',
+          'expedienteId',
+        ],
+      }),
+    );
 
     if (!subscriber) {
       return null;

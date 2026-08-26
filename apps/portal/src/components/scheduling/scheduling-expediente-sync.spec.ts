@@ -19,7 +19,7 @@ describe('scheduling-expediente-sync', () => {
       '550e8400-e29b-41d4-a716-446655440000',
       {
         targetStatus: 'INSTALACION_AGENDADA',
-        reason: 'Instalación agendada desde WFM',
+        reason: 'Instalación agendada desde Programación.',
       },
     );
   });

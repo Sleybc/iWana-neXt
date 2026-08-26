@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Fragment,
   type ComponentType,
   type ReactNode,
   type Ref,
@@ -10,6 +11,7 @@ import {
   useId,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react';
 import {
@@ -22,11 +24,17 @@ import {
   CircleAlert,
   Info,
   Search,
+  type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
   Input,
   Select,
   SkeletonBlock,
@@ -160,22 +168,30 @@ function sortButtonAccessibleName(label: string, activeDir: PortalSortDirection 
   return `Ordenar por ${label}, ascendente`;
 }
 
-function useMinWidthSm(): boolean {
+function useMinWidth(query: string, serverSnapshot = true): boolean {
   return useSyncExternalStore(
     (onChange) => {
       if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
         return () => undefined;
       }
-      const mq = window.matchMedia('(min-width: 640px)');
+      const mq = window.matchMedia(query);
       mq.addEventListener('change', onChange);
       return () => mq.removeEventListener('change', onChange);
     },
     () =>
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
-      window.matchMedia('(min-width: 640px)').matches,
-    () => true,
+      window.matchMedia(query).matches,
+    () => serverSnapshot,
   );
+}
+
+function useMinWidthSm(): boolean {
+  return useMinWidth('(min-width: 640px)');
+}
+
+function useMinWidthLg(): boolean {
+  return useMinWidth('(min-width: 1024px)');
 }
 
 /**
@@ -221,13 +237,13 @@ export function PortalDataTableSortableHead({
       <button
         type="button"
         className={cn(
-          'group inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-left transition-colors',
+          'group inline-flex h-full min-h-11 w-full items-center justify-start gap-1.5 rounded-lg text-left transition-colors',
           interactiveFocusClassName,
           'disabled:pointer-events-none disabled:opacity-50',
-          align === 'right' && 'ml-auto flex-row-reverse text-right',
+          align === 'right' && 'justify-end flex-row-reverse text-right',
           isActive
             ? 'font-semibold text-iwana-primary dark:text-white'
-            : 'text-gray-500 hover:text-iwana-primary dark:text-gray-400 dark:hover:text-white',
+            : 'hover:text-iwana-primary dark:hover:text-white',
         )}
         disabled={loading}
         aria-label={sortButtonAccessibleName(label, activeDir)}
@@ -289,8 +305,31 @@ export function PortalSearchField({
 export const portalTabActiveClassName =
   'border-b-2 border-iwana-primary text-iwana-primary dark:text-iwana-secondary';
 
+/** Subrayado lima de «estoy aquí» (firma #1) para tiras de tabs, no fill navy. */
+export const portalTabLimeActiveClassName =
+  'border-b-2 border-iwana-secondary text-iwana-primary dark:border-iwana-secondary dark:text-iwana-primary-200';
+
 export const portalTabInactiveClassName =
   'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200';
+
+/** Subtabs de un mismo recurso (receta Oportunidades): tira + borde inferior, no pista navy. */
+export const portalResourceTabListClassName =
+  'flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b border-gray-100 bg-transparent p-0 shadow-none dark:border-dark-border';
+
+export function portalResourceTabTriggerClassName(active: boolean): string {
+  return cn(
+    'flex min-h-11 items-center gap-2 rounded-none border-b-2 border-transparent bg-transparent px-4 py-2 text-sm font-medium shadow-none',
+    'data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent',
+    interactiveFocusClassName,
+    active ? portalTabLimeActiveClassName : portalTabInactiveClassName,
+  );
+}
+
+export function portalResourceTabIconClassName(active: boolean): string {
+  return active
+    ? 'h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary'
+    : 'h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500';
+}
 
 /** Navegación modular agrupada — contenedor elevado con pista interna de alto contraste. */
 export const portalModuleTabsShellClassName =
@@ -911,6 +950,9 @@ export interface PortalResourceNoun {
   plural: string;
 }
 
+/** Densidad del pager: `default` = tablas operativas ADR-065; `compact` = paneles embebidos. */
+export type PortalPagerDensity = 'default' | 'compact';
+
 export interface PortalTablePagerProps {
   page: number;
   pageCount: number;
@@ -926,6 +968,11 @@ export interface PortalTablePagerProps {
   pageSizeControl?: ReactNode | undefined;
   labels?: Partial<PortalTablePagerLabels> | undefined;
   className?: string | undefined;
+  /**
+   * `default` (h-11) para tablas operativas; `compact` (h-8) solo paneles
+   * embebidos densos (bitácora, peeks). No rebaja el target 44 px del default.
+   */
+  density?: PortalPagerDensity | undefined;
 }
 
 const DEFAULT_PAGER_LABELS: PortalTablePagerLabels = {
@@ -1010,13 +1057,6 @@ export function buildPageWindow(
   return items;
 }
 
-const pageButtonBaseClassName = cn(
-  'inline-flex h-11 min-w-11 items-center justify-center rounded-xl px-3',
-  'text-sm font-semibold tabular-nums transition-colors',
-  interactiveFocusClassName,
-  'disabled:pointer-events-none disabled:opacity-50',
-);
-
 const pageButtonInactiveClassName = cn(
   'text-gray-700 hover:bg-iwana-surface-soft hover:text-iwana-primary',
   'active:bg-iwana-primary-100',
@@ -1028,6 +1068,34 @@ const pageButtonActiveClassName = cn(
   'dark:bg-iwana-primary-500 dark:text-white',
   'dark:ring-1 dark:ring-inset dark:ring-iwana-primary-300',
 );
+
+function pageButtonBaseClassName(density: PortalPagerDensity): string {
+  return cn(
+    'inline-flex items-center justify-center font-semibold tabular-nums transition-colors',
+    interactiveFocusClassName,
+    'disabled:pointer-events-none disabled:opacity-50',
+    density === 'compact'
+      ? 'h-8 min-w-8 rounded-lg px-2.5 text-xs'
+      : 'h-11 min-w-11 rounded-xl px-3 text-sm',
+  );
+}
+
+function pagerNavButtonClassName(density: PortalPagerDensity): string {
+  return density === 'compact' ? 'gap-1 px-2.5 text-xs' : 'min-h-11 gap-1 px-3';
+}
+
+function pagerEllipsisClassName(density: PortalPagerDensity): string {
+  return cn(
+    'hidden items-center justify-center text-gray-500 sm:inline-flex dark:text-gray-400',
+    density === 'compact' ? 'h-8 min-w-8 text-xs' : 'h-11 min-w-11 text-sm',
+  );
+}
+
+function pageSizeSelectClassName(density: PortalPagerDensity): string {
+  return density === 'compact'
+    ? 'h-8 w-auto min-w-[4.5rem] rounded-lg px-2.5 py-1.5 text-xs'
+    : 'h-11 w-auto min-w-[5.5rem]';
+}
 
 /**
  * Pie numerado de tablas operativas (ADR-065). Controlado puro; hermano del
@@ -1048,6 +1116,7 @@ export function PortalTablePager({
   pageSizeControl,
   labels: labelsProp,
   className,
+  density = 'default',
 }: PortalTablePagerProps) {
   const labels = { ...DEFAULT_PAGER_LABELS, ...labelsProp };
   const liveId = useId();
@@ -1055,6 +1124,13 @@ export function PortalTablePager({
   const prevBtnRef = useRef<HTMLButtonElement | null>(null);
   const nextBtnRef = useRef<HTMLButtonElement | null>(null);
   const pageBtnRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const pageBtnBase = pageButtonBaseClassName(density);
+  const navBtnClass = pagerNavButtonClassName(density);
+  const ellipsisClass = pagerEllipsisClassName(density);
+  const positionMobileClass =
+    density === 'compact'
+      ? 'px-2 text-xs tabular-nums text-gray-700 sm:hidden dark:text-gray-200'
+      : 'px-2 text-sm tabular-nums text-gray-700 sm:hidden dark:text-gray-200';
 
   const showFooter = total > 0;
   const countText = showFooter
@@ -1130,8 +1206,10 @@ export function PortalTablePager({
       className={cn(
         'flex flex-col gap-3 border-t border-gray-100 px-5 py-4 dark:border-dark-border',
         'sm:flex-row sm:items-center sm:justify-between',
+        density === 'compact' && 'gap-2',
         className,
       )}
+      data-density={density}
     >
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{countText}</p>
@@ -1154,7 +1232,7 @@ export function PortalTablePager({
             type="button"
             variant="secondary"
             size="sm"
-            className="min-h-11 gap-1 px-3"
+            className={navBtnClass}
             disabled={prevDisabled}
             aria-label={labels.previous}
             onClick={() => goTo(page - 1, 'prev')}
@@ -1163,18 +1241,12 @@ export function PortalTablePager({
             <span className="hidden sm:inline">{labels.previous}</span>
           </Button>
 
-          <span className="px-2 text-sm tabular-nums text-gray-700 sm:hidden dark:text-gray-200">
-            {labels.position(page, pageCount)}
-          </span>
+          <span className={positionMobileClass}>{labels.position(page, pageCount)}</span>
 
           {windowItems.map((item, index) => {
             if (item === 'ellipsis') {
               return (
-                <span
-                  key={`ellipsis-${index}`}
-                  aria-hidden="true"
-                  className="hidden h-11 min-w-11 items-center justify-center text-sm text-gray-500 sm:inline-flex dark:text-gray-400"
-                >
+                <span key={`ellipsis-${index}`} aria-hidden="true" className={ellipsisClass}>
                   …
                 </span>
               );
@@ -1190,7 +1262,7 @@ export function PortalTablePager({
                 }}
                 type="button"
                 className={cn(
-                  pageButtonBaseClassName,
+                  pageBtnBase,
                   'hidden sm:inline-flex',
                   isCurrent ? pageButtonActiveClassName : pageButtonInactiveClassName,
                 )}
@@ -1209,7 +1281,7 @@ export function PortalTablePager({
             type="button"
             variant="secondary"
             size="sm"
-            className="min-h-11 gap-1 px-3"
+            className={navBtnClass}
             disabled={nextDisabled}
             aria-label={labels.next}
             onClick={() => goTo(page + 1, 'next')}
@@ -1224,52 +1296,64 @@ export function PortalTablePager({
 }
 
 export interface PortalPageSizeSelectProps {
+  /** Tamaño de página actual (p. ej. 20). Debe pertenecer a `options`. */
   value: number;
   onChange: (pageSize: number) => void;
+  /** Default PORTAL_PAGE_SIZE_OPTIONS. Un override explícito valida pertenencia al array, no el rango 10–50. */
   options?: readonly number[] | undefined;
   disabled?: boolean | undefined;
   id?: string | undefined;
   className?: string | undefined;
+  /**
+   * `default` (h-11) para tablas; `compact` (h-8) para toolbars densas embebidas.
+   */
+  density?: PortalPagerDensity | undefined;
 }
+
+const DEFAULT_PAGE_SIZE_OPTIONS: readonly number[] = PORTAL_PAGE_SIZE_OPTIONS;
 
 /** Selector de filas por página — siempre sobre `Select` de `@iwana/ui`. */
 export function PortalPageSizeSelect({
   value,
   onChange,
-  options = PORTAL_PAGE_SIZE_OPTIONS,
+  options = DEFAULT_PAGE_SIZE_OPTIONS,
   disabled = false,
   id,
   className,
+  density = 'default',
 }: PortalPageSizeSelectProps) {
   const autoId = useId();
   const selectId = id ?? autoId;
-  const minOption = Math.min(...options);
-
-  if (process.env.NODE_ENV !== 'production') {
-    if (value < 10 || value > 50) {
-      console.error(
-        `[PortalPageSizeSelect] value=${value} fuera del rango 10–50; usar PORTAL_PAGE_SIZE_OPTIONS.`,
-      );
-    }
-  }
+  const labelId = `${selectId}-pager-size-label`;
+  const minOption = options.length > 0 ? Math.min(...options) : PORTAL_DEFAULT_PAGE_SIZE;
+  const selectOptions = options.map((option) => ({
+    value: String(option),
+    label: String(option),
+  }));
 
   return (
     <div
       className={cn('flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400', className)}
       data-min-option={minOption}
+      data-density={density}
     >
-      <Select
-        id={selectId}
-        label="Filas por página"
-        value={String(value)}
-        disabled={disabled}
-        className="h-11 w-auto min-w-[5.5rem]"
-        onChange={(event) => {
-          const next = Number.parseInt(event.target.value, 10);
-          if (Number.isFinite(next)) onChange(next);
-        }}
-        options={options.map((n) => ({ value: String(n), label: String(n) }))}
-      />
+      <label id={labelId} htmlFor={selectId} className="shrink-0 whitespace-nowrap">
+        Filas por página
+      </label>
+      <div className="w-auto shrink-0">
+        <Select
+          id={selectId}
+          aria-labelledby={labelId}
+          value={String(value)}
+          disabled={disabled}
+          className={pageSizeSelectClassName(density)}
+          onChange={(event) => {
+            const next = Number.parseInt(event.target.value, 10);
+            if (Number.isFinite(next) && options.includes(next)) onChange(next);
+          }}
+          options={selectOptions}
+        />
+      </div>
     </div>
   );
 }
@@ -1884,6 +1968,230 @@ export function PortalEmptyState({
 
 export function PortalSkeletonBlock({ className }: PortalSkeletonBlockProps) {
   return <SkeletonBlock className={className} />;
+}
+
+export interface PortalModuleSubnavItem {
+  id: string;
+  label: string;
+  icon?: LucideIcon;
+}
+
+export interface PortalModuleSubnavGroup {
+  id: string;
+  label: string;
+  items: PortalModuleSubnavItem[];
+}
+
+export interface PortalModuleSubnavProps {
+  groups: PortalModuleSubnavGroup[];
+  value: string;
+  onValueChange: (id: string) => void;
+  ariaLabel: string;
+}
+
+export const portalModuleSubnavRailClassName = cn(
+  'flex flex-row items-stretch gap-4 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-iwana-soft',
+  'dark:border-dark-border dark:bg-dark-surface-2',
+  'lg:sticky lg:top-(--portal-sticky-offset) lg:z-(--z-sticky)',
+);
+
+export const portalModuleSubnavTriggerClassName = cn(
+  'flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-800 shadow-iwana-soft',
+  'dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100',
+  interactiveFocusClassName,
+);
+
+export const portalModuleSubnavItemClassName = cn(
+  'relative flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150',
+  interactiveFocusClassName,
+);
+
+export const portalModuleSubnavItemActiveClassName =
+  'bg-iwana-surface-soft font-medium text-iwana-primary dark:bg-dark-surface-3 dark:text-iwana-primary-200';
+
+export const portalModuleSubnavItemInactiveClassName =
+  'text-gray-600 hover:bg-iwana-surface-soft dark:text-gray-400 dark:hover:bg-dark-surface-3';
+
+export const portalModuleSubnavDividerClassName =
+  'w-px shrink-0 self-stretch bg-gray-200 dark:bg-dark-border';
+
+function PortalModuleSubnavList({
+  groups,
+  value,
+  labelledByPrefix,
+  onSelect,
+  orientation,
+}: {
+  groups: PortalModuleSubnavGroup[];
+  value: string;
+  labelledByPrefix: string;
+  onSelect: (id: string) => void;
+  orientation: 'horizontal' | 'vertical';
+}) {
+  const isHorizontal = orientation === 'horizontal';
+
+  return (
+    <div
+      className={
+        isHorizontal ? 'flex min-w-max flex-row items-stretch gap-4' : 'flex flex-col gap-4'
+      }
+    >
+      {groups.map((group, index) => {
+        const headingId = `${labelledByPrefix}-${group.id}`;
+        return (
+          <Fragment key={group.id}>
+            {isHorizontal && index > 0 ? (
+              <div
+                role="separator"
+                aria-hidden="true"
+                className={portalModuleSubnavDividerClassName}
+              />
+            ) : null}
+            <div className="space-y-1">
+              <p className="portal-eyebrow px-1" id={headingId}>
+                {group.label}
+              </p>
+              <ul
+                aria-labelledby={headingId}
+                className={isHorizontal ? 'flex flex-row gap-1' : 'flex flex-col gap-1'}
+              >
+                {group.items.map((item) => {
+                  const isActive = item.id === value;
+                  const ItemIcon = item.icon;
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          portalModuleSubnavItemClassName,
+                          isHorizontal ? 'whitespace-nowrap' : 'w-full text-left',
+                          isActive
+                            ? portalModuleSubnavItemActiveClassName
+                            : portalModuleSubnavItemInactiveClassName,
+                        )}
+                        aria-current={isActive ? 'page' : undefined}
+                        onClick={() => onSelect(item.id)}
+                      >
+                        {isActive ? (
+                          <span
+                            aria-hidden="true"
+                            className={
+                              isHorizontal
+                                ? 'absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-iwana-secondary'
+                                : 'absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-iwana-secondary'
+                            }
+                          />
+                        ) : null}
+                        {ItemIcon ? (
+                          <ItemIcon
+                            className={
+                              isActive
+                                ? 'h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary'
+                                : 'h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500'
+                            }
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                        {item.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function resolveSubnavItem(
+  groups: PortalModuleSubnavGroup[],
+  value: string,
+): PortalModuleSubnavItem | undefined {
+  for (const group of groups) {
+    const item = group.items.find((entry) => entry.id === value);
+    if (item) {
+      return item;
+    }
+  }
+
+  return groups[0]?.items[0];
+}
+
+/** Subnavegación interna de módulo: barra horizontal lima en lg+; selector + dialog bajo lg. */
+export function PortalModuleSubnav({
+  groups,
+  value,
+  onValueChange,
+  ariaLabel,
+}: PortalModuleSubnavProps) {
+  const isLgUp = useMinWidthLg();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const listId = useId();
+  const currentItem = resolveSubnavItem(groups, value);
+  const currentLabel = currentItem?.label ?? 'Sección';
+  const CurrentIcon = currentItem?.icon;
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      onValueChange(id);
+      setDialogOpen(false);
+    },
+    [onValueChange],
+  );
+
+  if (isLgUp) {
+    return (
+      <nav aria-label={ariaLabel} className={portalModuleSubnavRailClassName}>
+        <PortalModuleSubnavList
+          groups={groups}
+          value={value}
+          labelledByPrefix={listId}
+          onSelect={handleSelect}
+          orientation="horizontal"
+        />
+      </nav>
+    );
+  }
+
+  return (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogTrigger
+        className={portalModuleSubnavTriggerClassName}
+        aria-haspopup="dialog"
+        aria-expanded={dialogOpen}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {CurrentIcon ? (
+            <CurrentIcon
+              className="h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary"
+              aria-hidden="true"
+            />
+          ) : null}
+          <span>
+            Sección: <span className="text-iwana-primary">{currentLabel}</span>
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Elegir sección</DialogTitle>
+        </DialogHeader>
+        <nav aria-label={ariaLabel}>
+          <PortalModuleSubnavList
+            groups={groups}
+            value={value}
+            labelledByPrefix={`${listId}-sheet`}
+            onSelect={handleSelect}
+            orientation="vertical"
+          />
+        </nav>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** Footer sticky compartido en flujos create-mode (compras, salidas, recepciones). */

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { cn } from '../lib/utils';
+import { interactiveFocusClassName } from '../focus';
 
 export interface CheckboxCardProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
@@ -42,6 +43,7 @@ const CheckboxCard = React.forwardRef<HTMLInputElement, CheckboxCardProps>(
         disabled={disabled}
         className={cn(
           'mt-0.5 h-4 w-4 rounded border-gray-300 accent-iwana-primary',
+          interactiveFocusClassName,
           inputClassName,
         )}
         {...props}

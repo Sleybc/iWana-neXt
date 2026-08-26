@@ -647,6 +647,34 @@ describe('VisitRequestsController (HTTP Contract)', () => {
       );
     });
 
+    it('should return 400 when no operating hours are configured', async () => {
+      mockVisitRequestsService.prepareVisitRequestRecommendation.mockResolvedValue({
+        workType: WfmWorkType.INSTALLATION,
+        durationMinutes: 120,
+        candidateUserIds: recommendationPayload.candidateUserIds,
+        windowStartAt: '2026-06-01T13:00:00.000Z',
+        windowEndAt: '2026-06-01T18:00:00.000Z',
+        municipality: 'Bogota',
+        sector: 'Chapinero',
+        maxResults: 5,
+      });
+      mockScheduleRecommendationsService.recommend.mockRejectedValue(
+        new BadRequestException(
+          'No existe una configuracion de horario operativo para las fechas evaluadas.',
+        ),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/v1/wfm/visit-requests/${VISIT_REQUEST_ID}/schedule-recommendations`)
+        .send(recommendationPayload)
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+
+      expect(response.body.message).toBe(
+        'No existe una configuracion de horario operativo para las fechas evaluadas.',
+      );
+    });
+
     it('should return 403 when TECHNICIAN tries to request recommendations from the inbox', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/wfm/visit-requests/${VISIT_REQUEST_ID}/schedule-recommendations`)

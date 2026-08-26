@@ -1,15 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  RotateCcw,
-  HelpCircle,
-  CircleAlert,
-  CheckCircle2,
-} from 'lucide-react';
+import { Plus, Pencil, Trash2, HelpCircle, CircleAlert, CheckCircle2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -61,7 +53,13 @@ import {
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
-import { TAX_TREATMENT_LABELS, resolveTaxLabel } from '@/components/commercial/commercial-labels';
+import {
+  TAX_SEGMENT_LABELS,
+  TAX_TREATMENT_LABELS,
+  TAX_TYPE_LABELS,
+  resolveTaxLabel,
+} from '@/components/commercial/commercial-labels';
+import { formatTaxRatePercent } from '@/components/commercial/commercial-format';
 
 interface TaxApplicationRulesManagerProps {
   canEdit: boolean;
@@ -177,7 +175,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       }
     } catch (err) {
       setLoadError(
-        err instanceof ApiError ? err.message : 'No fue posible cargar las reglas de aplicación.',
+        err instanceof ApiError ? err.message : 'No fue posible cargar las vinculaciones.',
       );
     } finally {
       setLoading(false);
@@ -198,19 +196,29 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const ruleName = (id: string) => {
     const r = rules.find((rule) => rule.id === id);
     if (!r) return 'Regla no disponible';
-    const parts: string[] = [r.taxType];
-    if (r.ratePercentage) parts.push(`${r.ratePercentage}%`);
+    const parts: string[] = [resolveTaxLabel(TAX_TYPE_LABELS, r.taxType)];
+    if (r.ratePercentage) parts.push(`${formatTaxRatePercent(r.ratePercentage)}%`);
     if (r.stratumFrom !== null && r.stratumTo !== null)
       parts.push(`Estratos ${r.stratumFrom}–${r.stratumTo}`);
     else if (r.stratumFrom !== null) parts.push(`Estrato ≥ ${r.stratumFrom}`);
     else if (r.stratumTo !== null) parts.push(`Estrato ≤ ${r.stratumTo}`);
-    if (r.customerSegment) parts.push(r.customerSegment);
+    if (r.customerSegment) {
+      parts.push(resolveTaxLabel(TAX_SEGMENT_LABELS, r.customerSegment));
+    }
     return parts.join(' · ');
   };
   const defName = (id: string) => {
     const d = definitions.find((def) => def.id === id);
-    return d ? `${d.name} (${d.code})` : 'Definición no disponible';
+    return d ? d.name : 'Definición no disponible';
   };
+
+  function openPrimaryCreate() {
+    if (rules.length === 0) {
+      openGuidedCreateForm();
+      return;
+    }
+    openCreateForm();
+  }
 
   const activeApplicationsCount = applications.filter((app) => app.isActive).length;
   const isEditing = formMode === 'edit';
@@ -218,7 +226,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   const showLoadErrorOnly = Boolean(loadError) && applications.length === 0 && !loading;
   const hasMore = meta?.nextCursor != null;
   const totalApplications = meta?.total ?? applications.length;
-  const resourceWord = totalApplications === 1 ? 'aplicación' : 'aplicaciones';
+  const resourceWord = totalApplications === 1 ? 'vinculación' : 'vinculaciones';
   const resultsLabel = hasMore
     ? `${applications.length} de ${totalApplications} ${resourceWord}`
     : `${totalApplications} ${resourceWord}`;
@@ -285,7 +293,9 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Vinculación creada.');
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Error al crear la vinculación.');
+      setFormError(
+        err instanceof ApiError ? err.message : 'No pudimos crear el vínculo. Intenta de nuevo.',
+      );
     } finally {
       setSaving(false);
     }
@@ -313,8 +323,8 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
         await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
         setFormError(
           linkErr instanceof ApiError
-            ? `Regla creada, pero falló el vínculo: ${linkErr.message}. Usa «Vincular regla» para reintentar.`
-            : 'Regla creada, pero falló el vínculo. Usa «Vincular regla» para reintentar.',
+            ? `Regla creada, pero falló el vínculo: ${linkErr.message}. Usa «Nueva vinculación» para reintentar.`
+            : 'Regla creada, pero falló el vínculo. Usa «Nueva vinculación» para reintentar.',
         );
         return;
       }
@@ -322,7 +332,9 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Regla y vinculación creadas.');
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Error al crear la regla tributaria.');
+      setFormError(
+        err instanceof ApiError ? err.message : 'No pudimos crear la regla. Intenta de nuevo.',
+      );
     } finally {
       setSaving(false);
     }
@@ -343,7 +355,9 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Vinculación actualizada.');
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Error al actualizar la vinculación.');
+      setFormError(
+        err instanceof ApiError ? err.message : 'No pudimos guardar el vínculo. Intenta de nuevo.',
+      );
     } finally {
       setSaving(false);
     }
@@ -359,7 +373,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       await load({ limit: COMMERCIAL_LIST_PAGE_SIZE });
       setSuccessMessage('Vinculación eliminada.');
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Error al eliminar aplicación');
+      setActionError(err instanceof ApiError ? err.message : 'No pudimos quitar este vínculo.');
     } finally {
       setDeleting(false);
     }
@@ -367,33 +381,19 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
 
   return (
     <PortalPanel
-      eyebrow="Tributación"
-      title="Reglas de aplicación"
-      description="Vincula reglas tributarias con definiciones del catálogo y su orden de prioridad."
+      eyebrow="Reglas"
+      title="Aplicación de impuestos"
+      description="Asocia cada regla tributaria con un impuesto del catálogo y define su prioridad."
       actions={
         <>
           <Badge variant={portalActiveCountBadgeVariant}>
             {activeApplicationsCount} activa{activeApplicationsCount === 1 ? '' : 's'}
           </Badge>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Actualizar reglas de aplicación"
-            title="Actualizar reglas de aplicación"
-            onClick={() => void load({ limit: COMMERCIAL_LIST_PAGE_SIZE })}
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          </Button>
           {canEdit && (
-            <>
-              <Button variant="secondary" onClick={openCreateForm}>
-                Vincular regla
-              </Button>
-              <Button onClick={openGuidedCreateForm}>
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Nueva regla y vínculo
-              </Button>
-            </>
+            <Button onClick={openPrimaryCreate}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nueva vinculación
+            </Button>
           )}
         </>
       }
@@ -409,7 +409,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       ) : showLoadErrorOnly ? (
         <PortalAlert
           variant="error"
-          title="No fue posible cargar reglas de aplicación"
+          title="No fue posible cargar las vinculaciones"
           description={loadError}
           icon={CircleAlert}
           action={
@@ -425,18 +425,18 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
         />
       ) : applications.length === 0 ? (
         <PortalEmptyState
-          title="Sin reglas de aplicación"
+          title="Sin vinculaciones"
           description={
             rules.length === 0
-              ? 'Crea una regla tributaria y vincúlala a una definición del catálogo para activar el cálculo de impuestos.'
-              : 'Vincula una regla comercial con una definición del catálogo para activar el cálculo de impuestos.'
+              ? 'Crea una regla tributaria y vincúlala a un impuesto del catálogo para activar el cálculo.'
+              : 'Vincula una regla tributaria con un impuesto del catálogo para activar el cálculo.'
           }
           {...(canEdit
             ? {
                 action: (
-                  <Button onClick={rules.length === 0 ? openGuidedCreateForm : openCreateForm}>
+                  <Button onClick={openPrimaryCreate}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
-                    {rules.length === 0 ? 'Nueva regla y vínculo' : 'Vincular regla'}
+                    Nueva vinculación
                   </Button>
                 ),
               }
@@ -477,11 +477,11 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
               <table className="min-w-full">
                 <thead className={portalDataTableHeadRowClassName}>
                   <tr>
-                    <PortalDataTableHead>Regla comercial</PortalDataTableHead>
+                    <PortalDataTableHead>Regla</PortalDataTableHead>
                     <PortalDataTableHead>Definición</PortalDataTableHead>
                     <PortalDataTableHead>Tratamiento</PortalDataTableHead>
                     <PortalDataTableHead>Prioridad</PortalDataTableHead>
-                    <PortalDataTableHead>Tasa personalizada</PortalDataTableHead>
+                    <PortalDataTableHead>Tasa</PortalDataTableHead>
                     <PortalDataTableHead>Estado</PortalDataTableHead>
                     {canEdit && <PortalDataTableHead>Acciones</PortalDataTableHead>}
                   </tr>
@@ -513,7 +513,9 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                       </td>
                       <td className={portalDataTableCellClassName}>
                         {app.rateOverride !== null ? (
-                          <span className="font-mono tabular-nums">{app.rateOverride}%</span>
+                          <span className="font-mono tabular-nums">
+                            {formatTaxRatePercent(app.rateOverride)}%
+                          </span>
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
@@ -562,7 +564,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
               hasMore={hasMore}
               onLoadMore={handleLoadMore}
               loading={loadingMore}
-              resourceLabel="aplicaciones"
+              resourceLabel="vinculaciones"
               shown={applications.length}
               total={totalApplications}
             />
@@ -573,20 +575,16 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
       <PortalSidePeek
         open={isFormOpen}
         onClose={() => handleFormOpenChange(false)}
-        eyebrow="Tributación"
+        eyebrow="Reglas"
         title={
-          isEditing
-            ? 'Editar vinculación tributaria'
-            : isGuided
-              ? 'Nueva regla y vínculo'
-              : 'Vincular regla con catálogo'
+          isEditing ? 'Editar vinculación' : isGuided ? 'Nueva regla y vínculo' : 'Vincular regla'
         }
         description={
           isEditing && editTarget
             ? `${ruleName(editTarget.taxRuleId)} → ${defName(editTarget.taxDefinitionId)}`
             : isGuided
-              ? 'Crea la regla comercial y la vincula a una definición del catálogo en un solo paso.'
-              : 'Asocia una regla comercial activa con una definición tributaria del catálogo.'
+              ? 'Crea la regla tributaria y la vincula a un impuesto del catálogo en un solo paso.'
+              : 'Asocia una regla tributaria activa con un impuesto del catálogo.'
         }
         footer={
           <div className="flex flex-wrap justify-end gap-2">
@@ -623,7 +621,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                 <div className="space-y-1.5">
                   <SelectLabelWithHelp label="Tipo de tributo" required>
                     <HelpPopover>
-                      <p className="text-xs">Tipo comercial de la regla (IVA, retención o ICA).</p>
+                      <p className="text-xs">Tipo de la regla (IVA, retención o ICA).</p>
                     </HelpPopover>
                   </SelectLabelWithHelp>
                   <Select
@@ -647,18 +645,31 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                     placeholder="19.00"
                   />
                 </div>
+                {rules.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto px-0 text-sm"
+                    onClick={() => {
+                      setFormMode('link');
+                      setForm(INITIAL_FORM);
+                      setFormError(null);
+                    }}
+                  >
+                    Usar una regla existente
+                  </Button>
+                ) : null}
               </>
             )}
 
             {!isEditing && !isGuided && (
               <>
                 <div className="space-y-1.5">
-                  <SelectLabelWithHelp label="Regla comercial" required>
+                  <SelectLabelWithHelp label="Regla tributaria" required>
                     <HelpPopover>
                       <p className="text-xs">
                         Regla que define el <strong>tipo de tributo</strong> aplicable según el
-                        contexto comercial (ej: IVA ventas residencial). Solo se muestran reglas
-                        activas.
+                        contexto (ej: IVA ventas residencial). Solo se muestran reglas activas.
                       </p>
                     </HelpPopover>
                   </SelectLabelWithHelp>
@@ -679,16 +690,28 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                       ))}
                   </Select>
                 </div>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto px-0 text-sm"
+                  onClick={() => {
+                    setFormMode('guided');
+                    setForm(INITIAL_FORM);
+                    setFormError(null);
+                  }}
+                >
+                  Crear regla nueva y vincular
+                </Button>
               </>
             )}
 
             {!isEditing && (
               <div className="space-y-1.5">
-                <SelectLabelWithHelp label="Definición tributaria" required>
+                <SelectLabelWithHelp label="Definición" required>
                   <HelpPopover>
                     <p className="text-xs">
-                      Impuesto concreto del catálogo que se aplicará cuando la regla seleccionada
-                      coincida (ej: IVA estándar 19%). Solo se muestran definiciones activas.
+                      Impuesto del catálogo que se aplicará cuando la regla coincida (ej: IVA
+                      estándar 19%). Solo se muestran definiciones activas.
                     </p>
                   </HelpPopover>
                 </SelectLabelWithHelp>
@@ -702,7 +725,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                   <option value="">Selecciona una definición…</option>
                   {definitions.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.name} ({d.code})
+                      {d.name}
                     </option>
                   ))}
                 </Select>
@@ -743,8 +766,8 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
             </div>
 
             <Input
-              label="Tasa personalizada (%)"
-              helperText="Tasa específica para esta vinculación. Deja vacío para usar la tasa base de la definición."
+              label="Tasa (%)"
+              helperText="Tasa específica para esta vinculación. Déjala vacía para usar la tasa de la definición."
               placeholder="Ej. 5"
               type="number"
               step="0.01"
@@ -759,7 +782,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
 
             <Input
               label="Prioridad"
-              helperText="Número de orden cuando varias reglas aplican al mismo tiempo. Menor número = mayor prioridad."
+              helperText="Orden cuando varias reglas aplican a la vez. Menor número = mayor prioridad."
               placeholder="0"
               type="number"
               min="0"

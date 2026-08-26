@@ -22,6 +22,10 @@ import {
   type TaxationSubTab,
 } from '@/components/commercial/commercial-tab-params';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  buildRulesSettingsHref,
+  resolveCommercialRulesRedirect,
+} from '@/components/settings/rules/rules-settings-params';
 import { ApiError, commercialApi, type CommercialDashboardSummary } from '@/lib/api-client';
 
 function CommercialSkeleton() {
@@ -51,6 +55,13 @@ function syncRouteToUrl(
     nextSearchParams.set('tab', nextTab);
   } else {
     nextSearchParams.delete('tab');
+  }
+
+  if (route.tab !== 'plans') {
+    nextSearchParams.delete('page');
+    nextSearchParams.delete('size');
+    nextSearchParams.delete('sortBy');
+    nextSearchParams.delete('sortDir');
   }
 
   applyCommercialOfferStatusToSearchParams(nextSearchParams, route.status ?? null);
@@ -134,6 +145,13 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   }, [initialTab, pathname, router, searchParams]);
 
   useEffect(() => {
+    const rulesRedirect = resolveCommercialRulesRedirect(searchParams.get('tab') ?? initialTab);
+    if (rulesRedirect) {
+      router.replace(rulesRedirect);
+    }
+  }, [initialTab, router, searchParams]);
+
+  useEffect(() => {
     if (!user) {
       return;
     }
@@ -166,8 +184,22 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   const handleNavigateTab = useCallback(
     (
       tab: CommercialTab,
-      options?: { status?: CommercialOfferStatusFilter | null; focus?: string | null },
+      options?: {
+        status?: CommercialOfferStatusFilter | null;
+        focus?: string | null;
+        taxationSubTab?: TaxationSubTab | null;
+      },
     ) => {
+      if (tab === 'taxation') {
+        router.push(buildRulesSettingsHref(options?.taxationSubTab ?? 'tax-rules-app'));
+        return;
+      }
+
+      if (tab === 'compatibility') {
+        router.push(buildRulesSettingsHref('compatibility'));
+        return;
+      }
+
       updateRoute({
         tab,
         taxationSubTab: route.taxationSubTab,
@@ -175,7 +207,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
         focus: options?.focus ? parseCommercialFocusId(options.focus) : null,
       });
     },
-    [route.taxationSubTab, updateRoute],
+    [route.taxationSubTab, router, updateRoute],
   );
 
   const handleFocusConsumed = useCallback(() => {
@@ -204,10 +236,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   if (authLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Comercial"
-          subtitle="Cargando catálogo comercial y reglas operativas de la empresa autenticada"
-        />
+        <PageHeader title="Comercial" subtitle="Cargando el catálogo comercial de tu empresa." />
         <CommercialSkeleton />
       </div>
     );
@@ -216,11 +245,11 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   if (!user) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Comercial" subtitle="Error al cargar el módulo" />
+        <PageHeader title="Comercial" subtitle="No pudimos cargar Comercial" />
         <PortalAlert
           variant="error"
-          title="Módulo temporalmente no disponible"
-          description="No fue posible resolver la sesión del portal para cargar el módulo Comercial. Inicia sesión nuevamente para recuperar el acceso al catálogo comercial del portal empresarial."
+          title="Sesión no disponible"
+          description="No pudimos validar tu sesión. Inicia sesión de nuevo para volver al catálogo."
           icon={AlertTriangle}
         />
       </div>
@@ -231,7 +260,7 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
     <div className="space-y-6">
       <PageHeader
         title="Comercial"
-        subtitle="Gestiona catálogo, precios vigentes y reglas operativas."
+        subtitle="Gestiona catálogo, precios vigentes, combos y promociones."
       />
 
       {summaryError && (

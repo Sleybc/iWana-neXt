@@ -696,7 +696,7 @@ test.describe('portal-settings-calendar', () => {
     await expect(page).toHaveURL(/\/dashboard\/settings\/calendar/, { timeout: 10_000 });
   });
 
-  test('ADMIN ve dos carriles independientes en desktop y conserva el orden accesible', async ({
+  test('ADMIN ve dos columnas independientes en desktop y conserva la lectura por columnas', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -710,8 +710,6 @@ test.describe('portal-settings-calendar', () => {
     });
 
     const shellGrid = page.getByTestId('calendar-shell-grid');
-    const routineLane = page.getByTestId('calendar-lane-1-2');
-    const dateChangesLane = page.getByTestId('calendar-lane-3-4');
     const steps = ['1', '2', '3', '4'].map((step) => page.getByTestId(`calendar-step-${step}`));
     const organizationStep = steps[0]!;
     const siteStep = steps[1]!;
@@ -734,66 +732,77 @@ test.describe('portal-settings-calendar', () => {
     await expect(siteHeading).toBeVisible();
     await expect(eventualitiesHeading).toBeVisible();
 
-    const accessibleDomOrder = await shellGrid
+    const visualOrder = await shellGrid
       .locator('[data-testid^="calendar-step-"]')
-      .evaluateAll((groups) => groups.map((group) => group.getAttribute('data-testid')));
-    expect(accessibleDomOrder).toEqual([
+      .evaluateAll((groups) =>
+        groups
+          .map((group) => ({
+            id: group.getAttribute('data-testid'),
+            rect: group.getBoundingClientRect(),
+          }))
+          .sort((left, right) => left.rect.top - right.rect.top || left.rect.left - right.rect.left)
+          .map((group) => group.id),
+      );
+    expect(visualOrder).toEqual([
       'calendar-step-1',
       'calendar-step-2',
       'calendar-step-3',
       'calendar-step-4',
     ]);
 
-    await expect(routineLane).toBeVisible();
-    await expect(dateChangesLane).toBeVisible();
-
     const shellBox = await shellGrid.boundingBox();
-    const routineLaneBox = await routineLane.boundingBox();
-    const dateChangesLaneBox = await dateChangesLane.boundingBox();
     const organizationBox = await organizationStep.boundingBox();
     const siteBox = await siteStep.boundingBox();
     const exceptionsBox = await exceptionsStep.boundingBox();
     const eventualitiesBox = await eventualitiesStep.boundingBox();
 
     expect(shellBox).not.toBeNull();
-    expect(routineLaneBox).not.toBeNull();
-    expect(dateChangesLaneBox).not.toBeNull();
     expect(organizationBox).not.toBeNull();
     expect(siteBox).not.toBeNull();
     expect(exceptionsBox).not.toBeNull();
     expect(eventualitiesBox).not.toBeNull();
 
-    expect(Math.abs((organizationBox?.x ?? -1) - (siteBox?.x ?? -1))).toBeLessThanOrEqual(2);
-    expect(Math.abs((exceptionsBox?.x ?? -1) - (eventualitiesBox?.x ?? -1))).toBeLessThanOrEqual(2);
-    expect((routineLaneBox?.x ?? -1) < (dateChangesLaneBox?.x ?? -1)).toBe(true);
-    expect((siteBox?.y ?? -1) >= (organizationBox?.y ?? -1)).toBe(true);
-    expect((eventualitiesBox?.y ?? -1) >= (exceptionsBox?.y ?? -1)).toBe(true);
+    // Horario base de la empresa queda al lado izquierdo de la pantalla
+    expect((organizationBox?.x ?? -1) < (siteBox?.x ?? -1)).toBe(true);
+    // Cierres por fecha comparte columna con el horario base
+    expect(Math.abs((exceptionsBox?.x ?? -1) - (organizationBox?.x ?? -1))).toBeLessThanOrEqual(2);
+    // Cambios puntuales comparte columna con horarios por sede
+    expect(Math.abs((eventualitiesBox?.x ?? -1) - (siteBox?.x ?? -1))).toBeLessThanOrEqual(2);
+    // Horario base queda arriba de cierres
+    expect((exceptionsBox?.y ?? -1) >= (organizationBox?.y ?? -1)).toBe(true);
+    // Horarios por sede queda arriba de cambios puntuales
+    expect((eventualitiesBox?.y ?? -1) >= (siteBox?.y ?? -1)).toBe(true);
+    // Ambas columnas arrancan en la misma fila
+    expect(Math.abs((siteBox?.y ?? -1) - (organizationBox?.y ?? -1))).toBeLessThanOrEqual(2);
+    // Cada columna conserva únicamente su separación normal, sin vacío causado por la otra.
+    expect(
+      (exceptionsBox?.y ?? -1) - ((organizationBox?.y ?? -1) + (organizationBox?.height ?? 0)),
+    ).toBeLessThanOrEqual(26);
+    expect(
+      (eventualitiesBox?.y ?? -1) - ((siteBox?.y ?? -1) + (siteBox?.height ?? 0)),
+    ).toBeLessThanOrEqual(26);
 
-    const routineLaneBefore = await routineLane.boundingBox();
-    const dateChangesLaneBefore = await dateChangesLane.boundingBox();
     const organizationBefore = await organizationStep.boundingBox();
     const siteBefore = await siteStep.boundingBox();
+    const exceptionsBefore = await exceptionsStep.boundingBox();
     const step4Before = await eventualitiesStep.boundingBox();
     await exceptionsStep.getByRole('button', { name: 'Registrar fecha especial' }).click();
     await expect(page.getByTestId('exception-form')).toBeVisible();
+    // El click puede auto-desplazar la vista para exponer el botón; normalizamos el scroll
+    // antes de comparar posiciones viewport-relativas.
+    await page.evaluate(() => window.scrollTo(0, 0));
 
     const organizationAfter = await organizationStep.boundingBox();
     const siteAfter = await siteStep.boundingBox();
-    const routineLaneAfter = await routineLane.boundingBox();
-    const dateChangesLaneAfter = await dateChangesLane.boundingBox();
+    const exceptionsAfter = await exceptionsStep.boundingBox();
     const step4After = await eventualitiesStep.boundingBox();
     expect(
       Math.abs((organizationAfter?.y ?? -1) - (organizationBefore?.y ?? -1)),
     ).toBeLessThanOrEqual(2);
     expect(Math.abs((siteAfter?.y ?? -1) - (siteBefore?.y ?? -1))).toBeLessThanOrEqual(2);
-    expect(
-      Math.abs((routineLaneAfter?.y ?? -1) - (routineLaneBefore?.y ?? -1)),
-    ).toBeLessThanOrEqual(2);
-    expect(
-      Math.abs((routineLaneAfter?.height ?? -1) - (routineLaneBefore?.height ?? -1)),
-    ).toBeLessThanOrEqual(2);
-    expect((dateChangesLaneAfter?.height ?? -1) > (dateChangesLaneBefore?.height ?? -1)).toBe(true);
-    expect((step4After?.y ?? -1) > (step4Before?.y ?? -1)).toBe(true);
+    expect((exceptionsAfter?.height ?? -1) > (exceptionsBefore?.height ?? -1)).toBe(true);
+    // Cambios puntuales comparte fila con cierres: su posición vertical no cambia
+    expect(Math.abs((step4After?.y ?? -1) - (step4Before?.y ?? -1))).toBeLessThanOrEqual(2);
 
     const focusOrder: string[] = [];
     await page
@@ -812,8 +821,8 @@ test.describe('portal-settings-calendar', () => {
     }
     expect(focusOrder).toEqual([
       'calendar-step-1',
-      'calendar-step-2',
       'calendar-step-3',
+      'calendar-step-2',
       'calendar-step-4',
     ]);
   });

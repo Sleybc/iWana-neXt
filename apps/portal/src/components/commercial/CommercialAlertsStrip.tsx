@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@iwana/ui';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
 import {
@@ -42,25 +43,34 @@ interface CommercialAlertItemProps {
 
 /** Render único de una alerta: PortalAlert + CTA de navegación opcional. */
 function CommercialAlertItem({ alert, onNavigateTab }: CommercialAlertItemProps) {
+  const router = useRouter();
+  const canAct = Boolean(onNavigateTab || alert.href);
+
   return (
     <PortalAlert
       variant={alert.variant}
       title={alert.title}
       description={alert.description}
       live="off"
-      {...(onNavigateTab
+      {...(canAct
         ? {
             action: (
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
-                onClick={() =>
-                  onNavigateTab(alert.tab, {
+                onClick={() => {
+                  if (alert.href) {
+                    router.push(alert.href);
+                    return;
+                  }
+
+                  onNavigateTab?.(alert.tab, {
                     ...(alert.status ? { status: alert.status } : { status: null }),
                     ...(alert.focus ? { focus: alert.focus } : {}),
-                  })
-                }
+                    ...(alert.taxationSubTab ? { taxationSubTab: alert.taxationSubTab } : {}),
+                  });
+                }}
               >
                 {alert.ctaLabel}
               </Button>

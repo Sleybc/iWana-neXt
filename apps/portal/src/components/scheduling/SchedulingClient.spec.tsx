@@ -9,6 +9,7 @@ import {
 } from '@iwana/shared';
 import { SchedulingClient } from './SchedulingClient';
 import { ApiError, tasksApi, wfmApi } from '@/lib/api-client';
+import { PENDING_VISIT_DRAG_MIME, serializePendingVisitDragPayload } from './daily-schedule-draft';
 
 const useAuthMock = jest.fn();
 const replaceMock = jest.fn();
@@ -826,6 +827,43 @@ describe('SchedulingClient', () => {
     });
   });
 
+  it('mantiene el rail de pendientes al soltar una solicitud en la grilla diaria', async () => {
+    wfmApiMock.visitRequests.list.mockResolvedValue({
+      items: [buildPendingVisitRequest()],
+      meta: { total: 1, page: 1, limit: 8, totalPages: 1 },
+    });
+
+    render(<SchedulingClient surface="agenda" />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Pendientes por programar' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('María Gómez')).toBeInTheDocument();
+
+    const dropTarget = await screen.findByRole('button', {
+      name: /Crear evento para Luisa Campos a las 14:00/i,
+    });
+    const dragPayload = serializePendingVisitDragPayload({
+      visitRequestId: 'vr-1',
+      organizationSiteId: '77777777-7777-4777-8777-777777777777',
+      workType: WfmWorkType.INSTALLATION,
+      durationMinutes: 120,
+      customerDisplayName: 'María Gómez',
+      title: 'Instalación GPON barrio norte',
+    });
+    const dataTransfer = {
+      getData: jest.fn((type: string) => (type === PENDING_VISIT_DRAG_MIME ? dragPayload : '')),
+      dropEffect: 'copy',
+    };
+
+    fireEvent.dragOver(dropTarget, { dataTransfer });
+    fireEvent.drop(dropTarget, { dataTransfer });
+
+    expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
+    expect(screen.queryByText('Despacho de la solicitud')).not.toBeInTheDocument();
+    expect(screen.getByText('Instalación GPON barrio norte')).toBeInTheDocument();
+  });
+
   it('renderiza el resumen operativo y no muestra calendario completo en dashboard', async () => {
     pathnameMock = '/dashboard/scheduling';
     wfmApiMock.events.list.mockResolvedValue({
@@ -859,6 +897,17 @@ describe('SchedulingClient', () => {
     expect(await screen.findByText('Capacidad operativa')).toBeInTheDocument();
     expect(screen.getByText('Riesgos que requieren atención')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Lista' })).not.toBeInTheDocument();
+
+    const pageHeader = screen.getByRole('heading', { name: 'Programación' }).parentElement
+      ?.parentElement;
+    expect(pageHeader).not.toBeNull();
+    const headerActions = within(pageHeader as HTMLElement);
+
+    expect(headerActions.queryByRole('link', { name: 'Ir a agenda' })).not.toBeInTheDocument();
+    expect(headerActions.queryByRole('link', { name: 'Pendientes' })).not.toBeInTheDocument();
+    expect(
+      headerActions.queryByRole('link', { name: 'Visitas sin realizar' }),
+    ).not.toBeInTheDocument();
   });
 
   it('redirige a TECHNICIAN desde el resumen hacia agenda', async () => {

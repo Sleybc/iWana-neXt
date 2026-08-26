@@ -851,10 +851,10 @@ test('agenda abre el resumen de la OT y conserva una sola CTA hacia ejecución',
     has: page.getByRole('heading', { name: 'Soporte en sitio - cableado' }),
   });
   await expect(eventDialog).toBeVisible();
-  await expect(eventDialog.getByText('Resumen de la OT')).toBeVisible();
-  await expect(eventDialog.getByRole('button', { name: 'Abrir OT' })).toHaveCount(1);
+  await expect(eventDialog.getByText('Resumen de la orden de trabajo')).toBeVisible();
+  await expect(eventDialog.getByRole('button', { name: 'Abrir orden de trabajo' })).toHaveCount(1);
 
-  await eventDialog.getByRole('button', { name: 'Abrir OT' }).click();
+  await eventDialog.getByRole('button', { name: 'Abrir orden de trabajo' }).click();
   await expect(page).toHaveURL(/\/dashboard\/operations\?executionOrderId=eo-field-001/);
   await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
 });

@@ -67,12 +67,15 @@ Detalle por bloque:
 1. Estado + readiness de transición:
 
 - Banner único de readiness (sin duplicidad de mensajes)
-- Lista de faltantes bloqueantes priorizados
+- Lista de faltantes bloqueantes priorizados (chips «Pendientes principales»)
+- **Sin** CTAs de agenda en este bloque
 
 1. Acción recomendada ahora:
 
-- CTA principal único (ejemplo: agendar instalación)
-- CTA secundario (aplicar transición)
+- Contenedor único de decisión operativa (`id="programacion"`)
+- CTAs de visita embebidos vía `ExpedienteSchedulingActions` (Agendar ahora / Enviar a pendientes; o Ver visita / Abrir en pendientes si ya hay trabajo activo) — **no** card hermano «Coordinación de visita»
+- CTA secundario de pipeline: aplicar transición / sugerencia
+- Pendientes informativos: una línea de conteo que remite al banner de readiness; no relistar chips
 
 1. Resumen de completitud por secciones:
 

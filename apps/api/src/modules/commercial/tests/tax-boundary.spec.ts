@@ -7,10 +7,11 @@ import * as fs from 'fs';
  *
  * Regla: ningún archivo .ts en apps/api/src/modules/commercial/ puede tener imports
  * que referencien 'taxation/entities/' ni 'tax-definition.entity'.
- * Solo se permite importar el puerto TaxCatalogReadPort desde taxation/ports/.
+ * Solo se permite importar puertos (`TaxCatalogReadPort`, `ITaxApplicationReadPort`)
+ * desde taxation/ports/.
  * El archivo commercial.module.ts puede importar TaxationModule (wiring NestJS).
  *
- * Ref: ADR-029, ADR-031, HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum §2
+ * Ref: ADR-029, ADR-031, ADR-082
  */
 
 function collectTsFiles(dir: string): string[] {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   SearchableMultiPicker,
@@ -336,6 +336,100 @@ describe('SearchablePicker', () => {
       screen.getByRole('button', { name: 'Limpiar selección' }).click();
     });
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it('minChars=0: enfocar con selección no busca con el label y conserva la lista precargada', async () => {
+    const onSearch = mockSearch({ items: ITEMS, total: 3 });
+    render(
+      <SearchablePicker
+        resource={RESOURCE}
+        value="1"
+        selectedItem={{ label: 'Proveedor Alfa', sublabel: 'NIT ····1234' }}
+        onChange={jest.fn()}
+        onSearch={onSearch}
+        label="Proveedor"
+        minChars={0}
+      />,
+    );
+
+    // Preload al montar (q=''); al enfocar no debe buscarse con el label.
+    await act(async () => {
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Proveedor' }));
+    });
+    await flushDebounce();
+
+    expect(onSearch).toHaveBeenCalledTimes(1);
+    expect(onSearch).toHaveBeenCalledWith('', expect.any(AbortSignal));
+    expect(
+      await screen.findByRole('option', { name: /Proveedor Alfa — NIT/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('minChars=0: escribir tras seleccionar sí dispara la búsqueda', async () => {
+    const onSearch = mockSearch({ items: ITEMS, total: 3 });
+    render(
+      <SearchablePicker
+        resource={RESOURCE}
+        value="1"
+        selectedItem={{ label: 'Proveedor Alfa', sublabel: 'NIT ····1234' }}
+        onChange={jest.fn()}
+        onSearch={onSearch}
+        label="Proveedor"
+        minChars={0}
+      />,
+    );
+
+    const input = screen.getByRole('combobox', { name: 'Proveedor' });
+    await act(async () => {
+      fireEvent.focus(input);
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    await user.clear(input);
+    await user.type(input, 'be');
+    await flushDebounce();
+
+    expect(onSearch).toHaveBeenCalledTimes(2);
+    expect(onSearch).toHaveBeenLastCalledWith('be', expect.any(AbortSignal));
+    expect(await screen.findByRole('option', { name: /Proveedor Beta/i })).toBeInTheDocument();
+  });
+
+  it('minChars=0: Reintentar con selección consulta la lista completa, no el label', async () => {
+    const onSearch = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ items: [ITEMS[0]!], total: 1 });
+
+    render(
+      <SearchablePicker
+        resource={RESOURCE}
+        value="1"
+        selectedItem={{ label: 'Proveedor Alfa', sublabel: 'NIT ····1234' }}
+        onChange={jest.fn()}
+        onSearch={onSearch}
+        label="Proveedor"
+        minChars={0}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Proveedor' }));
+    });
+
+    expect(await screen.findByText('No fue posible cargar proveedores.')).toBeInTheDocument();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Reintentar' }).click();
+    });
+
+    expect(onSearch).toHaveBeenCalledTimes(2);
+    expect(onSearch).toHaveBeenLastCalledWith('', expect.any(AbortSignal));
+    expect(
+      await screen.findByRole('option', { name: /Proveedor Alfa — NIT/i }),
+    ).toBeInTheDocument();
   });
 
   it('disabled no abre listbox ni dispara onSearch', async () => {

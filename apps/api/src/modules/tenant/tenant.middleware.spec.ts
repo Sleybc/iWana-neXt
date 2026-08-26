@@ -7,7 +7,7 @@ import {
   platformRefreshCookieName,
   tenantAccessCookieName,
 } from '../auth/session-cookies.constants';
-import { TenantMiddleware } from './tenant.middleware';
+import { TenantMiddleware, type TenantResolutionSource } from './tenant.middleware';
 import { TenantService } from './tenant.service';
 
 function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
@@ -35,6 +35,8 @@ function buildRequest(overrides: Partial<Request> = {}): Request {
     ...overrides,
   } as Request;
 }
+
+type MarkedRequest = Request & { iwanaTenantResolutionSource?: TenantResolutionSource };
 
 describe('TenantMiddleware', () => {
   let middleware: TenantMiddleware;
@@ -79,6 +81,7 @@ describe('TenantMiddleware', () => {
     });
 
     const next = jest.fn(() => {
+      expect((request as MarkedRequest).iwanaTenantResolutionSource).toBe('jwt-verified');
       expect(TenantContext.get()).toEqual({
         tenantId: tenant.id,
         schemaName: tenant.schemaName,
@@ -105,11 +108,38 @@ describe('TenantMiddleware', () => {
     });
 
     const next = jest.fn(() => {
+      expect((request as MarkedRequest).iwanaTenantResolutionSource).toBe('public-header');
       expect(TenantContext.get()).toEqual({
         tenantId: tenant.id,
         schemaName: tenant.schemaName,
         tenantSlug: tenant.slug,
       });
+    });
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(tenantService.findBySlug).toHaveBeenCalledWith(tenant.slug);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('marca X-Tenant-Slug como fallback público cuando el Bearer no verifica', async () => {
+    const tenant = buildTenant();
+    jwtService.verify.mockImplementation(() => {
+      throw new Error('Bearer inválido');
+    });
+    tenantService.findBySlug.mockResolvedValue(tenant);
+
+    const request = buildRequest({
+      originalUrl: '/api/v1/auth/login',
+      url: '/api/v1/auth/login',
+      headers: {
+        authorization: 'Bearer bearer-no-verificable',
+        'x-tenant-slug': tenant.slug,
+      },
+    });
+    const next = jest.fn(() => {
+      expect((request as MarkedRequest).iwanaTenantResolutionSource).toBe('public-header');
+      expect(TenantContext.get()?.tenantId).toBe(tenant.id);
     });
 
     await middleware.use(request, {} as Response, next);
@@ -242,6 +272,7 @@ describe('TenantMiddleware', () => {
     });
 
     const next = jest.fn(() => {
+      expect((request as MarkedRequest).iwanaTenantResolutionSource).toBe('jwt-verified');
       expect(TenantContext.get()).toEqual({
         tenantId: tenant.id,
         schemaName: tenant.schemaName,

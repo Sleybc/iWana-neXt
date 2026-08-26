@@ -19,6 +19,7 @@ import {
   PickType,
 } from '@nestjs/swagger';
 import { DocumentType, TENANT_ASSIGNABLE_ROLES, UserRole, UserStatus } from '@iwana/shared';
+import { ListMetaDto } from '../../../common/pagination';
 import {
   USER_FIELD_MAX,
   USER_PASSWORD_MIN,
@@ -318,4 +319,19 @@ export class UserResponseDto {
    */
   @ApiPropertyOptional({ description: 'Administrador principal designado de la empresa' })
   isPrincipalAdmin?: boolean;
+}
+
+/** Forma interna paginada del listado de usuarios para OpenAPI. */
+export class UserListResponseDto {
+  @ApiProperty({ type: [UserResponseDto] })
+  data: UserResponseDto[];
+
+  @ApiProperty({ type: ListMetaDto })
+  meta: ListMetaDto;
+}
+
+/** Envelope HTTP estándar que conserva el doble nivel de `data` del endpoint. */
+export class UsersListEnvelopeDto {
+  @ApiProperty({ type: UserListResponseDto })
+  data: UserListResponseDto;
 }

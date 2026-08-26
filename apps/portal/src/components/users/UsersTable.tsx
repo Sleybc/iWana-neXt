@@ -3,7 +3,7 @@
 
 import type { InternalUser, UsersPaginationMeta } from '@/lib/api-client';
 import { isPlatformOnlyRole, UserRole, UserStatus } from '@iwana/shared';
-import { Pencil, Trash2, ShieldCheck, KeyRound, Loader2 } from 'lucide-react';
+import { Pencil, Plus, Trash2, ShieldCheck, KeyRound, Loader2, Upload } from 'lucide-react';
 import { Badge, Button, Select, cn } from '@iwana/ui';
 import {
   getPortalUserRoleLabel,
@@ -17,7 +17,6 @@ import {
   PortalDataTableHead,
   PortalEmptyState,
   PortalPageSizeSelect,
-  PortalResultsStrip,
   PortalSearchField,
   PortalSkeletonBlock,
   PortalTablePager,
@@ -75,8 +74,10 @@ interface UsersTableProps {
   onStatusChange: (value: string) => void;
   onRoleChange: (value: string) => void;
   onClearFilters: () => void;
-  /** Abre el flujo de alta (empty state primera vez). */
+  /** Abre el flujo de alta (toolbar y empty state de primera vez). */
   onCreateUser: () => void;
+  /** Abre la importación masiva por CSV. */
+  onImportCsv: () => void;
   currentUserId?: string;
   currentUserRole?: string;
   /** Id del usuario cuya edición se está preparando (FE-11). */
@@ -200,6 +201,7 @@ export function UsersTable({
   onRoleChange,
   onClearFilters,
   onCreateUser,
+  onImportCsv,
   currentUserId,
   currentUserRole,
   preparingEditUserId = null,
@@ -207,10 +209,6 @@ export function UsersTable({
   const hasActiveFilters = Boolean(statusFilter || roleFilter || searchValue);
   const hasMore = Boolean(meta?.nextCursor);
   const total = meta?.total ?? users.length;
-  const resourceWord = total === 1 ? 'usuario' : 'usuarios';
-  const resultsStripLabel = hasMore
-    ? `${users.length} de ${total} ${resourceWord}`
-    : `${total} ${resourceWord}`;
   const loadingAnnouncement =
     isLoading && users.length === 0
       ? 'Cargando usuarios'
@@ -220,16 +218,41 @@ export function UsersTable({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_220px_220px_auto] lg:items-end">
-        <PortalSearchField
-          id="search-filter"
-          value={searchValue}
-          onChange={onSearchChange}
-          placeholder="Buscar por nombre o correo…"
-          label="Buscar usuario"
-        />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <PortalSearchField
+            id="search-filter"
+            value={searchValue}
+            onChange={onSearchChange}
+            placeholder="Buscar por nombre o correo…"
+            label="Buscar usuario"
+            className="min-w-0 flex-1"
+          />
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              className="h-11 min-h-11 w-full px-3 sm:w-auto"
+              onClick={onCreateUser}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Nuevo usuario
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-11 min-h-11 w-full px-3 sm:w-auto"
+              onClick={onImportCsv}
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+              Importar CSV
+            </Button>
+          </div>
+        </div>
 
-        <div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[220px_220px_auto] lg:items-end">
           <Select
             id="status-filter"
             label="Estado"
@@ -238,9 +261,6 @@ export function UsersTable({
             className="h-12"
             options={PORTAL_USER_STATUS_FILTER_OPTIONS}
           />
-        </div>
-
-        <div>
           <Select
             id="role-filter"
             label="Rol"
@@ -249,24 +269,18 @@ export function UsersTable({
             className="h-12"
             options={PORTAL_TENANT_ROLE_FILTER_OPTIONS}
           />
+          {hasActiveFilters ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClearFilters}
+              className="h-12 px-4"
+            >
+              Limpiar filtros
+            </Button>
+          ) : null}
         </div>
-
-        {hasActiveFilters && (
-          <Button type="button" variant="secondary" onClick={onClearFilters} className="h-12 px-4">
-            Limpiar filtros
-          </Button>
-        )}
       </div>
-
-      {!isPageMode ? (
-        <PortalResultsStrip
-          badge={
-            <Badge variant="neutral" className="rounded-full px-3 py-1 text-[11px]">
-              {resultsStripLabel}
-            </Badge>
-          }
-        />
-      ) : null}
 
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {loadingAnnouncement}
@@ -308,13 +322,14 @@ export function UsersTable({
                 <tr>
                   <td
                     colSpan={TABLE_HEADERS.length}
-                    className={cn(portalDataTableCellClassName, 'py-12 text-center')}
+                    className={cn(portalDataTableCellClassName, 'py-12')}
                   >
                     {hasActiveFilters ? (
                       <PortalEmptyState
+                        embedded
                         title="Sin resultados"
                         description="Ningún usuario coincide con los filtros actuales."
-                        className="mx-auto max-w-xl text-left"
+                        className="w-full text-left"
                         action={
                           <Button
                             type="button"
@@ -327,15 +342,16 @@ export function UsersTable({
                         }
                       />
                     ) : (
-                      <div className="relative mx-auto max-w-xl overflow-hidden rounded-2xl">
+                      <div className="relative w-full overflow-hidden">
                         <div
                           aria-hidden="true"
                           className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-iwana-secondary/5"
                         />
                         <PortalEmptyState
+                          embedded
                           title="Aún no hay usuarios"
                           description="Crea el primer usuario interno para gestionar los accesos de tu equipo."
-                          className="relative text-left"
+                          className="relative w-full text-left"
                           action={
                             <Button
                               type="button"

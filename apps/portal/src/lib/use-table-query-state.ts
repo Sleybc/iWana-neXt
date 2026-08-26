@@ -98,7 +98,10 @@ export function useTableQueryState(options: UseTableQueryStateOptions = {}): Tab
   const pageSize = parsePageSize(searchParams.get(sizeKey), defaultPageSize, pageSizeOptions);
   const sortBy = searchParams.get(sortByKey)?.trim() || null;
   const sortDir = parseSortDir(searchParams.get(sortDirKey));
-  const sort: TableSortState | null = sortBy && sortDir ? { by: sortBy, dir: sortDir } : null;
+  const sort = useMemo<TableSortState | null>(
+    () => (sortBy && sortDir ? { by: sortBy, dir: sortDir } : null),
+    [sortBy, sortDir],
+  );
 
   // v2-32: corregir URL en silencio cuando page/size son inválidos
   useEffect(() => {

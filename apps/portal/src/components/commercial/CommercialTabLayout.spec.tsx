@@ -63,23 +63,21 @@ jest.mock('@/components/commercial/PromotionsManager', () => ({
 }));
 
 jest.mock('@/components/commercial/CompatibilityRulesManager', () => ({
-  CompatibilityRulesManager: () => (
-    <div data-testid="compatibility-panel">Compatibilidad panel</div>
-  ),
+  CompatibilityRulesManager: () => <div data-testid="compatibility-panel">Reemplazos panel</div>,
 }));
 
 jest.mock('@/components/commercial/TaxCatalogManager', () => ({
-  TaxCatalogManager: () => <div data-testid="tax-catalog-panel">Catálogo de impuestos panel</div>,
+  TaxCatalogManager: () => <div data-testid="tax-catalog-panel">Impuestos panel</div>,
 }));
 
 jest.mock('@/components/commercial/TaxApplicationRulesManager', () => ({
   TaxApplicationRulesManager: () => (
-    <div data-testid="tax-rules-app-panel">Reglas de aplicación panel</div>
+    <div data-testid="tax-rules-app-panel">Aplicación de impuestos panel</div>
   ),
 }));
 
 jest.mock('@/components/commercial/TaxSimulatorPanel', () => ({
-  TaxSimulatorPanel: () => <div data-testid="tax-simulator-panel">Simulador tributario panel</div>,
+  TaxSimulatorPanel: () => <div data-testid="tax-simulator-panel">Simulador panel</div>,
 }));
 
 const defaultProps = {
@@ -90,85 +88,90 @@ const defaultProps = {
   onTaxationSubTabChange: jest.fn(),
 };
 
+function mockMatchMediaLg(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: query.includes('1024') ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }),
+  });
+}
+
 describe('CommercialTabLayout', () => {
-  it('no ofrece un tab de resumen', async () => {
+  beforeEach(() => {
+    mockMatchMediaLg(true);
+    defaultProps.onTabChange.mockReset();
+    defaultProps.onTaxationSubTabChange.mockReset();
+  });
+
+  it('no ofrece un destino de resumen', async () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
-    expect(screen.queryByRole('tab', { name: 'Resumen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resumen' })).not.toBeInTheDocument();
     expect(screen.queryByText('Operación')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('plans-panel')).toBeInTheDocument());
   });
 
-  it('aterriza en Planes con los tres grupos visibles', async () => {
+  it('aterriza en Planes con catálogo y ofertas', async () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
-    expect(screen.getByRole('tab', { name: 'Planes' })).toHaveAttribute('data-state', 'active');
+    const nav = screen.getByRole('navigation', { name: 'Secciones comerciales' });
+    expect(nav).toHaveClass('lg:sticky');
+
+    expect(screen.getByRole('button', { name: 'Planes' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByText('Catálogo')).toBeInTheDocument();
     expect(screen.getByText('Ofertas')).toBeInTheDocument();
-    expect(screen.getByText('Reglas')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId('plans-panel')).toBeInTheDocument());
-  });
-
-  it('renderiza Planes al seleccionar el tab de catálogo', async () => {
-    render(<CommercialTabLayout {...defaultProps} activeTab="plans" />);
-
-    expect(screen.getByRole('tab', { name: 'Planes' })).toHaveAttribute('data-state', 'active');
-    expect(await screen.findByTestId('plans-panel')).toBeInTheDocument();
+    expect(screen.queryByText('Reglas')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Productos' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reemplazos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Impuestos' })).not.toBeInTheDocument();
+    const panel = await screen.findByTestId('plans-panel');
+    expect(nav.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('renderiza Combos y Promociones bajo el grupo Ofertas', async () => {
     const { rerender } = render(<CommercialTabLayout {...defaultProps} activeTab="bundles" />);
 
-    expect(screen.getByRole('tab', { name: 'Combos' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('button', { name: 'Combos' })).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByTestId('bundles-panel')).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Combos y promociones' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Combos y promociones' })).not.toBeInTheDocument();
 
     rerender(<CommercialTabLayout {...defaultProps} activeTab="promotions" />);
 
-    expect(screen.getByRole('tab', { name: 'Promociones' })).toHaveAttribute(
-      'data-state',
-      'active',
+    expect(screen.getByRole('button', { name: 'Promociones' })).toHaveAttribute(
+      'aria-current',
+      'page',
     );
     expect(await screen.findByTestId('promotions-panel')).toBeInTheDocument();
   });
 
-  it('no ubica Combos ni Promociones bajo Reglas', () => {
+  it('no muestra el grupo Reglas en Comercial', () => {
     render(<CommercialTabLayout {...defaultProps} />);
 
-    const rulesGroup = screen.getByRole('group', { name: 'Reglas' });
-    expect(rulesGroup).toContainElement(screen.getByRole('tab', { name: 'Compatibilidad' }));
-    expect(rulesGroup).toContainElement(screen.getByRole('tab', { name: 'Tributación' }));
-    expect(rulesGroup).not.toContainElement(screen.getByRole('tab', { name: 'Combos' }));
-    expect(rulesGroup).not.toContainElement(screen.getByRole('tab', { name: 'Promociones' }));
+    expect(screen.queryByRole('list', { name: 'Reglas' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reemplazos' })).not.toBeInTheDocument();
   });
 
-  it('renderiza Tributación al seleccionar el tab principal', async () => {
-    render(<CommercialTabLayout {...defaultProps} activeTab="taxation" />);
+  it('sigue mostrando Combos y Promociones bajo Ofertas', async () => {
+    render(<CommercialTabLayout {...defaultProps} activeTab="bundles" />);
 
-    expect(screen.getByRole('tab', { name: 'Tributación' })).toHaveAttribute(
-      'data-state',
-      'active',
-    );
-    expect(await screen.findByTestId('tax-catalog-panel')).toBeInTheDocument();
-  });
-
-  it('renderiza Simulador tributario al seleccionar el subtab tributario', async () => {
-    render(
-      <CommercialTabLayout {...defaultProps} activeTab="taxation" taxationSubTab="tax-simulator" />,
-    );
-
-    expect(screen.getByRole('tab', { name: 'Simulador tributario' })).toHaveAttribute(
-      'data-state',
-      'active',
-    );
-    expect(await screen.findByTestId('tax-simulator-panel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Combos' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByTestId('bundles-panel')).toBeInTheDocument();
   });
 
   it('notifica cambio de tab principal', () => {
     const onTabChange = jest.fn();
     render(<CommercialTabLayout {...defaultProps} onTabChange={onTabChange} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Servicios' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Servicios' }));
 
     expect(onTabChange).toHaveBeenCalledWith('services');
   });
@@ -177,27 +180,8 @@ describe('CommercialTabLayout', () => {
     const onTabChange = jest.fn();
     render(<CommercialTabLayout {...defaultProps} onTabChange={onTabChange} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Promociones' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Promociones' }));
 
     expect(onTabChange).toHaveBeenCalledWith('promotions');
-  });
-
-  it('mantiene sticky el shell de tabs principal bajo el header solo en md+', () => {
-    render(<CommercialTabLayout {...defaultProps} />);
-
-    const mainTabs = screen.getByRole('tablist', { name: 'Secciones comerciales' });
-
-    expect(mainTabs).toHaveClass('md:sticky');
-    expect(mainTabs).toHaveClass('md:top-[69px]');
-    expect(mainTabs).toHaveClass('z-(--z-sticky)');
-  });
-
-  it('no aplica sticky a los subtabs de Tributación', async () => {
-    render(<CommercialTabLayout {...defaultProps} activeTab="taxation" />);
-
-    const subTabs = screen.getByRole('tablist', { name: 'Subsecciones tributarias' });
-
-    expect(subTabs).not.toHaveClass('md:sticky');
-    await waitFor(() => expect(screen.getByTestId('tax-catalog-panel')).toBeInTheDocument());
   });
 });

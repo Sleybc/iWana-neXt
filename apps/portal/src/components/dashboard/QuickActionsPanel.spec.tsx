@@ -28,7 +28,7 @@ describe('QuickActionsPanel', () => {
       '/dashboard/commercial',
     );
     expect(screen.getByRole('button', { name: /Ver más/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Usuarios y accesos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Usuarios' })).not.toBeInTheDocument();
     expect(screen.queryByText('Reportes')).not.toBeInTheDocument();
     expect(screen.queryByText(/Fase siguiente/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/accesos disponibles hoy/i)).not.toBeInTheDocument();
@@ -42,7 +42,7 @@ describe('QuickActionsPanel', () => {
       screen.getAllByRole('link').filter((el) => el.getAttribute('href')?.startsWith('/dashboard')),
     ).toHaveLength(5);
     await user.click(screen.getByRole('button', { name: /Ver más/i }));
-    expect(screen.getByRole('link', { name: 'Usuarios y accesos' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Usuarios' })).toHaveAttribute(
       'href',
       '/dashboard/users',
     );
@@ -59,7 +59,7 @@ describe('QuickActionsPanel', () => {
     );
     expect(screen.getByRole('link', { name: 'Mi perfil' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Comercial' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Usuarios y accesos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Usuarios' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Configuración' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ver más/i })).not.toBeInTheDocument();
   });

@@ -2,7 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { DataSource } from 'typeorm';
-import { User, hmacEmail, loadPiiHashKeyFromEnv, runInTenantSchema } from '@iwana/db';
+import {
+  User,
+  hmacEmail,
+  loadPiiHashKeyFromEnv,
+  runInTenantSchema,
+  BACKFILL_TAX_RULE_APPLICATIONS_SQL,
+} from '@iwana/db';
 import { TAX_COLOMBIA_PRESETS, UserRole, UserStatus } from '@iwana/shared';
 
 const TEMPORARY_PASSWORD_TTL_MS = 24 * 60 * 60 * 1000;
@@ -154,6 +160,8 @@ export class TenantSeedService {
 
         this.logger.debug(`[TenantSeedService] Tax preset ${preset.code} sembrado`);
       }
+
+      await qr.manager.query(BACKFILL_TAX_RULE_APPLICATIONS_SQL);
     });
 
     this.logger.log(`[TenantSeedService] Tax presets completados para schema ${schemaName}`);

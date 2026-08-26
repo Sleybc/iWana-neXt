@@ -298,13 +298,13 @@ function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): Invento
   };
 }
 
-function mockMatchMedia(matches: boolean) {
+function mockMatchMedia(matchesLg: boolean) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,
-    value: jest.fn().mockImplementation(() => ({
-      matches,
-      media: '',
+    value: jest.fn().mockImplementation((query: string) => ({
+      matches: query.includes('1024') ? matchesLg : false,
+      media: query,
       onchange: null,
       addEventListener: jest.fn(),
       removeEventListener: jest.fn(),
@@ -317,7 +317,7 @@ function mockMatchMedia(matches: boolean) {
 
 describe('InventoryClient', () => {
   beforeEach(() => {
-    mockMatchMedia(false);
+    mockMatchMedia(true);
     replaceMock.mockReset();
     pushMock.mockReset();
     replaceMock.mockImplementation((href: string) => {
@@ -943,20 +943,51 @@ describe('InventoryClient', () => {
     render(<InventoryClient />);
 
     expect(screen.getByRole('heading', { name: 'Inventario' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actualizar' })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
     expect(screen.getByText('Productos bajo mínimo')).toBeInTheDocument();
+    expect(screen.getByText('Atención ahora')).toBeInTheDocument();
+    expect(screen.getByTestId('summary-assets-cta')).toBeInTheDocument();
+    expect(screen.queryByText('Vista previa de productos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Material registrado')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tablist', { name: 'Secciones de inventario' }),
+    ).not.toBeInTheDocument();
+    const overview = screen.getByRole('button', { name: 'Vista general' });
+    expect(overview).toHaveAttribute('aria-current', 'page');
+    expect(overview).toHaveClass('bg-iwana-surface-soft');
+    expect(overview.querySelector('.bg-iwana-secondary')).not.toBeNull();
+    expect(screen.queryByText('Catálogo de productos')).not.toBeInTheDocument();
+    expect(screen.getByText('Operación')).toBeInTheDocument();
+    expect(screen.getByText('Seguimiento')).toBeInTheDocument();
+    for (const name of [
+      'Vista general',
+      'Catálogo',
+      'Existencias',
+      'Compras',
+      'Proveedores',
+      'Bodegas',
+      'Salidas',
+      'Conteos',
+      'Activos',
+      'Movimientos',
+      'Bajas',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
 
     await waitFor(() => {
       expect(screen.getByText('Resumen de compras')).toBeInTheDocument();
       expect(screen.getByText('PR-000001')).toBeInTheDocument();
       expect(screen.getByText('Por cotizar')).toBeInTheDocument();
     });
+    expect(screen.queryByText('Productos catalogados')).not.toBeInTheDocument();
   });
 
   it('renderiza la pestaña Salidas', async () => {
@@ -966,7 +997,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('tab', { name: 'Salidas' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Salidas' })).toBeInTheDocument();
   });
 
   it('abre bodegas cuando tab=locations viene en la URL', async () => {
@@ -975,7 +1006,10 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Bodegas', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Bodegas' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
       expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
   });
@@ -1077,7 +1111,10 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
       expect(screen.getByRole('tab', { name: 'Por bodega', selected: true })).toBeInTheDocument();
       expect(replaceMock).toHaveBeenCalledWith(
         expect.stringContaining('tab=stock'),
@@ -1097,7 +1134,11 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="stock" />);
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(screen.queryByText('Productos catalogados')).not.toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('tab', { name: 'Por bodega' }));
@@ -1163,7 +1204,7 @@ describe('InventoryClient', () => {
       expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Salidas' }));
+    await user.click(screen.getByRole('button', { name: 'Salidas' }));
     expect(screen.getByRole('heading', { name: 'Salidas' })).toBeInTheDocument();
   });
 
@@ -1175,8 +1216,12 @@ describe('InventoryClient', () => {
       expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Salidas' }));
-    expect(await screen.findByRole('tab', { name: 'Salidas', selected: true })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Salidas' }));
+    expect(await screen.findByRole('button', { name: 'Salidas' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('heading', { name: 'Salidas' })).toBeInTheDocument();
   });
 
   it('limita los retornos a estados operativos permitidos', async () => {
@@ -1187,7 +1232,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Movimientos' }));
+    await user.click(screen.getByRole('button', { name: 'Movimientos' }));
 
     const statusSelect = await screen.findByRole('combobox', {
       name: 'Estado del activo al llegar',
@@ -1207,7 +1252,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Compras' }));
+    await user.click(screen.getByRole('button', { name: 'Compras' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Nueva solicitud' })).toBeInTheDocument();
@@ -1258,7 +1303,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Compras' }));
+    await user.click(screen.getByRole('button', { name: 'Compras' }));
 
     await waitFor(() => {
       expect(screen.getByText('Listado de solicitudes')).toBeInTheDocument();
@@ -1279,7 +1324,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Compras' }));
+    await user.click(screen.getByRole('button', { name: 'Compras' }));
 
     const searchInput = await screen.findByLabelText('Buscar');
     await user.type(searchInput, 'Reposición');
@@ -1304,7 +1349,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
     fireEvent.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
 
     await waitFor(() => {
@@ -1342,7 +1387,8 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sección: Vista general' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
     fireEvent.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
 
     expect(screen.getByText('Paso 1 de 2')).toBeInTheDocument();
@@ -1357,7 +1403,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Abrir' })).toBeInTheDocument();
@@ -1400,7 +1446,7 @@ describe('InventoryClient', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
     });
 
     await act(async () => {
@@ -1504,7 +1550,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Abrir' }));
 
     await waitFor(() => {
@@ -1543,7 +1589,7 @@ describe('InventoryClient', () => {
         expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
 
       await act(async () => {
         jest.advanceTimersByTime(1);
@@ -1554,6 +1600,9 @@ describe('InventoryClient', () => {
         expect(screen.getByLabelText('Buscar producto')).toBeInTheDocument();
         expect(screen.getAllByText('ONT-001').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument();
+        const productsTab = screen.getByRole('tab', { name: 'Productos', selected: true });
+        expect(productsTab).toHaveClass('border-iwana-secondary');
+        expect(productsTab).not.toHaveClass('bg-iwana-primary');
       });
 
       await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
@@ -1582,7 +1631,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Nuevo producto' })).toBeInTheDocument();
@@ -1672,7 +1721,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Crear categoría aquí' }));
 
@@ -1727,7 +1776,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     fireEvent.change(screen.getByLabelText('Nombre'), {
       target: { value: 'Router WiFi 7' },
@@ -1752,7 +1801,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Crear categoría aquí' }));
     fireEvent.change(screen.getByLabelText('Nombre de la categoría'), {
@@ -1779,7 +1828,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
 
     const skuCells = await screen.findAllByText('ONT-001');
     // El último es la celda de la tabla de catálogo (renderiza después del resumen)
@@ -1843,7 +1892,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bajas' }));
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Solicitar baja' })).toBeInTheDocument();
@@ -1877,7 +1926,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bajas' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Solicitar baja' })).toBeInTheDocument();
@@ -1911,7 +1960,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bajas' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('write-off-pending-row-wo-1')).toBeInTheDocument();
@@ -1947,7 +1996,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bajas' }));
 
     const pendingRow = await screen.findByTestId('write-off-pending-row-wo-1');
     expect(within(pendingRow).getByRole('button', { name: 'Aprobar' })).toBeInTheDocument();
@@ -1973,7 +2022,7 @@ describe('InventoryClient', () => {
         expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Bajas' }));
 
       const pendingRow = await screen.findByTestId('write-off-pending-row-wo-1');
       expect(within(pendingRow).queryByRole('button', { name: 'Aprobar' })).not.toBeInTheDocument();
@@ -1991,7 +2040,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bajas' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('write-off-history-row-wo-2')).toBeInTheDocument();
@@ -2028,7 +2077,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: 'Activos' }));
+    await user.click(screen.getByRole('button', { name: 'Activos' }));
     await user.click(screen.getByRole('tab', { name: 'Vida útil' }));
 
     await waitFor(() => {
@@ -2044,7 +2093,10 @@ describe('InventoryClient', () => {
     await user.click(screen.getByTestId('useful-life-alerts-replenishment-cta'));
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
       expect(screen.getByRole('tab', { name: 'Reposición', selected: true })).toBeInTheDocument();
     });
   });
@@ -2060,7 +2112,10 @@ describe('InventoryClient', () => {
     await user.click(screen.getByTestId('summary-replenishment-cta'));
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
       expect(screen.getByRole('tab', { name: 'Reposición', selected: true })).toBeInTheDocument();
     });
   });

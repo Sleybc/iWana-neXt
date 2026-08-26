@@ -69,7 +69,6 @@ const navGroups: NavGroup[] = [
     group: 'Menú',
     items: [
       { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
-      { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
       { href: '/dashboard/crm/expedientes', label: 'Oportunidades', icon: BriefcaseBusiness },
       { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
       { href: '/dashboard/scheduling', label: 'Programación', icon: CalendarClock },
@@ -99,7 +98,8 @@ const navGroups: NavGroup[] = [
     group: 'Administración',
     items: [
       { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
-      { href: '/dashboard/users', label: 'Usuarios y accesos', icon: Users },
+      { href: '/dashboard/users', label: 'Usuarios', icon: Users },
+      { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
     ],
   },
 ];

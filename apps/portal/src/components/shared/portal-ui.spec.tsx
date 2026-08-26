@@ -487,6 +487,43 @@ describe('PortalTablePager', () => {
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
   });
 
+  it('density compact aplica h-8; default conserva h-11', () => {
+    const { rerender } = render(
+      <PortalTablePager
+        page={2}
+        pageCount={3}
+        onPageChange={jest.fn()}
+        from={11}
+        to={20}
+        total={30}
+        resource={resource}
+      />,
+    );
+
+    const defaultPage = screen.getByRole('button', { name: 'Página 2' });
+    expect(defaultPage).toHaveClass('h-11', 'min-w-11', 'rounded-xl');
+    expect(screen.getByRole('button', { name: 'Anterior' })).toHaveClass('min-h-11');
+
+    rerender(
+      <PortalTablePager
+        page={2}
+        pageCount={3}
+        onPageChange={jest.fn()}
+        from={11}
+        to={20}
+        total={30}
+        resource={resource}
+        density="compact"
+      />,
+    );
+
+    const compactPage = screen.getByRole('button', { name: 'Página 2' });
+    expect(compactPage).toHaveClass('h-8', 'min-w-8', 'rounded-lg');
+    expect(compactPage).not.toHaveClass('h-11');
+    expect(screen.getByRole('button', { name: 'Anterior' })).not.toHaveClass('min-h-11');
+    expect(screen.getByRole('button', { name: 'Anterior' })).toHaveClass('text-xs');
+  });
+
   it('un solo resultado usa singular', () => {
     render(
       <PortalTablePager
@@ -552,6 +589,17 @@ describe('PortalTablePager', () => {
 });
 
 describe('PortalPageSizeSelect', () => {
+  it('alinea la etiqueta y el selector en la misma fila', () => {
+    const { container } = render(<PortalPageSizeSelect value={20} onChange={jest.fn()} />);
+    const wrapper = container.querySelector('[data-min-option]');
+    const label = screen.getByText('Filas por página');
+
+    expect(wrapper).toHaveClass('flex', 'items-center');
+    expect(label.tagName).toBe('LABEL');
+    expect(label.parentElement).toBe(wrapper);
+    expect(screen.getByRole('combobox', { name: 'Filas por página' })).toBeInTheDocument();
+  });
+
   it('usa Select de @iwana/ui con etiqueta Filas por página', async () => {
     const user = userEvent.setup();
     const onChange = jest.fn();
@@ -559,10 +607,20 @@ describe('PortalPageSizeSelect', () => {
 
     expect(screen.getByText('Filas por página')).toBeInTheDocument();
     const trigger = screen.getByRole('combobox');
+    expect(trigger).toHaveClass('h-11');
     await user.click(trigger);
     const option = await screen.findByRole('option', { name: '50' });
     await user.click(option);
     expect(onChange).toHaveBeenCalledWith(50);
+  });
+
+  it('density compact densifica el Select a h-8', () => {
+    render(<PortalPageSizeSelect value={20} onChange={jest.fn()} density="compact" />);
+    expect(screen.getByRole('combobox', { name: 'Filas por página' })).toHaveClass(
+      'h-8',
+      'rounded-lg',
+      'text-xs',
+    );
   });
 
   it('respeta opciones explícitas y estado disabled', async () => {
@@ -579,6 +637,25 @@ describe('PortalPageSizeSelect', () => {
     render(<PortalPageSizeSelect value={10} options={[10, 50]} onChange={onChange} />);
     await user.click(screen.getAllByRole('combobox', { name: 'Filas por página' })[1]!);
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['10', '50']);
+  });
+
+  it('acepta override local 5–100 sin mutar el default global', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    render(
+      <PortalPageSizeSelect value={20} options={[5, 10, 20, 30, 50, 100]} onChange={onChange} />,
+    );
+
+    expect(PORTAL_PAGE_SIZE_OPTIONS).toEqual([10, 20, 50]);
+    await user.click(screen.getByRole('combobox', { name: 'Filas por página' }));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      '5',
+      '10',
+      '20',
+      '30',
+      '50',
+      '100',
+    ]);
   });
 });
 
@@ -668,6 +745,25 @@ describe('PortalDataTableSortableHead', () => {
       </table>,
     );
     expect(screen.getByRole('button', { name: /Ordenar por Nombre/ })).toBeDisabled();
+  });
+
+  it('el botón de orden ocupa el ancho del encabezado y queda a la izquierda', () => {
+    render(
+      <table>
+        <thead>
+          <tr>
+            <PortalDataTableSortableHead field="name" activeSort={null} onSortChange={jest.fn()}>
+              Nombre
+            </PortalDataTableSortableHead>
+          </tr>
+        </thead>
+      </table>,
+    );
+
+    const button = screen.getByRole('button', { name: 'Ordenar por Nombre, ascendente' });
+    expect(button.className).toContain('w-full');
+    expect(button.className).toContain('justify-start');
+    expect(button.className).not.toContain('ml-auto');
   });
 
   it('en mobile conserva scope y aria-sort, pero no monta un botón de orden', () => {

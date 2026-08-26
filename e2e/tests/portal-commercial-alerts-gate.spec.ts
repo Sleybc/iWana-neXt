@@ -183,7 +183,7 @@ test.describe('Gate navegador — alertas comerciales sobre tabs (Fase F)', () =
     await setAuthSession(page);
   });
 
-  test('alertas visibles en Planes, Tributación y Compatibilidad; CTA aplica filtro; live=off; mobile usable', async ({
+  test('alertas visibles en Planes, Impuestos y Reemplazos; CTA aplica filtro; live=off; mobile usable', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -194,14 +194,14 @@ test.describe('Gate navegador — alertas comerciales sobre tabs (Fase F)', () =
     await expect(alertsRegion).toBeVisible();
     await expect(page.getByText('Ofertas en riesgo')).toBeVisible();
     await expect(page.getByText('Catálogo incompleto')).toBeVisible();
-    await expect(page.getByText('Huecos en reglas')).toBeVisible();
+    await expect(page.getByText('Reglas incompletas')).toBeVisible();
 
     // H17: live=off → no role=alert/status en las PortalAlert de la tira
     const stripAlerts = alertsRegion.locator('[role="alert"], [role="status"]');
     await expect(stripAlerts).toHaveCount(0);
 
-    for (const tab of ['Planes', 'Compatibilidad', 'Tributación'] as const) {
-      await page.getByRole('tab', { name: tab }).click();
+    for (const section of ['Planes', 'Reemplazos', 'Impuestos'] as const) {
+      await page.getByRole('button', { name: section, exact: true }).click();
       await expect(alertsRegion).toBeVisible();
       await expect(page.getByText('Ofertas en riesgo')).toBeVisible();
     }
@@ -210,18 +210,17 @@ test.describe('Gate navegador — alertas comerciales sobre tabs (Fase F)', () =
     await expect(page).toHaveURL(/tab=(bundles|promotions)/);
     await expect(page).toHaveURL(/offerStatus=expiring|status=expiring/);
 
-    // Mobile 375: tabs y contenido alcanzables con 3 alertas
+    // Mobile 375: selector de sección alcanzable con 3 alertas
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/dashboard/commercial?tab=plans');
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('region', { name: 'Alertas operativas' })).toBeVisible();
-    const plansTab = page.getByRole('tab', { name: 'Planes' });
-    await expect(plansTab).toBeVisible();
-    await plansTab.scrollIntoViewIfNeeded();
-    const tabBox = await plansTab.boundingBox();
-    expect(tabBox).not.toBeNull();
-    // El tab no queda fuera de un scroll vertical absurdo (> 3 viewports desde top)
-    expect(tabBox!.y).toBeLessThan(812 * 2.5);
+    const sectionTrigger = page.getByRole('button', { name: /Sección: Planes/ });
+    await expect(sectionTrigger).toBeVisible();
+    await sectionTrigger.scrollIntoViewIfNeeded();
+    const triggerBox = await sectionTrigger.boundingBox();
+    expect(triggerBox).not.toBeNull();
+    expect(triggerBox!.y).toBeLessThan(812 * 2.5);
   });
 });

@@ -5,6 +5,7 @@ import {
   ConsentChannel,
   ContactChannel,
   ContactResult,
+  CustomerSegment,
   Feasibility,
 } from '@iwana/shared';
 import {
@@ -14,7 +15,7 @@ import {
 } from '../dto/create-consent.dto';
 import { CreateContactAttemptDto } from '../dto/create-contact-attempt.dto';
 import { CreateCoverageCheckDto } from '../dto/create-coverage-check.dto';
-import { CreateExpedienteDto } from '../dto/create-expediente.dto';
+import { CreateExpedienteDto, CreateExpedienteSchema } from '../dto/create-expediente.dto';
 import { TransitionStatusDto } from '../dto/transition-status.dto';
 import { UpdateSectionBodyDto } from '../dto/update-section.dto';
 
@@ -36,6 +37,47 @@ describe('Expedientes boundary DTOs', () => {
       fullName: 'Empresa Demo SAS',
       source: 'Manual',
     });
+  });
+
+  it('CreateExpedienteSchema acepta los 6 valores canonicos de CustomerSegment', () => {
+    const segmentValues = Object.values(CustomerSegment);
+    expect(segmentValues).toHaveLength(6);
+
+    segmentValues.forEach((segment) => {
+      const parsed = CreateExpedienteSchema.parse({
+        fullName: 'Cliente Demo',
+        acquisitionChannel: 'WEB',
+        customerSegment: segment,
+      });
+      expect(parsed.customerSegment).toBe(segment);
+    });
+  });
+
+  it('CreateExpedienteSchema rechaza la ausencia del campo customerSegment', () => {
+    const result = CreateExpedienteSchema.safeParse({
+      fullName: 'Cliente Demo',
+      acquisitionChannel: 'WEB',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.includes('customerSegment'))).toBe(
+        true,
+      );
+    }
+  });
+
+  it('CreateExpedienteSchema rechaza valores fuera del enum CustomerSegment', () => {
+    const result = CreateExpedienteSchema.safeParse({
+      fullName: 'Cliente Demo',
+      acquisitionChannel: 'WEB',
+      customerSegment: 'RESIDENCIAL',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.includes('customerSegment'))).toBe(
+        true,
+      );
+    }
   });
 
   it('preserva data antes de la validacion Zod del patch de seccion', async () => {

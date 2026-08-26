@@ -17,7 +17,7 @@ export function ExpedienteConversionBanner({
 
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm text-sky-900 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
-      <p className="font-semibold">Este expediente ya fue convertido a suscriptor.</p>
+      <p className="font-semibold">Esta oportunidad ya fue convertida a suscriptor.</p>
       <p className="mt-1 text-sky-700 dark:text-sky-300">
         La operación posterior se gestiona desde Suscriptores.
       </p>

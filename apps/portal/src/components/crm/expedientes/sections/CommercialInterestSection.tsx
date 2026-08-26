@@ -1,16 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Select } from '@iwana/ui';
 import { commercialApi, mapPickerSearchResponse } from '@/lib/api-client';
 import {
   SearchableMultiPicker,
   SearchablePicker,
   type SearchablePickerItem,
 } from '@/components/shared/SearchablePicker';
-import { FIELD_LABELS } from './constants';
+import { CUSTOMER_SEGMENT_OPTIONS, EMPTY_VALUE, FIELD_LABELS } from './constants';
 import type { DraftValues } from './types';
+import {
+  getCachedExpedienteResource,
+  resolveExpedienteCacheScope,
+} from '../expediente-detail-cache';
 
 interface CommercialInterestSectionProps {
+  tenantScope?: string;
   draftValues: DraftValues;
   onChange: (field: string, value: string) => void;
   saving: boolean;
@@ -36,11 +42,19 @@ function planSublabel(plan: {
   return `${plan.technology} · ↓${plan.downloadSpeedMbps}Mbps · ↑${plan.uploadSpeedMbps}Mbps`;
 }
 
+/** Mismo formato que las opciones del listbox (`label — sublabel`): el input muestra la info del plan seleccionado. */
+function planDisplayLabel(item: { label: string; sublabel?: string | null | undefined }): string {
+  const sub = item.sublabel?.trim();
+  return sub ? `${item.label} — ${sub}` : item.label;
+}
+
 export function CommercialInterestSection({
+  tenantScope,
   draftValues,
   onChange,
   saving,
 }: CommercialInterestSectionProps) {
+  const resolvedTenantScope = tenantScope ?? resolveExpedienteCacheScope();
   const planId = draftValues.interestedPlanId?.trim() || null;
   const selectedProductIds = parseSelectedIds(draftValues.additionalProductIds);
   const selectedServiceIds = parseSelectedIds(draftValues.additionalServiceIds);
@@ -61,11 +75,15 @@ export function CommercialInterestSection({
     let cancelled = false;
     void (async () => {
       try {
-        const plan = await commercialApi.getPlanById(planId);
+        const plan = await getCachedExpedienteResource(
+          resolvedTenantScope,
+          `catalog:plan:${planId}`,
+          () => commercialApi.getPlanById(planId),
+        );
         if (!cancelled) {
           setSelectedPlanItem({
-            label: plan.name,
-            sublabel: planSublabel(plan),
+            label: planDisplayLabel({ label: plan.name, sublabel: planSublabel(plan) }),
+            sublabel: null,
           });
         }
       } catch {
@@ -78,7 +96,7 @@ export function CommercialInterestSection({
     return () => {
       cancelled = true;
     };
-  }, [planId]);
+  }, [planId, resolvedTenantScope]);
 
   useEffect(() => {
     if (selectedProductIds.length === 0) {
@@ -91,7 +109,11 @@ export function CommercialInterestSection({
       const items = await Promise.all(
         selectedProductIds.map(async (id) => {
           try {
-            const item = await commercialApi.getCatalogItemById(id);
+            const item = await getCachedExpedienteResource(
+              resolvedTenantScope,
+              `catalog:item:${id}`,
+              () => commercialApi.getCatalogItemById(id),
+            );
             return {
               id,
               label: item.name,
@@ -112,7 +134,7 @@ export function CommercialInterestSection({
     };
     // Solo re-hidratar cuando cambia el set de IDs persistidos en draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedProductIds es derivado de draft
-  }, [draftValues.additionalProductIds]);
+  }, [draftValues.additionalProductIds, resolvedTenantScope]);
 
   useEffect(() => {
     if (selectedServiceIds.length === 0) {
@@ -125,7 +147,11 @@ export function CommercialInterestSection({
       const items = await Promise.all(
         selectedServiceIds.map(async (id) => {
           try {
-            const item = await commercialApi.getCatalogItemById(id);
+            const item = await getCachedExpedienteResource(
+              resolvedTenantScope,
+              `catalog:item:${id}`,
+              () => commercialApi.getCatalogItemById(id),
+            );
             return {
               id,
               label: item.name,
@@ -145,7 +171,7 @@ export function CommercialInterestSection({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedServiceIds es derivado de draft
-  }, [draftValues.additionalServiceIds]);
+  }, [draftValues.additionalServiceIds, resolvedTenantScope]);
 
   const searchPlans = useCallback(async (query: string, signal: AbortSignal) => {
     const response = await commercialApi.searchPlansForPicker(
@@ -174,6 +200,20 @@ export function CommercialInterestSection({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
+        <Select
+          id="commercial-customerSegment"
+          label={FIELD_LABELS.customerSegment!}
+          value={draftValues.customerSegment ?? EMPTY_VALUE}
+          onChange={(event) => onChange('customerSegment', event.target.value)}
+          placeholder="Selecciona una opción"
+          disabled={saving}
+        >
+          {CUSTOMER_SEGMENT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
         <SearchablePicker
           id="commercial-interestedPlanId"
           label={FIELD_LABELS.interestedPlanId}
@@ -186,10 +226,11 @@ export function CommercialInterestSection({
               onChange('interestedPlanId', '');
               return;
             }
-            setSelectedPlanItem({ label: item.label, sublabel: item.sublabel });
+            setSelectedPlanItem({ label: planDisplayLabel(item), sublabel: null });
             onChange('interestedPlanId', item.id);
           }}
           onSearch={searchPlans}
+          minChars={0}
           placeholder="Buscar plan…"
           disabled={saving}
         />
@@ -204,6 +245,7 @@ export function CommercialInterestSection({
           onChange('additionalProductIds', JSON.stringify(next.map((item) => item.id)));
         }}
         onSearch={searchProducts}
+        minChars={0}
         placeholder="Buscar producto adicional…"
         disabled={saving}
       />
@@ -217,6 +259,7 @@ export function CommercialInterestSection({
           onChange('additionalServiceIds', JSON.stringify(next.map((item) => item.id)));
         }}
         onSearch={searchServices}
+        minChars={0}
         placeholder="Buscar servicio adicional…"
         disabled={saving}
       />

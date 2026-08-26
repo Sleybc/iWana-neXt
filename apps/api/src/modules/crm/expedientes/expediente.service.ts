@@ -14,6 +14,7 @@ import {
   ConsentStatus,
   ConsentType,
   ConsentChannel,
+  CustomerSegment,
   ExpedienteStatus,
   SubscriberStatus,
   TechnicalViabilityResult,
@@ -65,6 +66,7 @@ import {
   LinkInstallationOperationalRefsSchema,
 } from './dto/link-installation-operational-refs.dto';
 import { OperationalResponsibilityHistory } from '../responsibilities/entities/operational-responsibility-history.entity';
+import { SalesAttribution } from '../attributions/entities/sales-attribution.entity';
 import {
   DOCUMENT_SUPPORT_STATUS,
   type DocumentSupportDefinition,
@@ -80,6 +82,14 @@ import {
   isBlockingLegalComplianceStatus,
 } from '../provisioning-readiness';
 import { SubscribersService } from '../subscribers/subscribers.service';
+import {
+  type ExpedienteTimelineActorDto,
+  type ExpedienteTimelineEventDto,
+  type ExpedienteTimelineFilter,
+  type ExpedienteTimelineMetadataDto,
+  type ExpedienteTimelineResponseDto,
+  EXPEDIENTE_TIMELINE_MAX_EVENTS,
+} from './dto/expediente-timeline.dto';
 
 export interface ExpedienteTimelineActor {
   userId: string | null;
@@ -108,6 +118,15 @@ interface UploadedDocumentFile {
   mimetype: string;
   size: number;
   buffer: Buffer;
+}
+
+interface AuditTimelineRow {
+  id: string;
+  userId: string | null;
+  action: AuditAction;
+  section: string | null;
+  actorName: string | null;
+  createdAt: Date;
 }
 
 function hasActorIdentity(actor: ExpedienteTimelineActor | null | undefined): boolean {
@@ -167,6 +186,7 @@ const SECTION_FIELD_LABELS: Record<string, string> = {
   additionalProductIds: 'Productos adicionales',
   campaign: 'Campaña',
   casePriority: 'Prioridad',
+  customerSegment: 'Tipo de cliente',
   estimatedBudget: 'Presupuesto estimado',
   commercialNotes: 'Notas comerciales',
   coverageResult: 'Resultado de cobertura',
@@ -199,6 +219,11 @@ const SECTION_FIELD_LABELS: Record<string, string> = {
   specialAccessNotes: 'Notas de acceso',
   requiredMaterials: 'Materiales requeridos',
 };
+
+const TIMELINE_DEFAULT_LIMIT = 5;
+const TIMELINE_MAX_LIMIT = 50;
+const TIMELINE_MAX_OFFSET = 500;
+const TIMELINE_LEGACY_PHYSICAL_LIMIT = 50;
 
 const DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Readonly<
   Record<string, 'PERSONA_NATURAL' | 'PERSONA_JURIDICA'>
@@ -538,6 +563,7 @@ export class ExpedienteService {
         tenantId,
         fullName: dto.fullName.trim(),
         acquisitionChannel: dto.acquisitionChannel ?? AcquisitionChannel.OTRO,
+        customerSegment: dto.customerSegment,
         sourceDetail: this.normalizeOptionalText(dto.sourceDetail),
         source:
           this.normalizeOptionalText(dto.sourceDetail) ??
@@ -590,6 +616,7 @@ export class ExpedienteService {
       // SEC-P1 / E7 + GSEC-04: sin fullName (PII) en audit manual
       newValue: {
         acquisitionChannel: created.acquisitionChannel,
+        customerSegment: created.customerSegment,
         sourceDetail: created.sourceDetail,
         status: created.status,
       },
@@ -1478,6 +1505,339 @@ export class ExpedienteService {
     return this.findById(expedienteId);
   }
 
+  /**
+   * Lee el timeline paginado sin hidratar el grafo de ExpedienteRecord.
+   *
+   * Las cinco fuentes se consultan por separado y se fusionan en memoria. Es
+   * deliberado: evita un UNION entre tablas con semánticas distintas y limita
+   * cada proyección a las columnas que forman parte del contrato público.
+   */
+  async getTimelinePage(
+    id: string,
+    rawPage = 1,
+    rawLimit = TIMELINE_DEFAULT_LIMIT,
+    filter: ExpedienteTimelineFilter = 'all',
+  ): Promise<ExpedienteTimelineResponseDto> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const safeLimit = clampLimit(rawLimit, TIMELINE_MAX_LIMIT, TIMELINE_DEFAULT_LIMIT);
+    const { page, limit } = clampPage(rawPage, safeLimit, TIMELINE_MAX_OFFSET);
+    const physicalLimit = page * limit;
+
+    const source = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const expediente = await qr.manager.findOne(ExpedienteRecord, {
+        where: { id, tenantId },
+        select: ['id', 'createdBy', 'updatedAt'],
+      });
+
+      if (!expediente) {
+        throw new NotFoundException('Expediente no encontrado');
+      }
+
+      const [statusChanges, statusTotal] =
+        filter === 'all' || filter === 'pipeline'
+          ? await qr.manager.findAndCount(StatusChange, {
+              where: { tenantId, expedienteId: id },
+              select: [
+                'id',
+                'expedienteId',
+                'fromStatus',
+                'toStatus',
+                'changedAt',
+                'changedBy',
+                'actorName',
+                'reason',
+              ],
+              order: { changedAt: 'DESC', id: 'DESC' },
+              take: physicalLimit,
+            })
+          : ([[], 0] as const);
+
+      const [contactAttempts, contactTotal] =
+        filter === 'all' || filter === 'contact'
+          ? await qr.manager.findAndCount(ContactAttempt, {
+              where: { tenantId, expedienteId: id },
+              select: [
+                'id',
+                'expedienteId',
+                'attemptedAt',
+                'channel',
+                'result',
+                'durationMinutes',
+                'notes',
+                'advisorId',
+                'actorName',
+              ],
+              order: { attemptedAt: 'DESC', id: 'DESC' },
+              take: physicalLimit,
+            })
+          : ([[], 0] as const);
+
+      const [responsibilities, responsibilityTotal] =
+        filter === 'all' || filter === 'asignaciones'
+          ? await qr.manager.findAndCount(OperationalResponsibilityHistory, {
+              where: { tenantId, expedienteId: id },
+              select: [
+                'id',
+                'expedienteId',
+                'previousResponsibleUserId',
+                'newResponsibleUserId',
+                'changedBy',
+                'changedAt',
+                'notes',
+              ],
+              order: { changedAt: 'DESC', id: 'DESC' },
+              take: physicalLimit,
+            })
+          : ([[], 0] as const);
+
+      const [attributions, attributionTotal] =
+        filter === 'all' || filter === 'asignaciones'
+          ? await qr.manager.findAndCount(SalesAttribution, {
+              where: { tenantId, expedienteId: id },
+              select: [
+                'id',
+                'expedienteId',
+                'actorId',
+                'actorRole',
+                'actorName',
+                'acquisitionChannel',
+                'attributedAt',
+                'attributedBy',
+                'revokedAt',
+                'revokedBy',
+                'revokedReason',
+              ],
+              order: { attributedAt: 'DESC', id: 'DESC' },
+              take: physicalLimit,
+            })
+          : ([[], 0] as const);
+
+      const { rows: auditLogs, total: auditTotal } =
+        filter === 'all' || filter === 'system'
+          ? await this.findAuditTimelineRows(qr.manager, tenantId, id, physicalLimit)
+          : { rows: [], total: 0 };
+
+      return {
+        expediente,
+        statusChanges,
+        statusTotal,
+        contactAttempts,
+        contactTotal,
+        responsibilities,
+        responsibilityTotal,
+        attributions,
+        attributionTotal,
+        auditLogs,
+        auditTotal,
+      };
+    });
+
+    const actorIds = new Set<string>();
+    if (source.expediente.createdBy) actorIds.add(source.expediente.createdBy);
+    for (const change of source.statusChanges) actorIds.add(change.changedBy);
+    for (const attempt of source.contactAttempts) actorIds.add(attempt.advisorId);
+    for (const history of source.responsibilities) {
+      if (history.previousResponsibleUserId) actorIds.add(history.previousResponsibleUserId);
+      actorIds.add(history.newResponsibleUserId);
+      actorIds.add(history.changedBy);
+    }
+    for (const attribution of source.attributions) {
+      actorIds.add(attribution.attributedBy);
+      if (attribution.revokedBy) actorIds.add(attribution.revokedBy);
+    }
+    for (const log of source.auditLogs) {
+      if (log.userId) actorIds.add(log.userId);
+    }
+
+    const actors =
+      actorIds.size > 0
+        ? await this.crmActorReadPort.findByIds(schemaName, Array.from(actorIds))
+        : [];
+    const actorMap = new Map(actors.map((actor) => [actor.id, actor]));
+    const getActor = (userId: string | null | undefined): ExpedienteTimelineActorDto => {
+      if (!userId) return { userId: null, name: null, role: null };
+      const actor = actorMap.get(userId);
+      return {
+        userId,
+        name: actor?.name ?? null,
+        role: actor?.role ?? null,
+      };
+    };
+
+    const events: ExpedienteTimelineEventDto[] = [
+      ...source.contactAttempts.map(
+        (attempt): ExpedienteTimelineEventDto => ({
+          kind: 'contact',
+          id: attempt.id,
+          attemptedAt: attempt.attemptedAt,
+          channel: attempt.channel,
+          result: attempt.result,
+          durationMinutes: attempt.durationMinutes,
+          notes: attempt.notes,
+          actor: attempt.actorName
+            ? {
+                userId: attempt.advisorId,
+                name: attempt.actorName,
+                role: getActor(attempt.advisorId).role,
+              }
+            : getActor(attempt.advisorId),
+        }),
+      ),
+      ...source.responsibilities.map(
+        (history): ExpedienteTimelineEventDto => ({
+          kind: 'responsibility',
+          id: history.id,
+          changedAt: history.changedAt,
+          previousResponsible: history.previousResponsibleUserId
+            ? getActor(history.previousResponsibleUserId)
+            : null,
+          newResponsible: getActor(history.newResponsibleUserId),
+          actor: getActor(history.changedBy),
+          notes: history.notes,
+        }),
+      ),
+      ...source.attributions.map(
+        (attribution): ExpedienteTimelineEventDto => ({
+          kind: 'attribution',
+          id: attribution.id,
+          attributedAt: attribution.attributedAt,
+          revokedAt: attribution.revokedAt,
+          revokedReason: attribution.revokedReason,
+          actorName: attribution.actorName,
+          actorRole: attribution.actorRole,
+          acquisitionChannel: attribution.acquisitionChannel,
+          attributedBy: getActor(attribution.attributedBy),
+        }),
+      ),
+      ...source.statusChanges.map(
+        (change): ExpedienteTimelineEventDto => ({
+          kind: 'pipeline',
+          id: change.id,
+          changedAt: change.changedAt,
+          fromStatus: change.fromStatus,
+          toStatus: change.toStatus,
+          reason: change.reason,
+          actor: change.actorName
+            ? {
+                userId: change.changedBy,
+                name: change.actorName,
+                role: getActor(change.changedBy).role,
+              }
+            : getActor(change.changedBy),
+        }),
+      ),
+      ...source.auditLogs.flatMap((log): ExpedienteTimelineEventDto[] => {
+        const section = log.section;
+        if (log.action === AuditAction.CREATE) {
+          return [
+            {
+              kind: 'system',
+              id: log.id,
+              occurredAt: log.createdAt,
+              type: 'CREATED',
+              sectionLabel: null,
+              reason: null,
+              actor: log.actorName
+                ? { userId: log.userId, name: log.actorName, role: getActor(log.userId).role }
+                : getActor(log.userId),
+            },
+          ];
+        }
+
+        if (log.action !== AuditAction.UPDATE || !section) return [];
+        return [
+          {
+            kind: 'system',
+            id: log.id,
+            occurredAt: log.createdAt,
+            type: 'SECTION_UPDATED',
+            sectionLabel: SECTION_LABELS[section] ?? section,
+            reason: 'Sección actualizada',
+            actor: log.actorName
+              ? { userId: log.userId, name: log.actorName, role: getActor(log.userId).role }
+              : getActor(log.userId),
+          },
+        ];
+      }),
+    ];
+
+    events.sort((left, right) => {
+      const dateDifference =
+        this.getTimelineEventDate(right).getTime() - this.getTimelineEventDate(left).getTime();
+      return dateDifference !== 0 ? dateDifference : right.id.localeCompare(left.id);
+    });
+
+    const totalSource =
+      source.statusTotal +
+      source.contactTotal +
+      source.responsibilityTotal +
+      source.attributionTotal +
+      source.auditTotal;
+    const maxReachableEvents = Math.floor(EXPEDIENTE_TIMELINE_MAX_EVENTS / limit) * limit;
+    const totalAvailable = Math.min(totalSource, maxReachableEvents);
+    const start = (page - 1) * limit;
+    const pagedEvents = events.slice(start, start + limit);
+    const createdBy = getActor(source.expediente.createdBy);
+    const lastEvent = events[0];
+    const lastEditedBy = lastEvent ? this.getTimelineEventActor(lastEvent) : createdBy;
+    const metadata: ExpedienteTimelineMetadataDto = {
+      createdBy,
+      lastEditedBy,
+      lastActivityAt: lastEvent
+        ? this.getTimelineEventDate(lastEvent)
+        : source.expediente.updatedAt,
+    };
+
+    return {
+      data: { events: pagedEvents, metadata },
+      meta: {
+        page,
+        limit,
+        total: totalAvailable,
+        totalPages: Math.ceil(totalAvailable / limit),
+        truncated: totalSource > totalAvailable,
+        hasMore: page < Math.ceil(totalAvailable / limit),
+      },
+    };
+  }
+
+  private async findAuditTimelineRows(
+    manager: EntityManager,
+    tenantId: string,
+    expedienteId: string,
+    physicalLimit: number,
+  ): Promise<{ rows: AuditTimelineRow[]; total: number }> {
+    const buildQuery = () =>
+      manager
+        .createQueryBuilder(AuditLog, 'audit')
+        .where('audit.tenant_id = :tenantId', { tenantId })
+        .andWhere('audit.entity_type = :entityType', { entityType: 'ExpedienteRecord' })
+        .andWhere('audit.entity_id = :expedienteId', { expedienteId })
+        .andWhere("NOT (COALESCE(audit.new_value, '{}'::jsonb) ? 'piiaAccess')")
+        .andWhere(
+          "(audit.action = :createAction OR (audit.action = :updateAction AND COALESCE(audit.new_value, '{}'::jsonb) ? 'section'))",
+          { createAction: AuditAction.CREATE, updateAction: AuditAction.UPDATE },
+        );
+
+    const rows = await buildQuery()
+      .select('audit.id', 'id')
+      .addSelect('audit.user_id', 'userId')
+      .addSelect('audit.action', 'action')
+      .addSelect("audit.new_value ->> 'section'", 'section')
+      .addSelect("audit.new_value ->> 'actorName'", 'actorName')
+      .addSelect('audit.created_at', 'createdAt')
+      .orderBy('audit.created_at', 'DESC')
+      .addOrderBy('audit.id', 'DESC')
+      .take(physicalLimit)
+      .getRawMany<AuditTimelineRow>();
+
+    const countRow = await buildQuery()
+      .select('COUNT(audit.id)', 'count')
+      .getRawOne<{ count: string }>();
+
+    return { rows, total: Number(countRow?.count ?? 0) };
+  }
+
   async getTimelineSummary(id: string): Promise<{
     changes: Array<{
       id: string;
@@ -1490,182 +1850,141 @@ export class ExpedienteService {
     activities: ExpedienteActivityItem[];
     metadata: ExpedienteOperationalMetadata;
   }> {
-    const { schemaName } = TenantContext.getOrThrow();
-    const entity = await this.findById(id);
+    const page = await this.getTimelinePage(id, 1, TIMELINE_LEGACY_PHYSICAL_LIMIT, 'all');
+    const changes: Array<{
+      id: string;
+      fromStatus: string;
+      toStatus: string;
+      changedAt: Date;
+      reason: string | null;
+      actor: ExpedienteTimelineActor;
+    }> = [];
+    const activities: ExpedienteActivityItem[] = [];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const auditLogs = await qr.manager.find(AuditLog, {
-        where: { entityType: 'ExpedienteRecord', entityId: id },
-        order: { createdAt: 'DESC' },
-      });
-
-      const actorIds = new Set<string>();
-
-      if (entity.createdBy) {
-        actorIds.add(entity.createdBy);
+    for (const event of page.data.events) {
+      if (event.kind === 'pipeline') {
+        const actor = this.toLegacyTimelineActor(event.actor);
+        changes.push({
+          id: event.id,
+          fromStatus: event.fromStatus,
+          toStatus: event.toStatus,
+          changedAt: event.changedAt,
+          reason: event.reason,
+          actor,
+        });
+        activities.push({
+          id: `status:${event.id}`,
+          type: 'STATUS_CHANGED',
+          occurredAt: event.changedAt,
+          actor,
+          sectionLabel: null,
+          fromStatus: event.fromStatus,
+          toStatus: event.toStatus,
+          reason: event.reason,
+        });
+        continue;
       }
 
-      for (const change of entity.statusChanges ?? []) {
-        if (change.changedBy) {
-          actorIds.add(change.changedBy);
-        }
-      }
-
-      for (const attempt of entity.contactAttempts ?? []) {
-        if (attempt.advisorId) {
-          actorIds.add(attempt.advisorId);
-        }
-      }
-
-      for (const log of auditLogs) {
-        if (log.userId) {
-          actorIds.add(log.userId);
-        }
-      }
-
-      const actors = actorIds.size
-        ? await this.crmActorReadPort.findByIds(schemaName, Array.from(actorIds))
-        : [];
-
-      const actorMap = new Map<string, ExpedienteTimelineActor>();
-      for (const actor of actors) {
-        actorMap.set(actor.id, { userId: actor.id, name: actor.name });
-      }
-
-      const getActor = (userId: string | null | undefined): ExpedienteTimelineActor => {
-        if (!userId) {
-          return { userId: null, name: null };
-        }
-
-        return actorMap.get(userId) ?? { userId, name: null };
-      };
-
-      const changes = [...(entity.statusChanges ?? [])]
-        .sort((left, right) => right.changedAt.getTime() - left.changedAt.getTime())
-        .map((change) => ({
-          id: change.id,
-          fromStatus: change.fromStatus,
-          toStatus: change.toStatus,
-          changedAt: change.changedAt,
-          reason: change.reason,
-          actor: change.actorName
-            ? { userId: change.changedBy, name: change.actorName }
-            : getActor(change.changedBy),
-        }));
-
-      const statusActivities: ExpedienteActivityItem[] = changes.map((change) => ({
-        id: `status:${change.id}`,
-        type: 'STATUS_CHANGED',
-        occurredAt: change.changedAt,
-        actor: change.actor,
-        sectionLabel: null,
-        fromStatus: change.fromStatus,
-        toStatus: change.toStatus,
-        reason: change.reason,
-      }));
-
-      const auditActivities: ExpedienteActivityItem[] = [];
-      const contactAttemptActivities: ExpedienteActivityItem[] = [...(entity.contactAttempts ?? [])]
-        .sort((left, right) => right.attemptedAt.getTime() - left.attemptedAt.getTime())
-        .map((attempt) => ({
-          id: `contact:${attempt.id}`,
+      if (event.kind === 'contact') {
+        activities.push({
+          id: `contact:${event.id}`,
           type: 'CONTACT_ATTEMPT',
-          occurredAt: attempt.attemptedAt,
-          actor: attempt.actorName
-            ? { userId: attempt.advisorId, name: attempt.actorName }
-            : getActor(attempt.advisorId),
+          occurredAt: event.attemptedAt,
+          actor: this.toLegacyTimelineActor(event.actor),
           sectionLabel: 'Intento de contacto',
           fromStatus: null,
           toStatus: null,
-          reason: attempt.notes,
-        }));
-
-      for (const log of auditLogs) {
-        const newValue = log.newValue ?? null;
-        const isPiiAccessLog = typeof newValue?.['piiaAccess'] === 'string';
-
-        // Evita ruido en la bitácora funcional: acceso PII no es edición de sección.
-        if (isPiiAccessLog) {
-          continue;
-        }
-
-        const section =
-          typeof newValue?.['section'] === 'string' ? String(newValue['section']) : null;
-        const changedFields = this.extractChangedFieldsFromAuditLog(newValue, section);
-        const actorNameFromLog =
-          typeof newValue?.['actorName'] === 'string' ? String(newValue['actorName']) : null;
-        const actor = actorNameFromLog
-          ? { userId: log.userId, name: actorNameFromLog }
-          : getActor(log.userId);
-
-        if (log.action === AuditAction.CREATE) {
-          auditActivities.push({
-            id: `audit:${log.id}`,
-            type: 'CREATED',
-            occurredAt: log.createdAt,
-            actor,
-            sectionLabel: null,
-            fromStatus: null,
-            toStatus: null,
-            reason: null,
-          });
-          continue;
-        }
-
-        if (log.action === AuditAction.UPDATE && section) {
-          auditActivities.push({
-            id: `audit:${log.id}`,
-            type: 'SECTION_UPDATED',
-            occurredAt: log.createdAt,
-            actor,
-            sectionLabel: SECTION_LABELS[section] ?? section,
-            fromStatus: null,
-            toStatus: null,
-            reason: this.buildAuditChangeSummary(changedFields),
-          });
-        }
+          reason: event.notes,
+        });
+        continue;
       }
 
-      const activities = [
-        ...statusActivities,
-        ...auditActivities,
-        ...contactAttemptActivities,
-      ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+      if (event.kind === 'system') {
+        activities.push({
+          id: `audit:${event.id}`,
+          type: event.type,
+          occurredAt: event.occurredAt,
+          actor: this.toLegacyTimelineActor(event.actor),
+          sectionLabel: event.sectionLabel,
+          fromStatus: null,
+          toStatus: null,
+          reason: event.reason,
+        });
+        continue;
+      }
 
-      const createAuditActor = auditActivities
-        .filter((activity) => activity.type === 'CREATED')
-        .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime())
-        .find(
-          (activity) => hasActorName(activity.actor) || hasActorIdentity(activity.actor),
-        )?.actor;
+      if (event.kind === 'responsibility') {
+        activities.push({
+          id: `responsibility:${event.id}`,
+          type: 'SECTION_UPDATED',
+          occurredAt: event.changedAt,
+          actor: this.toLegacyTimelineActor(event.actor),
+          sectionLabel: 'Responsable operativo',
+          fromStatus: null,
+          toStatus: null,
+          reason: event.notes,
+        });
+        continue;
+      }
 
-      const firstKnownActor = [...auditActivities]
-        .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime())
-        .find(
-          (activity) => hasActorName(activity.actor) || hasActorIdentity(activity.actor),
-        )?.actor;
+      activities.push({
+        id: `attribution:${event.id}`,
+        type: 'SECTION_UPDATED',
+        occurredAt: event.attributedAt,
+        actor: this.toLegacyTimelineActor(event.attributedBy),
+        sectionLabel: 'Atribución comercial',
+        fromStatus: null,
+        toStatus: null,
+        reason: event.revokedReason ?? 'Atribución comercial registrada',
+      });
+    }
 
-      const createdByFromEntity = getActor(entity.createdBy);
-      const createdBy = hasActorName(createdByFromEntity)
-        ? createdByFromEntity
-        : (createAuditActor ?? firstKnownActor ?? createdByFromEntity);
-
-      const lastEditedBy =
-        activities.find(
-          (activity) => hasActorName(activity.actor) || hasActorIdentity(activity.actor),
-        )?.actor ?? createdBy;
-      const lastActivityAt = activities[0]?.occurredAt ?? entity.updatedAt;
-
-      return {
-        changes,
-        activities,
-        metadata: {
-          createdBy,
-          lastEditedBy,
-          lastActivityAt,
-        },
-      };
+    activities.sort((left, right) => {
+      const dateDifference = right.occurredAt.getTime() - left.occurredAt.getTime();
+      return dateDifference !== 0 ? dateDifference : right.id.localeCompare(left.id);
     });
+
+    return {
+      changes,
+      activities,
+      metadata: {
+        createdBy: this.toLegacyTimelineActor(page.data.metadata.createdBy),
+        lastEditedBy: this.toLegacyTimelineActor(page.data.metadata.lastEditedBy),
+        lastActivityAt: page.data.metadata.lastActivityAt,
+      },
+    };
+  }
+
+  private getTimelineEventDate(event: ExpedienteTimelineEventDto): Date {
+    switch (event.kind) {
+      case 'contact':
+        return event.attemptedAt;
+      case 'responsibility':
+        return event.changedAt;
+      case 'attribution':
+        return event.attributedAt;
+      case 'pipeline':
+        return event.changedAt;
+      case 'system':
+        return event.occurredAt;
+    }
+  }
+
+  private getTimelineEventActor(event: ExpedienteTimelineEventDto): ExpedienteTimelineActorDto {
+    switch (event.kind) {
+      case 'contact':
+      case 'pipeline':
+      case 'system':
+        return event.actor;
+      case 'responsibility':
+        return event.actor;
+      case 'attribution':
+        return event.attributedBy;
+    }
+  }
+
+  private toLegacyTimelineActor(actor: ExpedienteTimelineActorDto): ExpedienteTimelineActor {
+    return { userId: actor.userId, name: actor.name };
   }
 
   /**
@@ -1754,7 +2073,9 @@ export class ExpedienteService {
             result.sourceDetail = source;
           }
         }
-        if (data.interestedPlanId) result.interestedPlanId = String(data.interestedPlanId);
+        if ('interestedPlanId' in data) {
+          result.interestedPlanId = this.normalizeOptionalText(data.interestedPlanId);
+        }
         if ('additionalProductIds' in data) {
           const parsedAdditionalProducts = this.parseStringArray(data.additionalProductIds);
           result.additionalProductIds = parsedAdditionalProducts ?? [];
@@ -1765,6 +2086,22 @@ export class ExpedienteService {
         }
         if (data.campaign) result.campaign = String(data.campaign);
         if (data.casePriority) result.casePriority = String(data.casePriority);
+        if ('customerSegment' in data) {
+          const rawSegment = data.customerSegment;
+          if (rawSegment === null || rawSegment === undefined || rawSegment === '') {
+            result.customerSegment = null;
+          } else {
+            if (typeof rawSegment !== 'string') {
+              throw new BadRequestException('Tipo de cliente no es un valor permitido');
+            }
+            const allowedSegment = this.requireAllowedValue(
+              rawSegment,
+              Object.values(CustomerSegment),
+              'Tipo de cliente',
+            );
+            result.customerSegment = allowedSegment as CustomerSegment;
+          }
+        }
         if (data.estimatedBudget) result.estimatedBudget = Number(data.estimatedBudget);
         if (data.commercialNotes) result.commercialNotes = String(data.commercialNotes);
         break;

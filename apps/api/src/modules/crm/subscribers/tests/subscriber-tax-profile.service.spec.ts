@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
   TaxAssignmentRateSource,
@@ -16,6 +16,8 @@ import {
 import { TaxDefinitionSnapshot } from '../../../taxation/ports/tax-catalog-read.port';
 import { SubscriberTaxProfileService } from '../subscriber-tax-profile.service';
 import { TaxCatalogReadPort } from '../../../taxation/ports/tax-catalog-read.port';
+import { ITaxApplicationReadPort } from '../../../taxation/ports/tax-application-read.port';
+import { VatTreatmentService } from '../vat-treatment.service';
 
 // ── Mocks de @iwana/db ──────────────────────────────────────────────────────────
 const mockRunInTenantSchema = jest.fn();
@@ -124,6 +126,7 @@ function makeIvaDef(): TaxDefinitionSnapshot {
 describe('SubscriberTaxProfileService', () => {
   let service: SubscriberTaxProfileService;
   let taxCatalogPort: jest.Mocked<TaxCatalogReadPort>;
+  let taxApplicationPort: { resolve: jest.Mock; hasActiveCoverage: jest.Mock };
   let managerMock: {
     findOne: jest.Mock;
     find: jest.Mock;
@@ -158,11 +161,21 @@ describe('SubscriberTaxProfileService', () => {
       resolveSystemPreset: jest.fn(),
     } as unknown as jest.Mocked<TaxCatalogReadPort>;
 
+    taxApplicationPort = {
+      resolve: jest.fn().mockResolvedValue([]),
+      hasActiveCoverage: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriberTaxProfileService,
+        VatTreatmentService,
         { provide: DataSource, useValue: {} },
         { provide: TaxCatalogReadPort, useValue: taxCatalogPort },
+        {
+          provide: ITaxApplicationReadPort,
+          useValue: taxApplicationPort,
+        },
       ],
     }).compile();
 
@@ -227,6 +240,13 @@ describe('SubscriberTaxProfileService', () => {
         }),
       );
       expect(taxCatalogPort.findActiveByCode).toHaveBeenCalledWith('IVA_19');
+      expect(taxApplicationPort.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          personType: PersonType.NATURAL,
+          segment: CustomerSegment.RESIDENTIAL,
+          stratum: 2,
+        }),
+      );
       expect(result.id).toBe('profile-001');
     });
   });
@@ -356,7 +376,7 @@ describe('SubscriberTaxProfileService', () => {
       label: string;
       personType: PersonType;
       stratum: number | null;
-      expectedTreatment: TaxTreatment;
+      expectedTreatment: TaxTreatment | null;
     }> = [
       {
         label: 'Natural estrato 1 → EXEMPT',
@@ -383,10 +403,10 @@ describe('SubscriberTaxProfileService', () => {
         expectedTreatment: TaxTreatment.STANDARD,
       },
       {
-        label: 'Natural sin estrato → STANDARD',
+        label: 'Natural sin estrato → error',
         personType: PersonType.NATURAL,
         stratum: null,
-        expectedTreatment: TaxTreatment.STANDARD,
+        expectedTreatment: null,
       },
       {
         label: 'Jurídica estrato 1 → STANDARD',
@@ -416,10 +436,68 @@ describe('SubscriberTaxProfileService', () => {
       });
       managerMock.save.mockResolvedValue({});
 
+      if (expectedTreatment === null) {
+        await expect(service.suggestVatForSubscriber('sub-001')).rejects.toThrow(
+          BadRequestException,
+        );
+        return;
+      }
+
       await service.suggestVatForSubscriber('sub-001');
 
       const created = createdAssignments[0] as { treatment: TaxTreatment };
       expect(created.treatment).toBe(expectedTreatment);
+      expect(taxApplicationPort.resolve).toHaveBeenCalled();
+    });
+
+    it('sugiere tributos no IVA que devolvió ITaxApplicationReadPort', async () => {
+      const subscriber = makeSubscriber({ stratum: 4 });
+      const profile = makeProfile({ assignments: [] });
+      const ivaDef = makeIvaDef();
+      const reteDef: TaxDefinitionSnapshot = {
+        ...makeIvaDef(),
+        id: 'taxdef-rete-001',
+        code: 'RETEFUENTE',
+        name: 'Retención en la fuente',
+        category: TaxCategory.WITHHOLDING,
+      };
+
+      taxApplicationPort.resolve.mockResolvedValueOnce([
+        {
+          taxDefinitionId: reteDef.id,
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: 2.5,
+          ruleId: 'rule-1',
+          priorityMatched: 10,
+        },
+      ]);
+
+      managerMock.findOne
+        .mockResolvedValueOnce(subscriber)
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(profile);
+
+      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(ivaDef);
+      taxCatalogPort.findById.mockResolvedValueOnce(reteDef);
+
+      const createdAssignments: Array<{ taxDefinitionId: string; reason: string | null }> = [];
+      managerMock.create.mockImplementation(
+        (_entity: unknown, data: { taxDefinitionId: string; reason: string | null }) => {
+          createdAssignments.push(data);
+          return data;
+        },
+      );
+      managerMock.save.mockResolvedValue({});
+
+      await service.suggestVatForSubscriber('sub-001');
+
+      expect(createdAssignments.map((item) => item.taxDefinitionId)).toEqual([
+        ivaDef.id,
+        reteDef.id,
+      ]);
+      expect(createdAssignments[1]?.reason).toBe('Sugerido por reglas de aplicación tributaria');
     });
   });
 });

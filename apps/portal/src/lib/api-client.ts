@@ -399,7 +399,6 @@ async function request<T>(
   tenantSlugOverride?: string,
 ): Promise<T> {
   const resolvedTenantSlug = getTenantSlug(tenantSlugOverride);
-  const token = readStoredAccessToken();
 
   if (terminalSessionError && !options?.skipAuth && !options?.skipRefreshRetry) {
     throw terminalSessionError;
@@ -413,10 +412,6 @@ async function request<T>(
   }
 
   headers.set('X-Tenant-Slug', resolvedTenantSlug);
-
-  if (!options?.skipAuth && token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
 
   // C-2 (ADR-081): los métodos mutantes autenticados por cookie requieren una
   // cabecera personalizada que el navegador no adjunta cross-origin sin
@@ -442,13 +437,14 @@ async function request<T>(
 
   if (res.status === 401 && !options?.skipAuth && !options?.skipRefreshRetry) {
     try {
-      const renewedToken = await refreshAccessToken(resolvedTenantSlug);
+      await refreshAccessToken(resolvedTenantSlug);
+      const retryHeaders = new Headers(headers);
+      // La cookie httpOnly renovada es la credencial canónica. No reutilizar un
+      // Bearer en memoria: puede ser el token vencido que provocó el 401.
+      retryHeaders.delete('Authorization');
       const retryOptions: RequestOptions = {
         ...options,
-        headers: {
-          ...Object.fromEntries(headers.entries()),
-          Authorization: `Bearer ${renewedToken}`,
-        },
+        headers: retryHeaders,
         skipRefreshRetry: true,
       };
 
@@ -1246,12 +1242,13 @@ export interface TaxApplicationSnapshot {
 }
 
 export interface SimulateTaxDto {
+  personType: 'NATURAL' | 'JURIDICA';
   segment: 'RESIDENTIAL' | 'SOHO' | 'PYME' | 'CORPORATE';
   stratum?: number;
   municipalityCode?: string;
 }
 
-/** Resultado del endpoint POST /commercial/tax/simulate. */
+/** Resultado del endpoint POST /taxation/tax/simulate. */
 export interface SimulateTaxResult {
   applications: TaxApplicationSnapshot[];
   winnerRuleId: string | null;
@@ -1343,6 +1340,8 @@ export type CommercialCatalogSort = 'CATEGORY_NAME' | 'ACTIVE_NAME' | 'RECENTLY_
  * Ofertas: `offerStatus=expiring`.
  */
 export interface CommercialListParams {
+  /** Página 1-based (modo page). Excluyente con `cursor`. */
+  page?: number;
   cursor?: string;
   limit?: number;
   /** Filtro ILIKE por nombre (catálogo). */
@@ -1363,6 +1362,9 @@ export interface CommercialListParams {
    * Sin valor: name ASC (planes/servicios). Productos FE siempre envían sort.
    */
   sort?: CommercialCatalogSort;
+  /** Orden por columna (planes, ADR-065). Requiere `sortDir`. */
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
 }
 
 /**
@@ -1432,11 +1434,39 @@ function normalizeCommercialPaginatedResponse<T>(body: unknown): CommercialPagin
   return empty;
 }
 
+/**
+ * Detalle de catálogo: acepta ítem plano o residual H-11 `{ data: item }`
+ * tras un unwrap incompleto. Exige `name` legible.
+ */
+function unwrapCommercialCatalogItem(payload: unknown): CommercialCatalogItemPayload {
+  if (!payload || typeof payload !== 'object') {
+    throw new ApiError(500, 'INVALID_CATALOG_ITEM', 'Ítem de catálogo inválido');
+  }
+
+  const root = payload as Record<string, unknown>;
+  if (typeof root['name'] === 'string' && root['name'].trim()) {
+    return payload as CommercialCatalogItemPayload;
+  }
+
+  const nested = root['data'];
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const inner = nested as Record<string, unknown>;
+    if (typeof inner['name'] === 'string' && inner['name'].trim()) {
+      return nested as CommercialCatalogItemPayload;
+    }
+  }
+
+  throw new ApiError(500, 'INVALID_CATALOG_ITEM', 'Ítem de catálogo sin nombre');
+}
+
 function buildCommercialListQuery(
   params?: CommercialListParams,
   extra?: Record<string, string | undefined>,
 ): string {
   const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) {
+    searchParams.set('page', String(params.page));
+  }
   if (params?.cursor) {
     searchParams.set('cursor', params.cursor);
   }
@@ -1465,6 +1495,12 @@ function buildCommercialListQuery(
   }
   if (params?.sort) {
     searchParams.set('sort', params.sort);
+  }
+  if (params?.sortBy) {
+    searchParams.set('sortBy', params.sortBy);
+  }
+  if (params?.sortDir) {
+    searchParams.set('sortDir', params.sortDir);
   }
   if (extra) {
     for (const [key, value] of Object.entries(extra)) {
@@ -2204,21 +2240,13 @@ export const commercialApi = {
 
   /** Detalle de ítem de catálogo por ID (snapshot de plan / resolución de nombre). */
   getCatalogItemById: async (itemId: string, tenantSlug?: string) => {
-    const item = await request<CommercialCatalogItemPayload>(
-      `/commercial/catalog/${itemId}`,
-      undefined,
-      tenantSlug,
-    );
-    return item;
+    const raw = await request<unknown>(`/commercial/catalog/${itemId}`, undefined, tenantSlug);
+    return unwrapCommercialCatalogItem(raw);
   },
 
   getPlanById: async (planId: string, tenantSlug?: string): Promise<PlanCatalogItem> => {
-    const item = await request<CommercialCatalogItemPayload>(
-      `/commercial/catalog/${planId}`,
-      undefined,
-      tenantSlug,
-    );
-    return mapCommercialPlan(item);
+    const raw = await request<unknown>(`/commercial/catalog/${planId}`, undefined, tenantSlug);
+    return mapCommercialPlan(unwrapCommercialCatalogItem(raw));
   },
 
   /** Lista bundles del tenant (cursor + total). */
@@ -2372,7 +2400,7 @@ export const commercialApi = {
     tenantSlug?: string,
   ): Promise<CommercialPaginatedList<TaxRule>> => {
     const response = await request<CommercialCatalogListResponse<TaxRule>>(
-      `/commercial/tax-rules${buildCommercialListQuery(params)}`,
+      `/taxation/tax-rules${buildCommercialListQuery(params)}`,
       { returnFullResponse: true },
       tenantSlug,
     );
@@ -2396,7 +2424,7 @@ export const commercialApi = {
     tenantSlug?: string,
   ) =>
     request<TaxRule>(
-      '/commercial/tax-rules',
+      '/taxation/tax-rules',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,
     ),
@@ -2472,7 +2500,7 @@ export const commercialApi = {
     tenantSlug?: string,
   ): Promise<CommercialPaginatedList<TaxRuleApplication>> => {
     const response = await request<CommercialCatalogListResponse<TaxRuleApplication>>(
-      `/commercial/tax-rule-applications${buildCommercialListQuery(params)}`,
+      `/taxation/tax-rule-applications${buildCommercialListQuery(params)}`,
       { returnFullResponse: true },
       tenantSlug,
     );
@@ -2482,7 +2510,7 @@ export const commercialApi = {
   /** Crea aplicaci?n tributaria (vincula regla con definici?n del cat?logo). */
   createTaxRuleApplication: (dto: CreateTaxRuleApplicationDto, tenantSlug?: string) =>
     request<TaxRuleApplication>(
-      '/commercial/tax-rule-applications',
+      '/taxation/tax-rule-applications',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,
     ),
@@ -2490,21 +2518,21 @@ export const commercialApi = {
   /** Actualiza aplicaci?n tributaria (tratamiento, tasa override, prioridad). */
   updateTaxRuleApplication: (id: string, dto: UpdateTaxRuleApplicationDto, tenantSlug?: string) =>
     request<TaxRuleApplication>(
-      `/commercial/tax-rule-applications/${id}`,
+      `/taxation/tax-rule-applications/${id}`,
       { method: 'PATCH', body: JSON.stringify(dto) },
       tenantSlug,
     ),
 
   /** Elimina aplicaci?n tributaria. */
   deleteTaxRuleApplication: (id: string, tenantSlug?: string) =>
-    request<void>(`/commercial/tax-rule-applications/${id}`, { method: 'DELETE' }, tenantSlug),
+    request<void>(`/taxation/tax-rule-applications/${id}`, { method: 'DELETE' }, tenantSlug),
 
   // ?? Simulador ????????????????????????????????????????????????????????????
 
   /** Simula los impuestos que aplican a un cliente dado segmento, estrato y municipio. */
   simulateTax: (dto: SimulateTaxDto, tenantSlug?: string) =>
     request<SimulateTaxResult>(
-      '/commercial/tax/simulate',
+      '/taxation/tax/simulate',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,
     ),
@@ -4718,7 +4746,18 @@ export const usersApi = {
     if (params?.search) searchParams.set('search', params.search);
 
     const query = searchParams.toString();
-    return request<ListUsersResponse>(`/users${query ? `?${query}` : ''}`, undefined, tenantSlug);
+    return request<{
+      data?: InternalUser[];
+      meta?: Partial<ListMeta> | null;
+    } | null>(`/users${query ? `?${query}` : ''}`, undefined, tenantSlug).then((response) => {
+      const data = Array.isArray(response?.data) ? response.data : [];
+      const meta = normalizeListMeta(response?.meta, {
+        dataLength: data.length,
+        ...(params?.limit !== undefined ? { limit: params.limit } : {}),
+      });
+
+      return { data, meta } satisfies ListUsersResponse;
+    });
   },
 
   getById: (id: string, tenantSlug?: string) =>
@@ -5022,6 +5061,51 @@ export interface ExpedienteSubscriberSummary {
   fullName: string;
 }
 
+/**
+ * Proyección segura para abrir el detalle sin cargar la información operativa
+ * completa. Los campos de ubicación, contacto y formulario solo pertenecen al
+ * detalle legacy bajo demanda.
+ */
+export interface ExpedienteDetailSummary {
+  id: string;
+  status: ExpedienteStatus;
+  previousStatus: ExpedienteStatus | null;
+  statusChangedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  fullName: string;
+  documentType: string | null;
+  personType: string | null;
+  dataConsentRevoked: boolean;
+  hasLocation: boolean;
+  source: string;
+  acquisitionChannel: AcquisitionChannel;
+  interestedPlanId: string | null;
+  additionalProductIds: string[];
+  additionalServiceIds: string[];
+}
+
+export interface ExpedienteDetailAttributionSummary {
+  id: string;
+  expedienteId: string;
+  attributionRole: string;
+  actorRole: string;
+  actorName: string;
+  acquisitionChannel: AcquisitionChannel;
+  attributedAt: string;
+  revokedAt: string | null;
+}
+
+export interface ExpedienteDetailBootstrap {
+  expediente: ExpedienteDetailSummary;
+  completeness: CompletenessResult;
+  pipelineRecommendation: PipelineRecommendation | null;
+  operationalMetadata: ExpedienteOperationalMetadata;
+  currentAttribution: ExpedienteDetailAttributionSummary | null;
+  responsibility: ResponsibilitySnapshot | null;
+  subscriberSummary: ExpedienteSubscriberSummary | null;
+}
+
 export interface ExpedienteRecord {
   id: string;
   tenantId: string;
@@ -5066,6 +5150,7 @@ export interface ExpedienteRecord {
   zoneType?: string | null;
   source: string;
   acquisitionChannel: AcquisitionChannel;
+  customerSegment: CustomerSegment | null;
   sourceDetail?: string | null;
   interestedPlanId: string | null;
   additionalProductIds?: string[] | null;
@@ -5370,6 +5455,7 @@ export interface SaveTaxAssignmentsPayload {
 
 export interface CreateExpedienteDto {
   fullName: string;
+  customerSegment: CustomerSegment;
   acquisitionChannel: AcquisitionChannel;
   sourceDetail?: string;
   source?: string;
@@ -5528,6 +5614,103 @@ export interface ExpedienteActivityItem {
   reason: string | null;
 }
 
+export const EXPEDIENTE_TIMELINE_FILTERS = [
+  'all',
+  'contact',
+  'asignaciones',
+  'pipeline',
+  'system',
+] as const;
+
+export type ExpedienteTimelineFilter = (typeof EXPEDIENTE_TIMELINE_FILTERS)[number];
+
+export interface ExpedienteTimelineActor {
+  userId: string | null;
+  name: string | null;
+  role: string | null;
+}
+
+export interface ExpedienteContactTimelineEvent {
+  kind: 'contact';
+  id: string;
+  attemptedAt: string;
+  channel: string;
+  result: string;
+  durationMinutes: number | null;
+  notes: string | null;
+  actor: ExpedienteTimelineActor;
+}
+
+export interface ExpedienteResponsibilityTimelineEvent {
+  kind: 'responsibility';
+  id: string;
+  changedAt: string;
+  previousResponsible: ExpedienteTimelineActor | null;
+  newResponsible: ExpedienteTimelineActor;
+  actor: ExpedienteTimelineActor;
+  notes: string | null;
+}
+
+export interface ExpedienteAttributionTimelineEvent {
+  kind: 'attribution';
+  id: string;
+  attributedAt: string;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  actorName: string;
+  actorRole: string;
+  acquisitionChannel: string;
+  attributedBy: ExpedienteTimelineActor;
+}
+
+export interface ExpedientePipelineTimelineEvent {
+  kind: 'pipeline';
+  id: string;
+  changedAt: string;
+  fromStatus: string;
+  toStatus: string;
+  reason: string | null;
+  actor: ExpedienteTimelineActor;
+}
+
+export interface ExpedienteSystemTimelineEvent {
+  kind: 'system';
+  id: string;
+  occurredAt: string;
+  type: 'CREATED' | 'SECTION_UPDATED';
+  sectionLabel: string | null;
+  reason: string | null;
+  actor: ExpedienteTimelineActor;
+}
+
+export type ExpedienteTimelineEvent =
+  | ExpedienteContactTimelineEvent
+  | ExpedienteResponsibilityTimelineEvent
+  | ExpedienteAttributionTimelineEvent
+  | ExpedientePipelineTimelineEvent
+  | ExpedienteSystemTimelineEvent;
+
+export interface ExpedienteTimelineMetadata {
+  createdBy: ExpedienteTimelineActor;
+  lastEditedBy: ExpedienteTimelineActor;
+  lastActivityAt: string | null;
+}
+
+export interface ExpedienteTimelinePageResponse {
+  data: {
+    events: ExpedienteTimelineEvent[];
+    metadata: ExpedienteTimelineMetadata;
+  };
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    truncated: boolean;
+    hasMore: boolean;
+  };
+}
+
 export interface ContactAttemptRecord {
   id: string;
   attemptedAt: string;
@@ -5609,7 +5792,7 @@ export const crmApi = {
 
     const query = searchParams.toString();
 
-    return request<{ data: ExpedienteRecord[]; total: number }>(
+    return request<ListResponse<ExpedienteRecord> & { total: number }>(
       `/crm/expedientes${query ? `?${query}` : ''}`,
       {
         returnFullResponse: true,
@@ -5629,8 +5812,28 @@ export const crmApi = {
       pipelineRecommendation: PipelineRecommendation;
     }>(`/crm/expedientes/${id}`, { returnFullResponse: true }, tenantSlug),
 
+  getExpedienteBootstrap: async (id: string, tenantSlug?: string) => {
+    const response = await request<{ data: ExpedienteDetailBootstrap }>(
+      `/crm/expedientes/${id}/bootstrap`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+
+    return {
+      ...response,
+      data: {
+        ...response.data,
+        expediente: {
+          ...response.data.expediente,
+          additionalProductIds: response.data.expediente.additionalProductIds ?? [],
+          additionalServiceIds: response.data.expediente.additionalServiceIds ?? [],
+        },
+      },
+    };
+  },
+
   createExpediente: (dto: CreateExpedienteDto, tenantSlug?: string) =>
-    request<{ data: ExpedienteRecord }>(
+    request<ExpedienteRecord>(
       '/crm/expedientes',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,
@@ -5689,6 +5892,28 @@ export const crmApi = {
         metadata: ExpedienteOperationalMetadata;
       };
     }>(`/crm/expedientes/${id}/timeline`, { returnFullResponse: true }, tenantSlug),
+
+  getExpedienteTimelinePage: (
+    id: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      filter?: ExpedienteTimelineFilter;
+    },
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.filter) searchParams.set('filter', params.filter);
+    const query = searchParams.toString();
+
+    return request<ExpedienteTimelinePageResponse>(
+      `/crm/expedientes/${id}/timeline${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 
   getPipelineSummary: (tenantSlug?: string) =>
     request<{ data: Record<string, number>; total: number }>(
@@ -8762,12 +8987,8 @@ export const purchasingApi = {
 
   downloadRfqInvitationsZip: async (rfqId: string, tenantSlug?: string) => {
     const resolvedTenantSlug = getTenantSlug(tenantSlug);
-    const token = readStoredAccessToken();
     const headers = new Headers();
     headers.set('X-Tenant-Slug', resolvedTenantSlug);
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
 
     const res = await fetch(`${resolveApiBase()}/purchasing/rfqs/${rfqId}/invitations/pdf.zip`, {
       headers,
@@ -8795,12 +9016,8 @@ export const purchasingApi = {
 
   downloadRfqInvitationPdf: async (rfqId: string, invitationId: string, tenantSlug?: string) => {
     const resolvedTenantSlug = getTenantSlug(tenantSlug);
-    const token = readStoredAccessToken();
     const headers = new Headers();
     headers.set('X-Tenant-Slug', resolvedTenantSlug);
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
 
     const res = await fetch(
       `${resolveApiBase()}/purchasing/rfqs/${rfqId}/invitations/${invitationId}/pdf`,

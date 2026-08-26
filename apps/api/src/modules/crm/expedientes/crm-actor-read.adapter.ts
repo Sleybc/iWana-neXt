@@ -25,12 +25,18 @@ export class CrmActorReadAdapter extends CrmActorReadPort {
     }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const tenantUsers = await qr.manager.find(User, { where: { id: In(actorIds) } });
+      const tenantUsers = await qr.manager.find(User, {
+        where: { id: In(actorIds) },
+        select: ['id', 'firstName', 'lastName', 'role'],
+      });
       const foundTenantIds = new Set(tenantUsers.map((user) => user.id));
       const unmatchedIds = actorIds.filter((id) => !foundTenantIds.has(id));
       const platformUsers =
         unmatchedIds.length > 0
-          ? await qr.manager.find(PlatformUser, { where: { id: In(unmatchedIds) } })
+          ? await qr.manager.find(PlatformUser, {
+              where: { id: In(unmatchedIds) },
+              select: ['id', 'firstName', 'lastName'],
+            })
           : [];
 
       return [...tenantUsers, ...platformUsers].map((actor) => ({
@@ -44,9 +50,8 @@ export class CrmActorReadAdapter extends CrmActorReadPort {
   private formatActorName(actor: {
     firstName: string | null;
     lastName: string | null;
-    email: string;
   }): string | null {
     const composedName = [actor.firstName, actor.lastName].filter(Boolean).join(' ').trim();
-    return composedName || actor.email || null;
+    return composedName || null;
   }
 }

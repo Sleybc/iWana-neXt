@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ExpedienteStatus } from '@iwana/shared';
+import { ExpedienteStatus, CustomerSegment } from '@iwana/shared';
 import { ContactAttempt } from './contact-attempt.entity';
 import { ConsentRecord } from './consent-record-v2.entity';
 import { CoverageCheck } from './coverage-check.entity';
@@ -169,6 +169,9 @@ export class ExpedienteRecord {
   // ===== SECCIÓN 4: INTERÉS COMERCIAL =====
   @Column({ type: 'varchar', length: 120, name: 'source' })
   source: string;
+
+  @Column({ type: 'varchar', length: 20, name: 'customer_segment', nullable: true })
+  customerSegment: CustomerSegment | null;
 
   @Column({ type: 'varchar', length: 30, name: 'acquisition_channel', default: 'OTRO' })
   acquisitionChannel: string;

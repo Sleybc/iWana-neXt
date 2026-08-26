@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { CatalogItemType, CustomerSegment } from '@iwana/shared';
 import { CommercialDashboardService } from '../services/commercial-dashboard.service';
+import { ITaxApplicationReadPort } from '../../taxation/ports/tax-application-read.port';
 
 const tenantId = 'tenant-uuid-test';
 const schemaName = 'tenant_test';
@@ -45,10 +46,19 @@ function isAttentionSql(sql: string): boolean {
 
 describe('CommercialDashboardService', () => {
   let service: CommercialDashboardService;
+  const taxApplicationPort = {
+    hasActiveCoverage: jest.fn().mockResolvedValue(true),
+    resolve: jest.fn(),
+  };
 
   beforeEach(async () => {
+    taxApplicationPort.hasActiveCoverage.mockResolvedValue(true);
     const moduleRef = await Test.createTestingModule({
-      providers: [CommercialDashboardService, { provide: getDataSourceToken(), useValue: {} }],
+      providers: [
+        CommercialDashboardService,
+        { provide: getDataSourceToken(), useValue: {} },
+        { provide: ITaxApplicationReadPort, useValue: taxApplicationPort },
+      ],
     }).compile();
 
     service = moduleRef.get(CommercialDashboardService);
@@ -236,7 +246,8 @@ describe('CommercialDashboardService', () => {
     }
   });
 
-  it('calcula taxRulesCoverageGapCount = activePlansCount cuando no hay cobertura tributaria', async () => {
+  it('calcula taxRulesCoverageGapCount binario cuando no hay cobertura tributaria', async () => {
+    taxApplicationPort.hasActiveCoverage.mockResolvedValue(false);
     queryImpl = async (sql: string) => {
       if (isRecentChangesSql(sql)) {
         return [];
@@ -290,10 +301,8 @@ describe('CommercialDashboardService', () => {
     const summary = await service.getSummary();
 
     expect(summary.activePlansCount).toBe(4);
-    expect(summary.taxRulesCoverageGapCount).toBe(4);
-    expect(summary.rulesGapCount).toBe(4);
-    expect(summary.attentionItems[0]?.reason).toBe('tax_rules_coverage_gap');
-    expect(summary.attentionItems[0]?.destinoTab).toBe('taxation');
+    expect(summary.taxRulesCoverageGapCount).toBe(1);
+    expect(summary.rulesGapCount).toBe(1);
     expect(summary.recentChanges).toEqual([]);
   });
 

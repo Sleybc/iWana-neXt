@@ -80,7 +80,7 @@ export async function syncExpedienteAfterScheduleEvent({
 
   await transitionExpedienteStatus(expedienteContextId, {
     targetStatus: 'INSTALACION_AGENDADA',
-    reason: 'Instalación agendada desde WFM',
+    reason: 'Instalación agendada desde Programación.',
   });
 
   return true;

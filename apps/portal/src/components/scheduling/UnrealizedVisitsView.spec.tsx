@@ -292,9 +292,8 @@ describe('UnrealizedVisitsView', () => {
   it('monta la vista con copy E2 y acciones de decisión', async () => {
     render(<UnrealizedVisitsView />);
 
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Visitas sin realizar' }),
-    ).toBeInTheDocument();
+    const pageTitle = screen.getByRole('heading', { level: 1, name: 'Visitas sin realizar' });
+    expect(pageTitle.closest('header')?.querySelector('a, button')).toBeNull();
 
     await waitFor(() => {
       expect(listVisitRequestsMock).toHaveBeenCalledWith(

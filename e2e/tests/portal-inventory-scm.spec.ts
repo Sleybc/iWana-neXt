@@ -97,7 +97,7 @@ async function seedPortalSession(
 }
 
 async function openPurchaseComposer(main: import('@playwright/test').Locator) {
-  await main.getByRole('tab', { name: 'Compras' }).click();
+  await main.getByRole('button', { name: 'Compras' }).click();
   await main.getByRole('button', { name: 'Nueva solicitud' }).click();
   await expect(main.getByText('Nueva solicitud de compra')).toBeVisible();
 }
@@ -138,7 +138,7 @@ async function assignIssueLineSerial(
 }
 
 async function openStockIssueComposer(main: import('@playwright/test').Locator) {
-  await main.getByRole('tab', { name: 'Salidas' }).click();
+  await main.getByRole('button', { name: 'Salidas' }).click();
   await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
   await main.getByRole('button', { name: 'Crear salida' }).first().click();
   await expect(main.getByRole('heading', { name: 'Nueva salida' })).toBeVisible();
@@ -3555,7 +3555,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Catálogo' }).click();
+    await main.getByRole('button', { name: 'Catálogo' }).click();
     await expect(main.getByText('Catálogo de productos')).toBeVisible();
 
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
@@ -3586,7 +3586,7 @@ test.describe('Portal Inventario / SCM', () => {
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: 'Inventario' })).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Catálogo' }).click();
+    await main.getByRole('button', { name: 'Catálogo' }).click();
     await main.getByRole('tab', { name: 'Categorías' }).click();
     await main.getByRole('button', { name: 'Nueva categoría' }).click();
 
@@ -3635,9 +3635,14 @@ test.describe('Portal Inventario / SCM', () => {
 
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: 'Inventario', level: 1 })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Vista general' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(main.getByText('Catálogo de productos')).toHaveCount(0);
     await expect(main.getByText('12', { exact: true })).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await expect(main.getByText('Resumen de compras')).toBeVisible();
     await expect(main.getByText('Por cotizar')).toBeVisible();
 
@@ -3657,13 +3662,13 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Bodegas' }).click();
+    await main.getByRole('button', { name: 'Bodegas' }).click();
     await expect(main.getByText('BOD-01').first()).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Salidas' }).click();
+    await main.getByRole('button', { name: 'Salidas' }).click();
     await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos' }).click();
     await expect(main.getByText('SN-001').first()).toBeVisible();
     await expect(main.getByRole('cell', { name: 'Disponible' }).first()).toBeVisible();
   });
@@ -3672,7 +3677,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos' }).click();
     await main.getByRole('button', { name: 'Ver detalle' }).click();
 
     const drawer = page.getByTestId('serialized-asset-detail-drawer');
@@ -3690,7 +3695,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos' }).click();
     await main.getByRole('tab', { name: 'Vida útil' }).click();
 
     const panel = main.getByTestId('useful-life-alerts-panel');
@@ -3749,14 +3754,14 @@ test.describe('Portal Inventario / SCM', () => {
 
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos' }).click();
     await main.getByRole('tab', { name: 'Comodatos' }).click();
 
     const loansPanel = main.getByTestId('asset-loans-panel');
     await expect(loansPanel.getByRole('cell', { name: 'Abierto' })).toBeVisible();
     await expect(loansPanel.getByText('ONT-HG8245 · SN-001')).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Movimientos' }).click();
+    await main.getByRole('button', { name: 'Movimientos' }).click();
     const returnPanel = main.getByTestId('movements-workspace').getByText('Recibir devolución', {
       exact: true,
     });
@@ -3782,7 +3787,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText(/Devolución registrada/i)).toBeVisible();
     expect(state.loans.some((loan) => loan.status === 'cerrado')).toBe(true);
 
-    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos' }).click();
     await main.getByRole('tab', { name: 'Comodatos' }).click();
     await main.getByTestId('asset-loans-panel').getByRole('button', { name: 'Actualizar' }).click();
 
@@ -3796,7 +3801,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Bajas' }).click();
+    await main.getByRole('button', { name: 'Bajas' }).click();
     await expect(main.getByRole('heading', { name: 'Solicitar baja' })).toBeVisible();
 
     await selectComboboxOption(
@@ -3824,7 +3829,7 @@ test.describe('Portal Inventario / SCM', () => {
     await seedPortalSession(page, { role: 'ADMIN' });
     await page.goto('/dashboard/inventory');
     const adminMain = page.locator('main');
-    await adminMain.getByRole('tab', { name: 'Bajas' }).click();
+    await adminMain.getByRole('button', { name: 'Bajas' }).click();
 
     const adminPanel = adminMain.getByTestId('write-offs-panel');
     await adminPanel
@@ -3885,7 +3890,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -3954,7 +3959,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText(/Salida despachada/i)).toBeVisible();
     await detail.getByRole('button', { name: 'Cerrar' }).click();
 
-    await main.getByRole('tab', { name: 'Movimientos' }).click();
+    await main.getByRole('button', { name: 'Movimientos' }).click();
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Producto' }).nth(1),
@@ -4127,7 +4132,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main
       .getByRole('row', { name: /PR-000200/ })
       .getByRole('button', { name: 'Abrir' })
@@ -4159,7 +4164,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -4208,7 +4213,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -4244,7 +4249,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -4314,7 +4319,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -4384,7 +4389,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -4406,7 +4411,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Compras' }).click();
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
@@ -4431,7 +4436,10 @@ test.describe('Portal Inventario / Existencias', () => {
     await page.goto('/dashboard/inventory?tab=stock');
     const main = page.locator('main');
 
-    await expect(main.getByRole('tab', { name: 'Existencias', selected: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(main.getByRole('heading', { name: 'Existencias' })).toBeVisible();
     await expect(main.getByRole('tab', { name: 'Por producto', selected: true })).toBeVisible();
     await expect(main.getByRole('cell', { name: 'CAB-DROP', exact: true }).first()).toBeVisible();
@@ -4442,7 +4450,10 @@ test.describe('Portal Inventario / Existencias', () => {
     await page.goto('/dashboard/inventory?tab=locations&custody=mobile');
     const main = page.locator('main');
 
-    await expect(main.getByRole('tab', { name: 'Existencias', selected: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(page).toHaveURL(/tab=stock/);
     await expect(page).toHaveURL(/custody=mobile/);
 
@@ -4544,10 +4555,15 @@ test.describe('Portal Inventario / Existencias', () => {
     await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
   });
 
-  test('muestra valor estimado de inventario en Resumen', async ({ page }) => {
+  test('muestra valor estimado de inventario en Vista general', async ({ page }) => {
     await page.goto('/dashboard/inventory?tab=summary');
     const main = page.locator('main');
 
+    await expect(main.getByRole('button', { name: 'Vista general' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(main.getByText('Catálogo de productos')).toHaveCount(0);
     await expect(main.getByText('Valor estimado de inventario')).toBeVisible();
     await expect(main.getByText(/\$\s*2[.\s]?500[.\s]?000/)).toBeVisible();
   });
@@ -4571,7 +4587,10 @@ test.describe('Portal Inventario / Existencias', () => {
 
     await main.getByRole('button', { name: /Generar solicitud de compra \(1\)/i }).click();
 
-    await expect(main.getByRole('tab', { name: 'Compras', selected: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Compras' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(main.getByLabel('Título')).toHaveValue(
       /Reposición sugerida .+ — 1 ítem bajo punto de reorden/,
     );
@@ -4618,7 +4637,10 @@ test.describe('Portal Inventario / Bodegas', () => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await expect(main.getByRole('tab', { name: 'Bodegas', selected: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Bodegas' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(main.getByRole('heading', { name: 'Bodegas', exact: true })).toBeVisible();
     await expect(main.getByText('BOD-01').first()).toBeVisible();
   });
@@ -4817,7 +4839,10 @@ test.describe('Portal Inventario / Conteos', () => {
     await page.goto('/dashboard/inventory?tab=counts');
     const main = page.locator('main');
 
-    await expect(main.getByRole('tab', { name: 'Conteos', selected: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Conteos' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await expect(main.getByRole('heading', { name: 'Conteos físicos' })).toBeVisible();
 
     await main.getByRole('button', { name: 'Nuevo conteo' }).first().click();
@@ -4916,7 +4941,7 @@ test.describe('Portal Inventario / Reservas (Fase 03B)', () => {
     expect(parseInventoryQty(cabBalance?.quantityOnHand)).toBe(20);
     expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(7);
 
-    await main.getByRole('tab', { name: 'Existencias' }).click();
+    await main.getByRole('button', { name: 'Existencias' }).click();
     await expect(main.getByRole('tab', { name: 'Por producto', selected: true })).toBeVisible();
     const refreshedRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
     await expect(refreshedRow.getByRole('cell', { name: '20', exact: true })).toBeVisible();
@@ -5006,7 +5031,7 @@ test.describe('Portal Inventario / Reservas (Fase 03B)', () => {
     expect(parseInventoryQty(cabBalance?.quantityOnHand)).toBe(20);
     expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(2);
 
-    await main.getByRole('tab', { name: 'Existencias' }).click();
+    await main.getByRole('button', { name: 'Existencias' }).click();
     const cabRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
     await expect(cabRow.getByRole('cell', { name: '2', exact: true })).toBeVisible();
     await expect(cabRow.getByRole('cell', { name: '18', exact: true })).toBeVisible();
@@ -5039,7 +5064,7 @@ test.describe('Portal Inventario / Reservas (Fase 03B)', () => {
     await detail.getByRole('button', { name: 'Cerrar' }).click();
     await expect(page.getByRole('dialog', { name: 'Detalle de salida' })).toHaveCount(0);
 
-    await main.getByRole('tab', { name: 'Existencias' }).click();
+    await main.getByRole('button', { name: 'Existencias' }).click();
     const cabRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
     await expect(cabRow.getByRole('cell', { name: '16', exact: true })).toBeVisible();
     await expect(cabRow.getByRole('cell', { name: '2', exact: true })).toBeVisible();

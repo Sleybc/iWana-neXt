@@ -20,6 +20,8 @@ import {
   CATALOG_CATEGORY_SORT_ORDER,
   CatalogQueryDto,
   CatalogSortMode,
+  PLAN_CATALOG_SORTABLE_FIELDS,
+  isPlanCatalogSortField,
 } from '../dto/catalog-query.dto';
 import { COMMERCIAL_EVENTS } from '../events/commercial.events';
 import {
@@ -30,7 +32,7 @@ import {
   buildDateIdNextCursor,
   buildNameIdNextCursor,
   buildPageMeta,
-  clampCommercialLimit,
+  clampLimit,
   clampPickerSearchLimit,
   decodeActiveNameIdCursor,
   decodeCategoryRankNameIdCursor,
@@ -67,14 +69,27 @@ export class CatalogService {
   /**
    * Lista ítems del catálogo con paginación híbrida (ADR-064/065 Ola 6).
    * Orden default: name ASC, id ASC. Con `sort`: keyset coherente con el modo.
+   * Planes en modo page: `sortBy`/`sortDir` sustituye el default si el campo está en lista blanca.
    * `total` = conjunto filtrado; cursor aplica después del filtro.
    * `page` y `cursor` excluyentes; sin ambos = primera página keyset.
    */
   async findAll(query: CatalogQueryDto): Promise<ListResponse<CatalogItemWithDetail>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     assertExclusivePageCursor(query);
-    const { type, name, isActive, cursor, missingPrice, category, model, charge, sort } = query;
-    const limit = clampCommercialLimit(query.limit);
+    const {
+      type,
+      name,
+      isActive,
+      cursor,
+      missingPrice,
+      category,
+      model,
+      charge,
+      sort,
+      sortBy,
+      sortDir,
+    } = query;
+    const limit = clampLimit(query.limit);
     const usePage = query.page !== undefined;
     const page = usePage ? clampPage(query.page!, limit).page : 1;
     const categoryRankSql = this._categoryRankSql('pd.category');
@@ -136,7 +151,15 @@ export class CatalogService {
       const total = await qb.clone().getCount();
 
       if (usePage) {
-        this._applySortAndCursor(qb, sort, undefined, categoryRankSql);
+        const planSort =
+          type === CatalogItemType.PLAN
+            ? this._applyPlanColumnSort(qb, sortBy, sortDir)
+            : { appliedSortBy: null, appliedSortDir: null };
+
+        if (!planSort.appliedSortBy) {
+          this._applySortAndCursor(qb, sort, undefined, categoryRankSql);
+        }
+
         const rows = await qb
           .skip((page - 1) * limit)
           .take(limit)
@@ -149,7 +172,9 @@ export class CatalogService {
             page,
             limit,
             randomAccess: true,
-            sortableFields: [],
+            sortableFields: type === CatalogItemType.PLAN ? [...PLAN_CATALOG_SORTABLE_FIELDS] : [],
+            sortBy: planSort.appliedSortBy ?? undefined,
+            sortDir: planSort.appliedSortDir ?? undefined,
           }),
         };
       }
@@ -300,6 +325,70 @@ export class CatalogService {
       (cat, index) => `WHEN '${cat}' THEN ${index}`,
     ).join(' ');
     return `CASE ${columnExpr} ${whens} ELSE ${CATALOG_CATEGORY_SORT_ORDER.length} END`;
+  }
+
+  /**
+   * Precio vigente RESIDENTIAL (mismo criterio que la hidratación de listado).
+   * Subconsulta: evita duplicar filas si se uniera `catalog_price_history`.
+   */
+  private _currentResidentialPriceExpr(column: 'base_price' | 'installation_fee'): string {
+    return `(SELECT ph.${column} FROM catalog_price_history ph
+      WHERE ph.item_id = ci.id
+        AND ph.is_current = true
+        AND ph.customer_segment = 'RESIDENTIAL'
+      LIMIT 1)`;
+  }
+
+  /**
+   * Columna de plan_details para ORDER BY.
+   * Sin JOIN: skip/take + JOIN hace que TypeORM envuelva en SELECT DISTINCT e
+   * proyecte el ORDER BY como distinctAlias.pld_*, columnas ausentes del SELECT interno.
+   */
+  private _planDetailSortExpr(column: 'technology' | 'download_speed_mbps'): string {
+    return `(SELECT pld.${column} FROM plan_details pld WHERE pld.item_id = ci.id LIMIT 1)`;
+  }
+
+  private _applyPlanColumnSort(
+    qb: SelectQueryBuilder<CatalogItem>,
+    sortBy?: string,
+    sortDir?: 'asc' | 'desc',
+  ) {
+    if (!isPlanCatalogSortField(sortBy)) {
+      return { appliedSortBy: null, appliedSortDir: null };
+    }
+
+    const dir = sortDir ?? 'asc';
+    const sqlDir = dir.toUpperCase() as 'ASC' | 'DESC';
+
+    if (sortBy === 'downloadSpeedMbps' || sortBy === 'technology') {
+      const column = sortBy === 'downloadSpeedMbps' ? 'download_speed_mbps' : 'technology';
+      qb.orderBy(this._planDetailSortExpr(column), sqlDir, 'NULLS LAST');
+      qb.addOrderBy('ci.id', sqlDir);
+      return { appliedSortBy: sortBy, appliedSortDir: dir };
+    }
+
+    if (sortBy === 'basePrice' || sortBy === 'installationFee') {
+      const priceColumn = sortBy === 'basePrice' ? 'base_price' : 'installation_fee';
+      qb.orderBy(this._currentResidentialPriceExpr(priceColumn), sqlDir, 'NULLS LAST');
+      qb.addOrderBy('ci.id', sqlDir);
+      return { appliedSortBy: sortBy, appliedSortDir: dir };
+    }
+
+    const itemColumn =
+      sortBy === 'isActive'
+        ? 'ci.is_active'
+        : sortBy === 'createdAt'
+          ? 'ci.created_at'
+          : sortBy === 'updatedAt'
+            ? 'ci.updated_at'
+            : `ci.${sortBy}`;
+    if (sortBy === 'description') {
+      qb.orderBy(itemColumn, sqlDir, 'NULLS LAST');
+    } else {
+      qb.orderBy(itemColumn, sqlDir);
+    }
+    qb.addOrderBy('ci.id', sqlDir);
+    return { appliedSortBy: sortBy, appliedSortDir: dir };
   }
 
   private _applySortAndCursor(
@@ -525,7 +614,9 @@ export class CatalogService {
 
   /**
    * Lookup typeahead E-4 para pickers de catálogo (planes / productos / servicios).
-   * `total` = coincidencias filtradas; `data` acotado a máx. 20.
+   * `q` vacío o ausente → listado top-N (máx. 20) del universo filtrado por tipo y
+   * estado, ordenado por nombre: el FE despliega esa lista al abrir el picker.
+   * `total` = coincidencias del filtro (con q vacío, universo completo del contexto).
    */
   async searchForPicker(params: {
     type: CatalogItemType;
@@ -538,19 +629,26 @@ export class CatalogService {
     const q = normalizePickerQuery(params.q);
     const isActive = params.isActive ?? true;
 
-    if (!q) {
-      return { data: [], total: 0 };
-    }
-
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const like = `%${escapePickerLikePattern(q)}%`;
+      const isPlan = params.type === CatalogItemType.PLAN;
+
       const qb = qr.manager
         .createQueryBuilder(CatalogItem, 'ci')
         .where('ci.tenant_id = :tenantId', { tenantId })
         .andWhere('ci.deleted_at IS NULL')
         .andWhere('ci.type = :type', { type: params.type })
-        .andWhere('ci.is_active = :isActive', { isActive })
-        .andWhere('ci.name ILIKE :like ESCAPE :esc', { like, esc: '\\' });
+        .andWhere('ci.is_active = :isActive', { isActive });
+
+      if (isPlan) {
+        // Planes se distinguen por tecnología y velocidades: busca también en plan_details.
+        qb.leftJoin(PlanDetail, 'pd', 'pd.item_id = ci.id').andWhere(
+          '(ci.name ILIKE :like ESCAPE :esc OR pd.technology ILIKE :like ESCAPE :esc)',
+          { like, esc: '\\' },
+        );
+      } else {
+        qb.andWhere('ci.name ILIKE :like ESCAPE :esc', { like, esc: '\\' });
+      }
 
       const total = await qb.clone().getCount();
 
@@ -560,12 +658,42 @@ export class CatalogService {
         .take(limit)
         .getMany();
 
+      // Sin coincidencias: evitar `IN ()` (error de sintaxis) en el detalle de planes.
+      if (rows.length === 0) {
+        return { data: [], total };
+      }
+
+      if (!isPlan) {
+        return {
+          data: rows.map((item) => ({
+            id: item.id,
+            label: item.name,
+            sublabel: item.isActive ? 'Activo' : 'Inactivo',
+          })),
+          total,
+        };
+      }
+
+      // Sublabel con tecnología y velocidades para distinguir planes homónimos.
+      const planDetails = await qr.manager
+        .createQueryBuilder(PlanDetail, 'pd')
+        .where('pd.item_id IN (:...ids)', { ids: rows.map((item) => item.id) })
+        .getMany();
+      const detailByItemId = new Map(planDetails.map((detail) => [detail.itemId, detail]));
+
       return {
-        data: rows.map((item) => ({
-          id: item.id,
-          label: item.name,
-          sublabel: item.isActive ? 'Activo' : 'Inactivo',
-        })),
+        data: rows.map((item) => {
+          const detail = detailByItemId.get(item.id);
+          return {
+            id: item.id,
+            label: item.name,
+            sublabel: detail
+              ? `${detail.technology} · ↓${detail.downloadSpeedMbps}Mbps · ↑${detail.uploadSpeedMbps}Mbps`
+              : item.isActive
+                ? 'Activo'
+                : 'Inactivo',
+          };
+        }),
         total,
       };
     });

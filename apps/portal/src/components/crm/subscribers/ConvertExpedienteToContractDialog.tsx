@@ -76,7 +76,7 @@ export function ConvertExpedienteToContractDialog({
       });
       await onSuccess();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al convertir el expediente.');
+      setError(err instanceof ApiError ? err.message : 'No fue posible convertir la oportunidad.');
     } finally {
       setLoading(false);
     }
@@ -109,8 +109,8 @@ export function ConvertExpedienteToContractDialog({
                 Convertir a contrato
               </h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Se creará un contrato en estado <strong>Borrador</strong> con los datos del
-                expediente.
+                Se creará un contrato en estado <strong>Borrador</strong> con los datos de la
+                oportunidad.
               </p>
             </div>
             <button

@@ -2,7 +2,7 @@ import { SubscribersListClient } from '@/components/crm/subscribers/SubscribersL
 
 export const metadata = {
   title: 'Suscriptores | Portal Empresarial',
-  description: 'Gestión de suscriptores CRM de la empresa',
+  description: 'Gestión de suscriptores de la empresa',
 };
 
 export default function CrmSubscribersPage() {

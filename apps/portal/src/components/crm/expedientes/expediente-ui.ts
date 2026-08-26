@@ -1,4 +1,5 @@
 import type { ExpedienteStatus } from '@/lib/api-client';
+import { CustomerSegment } from '@iwana/shared';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 export type StatusBadgeVariant =
@@ -198,6 +199,15 @@ export function formatPersonType(value: string): string {
 export function formatDocumentType(value: string): string {
   return DOCUMENT_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
+
+export const CUSTOMER_SEGMENT_OPTIONS: { value: CustomerSegment; label: string }[] = [
+  { value: CustomerSegment.RESIDENTIAL, label: 'Residencial' },
+  { value: CustomerSegment.SOHO, label: 'SOHO' },
+  { value: CustomerSegment.PYME, label: 'PyME' },
+  { value: CustomerSegment.GOVERNMENT, label: 'Gobierno' },
+  { value: CustomerSegment.CORPORATE, label: 'Corporativo' },
+  { value: CustomerSegment.WHOLESALE, label: 'Mayorista' },
+];
 
 export const TECHNICAL_VIABILITY_RESULT_OPTIONS = [
   { value: 'VIABLE', label: 'Viable' },

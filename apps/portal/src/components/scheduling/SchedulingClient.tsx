@@ -62,6 +62,7 @@ import { deriveDurationMinutes, toLocalDateValue, toLocalTimeValue } from './sch
 import {
   buildDailyDraftFromDrop,
   buildDisplayWindowFromOperatingWindow,
+  isSameDailyDraft,
   validateDailyDraft,
   type DailyDraftEvent,
 } from './daily-schedule-draft';
@@ -356,36 +357,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
 
       const draft = buildDailyDraftFromDrop(payload);
       setDailyDraft(validateDailyDraft(draft, dailyOperatingWindow, events));
-
-      const fromPage =
-        pendingVisitResponse?.items.find((item) => item.id === payload.visitRequestId) ?? null;
-      if (fromPage) {
-        setSelectedPendingVisitRequest(fromPage);
-        return;
-      }
-
-      if (selectedPendingVisitRequest?.id === payload.visitRequestId) {
-        return;
-      }
-
-      void wfmApi.visitRequests
-        .get(payload.visitRequestId)
-        .then((visitRequest) => {
-          setSelectedPendingVisitRequest(visitRequest);
-        })
-        .catch((pendingVisitError) => {
-          setError(
-            `No fue posible fijar la solicitud arrastrada. ${mapSchedulingError(pendingVisitError)}`,
-          );
-        });
     },
-    [
-      canManage,
-      dailyOperatingWindow,
-      events,
-      pendingVisitResponse?.items,
-      selectedPendingVisitRequest?.id,
-    ],
+    [canManage, dailyOperatingWindow, events],
   );
 
   const handleDailyDraftChange = useCallback(
@@ -432,9 +405,14 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
   }, [dailyDraft, selectedPendingVisitRequest]);
 
   useEffect(() => {
-    setDailyDraft((current) =>
-      current ? validateDailyDraft(current, dailyOperatingWindow, events) : current,
-    );
+    setDailyDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextDraft = validateDailyDraft(current, dailyOperatingWindow, events);
+      return isSameDailyDraft(current, nextDraft) ? current : nextDraft;
+    });
   }, [dailyOperatingWindow, events]);
 
   const clearCreateQueryParams = useCallback(() => {
@@ -1182,22 +1160,9 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         title={pageTitle}
         subtitle={pageSubtitle}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {!isAgendaSurface && (
-              <Button asChild type="button" variant="secondary">
-                <Link href="/dashboard/scheduling/agenda">Ir a agenda</Link>
-              </Button>
-            )}
-            <Button asChild type="button" variant="secondary">
-              <Link href="/dashboard/scheduling/pending-visits">Pendientes</Link>
-            </Button>
-            <Button asChild type="button" variant="secondary">
-              <Link href="/dashboard/scheduling/unrealized-visits">Visitas sin realizar</Link>
-            </Button>
-            <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-tight">
-              {formatWfmDayLabel(new Date())}
-            </Badge>
-          </div>
+          <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-tight">
+            {formatWfmDayLabel(new Date())}
+          </Badge>
         }
       />
 
@@ -1335,13 +1300,18 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
                       pendingVisitRequests={pendingVisitResponse?.items ?? []}
                       selectedPendingVisitRequestId={selectedPendingVisitRequest?.id ?? null}
                       pendingAsideContent={
-                        filters.view === 'day' ? renderPendingDispatchPanel(true) : undefined
+                        filters.view === 'day' && !dailyDraft
+                          ? renderPendingDispatchPanel(true)
+                          : undefined
                       }
                       displayWindow={dailyDisplayWindow}
                       dailyDraft={dailyDraft}
                       onSelectEvent={(event) => void loadEventDetails(event.id)}
-                      onSelectPendingVisit={(visitRequestId) =>
-                        void loadPendingVisitFromHandoff(visitRequestId, filters.fromDate)
+                      onSelectPendingVisit={
+                        filters.view === 'day'
+                          ? undefined
+                          : (visitRequestId) =>
+                              void loadPendingVisitFromHandoff(visitRequestId, filters.fromDate)
                       }
                       onOpenPendingVisitsInbox={() => {
                         router.push('/dashboard/scheduling/pending-visits');

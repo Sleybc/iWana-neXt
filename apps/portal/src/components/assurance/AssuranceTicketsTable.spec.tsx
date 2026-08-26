@@ -89,7 +89,7 @@ function renderTable(overrides: Partial<ComponentProps<typeof AssuranceTicketsTa
 }
 
 describe('AssuranceTicketsTable ADR-065', () => {
-  it('CA-PAG-08: empty de primera vez con CTA Nuevo ticket', () => {
+  it('CA-PAG-08: empty de primera vez con CTA en el contenedor de la cola', () => {
     const { props } = renderTable({
       tickets: [],
       total: 0,
@@ -100,7 +100,8 @@ describe('AssuranceTicketsTable ADR-065', () => {
       screen.getByText(/crea el primer ticket para operar la mesa de ayuda/i),
     ).toBeInTheDocument();
     expect(screen.queryByText('Sin resultados')).not.toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Nuevo ticket' })[0]!);
+    expect(screen.getByRole('button', { name: 'Nuevo ticket' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo ticket' }));
     expect(props.onOpenCreate).toHaveBeenCalledTimes(1);
   });
 

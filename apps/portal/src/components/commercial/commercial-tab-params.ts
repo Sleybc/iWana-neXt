@@ -301,6 +301,7 @@ export function needsCommercialUrlCanonicalization(
 export interface CommercialNavigateOptions {
   status?: CommercialOfferStatusFilter | null;
   focus?: string | null;
+  taxationSubTab?: TaxationSubTab | null;
 }
 
 export type CommercialNavigateHandler = (

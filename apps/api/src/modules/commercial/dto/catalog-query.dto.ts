@@ -15,6 +15,29 @@ export type CatalogProductModelFilter = (typeof CATALOG_PRODUCT_MODEL_VALUES)[nu
 export const CATALOG_SORT_VALUES = ['CATEGORY_NAME', 'ACTIVE_NAME', 'RECENTLY_UPDATED'] as const;
 export type CatalogSortMode = (typeof CATALOG_SORT_VALUES)[number];
 
+/**
+ * Orden por columna de planes (ADR-065 `sortBy`/`sortDir`, modo page).
+ * Nombres lógicos; el servicio resuelve SQL. Productos/servicios no publican esta lista.
+ */
+export const PLAN_CATALOG_SORTABLE_FIELDS = [
+  'name',
+  'downloadSpeedMbps',
+  'basePrice',
+  'installationFee',
+  'isActive',
+  'technology',
+  'description',
+  'createdAt',
+  'updatedAt',
+] as const;
+export type PlanCatalogSortField = (typeof PLAN_CATALOG_SORTABLE_FIELDS)[number];
+
+export function isPlanCatalogSortField(value: string | undefined): value is PlanCatalogSortField {
+  return (
+    typeof value === 'string' && (PLAN_CATALOG_SORTABLE_FIELDS as readonly string[]).includes(value)
+  );
+}
+
 /** Orden de categoría alineado a `ProductCategory` / chips FE (ADR-064 sort). */
 export const CATALOG_CATEGORY_SORT_ORDER: readonly ProductCategory[] = [
   ProductCategory.ENTERTAINMENT,
@@ -111,4 +134,19 @@ export class CatalogQueryDto extends CommercialListQueryDto {
   @IsOptional()
   @IsIn(CATALOG_SORT_VALUES)
   sort?: CatalogSortMode;
+
+  @ApiPropertyOptional({
+    enum: PLAN_CATALOG_SORTABLE_FIELDS,
+    description:
+      'Campo lógico de orden (planes, modo page). Ignorado si no está en la lista blanca. ' +
+      'Excluyente de facto con `sort` de productos: si aplica, sustituye el ORDER BY default.',
+  })
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'] })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 }

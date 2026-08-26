@@ -288,6 +288,7 @@ describe('shared ui primitives', () => {
   it('should render the checkbox card label with light surface tokens and intact dark classes', () => {
     render(<CheckboxCard label="Notificaciones" description="Recibe alertas por correo" />);
 
+    const checkbox = screen.getByRole('checkbox');
     const label = screen.getByRole('checkbox').closest('label');
 
     expect(label).not.toBeNull();
@@ -298,6 +299,8 @@ describe('shared ui primitives', () => {
     expect(label).toHaveClass('dark:border-dark-border');
     expect(label).toHaveClass('dark:bg-dark-surface-3/60');
     expect(label).toHaveClass('dark:hover:bg-dark-surface-3');
+    expect(checkbox).toHaveClass('focus-visible:outline-none');
+    expect(checkbox).toHaveClass('focus-visible:ring-2');
   });
 
   it('should move focus into the dialog and restore it to the trigger when closed', async () => {

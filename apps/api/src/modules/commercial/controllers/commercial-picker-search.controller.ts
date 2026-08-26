@@ -26,7 +26,8 @@ export class CommercialPickerSearchController {
   @ApiOperation({
     summary: 'Buscar planes para picker (typeahead)',
     description:
-      'Lookup E-4: `q` ILIKE sobre nombre. Default `isActive=true`. Máx. 20 filas. ' +
+      'Lookup E-4: `q` ILIKE sobre nombre y tecnología (plan_details). Default `isActive=true`. ' +
+      'Máx. 20 filas. `sublabel` incluye tecnología y velocidades para distinguir planes homónimos. ' +
       'Respuesta `{ data: { id, label, sublabel }[], total }`.',
   })
   @ApiResponse({ status: 200, type: PickerSearchResponseDto })

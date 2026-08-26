@@ -2,13 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@iwana/ui';
+import { History, Package, PackagePlus, Warehouse } from 'lucide-react';
 import {
   inventoryApi,
   type InventoryItemRecord,
   type StockBalanceRecord,
   type StockLocationRecord,
 } from '@/lib/api-client';
-import { portalModuleTabTriggerClassName } from '@/components/shared/portal-ui';
+import {
+  portalResourceTabIconClassName,
+  portalResourceTabListClassName,
+  portalResourceTabTriggerClassName,
+} from '@/components/shared/portal-ui';
 import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { StockAdjustmentDialog } from './StockAdjustmentDialog';
 import { StockByProductTable, type StockByProductServerFilters } from './StockByProductTable';
@@ -129,17 +134,45 @@ export function StockWorkspace({
   return (
     <div className="space-y-4">
       <Tabs value={subview} onValueChange={(value) => setSubview(value as StockSubview)}>
-        <TabsList>
-          <TabsTrigger value="by-product" className={portalModuleTabTriggerClassName}>
+        <TabsList aria-label="Vistas de existencias" className={portalResourceTabListClassName}>
+          <TabsTrigger
+            value="by-product"
+            className={portalResourceTabTriggerClassName(subview === 'by-product')}
+          >
+            <Package
+              className={portalResourceTabIconClassName(subview === 'by-product')}
+              aria-hidden="true"
+            />
             Por producto
           </TabsTrigger>
-          <TabsTrigger value="by-location" className={portalModuleTabTriggerClassName}>
+          <TabsTrigger
+            value="by-location"
+            className={portalResourceTabTriggerClassName(subview === 'by-location')}
+          >
+            <Warehouse
+              className={portalResourceTabIconClassName(subview === 'by-location')}
+              aria-hidden="true"
+            />
             Por bodega
           </TabsTrigger>
-          <TabsTrigger value="kardex" className={portalModuleTabTriggerClassName}>
+          <TabsTrigger
+            value="kardex"
+            className={portalResourceTabTriggerClassName(subview === 'kardex')}
+          >
+            <History
+              className={portalResourceTabIconClassName(subview === 'kardex')}
+              aria-hidden="true"
+            />
             Kardex
           </TabsTrigger>
-          <TabsTrigger value="replenishment" className={portalModuleTabTriggerClassName}>
+          <TabsTrigger
+            value="replenishment"
+            className={portalResourceTabTriggerClassName(subview === 'replenishment')}
+          >
+            <PackagePlus
+              className={portalResourceTabIconClassName(subview === 'replenishment')}
+              aria-hidden="true"
+            />
             Reposición
           </TabsTrigger>
         </TabsList>

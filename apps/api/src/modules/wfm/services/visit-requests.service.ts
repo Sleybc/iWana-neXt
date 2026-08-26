@@ -169,8 +169,6 @@ export class VisitRequestsService {
     }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
-
       const qb = qr.manager
         .createQueryBuilder(VisitRequest, 'vr')
         .where('vr.tenant_id = :tenantId', { tenantId })
@@ -256,8 +254,6 @@ export class VisitRequestsService {
     });
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
-
       const municipalityQb = qr.manager
         .createQueryBuilder(VisitRequest, 'vr')
         .select(
@@ -313,8 +309,6 @@ export class VisitRequestsService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
-
       const visitRequest = await qr.manager.findOne(VisitRequest, {
         where: { id, tenantId },
       });

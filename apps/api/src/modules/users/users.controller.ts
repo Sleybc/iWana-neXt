@@ -20,13 +20,20 @@ import {
 import type { Request } from 'express';
 import {
   ApiBearerAuth,
+  ApiExtraModels,
   ApiHeader,
   ApiOperation,
   ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { PlatformRole, AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
+import {
+  PlatformRole,
+  AccessPermissionKey,
+  UserRole,
+  UserStatus,
+  type ListResponse,
+} from '@iwana/shared';
 import { Permissions } from '../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -43,9 +50,15 @@ import {
   ResetPasswordDto,
   UpdateProfileDto,
   UpdateUserDto,
+  UserListResponseDto,
   UserResponseDto,
+  UsersListEnvelopeDto,
 } from './dto/user.dto';
-import { PickerSearchResponseDto, UsersPickerSearchQueryDto } from '../../common/pagination';
+import {
+  ListMetaDto,
+  PickerSearchResponseDto,
+  UsersPickerSearchQueryDto,
+} from '../../common/pagination';
 
 /**
  * Controlador de gestion de usuarios por tenant.
@@ -62,6 +75,7 @@ import { PickerSearchResponseDto, UsersPickerSearchQueryDto } from '../../common
  */
 @ApiTags('users')
 @ApiBearerAuth('access-token')
+@ApiExtraModels(UserListResponseDto, UsersListEnvelopeDto, ListMetaDto)
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
@@ -106,7 +120,11 @@ export class UsersController {
       'Búsqueda en PostgreSQL (pg_trgm + ILIKE) sobre email, first_name, last_name y job_title. ' +
       'total/nextCursor se calculan sobre el conjunto ya filtrado; el cursor aplica después del filtro (ADR-062).',
   })
-  @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.', type: UserResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado paginado de usuarios.',
+    type: UsersListEnvelopeDto,
+  })
   @ApiResponse({ status: 400, description: 'Parametro limit invalido.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos de administrador o USERS_READ.' })
@@ -116,9 +134,7 @@ export class UsersController {
     @Query('status') status?: UserStatus,
     @Query('role') role?: UserRole,
     @Query('search') search?: string,
-  ): Promise<{
-    data: { data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } };
-  }> {
+  ): Promise<{ data: ListResponse<UserResponseDto> }> {
     const params: {
       cursor?: string;
       limit?: number;

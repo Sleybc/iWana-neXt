@@ -141,6 +141,13 @@ export const SETTINGS_HUB_SECTION_COPY: Partial<
     actionLabel: 'Revisar calendario',
     emphasis: 'secondary',
   },
+  rules: {
+    title: 'Reglas',
+    description:
+      'Impuestos, aplicación de impuestos, reemplazos de catálogo y simulador tributario.',
+    actionLabel: 'Revisar reglas',
+    emphasis: 'secondary',
+  },
   branding: {
     title: 'Marca',
     description: 'Imagen institucional y activos visuales de la empresa.',
@@ -266,8 +273,6 @@ export const CALENDAR_SETTINGS_COPY = {
   loadingSubtitle: 'Cargando tu calendario',
   pageSubtitle:
     'Consulta en una sola vista los horarios habituales y los cambios por fecha que afectan la operación.',
-  calendarRoutineLaneTitle: 'Horarios habituales',
-  calendarDateChangesLaneTitle: 'Cambios por fecha',
   refreshPendingChangesWarning:
     'Tienes cambios pendientes en un horario. Guárdalos antes de actualizar para no perderlos.',
   calendarLoadingAnnouncement: 'Cargando calendario operativo',
@@ -481,6 +486,15 @@ export const FIELD_OPERATIONS_SETTINGS_COPY = {
   helperText: 'Horario base, cambios por sede y festivos especiales.',
 } as const;
 
+export const RULES_SETTINGS_COPY = {
+  pageTitle: 'Reglas',
+  loadingSubtitle: 'Cargando reglas de catálogo e impuestos',
+  pageSubtitle: 'Configura reemplazos, impuestos, su aplicación y verifica con un cliente.',
+  restrictedTitle: 'Vista disponible para administración tributaria',
+  restrictedDescription: 'Solo administración, contabilidad o ventas pueden abrir esta sección.',
+  navAriaLabel: 'Secciones de reglas',
+} as const;
+
 export const BRANDING_SETTINGS_COPY = {
   pageTitle: 'Marca',
   loadingSubtitle: 'Cargando identidad visual de la empresa',
@@ -492,10 +506,8 @@ export const BRANDING_SETTINGS_COPY = {
   forbidden: 'No tienes permisos para consultar la marca de la empresa.',
   loadError: 'No fue posible cargar la configuración de marca.',
   formDescription: 'Administra los activos de marca y los textos públicos del portal empresarial.',
-  logoDescription:
-    'Se usa en el acceso público y en superficies de identificación extendida de la empresa.',
-  loginBackgroundDescription:
-    'Se usa como acento visual del acceso público del portal para reforzar la identidad de la empresa.',
+  logoDescription: 'Acceso público y superficies amplias.',
+  loginBackgroundDescription: 'Fondo del acceso público.',
   faviconAlt: 'Favicon de la empresa',
   showCompanyNameDescription:
     'Si se desactiva, el menú mostrará solo el sello sin texto. El acceso público seguirá la política configurada para mostrar el nombre comercial.',
@@ -506,10 +518,7 @@ export const BRANDING_SETTINGS_COPY = {
   slotSourceUploaded: 'Activo subido',
   slotSourceExternalUrl: 'Enlace externo',
   slotSourceNone: 'Sin configurar',
-  slotPrecedenceHint:
-    'El archivo subido tiene prioridad sobre la URL. Subir un archivo lo aplica de inmediato; escribir una URL HTTPS lo aplica al guardar la marca.',
-  slotUrlHelperText:
-    'Déjalo vacío para conservar el archivo subido. Escribe una URL HTTPS y guarda la marca para aplicarla.',
+  slotPrecedenceHint: 'El archivo subido tiene prioridad. La URL se aplica al guardar.',
   slotImageLoadErrorTitle: 'La imagen no está disponible',
   slotImageLoadErrorDescription: 'Revisa la URL de esta variante o sube un archivo nuevo.',
   readOnlyNoticeTitle: 'Consulta sin edición',

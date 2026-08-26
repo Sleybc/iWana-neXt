@@ -37,7 +37,7 @@ import {
 } from '@/components/shared/portal-ui';
 import { formatDateOnlyEsCo } from '@/lib/format-date';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
-import { TimeFieldSelect } from './TimeFieldSelect';
+import { TimeFieldSelect } from '@/components/shared/TimeFieldSelect';
 
 function normalizeTime(value: string | null): string {
   if (!value) return '';

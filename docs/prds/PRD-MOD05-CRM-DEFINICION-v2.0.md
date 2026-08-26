@@ -364,7 +364,7 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 
 | CA    | Descripcion                                                                                                          |
 | ----- | -------------------------------------------------------------------------------------------------------------------- |
-| CA-01 | Crear expediente rapido con solo fullName y source                                                                   |
+| CA-01 | Crear expediente rapido con fullName, customerSegment (tipo de cliente, obligatorio) y source                         |
 | CA-02 | Completar secciones de forma progresiva; completitud recalculada en cada mutacion                                    |
 | CA-03 | Transiciones de estado validan campos minimos requeridos                                                             |
 | CA-04 | Consentimiento triple registrado con canal, IP, texto legal                                                          |

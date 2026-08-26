@@ -108,6 +108,8 @@ describe('ScheduleList', () => {
   it('muestra estado vacío cuando no hay eventos', () => {
     render(<ScheduleList events={[]} techniciansById={new Map()} onSelectEvent={jest.fn()} />);
     expect(screen.getByText('Sin eventos en el rango')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Evento' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Nueva solicitud' })).not.toBeInTheDocument();
     expect(
       screen.getByText('Prueba otro rango o vuelve a Día para revisar una jornada específica.'),
     ).toBeInTheDocument();

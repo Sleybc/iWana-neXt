@@ -31,7 +31,7 @@ const mockExpediente = {
   documentType: 'NIT',
   documentNumberEncrypted: 'enc-documento-demo',
   personType: 'PERSONA_NATURAL',
-  firstName: 'Laura',
+  firstName: 'Usuario',
   lastName: 'Perez',
   primaryContactName: null,
   primaryContactRole: null,
@@ -62,7 +62,7 @@ const mockResponsibility = {
   currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
   currentResponsible: {
     userId: 'user-uuid-admin-test',
-    name: 'Laura Pérez',
+    name: 'Usuario de prueba',
     role: 'ADMIN',
   },
   expedienteId: mockExpediente.id,
@@ -75,7 +75,7 @@ const mockAttribution = {
   attributionRole: 'ORIGINATOR',
   actorId: 'user-uuid-admin-test',
   actorRole: 'ADMIN',
-  actorName: 'Laura Pérez',
+  actorName: 'Usuario de prueba',
   acquisitionChannel: 'REFERRAL',
   notes: null,
   attributedAt: '2026-03-26T10:00:00.000Z',
@@ -89,8 +89,8 @@ const mockAttribution = {
 const mockUsers = [
   {
     id: 'user-uuid-admin-test',
-    firstName: 'Laura',
-    lastName: 'Pérez',
+    firstName: 'Usuario',
+    lastName: 'Prueba',
     email: 'laura@iwana.co',
     role: 'ADMIN',
   },
@@ -167,8 +167,8 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
         body: JSON.stringify({
           data: {
             id: 'user-uuid-admin-test',
-            firstName: 'Laura',
-            lastName: 'Pérez',
+            firstName: 'Usuario',
+            lastName: 'Prueba',
           },
         }),
       });
@@ -361,19 +361,94 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/bootstrap`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            expediente: {
+              id: mockExpediente.id,
+              status: mockExpediente.status,
+              previousStatus: mockExpediente.previousStatus,
+              statusChangedAt: mockExpediente.statusChangedAt,
+              createdAt: mockExpediente.createdAt,
+              updatedAt: mockExpediente.updatedAt,
+              fullName: mockExpediente.fullName,
+              documentType: mockExpediente.documentType,
+              personType: mockExpediente.personType,
+              dataConsentRevoked: mockExpediente.dataConsentRevoked,
+              hasLocation: true,
+              source: mockExpediente.source,
+              acquisitionChannel: mockExpediente.acquisitionChannel,
+              interestedPlanId: mockExpediente.interestedPlanId,
+              additionalProductIds: mockExpediente.additionalProductIds,
+              additionalServiceIds: [],
+            },
+            completeness: {
+              commercial: 70,
+              legal: 50,
+              technical: 40,
+              operational: 30,
+              overall: 48,
+              sectionCompleteness: [],
+              installationReadiness: {
+                status: 'NOT_READY',
+                canTransition: false,
+                title: 'No listo para instalación',
+                message: 'Completa la información técnica pendiente.',
+              },
+              missingRequirements: [],
+            },
+            pipelineRecommendation: {
+              currentStatus: mockExpediente.status,
+              suggestedStatus: mockExpediente.status,
+              recommendationReason: null,
+              blockingRequirements: [],
+              informationalRequirements: [],
+            },
+            operationalMetadata: {
+              createdBy: { userId: 'user-uuid-admin-test', name: 'Usuario de prueba' },
+              lastEditedBy: { userId: 'user-uuid-admin-test', name: 'Usuario de prueba' },
+              lastActivityAt: mockExpediente.updatedAt,
+            },
+            currentAttribution: null,
+            responsibility: null,
+            subscriberSummary: null,
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/timeline`) && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            changes: [],
-            activities: [],
+            events: [],
             metadata: {
-              createdBy: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
-              lastEditedBy: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
+              createdBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
+              lastEditedBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
               lastActivityAt: '2026-03-26T11:40:00.000Z',
             },
+          },
+          meta: {
+            page: 1,
+            limit: 5,
+            total: 0,
+            totalPages: 0,
+            truncated: false,
+            hasMore: false,
           },
         }),
       });
@@ -506,7 +581,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await setAuthSession(page);
     await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     const altContactNameInput = page.getByLabel(/nombre contacto alternativo/i);
@@ -514,7 +589,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await expect(altContactNameInput).toBeVisible();
     await expect(altContactPhoneInput).toBeVisible();
 
-    await altContactNameInput.fill('Carlos Martinez');
+    await altContactNameInput.fill('Contacto alterno sintético');
     await altContactPhoneInput.fill('3001234567');
 
     await page
@@ -525,16 +600,16 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
 
     const savedPayload = mocks.getSavedContactPayload();
     expect(savedPayload).toMatchObject({
-      altContactName: 'Carlos Martinez',
+      altContactName: 'Contacto alterno sintético',
       altContactPhone: '3001234567',
     });
 
     await page.reload();
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
-    await expect(altContactNameInput).toHaveValue('Carlos Martinez');
+    await expect(altContactNameInput).toHaveValue('Contacto alterno sintético');
     await expect(altContactPhoneInput).toHaveValue('3001234567');
 
     await altContactNameInput.clear();
@@ -554,7 +629,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
 
     await page.reload();
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     await expect(altContactNameInput).toHaveValue('');
@@ -566,7 +641,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await setAuthSession(page);
     await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Gestión' }).click();
+    await page.getByRole('tab', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     const altContactPhoneInput = page.getByLabel(/teléfono contacto alternativo/i);

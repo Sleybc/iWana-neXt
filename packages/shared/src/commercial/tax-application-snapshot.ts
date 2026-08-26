@@ -1,9 +1,9 @@
 /**
  * Snapshot de una aplicación tributaria resuelta.
- * Retornado por ITaxApplicationReadPort (CommercialModule) para uso por
- * CrmModule, BillingModule y otros consumidores downstream.
+ * Retornado por ITaxApplicationReadPort (TaxationModule) para uso por
+ * CrmModule, BillingModule e Inventory.
  *
- * Ref: HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum §5, ADR-031 §D3
+ * Ref: ADR-082, HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum §5, ADR-031 §D3
  */
 export interface TaxApplicationSnapshot {
   /** UUID de la definición en el catálogo de Taxation (MOD07). */

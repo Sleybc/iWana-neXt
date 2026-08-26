@@ -88,7 +88,7 @@ export function ScheduleEventDrawer({
       open={open}
       onOpenChange={onOpenChange}
       title={event?.title || 'Detalle del evento'}
-      description="Supervisa la visita, resuelve excepciones y abre la OT cuando necesites revisar la ejecución."
+      description="Supervisa la visita, resuelve excepciones y abre la orden de trabajo cuando necesites revisar la ejecución."
       eyebrow="Agenda · coordinación"
     >
       {isLoading ? (
@@ -124,7 +124,7 @@ export function ScheduleEventDrawer({
             <Badge variant={getScheduleEventStatusVariant(event.status)}>
               {getScheduleEventStatusLabel(event.status)}
             </Badge>
-            {hasExecutionOrder ? <Badge variant="primary">OT vinculada</Badge> : null}
+            {hasExecutionOrder ? <Badge variant="primary">Orden vinculada</Badge> : null}
           </div>
 
           {/* ── Contexto operativo ── */}
@@ -204,7 +204,7 @@ export function ScheduleEventDrawer({
             </div>
           </section>
 
-          {/* ── Resumen de la OT ── */}
+          {/* ── Resumen de la orden de trabajo ── */}
           <section
             aria-labelledby="agenda-order"
             className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
@@ -215,10 +215,11 @@ export function ScheduleEventDrawer({
                   id="agenda-order"
                   className="text-sm font-semibold text-gray-900 dark:text-white"
                 >
-                  Resumen de la OT
+                  Resumen de la orden de trabajo
                 </h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  La información completa se registra en la OT; Agenda solo muestra su resumen.
+                  La información completa se registra en la orden de trabajo; Agenda solo muestra su
+                  resumen.
                 </p>
               </div>
             </div>
@@ -248,7 +249,7 @@ export function ScheduleEventDrawer({
               title="Sincronización pendiente"
               description={
                 syncState === 'stale'
-                  ? 'Los datos de la OT pueden estar desactualizados. Refresca para ver el estado vigente.'
+                  ? 'Los datos de la orden pueden estar desactualizados. Actualiza para ver el estado vigente.'
                   : syncState === 'conflict'
                     ? 'La orden cambió en el servidor. Revisa la versión vigente antes de decidir.'
                     : syncState === 'error'

@@ -85,6 +85,9 @@ describe('StockWorkspace', () => {
     expect(screen.getByText('Kardex')).toBeInTheDocument();
     expect(screen.getByText('Reposición')).toBeInTheDocument();
     expect(screen.getByText('Tabla por producto')).toBeInTheDocument();
+    const productTab = screen.getByRole('tab', { name: 'Por producto', selected: true });
+    expect(productTab).toHaveClass('border-iwana-secondary');
+    expect(productTab).not.toHaveClass('bg-iwana-primary');
   });
 
   it('abre Por bodega cuando el filtro de custodia es móvil', () => {

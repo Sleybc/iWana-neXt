@@ -5,6 +5,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select 
 import { CircleAlert, Loader2, Shield, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { ConsentChannel } from '@iwana/shared';
 import { crmApi, type ConsentRecordItem, type CreateConsentDto } from '@/lib/api-client';
+import { getSafeCrmErrorMessage } from './crm-error-message';
 
 const CONSENT_TYPE_OPTIONS = [
   { value: 'DATA_TREATMENT', label: 'Tratamiento de datos' },
@@ -124,8 +125,7 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
       setSuccessMessage(null);
       const response = await crmApi.listConsents(expedienteId);
       setConsents(response.data);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError('No fue posible cargar los consentimientos.');
     } finally {
       setLoading(false);
@@ -148,8 +148,7 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
         evidenceRef: undefined,
       });
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'No fue posible registrar el consentimiento.');
+      setError(getSafeCrmErrorMessage(err, 'No fue posible registrar el consentimiento.'));
     } finally {
       setSubmitting(false);
     }
@@ -163,13 +162,12 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
       await crmApi.revokeConsent(
         expedienteId,
         consentId,
-        reason?.trim() || 'Revocación solicitada desde CRM portal',
+        reason?.trim() || 'Revocación solicitada desde el portal',
       );
       await loadConsents();
       setSuccessMessage('Consentimiento revocado correctamente.');
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'No fue posible revocar el consentimiento.');
+      setError(getSafeCrmErrorMessage(err, 'No fue posible revocar el consentimiento.'));
     } finally {
       setRevoking(null);
     }

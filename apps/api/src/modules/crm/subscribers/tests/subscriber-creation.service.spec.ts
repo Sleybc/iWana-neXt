@@ -223,6 +223,21 @@ describe('SubscriberCreationService', () => {
       );
       expect(result).toBe(CustomerSegment.PYME);
     });
+
+    it('propaga el segmento del expediente cuando está presente', () => {
+      const expediente = {
+        ...mockExpedienteNatural,
+        customerSegment: CustomerSegment.GOVERNMENT,
+      };
+      const result = (service as any).resolveCustomerSegment(expediente, PersonType.NATURAL);
+      expect(result).toBe(CustomerSegment.GOVERNMENT);
+    });
+
+    it('mantiene el fallback RESIDENTIAL si el expediente no porta segmento', () => {
+      const expediente = { ...mockExpedienteNatural, customerSegment: null };
+      const result = (service as any).resolveCustomerSegment(expediente, PersonType.NATURAL);
+      expect(result).toBe(CustomerSegment.RESIDENTIAL);
+    });
   });
 
   // ── resolveEmail ──
@@ -592,6 +607,38 @@ describe('SubscriberCreationService', () => {
       expect(subscriberId).toBe('sub-existing-001');
       expect(partyServiceMock.create).not.toHaveBeenCalled();
       expect(subscribersServiceMock.createFromExpediente).not.toHaveBeenCalled();
+    });
+
+    it('propaga el segmento GOVERNMENT del expediente al subscriber en la conversion', async () => {
+      const expedienteGobierno = {
+        ...mockExpedienteNatural,
+        customerSegment: CustomerSegment.GOVERNMENT,
+      };
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expedienteGobierno,
+          },
+        }),
+      );
+
+      subscribersServiceMock.createFromExpediente.mockResolvedValue({
+        id: 'sub-gov-001',
+        customerSegment: CustomerSegment.GOVERNMENT,
+      });
+
+      const subscriberId = await service.createFromExpediente('exp-gov', 'actor-1');
+
+      expect(subscriberId).toBe('sub-gov-001');
+      expect(subscribersServiceMock.createFromExpediente).toHaveBeenCalledWith(
+        'exp-gov',
+        expect.objectContaining({
+          personType: PersonType.NATURAL,
+          customerSegment: CustomerSegment.GOVERNMENT,
+        }),
+        'actor-1',
+      );
     });
   });
 });

@@ -11,7 +11,10 @@ describe('inventory-tab-params', () => {
       expect(resolveInventoryTab('locations/Crear bodega')).toBe('locations');
       expect(resolveInventoryTab('issues')).toBe('issues');
       expect(resolveInventoryTab('stock')).toBe('stock');
-      expect(resolveInventoryTab(null)).toBe('catalog');
+      expect(resolveInventoryTab(null)).toBe('overview');
+      expect(resolveInventoryTab('summary')).toBe('overview');
+      expect(resolveInventoryTab('overview')).toBe('overview');
+      expect(resolveInventoryTab('catalog')).toBe('catalog');
     });
   });
 
@@ -25,9 +28,11 @@ describe('inventory-tab-params', () => {
   });
 
   describe('isInventoryTabParam', () => {
-    it('acepta tab base y subrutas de bodegas', () => {
+    it('acepta tab base, overview, summary legado y subrutas de bodegas', () => {
       expect(isInventoryTabParam('locations')).toBe(true);
       expect(isInventoryTabParam('locations/Crear bodega')).toBe(true);
+      expect(isInventoryTabParam('overview')).toBe(true);
+      expect(isInventoryTabParam('summary')).toBe(true);
       expect(isInventoryTabParam('invalid')).toBe(false);
     });
   });

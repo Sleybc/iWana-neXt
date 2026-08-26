@@ -33,7 +33,7 @@ const mockExpediente = {
   documentType: 'NIT',
   documentNumberEncrypted: 'enc-documento-demo',
   personType: 'PERSONA_NATURAL',
-  firstName: 'Laura',
+  firstName: 'Usuario',
   lastName: 'Perez',
   primaryContactName: null,
   primaryContactRole: null,
@@ -62,7 +62,7 @@ const mockResponsibility = {
   currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
   currentResponsible: {
     userId: 'user-uuid-admin-test',
-    name: 'Laura Pérez',
+    name: 'Usuario de prueba',
     role: 'ADMIN',
   },
   expedienteId: mockExpedienteId,
@@ -75,7 +75,7 @@ const mockAttribution = {
   attributionRole: 'ORIGINATOR',
   actorId: 'user-uuid-admin-test',
   actorRole: 'ADMIN',
-  actorName: 'Laura Pérez',
+  actorName: 'Usuario de prueba',
   acquisitionChannel: 'REFERRAL',
   notes: null,
   attributedAt: '2026-03-26T10:00:00.000Z',
@@ -89,22 +89,22 @@ const mockAttribution = {
 const mockUsers = [
   {
     id: 'user-uuid-admin-test',
-    firstName: 'Laura',
-    lastName: 'Pérez',
+    firstName: 'Usuario',
+    lastName: 'Prueba',
     email: 'laura@iwana.co',
     role: 'ADMIN',
   },
   {
     id: 'user-uuid-advisor-1',
-    firstName: 'Carlos',
-    lastName: 'García',
+    firstName: 'Usuario',
+    lastName: 'Alterno',
     email: 'carlos@iwana.co',
     role: 'ADVISOR',
   },
   {
     id: 'user-uuid-advisor-2',
-    firstName: 'María',
-    lastName: 'López',
+    firstName: 'Usuario',
+    lastName: 'Asignado',
     email: 'maria@iwana.co',
     role: 'ADVISOR',
   },
@@ -190,8 +190,8 @@ async function setupMocks(page: import('@playwright/test').Page) {
         body: JSON.stringify({
           data: {
             id: 'user-uuid-admin-test',
-            firstName: 'Laura',
-            lastName: 'Pérez',
+            firstName: 'Usuario',
+            lastName: 'Prueba',
           },
         }),
       });
@@ -386,6 +386,68 @@ async function setupMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (pathname.endsWith(`/crm/expedientes/${mockExpedienteId}/bootstrap`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            expediente: {
+              id: mockExpediente.id,
+              status: mockExpediente.status,
+              previousStatus: mockExpediente.previousStatus,
+              statusChangedAt: mockExpediente.statusChangedAt,
+              createdAt: mockExpediente.createdAt,
+              updatedAt: mockExpediente.updatedAt,
+              fullName: mockExpediente.fullName,
+              documentType: mockExpediente.documentType,
+              personType: mockExpediente.personType,
+              dataConsentRevoked: mockExpediente.dataConsentRevoked,
+              hasLocation: true,
+              source: mockExpediente.source,
+              acquisitionChannel: mockExpediente.acquisitionChannel,
+              interestedPlanId: mockExpediente.interestedPlanId,
+              additionalProductIds: mockExpediente.additionalProductIds,
+              additionalServiceIds: [],
+            },
+            completeness: {
+              commercial: 70,
+              legal: 50,
+              technical: 40,
+              operational: 30,
+              overall: 48,
+              sectionCompleteness: [],
+              installationReadiness: {
+                status: 'NOT_READY',
+                canTransition: false,
+                title: 'No listo para instalación',
+                message: 'Completa la información técnica pendiente.',
+              },
+              missingRequirements: [],
+            },
+            pipelineRecommendation: null,
+            operationalMetadata: {
+              createdBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
+              lastEditedBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
+              lastActivityAt: mockExpediente.updatedAt,
+            },
+            currentAttribution: mockAttribution,
+            responsibility: mockResponsibility,
+            subscriberSummary: null,
+          },
+        }),
+      });
+      return;
+    }
+
     if (
       pathname.endsWith(`/crm/expedientes/${mockExpedienteId}/responsibility`) &&
       method === 'GET'
@@ -413,7 +475,7 @@ async function setupMocks(page: import('@playwright/test').Page) {
         currentResponsibleAssignedAt: new Date().toISOString(),
         currentResponsible: {
           userId: body.responsibleUserId,
-          name: 'María López',
+          name: 'Usuario asignado',
           role: 'ADVISOR',
         },
       };
@@ -438,17 +500,17 @@ async function setupMocks(page: import('@playwright/test').Page) {
               id: 'history-1',
               previousResponsible: {
                 userId: 'user-uuid-advisor-1',
-                name: 'Carlos García',
+                name: 'Usuario alterno',
                 role: 'ADVISOR',
               },
               newResponsible: {
                 userId: 'user-uuid-admin-test',
-                name: 'Laura Pérez',
+                name: 'Usuario de prueba',
                 role: 'ADMIN',
               },
               changedByActor: {
                 userId: 'user-uuid-admin-test',
-                name: 'Laura Pérez',
+                name: 'Usuario de prueba',
                 role: 'ADMIN',
               },
               changedAt: '2026-03-26T10:30:00.000Z',
@@ -518,22 +580,46 @@ async function setupMocks(page: import('@playwright/test').Page) {
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            changes: [
+            events: [
               {
-                id: 'timeline-1',
-                fromStatus: 'CONTACTADO',
-                toStatus: 'NUEVO_POTENCIAL',
+                kind: 'responsibility',
+                id: 'timeline-responsibility-1',
                 changedAt: '2026-03-26T11:30:00.000Z',
-                reason: null,
-                actor: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
+                previousResponsible: {
+                  userId: 'user-uuid-advisor-1',
+                  name: 'Usuario alterno',
+                  role: 'ADVISOR',
+                },
+                newResponsible: {
+                  userId: 'user-uuid-admin-test',
+                  name: 'Usuario de prueba',
+                  role: 'ADMIN',
+                },
+                actor: { userId: 'user-uuid-admin-test', name: 'Usuario de prueba', role: 'ADMIN' },
+                notes: 'Toma de caso inicial',
               },
             ],
-            activities: [],
             metadata: {
-              createdBy: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
-              lastEditedBy: { userId: 'user-uuid-admin-test', name: 'Laura Pérez' },
+              createdBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
+              lastEditedBy: {
+                userId: 'user-uuid-admin-test',
+                name: 'Usuario de prueba',
+                role: 'ADMIN',
+              },
               lastActivityAt: '2026-03-26T11:40:00.000Z',
             },
+          },
+          meta: {
+            page: 1,
+            limit: 5,
+            total: 1,
+            totalPages: 1,
+            truncated: false,
+            hasMore: false,
           },
         }),
       });
@@ -593,7 +679,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.getByText('Seguimiento', { exact: true }).click();
 
     await expect(page.getByText('Responsable', { exact: true })).toBeVisible();
-    await expect(page.getByText('Originador', { exact: true })).toBeVisible();
+    await expect(page.getByText('Asesor de origen', { exact: true })).toBeVisible();
     await expect(page.getByText('Interés del cliente', { exact: true })).toBeVisible();
     await expect(page.getByText('Origen', { exact: true })).toBeVisible();
   });
@@ -606,7 +692,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
 
     await page.getByText('Seguimiento', { exact: true }).click();
     await expect(page.getByText('Responsable', { exact: true })).toBeVisible();
-    await expect(page.getByText('Laura Pérez', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('Usuario de prueba', { exact: false }).first()).toBeVisible();
   });
 
   test('responsable actual muestra nombre, rol y fecha de asignación', async ({ page }) => {
@@ -617,7 +703,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
 
     await page.getByText('Seguimiento', { exact: true }).click();
 
-    await expect(page.getByText('Laura Pérez', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('Usuario de prueba', { exact: false }).first()).toBeVisible();
     await expect(page.getByText(/admin/i).first()).toBeVisible();
     await expect(page.getByText(/desde/i).first()).toBeVisible();
   });
@@ -649,7 +735,6 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
 
     await expect(originBlock.getByText('Origen', { exact: true })).toBeVisible();
     await expect(originBlock.getByText('REFERRAL', { exact: true })).toBeVisible();
-    await expect(originBlock.getByText('Aliado estratégico', { exact: true })).toBeVisible();
   });
 
   test('bloque de originador muestra la atribución comercial activa', async ({ page }) => {
@@ -661,12 +746,12 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.getByText('Seguimiento', { exact: true }).click();
 
     const originatorBlock = page.locator('aside > div').filter({
-      has: page.getByText('Originador', { exact: true }),
+      has: page.getByText('Asesor de origen', { exact: true }),
     });
 
-    await expect(originatorBlock.getByText('Originador', { exact: true })).toBeVisible();
-    await expect(originatorBlock.getByText('Laura Pérez', { exact: true })).toBeVisible();
-    await expect(originatorBlock.getByText('ADMIN', { exact: true })).toBeVisible();
+    await expect(originatorBlock.getByText('Asesor de origen', { exact: true })).toBeVisible();
+    await expect(originatorBlock.getByText('Usuario de prueba', { exact: true })).toBeVisible();
+    await expect(originatorBlock.getByText('Administrador', { exact: true })).toBeVisible();
   });
 
   test('bitácora unificada expone filtros de pipeline y asignaciones', async ({ page }) => {
@@ -678,7 +763,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.getByText('Seguimiento', { exact: true }).click();
 
     await expect(page.getByText(/bitácora de actividad/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Pipeline' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Estados' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Asignaciones' })).toBeVisible();
   });
 
@@ -698,9 +783,11 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
       .first();
 
     await expect(
-      responsibilityEntry.getByText('Anterior: Carlos García', { exact: true }),
+      responsibilityEntry.getByText('Anterior: Usuario alterno', { exact: true }),
     ).toBeVisible();
-    await expect(responsibilityEntry.getByText('Nuevo rol: ADMIN', { exact: true })).toBeVisible();
+    await expect(
+      responsibilityEntry.getByText('Nuevo rol: Administrador', { exact: true }),
+    ).toBeVisible();
   });
 
   test('reasignar responsable abre el formulario vigente', async ({ page }) => {
@@ -733,8 +820,10 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
       })
       .first();
 
-    await pickSearchableUser(page, responsibilityPanel, 'Ma', /María López/i);
-    await responsibilityPanel.getByLabel('Notas (opcional)').fill('Caso reasignado a María');
+    await pickSearchableUser(page, responsibilityPanel, 'Us', /Usuario asignado/i);
+    await responsibilityPanel
+      .getByLabel('Notas (opcional)')
+      .fill('Caso reasignado a usuario sintético');
     await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 
     await expect(page.getByText(/responsable actualizado/i)).toBeVisible({ timeout: 5000 });
@@ -742,7 +831,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     const payload = mocks.getCapturedResponsibilityPayload();
     expect(payload).toMatchObject({
       responsibleUserId: 'user-uuid-advisor-2',
-      notes: 'Caso reasignado a María',
+      notes: 'Caso reasignado a usuario sintético',
     });
   });
 
@@ -780,7 +869,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
         has: page.getByText('Reasignar responsable', { exact: true }),
       })
       .first();
-    await pickSearchableUser(page, responsibilityPanel, 'Ma', /María López/i);
+    await pickSearchableUser(page, responsibilityPanel, 'Us', /Usuario asignado/i);
     await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 
     await page.waitForLoadState('networkidle');

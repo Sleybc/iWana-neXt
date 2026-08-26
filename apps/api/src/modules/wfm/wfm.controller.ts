@@ -203,6 +203,10 @@ export class WfmController {
   @Post('visit-requests/:id/schedule-recommendations')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
   @ApiOperation({ summary: 'Obtener recomendaciones territoriales para una solicitud lista' })
+  @ApiResponse({
+    status: 400,
+    description: 'Contexto incompleto, candidatos invalidos u horario operativo sin configurar',
+  })
   async recommendVisitRequest(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RecommendVisitRequestDto,
@@ -262,6 +266,10 @@ export class WfmController {
   @Post('schedule-recommendations')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
   @ApiOperation({ summary: 'Obtener recomendaciones territoriales de agenda' })
+  @ApiResponse({
+    status: 400,
+    description: 'Ventana invalida u horario operativo sin configurar',
+  })
   recommendSchedule(@Body() dto: ScheduleRecommendationRequestDto) {
     return this.scheduleRecommendationsService.recommend(dto);
   }

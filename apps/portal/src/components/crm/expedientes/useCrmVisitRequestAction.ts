@@ -2,15 +2,21 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError } from '@/lib/api-client';
 import { createCrmVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 import type { VisitRequestNextAction } from '@/components/scheduling/visit-request-origin-orchestration';
+import { getSafeCrmErrorMessage } from './crm-error-message';
+import {
+  invalidateExpedienteFieldWorkCache,
+  resolveExpedienteCacheScope,
+} from './expediente-detail-cache';
 
 export interface CrmVisitRequestContext {
   expedienteId: string;
+  tenantScope?: string;
   customerLabel: string;
   municipality?: string | null;
   address?: string | null;
+  sector?: string | null;
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -50,6 +56,9 @@ export function useCrmVisitRequestAction() {
       if (context.address) {
         input.address = context.address;
       }
+      if (context.sector) {
+        input.sector = context.sector;
+      }
       if (context.latitude != null && context.longitude != null) {
         input.latitude = context.latitude;
         input.longitude = context.longitude;
@@ -60,14 +69,17 @@ export function useCrmVisitRequestAction() {
       }
 
       const result = await createCrmVisitRequestAndRoute(input);
+      invalidateExpedienteFieldWorkCache(
+        context.tenantScope ?? resolveExpedienteCacheScope(),
+        context.expedienteId,
+      );
       router.push(result.href);
     } catch (submitError) {
       setError(
-        submitError instanceof ApiError
-          ? submitError.message
-          : submitError instanceof Error
-            ? submitError.message
-            : 'No fue posible coordinar la visita de instalación. Intenta de nuevo.',
+        getSafeCrmErrorMessage(
+          submitError,
+          'No fue posible coordinar la visita de instalación. Intenta de nuevo.',
+        ),
       );
     } finally {
       setIsSubmitting(false);

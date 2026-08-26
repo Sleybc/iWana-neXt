@@ -258,6 +258,7 @@ describe('PendingVisitRequestsView', () => {
     const dispatchButtons = await screen.findAllByRole('button', {
       name: 'Abrir despacho para María Gómez',
     });
+    crmApi.getExpediente.mockClear();
     fireEvent.click(dispatchButtons[0]!);
 
     expect(await screen.findByText('Define duración y búsqueda')).toBeInTheDocument();
@@ -318,7 +319,7 @@ describe('PendingVisitRequestsView', () => {
 
     render(<PendingVisitRequestsView />);
 
-    expect(await screen.findByText('Modo CRM asistido')).toBeInTheDocument();
+    expect(await screen.findByText('Modo comercial asistido')).toBeInTheDocument();
     expect(await screen.findByText('Define duración y búsqueda')).toBeInTheDocument();
     expect(
       screen.getByText(/Tu rol comercial no tiene acceso a la agenda detallada\./i),
@@ -327,6 +328,13 @@ describe('PendingVisitRequestsView', () => {
       screen.queryByRole('link', { name: 'abrir la agenda detallada' }),
     ).not.toBeInTheDocument();
     expect(replaceMock).toHaveBeenCalledWith('/dashboard/scheduling/pending-visits');
+    expect(wfmApi.visitRequests.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: 'Cra 10 # 10 - 10',
+        municipality: 'Bogotá',
+        sector: 'Chapinero',
+      }),
+    );
   });
 
   it('hidrata status=READY_TO_SCHEDULE desde la dirección (CA-V2-05 / I-2)', async () => {
@@ -340,6 +348,56 @@ describe('PendingVisitRequestsView', () => {
         expect.objectContaining({ status: VisitRequestStatus.READY_TO_SCHEDULE }),
       );
     });
+
+    const pageTitle = screen.getByRole('heading', { name: 'Visitas pendientes' });
+    expect(pageTitle.parentElement?.parentElement?.querySelector('a, button')).toBeNull();
+    const pendingTab = screen.getByRole('tab', { name: 'Pendientes' });
+    expect(pendingTab).toHaveAttribute('aria-selected', 'true');
+    expect(pendingTab).toHaveClass('border-iwana-secondary');
+    expect(pendingTab.querySelector('svg')).toHaveClass('text-iwana-secondary-700');
+    expect(screen.getByRole('tab', { name: 'Visitas sin realizar' })).toHaveAttribute(
+      'href',
+      '/dashboard/scheduling/unrealized-visits',
+    );
+    const agendaLink = screen.getByRole('tab', { name: 'Ir a agenda' });
+    expect(agendaLink).not.toHaveClass('bg-iwana-primary');
+    expect(agendaLink).not.toHaveClass('border-iwana-secondary');
+    expect(agendaLink.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(
+      screen.getByRole('tab', { name: 'Visitas sin realizar' }).querySelector('svg'),
+    ).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ir a agenda' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Actualizar' }).querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Limpiar filtros' })).toBeInTheDocument();
+
+    const panelTitle = screen.getByRole('heading', { name: 'Pendiente por agendar' });
+    expect(panelTitle.parentElement?.parentElement?.querySelector('button')).toBeNull();
+  });
+
+  it('consolida sectores repetidos entre municipios antes de renderizar el selector', async () => {
+    wfmApi.visitRequests.filterOptions.mockResolvedValue({
+      municipalities: [],
+      sectors: [
+        { value: '__missing__', label: 'Sin dato', count: 1, municipality: 'Bogotá' },
+        { value: '__missing__', label: 'Sin dato', count: 2, municipality: 'Soacha' },
+        { value: 'Chapinero', label: 'Chapinero', count: 1, municipality: 'Bogotá' },
+        { value: 'Chapinero', label: 'Chapinero', count: 3, municipality: 'Soacha' },
+      ],
+    });
+
+    render(<PendingVisitRequestsView />);
+
+    expect(await screen.findByText('Pendiente por agendar')).toBeInTheDocument();
+
+    const options = Array.from(
+      document.querySelectorAll<HTMLOptionElement>('#pending-visits-sector-filter-native option'),
+    ).map((option) => ({ value: option.value, label: option.textContent }));
+
+    expect(options).toEqual([
+      { value: '', label: 'Todos' },
+      { value: '__missing__', label: 'Sin sector (3)' },
+      { value: 'Chapinero', label: 'Chapinero (4)' },
+    ]);
   });
 
   it('ejecuta Cargar más, conserva la primera página y expone el estado loading', async () => {

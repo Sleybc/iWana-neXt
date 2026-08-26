@@ -10,7 +10,7 @@ export function SubscribersLandingClient() {
     <div className="space-y-6 pb-6">
       <PageHeader
         title="Suscriptores"
-        subtitle="Módulo CRM para gestión de suscriptores activos y su ciclo de vida."
+        subtitle="Gestión de suscriptores activos y su ciclo de vida."
       />
 
       <Card>
@@ -27,11 +27,11 @@ export function SubscribersLandingClient() {
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-300">
             Mientras se completa la implementación, puedes continuar en el flujo comercial actual
-            desde Expedientes.
+            desde Oportunidades.
           </p>
           <Button asChild>
             <Link href="/dashboard/crm/expedientes">
-              Ir a Expedientes
+              Ir a oportunidades
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
           </Button>

@@ -26,10 +26,10 @@ export function TaskOperationalFollowUpStep({ form }: TaskOperationalFollowUpSte
         <div className="flex items-center justify-between gap-3">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Continuidad Operativa (Orden de Trabajo)
+              Continuidad operativa
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              ¿Deseas generar una Orden de Trabajo (OT) asociada a esta tarea?
+              ¿Deseas generar una orden de trabajo asociada a esta tarea?
             </p>
           </div>
           <div className="flex items-center">
@@ -43,7 +43,7 @@ export function TaskOperationalFollowUpStep({ form }: TaskOperationalFollowUpSte
               htmlFor="create-work-order-checkbox"
               className="ml-2 text-sm font-medium text-gray-900 dark:text-white"
             >
-              Crear Orden de Trabajo
+              Crear orden de trabajo
             </label>
           </div>
         </div>
@@ -52,7 +52,7 @@ export function TaskOperationalFollowUpStep({ form }: TaskOperationalFollowUpSte
           <div className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border-2">
             <Input
               id="work-order-summary"
-              label="Resumen de la OT"
+              label="Resumen de la orden"
               requiredIndicator
               placeholder="Ej. Realizar instalación de fibra en fachada"
               {...(errors.workOrderSummary?.message
@@ -68,7 +68,7 @@ export function TaskOperationalFollowUpStep({ form }: TaskOperationalFollowUpSte
                 render={({ field }) => (
                   <Select
                     id="work-order-priority"
-                    label="Prioridad de la OT"
+                    label="Prioridad"
                     value={field.value}
                     options={WORK_ORDER_PRIORITY_OPTIONS}
                     onChange={(event) => field.onChange(event.target.value as WorkOrderPriority)}

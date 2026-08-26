@@ -109,6 +109,32 @@ describe('SettingsSectionGrid', () => {
     );
   });
 
+  it('renderiza la sección de Reglas como enlace cuando el usuario tiene permisos', () => {
+    const sections: SettingsSection[] = [
+      {
+        key: SettingsSectionKey.RULES,
+        label: 'Reglas',
+        description: 'Impuestos y reemplazos.',
+        ownerModule: 'MOD07 Taxation + MOD06 Commercial',
+        status: SettingsSectionStatus.AVAILABLE,
+        route: '/dashboard/settings/rules',
+        requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
+      },
+    ];
+
+    render(
+      <SettingsSectionGrid
+        sections={sections}
+        effectivePermissions={[AccessPermissionKey.SETTINGS_READ]}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: /Reglas/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/rules',
+    );
+  });
+
   it('renderiza una sección sin ruta una sola vez dentro de las superficies futuras', () => {
     const sections: SettingsSection[] = [
       {

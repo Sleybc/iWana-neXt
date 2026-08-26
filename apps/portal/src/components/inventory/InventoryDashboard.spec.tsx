@@ -53,12 +53,15 @@ describe('InventoryDashboard', () => {
     expect(estimatedValue).toHaveClass('tabular-nums');
   });
 
-  it('incluye el valor estimado en el breakdown de categorías', () => {
+  it('expone cinco KPI de salud y omite censo y rankings de workspace', () => {
     render(<InventoryDashboard summary={summary} />);
 
-    const expectedSecondary = `CPE · 1 productos · ${formatInventoryCurrency(1_200_000)}`;
-    expect(
-      screen.getByText((_, element) => element?.textContent === expectedSecondary),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Material disponible')).toBeInTheDocument();
+    expect(screen.getByText('Bodegas y campo')).toBeInTheDocument();
+    expect(screen.getByText('Activos con serial')).toBeInTheDocument();
+    expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    expect(screen.queryByText('Material registrado')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bodegas con más material')).not.toBeInTheDocument();
+    expect(screen.queryByText('Categorías con más material')).not.toBeInTheDocument();
   });
 });

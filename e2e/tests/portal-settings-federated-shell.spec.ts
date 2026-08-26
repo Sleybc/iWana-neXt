@@ -307,6 +307,15 @@ async function setupSettingsShellMocks(
             requiredPermissions: ['settings.read'],
           },
           {
+            key: 'rules',
+            label: 'Reglas',
+            description: 'Reemplazos, impuestos, aplicación y simulador.',
+            ownerModule: 'MOD07 Taxation + MOD06 Commercial',
+            status: 'AVAILABLE',
+            route: '/dashboard/settings/rules',
+            requiredPermissions: ['settings.read'],
+          },
+          {
             key: 'branding',
             label: 'Marca',
             description: 'Gestiona identidad visual y activos corporativos del tenant autenticado.',
@@ -520,6 +529,11 @@ test.describe('Portal settings federated shell', () => {
     await expect(shellPanel().getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
     await expect(shellPanel().getByRole('link', { name: /Marca/i })).toBeVisible();
     await expect(shellPanel().getByRole('link', { name: /Operación de campo/i })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /^Reglas$/ })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /^Reglas$/ })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/rules',
+    );
     await expect(shellPanel().getByText('Próximamente', { exact: true })).toBeVisible();
     await expect(shellPanel().getByText('Comercial', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Facturación', { exact: true })).toBeVisible();

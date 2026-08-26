@@ -18,7 +18,9 @@ describe('ExpedienteConversionBanner', () => {
         subscriberSummary={{ id: 'sub-1', status: 'PROSPECT', fullName: 'Laura Pérez' }}
       />,
     );
-    expect(screen.getByText('Este expediente ya fue convertido a suscriptor.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Esta oportunidad ya fue convertida a suscriptor.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ir al suscriptor' })).toHaveAttribute(
       'href',
       '/dashboard/crm/subscribers/sub-1',
@@ -27,7 +29,9 @@ describe('ExpedienteConversionBanner', () => {
 
   it('renders banner without CTA when no subscriber summary', () => {
     render(<ExpedienteConversionBanner status="CLIENTE_ACTIVO" />);
-    expect(screen.getByText('Este expediente ya fue convertido a suscriptor.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Esta oportunidad ya fue convertida a suscriptor.'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Ir al suscriptor' })).not.toBeInTheDocument();
   });
 

@@ -9,6 +9,7 @@ import {
   AuditAction,
   ConsentStatus,
   ConsentType,
+  CustomerSegment,
   ExpedienteStatus,
   SubscriberStatus,
   TechnicalViabilityResult,
@@ -21,6 +22,9 @@ import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
+import { ContactAttempt } from '../entities/contact-attempt.entity';
+import { SalesAttribution } from '../../attributions/entities/sales-attribution.entity';
+import { OperationalResponsibilityHistory } from '../../responsibilities/entities/operational-responsibility-history.entity';
 import { ExpedienteService } from '../expediente.service';
 
 jest.mock('node:fs/promises', () => ({
@@ -33,6 +37,21 @@ jest.mock('node:fs/promises', () => ({
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
+
+function buildAuditQueryBuilderMock() {
+  const queryBuilder = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getRawMany: jest.fn().mockResolvedValue([]),
+    getRawOne: jest.fn().mockResolvedValue({ count: '0' }),
+  };
+  return queryBuilder;
+}
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
@@ -144,6 +163,7 @@ describe('ExpedienteService', () => {
             ...expediente,
             fullName: 'Cliente Demo',
             source: 'Referido',
+            customerSegment: CustomerSegment.RESIDENTIAL,
             contactAttempts: [],
             consents: [],
             coverageChecks: [],
@@ -165,12 +185,14 @@ describe('ExpedienteService', () => {
         fullName: '  Cliente Demo  ',
         source: '  Referido  ',
         acquisitionChannel: AcquisitionChannel.REFERIDO_CLIENTE,
+        customerSegment: CustomerSegment.RESIDENTIAL,
       },
       'user-1',
     );
 
     expect(created.id).toBe('exp-1');
     expect(created.createdBy).toBe('user-1');
+    expect(created.customerSegment).toBe(CustomerSegment.RESIDENTIAL);
     expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith('exp-1');
     expect(auditServiceMock.log).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1246,6 +1268,151 @@ describe('ExpedienteService', () => {
     expect(updated.interestedPlanId).toBe('plan-empresarial-500');
   });
 
+  it('limpia el plan de interés cuando el portal envía una selección vacía', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-commercial-clear-plan',
+      interestedPlanId: 'plan-previo',
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const updated = await service.updateSection(
+      'exp-commercial-clear-plan',
+      {
+        section: ExpedienteSection.COMMERCIAL_INTEREST,
+        data: { interestedPlanId: '' },
+      } satisfies UpdateSectionDto,
+      'user-commercial',
+    );
+
+    expect(updated.interestedPlanId).toBeNull();
+  });
+
+  it('persiste customerSegment al actualizar la seccion de interes comercial', async () => {
+    const expediente = buildExpediente({ id: 'exp-commercial-segment' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 60,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 15,
+    });
+
+    const updated = await service.updateSection(
+      'exp-commercial-segment',
+      {
+        section: ExpedienteSection.COMMERCIAL_INTEREST,
+        data: { customerSegment: CustomerSegment.GOVERNMENT },
+      } satisfies UpdateSectionDto,
+      'user-commercial',
+    );
+
+    expect(updated.customerSegment).toBe(CustomerSegment.GOVERNMENT);
+  });
+
+  it('limpia customerSegment a null al actualizar la seccion de interes comercial', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-commercial-segment-clear',
+      customerSegment: CustomerSegment.GOVERNMENT,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 60,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 15,
+    });
+
+    const updated = await service.updateSection(
+      'exp-commercial-segment-clear',
+      {
+        section: ExpedienteSection.COMMERCIAL_INTEREST,
+        data: { customerSegment: null },
+      } satisfies UpdateSectionDto,
+      'user-commercial',
+    );
+
+    expect(updated.customerSegment).toBeNull();
+  });
+
+  it('rechaza customerSegment invalido en la seccion de interes comercial', async () => {
+    const expediente = buildExpediente({ id: 'exp-commercial-segment-invalid' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateSection(
+        'exp-commercial-segment-invalid',
+        {
+          section: ExpedienteSection.COMMERCIAL_INTEREST,
+          data: { customerSegment: 'RESIDENCIAL' },
+        } satisfies UpdateSectionDto,
+        'user-commercial',
+      ),
+    ).rejects.toThrow('Tipo de cliente');
+  });
+
+  it('rechaza customerSegment con tipo no string en la seccion de interes comercial', async () => {
+    const expediente = buildExpediente({ id: 'exp-commercial-segment-type' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateSection(
+        'exp-commercial-segment-type',
+        {
+          section: ExpedienteSection.COMMERCIAL_INTEREST,
+          data: { customerSegment: ['RESIDENTIAL'] },
+        } satisfies UpdateSectionDto,
+        'user-commercial',
+      ),
+    ).rejects.toThrow('Tipo de cliente');
+  });
+
   it('registra el cambio de estado con el actor autenticado', async () => {
     const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
     const expediente = buildExpediente({
@@ -2207,249 +2374,346 @@ describe('ExpedienteService', () => {
     expect(summary.data[ExpedienteStatus.DESCARTADO]).toBe(0);
   });
 
-  it('construye actividad operativa con autores y mantiene historial de pipeline separado', async () => {
-    const expediente = buildExpediente({
-      id: 'exp-activity',
-      createdBy: 'user-creator',
-      updatedAt: new Date('2026-03-23T12:00:00Z'),
-      statusChanges: [
-        {
-          id: 'status-1',
-          tenantId: 'ten-1',
-          expedienteId: 'exp-activity',
-          fromStatus: ExpedienteStatus.PRECALIFICADO,
-          toStatus: ExpedienteStatus.EN_COTIZACION,
-          changedAt: new Date('2026-03-23T11:00:00Z'),
-          changedBy: 'user-sales',
-          reason: 'Cliente solicita propuesta',
-          metadataJson: null,
-          createdAt: new Date('2026-03-23T11:00:00Z'),
-        },
-      ] as unknown as StatusChange[],
+  it('lee el timeline paginado sin findById ni relaciones del expediente', async () => {
+    const findByIdSpy = jest.spyOn(service, 'findById');
+    const changedAt = new Date('2026-03-23T11:00:00Z');
+    const attemptedAt = new Date('2026-03-23T10:00:00Z');
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'exp-timeline',
+        createdBy: 'user-1',
+        updatedAt: attemptedAt,
+      }),
+      findAndCount: jest.fn().mockImplementation(async (entity: unknown) => {
+        if (entity === StatusChange) {
+          return [
+            [
+              {
+                id: 'status-1',
+                expedienteId: 'exp-timeline',
+                fromStatus: 'NUEVO_POTENCIAL',
+                toStatus: 'PRECALIFICADO',
+                changedAt,
+                changedBy: 'user-1',
+                actorName: null,
+                reason: 'Datos recibidos',
+              },
+            ],
+            1,
+          ] as const;
+        }
+        if (entity === ContactAttempt) {
+          return [
+            [
+              {
+                id: 'contact-1',
+                expedienteId: 'exp-timeline',
+                attemptedAt,
+                channel: 'TELEFONO',
+                result: 'EXITOSO',
+                durationMinutes: 5,
+                notes: 'Seguimiento inicial',
+                advisorId: 'user-1',
+                actorName: null,
+              },
+            ],
+            1,
+          ] as const;
+        }
+        return [[], 0] as const;
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue(buildAuditQueryBuilderMock()),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getTimelinePage('exp-timeline', 1, 5, 'all');
+
+    expect(findByIdSpy).not.toHaveBeenCalled();
+    expect(result.data.events.map((event) => event.id)).toEqual(['status-1', 'contact-1']);
+    expect(result.meta).toEqual({
+      page: 1,
+      limit: 5,
+      total: 2,
+      totalPages: 1,
+      truncated: false,
+      hasMore: false,
     });
-
-    mockRunInTenantSchema
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            findOne: async () => expediente,
-          },
-        }),
-      )
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            find: async (entity: unknown, options?: { where?: Record<string, unknown> }) => {
-              if ((entity as { name?: string }).name === 'AuditLog') {
-                return [
-                  {
-                    id: 'audit-pii-access',
-                    action: AuditAction.UPDATE,
-                    entityType: 'ExpedienteRecord',
-                    entityId: 'exp-activity',
-                    userId: null,
-                    newValue: { piiaAccess: 'documentNumber', source: 'findById' },
-                    createdAt: new Date('2026-03-23T10:30:30Z'),
-                  },
-                  {
-                    id: 'audit-1',
-                    action: AuditAction.UPDATE,
-                    entityType: 'ExpedienteRecord',
-                    entityId: 'exp-activity',
-                    userId: 'user-editor',
-                    newValue: {
-                      section: 'location',
-                      data: { municipality: 'Bogotá', address: 'Calle 10 # 20-30' },
-                    },
-                    createdAt: new Date('2026-03-23T12:00:00Z'),
-                  },
-                  {
-                    id: 'audit-2',
-                    action: AuditAction.CREATE,
-                    entityType: 'ExpedienteRecord',
-                    entityId: 'exp-activity',
-                    userId: 'user-creator',
-                    newValue: { fullName: 'Cliente Demo' },
-                    createdAt: new Date('2026-03-23T09:00:00Z'),
-                  },
-                ];
-              }
-
-              if ((options?.where as { id?: unknown })?.id) {
-                return [
-                  {
-                    id: 'user-creator',
-                    firstName: 'Carlos',
-                    lastName: 'Mejía',
-                    email: 'carlos@tenant.test',
-                  },
-                  {
-                    id: 'user-editor',
-                    firstName: 'Ana',
-                    lastName: 'Torres',
-                    email: 'ana@tenant.test',
-                  },
-                  {
-                    id: 'user-sales',
-                    firstName: 'Laura',
-                    lastName: 'Pérez',
-                    email: 'laura@tenant.test',
-                  },
-                ];
-              }
-
-              return [];
-            },
-          },
-        }),
-      );
-
-    const timeline = await service.getTimelineSummary('exp-activity');
-
-    expect(timeline.changes[0]).toEqual(
-      expect.objectContaining({
-        toStatus: ExpedienteStatus.EN_COTIZACION,
-        actor: expect.objectContaining({ name: 'Laura Pérez' }),
-      }),
+    expect(manager.findOne).toHaveBeenCalledWith(
+      ExpedienteRecord,
+      expect.objectContaining({ select: ['id', 'createdBy', 'updatedAt'] }),
     );
-    expect(timeline.activities[0]).toEqual(
-      expect.objectContaining({
-        type: 'SECTION_UPDATED',
-        sectionLabel: 'Ubicación',
-        reason: 'Campos actualizados: Municipio, Dirección',
-        actor: expect.objectContaining({ name: 'Ana Torres' }),
+    expect(manager.findOne.mock.calls[0]?.[1]).not.toHaveProperty('relations');
+    findByIdSpy.mockRestore();
+  });
+
+  it.each([
+    ['contact', ['contact-1']],
+    ['asignaciones', ['responsibility-1', 'attribution-1']],
+    ['pipeline', ['status-1']],
+    ['system', ['audit-1']],
+  ] as const)('aplica el filtro de timeline %s en servidor', async (filter, expectedIds) => {
+    const at = new Date('2026-03-23T08:00:00Z');
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'exp-filter',
+        createdBy: null,
+        updatedAt: new Date('2026-03-23T08:00:00Z'),
       }),
+      findAndCount: jest.fn().mockImplementation(async (entity: unknown) => {
+        if (entity === ContactAttempt) {
+          return [
+            [
+              {
+                id: 'contact-1',
+                attemptedAt: at,
+                channel: 'EMAIL',
+                result: 'EXITOSO',
+                durationMinutes: null,
+                notes: null,
+                advisorId: 'user-1',
+                actorName: null,
+              },
+            ],
+            1,
+          ];
+        }
+        if (entity === OperationalResponsibilityHistory) {
+          return [
+            [
+              {
+                id: 'responsibility-1',
+                previousResponsibleUserId: null,
+                newResponsibleUserId: 'user-1',
+                changedBy: 'user-1',
+                changedAt: at,
+                notes: null,
+              },
+            ],
+            1,
+          ];
+        }
+        if (entity === SalesAttribution) {
+          return [
+            [
+              {
+                id: 'attribution-1',
+                actorId: 'user-1',
+                actorRole: 'SALES',
+                actorName: 'Asesor',
+                acquisitionChannel: 'WEB',
+                attributedAt: at,
+                attributedBy: 'user-1',
+                revokedAt: null,
+                revokedBy: null,
+                revokedReason: null,
+              },
+            ],
+            1,
+          ];
+        }
+        if (entity === StatusChange) {
+          return [
+            [
+              {
+                id: 'status-1',
+                fromStatus: 'NUEVO_POTENCIAL',
+                toStatus: 'PRECALIFICADO',
+                changedAt: at,
+                changedBy: 'user-1',
+                actorName: null,
+                reason: null,
+              },
+            ],
+            1,
+          ];
+        }
+        return [[], 0];
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        ...buildAuditQueryBuilderMock(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            id: 'audit-1',
+            userId: 'user-1',
+            action: AuditAction.CREATE,
+            section: null,
+            actorName: null,
+            createdAt: at,
+          },
+        ]),
+        getRawOne: jest.fn().mockResolvedValue({ count: '1' }),
+      }),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager }),
     );
-    expect(
-      timeline.activities.some(
-        (activity) =>
-          activity.type === 'SECTION_UPDATED' &&
-          activity.sectionLabel === 'Identificación' &&
-          activity.actor?.name == null,
+
+    const result = await service.getTimelinePage('exp-filter', 1, 5, filter);
+
+    expect(result.data.events.map((event) => event.id)).toEqual(expectedIds);
+    if (filter === 'system') {
+      expect(manager.createQueryBuilder).toHaveBeenCalled();
+    } else {
+      const queriedEntities = manager.findAndCount.mock.calls.map((call: unknown[]) => call[0]);
+      expect(queriedEntities).toHaveLength(filter === 'asignaciones' ? 2 : 1);
+    }
+  });
+
+  it('ordena por fecha e id y pagina de forma estable', async () => {
+    const sameDate = new Date('2026-03-23T10:00:00Z');
+    const manager = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'exp-page', createdBy: null, updatedAt: sameDate }),
+      findAndCount: jest.fn().mockImplementation(async (entity: unknown) =>
+        entity === ContactAttempt
+          ? [
+              [
+                {
+                  id: 'contact-a',
+                  attemptedAt: sameDate,
+                  channel: 'EMAIL',
+                  result: 'EXITOSO',
+                  durationMinutes: null,
+                  notes: null,
+                  advisorId: 'user-1',
+                  actorName: null,
+                },
+                {
+                  id: 'contact-c',
+                  attemptedAt: sameDate,
+                  channel: 'EMAIL',
+                  result: 'EXITOSO',
+                  durationMinutes: null,
+                  notes: null,
+                  advisorId: 'user-1',
+                  actorName: null,
+                },
+                {
+                  id: 'contact-b',
+                  attemptedAt: sameDate,
+                  channel: 'EMAIL',
+                  result: 'EXITOSO',
+                  durationMinutes: null,
+                  notes: null,
+                  advisorId: 'user-1',
+                  actorName: null,
+                },
+              ],
+              3,
+            ]
+          : [[], 0],
       ),
-    ).toBe(false);
-    expect(timeline.metadata.createdBy.name).toBe('Carlos Mejía');
-    expect(timeline.metadata.lastEditedBy.name).toBe('Ana Torres');
-  });
-
-  it('usa actorName del audit log cuando no se puede resolver el usuario', async () => {
-    const expediente = buildExpediente({
-      id: 'exp-activity-actor-name',
-      statusChanges: [],
-      contactAttempts: [],
-      createdBy: 'user-no-match',
-      updatedAt: new Date('2026-03-23T12:40:00Z'),
-    });
-
-    mockRunInTenantSchema
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            findOne: async () => expediente,
-          },
-        }),
-      )
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            find: async (entity: unknown, options?: { where?: Record<string, unknown> }) => {
-              if ((entity as { name?: string }).name === 'AuditLog') {
-                return [
-                  {
-                    id: 'audit-actor-fallback',
-                    action: AuditAction.UPDATE,
-                    entityType: 'ExpedienteRecord',
-                    entityId: 'exp-activity-actor-name',
-                    userId: 'user-no-match',
-                    newValue: {
-                      section: 'identification',
-                      actorName: 'Liliana Paola Borda Ovalle',
-                    },
-                    createdAt: new Date('2026-03-23T12:35:00Z'),
-                  },
-                ];
-              }
-
-              return [];
-            },
-          },
-        }),
-      );
-
-    const timeline = await service.getTimelineSummary('exp-activity-actor-name');
-
-    expect(timeline.activities[0]).toEqual(
-      expect.objectContaining({
-        type: 'SECTION_UPDATED',
-        actor: expect.objectContaining({ name: 'Liliana Paola Borda Ovalle' }),
-      }),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager }),
     );
+
+    const result = await service.getTimelinePage('exp-page', 2, 1, 'contact');
+
+    expect(result.data.events.map((event) => event.id)).toEqual(['contact-b']);
+    expect(result.meta).toEqual({
+      page: 2,
+      limit: 1,
+      total: 3,
+      totalPages: 3,
+      truncated: false,
+      hasMore: true,
+    });
   });
 
-  it('infiere creado por desde auditoría histórica cuando el expediente no tiene createdBy resoluble', async () => {
-    const expediente = buildExpediente({
-      id: 'exp-history',
-      createdBy: 'user-missing',
-      updatedAt: new Date('2026-03-23T12:30:00Z'),
-      statusChanges: [],
+  it('acota totalPages al máximo físico de 500 eventos y marca truncamiento', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'exp-capped',
+        createdBy: null,
+        updatedAt: new Date('2026-03-23T10:00:00Z'),
+      }),
+      findAndCount: jest.fn().mockResolvedValue([[], 700]),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getTimelinePage('exp-capped', 16, 30, 'contact');
+
+    expect(result.meta).toEqual({
+      page: 16,
+      limit: 30,
+      total: 480,
+      totalPages: 16,
+      truncated: true,
+      hasMore: false,
+    });
+  });
+
+  it('omite piiaAccess y campos sensibles de los eventos de sistema', async () => {
+    const manager = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'exp-safe', createdBy: null, updatedAt: new Date() }),
+      createQueryBuilder: jest.fn().mockReturnValue(buildAuditQueryBuilderMock()),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getTimelinePage('exp-safe', 1, 5, 'system');
+
+    expect(result.data.events).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain('ciphertext');
+    expect(JSON.stringify(result)).not.toContain('snapshotJson');
+    const builder = manager.createQueryBuilder.mock.results[0]?.value as {
+      andWhere: jest.Mock;
+    };
+    expect(builder.andWhere.mock.calls.flat().join(' ')).toContain('piiaAccess');
+  });
+
+  it('conserva el actor histórico proyectado cuando el usuario ya no existe', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'exp-actor-fallback',
+        createdBy: 'user-no-match',
+        updatedAt: new Date('2026-03-23T12:40:00Z'),
+      }),
+      findAndCount: jest.fn().mockResolvedValue([[], 0]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        ...buildAuditQueryBuilderMock(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            id: 'audit-actor-fallback',
+            action: AuditAction.UPDATE,
+            userId: 'user-no-match',
+            section: 'identification',
+            actorName: 'Usuario histórico',
+            createdAt: new Date('2026-03-23T12:35:00Z'),
+          },
+        ]),
+        getRawOne: jest.fn().mockResolvedValue({ count: '1' }),
+      }),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager }),
+    );
+
+    const timeline = await service.getTimelineSummary('exp-actor-fallback');
+
+    expect(timeline.activities[0]?.actor.name).toBe('Usuario histórico');
+  });
+
+  it('mantiene el tenant context y devuelve 404 si el expediente no existe', async () => {
+    const manager = { findOne: jest.fn().mockResolvedValue(null), find: jest.fn() };
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, schema, callback) => {
+      expect(schema).toBe('tenant_test');
+      return callback({ manager });
     });
 
-    mockRunInTenantSchema
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            findOne: async () => expediente,
-          },
-        }),
-      )
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            find: async (entity: unknown, options?: { where?: Record<string, unknown> }) => {
-              if ((entity as { name?: string }).name === 'AuditLog') {
-                return [
-                  {
-                    id: 'audit-create',
-                    action: AuditAction.CREATE,
-                    entityType: 'ExpedienteRecord',
-                    entityId: 'exp-history',
-                    userId: 'user-liliana',
-                    newValue: { fullName: 'Carlos Mejía' },
-                    createdAt: new Date('2026-03-23T08:00:00Z'),
-                  },
-                  {
-                    id: 'audit-update',
-                    action: AuditAction.UPDATE,
-                    entityType: 'ExpedienteRecord',
-                    entityId: 'exp-history',
-                    userId: 'user-liliana',
-                    newValue: { section: 'commercial_interest' },
-                    createdAt: new Date('2026-03-23T12:00:00Z'),
-                  },
-                ];
-              }
-
-              if ((options?.where as { id?: unknown })?.id) {
-                return [
-                  {
-                    id: 'user-liliana',
-                    firstName: 'Liliana Paola',
-                    lastName: 'Borda Ovalle',
-                    email: 'liliana@tenant.test',
-                  },
-                ];
-              }
-
-              return [];
-            },
-          },
-        }),
-      );
-
-    const timeline = await service.getTimelineSummary('exp-history');
-
-    expect(timeline.metadata.createdBy.name).toBe('Liliana Paola Borda Ovalle');
-    expect(timeline.metadata.lastEditedBy.name).toBe('Liliana Paola Borda Ovalle');
+    await expect(service.getTimelinePage('missing-expediente')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(manager.find).not.toHaveBeenCalled();
   });
 
   it('persiste campos nuevos de identificacion para persona juridica', async () => {
@@ -3027,6 +3291,7 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     zoneType: null,
     source: 'Web',
     acquisitionChannel: AcquisitionChannel.WEB,
+    customerSegment: null,
     sourceDetail: null,
     interestedPlanId: null,
     campaign: null,

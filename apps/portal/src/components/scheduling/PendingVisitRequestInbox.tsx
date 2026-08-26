@@ -1,7 +1,16 @@
 'use client';
 
-import { PanelRightOpen, RefreshCcw } from 'lucide-react';
+import {
+  CalendarDays,
+  CalendarX2,
+  CircleDashed,
+  ClipboardList,
+  PanelRightOpen,
+  RefreshCcw,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Badge, Button, Select, cn } from '@iwana/ui';
 import { VisitRequestStatus, WorkOrderPriority, WorkOrderSourceContext } from '@iwana/shared';
 import type {
@@ -20,6 +29,9 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
+  portalInlineTextLinkClassName,
+  portalTabInactiveClassName,
+  portalTabLimeActiveClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
@@ -31,6 +43,7 @@ import {
 import {
   formatVisitRequestTerritory,
   type PendingVisitFilters,
+  buildDefaultPendingVisitFilters,
   getVisitRequestOriginLabel,
   getVisitRequestPresentationStatus,
   getVisitRequestReferenceLabel,
@@ -40,6 +53,20 @@ import {
   hasExhaustedRetries,
   requiresAttemptDecision,
 } from './pending-visits-ui';
+
+function schedulingShortcutClassName(active: boolean): string {
+  return cn(
+    'flex min-h-11 items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
+    interactiveFocusClassName,
+    active ? portalTabLimeActiveClassName : portalTabInactiveClassName,
+  );
+}
+
+function schedulingShortcutIconClassName(active: boolean): string {
+  return active
+    ? 'h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary'
+    : 'h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500';
+}
 
 interface PendingVisitRequestInboxProps {
   filters: PendingVisitFilters;
@@ -306,9 +333,28 @@ function toTerritoryOptions(
   options: WfmVisitRequestFilterOptionsResponse | null,
   key: 'municipalities' | 'sectors',
 ) {
-  return (options?.[key] ?? []).map((option) => ({
-    value: option.value,
-    label: `${option.label === 'Sin dato' ? (key === 'municipalities' ? 'Sin municipio' : 'Sin sector') : option.label} (${option.count})`,
+  const optionsByValue = new Map<string, { label: string; count: number }>();
+
+  for (const option of options?.[key] ?? []) {
+    const label =
+      option.label === 'Sin dato'
+        ? key === 'municipalities'
+          ? 'Sin municipio'
+          : 'Sin sector'
+        : option.label;
+    const current = optionsByValue.get(option.value);
+
+    if (current) {
+      current.count += option.count;
+      continue;
+    }
+
+    optionsByValue.set(option.value, { label, count: option.count });
+  }
+
+  return Array.from(optionsByValue, ([value, option]) => ({
+    value,
+    label: `${option.label} (${option.count})`,
   }));
 }
 
@@ -332,6 +378,10 @@ export function PendingVisitRequestInbox({
   maxItems = 5,
   onOpenFullInbox,
 }: PendingVisitRequestInboxProps) {
+  const pathname = usePathname();
+  const pendingActive = pathname.startsWith('/dashboard/scheduling/pending-visits');
+  const agendaActive = pathname.startsWith('/dashboard/scheduling/agenda');
+  const unrealizedActive = pathname.startsWith('/dashboard/scheduling/unrealized-visits');
   const items = response?.items ?? [];
   const meta = response?.meta;
   const visibleItems = compactMode ? items.slice(0, maxItems) : items;
@@ -347,33 +397,119 @@ export function PendingVisitRequestInbox({
   const panelDescription = compactMode
     ? 'Solicitudes que ya exigen decisión operativa sin abrir todavía la bandeja completa.'
     : 'Elige una solicitud o usa Abrir despacho en cada fila para calcular franjas o enviarla a agenda.';
+  const emptyCopy = {
+    title: 'No hay solicitudes en esta vista',
+    description:
+      'Ajusta los filtros o espera nuevas solicitudes desde oportunidades, mesa de ayuda o flujos manuales.',
+  };
   const municipalityOptions = toTerritoryOptions(filterOptions, 'municipalities');
   const sectorOptions = toTerritoryOptions(filterOptions, 'sectors');
+  const hasActiveFilters = Boolean(
+    filters.status ||
+    filters.originContext ||
+    filters.priority ||
+    filters.municipality ||
+    filters.sector,
+  );
+  const compactInboxLink =
+    compactMode && onOpenFullInbox ? (
+      <button type="button" onClick={onOpenFullInbox} className={portalInlineTextLinkClassName}>
+        Ver bandeja completa
+      </button>
+    ) : null;
+  const panelActions =
+    extraActions || compactInboxLink ? (
+      <>
+        {extraActions}
+        {compactInboxLink}
+      </>
+    ) : undefined;
 
   return (
     <PortalPanel
       eyebrow="Bandeja"
       title={panelTitle}
       description={panelDescription}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          {extraActions}
-          {compactMode && onOpenFullInbox ? (
-            <Button type="button" variant="ghost" onClick={onOpenFullInbox}>
-              Ver bandeja completa
-            </Button>
-          ) : null}
-          <Button type="button" variant="secondary" onClick={onRefresh} loading={isLoading}>
+      actions={panelActions}
+      className="h-full"
+      contentClassName={compactMode ? 'space-y-3' : 'space-y-4'}
+    >
+      {compactMode ? (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="primary"
+            className="min-h-11"
+            onClick={onRefresh}
+            loading={isLoading}
+          >
             <RefreshCcw className="h-4 w-4" aria-hidden="true" />
             Actualizar
           </Button>
         </div>
-      }
-      className="h-full"
-      contentClassName={compactMode ? 'space-y-3' : 'space-y-4'}
-    >
+      ) : null}
+
+      {!compactMode ? (
+        <div
+          role="tablist"
+          aria-label="Vistas de programación"
+          className="flex gap-1 border-b border-gray-100 dark:border-dark-border"
+        >
+          <Link
+            href="/dashboard/scheduling/pending-visits"
+            role="tab"
+            aria-selected={pendingActive}
+            className={schedulingShortcutClassName(pendingActive)}
+            aria-current={pendingActive ? 'page' : undefined}
+          >
+            <ClipboardList
+              className={schedulingShortcutIconClassName(pendingActive)}
+              aria-hidden="true"
+            />
+            <span>Pendientes</span>
+          </Link>
+          <Link
+            href="/dashboard/scheduling/agenda"
+            role="tab"
+            aria-selected={agendaActive}
+            className={schedulingShortcutClassName(agendaActive)}
+            aria-current={agendaActive ? 'page' : undefined}
+          >
+            <CalendarDays
+              className={schedulingShortcutIconClassName(agendaActive)}
+              aria-hidden="true"
+            />
+            <span>Ir a agenda</span>
+          </Link>
+          <Link
+            href="/dashboard/scheduling/unrealized-visits"
+            role="tab"
+            aria-selected={unrealizedActive}
+            className={schedulingShortcutClassName(unrealizedActive)}
+            aria-current={unrealizedActive ? 'page' : undefined}
+          >
+            <CalendarX2
+              className={schedulingShortcutIconClassName(unrealizedActive)}
+              aria-hidden="true"
+            />
+            <span>Visitas sin realizar</span>
+          </Link>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            className={schedulingShortcutClassName(false)}
+            onClick={onRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCcw className={schedulingShortcutIconClassName(false)} aria-hidden="true" />
+            <span>{isLoading ? 'Actualizando…' : 'Actualizar'}</span>
+          </button>
+        </div>
+      ) : null}
+
       {!compactMode && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[repeat(5,minmax(0,1fr))_auto] 2xl:items-end">
           <Select
             id="pending-visits-status-filter"
             label="Estado"
@@ -436,6 +572,21 @@ export function PendingVisitRequestInbox({
               onFiltersChange({ ...filters, sector: event.target.value, page: 1 })
             }
           />
+          {hasActiveFilters ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-12"
+              onClick={() =>
+                onFiltersChange({
+                  ...buildDefaultPendingVisitFilters(),
+                  limit: filters.limit,
+                })
+              }
+            >
+              Limpiar filtros
+            </Button>
+          ) : null}
         </div>
       )}
 
@@ -458,10 +609,59 @@ export function PendingVisitRequestInbox({
       )}
 
       {visibleItems.length === 0 ? (
-        <PortalEmptyState
-          title="No hay solicitudes en esta vista"
-          description="Ajusta los filtros o espera nuevas materializaciones desde CRM, Aseguramiento o flujos manuales."
-        />
+        compactMode ? (
+          <PortalEmptyState
+            title={emptyCopy.title}
+            description={emptyCopy.description}
+            icon={CircleDashed}
+            className="w-full text-left"
+          />
+        ) : (
+          <div>
+            <div className={`${portalDataTableShellClassName} hidden lg:block`}>
+              <div className="overflow-x-auto">
+                <table
+                  className="min-w-[1080px] w-full text-sm"
+                  aria-label="Solicitudes pendientes"
+                >
+                  <thead className={portalDataTableHeadRowClassName}>
+                    <tr>
+                      <PortalDataTableHead className="align-middle">Prioridad</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Estado</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Origen</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Solicitud</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Municipio</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">
+                        Tiempo comprometido
+                      </PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Acción</PortalDataTableHead>
+                    </tr>
+                  </thead>
+                  <tbody className={portalDataTableBodyClassName}>
+                    <tr>
+                      <td colSpan={7} className={cn(portalDataTableCellClassName, 'py-12')}>
+                        <PortalEmptyState
+                          title={emptyCopy.title}
+                          description={emptyCopy.description}
+                          icon={CircleDashed}
+                          className="w-full text-left"
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="lg:hidden">
+              <PortalEmptyState
+                title={emptyCopy.title}
+                description={emptyCopy.description}
+                icon={CircleDashed}
+                className="w-full text-left"
+              />
+            </div>
+          </div>
+        )
       ) : compactMode ? (
         <div className="grid gap-2">
           {visibleItems.map((visitRequest) => (

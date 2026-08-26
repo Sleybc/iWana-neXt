@@ -11,6 +11,7 @@ import {
 import {
   INSTALLATION_READINESS_STATUS,
   type MissingRequirement,
+  type ExpedienteSensitiveFieldPresence,
   type SectionCompletenessItem,
   type SectionCompletenessSummary,
 } from './expediente-section-completeness.types';
@@ -28,16 +29,17 @@ export class ExpedienteSectionCompletenessService {
     consents: ConsentRecord[];
     quotes: CrmQuoteSnapshot[];
     coverageChecks: CoverageCheck[];
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence | undefined;
   }): SectionCompletenessSummary {
-    const { expediente, consents, quotes, coverageChecks } = params;
+    const { expediente, consents, quotes, coverageChecks, sensitiveFieldPresence } = params;
     const sections = [
-      this.buildIdentificationSection(expediente),
-      this.buildAddressSection(expediente),
-      this.buildContactSection(expediente),
-      this.buildTechnicalSection(expediente, coverageChecks),
+      this.buildIdentificationSection(expediente, sensitiveFieldPresence),
+      this.buildAddressSection(expediente, sensitiveFieldPresence),
+      this.buildContactSection(expediente, sensitiveFieldPresence),
+      this.buildTechnicalSection(expediente, coverageChecks, sensitiveFieldPresence),
       this.buildCustomerInterestSection(expediente, quotes),
       this.buildLegalComplianceSection(expediente, consents),
-      this.buildDocumentSupportSection(expediente),
+      this.buildDocumentSupportSection(expediente, sensitiveFieldPresence),
     ];
 
     const overallPercentage =
@@ -59,12 +61,17 @@ export class ExpedienteSectionCompletenessService {
     };
   }
 
-  private buildIdentificationSection(expediente: ExpedienteRecord): SectionCompletenessItem {
+  private buildIdentificationSection(
+    expediente: ExpedienteRecord,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): SectionCompletenessItem {
     return this.buildSection('identification', 'Identificación', [
       {
         fieldKey: 'fullName',
         fieldLabel: 'Nombre completo o razón social',
-        fulfilled: this.hasText(expediente.fullName) || this.hasText(expediente.companyName),
+        fulfilled:
+          this.hasText(expediente.fullName) ||
+          (sensitiveFieldPresence?.companyName ?? this.hasText(expediente.companyName)),
       },
       {
         fieldKey: 'personType',
@@ -79,71 +86,84 @@ export class ExpedienteSectionCompletenessService {
       {
         fieldKey: 'documentNumberEncrypted',
         fieldLabel: 'Documento',
-        fulfilled: this.hasText(expediente.documentNumberEncrypted),
+        fulfilled:
+          sensitiveFieldPresence?.documentNumber ??
+          this.hasText(expediente.documentNumberEncrypted),
       },
     ]);
   }
 
-  private buildAddressSection(expediente: ExpedienteRecord): SectionCompletenessItem {
+  private buildAddressSection(
+    expediente: ExpedienteRecord,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): SectionCompletenessItem {
     // La sección Dirección debe reflejar únicamente los campos visibles del formulario de ubicación.
     // Las coordenadas se capturan desde Viabilidad técnica y no deben completar esta sección.
     return this.buildSection('address', 'Dirección', [
       {
         fieldKey: 'address',
         fieldLabel: 'Dirección principal',
-        fulfilled: this.hasText(expediente.address),
+        fulfilled: sensitiveFieldPresence?.hasAddress ?? this.hasText(expediente.address),
       },
       {
         fieldKey: 'municipality',
         fieldLabel: 'Municipio',
-        fulfilled: this.hasText(expediente.municipality),
+        fulfilled: sensitiveFieldPresence?.hasMunicipality ?? this.hasText(expediente.municipality),
       },
       {
         fieldKey: 'department',
         fieldLabel: 'Departamento',
-        fulfilled: this.hasText(expediente.department),
+        fulfilled: sensitiveFieldPresence?.hasDepartment ?? this.hasText(expediente.department),
       },
       {
         fieldKey: 'postalCode',
         fieldLabel: 'Código postal',
-        fulfilled: this.hasText(expediente.postalCode),
+        fulfilled: sensitiveFieldPresence?.hasPostalCode ?? this.hasText(expediente.postalCode),
       },
       {
         fieldKey: 'stratum',
         fieldLabel: 'Estrato',
-        fulfilled: expediente.stratum != null,
+        fulfilled: sensitiveFieldPresence?.hasStratum ?? expediente.stratum != null,
       },
       {
         fieldKey: 'neighborhood',
         fieldLabel: 'Sector / barrio',
-        fulfilled: this.hasText(expediente.neighborhood),
+        fulfilled: sensitiveFieldPresence?.hasNeighborhood ?? this.hasText(expediente.neighborhood),
       },
     ]);
   }
 
-  private buildContactSection(expediente: ExpedienteRecord): SectionCompletenessItem {
+  private buildContactSection(
+    expediente: ExpedienteRecord,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): SectionCompletenessItem {
     // Cuatro campos del formulario del portal: phonePrimary, emailPrimary, altContactName, altContactPhone.
     // contactPreference y bestContactTime no tienen campo en el formulario y no se evalúan.
     return this.buildSection('contact', 'Contacto', [
       {
         fieldKey: 'phonePrimaryEncrypted',
         fieldLabel: 'Teléfono principal',
-        fulfilled: this.hasText(expediente.phonePrimaryEncrypted),
+        fulfilled:
+          sensitiveFieldPresence?.phonePrimary ?? this.hasText(expediente.phonePrimaryEncrypted),
       },
       {
         fieldKey: 'emailPrimaryEncrypted',
         fieldLabel: 'Correo principal',
-        fulfilled: this.hasText(expediente.emailPrimaryEncrypted),
+        fulfilled:
+          sensitiveFieldPresence?.emailPrimary ?? this.hasText(expediente.emailPrimaryEncrypted),
       },
       {
         fieldKey: 'altContactName',
         fieldLabel: 'Nombre contacto alternativo',
-        fulfilled: this.hasText(expediente.altContactName),
+        fulfilled:
+          sensitiveFieldPresence?.altContactName ?? this.hasText(expediente.altContactName),
       },
       {
         fieldKey: 'altContactPhoneEncrypted',
         fieldLabel: 'Teléfono contacto alternativo',
-        fulfilled: this.hasText(expediente.altContactPhoneEncrypted),
+        fulfilled:
+          sensitiveFieldPresence?.altContactPhone ??
+          this.hasText(expediente.altContactPhoneEncrypted),
       },
     ]);
   }
@@ -151,8 +171,11 @@ export class ExpedienteSectionCompletenessService {
   private buildTechnicalSection(
     expediente: ExpedienteRecord,
     _coverageChecks: CoverageCheck[],
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
   ): SectionCompletenessItem {
-    const hasCoordinates = expediente.latitude != null && expediente.longitude != null;
+    const hasCoordinates =
+      (sensitiveFieldPresence?.hasLatitude ?? expediente.latitude != null) &&
+      (sensitiveFieldPresence?.hasLongitude ?? expediente.longitude != null);
 
     // Viabilidad técnica requiere el bloque técnico más las coordenadas capturadas en esta misma sección.
     // coverageResult no tiene campo propio en el formulario; se evalúa feasibility directamente.
@@ -226,7 +249,10 @@ export class ExpedienteSectionCompletenessService {
     ]);
   }
 
-  private buildDocumentSupportSection(expediente: ExpedienteRecord): SectionCompletenessItem {
+  private buildDocumentSupportSection(
+    expediente: ExpedienteRecord,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): SectionCompletenessItem {
     const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
     const supports =
       expediente.documentSupports && typeof expediente.documentSupports === 'object'
@@ -239,6 +265,7 @@ export class ExpedienteSectionCompletenessService {
             fieldKey: definition.key,
             fieldLabel: definition.label,
             fulfilled:
+              sensitiveFieldPresence?.documentSupportApproved?.[definition.key] ??
               supports[definition.key]?.versions?.[0]?.status === DOCUMENT_SUPPORT_STATUS.APPROVED,
           }))
         : [

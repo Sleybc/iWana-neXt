@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 
 export const metadata = {
-  title: 'Redirección CRM | Portal Empresarial',
-  description: 'Ruta histórica consolidada en el CRM operativo',
+  title: 'Redirección a suscriptores | Portal Empresarial',
+  description: 'Ruta histórica consolidada en suscriptores',
 };
 
 export default function SubscribersPage() {

@@ -1,12 +1,13 @@
 # PRD - MOD00 Configuracion Control Plane
 
-**Version:** 1.5
+**Version:** 1.6
 **Estado:** Aprobado  
-**Fecha:** 2026-05-27
+**Fecha:** 2026-08-20
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
 **ADR aprobado:** docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md  
+**ADR relacionado:** docs/adrs/ADR-082-Reglas-Federadas-Taxation-Settings.md  
 **HLD relacionado:** docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **Antecedente historico:** docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md  
 **PRDs relacionados:** docs/prds/PRD-MOD04-USUARIOS-INTERNOS-v1.1.md, docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md, docs/prds/PRD-MOD06-COMERCIAL-DEFINICION-v1.0.md
@@ -102,9 +103,10 @@ Casos de uso prioritarios:
 ### 4.1 Control plane de Configuracion
 
 - RF-CFG-01 — La ruta `/dashboard/settings` debe actuar como centro de configuracion con secciones visibles y navegables. Prioridad: MVP.
-- RF-CFG-02 — La navegacion debe separar Organizacion, Usuarios y acceso, Marca, Operacion de campo y modulos futuros visibles. Prioridad: MVP.
+- RF-CFG-02 — La navegacion debe separar Organizacion, Usuarios y acceso, Marca, Calendario, Reglas, Operacion de campo y modulos futuros visibles. Prioridad: MVP.
 - RF-CFG-03 — Las secciones futuras pueden mostrarse como no disponibles si su modulo aun no existe, sin simular funcionalidad. Prioridad: MVP.
 - RF-CFG-04 — Cada seccion debe declarar el modulo owner de los datos que administra o consume. Prioridad: MVP.
+- RF-CFG-05 — La seccion **Reglas** (`/dashboard/settings/rules`) federada reune Reemplazos, Impuestos, Aplicacion de impuestos y Simulador sin que Configuracion posea `tax_definitions`, `tax_rules` ni `catalog_compatibility_rules`. Owners: Taxation (MOD07) y Commercial (MOD06). Prioridad: MVP. Ref: ADR-082.
 
 La politica global MFA del tenant se consolida dentro de `Usuarios y acceso`; `Seguridad` no se considera una seccion activa independiente del shell federado.
 
@@ -322,7 +324,7 @@ MVP recomendado:
 | ------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Fase 01 | Fundacion MOD00     | Organizacion/Sedes, perfiles de acceso, tablas tenant-aware, backend, portal y pruebas focalizadas                |
 | Fase 02 | Integracion WFM     | WFM consume `OrganizationSiteReadPort`, mapea sedes legacy y evita nuevas sedes operativas duplicadas             |
-| Fase 03 | Settings por modulo | Configuracion muestra secciones federadas para Commercial, WFM, Inventory y Billing sin poseer sus datos internos |
+| Fase 03 | Settings por modulo | Configuracion muestra secciones federadas para Commercial, WFM, Inventory, Billing y Reglas (Taxation + Commercial) sin poseer sus datos internos |
 | Fase 04 | Gobierno avanzado   | Auditoria enriquecida, checklist de cambios sensibles, permisos granulares por pantalla y hardening operativo     |
 
 Fase 01 es la unica autorizada para ejecucion inmediata. Las fases posteriores requieren validacion de alcance antes de tocar codigo.

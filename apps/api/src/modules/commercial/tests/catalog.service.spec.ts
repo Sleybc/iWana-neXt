@@ -4,6 +4,8 @@ import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CatalogService } from '../services/catalog.service';
 import { CatalogItemType } from '@iwana/shared';
+import { PLAN_CATALOG_SORTABLE_FIELDS } from '../dto/catalog-query.dto';
+import { PlanDetail } from '../entities/plan-detail.entity';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -142,6 +144,72 @@ describe('CatalogService', () => {
         totalPages: 5,
         hasMore: true,
       });
+    });
+
+    it('catálogo: honra limit=100 en modo page', async () => {
+      const items = Array.from({ length: 100 }, (_, i) => ({
+        id: `item-${i}`,
+        name: `Plan ${i}`,
+        type: CatalogItemType.PLAN,
+      }));
+      const qb = buildQueryBuilderMock(items, 250);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: hydrateQueryBuilder({
+              list: qb,
+              pd: items.map((item) => ({
+                itemId: item.id,
+                downloadSpeedMbps: 100,
+                uploadSpeedMbps: 100,
+                technology: 'FTTH',
+              })),
+              ph: items.map((item) => ({
+                itemId: item.id,
+                basePrice: '1000.00',
+                installationFee: '0.00',
+              })),
+            }),
+          },
+        }),
+      );
+
+      const result = await service.findAll({ page: 1, limit: 100 } as any);
+      expect(qb.skip).toHaveBeenCalledWith(0);
+      expect(qb.take).toHaveBeenCalledWith(100);
+      expect(result.meta).toMatchObject({
+        mode: 'page',
+        page: 1,
+        limit: 100,
+        total: 250,
+        totalPages: 3,
+        hasMore: true,
+      });
+    });
+
+    it('catálogo: acota limit=101 y limit=999 a 100', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      await service.findAll({ page: 1, limit: 101 } as any);
+      expect(qb.take).toHaveBeenCalledWith(100);
+
+      qb.take.mockClear();
+      await service.findAll({ page: 1, limit: 999 } as any);
+      expect(qb.take).toHaveBeenCalledWith(100);
+    });
+
+    it('catálogo: honra limit=5 en modo page', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      await service.findAll({ page: 1, limit: 5 } as any);
+      expect(qb.skip).toHaveBeenCalledWith(0);
+      expect(qb.take).toHaveBeenCalledWith(5);
     });
 
     it('rechaza page+cursor juntos', async () => {
@@ -364,6 +432,201 @@ describe('CatalogService', () => {
       await service.findAll({ sort: 'CATEGORY_NAME' } as any);
       expect((qb as any).leftJoin).toHaveBeenCalled();
       expect(qb.orderBy).toHaveBeenCalledWith(expect.stringContaining('CASE'), 'ASC');
+    });
+
+    it('planes en modo page publican sortableFields y ordenan por name DESC', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        type: CatalogItemType.PLAN,
+        page: 1,
+        limit: 20,
+        sortBy: 'name',
+        sortDir: 'desc',
+      } as any);
+
+      expect(qb.orderBy).toHaveBeenCalledWith('ci.name', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('ci.id', 'DESC');
+      expect(result.meta.capabilities.sortableFields).toEqual([...PLAN_CATALOG_SORTABLE_FIELDS]);
+      expect(result.meta.sort).toEqual({ by: 'name', dir: 'desc' });
+    });
+
+    it('planes: sortBy de velocidad usa subconsulta a plan_details sin leftJoin', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        type: CatalogItemType.PLAN,
+        page: 1,
+        limit: 20,
+        sortBy: 'downloadSpeedMbps',
+        sortDir: 'asc',
+      } as any);
+
+      expect(qb.leftJoin).not.toHaveBeenCalled();
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('plan_details'),
+        'ASC',
+        'NULLS LAST',
+      );
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('download_speed_mbps'),
+        'ASC',
+        'NULLS LAST',
+      );
+      expect(qb.addOrderBy).toHaveBeenCalledWith('ci.id', 'ASC');
+      expect(result.meta.sort).toEqual({ by: 'downloadSpeedMbps', dir: 'asc' });
+    });
+
+    it('planes: sortBy de tecnología usa subconsulta a plan_details sin leftJoin', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        type: CatalogItemType.PLAN,
+        page: 1,
+        limit: 20,
+        sortBy: 'technology',
+        sortDir: 'desc',
+      } as any);
+
+      expect(qb.leftJoin).not.toHaveBeenCalled();
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('plan_details'),
+        'DESC',
+        'NULLS LAST',
+      );
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('pld.technology'),
+        'DESC',
+        'NULLS LAST',
+      );
+      expect(qb.addOrderBy).toHaveBeenCalledWith('ci.id', 'DESC');
+      expect(result.meta.sort).toEqual({ by: 'technology', dir: 'desc' });
+    });
+
+    it('planes: sortBy de precio usa subconsulta de precio vigente', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await service.findAll({
+        type: CatalogItemType.PLAN,
+        page: 1,
+        limit: 20,
+        sortBy: 'basePrice',
+        sortDir: 'desc',
+      } as any);
+
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('catalog_price_history'),
+        'DESC',
+        'NULLS LAST',
+      );
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('base_price'),
+        'DESC',
+        'NULLS LAST',
+      );
+    });
+
+    it('planes: sortBy fuera de lista blanca conserva name ASC y sort=null', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        type: CatalogItemType.PLAN,
+        page: 1,
+        limit: 20,
+        sortBy: 'hack',
+        sortDir: 'asc',
+      } as any);
+
+      expect(qb.orderBy).toHaveBeenCalledWith('ci.name', 'ASC');
+      expect(result.meta.sort).toBeNull();
+      expect(result.meta.capabilities.sortableFields).toEqual([...PLAN_CATALOG_SORTABLE_FIELDS]);
+    });
+
+    it('modo page sin type PLAN no publica sortableFields de planes', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        type: CatalogItemType.PRODUCT,
+        page: 1,
+        limit: 20,
+        sortBy: 'name',
+        sortDir: 'asc',
+      } as any);
+
+      expect(result.meta.capabilities.sortableFields).toEqual([]);
+      expect(result.meta.sort).toBeNull();
+      expect(qb.orderBy).toHaveBeenCalledWith('ci.name', 'ASC');
+    });
+
+    it('modo cursor ignora sortBy y no publica sortableFields', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        type: CatalogItemType.PLAN,
+        limit: 20,
+        sortBy: 'name',
+        sortDir: 'desc',
+      } as any);
+
+      expect(result.meta.mode).toBe('cursor');
+      expect(result.meta.capabilities.sortableFields).toEqual([]);
+      expect(qb.orderBy).toHaveBeenCalledWith('ci.name', 'ASC');
     });
   });
 
@@ -771,31 +1034,91 @@ describe('CatalogService', () => {
   });
 
   describe('searchForPicker', () => {
-    it('retorna vacío si q está en blanco', async () => {
-      mockRunInTenantSchema.mockClear();
-      const result = await service.searchForPicker({
-        type: CatalogItemType.PLAN,
-        q: '',
-      });
-      expect(result).toEqual({ data: [], total: 0 });
-      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
-    });
+    const buildPickerQueryBuilder = (items: unknown[], total: number, planDetails?: unknown[]) => {
+      const listQb = buildQueryBuilderMock(items, total);
+      return {
+        listQb,
+        createQueryBuilder: (_entity: unknown, alias?: string) => {
+          if (!alias || alias === 'ci') {
+            return listQb;
+          }
+          const detailQb = buildQueryBuilderMock([], 0);
+          if (alias === 'pd') detailQb.getMany.mockResolvedValue(planDetails ?? []);
+          return detailQb;
+        },
+      };
+    };
 
-    it('busca planes activos y mapea label/sublabel', async () => {
+    it.each(['', undefined])(
+      'con q=%p devuelve top-N de planes activos con sublabel enriquecido (ordenado por nombre, máx 20)',
+      async (q) => {
+        const items = [
+          { id: 'plan-1', name: 'Plan A', isActive: true, type: CatalogItemType.PLAN },
+          { id: 'plan-2', name: 'Plan B', isActive: true, type: CatalogItemType.PLAN },
+        ];
+        const { listQb, createQueryBuilder } = buildPickerQueryBuilder(items, 2, [
+          {
+            itemId: 'plan-1',
+            downloadSpeedMbps: 120,
+            uploadSpeedMbps: 60,
+            technology: 'Fibra Optica',
+          },
+          {
+            itemId: 'plan-2',
+            downloadSpeedMbps: 40,
+            uploadSpeedMbps: 20,
+            technology: 'Radio Enlace',
+          },
+        ]);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+          cb({ manager: { createQueryBuilder } }),
+        );
+
+        const result = await service.searchForPicker({ type: CatalogItemType.PLAN, q });
+
+        expect(mockRunInTenantSchema).toHaveBeenCalled();
+        expect(listQb.andWhere).toHaveBeenCalledWith('ci.type = :type', {
+          type: CatalogItemType.PLAN,
+        });
+        expect(listQb.andWhere).toHaveBeenCalledWith('ci.is_active = :isActive', {
+          isActive: true,
+        });
+        expect(listQb.leftJoin).toHaveBeenCalledWith(PlanDetail, 'pd', 'pd.item_id = ci.id');
+        expect(listQb.andWhere).toHaveBeenCalledWith(
+          '(ci.name ILIKE :like ESCAPE :esc OR pd.technology ILIKE :like ESCAPE :esc)',
+          { like: '%%', esc: '\\' },
+        );
+        expect(listQb.orderBy).toHaveBeenCalledWith('ci.name', 'ASC');
+        expect(listQb.take).toHaveBeenCalledWith(20);
+        expect(result).toEqual({
+          data: [
+            { id: 'plan-1', label: 'Plan A', sublabel: 'Fibra Optica · ↓120Mbps · ↑60Mbps' },
+            { id: 'plan-2', label: 'Plan B', sublabel: 'Radio Enlace · ↓40Mbps · ↑20Mbps' },
+          ],
+          total: 2,
+        });
+      },
+    );
+
+    it('busca planes por tecnología y mapea sublabel con detalle del plan', async () => {
       const items = [
         {
           id: 'plan-1',
-          name: 'Plan fibra 200',
+          name: 'Plan Alto',
           isActive: true,
           type: CatalogItemType.PLAN,
         },
       ];
+      const { createQueryBuilder } = buildPickerQueryBuilder(items, 1, [
+        {
+          itemId: 'plan-1',
+          downloadSpeedMbps: 120,
+          uploadSpeedMbps: 60,
+          technology: 'Fibra Optica',
+        },
+      ]);
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-        cb({
-          manager: {
-            createQueryBuilder: () => buildQueryBuilderMock(items, 3),
-          },
-        }),
+        cb({ manager: { createQueryBuilder } }),
       );
 
       const result = await service.searchForPicker({
@@ -804,8 +1127,52 @@ describe('CatalogService', () => {
         limit: 20,
       });
 
-      expect(result.total).toBe(3);
-      expect(result.data).toEqual([{ id: 'plan-1', label: 'Plan fibra 200', sublabel: 'Activo' }]);
+      expect(result.total).toBe(1);
+      expect(result.data).toEqual([
+        { id: 'plan-1', label: 'Plan Alto', sublabel: 'Fibra Optica · ↓120Mbps · ↑60Mbps' },
+      ]);
+    });
+
+    it('devuelve lista vacía sin error cuando q no coincide (evita IN () vacío)', async () => {
+      const { listQb, createQueryBuilder } = buildPickerQueryBuilder([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.searchForPicker({
+        type: CatalogItemType.PLAN,
+        q: 'zzz-no-existe',
+      });
+
+      expect(result).toEqual({ data: [], total: 0 });
+      expect(listQb.getMany).toHaveBeenCalled();
+      expect(listQb.clone).toHaveBeenCalled();
+    });
+
+    it('busca productos solo por nombre y conserva sublabel Activo/Inactivo sin join', async () => {
+      const items = [
+        { id: 'prod-1', name: 'Router wifi', isActive: true, type: CatalogItemType.PRODUCT },
+        { id: 'prod-2', name: 'Router mesh', isActive: true, type: CatalogItemType.PRODUCT },
+      ];
+      const { listQb, createQueryBuilder } = buildPickerQueryBuilder(items, 2);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.searchForPicker({ type: CatalogItemType.PRODUCT, q: 'router' });
+
+      expect(listQb.leftJoin).not.toHaveBeenCalled();
+      expect(listQb.andWhere).toHaveBeenCalledWith('ci.name ILIKE :like ESCAPE :esc', {
+        like: '%router%',
+        esc: '\\',
+      });
+      expect(result).toEqual({
+        data: [
+          { id: 'prod-1', label: 'Router wifi', sublabel: 'Activo' },
+          { id: 'prod-2', label: 'Router mesh', sublabel: 'Activo' },
+        ],
+        total: 2,
+      });
     });
   });
 });

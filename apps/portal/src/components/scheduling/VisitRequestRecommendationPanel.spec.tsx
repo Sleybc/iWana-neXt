@@ -7,7 +7,7 @@ import {
   WfmWorkType,
 } from '@iwana/shared';
 import type { ComponentProps } from 'react';
-import type { InternalUser } from '@/lib/api-client';
+import type { InternalUser, WfmScheduleRecommendation } from '@/lib/api-client';
 import { VisitRequestRecommendationPanel } from './VisitRequestRecommendationPanel';
 
 const useOperatingWindowMock = jest.fn();
@@ -197,13 +197,17 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
 
   it('muestra mensajes de validación si se confirma con campos vacíos', async () => {
     const onOpenConfirm = jest.fn();
-    const props = buildPanelProps({ onOpenConfirm });
+    const props = buildPanelProps({
+      onOpenConfirm,
+      selectedVisitRequest: buildVisitRequest({ requestedWindowStartAt: null }),
+    });
     render(<VisitRequestRecommendationPanel {...props} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Prefiero agendar manualmente/i }));
 
-    fireEvent.change(await screen.findByLabelText('Fecha'), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText('Duración (min)'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Personalizada' }));
+    fireEvent.change(screen.getByLabelText('Horas'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Minutos'), { target: { value: '' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Revisar agenda manual' }));
 
@@ -214,6 +218,69 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('La duración mínima es de 15 minutos.')).toBeInTheDocument();
     expect(onOpenConfirm).not.toHaveBeenCalled();
+  });
+
+  it('ofrece duración rápida y duración personalizada en horas y minutos', async () => {
+    render(<VisitRequestRecommendationPanel {...buildPanelProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Prefiero agendar manualmente/i }));
+
+    expect(await screen.findByRole('group', { name: 'Duración rápida' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2 h' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { name: 'Personalizada' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Personalizada' }));
+
+    expect(screen.getByLabelText('Horas')).toHaveValue(2);
+    expect(screen.getByLabelText('Minutos')).toHaveValue(0);
+    expect(screen.getByText('Definida en el paso 1')).toBeInTheDocument();
+  });
+
+  it('permite cancelar las recomendaciones calculadas', () => {
+    const onCancelRecommendations = jest.fn();
+    const recommendation: WfmScheduleRecommendation = {
+      technicianId: 'tech-1',
+      scheduledStartAt: '2026-07-15T15:00:00.000Z',
+      scheduledEndAt: '2026-07-15T17:00:00.000Z',
+      score: 90,
+      labels: [],
+      scoreBreakdown: {
+        distance: 20,
+        municipality: 20,
+        sector: 20,
+        routeContinuity: 20,
+        load: 5,
+        earliest: 5,
+      },
+      distanceKm: 1.2,
+      nearestEventId: null,
+      totalScheduledMinutes: 120,
+      eventCount: 1,
+    };
+
+    render(
+      <VisitRequestRecommendationPanel
+        {...buildPanelProps({
+          recommendations: [recommendation],
+          selectedRecommendationId: 'tech-1::2026-07-15T15:00:00.000Z',
+          onCancelRecommendations,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar recomendaciones' }));
+
+    expect(onCancelRecommendations).toHaveBeenCalledTimes(1);
+  });
+
+  it('precarga el contexto operativo guardado en la solicitud', async () => {
+    render(<VisitRequestRecommendationPanel {...buildPanelProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
+
+    expect(await screen.findByLabelText('Dirección operativa')).toHaveValue('Cra 10 # 10 - 10');
+    expect(screen.getByLabelText('Municipio')).toHaveValue('Bogotá');
+    expect(screen.getByLabelText('Sector')).toHaveValue('Chapinero');
   });
 
   it('prepara el draft manual y abre la confirmación con técnico, fecha, hora y duración válidas', async () => {
@@ -228,9 +295,7 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
     fireEvent.click(techSelect);
     fireEvent.click(await screen.findByRole('option', { name: 'Luisa Campos' }));
 
-    fireEvent.change(screen.getByLabelText('Fecha'), { target: { value: '2026-07-15' } });
-    fireEvent.change(screen.getByLabelText('Hora de inicio'), { target: { value: '14:00' } });
-    fireEvent.change(screen.getByLabelText('Duración (min)'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Revisar agenda manual' }));
 
@@ -249,8 +314,37 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
 
     expect(payload.technicianId).toBe('tech-1');
     expect(payload.date).toBe('2026-07-15');
-    expect(payload.startTime).toBe('14:00');
+    expect(payload.startTime).toBe('10:00');
     expect(payload.duration).toBe('120');
     expect(payload.source).toBe('manual');
+  });
+
+  it('usa los controles visuales iWana en lugar de calendarios nativos', async () => {
+    const { container } = render(<VisitRequestRecommendationPanel {...buildPanelProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Prefiero agendar manualmente/i }));
+
+    expect(await screen.findByRole('button', { name: 'Fecha' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hora de inicio' })).toBeInTheDocument();
+    expect(container.querySelector('input[type="date"]')).toBeNull();
+    expect(container.querySelector('input[type="time"]')).toBeNull();
+  });
+
+  it('en modo peek usa el cajón operativo sin chrome duplicado', () => {
+    const onClose = jest.fn();
+    render(
+      <VisitRequestRecommendationPanel
+        {...buildPanelProps({ presentation: 'peek', open: true, onClose })}
+      />,
+    );
+
+    expect(screen.getByRole('dialog', { name: 'María Gómez' })).toBeInTheDocument();
+    expect(screen.getByText('Despacho de la solicitud')).toBeInTheDocument();
+    expect(screen.getByText('Paso 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cerrar panel' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

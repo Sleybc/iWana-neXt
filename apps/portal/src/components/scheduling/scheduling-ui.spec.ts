@@ -7,6 +7,7 @@ import {
   getEventReferenceLabel,
   getRecommendedSchedulingViewForDensity,
   getSchedulingVisibleDescription,
+  getWorkOrderSourceContextLabel,
   getWorkOrderSourceReferenceLabel,
   getDefaultSchedulingViewForRole,
   getSchedulingViewDescription,
@@ -30,7 +31,11 @@ describe('scheduling-ui', () => {
       getSchedulingVisibleDescription(
         'Evento originado desde CRM para el expediente fcda817a-6340-4b83-bdd3-8bb4caa6cae9.',
       ),
-    ).toBe('Evento originado desde CRM para la oportunidad FCDA817A.');
+    ).toBe('Evento originado para la oportunidad FCDA817A.');
+  });
+
+  it('etiqueta el origen comercial como oportunidades', () => {
+    expect(getWorkOrderSourceContextLabel(WorkOrderSourceContext.CRM)).toBe('Oportunidades');
   });
 
   it('muestra referencias cortas para expediente y orden de trabajo CRM', () => {

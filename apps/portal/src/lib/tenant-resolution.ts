@@ -7,8 +7,19 @@ export interface ResolvedTenantSlug {
 }
 
 export const TENANT_SLUG_STORAGE_KEY = 'iwana.portal.tenant-slug';
+export const TENANT_SCOPE_CHANGED_EVENT = 'iwana:tenant-scope-changed';
+export const TENANT_SCOPE_CHANGED_STORAGE_KEY = 'iwana.portal.tenant-scope-changed';
 
 const LEGACY_TEST_TENANT_SLUG = 'test-isp';
+let scopeChangeSequence = 0;
+
+function announceTenantScopeChanged(): void {
+  window.dispatchEvent(new CustomEvent(TENANT_SCOPE_CHANGED_EVENT));
+  window.localStorage.setItem(
+    TENANT_SCOPE_CHANGED_STORAGE_KEY,
+    `${Date.now()}:${++scopeChangeSequence}`,
+  );
+}
 
 export function normalizeTenantSlug(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? '';
@@ -36,12 +47,18 @@ export function persistTenantSlug(tenantSlug: string): void {
     return;
   }
 
-  if (!tenantSlug) {
+  const previousSlug = readStoredTenantSlug();
+  const normalizedSlug = normalizeTenantSlug(tenantSlug);
+
+  if (!normalizedSlug) {
     window.localStorage.removeItem(TENANT_SLUG_STORAGE_KEY);
-    return;
+  } else {
+    window.localStorage.setItem(TENANT_SLUG_STORAGE_KEY, normalizedSlug);
   }
 
-  window.localStorage.setItem(TENANT_SLUG_STORAGE_KEY, tenantSlug);
+  if (previousSlug !== normalizedSlug) {
+    announceTenantScopeChanged();
+  }
 }
 
 export function clearTenantSlugFromStorage(): void {
@@ -50,6 +67,7 @@ export function clearTenantSlugFromStorage(): void {
   }
 
   window.localStorage.removeItem(TENANT_SLUG_STORAGE_KEY);
+  announceTenantScopeChanged();
 }
 
 export function resolveTenantSlug(inputSlug?: string | null): ResolvedTenantSlug {

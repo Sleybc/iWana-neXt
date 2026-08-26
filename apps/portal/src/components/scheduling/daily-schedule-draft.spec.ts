@@ -3,6 +3,7 @@ import type { WfmOperatingWindowResult } from '@/lib/api-client';
 import {
   buildDailyDraftFromDrop,
   buildDisplayWindowFromOperatingWindow,
+  buildTimelineSlotsForDisplayWindow,
   moveDailyDraftToTime,
   resizeDailyDraftEnd,
   resizeDailyDraftStart,
@@ -60,7 +61,7 @@ describe('daily-schedule-draft', () => {
     expect(toLocalTimeValue(moved.scheduledStartAt)).toBe('14:00');
   });
 
-  it('redimensiona el draft respetando minimo de 15 minutos', () => {
+  it('redimensiona el draft respetando minimo de 30 minutos', () => {
     const draft = buildDailyDraftFromDrop({
       visitRequestId: 'visit-1',
       organizationSiteId: null,
@@ -76,7 +77,7 @@ describe('daily-schedule-draft', () => {
 
     const resized = resizeDailyDraftEnd(draft, '09:10');
 
-    expect(resized.durationMinutes).toBeGreaterThanOrEqual(15);
+    expect(resized.durationMinutes).toBeGreaterThanOrEqual(30);
   });
 
   it('marca invalido un draft fuera de ventana operativa para instalaciones', () => {
@@ -129,5 +130,17 @@ describe('daily-schedule-draft', () => {
     expect(displayWindow.operatingEndMinutes).toBe(17 * 60);
     expect(displayWindow.startHour).toBeLessThan(8);
     expect(displayWindow.endHour).toBeGreaterThan(17);
+  });
+
+  it('genera subfranjas de 30 minutos dentro de cada hora', () => {
+    const slots = buildTimelineSlotsForDisplayWindow({
+      startHour: 7,
+      endHour: 8,
+      operatingStartMinutes: null,
+      operatingEndMinutes: null,
+      isClosedDay: false,
+    });
+
+    expect(slots).toEqual(['07:00', '07:30']);
   });
 });

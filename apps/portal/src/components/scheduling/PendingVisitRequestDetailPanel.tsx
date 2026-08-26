@@ -516,7 +516,7 @@ export function PendingVisitRequestDetailPanel({
               <Link
                 href={`/dashboard/operations?executionOrderId=${selectedVisitRequest.executionOrderId}`}
               >
-                Abrir OT en operaciones
+                Abrir orden en Operaciones
               </Link>
             </Button>
           ) : null}

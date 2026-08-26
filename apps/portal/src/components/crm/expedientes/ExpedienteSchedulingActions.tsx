@@ -74,9 +74,11 @@ function buildFieldWorkCopy(fieldWork: CrmInstallationFieldWork): {
 
 export function ExpedienteSchedulingActions(props: {
   expedienteId: string;
+  tenantScope?: string;
   customerLabel: string;
   municipality?: string | null;
   address?: string | null;
+  sector?: string | null;
   latitude?: number | null;
   longitude?: number | null;
 }) {
@@ -85,17 +87,39 @@ export function ExpedienteSchedulingActions(props: {
     fieldWork,
     isLoading: isFieldWorkLoading,
     error: fieldWorkError,
-  } = useCrmInstallationFieldWork(props.expedienteId);
+    load: loadFieldWork,
+  } = useCrmInstallationFieldWork(props.expedienteId, false, props.tenantScope);
   const { error, isSubmitting, submit: submitVisitRequest } = useCrmVisitRequestAction();
   const [additionalMode, setAdditionalMode] = useState(false);
   const [additionalReason, setAdditionalReason] = useState('');
   const [additionalValidationError, setAdditionalValidationError] = useState<string | null>(null);
+  const [isPreparingFieldWork, setIsPreparingFieldWork] = useState(false);
 
   const submit = async (
     nextAction: VisitRequestNextAction,
     options?: { isAdditional?: boolean; additionalReason?: string | null },
   ) => {
-    await submitVisitRequest(props, nextAction, options);
+    if (isPreparingFieldWork || isSubmitting) {
+      return;
+    }
+
+    setIsPreparingFieldWork(true);
+    try {
+      if (fieldWork.kind === 'none') {
+        try {
+          const resolvedFieldWork = await loadFieldWork();
+          if (resolvedFieldWork.kind !== 'none') {
+            return;
+          }
+        } catch {
+          return;
+        }
+      }
+
+      await submitVisitRequest(props, nextAction, options);
+    } finally {
+      setIsPreparingFieldWork(false);
+    }
   };
 
   const copy = buildFieldWorkCopy(fieldWork);
@@ -186,7 +210,7 @@ export function ExpedienteSchedulingActions(props: {
           <div className="mt-3 flex flex-wrap gap-3">
             <Button
               type="button"
-              loading={isSubmitting}
+              loading={isSubmitting || isPreparingFieldWork}
               onClick={() => {
                 const trimmed = additionalReason.trim();
                 if (!trimmed) {
@@ -235,7 +259,7 @@ export function ExpedienteSchedulingActions(props: {
         <Button
           type="button"
           variant="secondary"
-          loading={isSubmitting}
+          loading={isSubmitting || isPreparingFieldWork}
           onClick={() => void submit('send-to-pending')}
         >
           Enviar a pendientes

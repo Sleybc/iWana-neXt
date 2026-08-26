@@ -19,9 +19,12 @@ import {
   ApiBearerAuth,
   ApiConsumes,
   ApiExtraModels,
+  ApiParam,
+  ApiOkResponse,
   ApiOperation,
   ApiQuery,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { PlatformRole, UserRole, ExpedienteStatus } from '@iwana/shared';
 import { Request, Response } from 'express';
@@ -33,12 +36,15 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
+import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { PipelineRecommendationService } from './pipeline-recommendation.service';
+import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.service';
+import { ExpedienteDetailBootstrapResponseDto } from './dto/expediente-detail-bootstrap.dto';
 import { parseExpedienteListView } from './expediente-list-view';
 import { CreateExpedienteDto, CreateExpedienteSchema } from './dto/create-expediente.dto';
 import {
@@ -66,6 +72,17 @@ import {
   LinkInstallationOperationalRefsDto,
   LinkInstallationOperationalRefsSchema,
 } from './dto/link-installation-operational-refs.dto';
+import {
+  ExpedienteTimelineQuerySchema,
+  ExpedienteTimelineLegacyResponseSwaggerDto,
+  ExpedienteTimelinePaginatedResponseSwaggerDto,
+  ExpedienteContactTimelineEventSwaggerDto,
+  ExpedienteResponsibilityTimelineEventSwaggerDto,
+  ExpedienteAttributionTimelineEventSwaggerDto,
+  ExpedientePipelineTimelineEventSwaggerDto,
+  ExpedienteSystemTimelineEventSwaggerDto,
+  type ExpedienteTimelineQueryDto,
+} from './dto/expediente-timeline.dto';
 
 /**
  * Roles administrativos que pueden ver la IP registrada en un consentimiento.
@@ -92,6 +109,7 @@ export class ExpedientesController {
     private readonly statusTransitionService: StatusTransitionService,
     private readonly completenessCalculator: CompletenessCalculator,
     private readonly pipelineRecommendationService: PipelineRecommendationService,
+    private readonly detailBootstrapService: ExpedienteDetailBootstrapService,
   ) {}
 
   @Post()
@@ -136,6 +154,16 @@ export class ExpedientesController {
       view: parseExpedienteListView(view),
     });
     return result;
+  }
+
+  @Get(':id/bootstrap')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Obtener bootstrap seguro del detalle del expediente' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', required: true })
+  @ApiOkResponse({ type: ExpedienteDetailBootstrapResponseDto })
+  async getBootstrap(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const data = await this.detailBootstrapService.getDetailBootstrap(id, user.sub);
+    return { data };
   }
 
   @Get(':id')
@@ -241,15 +269,69 @@ export class ExpedientesController {
   @Get(':id/timeline')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Obtener timeline cronológico del expediente' })
-  async getTimeline(@Param('id', ParseUUIDPipe) id: string) {
-    const timeline = await this.expedienteService.getTimelineSummary(id);
-    return {
-      data: {
-        changes: timeline.changes,
-        activities: timeline.activities,
-        metadata: timeline.metadata,
-      },
-    };
+  @ApiExtraModels(
+    ExpedienteTimelineLegacyResponseSwaggerDto,
+    ExpedienteTimelinePaginatedResponseSwaggerDto,
+    ExpedienteContactTimelineEventSwaggerDto,
+    ExpedienteResponsibilityTimelineEventSwaggerDto,
+    ExpedienteAttributionTimelineEventSwaggerDto,
+    ExpedientePipelineTimelineEventSwaggerDto,
+    ExpedienteSystemTimelineEventSwaggerDto,
+  )
+  @ApiOkResponse({
+    description: 'Envelope legacy sin query o envelope paginado con query de timeline.',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(ExpedienteTimelineLegacyResponseSwaggerDto) },
+        { $ref: getSchemaPath(ExpedienteTimelinePaginatedResponseSwaggerDto) },
+      ],
+    },
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    example: 1,
+    minimum: 1,
+    description: 'Página 1-based. La cota compuesta page × limit no puede superar 500.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    example: 5,
+    minimum: 1,
+    maximum: 50,
+    description: 'Cantidad por página. La cota compuesta page × limit no puede superar 500.',
+  })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['all', 'contact', 'asignaciones', 'pipeline', 'system'],
+    example: 'all',
+  })
+  async getTimeline(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(ExpedienteTimelineQuerySchema))
+    query: ExpedienteTimelineQueryDto = {},
+  ) {
+    if (Object.keys(query).length === 0) {
+      const timeline = await this.expedienteService.getTimelineSummary(id);
+      return {
+        data: {
+          changes: timeline.changes,
+          activities: timeline.activities,
+          metadata: timeline.metadata,
+        },
+      };
+    }
+
+    return this.expedienteService.getTimelinePage(
+      id,
+      query.page,
+      query.limit,
+      query.filter ?? 'all',
+    );
   }
 
   @Get(':id/document-supports')

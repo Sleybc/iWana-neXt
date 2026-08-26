@@ -142,8 +142,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
   {
     usage: 'seal',
     title: 'Sello compacto',
-    description:
-      'Se usa en el menú lateral, superficies compactas del portal y como respaldo visual cuando no se muestra el nombre.',
+    description: 'Menú lateral y espacios compactos.',
     guidance: BRANDING_SLOT_RULES.seal.helpText,
     variants: [
       {
@@ -191,8 +190,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
   {
     usage: 'favicon',
     title: 'Favicon',
-    description:
-      'Se usa en la pestaña del navegador y se resuelve por tema claro u oscuro en tiempo real.',
+    description: 'Pestaña del navegador.',
     guidance: BRANDING_SLOT_RULES.favicon.helpText,
     variants: [
       {
@@ -608,7 +606,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant="softDestructive"
+                  variant="outline"
                   size="sm"
                   onClick={() => setRestoreDialogOpen(true)}
                   disabled={!canEdit || isSubmitting || isResettingBase}
@@ -618,7 +616,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 </Button>
                 <Button
                   type="submit"
-                  variant="secondary"
+                  variant="primary"
                   size="sm"
                   loading={isSubmitting}
                   disabled={isSubmitting || !isDirty}
@@ -637,8 +635,13 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                   Activos visuales
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Organiza cada activo por tipo y define su variante clara u oscura desde una sola
-                  vista.
+                  Define las imágenes que verá tu empresa en el portal.
+                </p>
+                <p
+                  id="branding-source-precedence"
+                  className="mt-2 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {BRANDING_SETTINGS_COPY.slotPrecedenceHint}
                 </p>
               </div>
 
@@ -651,7 +654,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                     key={group.usage}
                     className="flex h-full flex-col gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3"
                   >
-                    <div className="space-y-2">
+                    <div className="min-h-24 space-y-2">
                       <div>
                         <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
                           {group.title}
@@ -664,15 +667,20 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                         </p>
                       </div>
 
-                      <div
+                      <details
                         id={`${group.usage}-guidance`}
-                        className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300"
+                        className="rounded-xl border border-gray-200 bg-white text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300"
                       >
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          Requisitos recomendados:
-                        </span>{' '}
-                        {group.guidance}
-                      </div>
+                        <summary
+                          className={cn(
+                            'cursor-pointer px-3 py-2 font-medium text-gray-900 dark:text-white',
+                            interactiveFocusClassName,
+                          )}
+                        >
+                          Requisitos
+                        </summary>
+                        <p className="px-3 pb-2">{group.guidance}</p>
+                      </details>
                     </div>
 
                     <div className="space-y-4">
@@ -704,18 +712,20 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                             className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
                           >
                             <div>
-                              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {variant.label}
-                              </p>
-                              <p
-                                id={slotSourceId}
-                                className="mt-1 text-xs text-gray-600 dark:text-gray-300"
-                              >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {variant.label}
+                                </p>
+                                <span
+                                  className="inline-flex shrink-0 rounded-full bg-iwana-surface-soft px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
+                                  aria-label={`${BRANDING_SETTINGS_COPY.slotSourcePrefix}${resolveSourceLabel(profile, variant)}`}
+                                >
+                                  {resolveSourceLabel(profile, variant)}
+                                </span>
+                              </div>
+                              <p id={slotSourceId} className="sr-only">
                                 {BRANDING_SETTINGS_COPY.slotSourcePrefix}
                                 {resolveSourceLabel(profile, variant)}
-                              </p>
-                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                {BRANDING_SETTINGS_COPY.slotPrecedenceHint}
                               </p>
                               <p id={slotStatusId} className="sr-only">
                                 {isSlotUploading
@@ -792,17 +802,13 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                               }
                               className="sr-only"
                               aria-label={`Subir archivo para ${group.title}, ${variant.label.toLowerCase()}`}
-                              aria-describedby={`${slotDescriptionId} ${slotGuidanceId} ${slotSourceId} ${slotStatusId}`}
+                              aria-describedby={`${slotDescriptionId} ${slotGuidanceId} ${slotSourceId} ${slotStatusId} branding-source-precedence`}
                               onChange={(event) => {
                                 const selectedFile = event.target.files?.[0];
                                 void handleUpload(group.usage, variant.themeVariant, selectedFile);
                                 event.currentTarget.value = '';
                               }}
                             />
-
-                            <p className="text-sm text-gray-600 dark:text-gray-300">
-                              Sube un archivo o usa una URL HTTPS para esta variante.
-                            </p>
 
                             {previewUrl ? (
                               <a
@@ -828,8 +834,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                   ? fieldError.message
                                   : undefined
                               }
-                              helperText={BRANDING_SETTINGS_COPY.slotUrlHelperText}
-                              aria-describedby={`${variant.urlField}-error ${variant.urlField}-helper ${slotDescriptionId} ${slotGuidanceId}`}
+                              containerClassName="[&>label]:flex [&>label]:min-h-10 [&>label]:items-start"
+                              aria-describedby={`${variant.urlField}-error ${slotDescriptionId} ${slotGuidanceId} branding-source-precedence`}
                               {...register(variant.urlField)}
                             />
 

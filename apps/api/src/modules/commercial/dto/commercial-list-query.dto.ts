@@ -7,8 +7,8 @@ import {
 } from '../../../common/pagination';
 
 /**
- * Query de listado cursor-based para superficies comerciales (ADR-064).
- * `limit` default 20, max 100; si se omite → default acotado (nunca unbounded).
+ * Query de listado para superficies comerciales (ADR-064/065).
+ * `limit` default 20, máximo 100. Si se omite → default acotado (nunca unbounded).
  */
 export class CommercialListQueryDto {
   @ApiPropertyOptional({
@@ -23,7 +23,7 @@ export class CommercialListQueryDto {
     default: COMMERCIAL_LIST_DEFAULT_LIMIT,
     minimum: 1,
     maximum: COMMERCIAL_LIST_MAX_LIMIT,
-    description: `Tamaño de página (default ${COMMERCIAL_LIST_DEFAULT_LIMIT}, max ${COMMERCIAL_LIST_MAX_LIMIT})`,
+    description: `Tamaño de página (default ${COMMERCIAL_LIST_DEFAULT_LIMIT}, máximo ${COMMERCIAL_LIST_MAX_LIMIT}).`,
   })
   @IsOptional()
   @Type(() => Number)

@@ -186,36 +186,26 @@ describe('CalendarSettingsClient', () => {
     expect(await screen.findByText('Cierres por fecha y aperturas especiales')).toBeInTheDocument();
   });
 
-  it('agrupa los carriles 1–2 y 3–4 y mantiene el orden DOM', async () => {
+  it('distribuye los bloques en dos columnas independientes', async () => {
     render(<CalendarSettingsClient />);
 
     await screen.findByText('Horario base de la empresa');
 
-    expect(screen.getByTestId('calendar-shell-grid')).toBeInTheDocument();
-    expect(
-      Array.from(
-        screen.getByTestId('calendar-lane-1-2').querySelectorAll('[data-testid^="calendar-step-"]'),
-      ).map((step) => step.getAttribute('data-testid')),
-    ).toEqual(['calendar-step-1', 'calendar-step-2']);
-    expect(
-      Array.from(
-        screen.getByTestId('calendar-lane-3-4').querySelectorAll('[data-testid^="calendar-step-"]'),
-      ).map((step) => step.getAttribute('data-testid')),
-    ).toEqual(['calendar-step-3', 'calendar-step-4']);
+    const shellGrid = screen.getByTestId('calendar-shell-grid');
+    expect(shellGrid).toBeInTheDocument();
 
-    const steps = Array.from(
-      screen.getByTestId('calendar-shell-grid').querySelectorAll('[data-testid^="calendar-step-"]'),
+    const leftColumn = screen.getByTestId('calendar-column-left');
+    const rightColumn = screen.getByTestId('calendar-column-right');
+    expect(leftColumn.querySelector('[data-testid="calendar-step-1"]')).toBeInTheDocument();
+    expect(leftColumn.querySelector('[data-testid="calendar-step-3"]')).toBeInTheDocument();
+    expect(rightColumn.querySelector('[data-testid="calendar-step-2"]')).toBeInTheDocument();
+    expect(rightColumn.querySelector('[data-testid="calendar-step-4"]')).toBeInTheDocument();
+    expect(leftColumn.querySelector('[data-testid="calendar-step-1"]')).toHaveTextContent(
+      'Horario base de la empresa',
     );
-    expect(steps.map((step) => step.getAttribute('data-testid'))).toEqual([
-      'calendar-step-1',
-      'calendar-step-2',
-      'calendar-step-3',
-      'calendar-step-4',
-    ]);
-    expect(steps[0]).toHaveTextContent('Horario base de la empresa');
-    expect(steps[1]).toHaveTextContent('Horarios por sede');
-    expect(steps[2]).toHaveTextContent('Cierres por fecha y aperturas especiales');
-    expect(steps[3]).toHaveTextContent('Cambios puntuales de disponibilidad');
+    expect(rightColumn.querySelector('[data-testid="calendar-step-2"]')).toHaveTextContent(
+      'Horarios por sede',
+    );
   });
 
   it('llama a getCompanyHours, list y getExceptions al montar', async () => {

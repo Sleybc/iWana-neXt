@@ -28,7 +28,7 @@ export function DispatchDrawerPortal({
   return createPortal(
     <div
       className={cn(
-        'fixed inset-0 z-[120] flex justify-end',
+        'fixed inset-0 z-(--z-drawer) flex justify-end',
         drawerScope === 'mobile' && 'xl:hidden',
       )}
     >

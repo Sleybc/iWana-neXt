@@ -43,7 +43,7 @@ const scriptSrcDirective =
 const contentSecurityPolicy = `default-src 'self';
   ${scriptSrcDirective};
   style-src 'self' 'unsafe-inline';
-  img-src 'self' blob: data: https://www.gravatar.com;
+  img-src 'self' blob: data: https://www.gravatar.com https://*.tile.openstreetmap.org;
   font-src 'self';
   connect-src 'self';
   object-src 'none';

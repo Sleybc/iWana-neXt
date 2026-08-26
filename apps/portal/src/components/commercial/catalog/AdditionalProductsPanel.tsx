@@ -486,7 +486,7 @@ export function AdditionalProductsPanel({
   return (
     <PortalPanel
       eyebrow="Catálogo"
-      title="Productos adicionales"
+      title="Productos"
       description="Consulta, filtra y administra productos complementarios al plan principal."
       actions={
         <>
@@ -542,8 +542,8 @@ export function AdditionalProductsPanel({
         />
       ) : products.length === 0 && !hasActiveFilters ? (
         <PortalEmptyState
-          title="Catálogo listo para crecer"
-          description="No hay productos adicionales. Crea uno para empezar."
+          title="Aún no hay productos"
+          description="Crea el primero para complementar los planes de tu oferta."
           icon={CheckCircle2}
           {...(canEdit
             ? {
@@ -757,13 +757,15 @@ export function AdditionalProductsPanel({
                               <Link
                                 href={`/dashboard/inventory?tab=catalog&commercialRef=${product.id}`}
                                 className={cn(
-                                  'inline-flex items-center gap-1 rounded-full border border-iwana-secondary/30 bg-iwana-secondary/5 px-2 py-1 text-xs font-medium text-iwana-secondary-700 transition-colors hover:bg-iwana-secondary/10 dark:border-iwana-secondary/40 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300',
+                                  'inline-flex items-center gap-1 rounded-full',
                                   interactiveFocusClassName,
                                 )}
                                 title="Ver artículos de inventario vinculados"
                               >
-                                Requiere inventario
-                                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                                <Badge variant="lime" className="gap-1">
+                                  Requiere inventario
+                                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                                </Badge>
                               </Link>
                             ) : (
                               <span className="rounded-full border border-dashed border-gray-200 px-2 py-1 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">

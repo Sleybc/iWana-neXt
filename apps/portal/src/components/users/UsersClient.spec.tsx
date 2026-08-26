@@ -128,6 +128,30 @@ jest.mock('./ResetPasswordDialog', () => ({
 
 const emptyList = { data: [], meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 } };
 
+const sampleUser = {
+  id: 'u-1',
+  email: 'page@test.com',
+  role: UserRole.NOC,
+  status: UserStatus.ACTIVE,
+  tenantId: 'tenant-1',
+  mfaEnabled: false,
+  mfaRequired: false,
+  isOperationalResource: false,
+  emailVerified: true,
+  passwordResetRequired: false,
+  lastLoginAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  deletedAt: null,
+  firstName: 'Page',
+  lastName: 'Test',
+  phone: null,
+  jobTitle: null,
+  documentType: null,
+  documentNumber: null,
+  avatarUrl: null,
+};
+
 describe('UsersClient Ola B1', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -263,32 +287,8 @@ describe('UsersClient Ola B1', () => {
   });
 
   it('ADR-065: muestra PortalTablePager cuando el API devuelve meta page-based', async () => {
-    const pageUser = {
-      id: 'u-1',
-      email: 'page@test.com',
-      role: UserRole.NOC,
-      status: UserStatus.ACTIVE,
-      tenantId: 'tenant-1',
-      mfaEnabled: false,
-      mfaRequired: false,
-      isOperationalResource: false,
-      emailVerified: true,
-      passwordResetRequired: false,
-      lastLoginAt: null,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      deletedAt: null,
-      firstName: 'Page',
-      lastName: 'Test',
-      phone: null,
-      jobTitle: null,
-      documentType: null,
-      documentNumber: null,
-      avatarUrl: null,
-    };
-
     listMock.mockResolvedValue({
-      data: [pageUser],
+      data: [sampleUser],
       meta: {
         ...EMPTY_LIST_META,
         page: 1,
@@ -316,10 +316,10 @@ describe('UsersClient Ola B1', () => {
     expect(screen.getAllByText(/Mostrando 1–10 de 15 usuarios/).length).toBeGreaterThan(0);
   });
 
-  it('ADR-065: usa strip y Cargar más cuando randomAccess es false', async () => {
+  it('ADR-065: usa Cargar más cuando randomAccess es false', async () => {
     listMock
       .mockResolvedValueOnce({
-        data: [],
+        data: [sampleUser],
         meta: {
           ...EMPTY_LIST_META,
           nextCursor: 'cursor-2',
@@ -329,7 +329,7 @@ describe('UsersClient Ola B1', () => {
         },
       })
       .mockResolvedValueOnce({
-        data: [],
+        data: [sampleUser],
         meta: {
           ...EMPTY_LIST_META,
           nextCursor: null,
@@ -344,13 +344,65 @@ describe('UsersClient Ola B1', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
     });
-    expect(screen.getByText('0 de 5 usuarios')).toBeInTheDocument();
+    expect(screen.queryByText('1 de 5 usuarios')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cargar más' }));
 
     await waitFor(() => {
       expect(listMock).toHaveBeenLastCalledWith({ limit: 20, cursor: 'cursor-2' });
+    });
+  });
+
+  it('normaliza metadata legacy y conserva Cargar más con el cursor recibido', async () => {
+    listMock
+      .mockResolvedValueOnce({
+        data: [],
+        meta: { nextCursor: 'cursor-legacy', total: 5 },
+      })
+      .mockResolvedValueOnce({ data: [], meta: { nextCursor: null, total: 5 } });
+
+    render(<UsersClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cargar más' }));
+
+    await waitFor(() => {
+      expect(listMock).toHaveBeenLastCalledWith({ limit: 20, cursor: 'cursor-legacy' });
+    });
+  });
+
+  it('tolera una respuesta sin data ni meta sin activar un pager', async () => {
+    listMock.mockResolvedValueOnce({});
+
+    render(<UsersClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('0 usuarios en total')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
+  });
+
+  it('muestra el estado de error y la acción para reintentar cuando falla el listado', async () => {
+    listMock.mockRejectedValueOnce(new Error('fallo de prueba')).mockResolvedValueOnce(emptyList);
+
+    render(<UsersClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Incidente en la carga')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    await waitFor(() => {
+      expect(listMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('0 usuarios en total')).toBeInTheDocument();
     });
   });
 });

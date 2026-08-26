@@ -34,6 +34,7 @@ describe('api-client auth refresh handling', () => {
 
   it('deduplicates refresh calls when multiple protected requests receive 401 at the same time', async () => {
     const receivedAuthorizations: Array<string | null> = [];
+    const protectedAttempts = new Map<string, number>();
     const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const authorization = new Headers(init?.headers).get('Authorization');
@@ -46,7 +47,9 @@ describe('api-client auth refresh handling', () => {
       }
 
       if (url.endsWith('/access-control/permissions')) {
-        if (authorization === 'Bearer expired-token') {
+        const attempts = (protectedAttempts.get(url) ?? 0) + 1;
+        protectedAttempts.set(url, attempts);
+        if (attempts === 1) {
           return createJsonResponse(401, { message: 'Unauthorized' });
         }
 
@@ -60,7 +63,9 @@ describe('api-client auth refresh handling', () => {
       }
 
       if (url.endsWith('/access-control/profiles')) {
-        if (authorization === 'Bearer expired-token') {
+        const attempts = (protectedAttempts.get(url) ?? 0) + 1;
+        protectedAttempts.set(url, attempts);
+        if (attempts === 1) {
           return createJsonResponse(401, { message: 'Unauthorized' });
         }
 
@@ -83,21 +88,20 @@ describe('api-client auth refresh handling', () => {
     expect(
       fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh')),
     ).toHaveLength(1);
-    // El token renovado se re-adjunta en memoria (ADR-081): el reintento viaja
-    // con el Bearer renovado; ya no se persiste en localStorage.
-    expect(receivedAuthorizations).toContain('Bearer renewed-token');
+    // La cookie httpOnly es la credencial canónica: ningún request ordinario
+    // debe reutilizar el Bearer en memoria, aunque este sea obsoleto.
+    expect(receivedAuthorizations.every((authorization) => authorization === null)).toBe(true);
   });
 
   it('stops retrying refresh after a terminal session expiration until a new token is stored', async () => {
     const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      const authorization = new Headers(init?.headers).get('Authorization');
 
       if (url.endsWith('/auth/refresh')) {
         return createJsonResponse(401, { message: 'Unauthorized' });
       }
 
-      if (url.endsWith('/access-control/profiles') && authorization === 'Bearer expired-token') {
+      if (url.endsWith('/access-control/profiles')) {
         return createJsonResponse(401, { message: 'Unauthorized' });
       }
 
@@ -223,6 +227,172 @@ describe('usersApi.bulkCreate', () => {
     const claimed = await usersApi.claimBulkJobResult('job-abc', 'isp-demo');
     expect(claimed.succeeded[0]?.temporaryPassword).toBe('Temp-1234!');
     expect(claimed.credentialsClaimed).toBe(true);
+  });
+});
+
+describe('crmApi.getExpedienteTimelinePage', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('envía la paginación y el filtro al endpoint unificado y conserva el envelope', async () => {
+    const responseBody = {
+      data: {
+        events: [
+          {
+            kind: 'contact' as const,
+            id: 'contact-1',
+            attemptedAt: '2026-08-24T10:00:00.000Z',
+            channel: 'TELEFONO',
+            result: 'EXITOSO',
+            durationMinutes: 4,
+            notes: null,
+            actor: { userId: 'user-1', name: 'Laura Comercial', role: 'SALES' },
+          },
+        ],
+        metadata: {
+          createdBy: { userId: 'user-1', name: 'Laura Comercial', role: 'SALES' },
+          lastEditedBy: { userId: 'user-1', name: 'Laura Comercial', role: 'SALES' },
+          lastActivityAt: '2026-08-24T10:00:00.000Z',
+        },
+      },
+      meta: {
+        page: 2,
+        limit: 10,
+        total: 11,
+        totalPages: 2,
+        truncated: false,
+        hasMore: false,
+      },
+    };
+    const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        '/api/v1/crm/expedientes/exp-1/timeline?page=2&limit=10&filter=contact',
+      );
+      expect(new Headers(init?.headers).get('X-Tenant-Slug')).toBe('tenant-a');
+      return createJsonResponse(200, responseBody);
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { crmApi } = await import('./api-client');
+    const response = await crmApi.getExpedienteTimelinePage(
+      'exp-1',
+      { page: 2, limit: 10, filter: 'contact' },
+      'tenant-a',
+    );
+
+    expect(response).toEqual(responseBody);
+    expect(response.data.events[0]?.kind).toBe('contact');
+    expect(response.meta).toEqual({
+      page: 2,
+      limit: 10,
+      total: 11,
+      totalPages: 2,
+      truncated: false,
+      hasMore: false,
+    });
+  });
+});
+
+describe('usersApi.list', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('normaliza la respuesta canónica y conserva la metadata completa', async () => {
+    const rows = [{ id: 'user-1' }];
+    const meta = {
+      nextCursor: 'cursor-2',
+      total: 3,
+      totalIsEstimate: false,
+      page: null,
+      limit: 17,
+      totalPages: null,
+      hasMore: true,
+      mode: 'cursor' as const,
+      capabilities: { randomAccess: false, sortableFields: [] },
+      sort: null,
+    };
+    const fetchMock = jest.fn(async () => createJsonResponse(200, { data: { data: rows, meta } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { usersApi } = await import('./api-client');
+    const response = await usersApi.list({ limit: 17 }, 'isp-demo');
+
+    expect(response).toEqual({ data: rows, meta });
+    expect(response.meta.capabilities.randomAccess).toBe(false);
+    expect(response.meta.mode).toBe('cursor');
+    expect(response.meta.limit).toBe(17);
+  });
+
+  it('normaliza la metadata legacy del listado cursor-based', async () => {
+    const fetchMock = jest.fn(async () =>
+      createJsonResponse(200, {
+        data: { data: [], meta: { nextCursor: 'cursor-legacy', total: 5 } },
+      }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { usersApi } = await import('./api-client');
+    const response = await usersApi.list({ limit: 17 }, 'isp-demo');
+
+    expect(response.data).toEqual([]);
+    expect(response.meta).toEqual({
+      nextCursor: 'cursor-legacy',
+      total: 5,
+      totalIsEstimate: false,
+      page: null,
+      limit: 17,
+      totalPages: null,
+      hasMore: true,
+      mode: 'cursor',
+      capabilities: { randomAccess: false, sortableFields: [] },
+      sort: null,
+    });
+    expect(response.meta.capabilities.randomAccess).toBe(false);
+    expect(response.meta.mode).toBe('cursor');
+    expect(response.meta.limit).toBe(17);
+  });
+
+  it.each([
+    ['respuesta sin datos ni metadata', {}],
+    ['metadata nula', { data: [], meta: null }],
+  ])('devuelve una lista vacía cuando llega %s', async (_label, payload) => {
+    const fetchMock = jest.fn(async () => createJsonResponse(200, { data: payload }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { usersApi } = await import('./api-client');
+    const response = await usersApi.list({ limit: 17 }, 'isp-demo');
+
+    expect(response.data).toEqual([]);
+    expect(response.meta).toEqual({
+      nextCursor: null,
+      total: 0,
+      totalIsEstimate: false,
+      page: null,
+      limit: 17,
+      totalPages: null,
+      hasMore: false,
+      mode: 'cursor',
+      capabilities: { randomAccess: false, sortableFields: [] },
+      sort: null,
+    });
+    expect(response.meta.capabilities.randomAccess).toBe(false);
+    expect(response.meta.mode).toBe('cursor');
+    expect(response.meta.limit).toBe(17);
   });
 });
 
@@ -369,7 +539,7 @@ describe('tasksApi execution order payloads', () => {
     });
     expect(calls[3]?.init?.body).toBeInstanceOf(FormData);
     expect(new Headers(calls[3]?.init?.headers).get('If-Match')).toBe('6');
-    expect(new Headers(calls[3]?.init?.headers).get('Authorization')).toBe('Bearer portal-token');
+    expect(new Headers(calls[3]?.init?.headers).get('Authorization')).toBeNull();
     expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({
       mediaAssetId: 'asset-001',
       evidenceType: 'PHOTO',

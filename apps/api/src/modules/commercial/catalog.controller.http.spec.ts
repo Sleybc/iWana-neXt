@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   INestApplication,
   UnauthorizedException,
@@ -197,6 +198,70 @@ describe('CatalogController HTTP', () => {
         limit: 20,
       }),
     );
+  });
+
+  it('GET /api/v1/commercial/catalog propaga page y limit en modo page', async () => {
+    catalogServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: { mode: 'page', page: 2, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/catalog?type=PLAN&page=2&limit=20')
+      .set('Authorization', 'Bearer sales-token')
+      .expect(200);
+
+    expect(catalogServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CatalogItemType.PLAN,
+        page: 2,
+        limit: 20,
+      }),
+    );
+  });
+
+  it('GET /api/v1/commercial/catalog propaga sortBy y sortDir', async () => {
+    catalogServiceMock.findAll.mockResolvedValue({
+      data: [],
+      meta: { mode: 'page', page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/catalog?type=PLAN&page=1&limit=20&sortBy=name&sortDir=desc')
+      .set('Authorization', 'Bearer sales-token')
+      .expect(200);
+
+    expect(catalogServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CatalogItemType.PLAN,
+        page: 1,
+        limit: 20,
+        sortBy: 'name',
+        sortDir: 'desc',
+      }),
+    );
+  });
+
+  it('GET /api/v1/commercial/catalog rechaza page y cursor juntos', async () => {
+    catalogServiceMock.findAll.mockRejectedValue(
+      new BadRequestException('Los parámetros page y cursor son excluyentes; envíe solo uno.'),
+    );
+
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/catalog?type=PLAN&page=1&cursor=abc')
+      .set('Authorization', 'Bearer sales-token')
+      .expect(400);
+
+    expect(catalogServiceMock.findAll).toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/commercial/catalog rechaza limit=999 en el boundary', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/catalog?type=PLAN&page=1&limit=999')
+      .set('Authorization', 'Bearer sales-token')
+      .expect(400);
+
+    expect(catalogServiceMock.findAll).not.toHaveBeenCalled();
   });
 
   it('GET /api/v1/commercial/catalog retorna 401 sin JWT', async () => {

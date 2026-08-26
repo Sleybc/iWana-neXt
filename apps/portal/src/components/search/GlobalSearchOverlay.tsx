@@ -12,7 +12,7 @@ const quickLinks: Array<{ href: string; label: string }> = [
   { href: '/dashboard/crm/subscribers', label: 'Suscriptores' },
   { href: '/dashboard/assurance', label: 'Mesa de ayuda' },
   { href: '/dashboard/settings', label: 'Configuración' },
-  { href: '/dashboard/users', label: 'Usuarios y accesos' },
+  { href: '/dashboard/users', label: 'Usuarios' },
 ];
 
 export function GlobalSearchOverlay({

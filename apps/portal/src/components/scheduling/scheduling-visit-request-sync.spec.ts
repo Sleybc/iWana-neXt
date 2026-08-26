@@ -105,7 +105,7 @@ describe('scheduleVisitRequestWithFollowUp', () => {
     });
 
     expect(message).toBe(
-      'La solicitud Instalación GPON barrio norte quedó agendada correctamente. El expediente quedó marcado como instalación agendada.',
+      'La solicitud Instalación GPON barrio norte quedó agendada correctamente. La oportunidad quedó marcada como instalación agendada.',
     );
     expect(linkWorkOrderMock).toHaveBeenCalledWith('TK-001', { workOrderId: 'wo-1' });
     expect(linkInstallationOperationalRefsMock).toHaveBeenCalledWith(
@@ -135,7 +135,7 @@ describe('scheduleVisitRequestWithFollowUp', () => {
     });
 
     expect(message).toBe(
-      'La solicitud Instalación GPON barrio norte quedó agendada correctamente. Advertencias: No fue posible vincular la orden de trabajo con Aseguramiento. No fue posible persistir las referencias operativas en CRM. No fue posible actualizar el expediente automáticamente.',
+      'La solicitud Instalación GPON barrio norte quedó agendada correctamente. Advertencias: No fue posible vincular la orden de trabajo con mesa de ayuda. No fue posible persistir las referencias operativas comerciales. No fue posible actualizar la oportunidad automáticamente.',
     );
   });
 
@@ -162,6 +162,6 @@ describe('scheduleVisitRequestWithFollowUp', () => {
     expect(transitionExpedienteSyncMock).toHaveBeenCalledTimes(1);
     expect(linkWorkOrderMock).not.toHaveBeenCalled();
     expect(linkInstallationOperationalRefsMock).not.toHaveBeenCalled();
-    expect(message).toContain('El expediente quedó marcado como instalación agendada.');
+    expect(message).toContain('La oportunidad quedó marcada como instalación agendada.');
   });
 });

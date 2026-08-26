@@ -65,6 +65,7 @@ describe('ExpedienteSchedulingActions', () => {
       fieldWork: emptyFieldWork,
       isLoading: false,
       error: null,
+      load: jest.fn().mockResolvedValue(emptyFieldWork),
     });
   });
 
@@ -75,6 +76,7 @@ describe('ExpedienteSchedulingActions', () => {
         customerLabel="Cliente Demo"
         municipality="Bogotá"
         address="Cra 1 # 2-3"
+        sector="Chapinero"
       />,
     );
 
@@ -93,6 +95,9 @@ describe('ExpedienteSchedulingActions', () => {
       <ExpedienteSchedulingActions
         expedienteId="550e8400-e29b-41d4-a716-446655440000"
         customerLabel="Cliente Demo"
+        municipality="Bogotá"
+        address="Cra 1 # 2-3"
+        sector="Chapinero"
       />,
     );
 
@@ -103,6 +108,9 @@ describe('ExpedienteSchedulingActions', () => {
         expedienteId: '550e8400-e29b-41d4-a716-446655440000',
         customerLabel: 'Cliente Demo',
         nextAction: 'schedule-now',
+        municipality: 'Bogotá',
+        address: 'Cra 1 # 2-3',
+        sector: 'Chapinero',
       }),
     );
     expect(mockPush).toHaveBeenCalledWith(
@@ -148,6 +156,7 @@ describe('ExpedienteSchedulingActions', () => {
       },
       isLoading: false,
       error: null,
+      load: jest.fn().mockResolvedValue(emptyFieldWork),
     });
 
     render(
@@ -180,6 +189,7 @@ describe('ExpedienteSchedulingActions', () => {
       },
       isLoading: false,
       error: null,
+      load: jest.fn().mockResolvedValue(emptyFieldWork),
     });
     createCrmVisitRequestAndRouteMock.mockResolvedValue({
       visitRequest: { id: 'vr-additional' } as never,
@@ -225,6 +235,7 @@ describe('ExpedienteSchedulingActions', () => {
       },
       isLoading: false,
       error: null,
+      load: jest.fn().mockResolvedValue(emptyFieldWork),
     });
 
     render(

@@ -2,8 +2,11 @@ import type { ExpedienteRecord } from '@/lib/api-client';
 import {
   applyIdentificationDerivedDefaults,
   buildDraftValues,
+  FIELD_LABELS,
+  FIELD_PLACEHOLDERS,
   getIdentificationValidationMessage,
   getSectionCompletionFields,
+  calculateSectionCompletion,
   canonicalizeExpedientePersonType,
 } from './constants';
 
@@ -19,6 +22,16 @@ describe('sections constants', () => {
     const draft = buildDraftValues({ personType: 'NATURAL' } as ExpedienteRecord);
 
     expect(draft.personType).toBe('PERSONA_NATURAL');
+  });
+
+  it('mantiene vacío el plan cuando el expediente no tiene plan persistido', () => {
+    const draft = buildDraftValues({
+      interestedPlanId: null,
+      acquisitionChannel: 'OTRO',
+    } as ExpedienteRecord);
+
+    expect(draft.interestedPlanId).toBe('');
+    expect(calculateSectionCompletion(['interestedPlanId', 'acquisitionChannel'], draft)).toBe(50);
   });
 
   it('deriva nombres y apellidos desde fullName cuando identificación está vacía', () => {
@@ -121,6 +134,17 @@ describe('sections constants', () => {
       'latitude',
       'longitude',
     ]);
+  });
+
+  it('usa copy claro para cobertura y justificación técnica', () => {
+    expect(FIELD_LABELS.coverageResult).toBe('Resultado de cobertura');
+    expect(FIELD_LABELS.technicalObservations).toBe('Justificación técnica');
+    expect(FIELD_PLACEHOLDERS.coverageResult).toBe(
+      'Describe brevemente la cobertura disponible, si aplica.',
+    );
+    expect(FIELD_PLACEHOLDERS.technicalObservations).toBe(
+      'Explica brevemente la razón de la decisión técnica.',
+    );
   });
 
   it('valida contacto principal cuando la identificación es persona jurídica', () => {

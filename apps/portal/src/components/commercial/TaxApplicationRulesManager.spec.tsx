@@ -75,10 +75,32 @@ describe('TaxApplicationRulesManager', () => {
     render(<TaxApplicationRulesManager canEdit={false} />);
 
     expect(document.querySelector('[aria-busy="true"]')).toBeInTheDocument();
-    expect(await screen.findByText('IVA · 19.00%')).toBeInTheDocument();
-    expect(screen.getByText('IVA general (IVA-19)')).toBeInTheDocument();
+    expect(await screen.findByText('IVA · 19,00%')).toBeInTheDocument();
+    expect(screen.getByText('IVA general')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cargar más' })).toBeEnabled();
     expect(listApplicationsMock).toHaveBeenCalledWith({ limit: 20 });
+  });
+
+  it('muestra el segmento Gobierno sin enum crudo', async () => {
+    getTaxRulesMock.mockResolvedValue({
+      data: [
+        {
+          id: 'rule-iva',
+          taxType: 'IVA',
+          ratePercentage: '19.00',
+          stratumFrom: null,
+          stratumTo: null,
+          customerSegment: 'GOVERNMENT',
+          isActive: true,
+        },
+      ],
+      meta: buildMeta(1, null),
+    });
+
+    render(<TaxApplicationRulesManager canEdit={false} />);
+
+    expect(await screen.findByText('IVA · 19,00% · Gobierno')).toBeInTheDocument();
+    expect(screen.queryByText(/GOVERNMENT/)).not.toBeInTheDocument();
   });
 
   it('ejecuta Cargar más y conserva el estado disabled mientras llega la segunda página', async () => {
@@ -104,7 +126,7 @@ describe('TaxApplicationRulesManager', () => {
     expect(screen.getByRole('button', { name: 'Cargar más' })).toBeDisabled();
     releaseSecondPage(secondPage);
 
-    await waitFor(() => expect(screen.getAllByText('IVA · 19.00%')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('IVA · 19,00%')).toHaveLength(2));
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
     expect(listApplicationsMock).toHaveBeenLastCalledWith({ limit: 20, cursor: 'cursor-2' });
   });

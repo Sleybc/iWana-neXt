@@ -226,7 +226,7 @@ jest.mock('@iwana/ui', () => {
   };
 });
 
-jest.mock('./TimeFieldSelect', () => ({
+jest.mock('@/components/shared/TimeFieldSelect', () => ({
   TimeFieldSelect: ({
     id,
     value,

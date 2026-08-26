@@ -9,7 +9,15 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { CalendarX2, Check, X } from 'lucide-react';
-import { Badge, Button } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  cn,
+  interactiveFocusClassName,
+} from '@iwana/ui';
 import { ScheduleEventStatus } from '@iwana/shared';
 import type {
   InternalUser,
@@ -36,8 +44,9 @@ import {
 } from './DailyTimelineHoverHint';
 import {
   buildDisplayWindowFromOperatingWindow,
-  buildHalfHourSlotsForDisplayWindow,
   buildHourLabelsForDisplayWindow,
+  buildTimelineSlotsForDisplayWindow,
+  DAILY_TIMELINE_SLOT_MINUTES,
   getTimelineMinutesRangeForDisplayWindow,
   moveDailyDraftToTime,
   PENDING_VISIT_DRAG_MIME,
@@ -143,6 +152,49 @@ function getTechnicianInitials(
   return technician.email.slice(0, 2).toUpperCase();
 }
 
+function DailyResponsibleIdentity({
+  technician,
+}: {
+  technician: Pick<InternalUser, 'firstName' | 'lastName' | 'email'>;
+}) {
+  const fullName = getTechnicianDisplayName(technician);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Ver nombre completo de ${fullName}`}
+          className={cn(
+            'flex min-w-0 w-full items-center gap-2 rounded-lg text-left',
+            interactiveFocusClassName,
+          )}
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-iwana-primary text-[11px] font-semibold text-white shadow-sm">
+            {getTechnicianInitials(technician)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">
+              {fullName}
+            </span>
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="right"
+        sideOffset={8}
+        role="dialog"
+        aria-label="Nombre completo"
+        className="w-auto max-w-xs rounded-2xl border-gray-200 p-3 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2"
+      >
+        <p className="portal-eyebrow">Nombre completo</p>
+        <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{fullName}</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 type DailyPositionedEvent = {
   event: WfmScheduleEvent;
   left: number;
@@ -155,6 +207,43 @@ const DAILY_TIMELINE_BLOCK_TOP = 8;
 const DAILY_TIMELINE_LANE_GAP = 6;
 const DAILY_TIMELINE_LANE_STEP = DAILY_TIMELINE_BLOCK_HEIGHT + DAILY_TIMELINE_LANE_GAP;
 const DAILY_TIMELINE_ROW_PADDING = 4;
+/** Columna sticky de responsable: compacta para no empujar las horas fuera del viewport. */
+export const DAILY_DISPATCH_RESOURCE_COLUMN_PX = 136;
+/**
+ * Ancho mínimo por hora. 160px deja ~80px para 30 min, de modo que se distinga
+ * de una hora completa, con scroll horizontal si hace falta.
+ */
+export const DAILY_DISPATCH_HOUR_MIN_PX = 160;
+
+export function getDailyDispatchTableMinWidth(hourCount: number): number {
+  return DAILY_DISPATCH_RESOURCE_COLUMN_PX + Math.max(hourCount, 1) * DAILY_DISPATCH_HOUR_MIN_PX;
+}
+
+export function getDailyTimelineWidthPercent(
+  durationMinutes: number,
+  totalMinutes: number,
+): number {
+  if (totalMinutes <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, (Math.max(durationMinutes, 0) / totalMinutes) * 100);
+}
+
+function getDailySubslotVisualClass(timeValue: string, index: number): string {
+  const minutes = Number(timeValue.slice(-2));
+  const slotsPerHour = 60 / DAILY_TIMELINE_SLOT_MINUTES;
+  const isEvenHour = Math.floor(index / slotsPerHour) % 2 === 0;
+  const hourFill = isEvenHour
+    ? 'bg-white dark:bg-dark-surface-2'
+    : 'bg-gray-50/80 dark:bg-dark-surface-3/55';
+  const tickBorder =
+    minutes === 0
+      ? 'border-l border-gray-200 dark:border-dark-border'
+      : 'border-l border-gray-200/80 dark:border-dark-border/80';
+
+  return cn(index === 0 ? 'border-l-0' : tickBorder, hourFill);
+}
 
 function getDailyTimelineRowHeight(laneCount: number): number {
   return (
@@ -177,20 +266,30 @@ function DailyTimelineBlockBody({
   title,
   details,
   hintHidden = false,
+  withHint = true,
 }: {
   timeRange: string;
   title: string;
   details: DailyTimelineHoverDetails;
   hintHidden?: boolean;
+  withHint?: boolean;
 }) {
+  const content = (
+    <div className="flex h-full min-w-0 flex-col justify-center gap-0.5 px-2 py-1">
+      <p className="truncate text-[11px] font-semibold tabular-nums leading-none opacity-90">
+        {timeRange}
+      </p>
+      <p className="truncate text-xs font-semibold leading-tight">{title}</p>
+    </div>
+  );
+
+  if (!withHint) {
+    return content;
+  }
+
   return (
     <DailyTimelineHoverHint details={details} hidden={hintHidden}>
-      <div className="flex h-full min-w-0 flex-col justify-center gap-0.5 px-3 py-1">
-        <p className="truncate text-[11px] font-semibold tabular-nums leading-none opacity-90">
-          {timeRange}
-        </p>
-        <p className="truncate text-xs font-semibold leading-tight">{title}</p>
-      </div>
+      {content}
     </DailyTimelineHoverHint>
   );
 }
@@ -221,7 +320,7 @@ function buildDailyPositionedEvents(
       event,
       lane,
       left: Math.max(0, ((eventStartMinutes - startMinutes) / totalMinutes) * 100),
-      width: Math.max(7, ((eventEndMinutes - eventStartMinutes) / totalMinutes) * 100),
+      width: getDailyTimelineWidthPercent(eventEndMinutes - eventStartMinutes, totalMinutes),
     });
   });
 
@@ -847,7 +946,7 @@ function DailyDraftBlock({
   const draftStartMinutes = draftStart.getHours() * 60 + draftStart.getMinutes();
   const draftEndMinutes = draftEnd.getHours() * 60 + draftEnd.getMinutes();
   const left = Math.max(0, ((draftStartMinutes - startMinutes) / totalMinutes) * 100);
-  const width = Math.max(12, ((draftEndMinutes - draftStartMinutes) / totalMinutes) * 100);
+  const width = getDailyTimelineWidthPercent(draftEndMinutes - draftStartMinutes, totalMinutes);
   const isInvalid = draft.validationState !== 'valid';
   const timeRange = `${formatWfmTime(draft.scheduledStartAt)} - ${formatWfmTime(draft.scheduledEndAt)}`;
   const draftHoverDetails: DailyTimelineHoverDetails = {
@@ -935,100 +1034,106 @@ function DailyDraftBlock({
 
   return (
     <div
-      className={`absolute z-50 overflow-hidden rounded-2xl border text-left shadow-sm transition-transform ${
+      className={`absolute z-20 isolate overflow-hidden rounded-2xl border text-left shadow-sm transition-transform ${
         isInvalid
           ? 'border-rose-400 bg-rose-100 text-rose-900 dark:border-rose-400/35 dark:bg-rose-500/15 dark:text-rose-100'
           : getDayEventBlockClass(ScheduleEventStatus.SCHEDULED)
       } ${interaction === 'move' ? 'cursor-grabbing' : ''}`}
       style={{
         left: `${left}%`,
-        width: `calc(${width}% - 6px)`,
-        minWidth: '108px',
+        width: `calc(${width}% - 2px)`,
         top: `${DAILY_TIMELINE_BLOCK_TOP}px`,
         height: `${DAILY_TIMELINE_BLOCK_HEIGHT}px`,
       }}
       aria-invalid={isInvalid}
       aria-label={`${draft.title}, ${formatWfmTime(draft.scheduledStartAt)} a ${formatWfmTime(draft.scheduledEndAt)}`}
     >
-      <button
-        type="button"
-        aria-label="Ajustar inicio del borrador"
-        className={`absolute bottom-1 left-0 top-1 z-30 w-3 cursor-ew-resize rounded-full border-0 focus-visible:outline-none focus-visible:ring-2 ${
-          isInvalid
-            ? 'bg-rose-500/30 focus-visible:ring-rose-500'
-            : 'bg-white/30 focus-visible:ring-white'
-        }`}
-        onPointerDown={(event) => beginInteraction('resize-start', event)}
-        onPointerUp={endInteraction}
-        onPointerCancel={endInteraction}
-      />
-
-      <div
-        className="relative h-full cursor-grab pr-14 active:cursor-grabbing"
-        onPointerDown={(event) => beginInteraction('move', event)}
-        onPointerUp={endInteraction}
-        onPointerCancel={endInteraction}
+      <DailyTimelineHoverHint
+        details={draftHoverDetails}
+        hidden={interaction !== null}
+        className="h-full w-full"
       >
-        <DailyTimelineBlockBody
-          timeRange={timeRange}
-          title={draft.title}
-          details={draftHoverDetails}
-          hintHidden={interaction !== null}
+        <button
+          type="button"
+          aria-label="Ajustar inicio del borrador"
+          className={`absolute bottom-1 left-0 top-1 z-10 w-3 cursor-ew-resize rounded-full border-0 focus-visible:outline-none focus-visible:ring-2 ${
+            isInvalid
+              ? 'bg-rose-500/30 focus-visible:ring-rose-500'
+              : 'bg-white/30 focus-visible:ring-white'
+          }`}
+          onPointerDown={(event) => beginInteraction('resize-start', event)}
+          onPointerUp={endInteraction}
+          onPointerCancel={endInteraction}
         />
-      </div>
 
-      <div
-        className="absolute bottom-1 right-3 top-1 z-40 flex items-center gap-0.5"
-        data-draft-action="true"
-      >
+        <div
+          className="relative h-full cursor-grab pr-14 active:cursor-grabbing"
+          onPointerDown={(event) => beginInteraction('move', event)}
+          onPointerUp={endInteraction}
+          onPointerCancel={endInteraction}
+        >
+          <DailyTimelineBlockBody
+            timeRange={timeRange}
+            title={draft.title}
+            details={draftHoverDetails}
+            hintHidden={interaction !== null}
+            withHint={false}
+          />
+        </div>
+
+        <div
+          className="absolute bottom-1 right-3 top-1 z-10 flex items-center gap-0.5"
+          data-draft-action="true"
+        >
+          <button
+            type="button"
+            aria-label="Confirmar agenda"
+            disabled={isInvalid || !onDailyDraftConfirm}
+            className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-dark-surface-3 ${
+              isInvalid
+                ? 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500'
+                : 'bg-white text-iwana-primary hover:bg-iwana-primary-50 focus-visible:ring-white'
+            }`}
+            onPointerDown={stopDraftAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDailyDraftConfirm?.();
+            }}
+          >
+            <Check className="h-3 w-3" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="Quitar borrador"
+            disabled={!onDailyDraftDiscard}
+            className={`inline-flex h-6 w-6 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+              isInvalid
+                ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-500 dark:border-rose-300/40 dark:bg-rose-500/10 dark:text-rose-100'
+                : 'border-white/70 bg-white/15 text-white hover:bg-white/25 focus-visible:ring-white'
+            }`}
+            onPointerDown={stopDraftAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDailyDraftDiscard?.();
+            }}
+          >
+            <X className="h-3 w-3" aria-hidden="true" />
+          </button>
+        </div>
+
         <button
           type="button"
-          aria-label="Confirmar agenda"
-          disabled={isInvalid || !onDailyDraftConfirm}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-dark-surface-3 ${
+          aria-label="Ajustar fin del borrador"
+          className={`absolute bottom-1 right-0 top-1 z-10 w-3 cursor-ew-resize rounded-full border-0 focus-visible:outline-none focus-visible:ring-2 ${
             isInvalid
-              ? 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500'
-              : 'bg-white text-iwana-primary hover:bg-iwana-primary-50 focus-visible:ring-white'
+              ? 'bg-rose-500/30 focus-visible:ring-rose-500'
+              : 'bg-white/30 focus-visible:ring-white'
           }`}
-          onPointerDown={stopDraftAction}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDailyDraftConfirm?.();
-          }}
-        >
-          <Check className="h-3 w-3" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label="Quitar borrador"
-          disabled={!onDailyDraftDiscard}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-            isInvalid
-              ? 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-500 dark:border-rose-300/40 dark:bg-rose-500/10 dark:text-rose-100'
-              : 'border-white/70 bg-white/15 text-white hover:bg-white/25 focus-visible:ring-white'
-          }`}
-          onPointerDown={stopDraftAction}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDailyDraftDiscard?.();
-          }}
-        >
-          <X className="h-3 w-3" aria-hidden="true" />
-        </button>
-      </div>
-
-      <button
-        type="button"
-        aria-label="Ajustar fin del borrador"
-        className={`absolute bottom-1 right-0 top-1 z-30 w-3 cursor-ew-resize rounded-full border-0 focus-visible:outline-none focus-visible:ring-2 ${
-          isInvalid
-            ? 'bg-rose-500/30 focus-visible:ring-rose-500'
-            : 'bg-white/30 focus-visible:ring-white'
-        }`}
-        onPointerDown={(event) => beginInteraction('resize-end', event)}
-        onPointerUp={endInteraction}
-        onPointerCancel={endInteraction}
-      />
+          onPointerDown={(event) => beginInteraction('resize-end', event)}
+          onPointerUp={endInteraction}
+          onPointerCancel={endInteraction}
+        />
+      </DailyTimelineHoverHint>
     </div>
   );
 }
@@ -1071,8 +1176,8 @@ function DailyAgenda({
 >) {
   const selectedDay = days[0] ?? null;
   const hourLabels = useMemo(() => buildHourLabelsForDisplayWindow(displayWindow), [displayWindow]);
-  const halfHourSlots = useMemo(
-    () => buildHalfHourSlotsForDisplayWindow(displayWindow),
+  const timelineSlots = useMemo(
+    () => buildTimelineSlotsForDisplayWindow(displayWindow),
     [displayWindow],
   );
   const { startMinutes, totalMinutes } = useMemo(
@@ -1080,13 +1185,18 @@ function DailyAgenda({
     [displayWindow],
   );
   const slotColumnStyle = useMemo(
-    () => ({ gridTemplateColumns: `repeat(${halfHourSlots.length}, minmax(0, 1fr))` }),
-    [halfHourSlots.length],
+    () => ({
+      gridTemplateColumns: `repeat(${timelineSlots.length}, minmax(${DAILY_DISPATCH_HOUR_MIN_PX / (60 / DAILY_TIMELINE_SLOT_MINUTES)}px, 1fr))`,
+    }),
+    [timelineSlots.length],
   );
   const hourColumnStyle = useMemo(
-    () => ({ gridTemplateColumns: `repeat(${hourLabels.length}, minmax(0, 1fr))` }),
+    () => ({
+      gridTemplateColumns: `repeat(${hourLabels.length}, minmax(${DAILY_DISPATCH_HOUR_MIN_PX}px, 1fr))`,
+    }),
     [hourLabels.length],
   );
+  const dailyTableMinWidth = getDailyDispatchTableMinWidth(hourLabels.length);
   const technicianRows = useMemo(
     () => buildDailyTechnicianRows(technicians, days),
     [days, technicians],
@@ -1172,18 +1282,25 @@ function DailyAgenda({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1040px] border-separate border-spacing-0">
+              <table
+                className="w-full table-fixed border-separate border-spacing-0"
+                style={{ minWidth: dailyTableMinWidth }}
+              >
+                <colgroup>
+                  <col style={{ width: DAILY_DISPATCH_RESOURCE_COLUMN_PX }} />
+                  <col />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th className="sticky left-0 top-0 z-30 min-w-[168px] max-w-[168px] border-b border-gray-100 bg-white/95 px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
+                    <th className="sticky left-0 top-0 z-30 overflow-hidden border-b border-r border-gray-100 bg-white px-2.5 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
                       Responsable
                     </th>
-                    <th className="sticky top-0 z-20 border-b border-l border-gray-100 bg-white/95 px-0 py-0 dark:border-dark-border dark:bg-dark-surface-3">
+                    <th className="sticky top-0 z-10 min-w-0 border-b border-gray-100 bg-white px-0 py-0 dark:border-dark-border dark:bg-dark-surface-3">
                       <div className="grid" style={hourColumnStyle}>
                         {hourLabels.map((label) => (
                           <div
                             key={label}
-                            className="border-l border-gray-100 px-2 py-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 first:border-l-0 dark:border-dark-border dark:text-gray-400"
+                            className="border-l border-gray-100 px-1 py-2.5 text-center text-xs font-semibold tabular-nums tracking-normal text-gray-500 first:border-l-0 dark:border-dark-border dark:text-gray-400"
                           >
                             {label}
                           </div>
@@ -1211,33 +1328,26 @@ function DailyAgenda({
 
                     return (
                       <tr key={technician.id}>
-                        <td className="sticky left-0 z-10 border-b border-gray-100 bg-white/95 px-3 pt-2 pb-0 align-top backdrop-blur-[2px] dark:border-dark-border dark:bg-dark-surface-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-iwana-primary text-xs font-semibold text-white shadow-sm">
-                              {getTechnicianInitials(technician)}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
-                                {getTechnicianDisplayName(technician)}
-                              </p>
-                              <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                                {events.length === 0
-                                  ? 'Sin carga'
-                                  : `${events.length} evento${events.length === 1 ? '' : 's'}`}
-                                {hasConflict ? ' · Cruce' : ''}
-                              </p>
-                            </div>
+                        <td className="sticky left-0 z-30 overflow-hidden border-b border-r border-gray-100 bg-white px-2.5 pt-2 pb-0 align-top dark:border-dark-border dark:bg-dark-surface-2">
+                          <div className="min-w-0">
+                            <DailyResponsibleIdentity technician={technician} />
+                            <p className="mt-0.5 truncate pl-10 text-xs text-gray-500 dark:text-gray-400">
+                              {events.length === 0
+                                ? 'Sin carga'
+                                : `${events.length} evento${events.length === 1 ? '' : 's'}`}
+                              {hasConflict ? ' · Cruce' : ''}
+                            </p>
                           </div>
                         </td>
-                        <td className="border-b border-l border-gray-100 p-0 align-top dark:border-dark-border">
+                        <td className="relative z-0 isolate border-b border-gray-100 p-0 align-top dark:border-dark-border">
                           <div
                             data-schedule-timeline
                             data-technician-id={technician.id}
-                            className="relative overflow-hidden bg-white dark:bg-dark-surface-2"
+                            className="relative z-0 overflow-hidden bg-white dark:bg-dark-surface-2"
                             style={{ height: `${rowHeight}px` }}
                           >
                             <div className="absolute inset-0 grid" style={slotColumnStyle}>
-                              {halfHourSlots.map((timeValue, index) => {
+                              {timelineSlots.map((timeValue, index) => {
                                 const isPastSlot = isScheduleDaySlotInPast(
                                   selectedDay.key,
                                   timeValue,
@@ -1250,15 +1360,13 @@ function DailyAgenda({
                                     disabled={
                                       isPastSlot || (!onCreateEventSlot && !onPendingVisitDrop)
                                     }
-                                    className={`border-l border-gray-100 transition-colors ${
-                                      index % 2 === 0
-                                        ? 'bg-white dark:bg-dark-surface-2'
-                                        : 'bg-gray-50/80 dark:bg-dark-surface-3/60'
-                                    } ${
+                                    className={cn(
+                                      'transition-colors',
+                                      getDailySubslotVisualClass(timeValue, index),
                                       isPastSlot
                                         ? 'cursor-not-allowed opacity-40'
-                                        : 'hover:bg-iwana-primary-50 dark:hover:bg-iwana-primary-900/15'
-                                    } dark:border-dark-border`}
+                                        : 'hover:bg-iwana-primary-50 dark:hover:bg-iwana-primary-900/15',
+                                    )}
                                     onClick={() => {
                                       if (isPastSlot) {
                                         return;
@@ -1366,10 +1474,10 @@ function DailyAgenda({
                                 <button
                                   key={event.id}
                                   type="button"
-                                  className={`absolute z-30 overflow-hidden rounded-2xl border text-left shadow-sm transition-transform hover:-translate-y-0.5 ${getDayEventBlockClass(event.status)}`}
+                                  className={`absolute z-10 overflow-hidden rounded-2xl border text-left shadow-sm transition-transform hover:-translate-y-0.5 ${getDayEventBlockClass(event.status)}`}
                                   style={{
                                     left: `${left}%`,
-                                    width: `calc(${width}% - 6px)`,
+                                    width: `calc(${width}% - 2px)`,
                                     top: `${getDailyEventBlockTop(lane)}px`,
                                     height: `${DAILY_TIMELINE_BLOCK_HEIGHT}px`,
                                   }}

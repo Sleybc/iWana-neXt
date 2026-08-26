@@ -480,7 +480,7 @@ describe('OperationsClient', () => {
     render(<OperationsClient />);
 
     expect(screen.getByRole('heading', { name: 'Operaciones' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Abrir Programación' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Abrir Programación' })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Tarea operativa 1')).toBeInTheDocument();

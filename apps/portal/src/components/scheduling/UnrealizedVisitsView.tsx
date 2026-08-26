@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Search } from 'lucide-react';
+import { AlertTriangle, CircleDashed, Search } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -357,23 +357,14 @@ export function UnrealizedVisitsView() {
       <PageHeader
         title="Visitas sin realizar"
         subtitle="Trabajo agendado que no se ejecutó. Revisa la causa y decide si se reprograma o se cierra."
-        actions={
-          <Button type="button" variant="secondary" asChild>
-            <Link href="/dashboard/scheduling/pending-visits">Ir a pendientes</Link>
-          </Button>
-        }
       />
 
       {feedback ? (
         <PortalAlert variant="success" title="Operación aplicada" description={feedback} />
       ) : null}
 
-      <PortalPanel
-        eyebrow="Revisión operativa"
-        title="Visitas sin realizar"
-        description="Trabajo agendado que no se ejecutó. Revisa la causa y decide si se reprograma o se cierra."
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
+      <PortalPanel className="overflow-hidden p-0" contentClassName="p-0">
+        <div className="grid gap-3 px-5 py-3 sm:grid-cols-2 xl:grid-cols-[repeat(2,minmax(0,1fr))_auto] xl:items-end">
           <Select
             id="unrealized-cause-filter"
             label="Causa"
@@ -396,175 +387,189 @@ export function UnrealizedVisitsView() {
               setPage(1);
             }}
           />
+          <Button asChild variant="primary">
+            <Link href="/dashboard/scheduling/pending-visits">Ir a pendientes</Link>
+          </Button>
         </div>
 
-        {items.length > 0 && (
-          <PortalResultsStrip
-            badge={<Badge variant="neutral">{total} visitas sin realizar</Badge>}
-          />
-        )}
+        <div className="space-y-4 px-5 pb-5">
+          {items.length > 0 && (
+            <PortalResultsStrip
+              badge={<Badge variant="neutral">{total} visitas sin realizar</Badge>}
+            />
+          )}
 
-        {error && !isLoading && !isBootstrapping && (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar la vista"
-            description={error}
-            icon={AlertTriangle}
-            action={
-              <Button
-                type="button"
-                onClick={() => {
-                  void loadBootstrap();
-                  void loadItems();
-                }}
-              >
-                Reintentar
-              </Button>
-            }
-          />
-        )}
+          {error && !isLoading && !isBootstrapping && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible cargar la vista"
+              description={error}
+              icon={AlertTriangle}
+              action={
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void loadBootstrap();
+                    void loadItems();
+                  }}
+                >
+                  Reintentar
+                </Button>
+              }
+            />
+          )}
 
-        {(isLoading || isBootstrapping) && <PortalSkeletonBlock className="h-[400px]" />}
+          {(isLoading || isBootstrapping) && <PortalSkeletonBlock className="h-[400px]" />}
 
-        {!isLoading && !isBootstrapping && !error && items.length === 0 && (
-          <PortalEmptyState
-            title="No hay visitas sin realizar"
-            description={
-              filterCauseId || filterTechnician
-                ? 'Ninguna visita coincide con los filtros actuales.'
-                : 'Todo el trabajo agendado se ejecutó o está en curso.'
-            }
-          />
-        )}
-
-        {!isLoading && !isBootstrapping && !error && items.length > 0 && (
-          <div className={portalDataTableShellClassName}>
-            <div className="overflow-x-auto">
-              <table className="min-w-[960px] w-full text-sm">
-                <thead className={portalDataTableHeadRowClassName}>
-                  <tr>
-                    <PortalDataTableHead className="align-middle">Trabajo</PortalDataTableHead>
-                    <PortalDataTableHead className="align-middle">Tipo</PortalDataTableHead>
-                    <PortalDataTableHead className="align-middle">Fecha</PortalDataTableHead>
-                    <PortalDataTableHead className="align-middle">Técnico</PortalDataTableHead>
-                    <PortalDataTableHead className="align-middle">Causa</PortalDataTableHead>
-                    <PortalDataTableHead className="align-middle">Intento</PortalDataTableHead>
-                    <PortalDataTableHead className="align-middle">Acción</PortalDataTableHead>
-                  </tr>
-                </thead>
-                <tbody className={portalDataTableBodyClassName}>
-                  {items.map((item) => {
-                    const technician = techniciansById.get(item.technicianId);
-                    const technicianDisplay = technician
-                      ? getTechnicianDisplayName(technician)
-                      : 'No disponible';
-                    const retryChip =
-                      item.visitRequest != null
-                        ? getVisitRequestRetryChip(item.visitRequest)
-                        : null;
-
-                    return (
-                      <tr key={`${item.type}:${item.id}`} className={portalTableRowHoverClassName}>
-                        <td className={`${portalDataTableCellClassName} max-w-[240px]`}>
-                          <span className="block truncate font-medium text-gray-900 dark:text-white">
-                            {item.title}
-                          </span>
-                          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                            {item.reference}
-                          </span>
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          <Badge variant={getWfmWorkTypeVariant(item.workType)}>
-                            {getWfmWorkTypeLabel(item.workType)}
-                          </Badge>
-                        </td>
-                        <td
-                          className={`${portalDataTableCellClassName} text-xs text-gray-600 dark:text-gray-300`}
-                        >
-                          {item.endDate
-                            ? formatWfmDateRange(item.date, item.endDate)
-                            : formatWfmDateTime(item.date)}
-                        </td>
-                        <td
-                          className={`${portalDataTableCellClassName} text-sm text-gray-600 dark:text-gray-300`}
-                        >
-                          {technicianDisplay}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {item.causeLabel ? (
-                            <Badge variant="warning">{item.causeLabel}</Badge>
-                          ) : !item.isClassified ? (
-                            <Badge
-                              variant="error"
-                              aria-label="La franja venció y no se registró el cierre. Confirma qué pasó antes de decidir."
-                            >
-                              Sin reporte
-                            </Badge>
-                          ) : (
-                            <Badge variant="neutral">Sin causa</Badge>
-                          )}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {retryChip ? (
-                            <Badge
-                              variant={retryChip.variant}
-                              aria-label={retryChip.accessibleText}
-                            >
-                              {retryChip.label}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          <div className="flex flex-wrap gap-1.5">
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              aria-label={`Reprogramar ${item.title}`}
-                              onClick={() => openReview(item, 'RESCHEDULE')}
-                            >
-                              Reprogramar
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              aria-label={`Cerrar el caso de ${item.title}`}
-                              onClick={() => openReview(item, 'CLOSE_CASE')}
-                            >
-                              Cerrar el caso
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              aria-label={`Reclasificar ${item.title}`}
-                              onClick={() => openReview(item, 'RECLASSIFY')}
-                            >
-                              <Search className="h-3.5 w-3.5" aria-hidden="true" />
-                              Reclasificar
-                            </Button>
-                          </div>
+          {!isLoading && !isBootstrapping && !error && (
+            <div className={portalDataTableShellClassName}>
+              <div className="overflow-x-auto">
+                <table className="min-w-[960px] w-full text-sm" aria-label="Visitas sin realizar">
+                  <thead className={portalDataTableHeadRowClassName}>
+                    <tr>
+                      <PortalDataTableHead className="align-middle">Trabajo</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Tipo</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Fecha</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Técnico</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Causa</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Intento</PortalDataTableHead>
+                      <PortalDataTableHead className="align-middle">Acción</PortalDataTableHead>
+                    </tr>
+                  </thead>
+                  <tbody className={portalDataTableBodyClassName}>
+                    {items.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className={`${portalDataTableCellClassName} py-12`}>
+                          <PortalEmptyState
+                            title="No hay visitas sin realizar"
+                            description={
+                              filterCauseId || filterTechnician
+                                ? 'Ninguna visita coincide con los filtros actuales.'
+                                : 'Todo el trabajo agendado se ejecutó o está en curso.'
+                            }
+                            icon={CircleDashed}
+                            className="w-full text-left"
+                          />
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                    ) : (
+                      items.map((item) => {
+                        const technician = techniciansById.get(item.technicianId);
+                        const technicianDisplay = technician
+                          ? getTechnicianDisplayName(technician)
+                          : 'No disponible';
+                        const retryChip =
+                          item.visitRequest != null
+                            ? getVisitRequestRetryChip(item.visitRequest)
+                            : null;
 
-        <PortalTablePagination
-          hasMore={hasMore}
-          onLoadMore={() => setPage((p) => p + 1)}
-          loading={isLoading}
-          resourceLabel="visitas"
-          shown={items.length}
-          total={total}
-        />
+                        return (
+                          <tr
+                            key={`${item.type}:${item.id}`}
+                            className={portalTableRowHoverClassName}
+                          >
+                            <td className={`${portalDataTableCellClassName} max-w-[240px]`}>
+                              <span className="block truncate font-medium text-gray-900 dark:text-white">
+                                {item.title}
+                              </span>
+                              <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                                {item.reference}
+                              </span>
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              <Badge variant={getWfmWorkTypeVariant(item.workType)}>
+                                {getWfmWorkTypeLabel(item.workType)}
+                              </Badge>
+                            </td>
+                            <td
+                              className={`${portalDataTableCellClassName} text-xs text-gray-600 dark:text-gray-300`}
+                            >
+                              {item.endDate
+                                ? formatWfmDateRange(item.date, item.endDate)
+                                : formatWfmDateTime(item.date)}
+                            </td>
+                            <td
+                              className={`${portalDataTableCellClassName} text-sm text-gray-600 dark:text-gray-300`}
+                            >
+                              {technicianDisplay}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              {item.causeLabel ? (
+                                <Badge variant="warning">{item.causeLabel}</Badge>
+                              ) : !item.isClassified ? (
+                                <Badge
+                                  variant="error"
+                                  aria-label="La franja venció y no se registró el cierre. Confirma qué pasó antes de decidir."
+                                >
+                                  Sin reporte
+                                </Badge>
+                              ) : (
+                                <Badge variant="neutral">Sin causa</Badge>
+                              )}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              {retryChip ? (
+                                <Badge
+                                  variant={retryChip.variant}
+                                  aria-label={retryChip.accessibleText}
+                                >
+                                  {retryChip.label}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              <div className="flex flex-wrap gap-1.5">
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  aria-label={`Reprogramar ${item.title}`}
+                                  onClick={() => openReview(item, 'RESCHEDULE')}
+                                >
+                                  Reprogramar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  aria-label={`Cerrar el caso de ${item.title}`}
+                                  onClick={() => openReview(item, 'CLOSE_CASE')}
+                                >
+                                  Cerrar el caso
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Reclasificar ${item.title}`}
+                                  onClick={() => openReview(item, 'RECLASSIFY')}
+                                >
+                                  <Search className="h-3.5 w-3.5" aria-hidden="true" />
+                                  Reclasificar
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <PortalTablePagination
+            hasMore={hasMore}
+            onLoadMore={() => setPage((p) => p + 1)}
+            loading={isLoading}
+            resourceLabel="visitas"
+            shown={items.length}
+            total={total}
+          />
+        </div>
       </PortalPanel>
 
       <Dialog

@@ -46,7 +46,9 @@ Cada `TaxDefinition` incluye un campo `context` con valores `SALES | PURCHASE | 
 
 ### D3. Lo que NO vive en Taxation
 
-- Reglas de aplicación a clientes: propiedad de `CommercialModule`.
+> **Actualización ADR-082 (2026-08-20, estado Propuesto):** las reglas de aplicación a clientes (`tax_rules`, `tax_rule_applications`) pasan a `TaxationModule`. Las reglas de aplicación a proveedores siguen reservadas al futuro `PurchasingModule`. Perfiles fiscales de terceros y el cálculo de factura no cambian de owner (CRM y Billing).
+
+- Reglas de aplicación a clientes: propiedad de `TaxationModule` (ADR-082). Quedó en `CommercialModule` hasta ese ADR.
 - Reglas de aplicación a proveedores: propiedad del futuro `PurchasingModule`.
 - Perfiles fiscales de terceros (`SubscriberTaxProfile`, `SupplierTaxProfile`): propiedad del bounded context dueño del rol.
 - Cálculo financiero final de facturas: propiedad del futuro `BillingModule`.

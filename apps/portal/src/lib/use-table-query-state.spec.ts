@@ -152,4 +152,14 @@ describe('useTableQueryState', () => {
     expect(params.get('items.page')).toBe('3');
     expect(params.get('tab')).toBe('items');
   });
+
+  it('conserva la misma referencia de sort si by/dir no cambian', () => {
+    searchParamsMock = new URLSearchParams('sortBy=name&sortDir=asc');
+    const { result, rerender } = renderHook(() => useTableQueryState());
+    const first = result.current.sort;
+
+    rerender();
+
+    expect(result.current.sort).toBe(first);
+  });
 });

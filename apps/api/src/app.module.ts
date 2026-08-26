@@ -2,7 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -35,6 +35,7 @@ import { AssuranceModule } from './modules/assurance/assurance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
+import { getGlobalRateLimitTracker } from './common/rate-limit-tracker';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -155,6 +156,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
         name: 'global',
         ttl: 60000, // 1 minuto en ms
         limit: 100,
+        // El throttler global corre antes de los guards JWT de cada ruta:
+        // bearer hash + contexto tenant, bucket tenant para cookie y solo IP anónima.
+        getTracker: getGlobalRateLimitTracker,
       },
     ]),
 
@@ -241,6 +245,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     // mutantes autenticados por cookie. Rutas @Public(), métodos no mutantes
     // y auth por Bearer pasan siempre; sin estado ni endpoint nuevo.
     { provide: APP_GUARD, useClass: CsrfGuard },
+    // Rate limiting global: bearer hash dentro del tenant, tenant para cookie e IP anónima.
+    // Los endpoints operativos conservan además TenantAwareThrottlerGuard específico.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     // AuditInterceptor registrado globalmente: intercepta todas las operaciones CUD.
     // Enruta segun jwt.type: 'platform' → platform_audit_logs, 'tenant' → <schema>.audit_logs.
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },

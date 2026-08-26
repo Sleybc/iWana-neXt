@@ -6,6 +6,7 @@ import type {
 } from '@/lib/api-client';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
+  CUSTOMER_SEGMENT_OPTIONS,
   DEPARTAMENTO_DEFAULT,
   DEPARTAMENTOS,
   DOCUMENT_TYPE_OPTIONS,
@@ -19,6 +20,7 @@ import type { CompletenessDimension, DraftValues, SectionConfig, SectionId } fro
 
 export {
   ACQUISITION_CHANNEL_OPTIONS,
+  CUSTOMER_SEGMENT_OPTIONS,
   DEPARTAMENTO_DEFAULT,
   DEPARTAMENTOS,
   DOCUMENT_TYPE_OPTIONS,
@@ -280,6 +282,7 @@ export function getBackendSectionCompletion(
 
 export const FIELD_LABELS: Record<string, string> = {
   fullName: 'Nombre completo',
+  customerSegment: 'Tipo de cliente',
   personType: 'Tipo de persona',
   documentType: 'Tipo de documento',
   documentNumber: 'Número de documento',
@@ -305,13 +308,13 @@ export const FIELD_LABELS: Record<string, string> = {
   additionalServiceIds: 'Servicios adicionales',
   acquisitionChannel: 'Canal de captación',
   sourceDetail: 'Detalle de origen',
-  coverageResult: 'Referencia de cobertura',
+  coverageResult: 'Resultado de cobertura',
   feasibility: 'Resultado de viabilidad',
   candidateTechnologies: 'Opciones viables',
   availableTechnology: 'Opción principal recomendada',
   technicalConfidence: 'Nivel de certeza',
   evaluationSource: 'Fuente de evaluación',
-  technicalObservations: 'Observación técnica',
+  technicalObservations: 'Justificación técnica',
   identityVerified: 'Identidad verificada',
   legalComplianceStatus: 'Tratamiento de datos personales',
 };
@@ -343,9 +346,9 @@ export const FIELD_PLACEHOLDERS: Record<string, string> = {
   additionalServiceIds: 'Servicios adicionales',
   acquisitionChannel: 'Canal de adquisición',
   sourceDetail: 'Detalle de campaña u observación',
-  coverageResult: 'Contexto de cobertura (opcional)',
+  coverageResult: 'Describe brevemente la cobertura disponible, si aplica.',
   feasibility: 'Selecciona el resultado técnico',
-  technicalObservations: 'Explica brevemente el criterio técnico aplicado',
+  technicalObservations: 'Explica brevemente la razón de la decisión técnica.',
   identityVerified: 'Verificado / Sin verificar',
   legalComplianceStatus: 'Autoriza / No autoriza',
 };
@@ -435,7 +438,7 @@ export const SECTIONS: SectionConfig[] = [
   {
     id: 'location',
     label: 'Dirección',
-    description: 'dirección del cliente potencial',
+    description: 'Dirección del cliente.',
     icon: MapPin,
     renderFields: [
       'department',
@@ -468,6 +471,7 @@ export const SECTIONS: SectionConfig[] = [
     description: 'Plan deseado y origen de la oportunidad.',
     icon: BriefcaseBusiness,
     renderFields: [
+      'customerSegment',
       'interestedPlanId',
       'additionalProductIds',
       'additionalServiceIds',
@@ -475,6 +479,7 @@ export const SECTIONS: SectionConfig[] = [
       'sourceDetail',
     ],
     payloadFields: [
+      'customerSegment',
       'interestedPlanId',
       'additionalProductIds',
       'additionalServiceIds',
@@ -486,7 +491,7 @@ export const SECTIONS: SectionConfig[] = [
   {
     id: 'technical_feasibility',
     label: 'Viabilidad técnica',
-    description: 'Decisión técnica con alternativas viables y opción principal.',
+    description: 'Define la viabilidad, las alternativas de conexión y la opción recomendada.',
     icon: Wrench,
     renderFields: [
       'coverageResult',
@@ -597,6 +602,7 @@ export function buildDraftValues(
     latitude: expediente.latitude != null ? String(expediente.latitude) : EMPTY_VALUE,
     longitude: expediente.longitude != null ? String(expediente.longitude) : EMPTY_VALUE,
     interestedPlanId: expediente.interestedPlanId ?? EMPTY_VALUE,
+    customerSegment: expediente.customerSegment ?? EMPTY_VALUE,
     additionalProductIds: expediente.additionalProductIds
       ? JSON.stringify(expediente.additionalProductIds)
       : '[]',

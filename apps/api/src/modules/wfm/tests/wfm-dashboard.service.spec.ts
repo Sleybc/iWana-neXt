@@ -358,7 +358,7 @@ describe('WfmDashboardService', () => {
       expect(setParameterMock).toHaveBeenCalledWith('now', expect.any(Date));
     });
 
-    it('should derive pending inbox readiness from address and municipality in the summary query', async () => {
+    it('should derive pending inbox readiness without persisting status changes', async () => {
       const addSelectMock = jest.fn().mockReturnThis();
       const queryMock = jest.fn().mockResolvedValue([]);
 
@@ -403,9 +403,10 @@ describe('WfmDashboardService', () => {
 
       await service.getSummary();
 
-      expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('UPDATE visit_requests vr'), [
-        'tenant-001',
-      ]);
+      const visitRequestUpdates = queryMock.mock.calls.filter(([query]) =>
+        /UPDATE\s+visit_requests/i.test(String(query)),
+      );
+      expect(visitRequestUpdates).toHaveLength(0);
 
       const readinessExpression = addSelectMock.mock.calls.find(
         (call) => call[1] === 'ready_to_schedule_count',

@@ -3,6 +3,12 @@ import userEvent from '@testing-library/user-event';
 import type { CommercialDashboardSummary } from '@/lib/api-client';
 import { CommercialAlertsStrip } from './CommercialAlertsStrip';
 
+const pushMock = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock, replace: jest.fn() }),
+}));
+
 function buildSummary(
   overrides: Partial<CommercialDashboardSummary> = {},
 ): CommercialDashboardSummary {
@@ -39,6 +45,9 @@ function buildSummary(
 }
 
 describe('CommercialAlertsStrip', () => {
+  beforeEach(() => {
+    pushMock.mockReset();
+  });
   it('muestra skeleton mientras carga, sin depender del summary', () => {
     render(<CommercialAlertsStrip summary={null} isLoading />);
 
@@ -80,7 +89,7 @@ describe('CommercialAlertsStrip', () => {
     render(<CommercialAlertsStrip summary={buildSummary({ rulesGapCount: 2 })} />);
 
     expect(screen.getByRole('region', { name: 'Alertas operativas' })).toBeInTheDocument();
-    expect(screen.getByText('Huecos en reglas')).toBeInTheDocument();
+    expect(screen.getByText('Reglas incompletas')).toBeInTheDocument();
   });
 
   it('no anuncia las alertas de la tira como regiones live', () => {
@@ -146,10 +155,27 @@ describe('CommercialAlertsStrip', () => {
     expect(onNavigateTab).toHaveBeenCalledWith('plans', { status: null });
   });
 
-  it('omite las acciones cuando no hay handler de navegación', () => {
-    render(<CommercialAlertsStrip summary={buildSummary({ rulesGapCount: 2 })} />);
+  it('Revisar reglas aterriza en Aplicación de impuestos', async () => {
+    const user = userEvent.setup();
+    const onNavigateTab = jest.fn();
 
-    expect(screen.queryByRole('button', { name: 'Revisar reglas' })).not.toBeInTheDocument();
+    render(
+      <CommercialAlertsStrip
+        summary={buildSummary({ rulesGapCount: 8, taxRulesCoverageGapCount: 8 })}
+        onNavigateTab={onNavigateTab}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Revisar reglas' }));
+
+    expect(pushMock).toHaveBeenCalledWith('/dashboard/settings/rules?tab=tax-rules-app');
+    expect(onNavigateTab).not.toHaveBeenCalled();
+  });
+
+  it('omite las acciones cuando no hay handler ni destino federado', () => {
+    render(<CommercialAlertsStrip summary={buildSummary({ offersAtRiskCount: 1 })} />);
+
+    expect(screen.queryByRole('button', { name: 'Ver ofertas' })).not.toBeInTheDocument();
   });
 
   it('con varias alertas muestra solo la más severa y ofrece ver el resto', () => {
@@ -166,7 +192,7 @@ describe('CommercialAlertsStrip', () => {
     // La primera alerta `error` (Catálogo incompleto) queda visible; el resto se oculta.
     expect(screen.getByText('Catálogo incompleto')).toBeInTheDocument();
     expect(screen.queryByText('Ofertas en riesgo')).not.toBeInTheDocument();
-    expect(screen.queryByText('Huecos en reglas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reglas incompletas')).not.toBeInTheDocument();
 
     const expander = screen.getByRole('button', { name: 'Ver 2 alertas más' });
     expect(expander).toHaveAttribute('aria-expanded', 'false');
@@ -190,7 +216,7 @@ describe('CommercialAlertsStrip', () => {
     await user.click(screen.getByRole('button', { name: 'Ver 2 alertas más' }));
 
     expect(screen.getByText('Ofertas en riesgo')).toBeInTheDocument();
-    expect(screen.getByText('Huecos en reglas')).toBeInTheDocument();
+    expect(screen.getByText('Reglas incompletas')).toBeInTheDocument();
 
     // El botón desaparece al expandir: el resto queda visible (decisión PROD-UX).
     expect(screen.queryByRole('button', { name: /alertas más|Ocultar/ })).not.toBeInTheDocument();
@@ -206,7 +232,9 @@ describe('CommercialAlertsStrip', () => {
   it('expande con teclado y mueve el foco al contenedor revelado', async () => {
     const user = userEvent.setup();
     const { container } = render(
-      <CommercialAlertsStrip summary={buildSummary({ offersAtRiskCount: 1, rulesGapCount: 1 })} />,
+      <CommercialAlertsStrip
+        summary={buildSummary({ offersAtRiskCount: 1, catalogIncompleteActiveCount: 1 })}
+      />,
     );
 
     // Sin handler de navegación el único botón es el expander: alcanzable por Tab.
@@ -228,7 +256,7 @@ describe('CommercialAlertsStrip', () => {
       <CommercialAlertsStrip summary={buildSummary({ offersAtRiskCount: 1, rulesGapCount: 1 })} />,
     );
 
-    expect(screen.getByText('Huecos en reglas')).toBeInTheDocument();
+    expect(screen.getByText('Reglas incompletas')).toBeInTheDocument();
     expect(screen.queryByText('Ofertas en riesgo')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ver 1 alerta más' })).toBeInTheDocument();
   });
@@ -241,14 +269,14 @@ describe('CommercialAlertsStrip', () => {
     );
 
     expect(screen.getByText('Catálogo incompleto')).toBeInTheDocument();
-    expect(screen.queryByText('Huecos en reglas')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reglas incompletas')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ver 1 alerta más' })).toBeInTheDocument();
   });
 
   it('no muestra botón de expandir con una sola alerta', () => {
     render(<CommercialAlertsStrip summary={buildSummary({ rulesGapCount: 2 })} />);
 
-    expect(screen.getByText('Huecos en reglas')).toBeInTheDocument();
+    expect(screen.getByText('Reglas incompletas')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /alertas? más/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ocultar alertas' })).not.toBeInTheDocument();
   });

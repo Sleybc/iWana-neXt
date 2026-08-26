@@ -1,17 +1,25 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource } from 'typeorm';
 import {
+  PersonType,
+  TaxApplicationSnapshot,
   TaxAssignmentRateSource,
   TaxAssignmentStatus,
   TaxProfileStatus,
   TaxTreatment,
+  VatTreatment,
 } from '@iwana/shared';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { SubscriberTaxProfile } from './entities/subscriber-tax-profile.entity';
 import { SubscriberTaxAssignment } from './entities/subscriber-tax-assignment.entity';
 import { Subscriber } from './entities/subscriber.entity';
 import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
+import {
+  ITaxApplicationReadPort,
+  type TaxApplicationResolveInput,
+} from '../../taxation/ports/tax-application-read.port';
+import { VatTreatmentService } from './vat-treatment.service';
 import {
   SubscriberTaxProfileSnapshotDto,
   TaxAssignmentSnapshotDto,
@@ -22,8 +30,8 @@ import { UpsertTaxAssignmentDto } from './dto/upsert-tax-assignment.dto';
  * Servicio de perfil tributario del suscriptor.
  *
  * Dueño del submodelo subscriber_tax_profile / subscriber_tax_assignment.
- * Consume TaxationModule exclusivamente vía TaxCatalogReadPort (ADR-029 §D4).
- * No cruza el boundary hacia tablas de Taxation.
+ * Consume TaxationModule vía TaxCatalogReadPort e ITaxApplicationReadPort (ADR-082).
+ * El tratamiento IVA canónico vive en VatTreatmentService (ADR-025).
  *
  * Usa runInTenantSchema para todas las operaciones de escritura/lectura en el
  * schema del tenant activo, compatibilidad con pgBouncer transaction pooling.
@@ -43,6 +51,8 @@ export class SubscriberTaxProfileService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly taxCatalogPort: TaxCatalogReadPort,
+    private readonly taxApplicationPort: ITaxApplicationReadPort,
+    private readonly vatTreatmentService: VatTreatmentService,
   ) {}
 
   /**
@@ -306,6 +316,18 @@ export class SubscriberTaxProfileService {
     profile: SubscriberTaxProfile,
     subscriber: Subscriber,
   ): Promise<void> {
+    const treatment = this._mapVatTreatment(
+      this.vatTreatmentService.resolve(subscriber.personType, subscriber.stratum),
+    );
+    const reason = this._buildVatReason(subscriber.personType, subscriber.stratum);
+
+    const resolveInput: TaxApplicationResolveInput = {
+      personType: subscriber.personType,
+      segment: subscriber.customerSegment,
+      ...(subscriber.stratum != null ? { stratum: subscriber.stratum } : {}),
+    };
+    const resolvedApps = await this.taxApplicationPort.resolve(resolveInput);
+
     const ivaDef =
       (await this.taxCatalogPort.findActiveByCode('IVA_19')) ??
       (await this.taxCatalogPort.findActiveByCode('IVA'));
@@ -314,68 +336,102 @@ export class SubscriberTaxProfileService {
       this.logger.warn(
         `No se encontró definición IVA en el catálogo para tenant ${profile.tenantId}. Sin sugerencia IVA.`,
       );
-      return;
+    } else {
+      const existing = await qr.manager.findOne(SubscriberTaxAssignment, {
+        where: { profileId: profile.id, taxDefinitionId: ivaDef.id },
+      });
+
+      if (existing) {
+        if (existing.status === TaxAssignmentStatus.SUGGESTED) {
+          existing.treatment = treatment;
+          existing.reason = reason;
+          existing.taxNameSnapshot = ivaDef.name;
+          await qr.manager.save(SubscriberTaxAssignment, existing);
+        }
+      } else {
+        const newAssignment = qr.manager.create(SubscriberTaxAssignment, {
+          tenantId: profile.tenantId,
+          profileId: profile.id,
+          taxDefinitionId: ivaDef.id,
+          taxNameSnapshot: ivaDef.name,
+          effectiveRate: treatment === TaxTreatment.STANDARD ? ivaDef.baseRate : null,
+          rateSource: TaxAssignmentRateSource.CATALOG,
+          treatment,
+          status: TaxAssignmentStatus.SUGGESTED,
+          reason,
+        });
+        await qr.manager.save(SubscriberTaxAssignment, newAssignment);
+      }
     }
 
-    const treatment = this._resolveVatTreatmentByStratum(
-      subscriber.personType as string,
-      subscriber.stratum,
-    );
-    const reason = this._buildVatReason(subscriber.personType as string, subscriber.stratum);
+    await this._suggestResolvedApplications(qr, profile, resolvedApps, ivaDef?.id);
+  }
 
-    const existing = await qr.manager.findOne(SubscriberTaxAssignment, {
-      where: { profileId: profile.id, taxDefinitionId: ivaDef.id },
-    });
-
-    if (existing) {
-      // Solo sobreescribir si sigue siendo sugerida (no confirmada ni ajustada manualmente)
-      if (existing.status === TaxAssignmentStatus.SUGGESTED) {
-        existing.treatment = treatment;
-        existing.reason = reason;
-        existing.taxNameSnapshot = ivaDef.name;
-        await qr.manager.save(SubscriberTaxAssignment, existing);
+  /**
+   * Sugiere tributos no IVA que devolvió el motor de Taxation.
+   * El IVA canónico no se toma de tax_rules (ADR-025 / ADR-082 D6).
+   */
+  private async _suggestResolvedApplications(
+    qr: { manager: DataSource['manager'] },
+    profile: SubscriberTaxProfile,
+    resolvedApps: TaxApplicationSnapshot[],
+    ivaDefinitionId: string | undefined,
+  ): Promise<void> {
+    for (const snapshot of resolvedApps) {
+      if (ivaDefinitionId && snapshot.taxDefinitionId === ivaDefinitionId) {
+        continue;
       }
-    } else {
+
+      const taxDef = await this.taxCatalogPort.findById(snapshot.taxDefinitionId);
+      if (!taxDef) {
+        continue;
+      }
+
+      const existing = await qr.manager.findOne(SubscriberTaxAssignment, {
+        where: { profileId: profile.id, taxDefinitionId: taxDef.id },
+      });
+      if (existing) {
+        continue;
+      }
+
       const newAssignment = qr.manager.create(SubscriberTaxAssignment, {
         tenantId: profile.tenantId,
         profileId: profile.id,
-        taxDefinitionId: ivaDef.id,
-        taxNameSnapshot: ivaDef.name,
-        effectiveRate: treatment === TaxTreatment.STANDARD ? ivaDef.baseRate : null,
+        taxDefinitionId: taxDef.id,
+        taxNameSnapshot: taxDef.name,
+        effectiveRate:
+          snapshot.effectiveRate != null ? snapshot.effectiveRate.toString() : taxDef.baseRate,
         rateSource: TaxAssignmentRateSource.CATALOG,
-        treatment,
+        treatment: this._mapSnapshotTreatment(snapshot.treatment),
         status: TaxAssignmentStatus.SUGGESTED,
-        reason,
+        reason: 'Sugerido por reglas de aplicación tributaria',
       });
       await qr.manager.save(SubscriberTaxAssignment, newAssignment);
     }
   }
 
+  private _mapSnapshotTreatment(treatment: TaxApplicationSnapshot['treatment']): TaxTreatment {
+    if (treatment === TaxTreatment.EXEMPT) return TaxTreatment.EXEMPT;
+    if (treatment === TaxTreatment.EXCLUDED) return TaxTreatment.EXCLUDED;
+    if (treatment === TaxTreatment.FIXED) return TaxTreatment.FIXED;
+    return TaxTreatment.STANDARD;
+  }
+
   /**
-   * Política de sugerencia IVA por estrato — encapsulada para facilitar cambios normativos.
-   *
-   * Política operativa MVP:
-   *   - Natural estrato 1-2 → EXEMPT  (exento, Ley 1819/2016 Art. 476)
-   *   - Natural estrato 3   → EXCLUDED (excluido, Art. 477)
-   *   - Natural estrato 4-6 → STANDARD (IVA 19%)
-   *   - Jurídica            → STANDARD (IVA 19%)
-   *
-   * Ref: spec-2026-04-22 §6.3
+   * IVA canónico: delega en VatTreatmentService (ADR-025). No asume STANDARD sin estrato.
    */
-  private _resolveVatTreatmentByStratum(personType: string, stratum: number | null): TaxTreatment {
-    if (personType === 'JURIDICA') return TaxTreatment.STANDARD;
-    if (stratum === null) return TaxTreatment.STANDARD;
-    if (stratum <= 2) return TaxTreatment.EXEMPT;
-    if (stratum === 3) return TaxTreatment.EXCLUDED;
+  private _mapVatTreatment(treatment: VatTreatment): TaxTreatment {
+    if (treatment === VatTreatment.EXEMPT) return TaxTreatment.EXEMPT;
+    if (treatment === VatTreatment.EXCLUDED) return TaxTreatment.EXCLUDED;
     return TaxTreatment.STANDARD;
   }
 
   private _buildVatReason(personType: string, stratum: number | null): string {
-    if (personType === 'JURIDICA') return 'Persona jurídica — IVA estándar 19%';
-    if (stratum === null) return 'Sin estrato — IVA estándar aplicado por defecto';
-    if (stratum <= 2) return `Estrato ${stratum} — IVA exento (Ley 1819/2016 Art. 476)`;
-    if (stratum === 3) return `Estrato ${stratum} — IVA excluido (Ley 1819/2016 Art. 477)`;
-    return `Estrato ${stratum} — IVA estándar 19%`;
+    if (personType === PersonType.JURIDICA) return 'Persona jurídica — IVA estándar';
+    if (stratum === null) return 'Persona natural — estrato obligatorio para calcular IVA';
+    if (stratum <= 2) return 'Persona natural — IVA exento (estratos 1-2)';
+    if (stratum === 3) return 'Persona natural — IVA excluido (estrato 3)';
+    return 'Persona natural — IVA estándar (estratos 4-6)';
   }
 
   private _toSnapshot(profile: SubscriberTaxProfile): SubscriberTaxProfileSnapshotDto {

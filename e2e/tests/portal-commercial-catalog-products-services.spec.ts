@@ -370,17 +370,17 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
       page.getByRole('heading', { name: 'Comercial', exact: true }).first(),
     ).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Productos adicionales' }).click();
-    await expect(page.getByRole('tab', { name: 'Productos adicionales' })).toHaveAttribute(
-      'data-state',
-      'active',
+    await page.getByRole('button', { name: 'Productos', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Productos', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
     );
     await expect(page.getByText('Router WiFi 6')).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Servicios' }).click();
-    await expect(page.getByRole('tab', { name: 'Servicios' })).toHaveAttribute(
-      'data-state',
-      'active',
+    await page.getByRole('button', { name: 'Servicios', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Servicios', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
     );
     await expect(page.getByText('IP publica fija')).toBeVisible();
     await expect(page.getByText(/25\.000/)).toBeVisible();

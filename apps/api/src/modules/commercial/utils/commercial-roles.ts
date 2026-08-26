@@ -44,18 +44,3 @@ export const COMMERCIAL_COMPAT_READ_ROLES = [
   UserRole.SUPPORT,
   PlatformRole.SYSTEM_ADMIN,
 ] as const;
-
-/** Lectura CUD de reglas tributarias (sin SALES). */
-export const COMMERCIAL_TAX_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.ACCOUNTANT,
-  PlatformRole.SYSTEM_ADMIN,
-] as const;
-
-/** Simulador tributario (incluye SALES). */
-export const COMMERCIAL_TAX_SIMULATE_ROLES = [
-  UserRole.ADMIN,
-  UserRole.ACCOUNTANT,
-  UserRole.SALES,
-  PlatformRole.SYSTEM_ADMIN,
-] as const;

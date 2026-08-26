@@ -1,6 +1,6 @@
 ---
 title: 'PRD — Módulo Comercial: Catálogo de Planes, Productos y Servicios'
-version: '1.2'
+version: '1.3'
 owner: 'Arquitectura de Soluciones / Producto'
 date: '2026-04-20'
 status: 'Aprobado para Diseño e Implementación'
@@ -48,6 +48,7 @@ Extraer el dominio comercial como Bounded Context independiente (`CommercialModu
 | v1.0    | Definición inicial completa: catálogo unificado + motor de precios + bundles + promociones + tax rules + compatibilidad                                                                                                                   |
 | v1.1    | Consolidación final del addendum de Fase 02: `commercialApi` explícito en portal, retiro de catálogo comercial desde `tenantSelfApi` y cierre del ownership frontend del módulo                                                           |
 | v1.2    | Rediseño UX del catálogo de productos en portal: vista unificada con búsqueda/filtros, modal por bloques y formalización del set mínimo de captura vigente (`name`, `description`, `category`, `isLoan`, `requiresInventory`, `isActive`) |
+| v1.3    | Impuestos, aplicación tributaria y simulador salen de la UI Comercial hacia Configuración → Reglas (ADR-082). El motor vive en Taxation; Comercial conserva Reemplazos (`catalog_compatibility_rules`) y consume el puerto tributario. |
 
 ---
 
@@ -62,8 +63,8 @@ Extraer el dominio comercial como Bounded Context independiente (`CommercialModu
 | Bundles / Combos               | Agrupación de ítems mixtos con descuento y vigencia temporal                                                           |
 | Promociones                    | Descuentos temporales sobre ítems, bundles o instalación con límite de usos                                            |
 | Reglas de compatibilidad       | REQUIRES, EXCLUDES, REPLACES entre ítems del catálogo                                                                  |
-| Clasificación tributaria       | IVA exento/excluido/pleno, retención, ICA municipal — configurable por UI                                              |
-| Tabla de reglas tributarias    | Mapeo (clasificación × segmento × estrato × municipio) → impuestos con tasas                                           |
+| Clasificación tributaria       | IVA exento/excluido/pleno, retención, ICA municipal — catálogo y matcher en Taxation; UI en Configuración → Reglas |
+| Tabla de reglas tributarias    | `tax_rules` / `tax_rule_applications` dueñas de Taxation (ADR-082); Comercial no registra esas entidades           |
 | Integración CRM                | Puerto de lectura para Expediente Único (cotización, selección de plan)                                                |
 | Integración portal empresarial | `commercialApi` como entrypoint frontend del catálogo comercial para Settings y Expediente                             |
 | UX de catálogo en portal       | Rediseño de productos como catálogo maestro unificado, con búsqueda, filtros y edición rápida sin subsecciones rígidas |

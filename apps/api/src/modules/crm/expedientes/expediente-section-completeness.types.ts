@@ -1,3 +1,5 @@
+import type { DocumentSupportApprovedFlags } from './document-support.types';
+
 export const INSTALLATION_READINESS_STATUS = {
   NOT_READY: 'NOT_READY',
   READY_WITH_PENDING: 'READY_WITH_PENDING',
@@ -12,6 +14,28 @@ export interface MissingRequirement {
   sectionLabel: string;
   fieldKey: string;
   fieldLabel: string;
+}
+
+export interface ExpedienteSensitiveFieldPresence {
+  documentNumber: boolean;
+  phonePrimary: boolean;
+  emailPrimary: boolean;
+  altContactPhone: boolean;
+  companyName?: boolean;
+  altContactName?: boolean;
+  paymentMethod?: boolean;
+  billingCycle?: boolean;
+  fiscalName?: boolean;
+  hasAddress?: boolean;
+  hasMunicipality?: boolean;
+  hasDepartment?: boolean;
+  hasPostalCode?: boolean;
+  hasStratum?: boolean;
+  hasNeighborhood?: boolean;
+  hasLatitude?: boolean;
+  hasLongitude?: boolean;
+  hasLocation?: boolean;
+  documentSupportApproved?: DocumentSupportApprovedFlags;
 }
 
 export interface SectionCompletenessItem {

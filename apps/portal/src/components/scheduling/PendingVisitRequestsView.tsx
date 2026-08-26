@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ClipboardList } from 'lucide-react';
-import { Badge, Button } from '@iwana/ui';
 import { UserRole, WorkOrderPriority, WorkOrderSourceContext, WfmWorkType } from '@iwana/shared';
 import {
   ApiError,
@@ -30,6 +28,7 @@ import {
   buildDefaultPendingVisitFilters,
   canAccessPendingVisits,
   formatVisitRequestLocationLabel,
+  hydrateMissingVisitRequestContext,
   hydratePendingVisitFiltersFromSearchParams,
   requiresAttemptDecision,
   type PendingVisitFilters,
@@ -38,7 +37,6 @@ import {
   canViewScheduling,
   filterRecommendationCandidateUsers,
   formatSchedulingExpedienteLabel,
-  formatWfmDayLabel,
   isScheduleEventTerminalStatus,
   parseOptionalCoordinate,
 } from './scheduling-ui';
@@ -100,14 +98,13 @@ function buildCrmVisitRequestDraft(
     priority: WorkOrderPriority.NORMAL,
     title: `Instalación para ${customerName}`.slice(0, 160),
     description:
-      operationalNotes || `Solicitud creada desde CRM para ${customerName} (${expedienteLabel}).`,
+      operationalNotes ||
+      `Solicitud creada desde la oportunidad ${expedienteLabel} para ${customerName}.`,
     address: toOptionalTrimmedText(response.data.address),
     municipality: toOptionalTrimmedText(
       formatVisitRequestLocationLabel(response.data.municipality),
     ),
-    sector: toOptionalTrimmedText(
-      formatVisitRequestLocationLabel(response.data.neighborhood ?? response.data.zoneType),
-    ),
+    sector: toOptionalTrimmedText(formatVisitRequestLocationLabel(response.data.neighborhood)),
     latitude: parseOptionalCoordinate(response.data.latitude) ?? null,
     longitude: parseOptionalCoordinate(response.data.longitude) ?? null,
     expedienteId: response.data.id,
@@ -622,7 +619,7 @@ export function PendingVisitRequestsView() {
 
       if (!canSchedule) {
         setInfoMessage(
-          `El expediente aún no está habilitado para agendar instalación. Debe estar en Listo para instalación y alcanzar al menos el ${INSTALLATION_SCHEDULING_MIN_PROGRESS}% de avance.`,
+          `La oportunidad aún no está habilitada para agendar instalación. Debe estar en Listo para instalación y alcanzar al menos el ${INSTALLATION_SCHEDULING_MIN_PROGRESS}% de avance.`,
         );
         return;
       }
@@ -638,7 +635,7 @@ export function PendingVisitRequestsView() {
 
       if (existingActiveEvent) {
         setInfoMessage(
-          'Este expediente ya tiene un evento activo en Programación. Revisa el evento existente antes de crear una nueva solicitud.',
+          'Esta oportunidad ya tiene un evento activo en Programación. Revisa el evento existente antes de crear una nueva solicitud.',
         );
         return;
       }
@@ -809,13 +806,15 @@ export function PendingVisitRequestsView() {
     }
 
     if (!canAccess) {
-      setInfoMessage('Tu rol actual no puede abrir solicitudes CRM en la bandeja global.');
+      setInfoMessage(
+        'Tu perfil no puede abrir solicitudes desde una oportunidad en la bandeja global.',
+      );
       clearCrmQueryParams();
       return;
     }
 
     if (!CRM_EXPEDIENTE_ID_PATTERN.test(expedienteId)) {
-      setError('El identificador del expediente no es válido para abrir la bandeja pendiente.');
+      setError('El identificador de la oportunidad no es válido para abrir la bandeja pendiente.');
       clearCrmQueryParams();
       return;
     }
@@ -866,6 +865,45 @@ export function PendingVisitRequestsView() {
   }, [authLoading, canAccess, pathname, response?.items, router, searchParams, user]);
 
   useEffect(() => {
+    const visitRequest = selectedVisitRequest;
+    const expedienteId = visitRequest ? resolveCrmExpedienteId(visitRequest) : null;
+
+    if (
+      !visitRequest ||
+      !expedienteId ||
+      (visitRequest.address?.trim() &&
+        visitRequest.municipality?.trim() &&
+        visitRequest.sector?.trim())
+    ) {
+      return;
+    }
+
+    const visitRequestId = visitRequest.id;
+    let cancelled = false;
+
+    void crmApi
+      .getExpediente(expedienteId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        setSelectedVisitRequest((current) =>
+          current?.id === visitRequestId
+            ? hydrateMissingVisitRequestContext(current, response.data)
+            : current,
+        );
+      })
+      .catch(() => {
+        // Conservamos los datos de la solicitud si la oportunidad no responde.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVisitRequest]);
+
+  useEffect(() => {
     if (authLoading || !user || !canAccess) {
       return;
     }
@@ -899,6 +937,12 @@ export function PendingVisitRequestsView() {
     setRecommendations([]);
     setSelectedRecommendationId(null);
     setManualSelectionDraft(null);
+    setRecommendationError(null);
+  }
+
+  function handleCancelRecommendations() {
+    setRecommendations([]);
+    setSelectedRecommendationId(null);
     setRecommendationError(null);
   }
 
@@ -1028,23 +1072,13 @@ export function PendingVisitRequestsView() {
       <PageHeader
         title="Visitas pendientes"
         subtitle="Revisa la bandeja, elige una solicitud y abre el despacho para calcular franjas o confirmar agenda de campo."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" asChild>
-              <Link href="/dashboard/scheduling/unrealized-visits">Visitas sin realizar</Link>
-            </Button>
-            <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
-              {formatWfmDayLabel(new Date())}
-            </Badge>
-          </div>
-        }
       />
 
       {isSalesRole && (
         <PortalAlert
           variant="info"
-          title="Modo CRM asistido"
-          description="Como asesor comercial solo puedes operar solicitudes originadas desde CRM abiertas desde un expediente; la bandeja global queda reservada para Operaciones."
+          title="Modo comercial asistido"
+          description="Como asesor comercial solo puedes operar solicitudes abiertas desde una oportunidad; la bandeja global queda reservada para Operaciones."
           icon={ClipboardList}
         />
       )}
@@ -1137,6 +1171,7 @@ export function PendingVisitRequestsView() {
             isLoadingEligibleAssignees={isLoadingEligibleAssignees}
             onRecommend={handleRecommend}
             onSelectRecommendation={setSelectedRecommendationId}
+            onCancelRecommendations={handleCancelRecommendations}
             onManualSelectionChange={setManualSelectionDraft}
             onSaveContext={async (payload: UpdateWfmVisitRequestContextDto) => {
               if (!selectedVisitRequest) {

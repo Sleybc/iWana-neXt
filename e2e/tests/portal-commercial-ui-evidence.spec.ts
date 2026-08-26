@@ -225,6 +225,16 @@ async function setupCommercialEvidenceMocks(page: Page) {
       return;
     }
 
+    if (pathname.endsWith('/taxation/tax-rules') && method === 'GET') {
+      await json({ data: [] });
+      return;
+    }
+
+    if (pathname.endsWith('/taxation/tax-rule-applications') && method === 'GET') {
+      await json({ data: [] });
+      return;
+    }
+
     if (pathname.endsWith('/commercial/tax-rules') && method === 'GET') {
       await json({ data: [] });
       return;
@@ -290,16 +300,26 @@ async function captureCommercialEvidence(page: Page, viewport: 'desktop' | 'mobi
     await page.setViewportSize({ width: 1440, height: 900 });
   }
 
-  const shots: Array<{ route: string; filename: string }> = [
-    { route: '/dashboard/commercial', filename: `commercial-summary-${viewport}.png` },
-    { route: '/dashboard/commercial?tab=plans', filename: `commercial-plans-${viewport}.png` },
+  const shots: Array<{ route: string; filename: string; heading: string }> = [
+    {
+      route: '/dashboard/commercial',
+      filename: `commercial-summary-${viewport}.png`,
+      heading: 'Comercial',
+    },
+    {
+      route: '/dashboard/commercial?tab=plans',
+      filename: `commercial-plans-${viewport}.png`,
+      heading: 'Comercial',
+    },
     {
       route: '/dashboard/commercial?tab=products',
       filename: `commercial-products-${viewport}.png`,
+      heading: 'Comercial',
     },
     {
-      route: '/dashboard/commercial?tab=taxation/tax-simulator',
+      route: '/dashboard/settings/rules?tab=tax-simulator',
       filename: `commercial-tax-simulator-${viewport}.png`,
+      heading: 'Reglas',
     },
   ];
 
@@ -307,7 +327,7 @@ async function captureCommercialEvidence(page: Page, viewport: 'desktop' | 'mobi
     await page.goto(shot.route);
     await page.waitForLoadState('networkidle');
     await expect(
-      page.getByRole('heading', { name: 'Comercial', exact: true }).first(),
+      page.getByRole('heading', { name: shot.heading, exact: true }).first(),
     ).toBeVisible();
     if (!existsSync(EVIDENCE_DIR)) {
       mkdirSync(EVIDENCE_DIR, { recursive: true });
@@ -355,5 +375,17 @@ test.describe('Portal Comercial — evidencia visual UI alineada', () => {
   test('captura desktop y mobile del módulo comercial compacto', async ({ page }) => {
     await captureCommercialEvidence(page, 'desktop');
     await captureCommercialEvidence(page, 'mobile');
+  });
+
+  test('redirige Comercial reglas a Configuración', async ({ page }) => {
+    await page.goto('/dashboard/commercial?tab=taxation/tax-simulator');
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/dashboard\/settings\/rules\?tab=tax-simulator/);
+    await expect(page.getByRole('heading', { name: 'Reglas', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Secciones de reglas' })).toBeVisible();
+
+    await page.goto('/dashboard/commercial?tab=compatibility');
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/dashboard\/settings\/rules\?tab=compatibility/);
   });
 });

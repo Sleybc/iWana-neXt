@@ -179,8 +179,8 @@ describe('TenantSeedService', () => {
 
       await service.seedTaxPresets('tenant_test_schema');
 
-      // Se hacen 12 llamadas: 6 SELECT (check) + 6 INSERT
-      expect(manager.query).toHaveBeenCalledTimes(12);
+      // 6 SELECT (check) + 6 INSERT de preset + 1 backfill de aplicaciones
+      expect(manager.query).toHaveBeenCalledTimes(13);
       // Primer SELECT verifica 'IVA_19'
       expect(manager.query.mock.calls[0][1]).toContain('IVA_19');
     });
@@ -200,8 +200,8 @@ describe('TenantSeedService', () => {
 
       await service.seedTaxPresets('tenant_test_schema');
 
-      // Solo SELECTs, ningún INSERT
-      expect(manager.query).toHaveBeenCalledTimes(6); // 6 checks, 0 inserts
+      // 6 checks de preset + 1 backfill de aplicaciones (0 filas si ya existen)
+      expect(manager.query).toHaveBeenCalledTimes(7);
     });
   });
 });

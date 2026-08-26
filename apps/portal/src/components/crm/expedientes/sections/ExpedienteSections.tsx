@@ -26,6 +26,7 @@ import { LegalConsentSection } from './LegalConsentSection';
 import { DocumentSupportSection } from './DocumentSupportSection';
 
 interface ExpedienteSectionsProps {
+  tenantScope?: string;
   expediente: ExpedienteRecord;
   completeness: CompletenessResult | null;
   draftValues: DraftValues;
@@ -41,6 +42,7 @@ interface ExpedienteSectionsProps {
 }
 
 export function ExpedienteSections({
+  tenantScope,
   expediente,
   completeness,
   draftValues,
@@ -96,15 +98,15 @@ export function ExpedienteSections({
 
   const getSectionPriorityLabel = (completionPct: number): string => {
     if (completionPct >= 100) return 'Completa';
-    if (completionPct >= 50) return 'Atención';
-    return 'Crítica';
+    if (completionPct === 0) return 'Pendiente';
+    return 'En progreso';
   };
 
   const getSectionPriorityClassName = (priority: string): string => {
-    if (priority === 'Crítica') {
-      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300';
+    if (priority === 'Pendiente') {
+      return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300';
     }
-    if (priority === 'Atención') {
+    if (priority === 'En progreso') {
       return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300';
     }
     return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300';
@@ -142,6 +144,7 @@ export function ExpedienteSections({
       case 'commercial_interest':
         return (
           <CommercialInterestSection
+            {...(tenantScope ? { tenantScope } : {})}
             draftValues={draftValues}
             onChange={onDraftChange}
             saving={savingSection === 'commercial_interest'}
@@ -193,9 +196,9 @@ export function ExpedienteSections({
             <div className="mt-4 flex justify-end">
               <Button
                 type="button"
+                variant="primary"
                 loading={savingSection === sectionId}
                 onClick={() => onSaveSection(sectionId)}
-                className="rounded-xl bg-iwana-primary text-white px-5 py-2 text-sm font-semibold hover:bg-iwana-primary/90 transition-colors shadow-sm"
               >
                 {savingSection === sectionId ? 'Guardando sección...' : 'Guardar cambios'}
               </Button>
@@ -211,7 +214,7 @@ export function ExpedienteSections({
     {
       id: 'document_support',
       label: 'Soportes documentales',
-      description: `Evidencias requeridas para validar y cerrar el expediente. · Prioridad: ${getSectionPriorityLabel(documentSupportCompletion)}`,
+      description: `Evidencias requeridas para validar y cerrar la oportunidad. · Prioridad: ${getSectionPriorityLabel(documentSupportCompletion)}`,
       icon: <FolderOpen className="h-5 w-5" />,
       progress: documentSupportCompletion,
       children: (
@@ -235,9 +238,9 @@ export function ExpedienteSections({
     return (
       <div
         key={sectionId}
-        className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2"
+        className="rounded-2xl border border-gray-200 bg-white shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2"
       >
-        <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
+        <div className="flex items-center gap-3 border-b border-gray-200 px-5 py-4 dark:border-dark-border">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
             <Icon className="h-5 w-5" aria-hidden="true" />
           </span>
@@ -252,7 +255,7 @@ export function ExpedienteSections({
               {completionPct}%
             </span>
             <span
-              className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getSectionPriorityClassName(priorityLabel)}`}
+              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getSectionPriorityClassName(priorityLabel)}`}
             >
               {priorityLabel}
             </span>
@@ -264,9 +267,9 @@ export function ExpedienteSections({
             <div className="mt-4 flex justify-end">
               <Button
                 type="button"
+                variant="primary"
                 loading={savingSection === sectionId}
                 onClick={() => onSaveSection(sectionId)}
-                className="rounded-xl bg-iwana-primary text-white px-5 py-2 text-sm font-semibold hover:bg-iwana-primary/90 transition-colors shadow-sm"
               >
                 {savingSection === sectionId ? 'Guardando sección...' : 'Guardar cambios'}
               </Button>
@@ -296,7 +299,7 @@ export function ExpedienteSections({
       )}
 
       {/* Cabecera de progreso */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-[20px] border border-gray-50 px-6 py-5 shadow-[var(--shadow-sm)] dark:bg-dark-surface-2 dark:border-dark-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
         <div>
           <h2 className="text-lg font-bold text-iwana-primary dark:text-white">
             Secciones de la oportunidad
@@ -326,6 +329,7 @@ export function ExpedienteSections({
           {renderSectionCard('contact')}
           <SectionAccordion
             variant="card"
+            keepMounted
             items={leftAccordionItems}
             openIds={leftAccordionOpenIds}
             onOpenIdsChange={(ids) => setLeftAccordionOpenIds(new Set(ids))}

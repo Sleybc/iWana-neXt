@@ -120,7 +120,25 @@ describe('buildCommercialAlerts', () => {
     const alerts = buildCommercialAlerts(buildSummary({ rulesGapCount: 4 }));
 
     expect(alerts).toHaveLength(1);
-    expect(alerts[0]).toMatchObject({ key: 'rules-gap', variant: 'error' });
+    expect(alerts[0]).toMatchObject({
+      key: 'rules-gap',
+      variant: 'error',
+      tab: 'taxation',
+      taxationSubTab: 'tax-rules-app',
+      href: '/dashboard/settings/rules?tab=tax-rules-app',
+    });
+  });
+
+  it('describe el hueco tributario como falta de reglas, no como planes', () => {
+    const alerts = buildCommercialAlerts(
+      buildSummary({
+        rulesGapCount: 1,
+        taxRulesCoverageGapCount: 1,
+        activeBundlesWithInactiveItemsCount: 0,
+      }),
+    );
+
+    expect(alerts[0]?.description).toBe('Falta configurar reglas de aplicación de impuestos.');
   });
 
   it('acota a tres alertas como máximo', () => {
@@ -182,6 +200,19 @@ describe('resolveRulesGapTab', () => {
 
   it('elige tributación en el resto de los casos', () => {
     expect(resolveRulesGapTab(buildSummary())).toBe('taxation');
+  });
+
+  it('no pide subtab tributaria cuando el hueco dominante es de combos', () => {
+    const alerts = buildCommercialAlerts(
+      buildSummary({
+        rulesGapCount: 3,
+        activeBundlesWithInactiveItemsCount: 3,
+        taxRulesCoverageGapCount: 0,
+      }),
+    );
+
+    expect(alerts[0]).toMatchObject({ key: 'rules-gap', tab: 'bundles' });
+    expect(alerts[0]?.taxationSubTab).toBeUndefined();
   });
 });
 

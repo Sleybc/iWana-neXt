@@ -45,6 +45,7 @@ export {
   PAGINATION_INDEX_NAMES,
   verifyPaginationIndexes,
 } from './migrations/tenant/089_pagination_ordering_indexes';
+export { BACKFILL_TAX_RULE_APPLICATIONS_SQL } from './migrations/tenant/114_backfill_tax_rule_applications';
 export {
   DESTRUCTIVE_DOWN_ENV_VAR,
   MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG,

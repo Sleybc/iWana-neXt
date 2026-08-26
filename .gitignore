@@ -96,3 +96,8 @@ packages/storage/src/**/*.js
 packages/storage/src/**/*.js.map
 packages/storage/src/**/*.d.ts
 packages/storage/src/**/*.d.ts.map
+
+# Herramientas IA y artefactos locales de sesion (no versionar)
+.kilo/
+artifacts/
+/screenshot-*.png

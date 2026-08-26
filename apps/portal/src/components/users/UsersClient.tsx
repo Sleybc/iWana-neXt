@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Copy, Plus, ShieldAlert, Upload } from 'lucide-react';
+import { AlertTriangle, Copy, ShieldAlert } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -32,7 +32,7 @@ import {
   ApiError,
 } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
-import { listPageWindow } from '@/lib/list-meta';
+import { listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -140,8 +140,13 @@ export function UsersClient() {
     setError(null);
     try {
       const result = await usersApi.list(params);
-      setUsers((prev) => (append ? [...prev, ...result.data] : result.data));
-      setMeta(result.meta);
+      const data = Array.isArray(result?.data) ? result.data : [];
+      const normalizedMeta = normalizeListMeta(result?.meta, {
+        dataLength: data.length,
+        ...(params.limit !== undefined ? { limit: params.limit } : {}),
+      });
+      setUsers((prev) => (append ? [...prev, ...data] : data));
+      setMeta(normalizedMeta);
       setListParams(params);
     } catch (err: unknown) {
       setError(mapError(err));
@@ -150,7 +155,7 @@ export function UsersClient() {
     }
   }, []);
 
-  const isPageMode = meta?.capabilities.randomAccess === true;
+  const isPageMode = meta?.capabilities?.randomAccess === true;
   const requestParams = useMemo((): ListUsersParams => {
     const params: ListUsersParams = { limit: pageSize };
     if (filters.search) params.search = filters.search;
@@ -392,6 +397,14 @@ export function UsersClient() {
     setIsCreateOpen(true);
   };
 
+  const openBulkImport = () => {
+    setActionError(null);
+    setActionSuccess(null);
+    setTempPassword(null);
+    setNewUserEmail(null);
+    setIsBulkImportOpen(true);
+  };
+
   /** FE-11: feedback inmediato en el botón Editar mientras cargan permisos. */
   const openEdit = async (userToEdit: InternalUser) => {
     captureActionTrigger();
@@ -528,29 +541,6 @@ export function UsersClient() {
       <PageHeader
         title="Usuarios internos"
         subtitle={`${meta?.total ?? 0} usuario${(meta?.total ?? 0) !== 1 ? 's' : ''} en total`}
-        actions={
-          <>
-            <Button type="button" variant="primary" size="default" onClick={openCreate}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nuevo usuario
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              onClick={() => {
-                setActionError(null);
-                setActionSuccess(null);
-                setTempPassword(null);
-                setNewUserEmail(null);
-                setIsBulkImportOpen(true);
-              }}
-            >
-              <Upload className="h-4 w-4" aria-hidden="true" />
-              Importar CSV
-            </Button>
-          </>
-        }
       />
 
       {activeBulkJobId && !isBulkImportOpen && (
@@ -559,18 +549,7 @@ export function UsersClient() {
           title="Importación de usuarios en curso"
           description="La importación sigue en segundo plano. Puedes ver el estado o el resultado cuando termine."
           action={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setActionError(null);
-                setActionSuccess(null);
-                setTempPassword(null);
-                setNewUserEmail(null);
-                setIsBulkImportOpen(true);
-              }}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={openBulkImport}>
               Ver estado
             </Button>
           }
@@ -639,6 +618,7 @@ export function UsersClient() {
           onRoleChange={handleRoleChange}
           onClearFilters={handleClearFilters}
           onCreateUser={openCreate}
+          onImportCsv={openBulkImport}
           currentUserId={user?.id}
           currentUserRole={user?.role}
           preparingEditUserId={preparingEditUserId}

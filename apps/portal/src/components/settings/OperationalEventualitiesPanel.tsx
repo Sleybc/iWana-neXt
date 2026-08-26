@@ -51,7 +51,7 @@ import {
   OPERATIONAL_EVENTUALITY_STATUS_LABELS,
   OPERATIONAL_EVENTUALITY_TYPE_LABELS,
 } from './mod00-settings-labels';
-import { TimeFieldSelect } from './TimeFieldSelect';
+import { TimeFieldSelect } from '@/components/shared/TimeFieldSelect';
 
 const EVENTUALITIES_RESOURCE = { singular: 'eventualidad', plural: 'eventualidades' } as const;
 const EVENTUALITIES_NAMESPACE = 'eventualities';

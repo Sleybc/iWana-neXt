@@ -5,6 +5,7 @@ import {
   AcquisitionChannel,
   ContactChannel,
   ContactResult,
+  CustomerSegment,
   ExpedienteStatus,
   UserRole,
 } from '@iwana/shared';
@@ -13,6 +14,7 @@ import { CompletenessCalculator } from '../completeness-calculator.service';
 import { ExpedienteService } from '../expediente.service';
 import { PipelineRecommendationService } from '../pipeline-recommendation.service';
 import { StatusTransitionService } from '../status-transition.service';
+import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
 
 describe('ExpedientesController', () => {
   let controller: ExpedientesController;
@@ -23,6 +25,7 @@ describe('ExpedientesController', () => {
     findAll: jest.fn(),
     findById: jest.fn(),
     getTimelineSummary: jest.fn(),
+    getTimelinePage: jest.fn(),
     getDocumentSupports: jest.fn(),
     uploadDocumentSupport: jest.fn(),
     updateDocumentSupportStatus: jest.fn(),
@@ -46,6 +49,9 @@ describe('ExpedientesController', () => {
   const pipelineRecommendationServiceMock = {
     getRecommendation: jest.fn(),
   };
+  const detailBootstrapServiceMock = {
+    getDetailBootstrap: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -60,6 +66,7 @@ describe('ExpedientesController', () => {
           provide: PipelineRecommendationService,
           useValue: pipelineRecommendationServiceMock,
         },
+        { provide: ExpedienteDetailBootstrapService, useValue: detailBootstrapServiceMock },
       ],
     }).compile();
 
@@ -172,6 +179,132 @@ describe('ExpedientesController', () => {
     });
   });
 
+  it('expone el bootstrap del detalle con el expediente dentro de data', async () => {
+    const bootstrap = {
+      expediente: {
+        id: 'exp-1',
+        fullName: 'Cliente Demo',
+        dataConsentRevoked: false,
+        additionalProductIds: null,
+        additionalServiceIds: [],
+      },
+      completeness: {
+        commercial: 40,
+        legal: 30,
+        technical: 20,
+        operational: 10,
+        overall: 30,
+        sectionCompleteness: [],
+        installationReadiness: {
+          status: 'NOT_READY',
+          canTransition: false,
+          title: 'No listo para instalación',
+          message: 'Completa viabilidad técnica.',
+        },
+        missingRequirements: [],
+      },
+      pipelineRecommendation: {
+        currentStatus: 'NUEVO_POTENCIAL',
+        suggestedStatus: 'PRECALIFICADO',
+        recommendationReason: 'Completa validación de contacto para avanzar.',
+        blockingRequirements: [],
+        informationalRequirements: [],
+      },
+      operationalMetadata: {
+        createdBy: { userId: 'user-1', name: 'Laura Comercial' },
+        lastEditedBy: { userId: 'user-1', name: 'Laura Comercial' },
+        lastActivityAt: '2026-06-02T10:00:00.000Z',
+      },
+      currentAttribution: null,
+      responsibility: null,
+      subscriberSummary: null,
+    };
+    detailBootstrapServiceMock.getDetailBootstrap.mockResolvedValue({
+      ...bootstrap,
+    });
+
+    const bootstrapController = controller as ExpedientesController & {
+      getBootstrap: (
+        id: string,
+        user: { sub: string },
+      ) => Promise<{ data: Record<string, unknown> }>;
+    };
+    const roles = Reflect.getMetadata('roles', controller.getBootstrap as object) as
+      | Array<UserRole | PlatformRole>
+      | undefined;
+
+    expect(roles).toEqual(
+      expect.arrayContaining([
+        UserRole.ADMIN,
+        UserRole.SALES,
+        UserRole.SUPPORT,
+        PlatformRole.SYSTEM_ADMIN,
+      ]),
+    );
+
+    const result = await bootstrapController.getBootstrap('exp-1', { sub: 'actor-1' });
+
+    expect(detailBootstrapServiceMock.getDetailBootstrap).toHaveBeenCalledWith('exp-1', 'actor-1');
+    expect(detailBootstrapServiceMock.getDetailBootstrap).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({ data: expect.any(Object) }));
+    expect(Object.keys(result.data).sort()).toEqual(
+      [
+        'completeness',
+        'currentAttribution',
+        'expediente',
+        'operationalMetadata',
+        'pipelineRecommendation',
+        'responsibility',
+        'subscriberSummary',
+      ].sort(),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          expediente: expect.objectContaining({
+            id: 'exp-1',
+            dataConsentRevoked: false,
+            additionalProductIds: null,
+            additionalServiceIds: [],
+          }),
+          completeness: expect.objectContaining({ overall: 30 }),
+          pipelineRecommendation: expect.objectContaining({
+            suggestedStatus: 'PRECALIFICADO',
+          }),
+          operationalMetadata: expect.objectContaining({
+            lastActivityAt: '2026-06-02T10:00:00.000Z',
+          }),
+          currentAttribution: null,
+          responsibility: null,
+          subscriberSummary: null,
+        }),
+      }),
+    );
+  });
+
+  it('acepta pipelineRecommendation nula según el contrato del bootstrap', async () => {
+    detailBootstrapServiceMock.getDetailBootstrap.mockResolvedValue({
+      expediente: { id: 'exp-1', fullName: 'Cliente Demo' },
+      completeness: {},
+      pipelineRecommendation: null,
+      operationalMetadata: {},
+      currentAttribution: null,
+      responsibility: null,
+      subscriberSummary: null,
+    });
+
+    const result = await (
+      controller.getBootstrap as unknown as (
+        id: string,
+        user: { sub: string },
+      ) => Promise<{ data: { pipelineRecommendation: unknown } }>
+    )('exp-1', {
+      sub: 'actor-1',
+    });
+
+    expect(result.data.pipelineRecommendation).toBeNull();
+  });
+
   it('propaga el actor autenticado al crear un expediente', async () => {
     expedienteServiceMock.create.mockResolvedValue({ id: 'exp-1', fullName: 'Cliente Demo' });
 
@@ -180,6 +313,7 @@ describe('ExpedientesController', () => {
         fullName: 'Cliente Demo',
         source: 'Manual',
         acquisitionChannel: AcquisitionChannel.OTRO,
+        customerSegment: CustomerSegment.RESIDENTIAL,
       },
       {
         sub: 'user-1',
@@ -197,6 +331,7 @@ describe('ExpedientesController', () => {
         fullName: 'Cliente Demo',
         source: 'Manual',
         acquisitionChannel: AcquisitionChannel.OTRO,
+        customerSegment: CustomerSegment.RESIDENTIAL,
       },
       'user-1',
     );
@@ -325,13 +460,40 @@ describe('ExpedientesController', () => {
       },
     });
 
-    const result = await controller.getTimeline('00000000-0000-4000-a000-000000000001');
+    const result = (await controller.getTimeline('00000000-0000-4000-a000-000000000001')) as {
+      data: { activities: Array<{ type: string }>; metadata: { createdBy: { name: string } } };
+    };
 
     expect(expedienteServiceMock.getTimelineSummary).toHaveBeenCalledWith(
       '00000000-0000-4000-a000-000000000001',
     );
     expect(result.data.activities).toHaveLength(1);
     expect(result.data.metadata.createdBy.name).toBe('Carlos Mejía');
+  });
+
+  it('usa el envelope paginado cuando recibe query de timeline', async () => {
+    expedienteServiceMock.getTimelinePage.mockResolvedValue({
+      data: { events: [{ kind: 'contact', id: 'contact-1' }], metadata: {} },
+      meta: {
+        page: 2,
+        limit: 5,
+        total: 6,
+        totalPages: 2,
+        truncated: false,
+        hasMore: false,
+      },
+    });
+
+    const result = await controller.getTimeline('exp-1', {
+      page: 2,
+      limit: 5,
+      filter: 'contact',
+    });
+
+    expect(expedienteServiceMock.getTimelinePage).toHaveBeenCalledWith('exp-1', 2, 5, 'contact');
+    expect(result).toEqual(
+      expect.objectContaining({ meta: expect.objectContaining({ totalPages: 2 }) }),
+    );
   });
 
   it('propaga el actor autenticado al registrar un intento de contacto', async () => {

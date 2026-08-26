@@ -257,6 +257,10 @@ describe('UsersService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
       expect(result.meta.nextCursor).toBeNull();
+      expect(result.meta.capabilities.randomAccess).toBe(false);
+      expect(result.meta.mode).toBe('cursor');
+      expect(result.meta.limit).toBe(50);
+      expect(result.meta.hasMore).toBe(false);
     });
 
     it('indica nextCursor cuando hay mas items', async () => {
@@ -276,6 +280,10 @@ describe('UsersService', () => {
       // Con limit=2, slice deja [id-1, id-2] y nextCursor = 'id-2'
       expect(result.data).toHaveLength(2);
       expect(result.meta.nextCursor).toBe('id-2');
+      expect(result.meta.capabilities.randomAccess).toBe(false);
+      expect(result.meta.mode).toBe('cursor');
+      expect(result.meta.limit).toBe(2);
+      expect(result.meta.hasMore).toBe(true);
     });
 
     it('busca por nombre en SQL (pg_trgm) y pagina después del filtro', async () => {

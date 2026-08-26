@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CircleAlert, Plus } from 'lucide-react';
@@ -15,7 +14,6 @@ import {
   DialogTitle,
 } from '@iwana/ui';
 import {
-  COMMERCIAL_LIST_PAGE_SIZE,
   commercialApi,
   type CommercialListMeta,
   type CommercialListParams,
@@ -28,12 +26,17 @@ import { InstallationRule } from '@iwana/shared';
 import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 import { useCommercialFocusConsume } from '@/components/commercial/useCommercialFocusConsume';
 import {
-  applyPlanCatalogFilters,
   parsePlanCatalogFilters,
-  type CatalogStatusFilter,
   type PlanCatalogFilters,
 } from '@/components/commercial/catalog/catalog-filter-params';
+import {
+  PLAN_CATALOG_PAGE_OUT_OF_RANGE_NOTICE,
+  PLAN_CATALOG_PAGE_SIZE_OPTIONS,
+} from '@/components/commercial/catalog/plan-catalog-pagination';
 import { portalActiveCountBadgeVariant } from '@/lib/portal-status-badge-rules';
+import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
+import { useTableQueryState } from '@/lib/use-table-query-state';
 import {
   TECHNOLOGY_SUGGESTIONS,
   filterAllowedTechnologies,
@@ -45,7 +48,6 @@ import {
   normalizeTechnologyName,
   parseMoneyFromApi,
   persistTechnologies,
-  planFiltersEqual,
   planFormSchema,
   toFormValues,
   type PlanFormValues,
@@ -59,30 +61,45 @@ interface PlanCatalogPanelProps {
   onFocusConsumed?: (() => void) | undefined;
 }
 
+const PLAN_FILTER_KEYS = ['q', 'status', 'missingPrice'] as const;
+
 export function PlanCatalogPanel({
   canEdit,
   focusId = null,
   onFocusConsumed,
 }: PlanCatalogPanelProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const searchParamsKey = searchParams.toString();
+  const {
+    page,
+    pageSize,
+    sort,
+    sortBy,
+    sortDir,
+    filters,
+    setPage,
+    setPageSize,
+    setFilters,
+    setQuery,
+    setSort,
+  } = useTableQueryState({
+    filterKeys: PLAN_FILTER_KEYS,
+    pageSizeOptions: PLAN_CATALOG_PAGE_SIZE_OPTIONS,
+    defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
+  });
 
-  // searchParamsKey captura cambios de query (back/forward / replace).
-  const filtersFromUrl = useMemo(
-    () => parsePlanCatalogFilters(searchParams),
-    [searchParams, searchParamsKey],
+  const catalogFilters = useMemo(
+    () =>
+      parsePlanCatalogFilters({
+        get: (name) => filters[name] ?? null,
+      }),
+    [filters],
   );
 
   const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
-  const [meta, setMeta] = useState<CommercialListMeta | null>(null);
-  const [listParams, setListParams] = useState<CommercialListParams>({
-    limit: COMMERCIAL_LIST_PAGE_SIZE,
-  });
+  const [meta, setMeta] = useState<CommercialListMeta>(EMPTY_LIST_META);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
+  const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
@@ -93,44 +110,26 @@ export function PlanCatalogPanel({
   const [technologyDraft, setTechnologyDraft] = useState('');
   const [editingTechnologyOriginal, setEditingTechnologyOriginal] = useState<string | null>(null);
   const [editingTechnologyDraft, setEditingTechnologyDraft] = useState('');
-  const [searchValue, setSearchValue] = useState(filtersFromUrl.q);
-  const [statusFilter, setStatusFilter] = useState<CatalogStatusFilter>(filtersFromUrl.status);
-  const [missingPriceFilter, setMissingPriceFilter] = useState(filtersFromUrl.missingPrice);
+  const [searchDraft, setSearchDraft] = useState(catalogFilters.q);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debouncedSearch, setDebouncedSearch] = useState(filtersFromUrl.q);
+  const hasLoadedOnceRef = useRef(false);
+  const outOfRangeShownRef = useRef(false);
+  const tableShellRef = useRef<HTMLDivElement | null>(null);
+  const prevPageRef = useRef(page);
+
+  const missingPriceFilter = catalogFilters.missingPrice;
+  const searchValue = searchDraft;
 
   const activePlansCount = useMemo(() => plans.filter((item) => item.isActive).length, [plans]);
-  const hasMore = Boolean(meta?.nextCursor);
-  const totalPlans = meta?.total ?? plans.length;
+  const totalPlans = meta.total;
+  const { from, to } = listPageWindow({
+    page: meta.page ?? page,
+    limit: meta.limit || pageSize,
+    total: meta.total,
+  });
+  const pageCount = Math.max(1, meta.totalPages ?? 1);
 
-  const hasActiveFilters =
-    Boolean(searchValue.trim()) || statusFilter !== 'ALL' || missingPriceFilter;
-
-  const resourceWord = totalPlans === 1 ? 'plan' : 'planes';
-  const resultsLabel = hasMore
-    ? `${plans.length} de ${totalPlans} ${resourceWord}`
-    : `${totalPlans} ${resourceWord}`;
-
-  function buildPlanListParams(filters: {
-    q: string;
-    status: CatalogStatusFilter;
-    missingPrice: boolean;
-  }): CommercialListParams {
-    const params: CommercialListParams = { limit: COMMERCIAL_LIST_PAGE_SIZE };
-    const q = filters.q.trim();
-    if (q) {
-      params.name = q;
-    }
-    if (filters.status === 'ACTIVE') {
-      params.isActive = true;
-    } else if (filters.status === 'INACTIVE') {
-      params.isActive = false;
-    }
-    if (filters.missingPrice) {
-      params.missingPrice = true;
-    }
-    return params;
-  }
+  const hasActiveFilters = Boolean(searchDraft.trim()) || missingPriceFilter;
 
   const editingPlan = useMemo(
     () => plans.find((plan) => plan.id === editingPlanId) ?? null,
@@ -217,61 +216,99 @@ export function PlanCatalogPanel({
     }
   }, [installationEnabled, installationRule, setValue]);
 
-  const loadPlans = useCallback(async (params: CommercialListParams, append = false) => {
-    setIsLoading(true);
-    setLoadError(null);
-    if (!append) {
-      // Un cambio de filtro inicia una nueva ventana; el cursor anterior no se reutiliza.
-      setPlans([]);
-      setMeta(null);
-    }
-    try {
-      const result = await commercialApi.getPlans(params);
-      const page = result.data ?? [];
-      setPlans((prev) => (append ? [...prev, ...page] : page));
-      setMeta(
-        result.meta ?? {
-          nextCursor: null,
-          total: page.length,
-        },
-      );
-      setListParams(params);
-    } catch (error) {
-      setLoadError(mapLoadError(error));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const loadPlans = useCallback(
+    async (requestedPage = page) => {
+      const params: CommercialListParams = {
+        page: requestedPage,
+        limit: pageSize,
+      };
+      const q = catalogFilters.q.trim();
+      if (q) {
+        params.name = q;
+      }
+      if (missingPriceFilter) {
+        params.missingPrice = true;
+      }
+      if (sortBy && sortDir) {
+        params.sortBy = sortBy;
+        params.sortDir = sortDir;
+      }
 
-  const handleLoadMore = () => {
-    if (meta?.nextCursor) {
-      void loadPlans({ ...listParams, cursor: meta.nextCursor }, true);
-    }
-  };
+      const firstLoad = !hasLoadedOnceRef.current;
+      if (firstLoad) {
+        setIsLoading(true);
+      }
+      setLoadError(null);
+
+      try {
+        const response = await commercialApi.getPlans(params);
+        const nextMeta = normalizeListMeta(response.meta, {
+          dataLength: response.data.length,
+          limit: pageSize,
+        });
+        const totalPages = nextMeta.totalPages ?? 0;
+
+        if (totalPages > 0 && requestedPage > totalPages) {
+          if (!outOfRangeShownRef.current) {
+            outOfRangeShownRef.current = true;
+            setOutOfRangeNotice(PLAN_CATALOG_PAGE_OUT_OF_RANGE_NOTICE);
+          }
+          setQuery({ page: totalPages }, { history: 'replace' });
+          return;
+        }
+
+        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+          setQuery({ page: Math.max(1, totalPages || requestedPage - 1) }, { history: 'replace' });
+          return;
+        }
+
+        outOfRangeShownRef.current = false;
+        setPlans(response.data);
+        setMeta(nextMeta);
+        hasLoadedOnceRef.current = true;
+      } catch (error) {
+        setLoadError(mapLoadError(error));
+        if (firstLoad) {
+          setPlans([]);
+          setMeta(EMPTY_LIST_META);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [catalogFilters.q, missingPriceFilter, page, pageSize, setQuery, sortBy, sortDir],
+  );
 
   useEffect(() => {
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-    }
-    searchDebounceRef.current = setTimeout(() => {
-      setDebouncedSearch(searchValue);
-    }, 300);
+    void loadPlans();
+  }, [loadPlans]);
+
+  useEffect(() => {
+    setSearchDraft(catalogFilters.q);
+  }, [catalogFilters.q]);
+
+  useEffect(() => {
     return () => {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current);
       }
     };
-  }, [searchValue]);
+  }, []);
 
   useEffect(() => {
-    void loadPlans(
-      buildPlanListParams({
-        q: debouncedSearch,
-        status: statusFilter,
-        missingPrice: missingPriceFilter,
-      }),
-    );
-  }, [debouncedSearch, loadPlans, missingPriceFilter, statusFilter]);
+    if (prevPageRef.current === page) {
+      return;
+    }
+    prevPageRef.current = page;
+    const el = tableShellRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } catch {
+        // jsdom no implementa scrollIntoView de forma fiable.
+      }
+    }
+  }, [page]);
 
   useCommercialFocusConsume({
     focusId,
@@ -293,48 +330,47 @@ export function PlanCatalogPanel({
     setTechnologyOptions(filterAllowedTechnologies(loadPersistedTechnologies()));
   }, []);
 
-  useEffect(() => {
-    const current: PlanCatalogFilters = {
-      q: searchValue,
-      status: statusFilter,
-      missingPrice: missingPriceFilter,
+  function persistPlanCatalogFilters(next: Partial<PlanCatalogFilters>) {
+    const merged: PlanCatalogFilters = {
+      q: next.q ?? catalogFilters.q,
+      status: 'ALL',
+      missingPrice: next.missingPrice ?? catalogFilters.missingPrice,
     };
-    if (planFiltersEqual(current, filtersFromUrl)) {
-      return;
-    }
-    setSearchValue(filtersFromUrl.q);
-    setStatusFilter(filtersFromUrl.status);
-    setMissingPriceFilter(filtersFromUrl.missingPrice);
-  }, [filtersFromUrl, searchValue, statusFilter, missingPriceFilter]);
-
-  function syncFiltersToUrl(next: PlanCatalogFilters) {
-    const params = new URLSearchParams(searchParams.toString());
-    applyPlanCatalogFilters(params, next);
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    setFilters({
+      q: merged.q.trim() || null,
+      status: null,
+      missingPrice: merged.missingPrice ? '1' : null,
+    });
   }
 
   function updateFilters(patch: Partial<PlanCatalogFilters>) {
     setServerMessage(null);
 
-    const next: PlanCatalogFilters = {
-      q: patch.q ?? searchValue,
-      status: patch.status ?? statusFilter,
-      missingPrice: patch.missingPrice ?? missingPriceFilter,
-    };
+    if (patch.q !== undefined) {
+      const nextQ = patch.q;
+      setSearchDraft(nextQ);
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+      searchDebounceRef.current = setTimeout(() => {
+        persistPlanCatalogFilters({ q: nextQ });
+      }, 300);
+      return;
+    }
 
-    if (patch.q !== undefined) setSearchValue(patch.q);
-    if (patch.status !== undefined) setStatusFilter(patch.status);
-    if (patch.missingPrice !== undefined) setMissingPriceFilter(patch.missingPrice);
-
-    syncFiltersToUrl(next);
+    persistPlanCatalogFilters(patch);
   }
 
   function clearFilters() {
-    updateFilters({
-      q: '',
-      status: 'ALL',
-      missingPrice: false,
+    setServerMessage(null);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    setSearchDraft('');
+    setFilters({
+      q: null,
+      status: null,
+      missingPrice: null,
     });
   }
 
@@ -468,13 +504,7 @@ export function PlanCatalogPanel({
     try {
       await commercialApi.deletePlan(plan.id);
       setDeleteTarget(null);
-      void loadPlans(
-        buildPlanListParams({
-          q: debouncedSearch,
-          status: statusFilter,
-          missingPrice: missingPriceFilter,
-        }),
-      );
+      void loadPlans();
       handleCloseFormPeek();
     } catch (error) {
       setDeleteError(mapMutationError(error));
@@ -559,13 +589,7 @@ export function PlanCatalogPanel({
         }
       }
 
-      void loadPlans(
-        buildPlanListParams({
-          q: debouncedSearch,
-          status: statusFilter,
-          missingPrice: missingPriceFilter,
-        }),
-      );
+      void loadPlans();
       handleCloseFormPeek();
     } catch (error) {
       setServerMessage(mapMutationError(error));
@@ -575,7 +599,7 @@ export function PlanCatalogPanel({
   return (
     <PortalPanel
       eyebrow="Catálogo"
-      title="Planes comerciales"
+      title="Planes"
       description="Administra planes de conectividad, velocidades y precios vigentes para venta."
       actions={
         <>
@@ -599,20 +623,7 @@ export function PlanCatalogPanel({
           description={loadError}
           icon={CircleAlert}
           action={
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                void loadPlans(
-                  buildPlanListParams({
-                    q: debouncedSearch,
-                    status: statusFilter,
-                    missingPrice: missingPriceFilter,
-                  }),
-                )
-              }
-            >
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadPlans()}>
               Reintentar
             </Button>
           }
@@ -628,24 +639,41 @@ export function PlanCatalogPanel({
         />
       )}
 
-      <PlanCatalogTable
-        canEdit={canEdit}
-        isLoading={isLoading}
-        totalPlans={totalPlans}
-        filteredPlans={plans}
-        focusId={focusId}
-        searchValue={searchValue}
-        statusFilter={statusFilter}
-        missingPriceFilter={missingPriceFilter}
-        hasActiveFilters={hasActiveFilters}
-        resultsLabel={resultsLabel}
-        hasMore={hasMore}
-        onLoadMore={handleLoadMore}
-        onUpdateFilters={updateFilters}
-        onClearFilters={clearFilters}
-        onOpenCreate={handleOpenCreateDialog}
-        onOpenEdit={handleOpenEditDialog}
-      />
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
+      ) : null}
+
+      <div ref={tableShellRef}>
+        <PlanCatalogTable
+          canEdit={canEdit}
+          isLoading={isLoading}
+          totalPlans={totalPlans}
+          filteredPlans={plans}
+          focusId={focusId}
+          searchValue={searchValue}
+          missingPriceFilter={missingPriceFilter}
+          hasActiveFilters={hasActiveFilters}
+          page={meta.page ?? page}
+          pageCount={pageCount}
+          from={from}
+          to={to}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          onUpdateFilters={updateFilters}
+          onClearFilters={clearFilters}
+          onOpenCreate={handleOpenCreateDialog}
+          onOpenEdit={handleOpenEditDialog}
+          sortableFields={meta.capabilities.sortableFields}
+          activeSort={sort}
+          onSortChange={setSort}
+        />
+      </div>
 
       <PlanCatalogFormPeek
         open={isDialogOpen}

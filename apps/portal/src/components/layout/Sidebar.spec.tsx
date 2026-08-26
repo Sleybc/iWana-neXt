@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { UserRole } from '@iwana/shared';
 import { Sidebar } from './Sidebar';
 
@@ -217,7 +217,7 @@ describe('Sidebar', () => {
     expect(homeNav.className).toMatch(/min-h-11/);
   });
 
-  it('alinea el nav con el inicio: Oportunidades, Programación, Usuarios y accesos; sin Reportes', () => {
+  it('alinea el nav: Comercial en Administración; Usuarios; sin Reportes', () => {
     renderSidebar();
 
     expect(screen.getByRole('link', { name: 'Oportunidades' })).toHaveAttribute(
@@ -228,15 +228,30 @@ describe('Sidebar', () => {
       'href',
       '/dashboard/scheduling',
     );
-    expect(screen.getByRole('link', { name: 'Usuarios y accesos' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Usuarios' })).toHaveAttribute(
       'href',
       '/dashboard/users',
     );
+    expect(screen.getByRole('link', { name: 'Comercial' })).toHaveAttribute(
+      'href',
+      '/dashboard/commercial',
+    );
     expect(screen.queryByRole('link', { name: 'CRM' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Usuarios y accesos' })).not.toBeInTheDocument();
     expect(screen.queryByText('Programacion')).not.toBeInTheDocument();
     expect(screen.queryByText('Reportes')).not.toBeInTheDocument();
     expect(screen.queryByText(/Siguiente fase/i)).not.toBeInTheDocument();
     expect(screen.getByText('Menú')).toBeInTheDocument();
     expect(screen.getByText('Administración')).toBeInTheDocument();
+
+    const adminHeading = screen.getByText('Administración');
+    const adminGroup = adminHeading.closest('div');
+    expect(adminGroup).not.toBeNull();
+    const adminLinks = within(adminGroup!).getAllByRole('link');
+    expect(adminLinks.map((link) => link.getAttribute('href'))).toEqual([
+      '/dashboard/settings',
+      '/dashboard/users',
+      '/dashboard/commercial',
+    ]);
   });
 });

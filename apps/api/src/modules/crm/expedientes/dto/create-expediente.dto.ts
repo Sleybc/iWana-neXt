@@ -1,5 +1,5 @@
 import { Allow } from 'class-validator';
-import { AcquisitionChannel } from '@iwana/shared';
+import { AcquisitionChannel, CustomerSegment } from '@iwana/shared';
 import { z } from 'zod';
 
 /**
@@ -9,6 +9,7 @@ import { z } from 'zod';
 export const CreateExpedienteSchema = z.object({
   fullName: z.string().min(1).max(160),
   acquisitionChannel: z.nativeEnum(AcquisitionChannel),
+  customerSegment: z.nativeEnum(CustomerSegment),
   sourceDetail: z.string().max(255).optional(),
   source: z.string().min(1).max(120).optional(),
 });
@@ -19,6 +20,9 @@ export class CreateExpedienteDto {
 
   @Allow()
   acquisitionChannel: AcquisitionChannel;
+
+  @Allow()
+  customerSegment: CustomerSegment;
 
   @Allow()
   sourceDetail?: string;

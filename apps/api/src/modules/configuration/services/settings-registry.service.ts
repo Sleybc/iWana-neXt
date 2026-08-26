@@ -51,6 +51,16 @@ export class SettingsRegistryService {
         requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
       },
       {
+        key: SettingsSectionKey.RULES,
+        label: 'Reglas',
+        description:
+          'Reemplazos de catálogo, impuestos, aplicación tributaria y simulador. Configuración federada de Taxation y Comercial.',
+        ownerModule: 'MOD07 Taxation + MOD06 Commercial',
+        status: SettingsSectionStatus.AVAILABLE,
+        route: '/dashboard/settings/rules',
+        requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
+      },
+      {
         key: SettingsSectionKey.BILLING,
         label: 'Facturación',
         description:

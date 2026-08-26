@@ -319,14 +319,19 @@ export class SubscriberCreationService {
   }
 
   /**
-   * Determina customerSegment según tipo de persona.
+   * Determina customerSegment del suscriptor.
+   * Si el expediente porta un segmento explícito, se propaga tal cual;
+   * si no, aplica el fallback por tipo de persona:
    * NATURAL → RESIDENTIAL (por defecto)
    * JURIDICA → PYME (por defecto)
    */
   private resolveCustomerSegment(
-    _expediente: ExpedienteRecord,
+    expediente: ExpedienteRecord,
     personType: PersonType,
   ): CustomerSegment {
+    if (expediente.customerSegment) {
+      return expediente.customerSegment;
+    }
     return personType === PersonType.JURIDICA ? CustomerSegment.PYME : CustomerSegment.RESIDENTIAL;
   }
 

@@ -246,6 +246,17 @@ describe('BrandingForm', () => {
     expect(screen.getByText('Fondo del inicio de sesión')).toBeInTheDocument();
   });
 
+  it('usa la jerarquía cromática correcta en las acciones de la barra', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const restoreButton = screen.getByRole('button', { name: 'Restaurar marca base' });
+    const saveButton = screen.getByRole('button', { name: 'Guardar marca' });
+
+    expect(saveButton).toHaveClass('bg-iwana-primary');
+    expect(restoreButton).toHaveClass('border-gray-300');
+    expect(restoreButton).not.toHaveClass('text-red-600');
+  });
+
   it('muestra nombres e identidad en un acordeón colapsado inicialmente', async () => {
     render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
 
@@ -307,16 +318,8 @@ describe('BrandingForm', () => {
 
     await expandIdentityAccordion();
 
-    expect(
-      screen.getByText(
-        'Se usa en el acceso público y en superficies de identificación extendida de la empresa.',
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Se usa como acento visual del acceso público del portal para reforzar la identidad de la empresa.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Acceso público y superficies amplias.')).toBeInTheDocument();
+    expect(screen.getByText('Fondo del acceso público.')).toBeInTheDocument();
     expect(screen.getByAltText('Favicon de la empresa')).toBeInTheDocument();
     expect(
       screen.getByText('Nombre visible de la empresa en el acceso público.'),
@@ -387,7 +390,7 @@ describe('BrandingForm', () => {
     expect(
       screen.getByLabelText('URL HTTPS para sello compacto · variante clara'),
     ).toBeInTheDocument();
-    expect(screen.getAllByText(/Requisitos recomendados:/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Requisitos').length).toBe(4);
   });
 
   it('asocia el mensaje de error del campo de URL al input con aria-describedby', async () => {
@@ -409,7 +412,7 @@ describe('BrandingForm', () => {
     expect(document.getElementById(alert.id)).toBeInTheDocument();
   });
 
-  it('muestra la fuente activa con precedencia de archivo y copy congelado sin términos técnicos', () => {
+  it('muestra la fuente activa y la precedencia una sola vez sin términos técnicos', () => {
     render(
       <BrandingForm
         profile={buildProfile({
@@ -422,13 +425,19 @@ describe('BrandingForm', () => {
     );
 
     // El archivo subido tiene prioridad sobre la URL: la fuente se lee del asset.
-    expect(screen.getByText('Fuente actual: Activo subido')).toBeInTheDocument();
+    expect(screen.getByText('Activo subido')).toBeInTheDocument();
     expect(
-      screen.getAllByText(
-        'El archivo subido tiene prioridad sobre la URL. Subir un archivo lo aplica de inmediato; escribir una URL HTTPS lo aplica al guardar la marca.',
-      ).length,
-    ).toBeGreaterThan(0);
+      screen.getAllByText('El archivo subido tiene prioridad. La URL se aplica al guardar.'),
+    ).toHaveLength(1);
     expect(screen.queryByText(/URL externa/i)).not.toBeInTheDocument();
+  });
+
+  it('reserva dos líneas para los labels de URL y alinea los campos entre tarjetas', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const label = screen.getByText('URL HTTPS para favicon · variante oscura');
+
+    expect(label.parentElement?.className).toContain('[&>label]:min-h-10');
   });
 
   it('resuelve la fuente del slot como enlace externo sin exponer vocabulario técnico', () => {
@@ -440,19 +449,9 @@ describe('BrandingForm', () => {
       />,
     );
 
-    expect(screen.getByText('Fuente actual: Enlace externo')).toBeInTheDocument();
-    expect(screen.getAllByText('Fuente actual: Sin configurar').length).toBeGreaterThan(0);
+    expect(screen.getByText('Enlace externo')).toBeInTheDocument();
+    expect(screen.getAllByText('Sin configurar').length).toBe(7);
     expect(screen.queryByText(/URL externa/i)).not.toBeInTheDocument();
-  });
-
-  it('usa el helper congelado de URL en cada variante de slot', () => {
-    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
-
-    expect(
-      screen.getAllByText(
-        'Déjalo vacío para conservar el archivo subido. Escribe una URL HTTPS y guarda la marca para aplicarla.',
-      ),
-    ).toHaveLength(8);
   });
 
   it('muestra el aviso de consulta sin edición cuando el perfil no puede editar', () => {

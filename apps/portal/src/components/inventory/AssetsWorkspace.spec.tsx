@@ -92,6 +92,9 @@ describe('AssetsWorkspace ADR-065 lista', () => {
     });
     expect(listAssetsMock).toHaveBeenCalledWith({ page: 1, limit: 20 });
     expect(screen.getByText('ONT WiFi')).toBeInTheDocument();
+    const listTab = screen.getByRole('tab', { name: 'Lista de activos', selected: true });
+    expect(listTab).toHaveClass('border-iwana-secondary');
+    expect(listTab).not.toHaveClass('bg-iwana-primary');
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));

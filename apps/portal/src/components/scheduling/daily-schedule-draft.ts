@@ -9,7 +9,7 @@ import {
 } from './schedule-event-time';
 
 export const PENDING_VISIT_DRAG_MIME = 'application/x-iwana-pending-visit';
-export const DAILY_DRAFT_MIN_DURATION_MINUTES = 15;
+export const DAILY_DRAFT_MIN_DURATION_MINUTES = 30;
 export const DAILY_TIMELINE_FALLBACK_START_HOUR = 6;
 export const DAILY_TIMELINE_FALLBACK_END_HOUR = 20;
 export const DAILY_TIMELINE_SLOT_MINUTES = 30;
@@ -80,12 +80,6 @@ function toMinutes(value: string | null | undefined): number | null {
   return hours * 60 + minutes;
 }
 
-export function snapMinutesToQuarterHour(totalMinutes: number): number {
-  return (
-    Math.round(totalMinutes / DAILY_DRAFT_MIN_DURATION_MINUTES) * DAILY_DRAFT_MIN_DURATION_MINUTES
-  );
-}
-
 export function snapMinutesToHalfHour(totalMinutes: number): number {
   return Math.round(totalMinutes / DAILY_TIMELINE_SLOT_MINUTES) * DAILY_TIMELINE_SLOT_MINUTES;
 }
@@ -145,16 +139,23 @@ export function buildHourLabelsForDisplayWindow(displayWindow: DailyDisplayWindo
   });
 }
 
-export function buildHalfHourSlotsForDisplayWindow(displayWindow: DailyDisplayWindow): string[] {
-  const totalSlots =
-    ((displayWindow.endHour - displayWindow.startHour) * 60) / DAILY_TIMELINE_SLOT_MINUTES;
+export function buildTimelineSlotsForDisplayWindow(
+  displayWindow: DailyDisplayWindow,
+  slotMinutes: number = DAILY_TIMELINE_SLOT_MINUTES,
+): string[] {
+  const safeSlotMinutes = slotMinutes > 0 ? slotMinutes : DAILY_TIMELINE_SLOT_MINUTES;
+  const totalSlots = ((displayWindow.endHour - displayWindow.startHour) * 60) / safeSlotMinutes;
 
   return Array.from({ length: totalSlots }, (_, index) => {
-    const totalMinutes = displayWindow.startHour * 60 + index * DAILY_TIMELINE_SLOT_MINUTES;
+    const totalMinutes = displayWindow.startHour * 60 + index * safeSlotMinutes;
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${pad(hours)}:${pad(minutes)}`;
   });
+}
+
+export function buildHalfHourSlotsForDisplayWindow(displayWindow: DailyDisplayWindow): string[] {
+  return buildTimelineSlotsForDisplayWindow(displayWindow, DAILY_TIMELINE_SLOT_MINUTES);
 }
 
 export function getTimelineMinutesRangeForDisplayWindow(displayWindow: DailyDisplayWindow): {
@@ -242,6 +243,17 @@ export function validateDailyDraft(
   return { ...draft, validationState: 'valid' };
 }
 
+export function isSameDailyDraft(left: DailyDraftEvent, right: DailyDraftEvent): boolean {
+  return (
+    left.visitRequestId === right.visitRequestId &&
+    left.assignedUserId === right.assignedUserId &&
+    left.dayKey === right.dayKey &&
+    left.scheduledStartAt === right.scheduledStartAt &&
+    left.scheduledEndAt === right.scheduledEndAt &&
+    left.validationState === right.validationState
+  );
+}
+
 export function moveDailyDraftToTime(
   draft: DailyDraftEvent,
   dayKey: string,
@@ -275,13 +287,13 @@ export function resizeDailyDraftStart(
   );
 
   if (!scheduleWindow || scheduleWindow.endAt.getTime() !== endAt.getTime()) {
-    const snappedStartMinutes = snapMinutesToQuarterHour(
+    const snappedStartMinutes = snapMinutesToHalfHour(
       Number(nextStartTime.split(':')[0]) * 60 + Number(nextStartTime.split(':')[1]),
     );
     const endMinutes = endAt.getHours() * 60 + endAt.getMinutes();
     const durationMinutes = Math.max(
       DAILY_DRAFT_MIN_DURATION_MINUTES,
-      snapMinutesToQuarterHour(endMinutes - snappedStartMinutes),
+      snapMinutesToHalfHour(endMinutes - snappedStartMinutes),
     );
     const rebuilt = buildScheduleWindow(
       draft.dayKey,
@@ -315,12 +327,12 @@ export function resizeDailyDraftStart(
 export function resizeDailyDraftEnd(draft: DailyDraftEvent, nextEndTime: string): DailyDraftEvent {
   const startTime = toLocalTimeValue(draft.scheduledStartAt);
   const [endHourPart = '00', endMinutePart = '00'] = nextEndTime.split(':');
-  const endMinutes = snapMinutesToQuarterHour(Number(endHourPart) * 60 + Number(endMinutePart));
+  const endMinutes = snapMinutesToHalfHour(Number(endHourPart) * 60 + Number(endMinutePart));
   const startMinutes =
     Number(startTime.split(':')[0]) * 60 + Number(startTime.split(':')[1] ?? '0');
   const durationMinutes = Math.max(
     DAILY_DRAFT_MIN_DURATION_MINUTES,
-    snapMinutesToQuarterHour(endMinutes - startMinutes),
+    snapMinutesToHalfHour(endMinutes - startMinutes),
   );
   const scheduleWindow = buildScheduleWindow(draft.dayKey, startTime, durationMinutes);
 

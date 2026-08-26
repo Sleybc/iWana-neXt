@@ -18,6 +18,7 @@ import {
   type ExpedienteDocumentItem,
   type ExpedienteDocumentSupportResponse,
 } from '@/lib/api-client';
+import { getSafeCrmErrorMessage } from '../crm-error-message';
 
 interface DocumentSupportSectionProps {
   expedienteId: string;
@@ -185,9 +186,7 @@ export function DocumentSupportSection({
       setError(null);
       return response.data;
     } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : 'No fue posible cargar los soportes.',
-      );
+      setError(getSafeCrmErrorMessage(loadError, 'No fue posible cargar los soportes.'));
       return null;
     } finally {
       if (showLoader) {
@@ -234,9 +233,7 @@ export function DocumentSupportSection({
       setError(null);
       await onSaved?.();
     } catch (uploadError) {
-      setError(
-        uploadError instanceof Error ? uploadError.message : 'No fue posible subir el archivo.',
-      );
+      setError(getSafeCrmErrorMessage(uploadError, 'No fue posible subir el archivo.'));
     } finally {
       setSavingKey(null);
     }
@@ -264,9 +261,7 @@ export function DocumentSupportSection({
       await onSaved?.();
     } catch (statusError) {
       setError(
-        statusError instanceof Error
-          ? statusError.message
-          : 'No fue posible actualizar el estado del soporte.',
+        getSafeCrmErrorMessage(statusError, 'No fue posible actualizar el estado del soporte.'),
       );
     } finally {
       setSavingKey(null);
@@ -307,9 +302,7 @@ export function DocumentSupportSection({
       await onSaved?.();
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : 'No fue posible eliminar la versión del soporte.',
+        getSafeCrmErrorMessage(deleteError, 'No fue posible eliminar la versión del soporte.'),
       );
     } finally {
       setSavingKey(null);
@@ -322,7 +315,7 @@ export function DocumentSupportSection({
     return (
       <div className="flex items-center gap-3 rounded-[18px] border border-gray-100 bg-white px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300">
         <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
-        Cargando soportes documentales del expediente.
+        Cargando soportes documentales de la oportunidad.
       </div>
     );
   }
@@ -612,7 +605,7 @@ export function DocumentSupportSection({
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true" />
         <p>
           Usa Aprobado cuando el soporte sea legible y vigente. Marca Observado si requiere
-          corrección y Rechazado cuando el archivo no sea válido para continuar el expediente.
+          corrección y Rechazado cuando el archivo no sea válido para continuar la oportunidad.
         </p>
       </div>
     </div>

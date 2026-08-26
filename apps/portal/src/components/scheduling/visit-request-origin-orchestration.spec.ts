@@ -82,6 +82,9 @@ describe('visit-request-origin-orchestration', () => {
     const result = await createCrmVisitRequestAndRoute({
       expedienteId: '550e8400-e29b-41d4-a716-446655440000',
       customerLabel: 'Cliente Demo',
+      municipality: 'Bogotá',
+      address: 'Cra 1 # 2-3',
+      sector: 'Chapinero',
       latitude: 4.711,
       longitude: -74.0721,
       nextAction: 'schedule-now',
@@ -104,6 +107,9 @@ describe('visit-request-origin-orchestration', () => {
     );
     expect(visitRequestsCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        municipality: 'Bogotá',
+        address: 'Cra 1 # 2-3',
+        sector: 'Chapinero',
         latitude: 4.711,
         longitude: -74.0721,
       }),

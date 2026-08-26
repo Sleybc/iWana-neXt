@@ -189,4 +189,89 @@ describe('ScheduleRecommendationsService', () => {
 
     expect(result).toEqual([]);
   });
+
+  it('explica cuando todas las fechas carecen de horario operativo configurado', async () => {
+    const eventsQb = buildQueryBuilder([]);
+    const availabilityQb = buildQueryBuilder([]);
+
+    operatingWindowResolver.resolveWithManager.mockResolvedValue({
+      status: 'CLOSED',
+      source: 'MISSING_CONFIGURATION',
+      startTime: null,
+      endTime: null,
+      reason: 'No existe una configuracion de horario operativo para la fecha consultada.',
+    });
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({
+        manager: {
+          createQueryBuilder: jest
+            .fn()
+            .mockReturnValueOnce(eventsQb)
+            .mockReturnValueOnce(availabilityQb),
+        },
+      } as any),
+    );
+
+    await expect(
+      service.recommend({
+        ...baseInput,
+        candidateUserIds: ['11111111-1111-4111-8111-111111111111'],
+      }),
+    ).rejects.toThrow(
+      'No existe una configuracion de horario operativo para las fechas evaluadas.',
+    );
+  });
+
+  it('conserva el resultado vacio cuando el horizonte combina falta de horario y un cierre valido', async () => {
+    const eventsQb = buildQueryBuilder([]);
+    const availabilityQb = buildQueryBuilder([]);
+
+    operatingWindowResolver.resolveWithManager.mockImplementation(
+      async (_manager: unknown, input: { dateLocal: string }) =>
+        input.dateLocal === '2026-06-01'
+          ? {
+              status: 'CLOSED',
+              source: 'MISSING_CONFIGURATION',
+              startTime: null,
+              endTime: null,
+              reason: 'No existe una configuracion de horario operativo para la fecha consultada.',
+            }
+          : {
+              status: 'CLOSED',
+              source: 'HOLIDAY_BLACKOUT',
+              startTime: null,
+              endTime: null,
+              reason: 'Cierre operativo',
+            },
+    );
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({
+        manager: {
+          createQueryBuilder: jest
+            .fn()
+            .mockReturnValueOnce(eventsQb)
+            .mockReturnValueOnce(availabilityQb),
+        },
+      } as any),
+    );
+
+    const result = await service.recommend({
+      ...baseInput,
+      candidateUserIds: ['11111111-1111-4111-8111-111111111111'],
+      windowStartAt: '2026-06-01T12:00:00.000Z',
+      windowEndAt: '2026-06-03T00:00:00.000Z',
+    });
+
+    expect(result).toEqual([]);
+    expect(operatingWindowResolver.resolveWithManager).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ dateLocal: '2026-06-01' }),
+    );
+    expect(operatingWindowResolver.resolveWithManager).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ dateLocal: '2026-06-02' }),
+    );
+  });
 });

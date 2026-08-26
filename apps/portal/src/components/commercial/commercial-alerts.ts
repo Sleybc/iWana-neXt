@@ -3,6 +3,7 @@ import type {
   CommercialOfferStatusFilter,
   CommercialTab,
 } from '@/components/commercial/commercial-tab-params';
+import { buildRulesSettingsHref } from '@/components/settings/rules/rules-settings-params';
 import { formatGroupedNumber } from '@/components/commercial/commercial-format';
 
 export interface CommercialAlert {
@@ -16,6 +17,10 @@ export interface CommercialAlert {
   status?: CommercialOfferStatusFilter;
   /** Entidad a enfocar cuando la alerta puede resolver un id representativo. */
   focus?: string;
+  /** Subdestino de Tributación cuando `tab` es `taxation` (legacy). */
+  taxationSubTab?: 'tax-catalog' | 'tax-rules-app' | 'tax-simulator';
+  /** Destino federado fuera de Comercial (Configuración → Reglas). */
+  href?: string;
 }
 
 export function resolveOffersRiskTab(summary: CommercialDashboardSummary): CommercialTab {
@@ -101,7 +106,7 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
       key: 'catalog-incomplete',
       variant: 'error',
       title: 'Catálogo incompleto',
-      description: `${count} ${summary.catalogIncompleteActiveCount === 1 ? 'ítem activo está' : 'ítems activos están'} sin precio vigente.`,
+      description: `${count} ${summary.catalogIncompleteActiveCount === 1 ? 'plan, producto o servicio activo está' : 'planes, productos o servicios activos están'} sin precio vigente.`,
       ctaLabel: 'Completar catálogo',
       tab,
       ...(focusItem ? { focus: focusItem.id } : {}),
@@ -109,14 +114,25 @@ export function buildCommercialAlerts(summary: CommercialDashboardSummary): Comm
   }
 
   if (summary.rulesGapCount > 0) {
-    const count = formatGroupedNumber(summary.rulesGapCount);
+    const tab = resolveRulesGapTab(summary);
+    const taxOnly =
+      summary.taxRulesCoverageGapCount > 0 && summary.activeBundlesWithInactiveItemsCount === 0;
+    const description = taxOnly
+      ? 'Falta configurar reglas de aplicación de impuestos.'
+      : `${formatGroupedNumber(summary.rulesGapCount)} ${summary.rulesGapCount === 1 ? 'bloqueo o riesgo' : 'bloqueos o riesgos'} en tributación o integridad de combos.`;
     alerts.push({
       key: 'rules-gap',
       variant: 'error',
-      title: 'Huecos en reglas',
-      description: `${count} ${summary.rulesGapCount === 1 ? 'bloqueo o riesgo' : 'bloqueos o riesgos'} en tributación o integridad de combos.`,
+      title: 'Reglas incompletas',
+      description,
       ctaLabel: 'Revisar reglas',
-      tab: resolveRulesGapTab(summary),
+      tab,
+      ...(tab === 'taxation'
+        ? {
+            taxationSubTab: 'tax-rules-app' as const,
+            href: buildRulesSettingsHref('tax-rules-app'),
+          }
+        : {}),
     });
   }
 

@@ -167,6 +167,8 @@ export class ScheduleRecommendationsService {
       longitude: input.longitude ?? null,
     };
     const recommendations: ScheduleRecommendationResult[] = [];
+    let evaluatedOperatingWindow = false;
+    let allOperatingWindowsMissingConfiguration = true;
 
     for (const technicianId of input.candidateUserIds) {
       const technicianEvents = eventsByTechnician.get(technicianId) ?? [];
@@ -191,7 +193,7 @@ export class ScheduleRecommendationsService {
           const cacheKey = `${technicianId}:${effectiveOperatingSiteId ?? 'global'}:${dateLocal}`;
           const effectiveWindowPromise =
             operatingWindowCache.get(cacheKey) ??
-            this.operatingWindowResolver.resolveWithManager(manager as any, {
+            this.operatingWindowResolver.resolveWithManager(manager, {
               tenantId,
               organizationSiteId: effectiveOperatingSiteId,
               technicianId,
@@ -201,6 +203,10 @@ export class ScheduleRecommendationsService {
 
           operatingWindowCache.set(cacheKey, effectiveWindowPromise);
           const effectiveWindow = await effectiveWindowPromise;
+          evaluatedOperatingWindow = true;
+          if (effectiveWindow.source !== 'MISSING_CONFIGURATION') {
+            allOperatingWindowsMissingConfiguration = false;
+          }
 
           if (
             effectiveWindow.status !== 'OPEN' ||
@@ -251,6 +257,17 @@ export class ScheduleRecommendationsService {
           }),
         );
       }
+    }
+
+    if (
+      recommendations.length === 0 &&
+      input.workType === WfmWorkType.INSTALLATION &&
+      evaluatedOperatingWindow &&
+      allOperatingWindowsMissingConfiguration
+    ) {
+      throw new BadRequestException(
+        'No existe una configuracion de horario operativo para las fechas evaluadas.',
+      );
     }
 
     return recommendations

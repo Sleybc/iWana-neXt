@@ -13,7 +13,10 @@ export class CrmQuoteReadAdapter extends CrmQuoteReadPort {
 
   async findByExpedienteId(schemaName: string, expedienteId: string): Promise<CrmQuoteSnapshot[]> {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const quotes = await qr.manager.find(Quote, { where: { expedienteId } });
+      const quotes = await qr.manager.find(Quote, {
+        where: { expedienteId },
+        select: ['id', 'expedienteId', 'status'],
+      });
       return quotes.map((quote) => ({
         id: quote.id,
         expedienteId: quote.expedienteId ?? expedienteId,
@@ -31,6 +34,7 @@ export class CrmQuoteReadAdapter extends CrmQuoteReadPort {
     }
     const quotes = await manager.find(Quote, {
       where: { expedienteId: In(expedienteIds) },
+      select: ['id', 'expedienteId', 'status'],
     });
     return quotes.map((quote) => ({
       id: quote.id,

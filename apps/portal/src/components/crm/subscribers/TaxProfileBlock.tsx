@@ -197,7 +197,7 @@ function AddTributosModal({
         {!loadingCatalog && !errorMsg && catalog.length === 0 && (
           <p className="py-4 text-center text-sm text-gray-400">
             No hay tributos activos en el catálogo. Créalos en{' '}
-            <span className="font-medium">Comercial → Catálogo de impuestos</span>.
+            <span className="font-medium">Configuración → Reglas</span>.
           </p>
         )}
 

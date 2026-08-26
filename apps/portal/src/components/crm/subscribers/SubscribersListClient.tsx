@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Input, Select, cn } from '@iwana/ui';
+import { Badge, Button, Select, cn } from '@iwana/ui';
 import type { ListMeta } from '@iwana/shared';
 import { CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
-import { AlertTriangle, Loader2, Plus, Search, Users } from 'lucide-react';
+import { CircleDashed, Plus } from 'lucide-react';
 import {
   ApiError,
   type ListSubscribersParams,
@@ -20,7 +20,11 @@ import {
   PortalAlert,
   PortalDataTableHead,
   PortalDataTableSortableHead,
+  PortalEmptyState,
   PortalPageSizeSelect,
+  PortalPanel,
+  PortalSearchField,
+  PortalSkeletonBlock,
   PortalTablePager,
   portalDataBusyRegionClassName,
   portalDataTableBodyClassName,
@@ -306,135 +310,133 @@ function SubscribersListClientInner() {
     <div className="space-y-6 pb-6">
       <PageHeader
         title="Suscriptores"
-        subtitle="Consulta, filtra y gestiona el ciclo de vida comercial de los suscriptores de la empresa."
-        actions={
-          <Button asChild variant="primary">
-            <Link href="/dashboard/crm/subscribers/new">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nuevo suscriptor
-            </Link>
-          </Button>
-        }
+        subtitle="Consulta y gestiona el ciclo de vida comercial de los suscriptores de la empresa."
       />
 
-      <div className="overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-        <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
-          <div className="mb-4 space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Radar de suscriptores
-            </p>
-            <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
-              Operación comercial y postventa
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Usa filtros combinados o búsqueda por nombre, NIT o razón social.
-            </p>
+      {error ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar los suscriptores"
+          description={error}
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadPage(listParams)}
+            >
+              Reintentar
+            </Button>
+          }
+        />
+      ) : null}
+
+      {outOfRangeNotice ? (
+        <PortalAlert
+          variant="warning"
+          title="Página fuera de rango"
+          description={outOfRangeNotice}
+          live="polite"
+        />
+      ) : null}
+
+      <PortalPanel className="overflow-hidden p-0" contentClassName="p-0">
+        <div className="flex flex-col gap-3 px-5 py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <PortalSearchField
+              id="subscriber-search"
+              value={searchDraft}
+              onChange={setSearchDraft}
+              placeholder="Buscar por nombre, NIT o razón social"
+              label="Buscar suscriptor"
+              className="min-w-0 flex-1"
+            />
+            <Button asChild size="sm" className="h-11 min-h-11 w-full shrink-0 px-3 sm:w-auto">
+              <Link href="/dashboard/crm/subscribers/new">
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                Nuevo suscriptor
+              </Link>
+            </Button>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_220px_220px_220px_180px] lg:items-end">
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                aria-hidden="true"
-              />
-              <Input
-                value={searchDraft}
-                onChange={(event) => setSearchDraft(event.target.value)}
-                placeholder="Buscar por nombre, NIT o razón social"
-                className="h-12 pl-11"
-                aria-label="Buscar suscriptores"
-              />
-            </div>
-
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] xl:items-center">
             <Select
               id="subscriber-status-filter"
-              label="Estado"
-              className="h-12"
+              aria-label="Estado"
+              className="h-12 min-w-0"
               value={statusFilter}
               onChange={(event) => setFilters({ status: event.target.value || null })}
               options={SUBSCRIBER_STATUS_OPTIONS}
             >
-              <option value="">Todos</option>
+              <option value="">Todos los estados</option>
             </Select>
 
             <Select
               id="subscriber-person-type-filter"
-              label="Tipo persona"
-              className="h-12"
+              aria-label="Tipo de persona"
+              className="h-12 min-w-0"
               value={personTypeFilter}
               onChange={(event) => setFilters({ personType: event.target.value || null })}
               options={[...PERSON_TYPE_OPTIONS]}
             >
-              <option value="">Todos</option>
+              <option value="">Todos los tipos</option>
             </Select>
 
             <Select
               id="subscriber-segment-filter"
-              label="Segmento"
-              className="h-12"
+              aria-label="Segmento"
+              className="h-12 min-w-0"
               value={segmentFilter}
               onChange={(event) => setFilters({ customerSegment: event.target.value || null })}
               options={[...CUSTOMER_SEGMENT_OPTIONS]}
             >
-              <option value="">Todos</option>
+              <option value="">Todos los segmentos</option>
             </Select>
 
             <Select
               id="subscriber-stratum-filter"
-              label="Estrato"
-              className="h-12"
+              aria-label="Estrato"
+              className="h-12 min-w-0"
               value={stratumFilter}
               onChange={(event) => setFilters({ stratum: event.target.value || null })}
               options={[...STRATUM_OPTIONS]}
             >
-              <option value="">Todos</option>
+              <option value="">Todos los estratos</option>
             </Select>
-          </div>
 
-          {canSort ? (
-            <div className="mt-3 sm:hidden">
-              <Select
-                id="subscriber-mobile-sort"
-                label="Ordenar por"
-                className="h-12"
-                value={mobileSortValue}
-                disabled={refreshing}
-                onChange={(event) => {
-                  const raw = event.target.value;
-                  if (!raw) {
-                    setSort(null);
-                    return;
-                  }
-                  const [by, dir] = raw.split(':');
-                  if (by && (dir === 'asc' || dir === 'desc')) {
-                    setSort({ by, dir });
-                  }
-                }}
-                options={mobileSortOptions}
-              />
-            </div>
-          ) : null}
+            {hasActiveFilters ? (
+              <Button type="button" variant="ghost" onClick={clearFilters} className="h-12">
+                Limpiar filtros
+              </Button>
+            ) : null}
+          </div>
         </div>
 
-        {error && (
-          <div className="mx-5 mt-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-sm)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {outOfRangeNotice ? (
-          <div className="mx-5 mt-5">
-            <PortalAlert
-              variant="warning"
-              title="Página fuera de rango"
-              description={outOfRangeNotice}
-              live="polite"
+        {canSort ? (
+          <div className="px-5 pb-3 sm:hidden">
+            <Select
+              id="subscriber-mobile-sort"
+              aria-label="Ordenar por"
+              className="h-12"
+              value={mobileSortValue}
+              disabled={refreshing}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (!raw) {
+                  setSort(null);
+                  return;
+                }
+                const [by, dir] = raw.split(':');
+                if (by && (dir === 'asc' || dir === 'desc')) {
+                  setSort({ by, dir });
+                }
+              }}
+              options={mobileSortOptions}
             />
           </div>
         ) : null}
 
-        <div className="space-y-3 px-5 pt-5">
+        <div className="px-5 pb-5">
           <div ref={tableShellRef} className={portalDataTableShellClassName}>
             <div
               className={
@@ -442,7 +444,7 @@ function SubscribersListClientInner() {
               }
               aria-busy={refreshing || undefined}
             >
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" aria-label="Listado de suscriptores">
                 <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     {renderHead(null, 'Suscriptor')}
@@ -456,57 +458,48 @@ function SubscribersListClientInner() {
                   </tr>
                 </thead>
                 <tbody className={portalDataTableBodyClassName}>
-                  {initialLoading && (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-4 py-12 text-center text-gray-500 dark:text-gray-400"
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-                          Cargando suscriptores...
-                        </div>
-                      </td>
-                    </tr>
-                  )}
+                  {initialLoading && records.length === 0
+                    ? Array.from({ length: 5 }, (_, index) => (
+                        <tr key={`subscriber-skeleton-${index}`}>
+                          <td className={portalDataTableCellClassName} colSpan={8}>
+                            <PortalSkeletonBlock className="h-10 w-full rounded-xl" />
+                          </td>
+                        </tr>
+                      ))
+                    : null}
 
-                  {!initialLoading && records.length === 0 && (
+                  {!initialLoading && records.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={8}
-                        className="px-4 py-12 text-center text-gray-500 dark:text-gray-400"
-                      >
-                        <div className="flex flex-col items-center gap-3">
-                          <Users
-                            className="h-10 w-10 text-gray-300 dark:text-gray-400"
-                            aria-hidden="true"
-                          />
-                          <div>
-                            <p className="font-semibold text-gray-700 dark:text-gray-200">
-                              {hasActiveFilters
-                                ? 'No hay suscriptores con estos filtros.'
-                                : 'No hay suscriptores para mostrar.'}
-                            </p>
-                            <p className="text-sm">
-                              {hasActiveFilters
-                                ? 'Quita filtros o amplía la búsqueda para ver más resultados.'
-                                : 'Crea el primer registro de la empresa.'}
-                            </p>
-                          </div>
-                          {hasActiveFilters ? (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              onClick={clearFilters}
-                            >
-                              Limpiar filtros
-                            </Button>
-                          ) : null}
-                        </div>
+                      <td colSpan={8} className={cn(portalDataTableCellClassName, 'py-12')}>
+                        <PortalEmptyState
+                          title={
+                            hasActiveFilters
+                              ? 'No se encontraron resultados'
+                              : 'Aún no hay suscriptores'
+                          }
+                          description={
+                            hasActiveFilters
+                              ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
+                              : 'Registra el primero para iniciar el ciclo comercial y postventa.'
+                          }
+                          icon={CircleDashed}
+                          className="w-full text-left"
+                          action={
+                            hasActiveFilters ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={clearFilters}
+                              >
+                                Limpiar filtros
+                              </Button>
+                            ) : undefined
+                          }
+                        />
                       </td>
                     </tr>
-                  )}
+                  ) : null}
 
                   {!initialLoading &&
                     records.map((subscriber) => (
@@ -590,7 +583,7 @@ function SubscribersListClientInner() {
             ) : null}
           </div>
         </div>
-      </div>
+      </PortalPanel>
     </div>
   );
 }
@@ -599,9 +592,9 @@ export function SubscribersListClient() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500">
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-          Cargando suscriptores...
+        <div className="space-y-4" aria-busy="true">
+          <PortalSkeletonBlock className="h-20 rounded-2xl" />
+          <PortalSkeletonBlock className="h-64 rounded-2xl" />
         </div>
       }
     >

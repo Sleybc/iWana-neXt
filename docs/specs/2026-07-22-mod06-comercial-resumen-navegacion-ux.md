@@ -305,3 +305,11 @@ Copy de alerta Q2: omitir «sin clasificación tributaria»; usar «sin precio v
 | H12 | P3 | Resumen promovido, sin grupo Operación | Resuelto dentro de H9 |
 
 **Criterio skill de cierre (modo diseño):** con esta spec implementada, la primera vista del módulo muestra *qué se puede hacer* (alertas + lista + CTAs) y *dónde actuar* (tabs alineados al mismo modelo mental).
+
+---
+
+## Enmienda 2026-08-19 — rail vertical y Tributación plana
+
+La taxonomía Catálogo / Ofertas / Reglas **sigue vigente**. Tributación deja de ser un tab con subsecciones: Impuestos, Aplicación de impuestos y Simulador son destinos de primer nivel en Reglas. La presentación pasa de tabs navy agrupados a rail lima (`PortalModuleSubnav`).
+
+Contrato: [2026-08-19-comercial-module-subnav-ux.md](./2026-08-19-comercial-module-subnav-ux.md).

@@ -58,7 +58,7 @@ export async function scheduleVisitRequestWithFollowUp({
           workOrderId: scheduledVisitRequest.workOrderId,
         });
       } catch {
-        syncWarnings.push('No fue posible vincular la orden de trabajo con Aseguramiento.');
+        syncWarnings.push('No fue posible vincular la orden de trabajo con mesa de ayuda.');
       }
 
       try {
@@ -67,7 +67,7 @@ export async function scheduleVisitRequestWithFollowUp({
           workOrderId: scheduledVisitRequest.workOrderId,
         });
       } catch {
-        syncWarnings.push('no fue posible persistir las referencias operativas en CRM.');
+        syncWarnings.push('no fue posible persistir las referencias operativas comerciales.');
       }
     }
 
@@ -79,10 +79,10 @@ export async function scheduleVisitRequestWithFollowUp({
       });
 
       if (synced) {
-        feedbackMessage += ' El expediente quedó marcado como instalación agendada.';
+        feedbackMessage += ' La oportunidad quedó marcada como instalación agendada.';
       }
     } catch {
-      syncWarnings.push('no fue posible actualizar el expediente automáticamente.');
+      syncWarnings.push('no fue posible actualizar la oportunidad automáticamente.');
     }
   }
 

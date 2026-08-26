@@ -265,7 +265,7 @@ async function setupTaxMocks(page: Page) {
 async function openTaxationSection(page: Page) {
   await page.goto('/dashboard/commercial');
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: 'Tributación', exact: true }).click();
+  await page.getByRole('button', { name: 'Impuestos', exact: true }).click();
 }
 
 test.describe('Portal tributario — simulador', () => {
@@ -276,9 +276,9 @@ test.describe('Portal tributario — simulador', () => {
 
   test('simulador tributario muestra resultado para segmento RESIDENTIAL', async ({ page }) => {
     await openTaxationSection(page);
-    await page.getByRole('tab', { name: 'Simulador tributario', exact: true }).click();
+    await page.getByRole('button', { name: 'Simulador', exact: true }).click();
 
-    await expect(page.getByRole('heading', { name: 'Parámetros de simulación' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Simulador' })).toBeVisible();
     await page.getByRole('button', { name: 'Simular' }).click();
 
     await expect(page.getByText(/Resultado —/i)).toBeVisible();
@@ -289,9 +289,9 @@ test.describe('Portal tributario — simulador', () => {
   test('catálogo de impuestos muestra presets SYSTEM', async ({ page }) => {
     await openTaxationSection(page);
 
-    await expect(page.getByRole('tab', { name: 'Catálogo', exact: true })).toHaveAttribute(
-      'data-state',
-      'active',
+    await expect(page.getByRole('button', { name: 'Impuestos', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
     );
     await expect(page.getByText('IVA general')).toBeVisible();
     await expect(page.getByText('IVA_19')).toBeVisible();
@@ -299,11 +299,11 @@ test.describe('Portal tributario — simulador', () => {
 
   test('reglas de aplicación carga sin error', async ({ page }) => {
     await openTaxationSection(page);
-    await page.getByRole('tab', { name: 'Reglas de aplicación', exact: true }).click();
+    await page.getByRole('button', { name: 'Aplicación de impuestos', exact: true }).click();
 
     await expect(
-      page.getByRole('tab', { name: 'Reglas de aplicación', exact: true }),
-    ).toHaveAttribute('data-state', 'active');
+      page.getByRole('button', { name: 'Aplicación de impuestos', exact: true }),
+    ).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText(/iva · 19% · estratos 1–6 · residential/i)).toBeVisible();
     await expect(page.getByText('IVA general (IVA_19)')).toBeVisible();
   });

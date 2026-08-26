@@ -5,7 +5,7 @@ import {
   WorkOrderPriority,
   WorkOrderSourceContext,
 } from '@iwana/shared';
-import type { WfmVisitRequest } from '@/lib/api-client';
+import type { ExpedienteRecord, WfmVisitRequest } from '@/lib/api-client';
 import { formatExpedienteDisplayRef } from '@/lib/expediente-labels';
 import { formatLocationLabel } from '@/components/crm/subscribers/subscriber-ui';
 
@@ -78,6 +78,29 @@ export interface PendingVisitFilters {
   limit: number;
 }
 
+export function hydrateMissingVisitRequestContext(
+  visitRequest: WfmVisitRequest,
+  expediente: Pick<ExpedienteRecord, 'address' | 'municipality' | 'neighborhood'>,
+): WfmVisitRequest {
+  const normalize = (value: string | null | undefined): string | undefined => {
+    const normalized = value?.trim();
+    return normalized || undefined;
+  };
+
+  return {
+    ...visitRequest,
+    address: normalize(visitRequest.address) ?? normalize(expediente.address) ?? null,
+    municipality:
+      normalize(visitRequest.municipality) ??
+      normalize(formatVisitRequestLocationLabel(expediente.municipality)) ??
+      null,
+    sector:
+      normalize(visitRequest.sector) ??
+      normalize(formatVisitRequestLocationLabel(expediente.neighborhood)) ??
+      null,
+  };
+}
+
 const visitRequestStatusMeta: Record<
   VisitRequestStatus,
   { label: string; variant: BadgeVariant; description: string }
@@ -135,7 +158,7 @@ const visitRequestStatusMeta: Record<
 };
 
 const visitRequestOriginLabels: Record<WorkOrderSourceContext, string> = {
-  [WorkOrderSourceContext.CRM]: 'CRM',
+  [WorkOrderSourceContext.CRM]: 'Oportunidades',
   [WorkOrderSourceContext.ASSURANCE]: 'Mesa de ayuda',
   [WorkOrderSourceContext.PROVISIONING]: 'Provisionamiento',
   [WorkOrderSourceContext.TASKS]: 'Tareas',

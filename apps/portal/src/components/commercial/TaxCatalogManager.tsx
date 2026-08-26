@@ -1,16 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  RotateCcw,
-  Lock,
-  HelpCircle,
-  CircleAlert,
-  CheckCircle2,
-} from 'lucide-react';
+import { Plus, Pencil, Trash2, Lock, HelpCircle, CircleAlert, CheckCircle2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -60,6 +51,7 @@ import {
   TAX_TREATMENT_LABELS,
   resolveTaxLabel,
 } from '@/components/commercial/commercial-labels';
+import { formatTaxRatePercent } from '@/components/commercial/commercial-format';
 
 // ── Tooltip de ayuda reutilizable ─────────────────────────────────────────────
 
@@ -337,27 +329,16 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
   return (
     <PortalPanel
-      eyebrow="Tributación"
-      title="Catálogo de impuestos"
+      eyebrow="Reglas"
+      title="Impuestos"
       description="Consulta y administra definiciones tributarias de tu empresa (lectura y edición según origen)."
       actions={
-        <>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Actualizar catálogo de impuestos"
-            title="Actualizar catálogo de impuestos"
-            onClick={() => void loadDefinitions(refreshParams)}
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+        canEdit ? (
+          <Button onClick={openCreateForm}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nueva definición
           </Button>
-          {canEdit && (
-            <Button onClick={openCreateForm}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nueva definición
-            </Button>
-          )}
-        </>
+        ) : undefined
       }
       contentClassName="flex flex-col gap-4"
     >
@@ -436,7 +417,6 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                 <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     <PortalDataTableHead>Definición</PortalDataTableHead>
-                    <PortalDataTableHead>Código</PortalDataTableHead>
                     <PortalDataTableHead>Categoría</PortalDataTableHead>
                     <PortalDataTableHead>Jurisdicción</PortalDataTableHead>
                     <PortalDataTableHead>Tratamiento</PortalDataTableHead>
@@ -456,22 +436,8 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                               aria-label="Definición incluida por el sistema"
                             />
                           )}
-                          <div>
-                            <p className="font-medium text-gray-800 dark:text-gray-100">
-                              {def.name}
-                            </p>
-                            {def.notes && (
-                              <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
-                                {def.notes}
-                              </p>
-                            )}
-                          </div>
+                          <p className="font-medium text-gray-800 dark:text-gray-100">{def.name}</p>
                         </div>
-                      </td>
-                      <td className={portalDataTableCellClassName}>
-                        <span className="font-mono text-xs tabular-nums text-gray-700 dark:text-gray-200">
-                          {def.code}
-                        </span>
                       </td>
                       <td className={portalDataTableCellClassName}>
                         <Badge variant="primary" className="text-xs">
@@ -489,7 +455,9 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                       </td>
                       <td className={portalDataTableCellClassName}>
                         {def.baseRate !== null ? (
-                          <span className="font-mono tabular-nums">{def.baseRate}%</span>
+                          <span className="font-mono tabular-nums">
+                            {formatTaxRatePercent(def.baseRate)}%
+                          </span>
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
@@ -541,7 +509,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       <PortalSidePeek
         open={isFormOpen}
         onClose={() => handleFormOpenChange(false)}
-        eyebrow="Tributación"
+        eyebrow="Reglas"
         title={isEditing ? 'Editar definición tributaria' : 'Nueva definición tributaria'}
         description={
           isEditing
@@ -612,9 +580,9 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                 className="pr-16"
                 endAdornment={
                   codeAutoRef.current && (form.code ?? '').length > 0 ? (
-                    <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-xs font-semibold text-iwana-primary">
+                    <Badge variant="info" className="text-[10px]">
                       Auto
-                    </span>
+                    </Badge>
                   ) : undefined
                 }
                 onChange={(e) => {

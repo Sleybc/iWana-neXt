@@ -6,16 +6,15 @@ import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 describe('ExecutionOrderSummary', () => {
   it('muestra skeleton durante la carga', () => {
     render(<ExecutionOrderSummary order={null} loading />);
-    expect(screen.getByRole('region', { name: 'Cargando resumen de la OT' })).toHaveAttribute(
-      'aria-busy',
-      'true',
-    );
+    expect(
+      screen.getByRole('region', { name: 'Cargando resumen de la orden de trabajo' }),
+    ).toHaveAttribute('aria-busy', 'true');
     expect(document.querySelectorAll('.animate-pulse')).toHaveLength(3);
   });
 
   it('muestra una alerta de advertencia cuando la visita no tiene OT vinculada', () => {
     render(<ExecutionOrderSummary order={null} availability="unlinked" />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Visita sin OT vinculada');
+    expect(screen.getByRole('alert')).toHaveTextContent('Visita sin orden vinculada');
     expect(screen.queryByRole('button', { name: 'Actualizar detalle' })).not.toBeInTheDocument();
     expect(
       screen.getByText(/No hay una acción para actualizar el detalle disponible/),
@@ -70,7 +69,9 @@ describe('ExecutionOrderSummary', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Abrir OT' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Abrir orden de trabajo' }),
+    ).not.toBeInTheDocument();
   });
 
   it('muestra success sin ocultar el resumen', () => {
@@ -92,7 +93,7 @@ describe('ExecutionOrderSummary', () => {
       result: null,
     } as never;
     render(<ExecutionOrderSummary order={order} readonly canOpen onOpen={jest.fn()} />);
-    expect(screen.getByRole('button', { name: 'Abrir OT' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir orden de trabajo' })).toBeInTheDocument();
   });
 
   it('mantiene el resumen seguro cuando la plantilla no está disponible', () => {

@@ -100,15 +100,6 @@ function buildEffectiveVisitRequestStatusSql(alias: string): string {
   END`;
 }
 
-function buildVisitRequestStatusReconciliationSql(alias: string): string {
-  return `CASE
-    WHEN NULLIF(TRIM(${alias}.address), '') IS NOT NULL
-     AND NULLIF(TRIM(${alias}.municipality), '') IS NOT NULL
-    THEN '${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status
-    ELSE '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status
-  END`;
-}
-
 @Injectable()
 export class WfmDashboardService {
   private readonly logger = new Logger(WfmDashboardService.name);
@@ -208,19 +199,6 @@ export class WfmDashboardService {
       };
 
       try {
-        const reconciledStatusSql = buildVisitRequestStatusReconciliationSql('vr');
-
-        await qr.manager.query(
-          `UPDATE visit_requests vr
-           SET status = ${reconciledStatusSql},
-               updated_at = NOW()
-           WHERE vr.tenant_id = $1
-             AND vr.deleted_at IS NULL
-             AND vr.status IN ('${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status, '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status)
-             AND vr.status IS DISTINCT FROM ${reconciledStatusSql}`,
-          [tenantId],
-        );
-
         const effectiveStatusSql = buildEffectiveVisitRequestStatusSql('vr');
         const pendingInboxResult = await qr.manager
           .createQueryBuilder()

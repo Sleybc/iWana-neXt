@@ -34,6 +34,7 @@ jest.mock('@/components/commercial/CommercialTabLayout', () => ({
   }) => (
     <div data-testid="tab-layout" data-active-tab={activeTab}>
       <button onClick={() => onTabChange?.('promotions')}>Ir a promociones</button>
+      <button onClick={() => onTabChange?.('products')}>Ir a productos</button>
     </div>
   ),
 }));
@@ -180,5 +181,44 @@ describe('CommercialClient', () => {
       { scroll: false },
     );
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('canonicaliza ?tab=plans sin borrar page, size ni orden', async () => {
+    mockSearchParams = new URLSearchParams('tab=plans&page=2&size=10&sortBy=name&sortDir=desc');
+    getDashboardSummary.mockResolvedValue(buildSummary());
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(
+        '/dashboard/commercial?page=2&size=10&sortBy=name&sortDir=desc',
+        {
+          scroll: false,
+        },
+      );
+    });
+  });
+
+  it('al cambiar a Productos limpia page, size y orden de la URL', async () => {
+    const user = userEvent.setup();
+    mockSearchParams = new URLSearchParams('page=2&size=10&sortBy=name&sortDir=asc');
+    getDashboardSummary.mockResolvedValue(buildSummary());
+
+    render(<CommercialClient />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-layout')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Ir a productos' }));
+
+    expect(pushMock).toHaveBeenCalledWith('/dashboard/commercial?tab=products', {
+      scroll: false,
+    });
+    const pushed = String(pushMock.mock.calls.at(-1)?.[0]);
+    expect(pushed).not.toContain('page=');
+    expect(pushed).not.toContain('size=');
+    expect(pushed).not.toContain('sortBy=');
+    expect(pushed).not.toContain('sortDir=');
   });
 });

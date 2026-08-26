@@ -16,6 +16,7 @@ import {
   type InstallationReadinessSummary,
   type MissingRequirement,
   type SectionCompletenessItem,
+  type ExpedienteSensitiveFieldPresence,
 } from './expediente-section-completeness.types';
 
 /**
@@ -30,6 +31,14 @@ export interface CompletenessResult {
   sectionCompleteness: SectionCompletenessItem[];
   installationReadiness: InstallationReadinessSummary;
   missingRequirements: MissingRequirement[];
+}
+
+export interface CompletenessCalculationContext {
+  expediente: ExpedienteRecord;
+  consents: ConsentRecord[];
+  quotes: CrmQuoteSnapshot[];
+  coverageChecks: CoverageCheck[];
+  sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence;
 }
 
 /**
@@ -64,53 +73,79 @@ export class CompletenessCalculator {
       throw new Error(`Expediente ${expedienteId} no encontrado`);
     }
 
+    const relatedContext = await this.loadRelatedContext(expedienteId, schemaName);
+
+    return this.calculateFromContext({ expediente, ...relatedContext });
+  }
+
+  async loadRelatedContext(
+    expedienteId: string,
+    schemaName: string,
+  ): Promise<Pick<CompletenessCalculationContext, 'consents' | 'quotes' | 'coverageChecks'>> {
     // Intentar cargar sub-tablas CRM. Si no existen (migración pendiente), continuar con
     // arrays vacíos para que al menos los campos del expediente contribuyan al score.
     let consents: ConsentRecord[] = [];
-    let quotes: CrmQuoteSnapshot[] = [];
-    let coverageChecks: CoverageCheck[] = [];
-
     try {
-      const expedienteData = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-        const loadedConsents = await qr.manager.find(ConsentRecord, { where: { expedienteId } });
-        const loadedCoverageChecks = await qr.manager.find(CoverageCheck, {
+      consents = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+        qr.manager.find(ConsentRecord, {
           where: { expedienteId },
-        });
-        return {
-          consents: loadedConsents,
-          coverageChecks: loadedCoverageChecks,
-        };
-      });
-
-      consents = expedienteData.consents;
-      coverageChecks = expedienteData.coverageChecks;
-      quotes = await this.crmQuoteReadPort.findByExpedienteId(schemaName, expedienteId);
-    } catch (subTableError) {
-      if (this.isSchemaCompatibilityError(subTableError)) {
-        // Sub-tablas aún no migradas — calcular con arrays vacíos para reflejar al menos
-        // los campos del expediente (identificación, interés comercial, operativa).
-        this.logger.warn(
-          `Sub-tablas CRM no disponibles para expediente ${expedienteId} en schema ${schemaName}. ` +
-            `Se calculará completitud parcial sin consents/quotes/coverage.`,
-        );
-      } else {
-        throw subTableError;
+          select: ['id', 'expedienteId', 'consentType', 'status'],
+        }),
+      );
+    } catch (consentError) {
+      if (!this.isSchemaCompatibilityError(consentError)) {
+        throw consentError;
       }
+      this.logger.warn(`Consents no disponibles para expediente ${expedienteId}.`);
     }
 
+    let coverageChecks: CoverageCheck[] = [];
     try {
-      const commercial = this.calculateCommercial(expediente, quotes);
-      const legal = this.calculateLegal(expediente, consents);
+      coverageChecks = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+        qr.manager.find(CoverageCheck, {
+          where: { expedienteId },
+          select: ['id', 'expedienteId', 'result'],
+        }),
+      );
+    } catch (coverageError) {
+      if (!this.isSchemaCompatibilityError(coverageError)) {
+        throw coverageError;
+      }
+      this.logger.warn(`Coverage checks no disponibles para expediente ${expedienteId}.`);
+    }
+
+    let quotes: CrmQuoteSnapshot[] = [];
+    try {
+      quotes = await this.crmQuoteReadPort.findByExpedienteId(schemaName, expedienteId);
+    } catch (quoteError) {
+      if (!this.isSchemaCompatibilityError(quoteError)) {
+        throw quoteError;
+      }
+      this.logger.warn(`Quotes no disponibles para expediente ${expedienteId}.`);
+    }
+
+    return { consents, coverageChecks, quotes };
+  }
+
+  async calculateFromContext(context: CompletenessCalculationContext): Promise<CompletenessResult> {
+    const { expediente, consents, quotes, coverageChecks, sensitiveFieldPresence } = context;
+    const expedienteId = expediente.id;
+    const { schemaName } = TenantContext.getOrThrow();
+
+    try {
+      const commercial = this.calculateCommercial(expediente, quotes, sensitiveFieldPresence);
+      const legal = this.calculateLegal(expediente, consents, sensitiveFieldPresence);
       const technical = Math.max(
         this.calculateTechnical(expediente, coverageChecks),
         this.calculateTechnicalFromStructuredFields(expediente),
       );
-      const operational = this.calculateOperational(expediente);
+      const operational = this.calculateOperational(expediente, sensitiveFieldPresence);
       const sectionSummary = this.sectionCompletenessService.calculateSummary({
         expediente,
         consents,
         quotes,
         coverageChecks,
+        sensitiveFieldPresence,
       });
 
       return {
@@ -132,7 +167,7 @@ export class CompletenessCalculator {
         this.logger.warn(
           `Compatibilidad temporal activada al calcular completitud del expediente ${expedienteId} en schema ${schemaName}.`,
         );
-        return this.buildFallbackFromStoredCompleteness(expediente);
+        return this.buildFallbackFromStoredCompleteness(expediente, sensitiveFieldPresence);
       }
 
       throw error;
@@ -163,18 +198,45 @@ export class CompletenessCalculator {
       where: { id: In(expedienteIds) },
     });
 
-    // 1 query: todos los consentimientos
-    const consents = await manager.find(ConsentRecord, {
-      where: { expedienteId: In(expedienteIds) },
-    });
+    // 1 query: todos los consentimientos. Una tabla ausente no debe eliminar
+    // datos obtenidos de las otras fuentes del lote.
+    let consents: ConsentRecord[] = [];
+    try {
+      consents = await manager.find(ConsentRecord, {
+        where: { expedienteId: In(expedienteIds) },
+        select: ['id', 'expedienteId', 'consentType', 'status'],
+      });
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
+      }
+      this.logger.warn('Consents no disponibles para el lote de completitud.');
+    }
 
-    // 1 query: todos los chequeos de cobertura
-    const coverageChecks = await manager.find(CoverageCheck, {
-      where: { expedienteId: In(expedienteIds) },
-    });
+    // 1 query: todos los chequeos de cobertura, con fallback independiente.
+    let coverageChecks: CoverageCheck[] = [];
+    try {
+      coverageChecks = await manager.find(CoverageCheck, {
+        where: { expedienteId: In(expedienteIds) },
+        select: ['id', 'expedienteId', 'result'],
+      });
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
+      }
+      this.logger.warn('Coverage checks no disponibles para el lote de completitud.');
+    }
 
-    // 1 query: todas las cotizaciones (vía port batch)
-    const quotes = await this.crmQuoteReadPort.findByExpedienteIds(manager, expedienteIds);
+    // 1 query: todas las cotizaciones (vía port batch), con fallback independiente.
+    let quotes: CrmQuoteSnapshot[] = [];
+    try {
+      quotes = await this.crmQuoteReadPort.findByExpedienteIds(manager, expedienteIds);
+    } catch (error) {
+      if (!this.isSchemaCompatibilityError(error)) {
+        throw error;
+      }
+      this.logger.warn('Quotes no disponibles para el lote de completitud.');
+    }
 
     // Agrupar datos por expedienteId
     const consentsByExpediente = new Map<string, ConsentRecord[]>();
@@ -241,7 +303,10 @@ export class CompletenessCalculator {
     return result;
   }
 
-  private buildFallbackFromStoredCompleteness(expediente: ExpedienteRecord): CompletenessResult {
+  private buildFallbackFromStoredCompleteness(
+    expediente: ExpedienteRecord,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): CompletenessResult {
     const commercial = expediente.completenessCommercial ?? 0;
     const legal = expediente.completenessLegal ?? 0;
     const technical = expediente.completenessTechnical ?? 0;
@@ -251,6 +316,7 @@ export class CompletenessCalculator {
       consents: [],
       quotes: [],
       coverageChecks: [],
+      sensitiveFieldPresence,
     });
 
     return {
@@ -285,21 +351,25 @@ export class CompletenessCalculator {
    * Dimensión Comercial: identificación + contacto + interés + cotización
    * PRD v2.0 §4.6
    */
-  private calculateCommercial(expediente: ExpedienteRecord, quotes: CrmQuoteSnapshot[]): number {
+  private calculateCommercial(
+    expediente: ExpedienteRecord,
+    quotes: CrmQuoteSnapshot[],
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): number {
     let score = 0;
     let total = 0;
 
     // Identificación (4 campos)
     total += 4;
-    if (expediente.fullName) score++;
+    if (expediente.fullName || sensitiveFieldPresence?.companyName) score++;
     if (expediente.documentType) score++;
-    if (expediente.documentNumberEncrypted) score++;
-    if (expediente.phonePrimaryEncrypted) score++;
+    if (sensitiveFieldPresence?.documentNumber ?? expediente.documentNumberEncrypted) score++;
+    if (sensitiveFieldPresence?.phonePrimary ?? expediente.phonePrimaryEncrypted) score++;
 
     // Contacto (2 campos)
     total += 2;
-    if (expediente.phonePrimaryEncrypted) score++;
-    if (expediente.emailPrimaryEncrypted) score++;
+    if (sensitiveFieldPresence?.phonePrimary ?? expediente.phonePrimaryEncrypted) score++;
+    if (sensitiveFieldPresence?.emailPrimary ?? expediente.emailPrimaryEncrypted) score++;
 
     // Interés comercial (3 campos)
     total += 3;
@@ -318,7 +388,11 @@ export class CompletenessCalculator {
    * Dimensión Legal: consentimiento tratamiento datos + consentimiento comercial + verificación identidad
    * PRD v2.0 §4.6
    */
-  private calculateLegal(expediente: ExpedienteRecord, consents: ConsentRecord[]): number {
+  private calculateLegal(
+    expediente: ExpedienteRecord,
+    consents: ConsentRecord[],
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): number {
     let score = 0;
     let total = 4;
 
@@ -338,8 +412,9 @@ export class CompletenessCalculator {
       requiredDocumentDefinitions.length > 0 &&
       requiredDocumentDefinitions.every(
         (definition) =>
+          sensitiveFieldPresence?.documentSupportApproved?.[definition.key] ??
           documentSupports[definition.key]?.versions?.[0]?.status ===
-          DOCUMENT_SUPPORT_STATUS.APPROVED,
+            DOCUMENT_SUPPORT_STATUS.APPROVED,
       );
 
     if (dataTreatment) score++;
@@ -391,14 +466,17 @@ export class CompletenessCalculator {
    * Dimensión Operativa: datos instalación + facturación + materiales
    * PRD v2.0 §4.6
    */
-  private calculateOperational(expediente: ExpedienteRecord): number {
+  private calculateOperational(
+    expediente: ExpedienteRecord,
+    sensitiveFieldPresence?: ExpedienteSensitiveFieldPresence,
+  ): number {
     let score = 0;
     const total = 3;
 
     // Facturación — se ingresa desde Suscriptor 360 una vez que el expediente se convierte a cliente.
-    if (expediente.paymentMethod) score++;
-    if (expediente.billingCycle) score++;
-    if (expediente.fiscalName) score++;
+    if (sensitiveFieldPresence?.paymentMethod ?? expediente.paymentMethod) score++;
+    if (sensitiveFieldPresence?.billingCycle ?? expediente.billingCycle) score++;
+    if (sensitiveFieldPresence?.fiscalName ?? expediente.fiscalName) score++;
 
     return Math.round((score / total) * 100);
   }

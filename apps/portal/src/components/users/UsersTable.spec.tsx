@@ -54,6 +54,7 @@ function renderTable(overrides: Partial<ComponentProps<typeof UsersTable>> = {})
     onRoleChange: jest.fn(),
     onClearFilters: jest.fn(),
     onCreateUser: jest.fn(),
+    onImportCsv: jest.fn(),
     currentUserId: 'other-user',
     currentUserRole: UserRole.ADMIN,
     ...overrides,
@@ -73,8 +74,20 @@ describe('UsersTable', () => {
     expect(
       screen.getByText(/crea el primer usuario interno para gestionar los accesos/i),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
+    expect(screen.queryByText('0 usuarios')).not.toBeInTheDocument();
+    expect(screen.getByText('Aún no hay usuarios').closest('.max-w-xl')).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Nuevo usuario' })[0]!);
     expect(props.onCreateUser).toHaveBeenCalled();
+  });
+
+  it('ubica alta e importación en la barra del listado', () => {
+    const { props } = renderTable();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Importar CSV' }));
+
+    expect(props.onCreateUser).toHaveBeenCalledTimes(1);
+    expect(props.onImportCsv).toHaveBeenCalledTimes(1);
   });
 
   it('usa par tonal secondary para MFA habilitado', () => {
@@ -97,6 +110,8 @@ describe('UsersTable', () => {
     expect(
       screen.getByText(/ningún usuario coincide con los filtros actuales/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText('0 usuarios')).not.toBeInTheDocument();
+    expect(screen.getByText('Sin resultados').closest('.max-w-xl')).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: 'Limpiar filtros' })[0]!);
     expect(props.onClearFilters).toHaveBeenCalled();
   });
@@ -119,13 +134,13 @@ describe('UsersTable', () => {
     expect(props.onLoadMore).toHaveBeenCalled();
   });
 
-  it('ADR-064: strip único de conteo y footer solo con Cargar más si hasMore', () => {
+  it('ADR-064: footer solo con Cargar más si hasMore, sin barra de conteo', () => {
     const { unmount } = renderTable({
       users: [baseUser],
       meta: { ...EMPTY_LIST_META, nextCursor: 'next-page', total: 3 },
     });
 
-    expect(screen.getByText('1 de 3 usuarios')).toBeInTheDocument();
+    expect(screen.queryByText('1 de 3 usuarios')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
     expect(screen.queryByText('Fin de resultados')).not.toBeInTheDocument();
     expect(screen.getByText(/Mostrando 1 de 3 usuarios/)).toHaveClass('sr-only');
@@ -136,7 +151,7 @@ describe('UsersTable', () => {
       meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
     });
 
-    expect(screen.getByText('1 usuario')).toBeInTheDocument();
+    expect(screen.queryByText('1 usuario')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cargar más' })).not.toBeInTheDocument();
     expect(screen.queryByText('Fin de resultados')).not.toBeInTheDocument();
     expect(screen.queryByText(/Mostrando/)).not.toBeInTheDocument();
@@ -179,6 +194,7 @@ describe('UsersTable', () => {
         onRoleChange={jest.fn()}
         onClearFilters={jest.fn()}
         onCreateUser={jest.fn()}
+        onImportCsv={jest.fn()}
         currentUserId="admin-1"
         currentUserRole={UserRole.ADMIN}
       />,
@@ -215,6 +231,7 @@ describe('UsersTable', () => {
         onRoleChange={jest.fn()}
         onClearFilters={jest.fn()}
         onCreateUser={jest.fn()}
+        onImportCsv={jest.fn()}
         currentUserId="sys-1"
         currentUserRole={PlatformRole.SYSTEM_ADMIN}
       />,

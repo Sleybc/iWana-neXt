@@ -428,7 +428,7 @@ export function AdditionalServicesPanel({
   return (
     <PortalPanel
       eyebrow="Catálogo"
-      title="Servicios adicionales"
+      title="Servicios"
       description="Administra servicios complementarios, tipos de cobro y tarifas."
       actions={
         <>
@@ -482,8 +482,8 @@ export function AdditionalServicesPanel({
         />
       ) : services.length === 0 && !hasActiveFilters ? (
         <PortalEmptyState
-          title="Catálogo listo para servicios"
-          description="No hay servicios adicionales. Crea uno para empezar."
+          title="Aún no hay servicios"
+          description="Crea el primero para definir cobros únicos, recurrentes o bajo demanda."
           icon={CheckCircle2}
           {...(canEdit
             ? {

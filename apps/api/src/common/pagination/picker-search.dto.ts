@@ -26,7 +26,8 @@ function transformQueryBoolean({ value }: { value: unknown }): unknown {
 /**
  * Query base E-4: `q` + `limit` (máx. 20).
  * El umbral de 2 caracteres lo aplica el FE (CA-PICK-01); la API acepta q vacío
- * y responde `{ data: [], total: 0 }` sin escanear el tenant.
+ * y responde el top-N del universo filtrado por contexto (LIMIT 20, ordenado por
+ * nombre) sin escanear todo el tenant.
  */
 export class PickerSearchQueryDto {
   @ApiPropertyOptional({

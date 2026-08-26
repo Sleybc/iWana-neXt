@@ -139,11 +139,13 @@ describe('catalog-filter-params', () => {
       });
     });
 
-    it('omite defaults y preserva tab, focus y offerStatus', () => {
+    it('omite defaults y preserva tab, focus, offerStatus, page y size', () => {
       const params = new URLSearchParams({
         tab: 'plans',
         focus: 'abc',
         offerStatus: 'AT_RISK',
+        page: '2',
+        size: '10',
         q: 'old',
         status: 'ACTIVE',
         missingPrice: '1',
@@ -153,6 +155,8 @@ describe('catalog-filter-params', () => {
       expect(params.get('tab')).toBe('plans');
       expect(params.get('focus')).toBe('abc');
       expect(params.get('offerStatus')).toBe('AT_RISK');
+      expect(params.get('page')).toBe('2');
+      expect(params.get('size')).toBe('10');
       expect(params.has('q')).toBe(false);
       expect(params.has('status')).toBe(false);
       expect(params.has('missingPrice')).toBe(false);

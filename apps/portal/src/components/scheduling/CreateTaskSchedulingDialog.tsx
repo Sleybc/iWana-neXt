@@ -59,7 +59,7 @@ const optionalUuidField = z
   .or(z.literal(''))
   .refine(
     (value) => !value || z.string().uuid().safeParse(value).success,
-    'Ingresa un UUID válido.',
+    'Ingresa un identificador válido.',
   );
 
 const createTaskSchedulingSchema = z

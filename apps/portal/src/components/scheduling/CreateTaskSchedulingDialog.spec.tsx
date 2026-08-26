@@ -104,6 +104,6 @@ describe('CreateTaskSchedulingDialog', () => {
     });
 
     expect(screen.queryByLabelText('Fecha de visita')).not.toBeInTheDocument();
-    expect(screen.getByText('Continuidad Operativa (Orden de Trabajo)')).toBeInTheDocument();
+    expect(screen.getByText('Continuidad operativa')).toBeInTheDocument();
   });
 });

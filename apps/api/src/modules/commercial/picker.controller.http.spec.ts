@@ -131,16 +131,19 @@ describe('CommercialPickerSearchController HTTP', () => {
     await request(app.getHttpServer()).get('/api/v1/commercial/plans/search?q=fibra').expect(401);
   });
 
-  it('GET /api/v1/commercial/plans/search con q vacío no explota', async () => {
-    catalogServiceMock.searchForPicker.mockResolvedValue({ data: [], total: 0 });
+  it('GET /api/v1/commercial/plans/search con q vacío devuelve top-N del catálogo', async () => {
+    catalogServiceMock.searchForPicker.mockResolvedValue({
+      data: [{ id: 'plan-1', label: 'Plan Fibra 300', sublabel: 'Activo' }],
+      total: 42,
+    });
 
     await request(app.getHttpServer())
       .get('/api/v1/commercial/plans/search')
       .set('Authorization', 'Bearer sales-token')
       .expect(200)
       .expect(({ body }) => {
-        expect(body.data).toEqual([]);
-        expect(body.total).toBe(0);
+        expect(body.data).toEqual([{ id: 'plan-1', label: 'Plan Fibra 300', sublabel: 'Activo' }]);
+        expect(body.total).toBe(42);
       });
   });
 

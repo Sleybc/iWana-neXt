@@ -26,6 +26,7 @@ import {
 } from '@/components/commercial/commercial-labels';
 
 export function TaxSimulatorPanel() {
+  const [personType, setPersonType] = useState<SimulateTaxDto['personType']>('NATURAL');
   const [segment, setSegment] = useState<SimulateTaxDto['segment']>('RESIDENTIAL');
   const [stratum, setStratum] = useState<string>('');
   const [municipalityCode, setMunicipalityCode] = useState<string>('');
@@ -74,6 +75,7 @@ export function TaxSimulatorPanel() {
     setHasSimulated(true);
     try {
       const dto: SimulateTaxDto = {
+        personType,
         segment,
         ...(stratum ? { stratum: Number(stratum) } : {}),
         ...(municipalityCode ? { municipalityCode } : {}),
@@ -81,7 +83,11 @@ export function TaxSimulatorPanel() {
       const data = await commercialApi.simulateTax(dto);
       setResults(data.applications);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al ejecutar simulación');
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'No pudimos simular. Revisa los parámetros e intenta de nuevo.',
+      );
     } finally {
       setLoading(false);
     }
@@ -90,11 +96,25 @@ export function TaxSimulatorPanel() {
   return (
     <div className="flex flex-col gap-4">
       <PortalPanel
-        eyebrow="Tributación"
-        title="Parámetros de simulación"
-        description="Evalúa qué reglas tributarias aplican según segmento, estrato y municipio."
+        eyebrow="Reglas"
+        title="Simulador"
+        description="Evalúa qué reglas tributarias aplican según tipo de persona, segmento, estrato y municipio."
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tax-simulator-person-type" className="portal-eyebrow-muted">
+              Tipo de persona
+            </label>
+            <Select
+              id="tax-simulator-person-type"
+              value={personType}
+              onChange={(e) => setPersonType(e.target.value as SimulateTaxDto['personType'])}
+              className={portalSelectTriggerClassName}
+            >
+              <option value="NATURAL">Persona natural</option>
+              <option value="JURIDICA">Persona jurídica</option>
+            </Select>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="tax-simulator-segment" className="portal-eyebrow-muted">
               Segmento
@@ -113,14 +133,14 @@ export function TaxSimulatorPanel() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="tax-simulator-stratum" className="portal-eyebrow-muted">
-              Estrato (opcional)
+              Estrato
             </label>
             <Input
               id="tax-simulator-stratum"
               type="number"
               min={1}
               max={6}
-              placeholder="Ej. 1 – 6"
+              placeholder={personType === 'NATURAL' ? 'Obligatorio (1 – 6)' : 'Opcional (1 – 6)'}
               value={stratum}
               onChange={(e) => setStratum(e.target.value)}
               className={portalFieldClassName}
@@ -128,11 +148,12 @@ export function TaxSimulatorPanel() {
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="tax-simulator-municipality" className="portal-eyebrow-muted">
-              Código municipio (opcional)
+              Municipio
             </label>
             <Input
               id="tax-simulator-municipality"
               placeholder="Ej. 11001"
+              helperText="Código DANE de 5 dígitos. Opcional."
               value={municipalityCode}
               onChange={(e) => setMunicipalityCode(e.target.value)}
               className={portalFieldClassName}
@@ -211,7 +232,7 @@ export function TaxSimulatorPanel() {
                   className={cn(
                     'rounded-2xl border border-gray-200 px-4 py-3 dark:border-dark-border',
                     index === 0
-                      ? 'border-iwana-secondary-700/30 bg-iwana-surface-soft dark:bg-dark-surface-3'
+                      ? 'border-iwana-primary/20 bg-white shadow-iwana-active dark:border-iwana-primary-400/30 dark:bg-dark-surface-2'
                       : 'bg-white dark:bg-dark-surface-2',
                   )}
                 >
@@ -220,7 +241,7 @@ export function TaxSimulatorPanel() {
                       {resolveDefinitionLabel(snap.taxDefinitionId)}
                     </p>
                     {index === 0 ? (
-                      <Badge variant="success" className="text-xs">
+                      <Badge variant="lime" className="text-xs">
                         Regla ganadora
                       </Badge>
                     ) : null}

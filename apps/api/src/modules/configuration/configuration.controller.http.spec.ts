@@ -236,6 +236,12 @@ describe('ConfigurationController HTTP', () => {
               route: '/dashboard/settings/calendar',
               requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
             }),
+            expect.objectContaining({
+              key: SettingsSectionKey.RULES,
+              status: SettingsSectionStatus.AVAILABLE,
+              route: '/dashboard/settings/rules',
+              requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
+            }),
           ]),
         );
         expect(body.data).not.toContainEqual(

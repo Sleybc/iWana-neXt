@@ -1,13 +1,12 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { Badge } from '@iwana/ui';
+import { type ReactNode } from 'react';
+import { Badge, Button, cn } from '@iwana/ui';
 import {
   ArrowRightLeft,
   ChevronDown,
   Edit,
   FileText,
-  Loader2,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -16,13 +15,19 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react';
-import { interactiveFocusClassName } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalFilterChip,
+  PortalPageSizeSelect,
+  PortalSkeletonBlock,
+  PortalTablePager,
+} from '@/components/shared/portal-ui';
+import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import type {
-  ContactAttemptRecord,
-  ExpedienteActivityItem,
-  ExpedienteTimelineChange,
-  OperationalHistoryItem,
-  SalesAttributionRecord,
+  ExpedienteContactTimelineEvent,
+  ExpedienteSystemTimelineEvent,
+  ExpedienteTimelineEvent,
 } from '@/lib/api-client';
 import {
   formatAcquisitionChannel,
@@ -35,40 +40,69 @@ import {
 
 export type TimelineKind = 'contact' | 'responsibility' | 'attribution' | 'system' | 'pipeline';
 export type TimelineFilter = 'all' | 'contact' | 'asignaciones' | 'pipeline' | 'system';
-export type TimelinePageSize = 5 | 10 | 20 | 50 | 'all';
+export type TimelinePageSize = 5 | 10 | 20 | 50;
 
 export const TIMELINE_DEFAULT_PAGE_SIZE: TimelinePageSize = 5;
-export const TIMELINE_PAGE_SIZE_OPTIONS: TimelinePageSize[] = [5, 10, 20, 50, 'all'];
+export const TIMELINE_PAGE_SIZE_OPTIONS: TimelinePageSize[] = [5, 10, 20, 50];
+export const TIMELINE_MAX_EVENTS = 500;
+
+const TIMELINE_RESOURCE = { singular: 'evento', plural: 'eventos' } as const;
 
 export interface TimelineEntry {
   id: string;
   kind: TimelineKind;
   sortAt: Date;
-  data:
-    | ContactAttemptRecord
-    | OperationalHistoryItem
-    | SalesAttributionRecord
-    | ExpedienteActivityItem
-    | ExpedienteTimelineChange;
+  data: ExpedienteTimelineEvent;
+}
+
+function getTimelineEventDate(event: ExpedienteTimelineEvent): string {
+  switch (event.kind) {
+    case 'contact':
+      return event.attemptedAt;
+    case 'responsibility':
+      return event.changedAt;
+    case 'attribution':
+      return event.attributedAt;
+    case 'pipeline':
+      return event.changedAt;
+    case 'system':
+      return event.occurredAt;
+  }
+}
+
+export function toTimelineEntry(event: ExpedienteTimelineEvent): TimelineEntry {
+  return {
+    id: `${event.kind}:${event.id}`,
+    kind: event.kind,
+    sortAt: new Date(getTimelineEventDate(event)),
+    data: event,
+  };
+}
+
+export function dedupeTimelineEvents(events: ExpedienteTimelineEvent[]): ExpedienteTimelineEvent[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    const key = `${event.kind}:${event.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 interface ExpedienteTimelinePanelProps {
-  loadingAttempts: boolean;
-  allTimelineEntries: TimelineEntry[];
+  loadingTimeline: boolean;
+  timelineError: string | null;
+  onRetryTimeline: () => void;
   timelineEntries: TimelineEntry[];
-  paginatedTimelineEntries: TimelineEntry[];
+  timelineTotal: number;
   activeFilter: TimelineFilter;
   onActiveFilterChange: (filter: TimelineFilter) => void;
   timelinePageSize: TimelinePageSize;
   onTimelinePageSizeChange: (size: TimelinePageSize) => void;
   isHistoryExpanded: boolean;
   onHistoryExpandedChange: (expanded: boolean) => void;
-  showTimelinePagination: boolean;
   timelinePage: number;
   timelineTotalPages: number;
-  timelinePageButtons: number[];
-  firstTimelinePageButton: number;
-  lastTimelinePageButton: number;
   onTimelinePageChange: (page: number) => void;
 }
 
@@ -88,7 +122,7 @@ function ChannelIcon({ channel, className }: { channel: string; className?: stri
   }
 }
 
-function ContactEntry({ attempt }: { attempt: ContactAttemptRecord }) {
+function ContactEntry({ attempt }: { attempt: ExpedienteContactTimelineEvent }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
@@ -103,14 +137,20 @@ function ContactEntry({ attempt }: { attempt: ContactAttemptRecord }) {
       {attempt.notes && (
         <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-300">{attempt.notes}</p>
       )}
-      {attempt.actorName && (
-        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-400">por {attempt.actorName}</p>
+      {attempt.actor.name && (
+        <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-400">
+          por {attempt.actor.name}
+        </p>
       )}
     </div>
   );
 }
 
-function ResponsibilityEntry({ item }: { item: OperationalHistoryItem }) {
+function ResponsibilityEntry({
+  item,
+}: {
+  item: Extract<ExpedienteTimelineEvent, { kind: 'responsibility' }>;
+}) {
   return (
     <div>
       <p className="text-xs font-medium text-gray-900 dark:text-white">
@@ -118,7 +158,7 @@ function ResponsibilityEntry({ item }: { item: OperationalHistoryItem }) {
       </p>
       {item.newResponsible.role && (
         <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-          Nuevo rol: {item.newResponsible.role}
+          Nuevo rol: {getPortalUserRoleLabel(item.newResponsible.role)}
         </p>
       )}
       {item.previousResponsible && (
@@ -133,12 +173,17 @@ function ResponsibilityEntry({ item }: { item: OperationalHistoryItem }) {
   );
 }
 
-function AttributionEntry({ item }: { item: SalesAttributionRecord }) {
+function AttributionEntry({
+  item,
+}: {
+  item: Extract<ExpedienteTimelineEvent, { kind: 'attribution' }>;
+}) {
   return (
     <div>
       <p className="text-xs font-medium text-gray-900 dark:text-white">{item.actorName}</p>
       <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-        {item.actorRole} · {formatAcquisitionChannel(item.acquisitionChannel)}
+        {getPortalUserRoleLabel(item.actorRole)} ·{' '}
+        {formatAcquisitionChannel(item.acquisitionChannel)}
       </p>
       {item.revokedAt && (
         <p className="mt-1 text-[10px] text-red-400">
@@ -149,7 +194,11 @@ function AttributionEntry({ item }: { item: SalesAttributionRecord }) {
   );
 }
 
-function PipelineEntry({ change }: { change: ExpedienteTimelineChange }) {
+function PipelineEntry({
+  change,
+}: {
+  change: Extract<ExpedienteTimelineEvent, { kind: 'pipeline' }>;
+}) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +223,7 @@ function PipelineEntry({ change }: { change: ExpedienteTimelineChange }) {
   );
 }
 
-function SystemActivityEntry({ activity }: { activity: ExpedienteActivityItem }) {
+function SystemActivityEntry({ activity }: { activity: ExpedienteSystemTimelineEvent }) {
   const actorName = activity.actor?.name?.trim() || null;
   return (
     <div className="space-y-0">
@@ -190,21 +239,9 @@ function SystemActivityEntry({ activity }: { activity: ExpedienteActivityItem })
           )}
         </div>
       )}
-      {activity.type === 'STATUS_CHANGED' && activity.toStatus && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={getStatusBadgeVariant(activity.toStatus)}>
-            {formatExpedienteStatus(activity.toStatus)}
-          </Badge>
-          {activity.fromStatus && (
-            <span className="text-[10px] text-gray-400 dark:text-gray-400">
-              ← {formatExpedienteStatus(activity.fromStatus)}
-            </span>
-          )}
-        </div>
-      )}
       {activity.type === 'CREATED' && (
         <p className="text-xs leading-tight text-gray-600 dark:text-gray-300">
-          Registro inicial del expediente.
+          Registro inicial de la oportunidad.
         </p>
       )}
       {actorName && (
@@ -222,7 +259,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
   const iconNode =
     entry.kind === 'contact' ? (
       <ChannelIcon
-        channel={(entry.data as ContactAttemptRecord).channel}
+        channel={(entry.data as ExpedienteContactTimelineEvent).channel}
         className="h-3.5 w-3.5 text-iwana-primary"
       />
     ) : entry.kind === 'responsibility' ? (
@@ -233,7 +270,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
       <ArrowRightLeft className="h-3.5 w-3.5 text-iwana-primary" aria-hidden="true" />
     ) : (
       (() => {
-        const act = entry.data as ExpedienteActivityItem;
+        const act = entry.data as ExpedienteSystemTimelineEvent;
         if (act.type === 'CREATED') {
           return <FileText className="h-3.5 w-3.5 text-iwana-secondary-700" aria-hidden="true" />;
         }
@@ -254,7 +291,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
           : entry.kind === 'pipeline'
             ? kindMeta.label
             : (() => {
-                const act = entry.data as ExpedienteActivityItem;
+                const act = entry.data as ExpedienteSystemTimelineEvent;
                 if (act.type === 'CREATED') return 'Oportunidad creada';
                 if (act.type === 'SECTION_UPDATED') return 'Actualización de sección';
                 return kindMeta.label;
@@ -271,18 +308,26 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
         <p className="text-[10px] font-bold uppercase tracking-wide leading-tight text-gray-400 dark:text-gray-400">
           {kindLabel}
         </p>
-        {entry.kind === 'contact' && <ContactEntry attempt={entry.data as ContactAttemptRecord} />}
+        {entry.kind === 'contact' && (
+          <ContactEntry attempt={entry.data as ExpedienteContactTimelineEvent} />
+        )}
         {entry.kind === 'responsibility' && (
-          <ResponsibilityEntry item={entry.data as OperationalHistoryItem} />
+          <ResponsibilityEntry
+            item={entry.data as Extract<ExpedienteTimelineEvent, { kind: 'responsibility' }>}
+          />
         )}
         {entry.kind === 'attribution' && (
-          <AttributionEntry item={entry.data as SalesAttributionRecord} />
+          <AttributionEntry
+            item={entry.data as Extract<ExpedienteTimelineEvent, { kind: 'attribution' }>}
+          />
         )}
         {entry.kind === 'pipeline' && (
-          <PipelineEntry change={entry.data as ExpedienteTimelineChange} />
+          <PipelineEntry
+            change={entry.data as Extract<ExpedienteTimelineEvent, { kind: 'pipeline' }>}
+          />
         )}
         {entry.kind === 'system' && (
-          <SystemActivityEntry activity={entry.data as ExpedienteActivityItem} />
+          <SystemActivityEntry activity={entry.data as ExpedienteSystemTimelineEvent} />
         )}
         <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-400">
           {entry.sortAt.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}
@@ -293,37 +338,63 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
 }
 
 export function ExpedienteTimelinePanel({
-  loadingAttempts,
-  allTimelineEntries,
+  loadingTimeline,
+  timelineError,
+  onRetryTimeline,
   timelineEntries,
-  paginatedTimelineEntries,
+  timelineTotal,
   activeFilter,
   onActiveFilterChange,
   timelinePageSize,
   onTimelinePageSizeChange,
   isHistoryExpanded,
   onHistoryExpandedChange,
-  showTimelinePagination,
   timelinePage,
   timelineTotalPages,
-  timelinePageButtons,
-  firstTimelinePageButton,
-  lastTimelinePageButton,
   onTimelinePageChange,
 }: ExpedienteTimelinePanelProps) {
+  const timelineFrom = timelineTotal === 0 ? 0 : (timelinePage - 1) * timelinePageSize + 1;
+  const timelineTo = Math.min(timelinePage * timelinePageSize, timelineTotal);
+
+  const filterOptions: { key: TimelineFilter; label: string; icon: ReactNode | null }[] = [
+    { key: 'all', label: 'Todos', icon: null },
+    {
+      key: 'contact',
+      label: 'Contactos',
+      icon: <Phone className="h-3 w-3" aria-hidden="true" />,
+    },
+    {
+      key: 'pipeline',
+      label: 'Estados',
+      icon: <ArrowRightLeft className="h-3 w-3" aria-hidden="true" />,
+    },
+    {
+      key: 'asignaciones',
+      label: 'Asignaciones',
+      icon: <UserCheck className="h-3 w-3" aria-hidden="true" />,
+    },
+    {
+      key: 'system',
+      label: 'Auditoría',
+      icon: <FileText className="h-3 w-3" aria-hidden="true" />,
+    },
+  ];
+
   return (
     <div>
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-3 space-y-2">
         <button
+          type="button"
           onClick={() => onHistoryExpandedChange(!isHistoryExpanded)}
-          disabled={allTimelineEntries.length === 0 && !loadingAttempts}
+          disabled={timelineTotal === 0 && !loadingTimeline}
+          aria-expanded={isHistoryExpanded}
           className="group flex items-center gap-2 outline-none"
         >
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-400">
             Bitácora de actividad
-            {allTimelineEntries.length > 0 && ` (${allTimelineEntries.length})`}
+            {timelineTotal > 0 && ` (${timelineTotal})`}
           </p>
-          {allTimelineEntries.length > 0 && (
+          {timelineTotal > 0 && (
             <ChevronDown
               className={`h-4 w-4 text-gray-400 transition-transform duration-200 dark:text-gray-400 ${
                 isHistoryExpanded ? 'rotate-180' : ''
@@ -332,182 +403,118 @@ export function ExpedienteTimelinePanel({
             />
           )}
         </button>
-        {allTimelineEntries.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap gap-1.5">
-              {(
-                [
-                  { key: 'all', label: 'Todos', icon: null },
-                  {
-                    key: 'contact',
-                    label: 'Contactos',
-                    icon: <Phone className="h-3 w-3" aria-hidden="true" />,
-                  },
-                  {
-                    key: 'pipeline',
-                    label: 'Pipeline',
-                    icon: <ArrowRightLeft className="h-3 w-3" aria-hidden="true" />,
-                  },
-                  {
-                    key: 'asignaciones',
-                    label: 'Asignaciones',
-                    icon: <UserCheck className="h-3 w-3" aria-hidden="true" />,
-                  },
-                  {
-                    key: 'system',
-                    label: 'Auditoría',
-                    icon: <FileText className="h-3 w-3" aria-hidden="true" />,
-                  },
-                ] as { key: TimelineFilter; label: string; icon: ReactNode | null }[]
-              ).map((filterOption) => (
-                <button
-                  key={filterOption.key}
-                  type="button"
-                  onClick={() => onActiveFilterChange(filterOption.key)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                    activeFilter === filterOption.key
-                      ? 'bg-iwana-primary text-white'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-border'
-                  }`}
-                >
-                  {filterOption.icon}
-                  {filterOption.label}
-                </button>
-              ))}
-            </div>
 
-            <div className="h-4 w-px bg-gray-200 dark:bg-dark-border" aria-hidden="true" />
-
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
-                Ver
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {TIMELINE_PAGE_SIZE_OPTIONS.map((size) => {
-                  const isActive = timelinePageSize === size;
-                  const label = size === 'all' ? 'Todo' : String(size);
-
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => onTimelinePageSizeChange(size)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors ${
-                        isActive
-                          ? 'bg-iwana-secondary-700 text-white'
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-border'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+        {/* Toolbar siempre visible: no desmontar con filtro vacío (total=0). */}
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            role="toolbar"
+            aria-label="Filtros de la bitácora"
+            className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-0.5"
+          >
+            {filterOptions.map((filterOption) => (
+              <PortalFilterChip
+                key={filterOption.key}
+                active={activeFilter === filterOption.key}
+                onClick={() => onActiveFilterChange(filterOption.key)}
+                className="shrink-0 gap-1.5"
+              >
+                {filterOption.icon}
+                {filterOption.label}
+              </PortalFilterChip>
+            ))}
           </div>
-        )}
+
+          <PortalPageSizeSelect
+            id="expediente-timeline-page-size"
+            density="compact"
+            value={timelinePageSize}
+            options={TIMELINE_PAGE_SIZE_OPTIONS}
+            onChange={(size) => {
+              if ((TIMELINE_PAGE_SIZE_OPTIONS as readonly number[]).includes(size)) {
+                onTimelinePageSizeChange(size as TimelinePageSize);
+              }
+            }}
+            className="shrink-0"
+          />
+        </div>
       </div>
 
-      {loadingAttempts ? (
-        <div className="flex items-center justify-center py-10">
-          <Loader2 className="h-5 w-5 animate-spin text-iwana-primary" aria-hidden="true" />
+      {loadingTimeline && timelineEntries.length === 0 ? (
+        <div className="space-y-3 py-3" role="status" aria-live="polite">
+          <PortalSkeletonBlock className="h-20 rounded-2xl" />
+          <PortalSkeletonBlock className="h-20 rounded-2xl" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">Cargando la bitácora…</p>
         </div>
-      ) : allTimelineEntries.length === 0 ? (
-        <div className="rounded-[14px] border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center dark:border-dark-border dark:bg-dark-surface-3">
-          <Phone className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-400" aria-hidden="true" />
-          <p className="mt-3 text-sm text-gray-400 dark:text-gray-400">
-            Aún no hay actividad registrada para esta oportunidad.
-          </p>
-        </div>
+      ) : timelineError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar la bitácora"
+          description={timelineError}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={onRetryTimeline}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : timelineTotal === 0 ? (
+        <PortalEmptyState
+          title={
+            activeFilter === 'all' ? 'Aún no hay actividad' : 'Sin resultados para este filtro'
+          }
+          description={
+            activeFilter === 'all'
+              ? 'Cuando se registre una actividad, aparecerá aquí.'
+              : 'Prueba con otro filtro para revisar la actividad disponible.'
+          }
+          icon={Phone}
+          action={
+            activeFilter !== 'all' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => onActiveFilterChange('all')}
+              >
+                Limpiar filtro
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         isHistoryExpanded && (
           <>
-            <div className="relative ml-4 space-y-3 border-l border-gray-100 pl-0 dark:border-dark-border">
-              {timelineEntries.length > 0 ? (
-                paginatedTimelineEntries.map((entry) => (
-                  <TimelineItem key={entry.id} entry={entry} />
-                ))
-              ) : (
-                <p className="py-4 text-sm text-gray-400 dark:text-gray-400">
-                  Sin resultados para este filtro.
-                </p>
+            <div
+              className={cn(
+                'relative ml-4 space-y-3 border-l border-gray-100 pl-0 dark:border-dark-border',
               )}
+              aria-busy={loadingTimeline || undefined}
+            >
+              {loadingTimeline && (
+                <span className="sr-only" role="status" aria-live="polite">
+                  Actualizando la bitácora…
+                </span>
+              )}
+              {timelineEntries.map((entry) => (
+                <TimelineItem key={entry.id} entry={entry} />
+              ))}
             </div>
 
-            {showTimelinePagination && (
-              <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <button
-                  type="button"
-                  onClick={() => onTimelinePageChange(Math.max(1, timelinePage - 1))}
-                  disabled={timelinePage === 1}
-                  className={`inline-flex min-h-11 items-center rounded-lg border border-gray-200 px-3 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border ${interactiveFocusClassName}`}
-                >
-                  Anterior
-                </button>
-                <span className="whitespace-nowrap">
-                  Página {timelinePage} de {timelineTotalPages}
-                </span>
-                <div className="hidden items-center gap-2 sm:flex">
-                  {firstTimelinePageButton > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onTimelinePageChange(1)}
-                        aria-label="Página 1"
-                        aria-current={timelinePage === 1 ? 'page' : undefined}
-                        className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-200 px-2 dark:border-dark-border ${interactiveFocusClassName}`}
-                      >
-                        1
-                      </button>
-                      {firstTimelinePageButton > 2 && <span className="px-0.5">...</span>}
-                    </>
-                  )}
-
-                  {timelinePageButtons.map((page) => (
-                    <button
-                      key={page}
-                      type="button"
-                      onClick={() => onTimelinePageChange(page)}
-                      aria-label={`Página ${page}`}
-                      aria-current={page === timelinePage ? 'page' : undefined}
-                      className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border px-2 ${
-                        page === timelinePage
-                          ? 'border-iwana-primary bg-iwana-primary text-white'
-                          : 'border-gray-200 dark:border-dark-border'
-                      } ${interactiveFocusClassName}`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-
-                  {lastTimelinePageButton < timelineTotalPages && (
-                    <>
-                      {lastTimelinePageButton < timelineTotalPages - 1 && (
-                        <span className="px-0.5">...</span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onTimelinePageChange(timelineTotalPages)}
-                        aria-label={`Página ${timelineTotalPages}`}
-                        aria-current={timelinePage === timelineTotalPages ? 'page' : undefined}
-                        className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-200 px-2 dark:border-dark-border ${interactiveFocusClassName}`}
-                      >
-                        {timelineTotalPages}
-                      </button>
-                    </>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onTimelinePageChange(Math.min(timelineTotalPages, timelinePage + 1))
-                  }
-                  disabled={timelinePage === timelineTotalPages}
-                  className={`inline-flex min-h-11 items-center rounded-lg border border-gray-200 px-3 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border ${interactiveFocusClassName}`}
-                >
-                  Siguiente
-                </button>
-              </div>
+            {timelineTotalPages > 1 && (
+              <PortalTablePager
+                density="compact"
+                className="mt-3 border-0 px-0 py-2"
+                page={timelinePage}
+                pageCount={timelineTotalPages}
+                onPageChange={onTimelinePageChange}
+                from={timelineFrom}
+                to={timelineTo}
+                total={timelineTotal}
+                resource={TIMELINE_RESOURCE}
+                loading={loadingTimeline}
+                labels={{
+                  nav: () => 'Paginación de la bitácora de actividad',
+                }}
+              />
             )}
           </>
         )

@@ -1,13 +1,17 @@
 # Contrato DS — `PortalTablePager`, `PortalPageSizeSelect` y `PortalDataTableSortableHead`
 
-**Versión:** 1.1 (v1.1 añade el encabezado ordenable, por la enmienda de alcance de ADR-065)
+**Versión:** 1.3 (v1.3 añade `density` compacta para paneles embebidos; v1.2 documenta el guard de `options` explícito y el techo local 100; v1.1 añade el encabezado ordenable, por la enmienda de alcance de ADR-065)
 **Estado:** **Vigente** — [ADR-065](../adrs/ADR-065-Paginacion-Numerada-Tablas-Operativas.md) aprobado por el CTO el 2026-07-24
-**Fecha:** 2026-07-24
+**Fecha:** 2026-07-24 · enmienda v1.2: 2026-08-19 · enmienda v1.3: 2026-08-25
 **Autor:** AI-DS-OWNER (consulta) · consolidado por AI-EM-ARCH
 **Aprobación:** carril rápido DS (componente + estados; sin alcance, sin contrato de datos, sin boundary, **cero tokens nuevos**)
 **Relaciona:** [spec UX](2026-07-24-paginacion-numerada-ux.md), [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §2, `component-recipes.md` §2
 
 > **Nota de desempate.** El borrador original de DS-OWNER mantenía el conteo exclusivo en `PortalResultsStrip`, con el pie limitado a `Página 3 de 12`. AI-EM-ARCH resolvió a favor del conteo en el pie (ADR-065 §Decisión 4), por instrucción del CTO y coincidencia con la enmienda E3 de AI-PROD-UX. Este documento refleja el contrato **ya resuelto**: `PortalTablePager` lleva el rango, y el strip lo cede en modo paginado.
+
+> **v1.2 (2026-08-19).** Un `options` explícito valida **pertenencia al array pasado**, no el rango 10–50 del token default. El techo local documentado es 100 (`MAX_LIMIT` del API). `options` sigue `readonly number[]`. No existe `{ value: 'all' }` ni `PORTAL_PAGE_SIZE_ALL`: «Todos» no forma parte del contrato. El token global permanece `[10, 20, 50]` con default 20.
+
+> **v1.3 (2026-08-25).** `density?: 'default' | 'compact'` en `PortalTablePager` y `PortalPageSizeSelect`. El default permanece `h-11` (target iWana 44 px, ADR-065). `compact` densifica a `h-8` (32 px) **solo** en paneles embebidos densos (bitácora, peeks secundarios); cumple WCAG 2.5.8 AA (24 px) y se documenta como excepción de densidad auxiliar, no como rebaja del default. Prohibido usar `compact` en tablas operativas de módulo.
 
 ---
 
@@ -78,6 +82,11 @@ export interface PortalTablePagerProps {
   /** Sobrescritura parcial de copy. Prohibido usarlo para inyectar nodos. */
   labels?: Partial<PortalTablePagerLabels> | undefined;
   className?: string | undefined;
+  /**
+   * Densidad visual. Default `'default'` (h-11, ADR-065).
+   * `'compact'` (h-8) solo paneles embebidos densos — ver §4-bis.
+   */
+  density?: 'default' | 'compact' | undefined;
 }
 
 export const PORTAL_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
@@ -88,11 +97,13 @@ export interface PortalPageSizeSelectProps {
   value: number;
   /** REQUERIDO. El consumidor DEBE resetear a page=1 en el mismo commit. */
   onChange: (pageSize: number) => void;
-  /** Default PORTAL_PAGE_SIZE_OPTIONS. Valor fuera de 10–50 lanza en dev (ADR-064 §2). */
+  /** Default PORTAL_PAGE_SIZE_OPTIONS. Un override explícito valida pertenencia al array, no el rango 10–50. Techo local documentado: 100. Sin `'all'`. */
   options?: readonly number[] | undefined;
   disabled?: boolean | undefined;
   id?: string | undefined;   // default useId()
   className?: string | undefined;
+  /** Misma semántica que `PortalTablePager.density`. Default `'default'`. */
+  density?: 'default' | 'compact' | undefined;
 }
 ```
 
@@ -103,6 +114,7 @@ export interface PortalPageSizeSelectProps {
 - **`PORTAL_DEFAULT_PAGE_SIZE` es un token, no un literal.** Prohibido `const PAGE_SIZE = 20` local en pantallas nuevas. Debe permanecer alineado con `USERS_PAGE_SIZE` (`apps/portal/src/components/users/users-query.ts`); moverlos por separado es hallazgo.
 - **El selector se inyecta por `pageSizeControl`**, no se acopla dentro del pager: permite colocarlo fuera del pie bajo `sm` (spec UX §5) sin prop drilling inverso.
 - **`from`/`to`/`total` se derivan en el consumidor** a partir de `meta` — el servidor no los envía, para que servidor y cliente no puedan discrepar.
+- **`density="compact"` no se usa en tablas operativas de módulo** (listados Assurance, Commercial, Users, Inventory, etc.). Solo paneles embebidos densos (bitácora de expediente, peeks secundarios). Hallazgo P2 si aparece en un pie de DataTable.
 
 ## 4. Receta de clases
 
@@ -194,10 +206,28 @@ Ni relleno, ni borde, ni subrayado del número activo. No es contraste (`iwana-s
 | **error de carga** | El pager permanece montado y **habilitado** (permite reintentar navegando); el error va en `PortalAlert` sobre la tabla, nunca en el pie |
 | **readonly** | No aplica: el pager no captura datos |
 | **dark** | Recetas de §4. Frontera de control en dark = `ring-iwana-primary-300` o `iwana-neutral-600`, nunca `dark-border` |
-| **targets** | Página `h-11 min-w-11` (44×44); Prev/Next `min-h-11`. Los 40 px del demo quedan descartados |
+| **targets** | Página `h-11 min-w-11` (44×44); Prev/Next `min-h-11`. Los 40 px del demo quedan descartados. Excepción: `density="compact"` → `h-8` (32 px); ver §4-bis |
 | **responsive** | Bajo `sm`: números `hidden sm:inline-flex`; quedan `Anterior` · `Página 3 de 12` · `Siguiente`. La etiqueta de posición pasa a ser información *load-bearing*, no decorativa |
 | **teclado** | Tab natural izquierda→derecha, sin roving tabindex (≤9 controles). Enter/Espacio nativos. Sin atajos globales |
 | **a11y** | `<nav aria-label="Paginación de {recurso}">`; cada número con `aria-label="Página 3"`; activo con `aria-current="page"`; elipsis `aria-hidden`; una región `aria-live="polite"` anuncia el cambio una sola vez |
+
+## 4-bis. Densidad `compact` (v1.3)
+
+Segunda densidad del **mismo** primitive. No es un fork visual ni un override local por pantalla.
+
+| Pieza | `default` (tablas) | `compact` (embebido) |
+| --- | --- | --- |
+| Prev/Next | `Button secondary sm` + `min-h-11 gap-1 px-3` | `Button secondary sm` **sin** `min-h-11` → `h-8`, `px-2.5 text-xs` |
+| Nº página | `h-11 min-w-11 rounded-xl text-sm` | `h-8 min-w-8 rounded-lg text-xs` |
+| Elipsis | `h-11 min-w-11 text-sm` | `h-8 min-w-8 text-xs` |
+| Page size Select | `h-11 … rounded-xl` | `h-8 … rounded-lg px-2.5 text-xs` |
+| Shell pie | `gap-3 px-5 py-4 border-t` | mismas clases base; el consumidor puede anular shell con `className` (`border-0 px-0 py-2`) |
+
+**Adopción permitida:** bitácora de expediente, peeks / paneles auxiliares densos alineados a `PortalFilterChip`.
+
+**Adopción prohibida:** pies de DataTable de módulo, listados operativos con shell de tabla.
+
+**A11y:** 32 px ≥ WCAG 2.5.8 AA (24 px). Queda por debajo del mínimo iWana 44 px documentado en §5 `targets`; esa rebaja **no** se aplica al default.
 
 ## 5-bis. `PortalDataTableSortableHead` — orden por columna
 
@@ -316,7 +346,7 @@ PageHeader?                                    (ruta + CTA principal de página)
 
 ## 8. Anti-duplicación
 
-**Duplicación en el portal (detectada en la enmienda v1.1).** `apps/portal/src/components/crm/expedientes/SeguimientoTab.tsx:246-281` implementa un paginador numerado completo a mano —ventana de cinco botones (`:259-269`), selector de tamaño con opción «todos» (`:246-249`), reset por filtro (`:273-275`) y corrección de página fuera de rango (`:277-281`)— en cliente, sobre un array en memoria. No apareció en el inventario inicial porque no consume `PortalTablePagination`. Debe adoptar `PortalTablePager` o documentarse como excepción de preview; su opción «todos» requiere decisión aparte, porque `PORTAL_PAGE_SIZE_OPTIONS` no la contempla y materializar el universo contradice ADR-064 §8.
+**Duplicación en el portal (resuelta en v1.3).** La bitácora de Seguimiento (`ExpedienteTimelinePanel`) adoptó `PortalTablePager` + `PortalPageSizeSelect` con `density="compact"`. Queda prohibido reintroducir forks locales de botones numerados o círculos «Ver» en CRM.
 
 Los 28 consumidores de `PortalTablePagination` sí están limpios. El resto de la duplicación está en `apps/web`, que **no consume `portal-ui.tsx`**:
 

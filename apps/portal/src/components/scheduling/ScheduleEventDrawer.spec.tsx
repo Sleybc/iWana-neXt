@@ -112,8 +112,8 @@ describe('ScheduleEventDrawer — coordinación', () => {
   // ─── Positive: resumen de OT ───
   it('muestra la sección de resumen de OT', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
-    expect(screen.getByText('Resumen de la OT')).toBeInTheDocument();
-    expect(screen.getByText(/Visita sin OT vinculada/)).toBeInTheDocument();
+    expect(screen.getByText('Resumen de la orden de trabajo')).toBeInTheDocument();
+    expect(screen.getByText(/Visita sin orden vinculada/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
   });
 
@@ -138,12 +138,16 @@ describe('ScheduleEventDrawer — coordinación', () => {
     const event = { ...baseEvent, executionOrderId: 'eo-001' };
     render(<ScheduleEventDrawer {...baseProps} event={event} onOpenExecutionOrder={jest.fn()} />);
     expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Abrir OT' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Abrir orden de trabajo' }),
+    ).not.toBeInTheDocument();
   });
 
   it('no muestra enlace a OT cuando no hay executionOrderId', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
-    expect(screen.queryByRole('button', { name: 'Abrir OT' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Abrir orden de trabajo' }),
+    ).not.toBeInTheDocument();
   });
 
   it('explica cuando la OT vinculada aún no está disponible sin ofrecer una acción inefectiva', () => {
@@ -161,13 +165,15 @@ describe('ScheduleEventDrawer — coordinación', () => {
         {...baseProps}
         event={event}
         workOrderWarning="La orden de trabajo vinculada no está disponible."
-        executionOrderError="La OT vinculada no está disponible."
+        executionOrderError="No fue posible consultar la ejecución en Operaciones."
       />,
     );
 
     expect(screen.getByText('Orden de trabajo no disponible')).toBeInTheDocument();
     expect(screen.getByText('No fue posible cargar el resumen')).toBeInTheDocument();
-    expect(screen.getByText('La OT vinculada no está disponible.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No fue posible consultar la ejecución en Operaciones.'),
+    ).toBeInTheDocument();
   });
 
   // ─── Positive: acción de coordinación ───

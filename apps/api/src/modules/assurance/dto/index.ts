@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { Allow, IsInt, Max, Min } from 'class-validator';
+import { Allow, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { z } from 'zod';
 import type { ListMeta } from '@iwana/shared';
 import {
@@ -361,12 +361,14 @@ export class ListTicketsQueryDto {
   assignedUserId?: string;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

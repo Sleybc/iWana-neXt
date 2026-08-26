@@ -19,6 +19,12 @@ import {
 import { PUBLIC_ROUTES_WITH_TENANT, PUBLIC_ROUTES_WITHOUT_TENANT } from './public-routes';
 import { TenantService } from './tenant.service';
 
+export type TenantResolutionSource = 'jwt-verified' | 'public-header' | 'none';
+
+type TenantResolutionRequest = Request & {
+  iwanaTenantResolutionSource?: TenantResolutionSource;
+};
+
 /**
  * Middleware de resolucion de tenant por request.
  *
@@ -51,6 +57,7 @@ export class TenantMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
+    this.markResolutionSource(req, 'none');
     const jwtPayload = this.tryExtractJwtPayload(req);
 
     if (jwtPayload?.type === 'tenant' && jwtPayload.tenantId && jwtPayload.schemaName) {
@@ -64,7 +71,7 @@ export class TenantMiddleware implements NestMiddleware {
         throw new UnauthorizedException('El token contiene un schema de tenant invalido.');
       }
 
-      return this.runWithTenantContext(tenant, next);
+      return this.runWithTenantContext(req, tenant, next, 'jwt-verified');
     }
 
     const tenantSlug = this.normalizeTenantSlug(req.headers['x-tenant-slug'] as string | undefined);
@@ -80,6 +87,7 @@ export class TenantMiddleware implements NestMiddleware {
       // permitir paso sin contexto: JwtAuthGuard ya valido el token o rutas de
       // plataforma no requieren tenant.
       if (jwtPayload) {
+        this.markResolutionSource(req, 'jwt-verified');
         return next();
       }
 
@@ -101,7 +109,7 @@ export class TenantMiddleware implements NestMiddleware {
       throw new NotFoundException(`Tenant "${tenantSlug}" no encontrado.`);
     }
 
-    return this.runWithTenantContext(tenant, next);
+    return this.runWithTenantContext(req, tenant, next, 'public-header');
   }
 
   /**
@@ -200,10 +208,13 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   private runWithTenantContext(
+    req: Request,
     tenant: { id: string; schemaName: string; slug: string; status: TenantStatus },
     next: NextFunction,
+    source: TenantResolutionSource,
   ): void {
     this.ensureTenantIsOperable(tenant.slug, tenant.status);
+    this.markResolutionSource(req, source);
 
     TenantContext.run(
       {
@@ -213,6 +224,10 @@ export class TenantMiddleware implements NestMiddleware {
       },
       () => next(),
     );
+  }
+
+  private markResolutionSource(req: Request, source: TenantResolutionSource): void {
+    (req as TenantResolutionRequest).iwanaTenantResolutionSource = source;
   }
 
   private ensureTenantIsOperable(tenantSlug: string, tenantStatus: TenantStatus): void {

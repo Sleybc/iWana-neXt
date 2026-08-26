@@ -6,6 +6,7 @@ import { AttributionRole, PlatformRole, UserRole } from '@iwana/shared';
 import { SalesAttribution } from './entities/sales-attribution.entity';
 import { CreateAttributionDto } from './dto/create-attribution.dto';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
+import type { CrmCurrentAttributionSnapshot } from '../ports/crm-attribution-read.port';
 
 @Injectable()
 export class AttributionsService {
@@ -67,15 +68,38 @@ export class AttributionsService {
     });
   }
 
-  async getCurrentAttribution(expedienteId: string): Promise<SalesAttribution | null> {
+  async getCurrentAttribution(expedienteId: string): Promise<CrmCurrentAttributionSnapshot | null> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.findOne(SalesAttribution, {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const attribution = await qr.manager.findOne(SalesAttribution, {
         where: { expedienteId, revokedAt: IsNull() },
+        select: [
+          'id',
+          'expedienteId',
+          'attributionRole',
+          'actorRole',
+          'actorName',
+          'acquisitionChannel',
+          'attributedAt',
+          'revokedAt',
+        ],
         order: { attributedAt: 'DESC' },
-      }),
-    );
+      });
+
+      return attribution
+        ? {
+            id: attribution.id,
+            expedienteId: attribution.expedienteId,
+            attributionRole: attribution.attributionRole,
+            actorRole: attribution.actorRole,
+            actorName: attribution.actorName,
+            acquisitionChannel: attribution.acquisitionChannel,
+            attributedAt: attribution.attributedAt,
+            revokedAt: attribution.revokedAt,
+          }
+        : null;
+    });
   }
 
   async getAttributionHistory(expedienteId: string): Promise<SalesAttribution[]> {
@@ -163,9 +187,9 @@ export class AttributionsService {
   private formatActorName(
     firstName?: string | null,
     lastName?: string | null,
-    email?: string,
+    _email?: string,
   ): string {
     const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
-    return fullName || email || 'Usuario sin nombre';
+    return fullName || 'Usuario sin nombre';
   }
 }

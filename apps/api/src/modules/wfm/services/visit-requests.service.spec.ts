@@ -458,6 +458,7 @@ describe('VisitRequestsService', () => {
     } as never);
 
     expect(result.status).toBe(VisitRequestStatus.READY_TO_SCHEDULE);
+    expect(manager.query).not.toHaveBeenCalled();
   });
 
   it('normaliza estados stale al listar solicitudes', async () => {
@@ -489,10 +490,7 @@ describe('VisitRequestsService', () => {
     } as never);
 
     expect(result.items[0]?.status).toBe(VisitRequestStatus.READY_TO_SCHEDULE);
-    expect(manager.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE visit_requests vr'),
-      [TENANT_CONTEXT.tenantId],
-    );
+    expect(manager.query).not.toHaveBeenCalled();
   });
 
   it('filtra listado por originRef normalizado (ADR-076 pre-búsqueda)', async () => {
@@ -1617,6 +1615,7 @@ describe('VisitRequestsService', () => {
         municipality: VISIT_REQUEST_MISSING_FILTER_VALUE,
       },
     ]);
+    expect(manager.query).not.toHaveBeenCalled();
     expect(municipalityQb.andWhere).toHaveBeenCalledWith(
       'vr.status NOT IN (:...excludedStatuses)',
       {

@@ -47,7 +47,7 @@ const optionalUuidField = z
   .or(z.literal(''))
   .refine(
     (value) => !value || z.string().uuid().safeParse(value).success,
-    'Ingresa un UUID válido.',
+    'Ingresa un identificador válido.',
   );
 
 const coordinatesField = z
@@ -430,7 +430,7 @@ export function ScheduleEventForm({
         <PortalAlert
           variant="info"
           title="Solicitud manual de visita"
-          description="Usa este flujo solo cuando la visita no proviene de CRM, Mesa de ayuda o Tareas."
+          description="Usa este flujo solo cuando la visita no proviene de una oportunidad, mesa de ayuda o tareas."
         />
       )}
 
@@ -951,7 +951,7 @@ export function ScheduleEventForm({
             Datos relacionados
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Vincula ticket, contrato, expediente y otros datos para continuidad operativa.
+            Vincula ticket, contrato, oportunidad y otros datos para continuidad operativa.
           </p>
         </div>
 
@@ -966,7 +966,7 @@ export function ScheduleEventForm({
           <Input
             id="schedule-event-contract"
             label="Contrato"
-            helperText="UUID opcional del contrato vinculado."
+            helperText="Identificador opcional del contrato vinculado."
             error={errors.contractId?.message}
             disabled={isSubmitting}
             {...register('contractId')}
@@ -979,8 +979,8 @@ export function ScheduleEventForm({
               <input type="hidden" {...register('expedienteId')} />
               <Input
                 id="schedule-event-expediente"
-                label="Expediente"
-                helperText="Referencia corta del expediente CRM. El vínculo interno usa el identificador real."
+                label="Oportunidad"
+                helperText="Referencia corta de la oportunidad. El vínculo interno conserva el identificador real."
                 value={expedienteDisplayLabel}
                 readOnly
                 disabled={isSubmitting}
@@ -989,8 +989,8 @@ export function ScheduleEventForm({
           ) : (
             <Input
               id="schedule-event-expediente"
-              label="Expediente"
-              helperText="Identificador interno opcional del expediente comercial."
+              label="Oportunidad"
+              helperText="Identificador opcional de la oportunidad."
               error={errors.expedienteId?.message}
               disabled={isSubmitting}
               {...register('expedienteId')}
@@ -999,7 +999,7 @@ export function ScheduleEventForm({
           <Input
             id="schedule-event-subscriber"
             label="Suscriptor"
-            helperText="UUID opcional del suscriptor vinculado."
+            helperText="Identificador opcional del suscriptor vinculado."
             error={errors.subscriberId?.message}
             disabled={isSubmitting}
             {...register('subscriberId')}
@@ -1017,7 +1017,7 @@ export function ScheduleEventForm({
               Crear orden de trabajo asociada
             </span>
             <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-              Activa una OT ligera para dar continuidad operativa al evento recién creado.
+              Crea una orden de trabajo para dar continuidad operativa al evento.
             </span>
           </span>
         </label>
@@ -1045,7 +1045,7 @@ export function ScheduleEventForm({
                 render={({ field }) => (
                   <Select
                     id="schedule-work-order-type"
-                    label="Tipo de OT"
+                    label="Tipo de orden"
                     value={field.value}
                     placeholder="Heredar del evento"
                     options={WFM_WORK_TYPE_OPTIONS}
@@ -1084,7 +1084,7 @@ export function ScheduleEventForm({
                 <Input
                   id="schedule-work-order-source-ref"
                   label="Referencia de origen"
-                  helperText="Referencia corta visible del origen CRM. El vínculo interno conserva el identificador real."
+                  helperText="Referencia corta visible del origen. El vínculo interno conserva el identificador real."
                   value={workOrderSourceRefDisplayLabel}
                   readOnly
                   disabled={isSubmitting}

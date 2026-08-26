@@ -286,114 +286,102 @@ export function CalendarSettingsClient() {
         aria-label="Distribución del calendario operativo"
         aria-busy={isRefreshing}
       >
-        <section
-          data-testid="calendar-lane-1-2"
-          className="min-w-0"
-          aria-labelledby="calendar-lane-1-2-title"
+        <div
+          data-testid="calendar-column-left"
+          className="contents xl:col-start-1 xl:flex xl:flex-col xl:gap-6"
         >
-          <p id="calendar-lane-1-2-title" className="portal-eyebrow-muted">
-            {CALENDAR_SETTINGS_COPY.calendarRoutineLaneTitle}
-          </p>
-          <div className="mt-3 flex flex-col gap-4">
-            <div
-              data-testid="calendar-step-1"
-              role="group"
-              aria-label={CALENDAR_SETTINGS_COPY.organizationTitle}
-              className="min-w-0"
-            >
-              {resourceErrors.companyHours && !loadedResources.companyHours ? (
-                renderUnavailablePanel({
-                  eyebrow: CALENDAR_SETTINGS_COPY.organizationEyebrow,
-                  title: CALENDAR_SETTINGS_COPY.organizationTitle,
-                  description: CALENDAR_SETTINGS_COPY.organizationDescription,
-                  unavailableDescription: resourceErrors.companyHours,
-                })
-              ) : (
-                <CalendarOrganizationHoursPanel
-                  companyHours={companyHours}
-                  canEdit={canEdit && !isRefreshing}
-                  onUpdated={setCompanyHours}
-                  onDirtyChange={handleOrganizationDirtyChange}
-                />
-              )}
-              {resourceErrors.companyHours && loadedResources.companyHours ? (
-                <PortalAlert variant="warning" title={resourceErrors.companyHours} />
-              ) : null}
-            </div>
-
-            <div
-              data-testid="calendar-step-2"
-              role="group"
-              aria-label={CALENDAR_SETTINGS_COPY.sitePanelTitle}
-              className="min-w-0"
-            >
-              {resourceErrors.sites && !loadedResources.sites ? (
-                renderUnavailablePanel({
-                  eyebrow: CALENDAR_SETTINGS_COPY.siteEyebrow,
-                  title: CALENDAR_SETTINGS_COPY.sitePanelTitle,
-                  description: CALENDAR_SETTINGS_COPY.sitePanelDescription,
-                  unavailableDescription: resourceErrors.sites,
-                })
-              ) : (
-                <CalendarSiteHoursPanel
-                  sites={sites}
-                  canEdit={canEdit && !isRefreshing}
-                  onDirtyChange={handleSiteDirtyChange}
-                />
-              )}
-              {resourceErrors.sites && loadedResources.sites ? (
-                <PortalAlert variant="warning" title={resourceErrors.sites} />
-              ) : null}
-            </div>
+          <div
+            data-testid="calendar-step-1"
+            role="group"
+            aria-label={CALENDAR_SETTINGS_COPY.organizationTitle}
+            className="order-1 min-w-0"
+          >
+            {resourceErrors.companyHours && !loadedResources.companyHours ? (
+              renderUnavailablePanel({
+                eyebrow: CALENDAR_SETTINGS_COPY.organizationEyebrow,
+                title: CALENDAR_SETTINGS_COPY.organizationTitle,
+                description: CALENDAR_SETTINGS_COPY.organizationDescription,
+                unavailableDescription: resourceErrors.companyHours,
+              })
+            ) : (
+              <CalendarOrganizationHoursPanel
+                companyHours={companyHours}
+                canEdit={canEdit && !isRefreshing}
+                onUpdated={setCompanyHours}
+                onDirtyChange={handleOrganizationDirtyChange}
+              />
+            )}
+            {resourceErrors.companyHours && loadedResources.companyHours ? (
+              <PortalAlert variant="warning" title={resourceErrors.companyHours} />
+            ) : null}
           </div>
-        </section>
 
-        <section
-          data-testid="calendar-lane-3-4"
-          className="min-w-0"
-          aria-labelledby="calendar-lane-3-4-title"
+          <div
+            data-testid="calendar-step-3"
+            role="group"
+            aria-label={CALENDAR_SETTINGS_COPY.exceptionsTitle}
+            className="order-3 min-w-0"
+          >
+            {resourceErrors.exceptions && !loadedResources.exceptions ? (
+              renderUnavailablePanel({
+                eyebrow: CALENDAR_SETTINGS_COPY.exceptionsEyebrow,
+                title: CALENDAR_SETTINGS_COPY.exceptionsTitle,
+                description: CALENDAR_SETTINGS_COPY.exceptionsDescription,
+                unavailableDescription: resourceErrors.exceptions,
+              })
+            ) : (
+              <CalendarExceptionsPanel
+                exceptions={exceptions}
+                sites={sites}
+                canEdit={canEdit && !isRefreshing}
+                onCreated={(exc) => setExceptions((current) => [...current, exc])}
+                onDeleted={(id) => setExceptions((current) => current.filter((e) => e.id !== id))}
+              />
+            )}
+            {resourceErrors.exceptions && loadedResources.exceptions ? (
+              <PortalAlert variant="warning" title={resourceErrors.exceptions} />
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          data-testid="calendar-column-right"
+          className="contents xl:col-start-2 xl:flex xl:flex-col xl:gap-6"
         >
-          <p id="calendar-lane-3-4-title" className="portal-eyebrow-muted">
-            {CALENDAR_SETTINGS_COPY.calendarDateChangesLaneTitle}
-          </p>
-          <div className="mt-3 flex flex-col gap-4">
-            <div
-              data-testid="calendar-step-3"
-              role="group"
-              aria-label={CALENDAR_SETTINGS_COPY.exceptionsTitle}
-              className="min-w-0"
-            >
-              {resourceErrors.exceptions && !loadedResources.exceptions ? (
-                renderUnavailablePanel({
-                  eyebrow: CALENDAR_SETTINGS_COPY.exceptionsEyebrow,
-                  title: CALENDAR_SETTINGS_COPY.exceptionsTitle,
-                  description: CALENDAR_SETTINGS_COPY.exceptionsDescription,
-                  unavailableDescription: resourceErrors.exceptions,
-                })
-              ) : (
-                <CalendarExceptionsPanel
-                  exceptions={exceptions}
-                  sites={sites}
-                  canEdit={canEdit && !isRefreshing}
-                  onCreated={(exc) => setExceptions((current) => [...current, exc])}
-                  onDeleted={(id) => setExceptions((current) => current.filter((e) => e.id !== id))}
-                />
-              )}
-              {resourceErrors.exceptions && loadedResources.exceptions ? (
-                <PortalAlert variant="warning" title={resourceErrors.exceptions} />
-              ) : null}
-            </div>
-
-            <div
-              data-testid="calendar-step-4"
-              role="group"
-              aria-label={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
-              className="min-w-0"
-            >
-              <OperationalEventualitiesPanel canEdit={canEdit && !isRefreshing} />
-            </div>
+          <div
+            data-testid="calendar-step-2"
+            role="group"
+            aria-label={CALENDAR_SETTINGS_COPY.sitePanelTitle}
+            className="order-2 min-w-0"
+          >
+            {resourceErrors.sites && !loadedResources.sites ? (
+              renderUnavailablePanel({
+                eyebrow: CALENDAR_SETTINGS_COPY.siteEyebrow,
+                title: CALENDAR_SETTINGS_COPY.sitePanelTitle,
+                description: CALENDAR_SETTINGS_COPY.sitePanelDescription,
+                unavailableDescription: resourceErrors.sites,
+              })
+            ) : (
+              <CalendarSiteHoursPanel
+                sites={sites}
+                canEdit={canEdit && !isRefreshing}
+                onDirtyChange={handleSiteDirtyChange}
+              />
+            )}
+            {resourceErrors.sites && loadedResources.sites ? (
+              <PortalAlert variant="warning" title={resourceErrors.sites} />
+            ) : null}
           </div>
-        </section>
+
+          <div
+            data-testid="calendar-step-4"
+            role="group"
+            aria-label={CALENDAR_SETTINGS_COPY.eventualitiesTitle}
+            className="order-4 min-w-0"
+          >
+            <OperationalEventualitiesPanel canEdit={canEdit && !isRefreshing} />
+          </div>
+        </div>
       </section>
     </div>
   );

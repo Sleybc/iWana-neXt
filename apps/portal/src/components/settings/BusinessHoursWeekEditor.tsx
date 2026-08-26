@@ -8,7 +8,7 @@ import {
   getBusinessHoursWeekdayLabel,
 } from './mod00-settings-labels';
 import { portalCheckboxClassName } from '@/components/shared/portal-ui';
-import { TimeFieldSelect } from './TimeFieldSelect';
+import { TimeFieldSelect } from '@/components/shared/TimeFieldSelect';
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 

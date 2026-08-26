@@ -26,6 +26,7 @@ import {
   USERS_BULK_CREATE_QUEUE,
   UserRole,
   UserStatus,
+  type ListResponse,
   type UsersBulkCreateAcceptedResponse,
   type UsersBulkCreateFailedItem,
   type UsersBulkCreateJobPayload,
@@ -35,7 +36,11 @@ import {
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
-import { clampPickerSearchLimit, type PickerSearchResult } from '../../common/pagination';
+import {
+  buildCursorMeta,
+  clampPickerSearchLimit,
+  type PickerSearchResult,
+} from '../../common/pagination';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
@@ -296,7 +301,7 @@ export class UsersService {
     status?: UserStatus;
     role?: UserRole;
     search?: string;
-  }): Promise<{ data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } }> {
+  }): Promise<ListResponse<UserResponseDto>> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const requested = params.limit ?? 50;
     const limit =
@@ -332,10 +337,11 @@ export class UsersService {
 
         return {
           data: items.map((u) => this.toDto(u, principalAdminUserId)),
-          meta: {
+          meta: buildCursorMeta({
             nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
             total,
-          },
+            limit,
+          }),
         };
       }
 
@@ -396,10 +402,11 @@ export class UsersService {
 
       return {
         data: items.map((u) => this.toDto(u, principalAdminUserId)),
-        meta: {
+        meta: buildCursorMeta({
           nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
           total,
-        },
+          limit,
+        }),
       };
     });
   }

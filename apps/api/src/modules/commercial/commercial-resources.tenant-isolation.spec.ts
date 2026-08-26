@@ -17,15 +17,13 @@ import { BundleController } from './controllers/bundle.controller';
 import { PromotionController } from './controllers/promotion.controller';
 import { CommercialDashboardController } from './controllers/commercial-dashboard.controller';
 import { CommercialPickerSearchController } from './controllers/commercial-picker-search.controller';
-import { TaxController } from './controllers/tax.controller';
 import { CompatibilityController } from './controllers/compatibility.controller';
 import { BundleService } from './services/bundle.service';
 import { PromotionService } from './services/promotion.service';
 import { CommercialDashboardService } from './services/commercial-dashboard.service';
 import { CatalogService } from './services/catalog.service';
-import { TaxApplicationService } from './services/tax-application.service';
 import { CompatibilityService } from './services/compatibility.service';
-import { TaxCatalogReadPort } from '../taxation/ports/tax-catalog-read.port';
+import { ITaxApplicationReadPort } from '../taxation/ports/tax-application-read.port';
 
 type TenantCtx = { tenantId: string; schemaName: string };
 
@@ -196,6 +194,8 @@ function buildManager() {
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([]),
       getCount: jest.fn().mockResolvedValue(0),
@@ -226,7 +226,6 @@ describe('Commercial resources tenant isolation', () => {
         PromotionController,
         CommercialDashboardController,
         CommercialPickerSearchController,
-        TaxController,
         CompatibilityController,
       ],
       providers: [
@@ -234,11 +233,10 @@ describe('Commercial resources tenant isolation', () => {
         PromotionService,
         CommercialDashboardService,
         CatalogService,
-        TaxApplicationService,
         CompatibilityService,
         {
-          provide: TaxCatalogReadPort,
-          useValue: { findActiveByCode: jest.fn(), listByContext: jest.fn() },
+          provide: ITaxApplicationReadPort,
+          useValue: { hasActiveCoverage: jest.fn().mockResolvedValue(true), resolve: jest.fn() },
         },
         { provide: DataSource, useValue: {} },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
@@ -318,23 +316,6 @@ describe('Commercial resources tenant isolation', () => {
       .get('/api/v1/commercial/plans/search?q=fibra')
       .set('Authorization', 'Bearer tenant-a-token')
       .expect(200);
-    expect(schemaCalls).toEqual(['tenant_a']);
-  });
-
-  it('lista reglas tributarias en el schema del tenant A', async () => {
-    await request(app.getHttpServer())
-      .get('/api/v1/commercial/tax-rules')
-      .set('Authorization', 'Bearer tenant-a-token')
-      .expect(200);
-    expect(schemaCalls).toEqual(['tenant_a']);
-  });
-
-  it('no permite a tenant A parchear una aplicación tributaria exclusiva de tenant B', async () => {
-    await request(app.getHttpServer())
-      .patch(`/api/v1/commercial/tax-rule-applications/${exclusiveBId}`)
-      .set('Authorization', 'Bearer tenant-a-token')
-      .send({ isActive: false })
-      .expect(404);
     expect(schemaCalls).toEqual(['tenant_a']);
   });
 

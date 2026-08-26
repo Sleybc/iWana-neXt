@@ -15,6 +15,7 @@ import { SubscriberActivationListener } from './listeners/subscriber-activation.
 import { SubscriberCancellationListener } from './listeners/subscriber-cancellation.listener';
 import { PartiesModule } from '../../parties/parties.module';
 import { TaxationModule } from '../../taxation/taxation.module';
+import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 
 @Module({
   imports: [
@@ -32,9 +33,11 @@ import { TaxationModule } from '../../taxation/taxation.module';
     SubscriberActivationListener,
     SubscriberCancellationListener,
     SubscriberTaxProfileService,
+    { provide: CrmSubscriberReadPort, useExisting: SubscribersService },
   ],
   exports: [
     SubscribersService,
+    CrmSubscriberReadPort,
     SubscriberCreationService,
     VatTreatmentService,
     SubscriberTaxProfileService,

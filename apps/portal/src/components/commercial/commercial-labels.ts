@@ -27,11 +27,19 @@ export const TAX_CONTEXT_LABELS: Record<string, string> = {
   BOTH: 'Ambos',
 };
 
+export const TAX_TYPE_LABELS: Record<string, string> = {
+  IVA: 'IVA',
+  RETENTION: 'Retención',
+  ICA: 'ICA',
+};
+
 export const TAX_SEGMENT_LABELS: Record<string, string> = {
   RESIDENTIAL: 'Residencial',
   SOHO: 'SOHO (oficina pequeña)',
   PYME: 'PyME',
   CORPORATE: 'Corporativo',
+  GOVERNMENT: 'Gobierno',
+  WHOLESALE: 'Mayorista',
 };
 
 /** Resuelve un enum a label amigable; nunca expone el valor crudo. */

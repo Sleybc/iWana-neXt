@@ -5,6 +5,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select 
 import { CircleAlert, Loader2, Phone, PhoneOutgoing } from 'lucide-react';
 import { crmApi, type ContactAttemptRecord, type CreateContactAttemptDto } from '@/lib/api-client';
 import { getContactResultBadgeVariant, getContactChannelBadgeVariant } from './expediente-ui';
+import { getSafeCrmErrorMessage } from './crm-error-message';
 
 const CHANNEL_OPTIONS = [
   { value: 'TELEFONO', label: 'Teléfono' },
@@ -55,8 +56,7 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
       setSuccessMessage(null);
       const response = await crmApi.listContactAttempts(expedienteId);
       setAttempts(response.data);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError('No fue posible cargar los intentos de contacto.');
     } finally {
       setLoading(false);
@@ -80,8 +80,7 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
       });
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'No fue posible registrar el intento.');
+      setError(getSafeCrmErrorMessage(err, 'No fue posible registrar el intento.'));
       setSubmitting(false);
     }
   };

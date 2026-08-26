@@ -4,19 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
-import {
-  AlertTriangle,
-  BriefcaseBusiness,
-  FileCheck2,
-  Loader2,
-  Pencil,
-  Users,
-  X,
-} from 'lucide-react';
+import { BriefcaseBusiness, FileCheck2, Pencil, Users, X } from 'lucide-react';
 import type { CreateSubscriberPayload, UpdateSubscriberPayload } from '@iwana/shared';
 import { ApiError, Subscriber360Response, crmApi, subscribersApi } from '@/lib/api-client';
 import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
@@ -65,11 +58,6 @@ function mapError(error: unknown): string {
 function toSentenceCase(value: string): string {
   const normalized = value.replace(/_/g, ' ').toLowerCase();
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function formatFriendlyExpedienteRef(expedienteId: string): string {
-  const shortToken = expedienteId.split('-')[0]?.toUpperCase();
-  return shortToken ? `EXP-${shortToken}` : expedienteId;
 }
 
 export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
@@ -149,18 +137,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Origen del expediente</CardTitle>
+                <CardTitle>Oportunidad de origen</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                 {subscriber360?.expedienteSummary ? (
                   <>
-                    <p>
-                      <strong>Expediente:</strong>{' '}
-                      {formatFriendlyExpedienteRef(subscriber360.expedienteSummary.id)}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Código interno: {subscriber360.expedienteSummary.id}
-                    </p>
                     <p>
                       <strong>Estado:</strong>{' '}
                       {formatExpedienteStatus(subscriber360.expedienteSummary.status)}
@@ -169,11 +150,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                       className="text-iwana-primary underline"
                       href={`/dashboard/crm/expedientes/${subscriber360.expedienteSummary.id}`}
                     >
-                      Ir al expediente origen
+                      Abrir oportunidad de origen
                     </Link>
                   </>
                 ) : (
-                  <p>No disponible para este suscriptor.</p>
+                  <p>No hay una oportunidad vinculada a este suscriptor.</p>
                 )}
               </CardContent>
             </Card>
@@ -206,7 +187,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               </CardHeader>
               <CardContent className="text-sm text-gray-600 dark:text-gray-300">
                 {!subscriber360?.expedienteSummary ? (
-                  <p className="italic">Sin expediente vinculado. Facturación no disponible.</p>
+                  <p className="italic">Sin oportunidad vinculada. Facturación no disponible.</p>
                 ) : billingEditing ? (
                   <div className="space-y-3">
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -348,7 +329,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         content: (
           <StubCard
             title="Financiero"
-            description="Facturas, pagos y estado de cuenta aún no integrados al CRM en esta fase."
+            description="Facturas, pagos y estado de cuenta aún no integrados en esta fase."
             icon={Users}
           />
         ),
@@ -399,19 +380,18 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   return (
     <div className="space-y-6 pb-6">
       {loading && (
-        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-6 py-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
-          <Loader2 className="h-5 w-5 animate-spin text-iwana-primary" aria-hidden="true" />
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            Cargando ficha 360 del suscriptor...
-          </span>
+        <div className="space-y-4" aria-busy="true">
+          <PortalSkeletonBlock className="h-24 rounded-2xl" />
+          <PortalSkeletonBlock className="h-64 rounded-2xl" />
         </div>
       )}
 
       {error && (
-        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-sm)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>{error}</span>
-        </div>
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar el suscriptor"
+          description={error}
+        />
       )}
 
       {!loading && subscriber && (

@@ -188,7 +188,7 @@ export function applyServiceCatalogFilters(
 
 /**
  * Escribe filtros de planes omitiendo defaults.
- * Preserva `tab`, `focus`, `offerStatus` y cualquier query ajena a planes.
+ * Preserva `tab`, `focus`, `offerStatus`, `page`, `size` y cualquier query ajena a planes.
  */
 export function applyPlanCatalogFilters(
   params: URLSearchParams,

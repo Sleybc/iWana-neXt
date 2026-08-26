@@ -8,7 +8,7 @@ import type {
   WfmTechnicianAvailability,
   WfmWorkOrder,
 } from '@/lib/api-client';
-import { PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
 import {
   getActiveWorkOrdersForTechnician,
   getAvailabilityForTechnician,
@@ -88,9 +88,11 @@ export function TechnicianWorkList({
       ) : (
         <div className="space-y-4">
           {!summary && (
-            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:text-gray-400">
-              El resumen del dashboard WFM no está disponible. Se muestran datos operativos básicos.
-            </div>
+            <PortalAlert
+              variant="info"
+              title="Resumen de carga no disponible"
+              description="Se muestran datos operativos básicos de la carga de campo."
+            />
           )}
 
           {visibleUsers.map((user) => {
@@ -116,7 +118,7 @@ export function TechnicianWorkList({
                     <Badge variant="primary">
                       Hoy: {loadCount === null ? 'No disponible' : `${loadCount}`}
                     </Badge>
-                    <Badge variant="warning">OT activas: {assignedWorkOrders.length}</Badge>
+                    <Badge variant="warning">Órdenes activas: {assignedWorkOrders.length}</Badge>
                   </div>
                 </div>
 
