@@ -107,6 +107,9 @@ import {
   type RegisterEvidenceCommand,
   type EvidenceAssetReceipt,
   type ExecutionOrderTemplateVersion,
+  type ExecutionOrderTemplateSummary,
+  type CreateExecutionOrderTemplateCommand,
+  type CreateExecutionOrderTemplateVersionCommand,
   type ExecutionOrderDetail,
   type ExecutionOrderActivity,
   type ExecutionOrderItemUsage,
@@ -5012,17 +5015,18 @@ export interface ChangeLoginEmailDto {
 
 /**
  * API de perfil del usuario autenticado.
- * El userId debe provenir del claim sub del JWT vigente.
+ * Usa GET /users/me y PATCH /users/me — accesibles para todo rol tenant
+ * (TECHNICIAN, SUPPORT, etc.) sin requerir ADMIN+USERS_READ.
+ * HLD-MOD01 §4: /users/:id es solo ADMIN; /users/me es self-service.
  */
 export const userApi = {
-  /** Obtiene el perfil del usuario autenticado */
-  getMe: (userId: string, tenantSlug?: string) =>
-    request<UserProfile>(`/users/${userId}`, undefined, tenantSlug),
+  /** Obtiene el perfil del usuario autenticado (JWT sub) — sin param userId */
+  getMe: (tenantSlug?: string) => request<UserProfile>('/users/me', undefined, tenantSlug),
 
   /** Actualiza los datos personales del usuario autenticado */
-  updateMe: (userId: string, dto: UpdateProfileDto, tenantSlug?: string) =>
+  updateMe: (dto: UpdateProfileDto, tenantSlug?: string) =>
     request<UserProfile>(
-      `/users/${userId}`,
+      '/users/me',
       {
         method: 'PATCH',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
@@ -6821,6 +6825,70 @@ export const tasksApi = {
           body: JSON.stringify(dto),
           returnFullResponse: true,
         },
+        tenantSlug,
+      ),
+  },
+
+  executionOrderTemplates: {
+    list: (
+      params?: { workType?: WfmWorkType; status?: 'DRAFT' | 'PUBLISHED' | 'RETIRED' },
+      tenantSlug?: string,
+    ) => {
+      const search = new URLSearchParams();
+      if (params?.workType) search.set('workType', params.workType);
+      if (params?.status) search.set('status', params.status);
+      const query = search.toString();
+      return request<ExecutionOrderTemplateSummary[] | { data: ExecutionOrderTemplateSummary[] }>(
+        `/tasks/execution-order-templates${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    create: (dto: CreateExecutionOrderTemplateCommand, tenantSlug?: string) =>
+      request<ExecutionOrderTemplateVersion>(
+        '/tasks/execution-order-templates',
+        {
+          method: 'POST',
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
+        tenantSlug,
+      ),
+
+    listVersions: (templateId: string, tenantSlug?: string) =>
+      request<ExecutionOrderTemplateVersion[] | { data: ExecutionOrderTemplateVersion[] }>(
+        `/tasks/execution-order-templates/${templateId}/versions`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    createVersion: (
+      templateId: string,
+      dto: CreateExecutionOrderTemplateVersionCommand,
+      tenantSlug?: string,
+    ) =>
+      request<ExecutionOrderTemplateVersion>(
+        `/tasks/execution-order-templates/${templateId}/versions`,
+        {
+          method: 'POST',
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
+        tenantSlug,
+      ),
+
+    publishVersion: (versionId: string, tenantSlug?: string) =>
+      request<ExecutionOrderTemplateVersion>(
+        `/tasks/execution-order-templates/versions/${versionId}/publish`,
+        { method: 'POST', returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    retireVersion: (versionId: string, tenantSlug?: string) =>
+      request<ExecutionOrderTemplateVersion>(
+        `/tasks/execution-order-templates/versions/${versionId}/retire`,
+        { method: 'POST', returnFullResponse: true },
         tenantSlug,
       ),
   },

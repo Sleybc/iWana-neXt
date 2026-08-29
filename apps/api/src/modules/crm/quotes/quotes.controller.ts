@@ -10,11 +10,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
 import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CreateQuoteDto } from './dto/create-quote.dto';
@@ -24,13 +26,14 @@ import { QuotesService } from './quotes.service';
 
 @ApiTags('quotes')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('quotes')
 export class QuotesController {
   constructor(private readonly quotesService: QuotesService) {}
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Crear cotizacion comercial' })
   async create(@Body() dto: CreateQuoteDto): Promise<{ data: Quote }> {
     const data = await this.quotesService.create(dto);
@@ -38,7 +41,14 @@ export class QuotesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar cotizaciones comerciales' })
   @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
@@ -54,7 +64,14 @@ export class QuotesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Consultar cotizacion por id' })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Quote }> {
     const data = await this.quotesService.findOne(id);
@@ -63,6 +80,7 @@ export class QuotesController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Actualizar cotizacion comercial' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -74,6 +92,7 @@ export class QuotesController {
 
   @Post(':id/accept')
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Aceptar cotizacion y marcarla como aprobada' })
   async accept(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Quote }> {
     const data = await this.quotesService.accept(id);

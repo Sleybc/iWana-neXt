@@ -6,6 +6,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { AssuranceController } from '../assurance.controller';
 import { AssuranceDashboardService } from '../services/assurance-dashboard.service';
 import { CommentsService } from '../services/comments.service';
@@ -77,6 +78,14 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
       }
 
       throw new UnauthorizedException('Token de acceso invalido o expirado.');
+    }
+  },
+}));
+
+jest.mock('../../access-control/guards/permissions.guard', () => ({
+  PermissionsGuard: class PermissionsGuard {
+    canActivate() {
+      return true;
     }
   },
 }));
@@ -153,6 +162,7 @@ describe('AssuranceController HTTP', () => {
         { provide: AssuranceDashboardService, useValue: dashboardServiceMock },
         JwtAuthGuard,
         RolesGuard,
+        PermissionsGuard,
       ],
     }).compile();
 

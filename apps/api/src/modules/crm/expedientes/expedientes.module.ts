@@ -22,6 +22,7 @@ import { SubscribersModule } from '../subscribers/subscribers.module';
 import { AttributionsModule } from '../attributions/attributions.module';
 import { ResponsibilitiesModule } from '../responsibilities/responsibilities.module';
 import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.service';
+import { AccessControlModule } from '../../access-control/access-control.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.
     SubscribersModule,
     AttributionsModule,
     ResponsibilitiesModule,
+    AccessControlModule,
   ],
   controllers: [ExpedientesController, PipelineController],
   providers: [

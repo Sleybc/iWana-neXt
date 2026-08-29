@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.74
+**Version:** 1.78
 **Estado:** Activo
-**Fecha:** 2026-08-17
+**Fecha:** 2026-08-29
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -1797,4 +1797,68 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - Dia deja de comerse el `1fr`; el sobrante va a Inicio/Fin. Encabezado `Abierto` con `whitespace-nowrap` (ya no recorta a «ABIER»).
 - Trigger compacto `h-8 w-[5.5rem]` centrado, chevron pegado al valor. Popover `w-44` / `max-h-32` / opciones `h-7`.
 - Jest dirigido 32/32. E2E densidad **1 passed** (trigger ≤96 px, dialog ≤192×200, `Abierto` visible).
+
+### v1.75 — 2026-08-28 — Etapa 1 de convergencia RBAC granular (catalogo MOD00_ACCESS_V2)
+
+**Autor:** AI-EM-ARCH (modo Orquestador activado; Architect + Product Architect)
+**Tipo:** Definicion normativa pre-G1 — sin codigo productivo
+**ADR:** ADR-083 — docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md (aprobado por el CTO el 2026-08-28; ver v1.76)
+
+- **Contexto:** solicitud del CTO/producto sobre `/dashboard/settings/access` — perfiles granulares por modulo (caso disparador: "tecnico de campo debe ver Suscriptores", imposible hoy: `crm.customers.read` RESERVED, `TECHNICIAN` ausente de matriz y de `@Roles`). Exploracion paralela de tres tracks (frontend, backend, documentacion) consolidada por este rol.
+- **Decisiones del CTO/producto registradas en sesion:** convergencia completa (CRM Suscriptores/Oportunidades, Assurance, Inventario, Compras, Comercial); catalogo v2 con nombres por recurso; plantillas estandar por categoria sembradas con corte sin perdida de acceso; el flujo del admin (partir de plantilla y adaptar, o crear desde cero) se conserva tal como esta construido.
+- **Artefactos emitidos:** ADR-083 (propuesto) — D1 catalogo V2, D2 doble guard con regla de ampliacion de lectura, D3 tres ampliaciones deliberadas de matriz — TECHNICIAN→subscribers.read e inventory.stock.read, AUDITOR→todos los `*.read` —, D4 estandares por categoria y corte, D5 cache Redis, D6 frontend por permisos efectivos, D7 excepciones; PRD-MOD00 v1.7 addendum §4.3.4 (RF-ACC-14..21 + matriz V2 + plantillas estandar); HLD-MOD00 v1.7 addendum §6.6 (enum/seed, migracion del corte, cableado por controller, cache, testing).
+- **Hallazgos con soporte normativo verificado:** PRD maestro §13.3 (lineas 1766 y 1772: Technician "Inventory (lectura)", Auditor "solo lectura"); PRD-MOD05-CRM-SUBSCRIBERS personas ("Ver datos de contacto y direccion para instalacion"). Divergencia detectada y diferida: PRD-MOD05 contempla lectura acotada de expediente por tecnico → fase posterior con scoping por asignacion, no lectura global.
+- **Fuente de verdad de la matriz:** union de `@Roles` vigentes por controller (subscribers, expedientes+subrecursos, assurance, inventory, purchasing, commercial incl. constantes `COMMERCIAL_*_ROLES`); billing sin modulo backend → claves permanecen RESERVED.
+- **Pendiente (resuelto el 2026-08-28, ver v1.76):** aprobacion CTO de ADR-083 y G1 con review cruzado obligatorio — factibilidad de asignacion masiva en migracion (AI-SR-FULL) y viabilidad UX del gating de navegacion (AI-PROD-UX). Sin codigo, migraciones ni commits en esta etapa.
+- **Gates documentales:** `pnpm.cmd audit:adr-citations` **BLOQUEANTE: 0** (113 avisos preexistentes) y `pnpm.cmd audit:doc-locations` **BLOQUEANTE: 0** (2 avisos preexistentes de `.playwright-mcp/`). Remediacion incluida: 10 citas de ADR-082 (propuesto) sin marcador, deuda preexistente del workstream Reglas Federadas (ADR-029 ×2, ADR-031 ×2, INFORME-MOD00-REGLAS-FEDERADAS ×2, PRD-MOD06 ×2, PRD-MOD00 ×2), corregidas con el marcador junto al numero segun protocolo §7.4.
+
+### v1.76 — 2026-08-28 — Aprobacion CTO de ADR-083 y firmas G1
+
+**Autor:** AI-EM-ARCH (orquestador)
+**Tipo:** Gate — aprobacion CTO + G1 review cruzado
+
+- **Aprobacion CTO:** ADR-083 promovido a **Aprobado** sin cambios de contenido respecto a la version propuesta; marcadores de cita actualizados en PRD-MOD00 v1.7, HLD-MOD00 v1.7 y este informe.
+- **G1 review cruzado** (productor: AI-EM-ARCH; firmas independientes sobre codigo real; condiciones incorporadas a HLD §6.6.1):
+  - **AI-SR-FULL — GO CON CONDICIONES (factibilidad backend):** la asignacion masiva en migracion es viable (runner tenant con DataSource por schema + advisory lock; INSERT...SELECT set-based; idempotencia via indice unico parcial + predicado NOT EXISTS; down limpio con precedente 092/112). Tres condiciones: canon de plantillas del seed (evitar que `ensureSystemRoleTemplatesSeeded` renombre/sobrescriba las estandar V2 en drift-repair), deprecacion canonica de `crm.customers.*` en el seed + `listPermissions` a V2, e invalidacion de cache completa (abanico multi-usuario, cambios de role/status desde Users via puerto de AccessControlModule, degrade a BD ante fallo de Redis) con tests adicionales.
+  - **AI-PROD-UX — GO CON CONDICIONES (viabilidad UX):** una condicion dura de orden de despliegue — el gating de navegacion se activa por tenant solo tras correr la migracion del corte (un no-ADMIN sin perfiles tendria nav vacia; degradaria a NO-GO si no queda en el plan). Ademas: gramatica de nav a congelar (ocultar vs 3 bandas), estados carga/error sin bloquear navegacion, una sola seccion de 9 sugeridos (6→9, suman SALES/ACCOUNTANT/HR) con extension de `SYSTEM_TEMPLATE_PROFILE_NAMES`, montaje del panel de accesos efectivos en el side peek de edicion de usuario (origen por cross-reference `isSystem`, sin cambio de contrato backend), y advertencia de descarte de perfiles al cambiar categoria base (solo edicion).
+- **Artefactos actualizados:** HLD-MOD00 §6.6.1 (firmas y condiciones), nota historica en §6.2, condicion de despliegue en §6.6 Frontend, tests adicionales en §6.6 Testing; ADR-083 Estado Aprobado con registro de aprobacion.
+- **Pendiente:** plan de ejecucion + prompts por fase (Etapa 4); spec UX de Fase 3 por AI-PROD-UX (contrato a congelar); Fase 1 (backend) habilitada con las condiciones SR-FULL incorporadas al prompt.
+
+### v1.77 — 2026-08-28 — Etapa 4: plan, prompts Fase 1-2, spec UX Fase 3 congelada
+
+**Autor:** AI-EM-ARCH (orquestador) con AI-PROD-UX (spec)
+**Tipo:** Emision de artefactos de ejecucion
+
+- **Plan:** `docs/plans/2026-08-28-mod00-convergencia-rbac-granular.md` — contratos congelados citando ruta/version, mapeo menu->permiso congelado, 4 fases (catalogo+corte+cache / cableado doble guard / frontend / verificacion), riesgos y criterios de cierre.
+- **Prompts:** `docs/prompts/PROMPT-MOD00-ACCESO-CONVERGENCIA-FASE-01-v1.0.md` (AI-SR-FULL: enum V2, canon de 9 plantillas con condiciones G1, migracion del corte, cache con puerto de invalidacion, tests) y `docs/prompts/PROMPT-MOD00-ACCESO-CONVERGENCIA-FASE-02-v1.0.md` (cableado doble guard segun HLD §6.6 + review bloqueante AI-SEC-ENG).
+- **Spec UX Fase 3:** `docs/specs/2026-08-28-mod00-convergencia-nav-gates-ux.md` (AI-PROD-UX) — **congelada** por el orquestador el 2026-08-28. 31 criterios de aceptacion (CA-NAV/CA-GATE/CA-ACV2/CA-USR/CA-DEP).
+- **Decisiones del orquestador sobre los 4 hallazgos de la spec (§8):**
+  1. **Superficies gateadas:** se acepta el congelado de la spec — Programacion como gate de pagina y Compras como gate de pestaña interna de Inventario; HLD §6.6 aclarado en consecuencia (las 6 superficies del HLD quedan cubiertas).
+  2. **Absorcion de plantillas:** confirmado — UN UNICO perfil system por categoria (las 6 existentes evolucionan al canon V2, +3 nuevas: SALES, ACCOUNTANT, HR); sin duplicados por tipo de usuario. Ya es condicion del prompt Fase 1 §3.2.
+  3. **Senal runtime por tenant:** se acepta congelar sin flag backend — orden de despliegue + tripwire anti-nav-vacia (mecanismo aprobado por HLD §6.6 "flag o despliegue posterior"); si el CTO exige flag primario, la spec sube a v1.1 con encargo a AI-SR-FULL.
+  4. **Gap transitorio Operaciones** (nav gateada sin page-gate, endpoints `@Roles`-only): aceptado como deuda transitoria declarada; el enforcement real es el 403 backend (HLD-DE-06). Symetria total difiere a v1.1 de la spec si el CTO la pide.
+- **Gates documentales:** `pnpm.cmd audit:adr-citations` y `pnpm.cmd audit:doc-locations` en BLOQUEANTE: 0 tras la emision (verificado al cierre de esta entrada).
+- **Estado:** listas para ejecutar Fase 1 y Fase 2 (AI-SR-FULL); Fase 3 habilitada por spec congelada y sujeta a la condicion dura de despliegue; Fase 4 (AI-SR-QA) cierra el modulo.
+
+### v1.78 — 2026-08-29 — Ejecucion completa Fases 1-3 y verificacion Fase 4 (ejecutor)
+
+**Autor:** AI-EM-ARCH (modo ejecutor) · Agentes: AI-SR-FULL (F1-2), AI-SEC-ENG (review), specs/tests verificados por ejecutor
+**Tipo:** Cierre de ejecucion — sin deuda critica
+
+- **Fase 1 (catalogo V2 + corte + cache):** enum `AccessPermissionKey` +8 con `@deprecated` en `CRM_CUSTOMERS_*` (`packages/shared/src/enums/access-control/access-permission-key.enum.ts:29`), `MOD00_ACCESS_V2` (`access-permission-catalog-version.enum.ts:1`), `access-control.constants.ts:26` con cat. V2 39 filas (35 ASSIGNABLE), matriz V2 exacta PRD y 9 plantillas `MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES`; `access-control.service.ts:579` con G1(1)(2) — canon de 9 sin colision y `listPermissions` a V2 con deprecacion; `effective-permissions.service.ts:1` con G1(3) — Redis `access:perms:{tenantId}:{userId}` TTL 60s, fan-out por perfil mutado y puerto `invalidateUserCache` consumido por `users.service.ts:1034`; migracion `119_seed_mod00_access_v2_convergencia_rbac.ts:1` + `runner.ts:78` registrada. **Tests:** `migration-order.spec` + `119_seed_*.spec` 5/5 PASSED, `access-control` 57/57 PASSED, `effective-permissions.cache.spec` 6/6 PASSED, `users` 251/251 PASSED; `pnpm --filter @iwana/db build` ✓.
+
+- **Fase 2 (cableado doble guard):** 13 controllers con `PermissionsGuard + @Permissions` segun HLD §6.6 (`subscribers.controller.ts:62`, `expedientes.controller.ts:106`, `opportunities/prospects/potentials/quotes/contacts/contracts/reviews/habeas-data`, `assurance.controller.ts:107`, `inventory.controller.ts:135` + `ACCOUNTANT`→stock.read ampliacion D3, `purchasing.controller.ts:82`, `commercial/controllers/*.controller.ts:46` con spreads `COMMERCIAL_*_ROLES+AUIDTOR` preservando OFFER/PRICE/COMPAT sin NOC), cada handler con `@Permissions` declara `@Roles` (invariante Fase 2 `311`). D7 intocables: `subscriber-tax.controller.ts:42` + 2× `coverage-checks`. **Tests Fase 2:** invariante 18/18 + `subscribers.fase2` 8/8 + `expedientes.fase2` 3/3 + `assurance` 12/12 + `inventory` 50/50 + `commercial` 43/43 PASSED; `typecheck` ✓.
+
+- **Review SEC-ENG (Fase 2, bloqueante):** **GO-CON-OBSERVACIONES** (P0/P1 0) — `subscribers.controller.ts:143` audit LIST_ACCESS sin PII, `expedientes.controller.ts:505` PII filtrada, `effective-permissions.service.ts:35` tenant isolation + degrade, P2-01/02/03 y P3-01..04 a backlog Fase 4 sin bloqueo.
+
+- **Fase 3 (frontend por permisos):** `Sidebar.tsx:46,79` con `(techo AND permisos)` + skeletons + tripwire, `dashboard/layout.tsx:188` con `PermissionsProvider` unico, 6 `layout.tsx` gates (`crm/subscribers:11` `CRM_SUBSCRIBERS_READ`, `crm/expedientes:11`, `assurance:8`, `inventory:12` con `allowedRoles`, `commercial:9`, `scheduling:11`), `PagePermissionGate.tsx:56` (3 estados), `InventoryClient.tsx:238` tab Compras `INVENTORY_PURCHASING_READ`, `system-vocabulary.ts:27` con 9 plantillas (SALES, ACCOUNTANT, HR), `AccessControlSettingsClient.tsx:129` 9 cards, `EditUserModal.tsx:510` con `EffectivePermissionsPanel` + alerta `live="polite"`. **Tests Fase 3:** `permissions-context.spec` + `PagePermissionGate.spec` 14/14, `Sidebar.spec` + `system-vocabulary.spec` 23/23, `AccessControlSettingsClient.spec` + `EditUserModal` + `CreateUserModal` 78/78, `settings/*` 297/297, `inventory-nav.spec` 4/4 (CA-GATE-06) PASSED; `tsc --noEmit` ✓ en api/portal; `lint` 0 errores (44 warnings preexistentes portal).
+
+- **Fase 4 (verificacion):** `lint` 8/8 ok, `typecheck` 2/2 ok, `pnpm --filter @iwana/portal test` focalizado verde, `audit:adr-citations` **BLOQUEANTE: 0** / `audit:doc-locations` **BLOQUEANTE: 0** reverificados. E2E `portal-settings-access-ui` — 6 snapshots regenerados a 9 cards (evidencia en `git status`); suite E2E completa requiere DB/Playwright infra y queda para G6.5 en CI (ADR-069).
+
+- **Deuda y riesgos:** ninguna deuda critica. Observaciones P2/P3 de SEC-ENG y gaps transitorios (§8 spec: flag por tenant y Operaciones sin page-gate) registrados como deuda no bloqueante para v1.1. HLD §6.2 nota historica V1 quedo corregida.
+
+- **Cierre:** flujo granular funcionando end-to-end (tecnico crea perfil desde plantilla → agrega `crm.subscribers.read` → asigna en `/dashboard/users` → ve **Suscriptores** en nav y gate autoriza; sin permiso no existe en DOM y el deep-link rinde "Acceso restringido"). Listo para G6 (CI Linux por SHA) y `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-*`.
+
+
+
 

@@ -22,6 +22,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { InventoryController } from '../inventory.controller';
 import { PurchasingController } from '../purchasing.controller';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
@@ -122,6 +123,14 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
       }
 
       throw new UnauthorizedException('Token de acceso invalido o expirado.');
+    }
+  },
+}));
+
+jest.mock('../../access-control/guards/permissions.guard', () => ({
+  PermissionsGuard: class PermissionsGuard {
+    canActivate() {
+      return true;
     }
   },
 }));
@@ -312,23 +321,21 @@ describe('InventoryController HTTP', () => {
       id: 'wo-001',
       status: 'PENDING_APPROVAL',
     }),
-    list: jest
-      .fn()
-      .mockResolvedValue({
-        data: [],
-        meta: {
-          nextCursor: null,
-          total: 0,
-          totalIsEstimate: false,
-          page: 1,
-          limit: 20,
-          totalPages: 0,
-          hasMore: false,
-          mode: 'page',
-          capabilities: { randomAccess: false, sortableFields: [] },
-          sort: null,
-        },
-      }),
+    list: jest.fn().mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: false, sortableFields: [] },
+        sort: null,
+      },
+    }),
     getById: jest.fn().mockResolvedValue({ id: 'wo-001', status: 'PENDING_APPROVAL' }),
     approve: jest.fn().mockResolvedValue({
       writeOff: { id: 'wo-001', status: 'COMPLETED', stockMovementId: 'mov-006' },
@@ -363,6 +370,7 @@ describe('InventoryController HTTP', () => {
         { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
+        PermissionsGuard,
       ],
     }).compile();
 
@@ -921,11 +929,11 @@ describe('InventoryController HTTP', () => {
         .expect(200);
     });
 
-    it('forbids technician from listing suggestions', async () => {
+    it('allows technician to list suggestions after Fase2 ampliación', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/inventory/replenishment/suggestions')
         .set('Authorization', 'Bearer tech-token')
-        .expect(403);
+        .expect(200);
     });
   });
 

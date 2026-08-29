@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 import { EffectivePermissionsService } from './effective-permissions.service';
 
 jest.mock('@iwana/db', () => {
@@ -17,8 +18,17 @@ describe('EffectivePermissionsService', () => {
   let service: EffectivePermissionsService;
 
   beforeEach(async () => {
+    const redisMock = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue('OK'),
+      del: jest.fn().mockResolvedValue(1),
+    };
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [EffectivePermissionsService, { provide: getDataSourceToken(), useValue: {} }],
+      providers: [
+        EffectivePermissionsService,
+        { provide: getDataSourceToken(), useValue: {} },
+        { provide: REDIS_CLIENT, useValue: redisMock },
+      ],
     }).compile();
 
     service = moduleRef.get(EffectivePermissionsService);

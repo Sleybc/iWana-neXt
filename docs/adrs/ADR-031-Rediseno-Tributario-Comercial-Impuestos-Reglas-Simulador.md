@@ -42,10 +42,10 @@ Se adopta un modelo tributario comercial basado en tres conceptos claros y visib
 
 ### D1. Tres secciones visibles al negocio
 
-> **Actualización ADR-082 (2026-08-20, estado Propuesto):** las tres secciones tributarias visibles viven en Configuración → Reglas, no en `CommercialTabLayout`. Ownership de datos: Taxation. Reemplazos de catálogo convive en la misma UX pero sigue siendo Commercial.
+> **Actualización ADR-082 (propuesto), 2026-08-20:** las tres secciones tributarias visibles viven en Configuración → Reglas, no en `CommercialTabLayout`. Ownership de datos: Taxation. Reemplazos de catálogo convive en la misma UX pero sigue siendo Commercial.
 
 - **Impuestos** — catálogo de tributos. Consumido desde `TaxationModule` (ADR-029), no dueño local.
-- **Reglas de aplicación** — condiciones bajo las cuales cada impuesto aplica a un cliente. Propiedad de `TaxationModule` (ADR-082); antes `CommercialModule`.
+- **Reglas de aplicación** — condiciones bajo las cuales cada impuesto aplica a un cliente. Propiedad de `TaxationModule` — ADR-082 (propuesto); antes `CommercialModule`.
 - **Simulador tributario** — herramienta de verificación que explica qué impuestos aplican a un cliente concreto y qué regla hizo match.
 
 ### D2. Condiciones soportadas desde v1 en las reglas

@@ -11,6 +11,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { CommercialPickerSearchController } from './controllers/commercial-picker-search.controller';
 import { CatalogService } from './services/catalog.service';
 
@@ -52,6 +53,14 @@ jest.mock('../auth/guards/jwt-auth.guard', () => ({
   },
 }));
 
+jest.mock('../access-control/guards/permissions.guard', () => ({
+  PermissionsGuard: class PermissionsGuard {
+    canActivate() {
+      return true;
+    }
+  },
+}));
+
 jest.mock('../auth/guards/roles.guard', () => ({
   RolesGuard: class RolesGuard {
     canActivate(context: {
@@ -87,6 +96,7 @@ describe('CommercialPickerSearchController HTTP', () => {
         { provide: CatalogService, useValue: catalogServiceMock },
         JwtAuthGuard,
         RolesGuard,
+        PermissionsGuard,
       ],
     }).compile();
 

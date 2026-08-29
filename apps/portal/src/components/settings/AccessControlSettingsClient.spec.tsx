@@ -1613,4 +1613,74 @@ describe('AccessControlSettingsClient', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it('CA-ACV2-01/03: 9 sugeridos en una sola sección, orden canónico invariante al orden de la API', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: { listProfiles: jest.Mock };
+    };
+
+    // 9 perfiles system (uno por categoría) en orden aleatorio desde la API
+    const buildSystemProfile = (
+      id: string,
+      baseRoleConstraint: UserRole,
+      permissions: AccessPermissionKey[],
+    ) => ({
+      id,
+      name: `Plantilla DB ${baseRoleConstraint}`,
+      description: `Perfil sugerido para ${baseRoleConstraint}.`,
+      baseRoleConstraint,
+      scopeSiteId: null,
+      isSystem: true,
+      isActive: true,
+      permissions,
+      createdAt: '2026-08-28T00:00:00.000Z',
+      updatedAt: '2026-08-28T00:00:00.000Z',
+    });
+
+    const shuffledSystemProfiles: ReturnType<typeof buildSystemProfile>[] = [
+      buildSystemProfile('sys-auditor', UserRole.AUDITOR, [AccessPermissionKey.SETTINGS_READ]),
+      buildSystemProfile('sys-sales', UserRole.SALES, []),
+      buildSystemProfile('sys-admin', UserRole.ADMIN, [AccessPermissionKey.SETTINGS_READ]),
+      buildSystemProfile('sys-hr', UserRole.HR, []),
+      buildSystemProfile('sys-noc', UserRole.NOC, [AccessPermissionKey.SETTINGS_READ]),
+      buildSystemProfile('sys-contractor', UserRole.CONTRACTOR, []),
+      buildSystemProfile('sys-accountant', UserRole.ACCOUNTANT, []),
+      buildSystemProfile('sys-support', UserRole.SUPPORT, [AccessPermissionKey.SETTINGS_READ]),
+      buildSystemProfile('sys-tech', UserRole.TECHNICIAN, []),
+    ];
+
+    accessControlApi.listProfiles.mockResolvedValue(shuffledSystemProfiles);
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const suggestedPanel = (await screen.findByText('Perfiles sugeridos')).closest(
+      'section',
+    ) as HTMLElement;
+
+    // Una sola sección; el orden visible lo impone el cliente (spec §3.3),
+    // resolviendo los nombres humanos del vocabulario y no el nombre DB.
+    const createButtons = within(suggestedPanel).getAllByRole('button', {
+      name: /Crear a partir de este perfil/,
+    });
+    expect(createButtons).toHaveLength(9);
+    const visibleOrder = createButtons.map((button) =>
+      button.getAttribute('aria-label')?.replace('Crear a partir de este perfil ', ''),
+    );
+    expect(visibleOrder).toEqual([
+      'Administrador general',
+      'Monitoreo operativo',
+      'Soporte inicial',
+      'Ventas',
+      'Técnico de campo',
+      'Contabilidad',
+      'Talento humano',
+      'Contratista',
+      'Auditor',
+    ]);
+  });
 });

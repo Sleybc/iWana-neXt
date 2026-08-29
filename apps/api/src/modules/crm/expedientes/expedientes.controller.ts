@@ -26,13 +26,15 @@ import {
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
-import { PlatformRole, UserRole, ExpedienteStatus } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole, ExpedienteStatus } from '@iwana/shared';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
@@ -101,7 +103,7 @@ interface UploadedDocumentFile {
 
 @ApiTags('crm')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('crm/expedientes')
 export class ExpedientesController {
   constructor(
@@ -114,6 +116,7 @@ export class ExpedientesController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   // Audit manual limpio en ExpedienteService — evita PII descifrada en interceptor (SWEEP-01/03).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear expediente con datos mínimos (nombre + canal de adquisición)' })
@@ -126,7 +129,15 @@ export class ExpedientesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar expedientes con filtros' })
   @ApiExtraModels(CrmListPaginationDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
@@ -157,7 +168,14 @@ export class ExpedientesController {
   }
 
   @Get(':id/bootstrap')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Obtener bootstrap seguro del detalle del expediente' })
   @ApiParam({ name: 'id', type: String, format: 'uuid', required: true })
   @ApiOkResponse({ type: ExpedienteDetailBootstrapResponseDto })
@@ -167,7 +185,14 @@ export class ExpedientesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Obtener expediente por ID con relaciones' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.findById(id);
@@ -186,6 +211,7 @@ export class ExpedientesController {
 
   @Patch(':id/sections/:section')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar una sección específica del expediente' })
   async updateSection(
@@ -214,6 +240,7 @@ export class ExpedientesController {
 
   @Patch(':id/status')
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Transición de estado del pipeline' })
   async transitionStatus(
@@ -259,6 +286,7 @@ export class ExpedientesController {
 
   @Post(':id/reactivate')
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Reactivar expediente descartado' })
   async reactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -267,7 +295,14 @@ export class ExpedientesController {
   }
 
   @Get(':id/timeline')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Obtener timeline cronológico del expediente' })
   @ApiExtraModels(
     ExpedienteTimelineLegacyResponseSwaggerDto,
@@ -335,7 +370,14 @@ export class ExpedientesController {
   }
 
   @Get(':id/document-supports')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar soportes documentales del expediente' })
   async getDocumentSupports(
     @Param('id', ParseUUIDPipe) id: string,
@@ -347,6 +389,7 @@ export class ExpedientesController {
 
   @Post(':id/document-supports/:documentKey/upload')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   @SkipAudit()
@@ -370,6 +413,7 @@ export class ExpedientesController {
 
   @Patch(':id/document-supports/:documentKey/:versionId/status')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar estado de revisión de un soporte documental' })
   async updateDocumentSupportStatus(
@@ -395,6 +439,7 @@ export class ExpedientesController {
 
   @Delete(':id/document-supports/:documentKey/:versionId')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Eliminar una versión específica de soporte documental' })
   async deleteDocumentSupport(
@@ -415,7 +460,14 @@ export class ExpedientesController {
   }
 
   @Get(':id/document-supports/:documentKey/:versionId/file')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Descargar una versión específica de soporte documental' })
   async getDocumentSupportFile(
     @Param('id', ParseUUIDPipe) id: string,
@@ -430,6 +482,7 @@ export class ExpedientesController {
 
   @Post(':id/contact-attempts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Registrar intento de contacto del expediente' })
   async createContactAttempt(
@@ -442,7 +495,14 @@ export class ExpedientesController {
   }
 
   @Get(':id/contact-attempts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar intentos de contacto del expediente' })
   @ApiExtraModels(CrmListPaginationDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
@@ -457,6 +517,7 @@ export class ExpedientesController {
 
   @Post(':id/consents')
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Registrar consentimiento del expediente' })
   async createConsent(
@@ -475,7 +536,14 @@ export class ExpedientesController {
   }
 
   @Get(':id/consents')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar consentimientos del expediente' })
   async listConsents(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const data = await this.expedienteService.listConsents(id);
@@ -490,6 +558,7 @@ export class ExpedientesController {
 
   @Patch(':id/consents/:consentId/revoke')
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Revocar consentimiento del expediente' })
   async revokeConsent(
@@ -525,6 +594,7 @@ export class ExpedientesController {
 
   @Patch(':id/installation-operational-refs')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Vincular referencias operativas de instalación al expediente' })
   async linkInstallationOperationalRefs(
@@ -540,13 +610,20 @@ export class ExpedientesController {
 
 @ApiTags('crm')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('crm/pipeline')
 export class PipelineController {
   constructor(private readonly expedienteService: ExpedienteService) {}
 
   @Get('summary')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Resumen del pipeline por estado' })
   async getSummary() {
     return this.expedienteService.getPipelineSummary();

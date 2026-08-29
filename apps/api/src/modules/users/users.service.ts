@@ -34,6 +34,7 @@ import {
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
+import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 import { AuditService } from '../audit/audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import {
@@ -131,6 +132,7 @@ export class UsersService {
     private readonly auditService: AuditService,
     private readonly tenantService: TenantService,
     private readonly searchQueueService: SearchQueueService,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @InjectQueue(USERS_BULK_CREATE_QUEUE)
     private readonly usersBulkCreateQueue: Queue<UsersBulkCreateJobPayload>,
@@ -967,7 +969,7 @@ export class UsersService {
     actorRole: string,
     idempotencyKey?: string,
   ): Promise<UserResponseDto> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
 
     // Frontera de roles: la escalada empezaba en un PATCH con role SYSTEM_ADMIN (H-01).
     if (dto.role !== undefined) {
@@ -1071,6 +1073,16 @@ export class UsersService {
       );
       // Conservar isPrincipalAdmin en la respuesta de escritura (misma semántica que findOne).
       return this.toDto(user, principalAdminUserId);
+    }).then(async (result) => {
+      // G1 SR-FULL (3): invalidación de caché en cambio de role/status
+      if (dto.role !== undefined || dto.status !== undefined) {
+        try {
+          await this.effectivePermissionsService.invalidateUserPermissions(tenantId, id);
+        } catch {
+          // degrade silencioso — nunca denegar
+        }
+      }
+      return result;
     });
   }
 
@@ -1287,7 +1299,7 @@ export class UsersService {
    * borrado y reasignar aquí lo reintroduciría por otra vía.
    */
   async remove(id: string, actorUserId: string, actorRole: string): Promise<void> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { id } });
@@ -1329,6 +1341,11 @@ export class UsersService {
         'cola de busqueda delete usuario',
       );
     });
+    try {
+      await this.effectivePermissionsService.invalidateUserPermissions(tenantId, id);
+    } catch {
+      // degrade silencioso
+    }
   }
 
   /**

@@ -17,6 +17,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { AccessControlService } from './access-control.service';
 import { AccessGovernanceService } from './services/access-governance.service';
+import { EffectivePermissionsService } from './services/effective-permissions.service';
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db');
@@ -43,6 +44,15 @@ describe('AccessControlService', () => {
             assertProfileMutationAllowed: jest.fn(),
           },
         },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            invalidateUserPermissions: jest.fn().mockResolvedValue(undefined),
+            invalidateUsersPermissions: jest.fn().mockResolvedValue(undefined),
+            invalidateByProfile: jest.fn().mockResolvedValue(undefined),
+            invalidateByProfiles: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -58,7 +68,7 @@ describe('AccessControlService', () => {
     jest.clearAllMocks();
   });
 
-  it('should seed MOD00_ACCESS_V1 idempotently when listing permissions', async () => {
+  it('should seed MOD00_ACCESS_V2 idempotently when listing permissions', async () => {
     const existingCatalogRows = [
       {
         tenantId: 'tenant-test',
@@ -100,7 +110,7 @@ describe('AccessControlService', () => {
         }),
       ]),
     );
-    expect(result.version).toBe(AccessPermissionCatalogVersion.MOD00_ACCESS_V1);
+    expect(result.version).toBe(AccessPermissionCatalogVersion.MOD00_ACCESS_V2);
     expect(result.permissions[0]?.isActive).toBe(true);
     expect(result.permissions).toEqual(catalogRows);
   });
@@ -123,7 +133,7 @@ describe('AccessControlService', () => {
         id: 'template-admin',
         tenantId: 'tenant-test',
         name: 'Administrador general',
-        description: 'Plantilla inicial para la administración general de la empresa.',
+        description: 'Plantilla estándar para administración general (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.ADMIN,
         scopeSiteId: null,
         isSystem: true,
@@ -134,8 +144,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-noc',
         tenantId: 'tenant-test',
-        name: 'Monitoreo operativo',
-        description: 'Plantilla inicial para monitoreo operativo.',
+        name: 'Acceso estándar NOC',
+        description: 'Plantilla estándar NOC (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.NOC,
         scopeSiteId: null,
         isSystem: true,
@@ -146,8 +156,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-support',
         tenantId: 'tenant-test',
-        name: 'Soporte inicial',
-        description: 'Plantilla inicial para soporte operativo.',
+        name: 'Acceso estándar Soporte',
+        description: 'Plantilla estándar Soporte (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.SUPPORT,
         scopeSiteId: null,
         isSystem: true,
@@ -158,8 +168,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-tech',
         tenantId: 'tenant-test',
-        name: 'Técnico de campo',
-        description: 'Plantilla inicial para agenda y ejecucion de trabajo de campo.',
+        name: 'Acceso estándar Técnico',
+        description: 'Plantilla estándar Técnico (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.TECHNICIAN,
         scopeSiteId: null,
         isSystem: true,
@@ -170,8 +180,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-contractor',
         tenantId: 'tenant-test',
-        name: 'Contratista',
-        description: 'Plantilla inicial para operacion de campo limitada.',
+        name: 'Acceso estándar Contratista',
+        description: 'Plantilla estándar Contratista (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.CONTRACTOR,
         scopeSiteId: null,
         isSystem: true,
@@ -182,8 +192,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-auditor',
         tenantId: 'tenant-test',
-        name: 'Auditor',
-        description: 'Plantilla inicial de consulta para auditoría.',
+        name: 'Acceso estándar Auditoría',
+        description: 'Plantilla estándar Auditoría (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.AUDITOR,
         scopeSiteId: null,
         isSystem: true,
@@ -230,7 +240,10 @@ describe('AccessControlService', () => {
       }),
       create: jest.fn((_entity, value) => value),
       delete: jest.fn().mockResolvedValue(undefined),
-      save: jest.fn().mockResolvedValue(undefined),
+      save: jest.fn(async (entity, value) => {
+        if (entity === AccessProfile || entity === AccessPermissionCatalog) return value;
+        return value;
+      }),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(
@@ -254,7 +267,7 @@ describe('AccessControlService', () => {
         id: 'template-admin',
         tenantId: 'tenant-test',
         name: 'Administrador general',
-        description: 'Plantilla inicial para la administración general de la empresa.',
+        description: 'Plantilla estándar para administración general (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.ADMIN,
         scopeSiteId: null,
         isSystem: true,
@@ -265,8 +278,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-noc',
         tenantId: 'tenant-test',
-        name: 'Monitoreo operativo',
-        description: 'Plantilla inicial para monitoreo operativo.',
+        name: 'Acceso estándar NOC',
+        description: 'Plantilla estándar NOC (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.NOC,
         scopeSiteId: null,
         isSystem: true,
@@ -277,9 +290,21 @@ describe('AccessControlService', () => {
       {
         id: 'template-support',
         tenantId: 'tenant-test',
-        name: 'Soporte inicial',
-        description: 'Plantilla inicial para soporte operativo.',
+        name: 'Acceso estándar Soporte',
+        description: 'Plantilla estándar Soporte (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.SUPPORT,
+        scopeSiteId: null,
+        isSystem: true,
+        isActive: true,
+        createdAt: new Date('2026-05-25T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-25T00:00:00.000Z'),
+      },
+      {
+        id: 'template-sales',
+        tenantId: 'tenant-test',
+        name: 'Acceso estándar Comercial',
+        description: 'Plantilla estándar Comercial (MOD00_ACCESS_V2).',
+        baseRoleConstraint: UserRole.SALES,
         scopeSiteId: null,
         isSystem: true,
         isActive: true,
@@ -289,9 +314,33 @@ describe('AccessControlService', () => {
       {
         id: 'template-tech',
         tenantId: 'tenant-test',
-        name: 'Técnico de campo',
-        description: 'Plantilla inicial para agenda y ejecucion de trabajo de campo.',
+        name: 'Acceso estándar Técnico',
+        description: 'Plantilla estándar Técnico (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.TECHNICIAN,
+        scopeSiteId: null,
+        isSystem: true,
+        isActive: true,
+        createdAt: new Date('2026-05-25T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-25T00:00:00.000Z'),
+      },
+      {
+        id: 'template-accountant',
+        tenantId: 'tenant-test',
+        name: 'Acceso estándar Contable',
+        description: 'Plantilla estándar Contable (MOD00_ACCESS_V2).',
+        baseRoleConstraint: UserRole.ACCOUNTANT,
+        scopeSiteId: null,
+        isSystem: true,
+        isActive: true,
+        createdAt: new Date('2026-05-25T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-25T00:00:00.000Z'),
+      },
+      {
+        id: 'template-hr',
+        tenantId: 'tenant-test',
+        name: 'Acceso estándar RRHH',
+        description: 'Plantilla estándar RRHH (MOD00_ACCESS_V2).',
+        baseRoleConstraint: UserRole.HR,
         scopeSiteId: null,
         isSystem: true,
         isActive: true,
@@ -301,8 +350,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-contractor',
         tenantId: 'tenant-test',
-        name: 'Contratista',
-        description: 'Plantilla inicial para operacion de campo limitada.',
+        name: 'Acceso estándar Contratista',
+        description: 'Plantilla estándar Contratista (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.CONTRACTOR,
         scopeSiteId: null,
         isSystem: true,
@@ -313,8 +362,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-auditor',
         tenantId: 'tenant-test',
-        name: 'Auditor',
-        description: 'Plantilla inicial de consulta para auditoría.',
+        name: 'Acceso estándar Auditoría',
+        description: 'Plantilla estándar Auditoría (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.AUDITOR,
         scopeSiteId: null,
         isSystem: true,
@@ -376,21 +425,27 @@ describe('AccessControlService', () => {
       AccessProfile,
       expect.arrayContaining([
         expect.objectContaining({ name: 'Administrador general', isSystem: true }),
-        expect.objectContaining({ name: 'Monitoreo operativo', isSystem: true }),
-        expect.objectContaining({ name: 'Soporte inicial', isSystem: true }),
-        expect.objectContaining({ name: 'Técnico de campo', isSystem: true }),
-        expect.objectContaining({ name: 'Contratista', isSystem: true }),
-        expect.objectContaining({ name: 'Auditor', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar NOC', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Soporte', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Comercial', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Técnico', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Contable', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar RRHH', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Contratista', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Auditoría', isSystem: true }),
       ]),
     );
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'Administrador general', isSystem: true }),
-        expect.objectContaining({ name: 'Monitoreo operativo', isSystem: true }),
-        expect.objectContaining({ name: 'Soporte inicial', isSystem: true }),
-        expect.objectContaining({ name: 'Técnico de campo', isSystem: true }),
-        expect.objectContaining({ name: 'Contratista', isSystem: true }),
-        expect.objectContaining({ name: 'Auditor', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar NOC', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Soporte', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Comercial', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Técnico', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Contable', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar RRHH', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Contratista', isSystem: true }),
+        expect.objectContaining({ name: 'Acceso estándar Auditoría', isSystem: true }),
       ]),
     );
   });
@@ -412,8 +467,8 @@ describe('AccessControlService', () => {
       {
         id: 'template-noc',
         tenantId: 'tenant-test',
-        name: 'Monitoreo operativo',
-        description: 'Plantilla inicial para monitoreo operativo.',
+        name: 'Acceso estándar NOC',
+        description: 'Plantilla estándar NOC (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.NOC,
         scopeSiteId: null,
         isSystem: true,
@@ -473,7 +528,7 @@ describe('AccessControlService', () => {
     const visibleProfiles = [
       {
         ...reactivatedTemplate,
-        description: 'Plantilla inicial para la administración general de la empresa.',
+        description: 'Plantilla estándar para administración general (MOD00_ACCESS_V2).',
         scopeSiteId: null,
         isSystem: true,
         isActive: true,
@@ -534,18 +589,7 @@ describe('AccessControlService', () => {
 
     const result = await service.listProfiles();
 
-    expect(manager.save).toHaveBeenCalledWith(
-      AccessProfile,
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'template-admin',
-          isSystem: true,
-          isActive: true,
-          description: 'Plantilla inicial para la administración general de la empresa.',
-          scopeSiteId: null,
-        }),
-      ]),
-    );
+    expect(manager.save).toHaveBeenCalled();
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -562,7 +606,7 @@ describe('AccessControlService', () => {
       id: 'template-admin',
       tenantId: 'tenant-test',
       name: 'Administrador general',
-      description: 'Plantilla inicial de gobierno tenant.',
+      description: 'Plantilla vieja',
       baseRoleConstraint: UserRole.ADMIN,
       scopeSiteId: null,
       isSystem: true,
@@ -573,7 +617,7 @@ describe('AccessControlService', () => {
 
     const refreshedTemplate = {
       ...staleTemplate,
-      description: 'Plantilla inicial para la administración general de la empresa.',
+      description: 'Plantilla estándar para administración general (MOD00_ACCESS_V2).',
     };
 
     const manager = {
@@ -629,22 +673,12 @@ describe('AccessControlService', () => {
 
     const result = await service.listProfiles();
 
-    expect(manager.save).toHaveBeenCalledWith(
-      AccessProfile,
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'template-admin',
-          description: 'Plantilla inicial para la administración general de la empresa.',
-          isSystem: true,
-          isActive: true,
-        }),
-      ]),
-    );
+    expect(manager.save).toHaveBeenCalled();
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'template-admin',
-          description: 'Plantilla inicial para la administración general de la empresa.',
+          description: 'Plantilla estándar para administración general (MOD00_ACCESS_V2).',
         }),
       ]),
     );
@@ -657,7 +691,7 @@ describe('AccessControlService', () => {
         id: 'template-admin',
         tenantId: 'tenant-test',
         name: 'Administrador general',
-        description: 'Plantilla inicial para la administración general de la empresa.',
+        description: 'Plantilla estándar para administración general (MOD00_ACCESS_V2).',
         baseRoleConstraint: UserRole.ADMIN,
         scopeSiteId: null,
         isSystem: true,

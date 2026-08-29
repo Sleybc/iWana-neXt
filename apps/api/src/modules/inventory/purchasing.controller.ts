@@ -15,12 +15,14 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Permissions } from '../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   AddSupplierQuoteDto,
@@ -77,7 +79,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
 @ApiTags('purchasing')
 @ApiExtraModels(InventoryListMetaDto)
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('purchasing')
 export class PurchasingController {
   constructor(
@@ -90,7 +92,8 @@ export class PurchasingController {
   ) {}
 
   @Get('requests')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({
     summary: 'Listar solicitudes de compra',
     description:
@@ -109,7 +112,8 @@ export class PurchasingController {
   }
 
   @Get('requests/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Obtener detalle completo de una solicitud de compra' })
   getRequest(@Param('id', ParseUUIDPipe) id: string) {
     return this.purchasingQueryService.getRequestDetail(id);
@@ -117,6 +121,7 @@ export class PurchasingController {
 
   @Post('requests')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Crear solicitud de compra' })
   createRequest(
     @Body(new ZodValidationPipe(CreatePurchaseRequestSchema)) body: CreatePurchaseRequestDto,
@@ -130,6 +135,7 @@ export class PurchasingController {
 
   @Post('requests/:id/rfq')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Crear solicitud de cotización (RFQ) desde una solicitud de compra' })
   createRfq(
     @Param('id', ParseUUIDPipe) id: string,
@@ -141,6 +147,7 @@ export class PurchasingController {
 
   @Post('requests/:id/quotes')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Registrar cotización para una solicitud' })
   addQuote(
     @Param('id', ParseUUIDPipe) id: string,
@@ -152,6 +159,7 @@ export class PurchasingController {
 
   @Post('requests/:id/approve')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Aprobar solicitud de compra' })
   approveRequest(
     @Param('id', ParseUUIDPipe) id: string,
@@ -167,6 +175,7 @@ export class PurchasingController {
 
   @Post('requests/:id/reject')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Rechazar solicitud de compra' })
   rejectRequest(
     @Param('id', ParseUUIDPipe) id: string,
@@ -182,6 +191,7 @@ export class PurchasingController {
 
   @Post('requests/:id/cancel')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Cancelar solicitud de compra' })
   cancelRequest(
     @Param('id', ParseUUIDPipe) id: string,
@@ -197,6 +207,7 @@ export class PurchasingController {
 
   @Patch('requests/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({
     summary:
       'Editar cabecera y líneas de una solicitud de compra (solo en borrador/sin cotizaciones)',
@@ -216,6 +227,7 @@ export class PurchasingController {
   @Post('orders/:id/approve')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Aprobar orden de compra (PENDING_APPROVAL → APPROVED)' })
   approveOrder(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     return this.purchasingService.approvePurchaseOrder(id, actor);
@@ -224,6 +236,7 @@ export class PurchasingController {
   @Post('orders/:id/cancel')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({
     summary: 'Cancelar orden de compra con motivo (no permitido si hay recepción parcial)',
   })
@@ -242,6 +255,7 @@ export class PurchasingController {
   @Post('orders/:id/close')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({
     summary: 'Cerrar orden de compra completamente recibida (FULLY_RECEIVED → CLOSED)',
   })
@@ -251,6 +265,7 @@ export class PurchasingController {
 
   @Post('requests/:id/awards')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Registrar adjudicaciones por línea' })
   createAwards(
     @Param('id', ParseUUIDPipe) id: string,
@@ -266,7 +281,8 @@ export class PurchasingController {
   }
 
   @Get('orders')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Listar órdenes de compra' })
   listOrders(
     @Query(new ZodValidationPipe(ListPurchaseOrdersQuerySchema)) query: ListPurchaseOrdersQueryDto,
@@ -275,14 +291,16 @@ export class PurchasingController {
   }
 
   @Get('orders/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Obtener orden de compra con líneas' })
   getOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.purchasingService.getOrderById(id);
   }
 
   @Get('providers')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Buscar proveedores disponibles para compras' })
   searchProviders(
     @Query(new ZodValidationPipe(SearchSuppliersQuerySchema)) query: SearchSuppliersQueryInput,
@@ -291,7 +309,8 @@ export class PurchasingController {
   }
 
   @Get('providers/:partyRefId/summary')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Obtener ficha resumida de proveedor' })
   getProviderSummary(@Param('partyRefId', ParseUUIDPipe) partyRefId: string) {
     return this.purchasingQueryService.getProviderSummary(partyRefId);
@@ -299,6 +318,7 @@ export class PurchasingController {
 
   @Post('suppliers')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Dar de alta un proveedor con perfil comercial' })
   createSupplier(
     @Body(new ZodValidationPipe(CreateSupplierSchema)) body: CreateSupplierDto,
@@ -308,7 +328,8 @@ export class PurchasingController {
   }
 
   @Get('suppliers')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({
     summary: 'Listar proveedores con perfil comercial',
     description:
@@ -327,7 +348,8 @@ export class PurchasingController {
   }
 
   @Get('suppliers/lookup')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({
     summary: 'Buscar tercero por documento para reutilizar su identidad en el alta',
     description:
@@ -345,7 +367,8 @@ export class PurchasingController {
   }
 
   @Get('suppliers/:partyRefId')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Obtener detalle de proveedor con perfil comercial' })
   getSupplier(@Param('partyRefId', ParseUUIDPipe) partyRefId: string) {
     return this.supplierProfileService.get(partyRefId);
@@ -353,6 +376,7 @@ export class PurchasingController {
 
   @Patch('suppliers/:partyRefId')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Actualizar datos comerciales del proveedor' })
   updateSupplier(
     @Param('partyRefId', ParseUUIDPipe) partyRefId: string,
@@ -364,6 +388,7 @@ export class PurchasingController {
 
   @Post('suppliers/:partyRefId/status')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Cambiar estado del perfil comercial del proveedor' })
   setSupplierStatus(
     @Param('partyRefId', ParseUUIDPipe) partyRefId: string,
@@ -379,6 +404,7 @@ export class PurchasingController {
 
   @Post('orders')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Crear orden de compra desde solicitud aprobada' })
   createOrder(
     @Body(new ZodValidationPipe(CreatePurchaseOrderSchema)) body: CreatePurchaseOrderDto,
@@ -392,6 +418,7 @@ export class PurchasingController {
 
   @Post('orders/:id/receipts')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Registrar recepción de una orden de compra' })
   receiveOrder(
     @Param('id', ParseUUIDPipe) id: string,
@@ -407,6 +434,7 @@ export class PurchasingController {
 
   @Post('rfqs/:rfqId/invitations')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Invitar proveedores a una solicitud de cotización' })
   inviteSuppliers(
     @Param('rfqId', ParseUUIDPipe) rfqId: string,
@@ -418,6 +446,7 @@ export class PurchasingController {
 
   @Post('rfqs/:rfqId/send')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Enviar solicitud de cotización a proveedores invitados' })
   sendRfq(@Param('rfqId', ParseUUIDPipe) rfqId: string, @CurrentUser() actor: JwtPayload) {
     return this.rfqService.send(rfqId, actor);
@@ -425,6 +454,7 @@ export class PurchasingController {
 
   @Post('rfqs/:rfqId/invitations/:invId/decline')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Registrar declinación de una invitación de cotización' })
   declineInvitation(
     @Param('rfqId', ParseUUIDPipe) rfqId: string,
@@ -437,20 +467,23 @@ export class PurchasingController {
 
   @Post('rfqs/:rfqId/close')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
   @ApiOperation({ summary: 'Cerrar ronda de cotización' })
   closeRfq(@Param('rfqId', ParseUUIDPipe) rfqId: string, @CurrentUser() actor: JwtPayload) {
     return this.rfqService.close(rfqId, actor);
   }
 
   @Get('rfqs/:rfqId')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Obtener detalle de solicitud de cotización' })
   getRfq(@Param('rfqId', ParseUUIDPipe) rfqId: string) {
     return this.rfqService.getById(rfqId);
   }
 
   @Get('rfqs/:rfqId/invitations/pdf.zip')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Descargar un ZIP con un PDF personalizado por proveedor invitado' })
   async downloadRfqInvitationsZip(
     @Param('rfqId', ParseUUIDPipe) rfqId: string,
@@ -465,7 +498,8 @@ export class PurchasingController {
   }
 
   @Get('rfqs/:rfqId/invitations/:invitationId/pdf')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
   @ApiOperation({ summary: 'Descargar PDF de RFQ personalizado para un proveedor' })
   async downloadRfqInvitationPdf(
     @Param('rfqId', ParseUUIDPipe) rfqId: string,

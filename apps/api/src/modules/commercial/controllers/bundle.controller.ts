@@ -19,9 +19,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CustomerSegment } from '@iwana/shared';
+import { AccessPermissionKey, CustomerSegment, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { BundleService } from '../services/bundle.service';
 import { BundleListItemDto, CreateBundleDto, UpdateBundleDto } from '../dto/bundle.dto';
@@ -36,13 +38,14 @@ import {
 @ApiTags('commercial-bundles')
 @ApiExtraModels(BundleListItemDto, CommercialListMetaDto)
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('commercial/bundles')
 export class BundleController {
   constructor(private readonly bundleService: BundleService) {}
 
   @Get()
-  @Roles(...COMMERCIAL_OFFER_READ_ROLES)
+  @Roles(...COMMERCIAL_OFFER_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
     summary: 'Listar bundles activos del tenant (paginación cursor)',
     description:
@@ -58,7 +61,8 @@ export class BundleController {
   }
 
   @Get(':id')
-  @Roles(...COMMERCIAL_OFFER_READ_ROLES)
+  @Roles(...COMMERCIAL_OFFER_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({ summary: 'Obtener bundle por ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.bundleService.findOne(id);
@@ -67,6 +71,7 @@ export class BundleController {
 
   @Post()
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Crear bundle comercial' })
   @ApiResponse({ status: 201, description: 'Bundle creado' })
   @ApiResponse({ status: 400, description: 'Mínimo 2 ítems requeridos o ítems no activos' })
@@ -77,6 +82,7 @@ export class BundleController {
 
   @Patch(':id')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Actualizar bundle' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBundleDto) {
     const data = await this.bundleService.update(id, dto);
@@ -85,6 +91,7 @@ export class BundleController {
 
   @Delete(':id')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Desactivar bundle' })
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     await this.bundleService.deactivate(id);
@@ -92,7 +99,8 @@ export class BundleController {
   }
 
   @Get(':id/price')
-  @Roles(...COMMERCIAL_PRICE_READ_ROLES)
+  @Roles(...COMMERCIAL_PRICE_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({ summary: 'Calcular precio dinámico del bundle para un segmento' })
   @ApiQuery({ name: 'segment', enum: CustomerSegment, required: true })
   @ApiQuery({

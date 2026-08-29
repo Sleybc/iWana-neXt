@@ -12,6 +12,7 @@ import { ProspectCase } from '../prospects/entities/prospect-case.entity';
 import { ConsentRecord } from '../reviews/entities/consent-record.entity';
 import { PotentialsController } from './potentials.controller';
 import { PotentialsService } from './potentials.service';
+import { AccessControlModule } from '../../access-control/access-control.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PotentialsService } from './potentials.service';
     CommercialModule,
     TenantModule,
     TypeOrmModule.forFeature([PotentialLead, ProspectCase, ConsentRecord]),
+    AccessControlModule,
   ],
   controllers: [PotentialsController],
   providers: [

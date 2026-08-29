@@ -12,6 +12,7 @@ import {
 import { ASSURANCE_FIELD_SERVICE_QUEUE } from '@iwana/shared';
 import { WfmModule } from '../wfm/wfm.module';
 import { AssuranceController } from './assurance.controller';
+import { AccessControlModule } from '../access-control/access-control.module';
 import { AssuranceExecutionOrderNotifierAdapter } from './ports/assurance-execution-order-notifier.adapter';
 import { AssuranceFieldServiceAdapter } from './ports/assurance-field-service.adapter';
 import { AssuranceFieldServicePort } from './ports/assurance-field-service.port';
@@ -37,6 +38,7 @@ import { TimelineService } from './services/timeline.service';
     BullModule.registerQueue({
       name: ASSURANCE_FIELD_SERVICE_QUEUE,
     }),
+    AccessControlModule,
   ],
   controllers: [AssuranceController],
   providers: [

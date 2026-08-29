@@ -125,6 +125,19 @@ function createDefaultProfileFormValues(): ProfileFormValues {
   };
 }
 
+/** Orden canónico de los 9 sugeridos (spec MOD00 §3.3, congelado). */
+const SYSTEM_TEMPLATE_PROFILE_ORDER: readonly UserRole[] = [
+  UserRole.ADMIN,
+  UserRole.NOC,
+  UserRole.SUPPORT,
+  UserRole.SALES,
+  UserRole.TECHNICIAN,
+  UserRole.ACCOUNTANT,
+  UserRole.HR,
+  UserRole.CONTRACTOR,
+  UserRole.AUDITOR,
+];
+
 function toProfileFormValues(profile: AccessProfileView): ProfileFormValues {
   return {
     name: profile.name,
@@ -412,6 +425,25 @@ export function AccessControlSettingsClient() {
   }, [activePermissionModuleConfig, permissionSearch]);
 
   const systemTemplates = useMemo(() => profiles.filter((profile) => profile.isSystem), [profiles]);
+
+  // Orden congelado por tipo de usuario (spec MOD00 §3.3): lista fija en el
+  // cliente, invariante ante reordenamientos del array de la API (CA-ACV2-03).
+  // SUBSCRIBER/PARTNER/INVESTOR no tienen plantilla; bases desconocidas van al
+  // final conservando su orden de llegada.
+  const orderedSystemTemplates = useMemo(() => {
+    const orderIndex = new Map<UserRole, number>(
+      SYSTEM_TEMPLATE_PROFILE_ORDER.map((role, index) => [role, index]),
+    );
+
+    return systemTemplates
+      .map((profile, index) => ({
+        profile,
+        rank: orderIndex.get(profile.baseRoleConstraint as UserRole) ?? Number.MAX_SAFE_INTEGER,
+        index,
+      }))
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map((entry) => entry.profile);
+  }, [systemTemplates]);
 
   const previewTemplate = useMemo(
     () => systemTemplates.find((profile) => profile.id === previewTemplateId) ?? null,
@@ -1387,7 +1419,7 @@ export function AccessControlSettingsClient() {
             description={ACCESS_SETTINGS_COPY.templatesDescription}
           >
             <div className={templatesGridClassName}>
-              {systemTemplates.map((profile) => {
+              {orderedSystemTemplates.map((profile) => {
                 const visibleProfileName = getAccessProfileDisplayName(profile);
                 const templatePermissionKeys = getTemplatePermissionKeys(profile);
 

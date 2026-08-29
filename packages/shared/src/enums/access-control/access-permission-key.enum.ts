@@ -26,14 +26,28 @@ export enum AccessPermissionKey {
   OPERATIONS_EXECUTION_EVENTS_REDRIVE = 'operations.execution_events.redrive',
   OPERATIONS_TASKS_READ = 'operations.tasks.read',
   OPERATIONS_TASKS_MANAGE = 'operations.tasks.manage',
+  /**
+   * @deprecated Clave deprecada en MOD00_ACCESS_V2 — nunca asignable.
+   * Conservada por estabilidad del enum (HLD §6.6).
+   */
   CRM_CUSTOMERS_READ = 'crm.customers.read',
+  /**
+   * @deprecated Clave deprecada en MOD00_ACCESS_V2 — nunca asignable.
+   * Conservada por estabilidad del enum (HLD §6.6).
+   */
   CRM_CUSTOMERS_MANAGE = 'crm.customers.manage',
+  CRM_SUBSCRIBERS_READ = 'crm.subscribers.read',
+  CRM_SUBSCRIBERS_MANAGE = 'crm.subscribers.manage',
+  CRM_EXPEDIENTES_READ = 'crm.expedientes.read',
+  CRM_EXPEDIENTES_MANAGE = 'crm.expedientes.manage',
   COMMERCIAL_CATALOG_READ = 'commercial.catalog.read',
   COMMERCIAL_CATALOG_MANAGE = 'commercial.catalog.manage',
   ASSURANCE_TICKETS_READ = 'assurance.tickets.read',
   ASSURANCE_TICKETS_MANAGE = 'assurance.tickets.manage',
   INVENTORY_STOCK_READ = 'inventory.stock.read',
   INVENTORY_STOCK_MANAGE = 'inventory.stock.manage',
+  INVENTORY_PURCHASING_READ = 'inventory.purchasing.read',
+  INVENTORY_PURCHASING_MANAGE = 'inventory.purchasing.manage',
   BILLING_PAYMENTS_READ = 'billing.payments.read',
   BILLING_PAYMENTS_REGISTER = 'billing.payments.register',
   BILLING_INVOICES_READ = 'billing.invoices.read',

@@ -1,9 +1,11 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CatalogItemType } from '@iwana/shared';
+import { AccessPermissionKey, CatalogItemType, UserRole } from '@iwana/shared';
 import { CatalogPickerSearchQueryDto, PickerSearchResponseDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CatalogService } from '../services/catalog.service';
 import { COMMERCIAL_CATALOG_READ_ROLES } from '../utils/commercial-roles';
@@ -16,13 +18,14 @@ import { COMMERCIAL_CATALOG_READ_ROLES } from '../utils/commercial-roles';
 @ApiTags('commercial-picker-search')
 @ApiExtraModels(PickerSearchResponseDto)
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('commercial')
 export class CommercialPickerSearchController {
   constructor(private readonly catalogService: CatalogService) {}
 
   @Get('plans/search')
-  @Roles(...COMMERCIAL_CATALOG_READ_ROLES)
+  @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
     summary: 'Buscar planes para picker (typeahead)',
     description:
@@ -36,7 +39,8 @@ export class CommercialPickerSearchController {
   }
 
   @Get('additional-products/search')
-  @Roles(...COMMERCIAL_CATALOG_READ_ROLES)
+  @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
     summary: 'Buscar productos adicionales para picker (typeahead)',
     description:
@@ -49,7 +53,8 @@ export class CommercialPickerSearchController {
   }
 
   @Get('additional-services/search')
-  @Roles(...COMMERCIAL_CATALOG_READ_ROLES)
+  @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
     summary: 'Buscar servicios adicionales para picker (typeahead)',
     description:

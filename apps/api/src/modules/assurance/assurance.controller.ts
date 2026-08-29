@@ -19,12 +19,14 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Permissions } from '../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   AddCommentDto,
@@ -102,7 +104,7 @@ const dashboardSummarySchema = {
  */
 @ApiTags('assurance')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('assurance')
 export class AssuranceController {
   constructor(
@@ -114,7 +116,15 @@ export class AssuranceController {
   ) {}
 
   @Get('tickets')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.CONTRACTOR,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Listar tickets del tenant' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
@@ -127,6 +137,7 @@ export class AssuranceController {
 
   @Post('tickets')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Crear ticket de service assurance' })
   @ApiResponse({ status: 201, description: 'Ticket creado' })
   createTicket(
@@ -138,6 +149,7 @@ export class AssuranceController {
 
   @Post('tickets/find-or-create-installation')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Buscar o crear ticket de instalación para expediente' })
   @ApiResponse({ status: 200, description: 'Ticket encontrado o creado' })
   async findOrCreateInstallationTicket(@Body() body: unknown, @CurrentUser() actor: JwtPayload) {
@@ -148,6 +160,7 @@ export class AssuranceController {
   @Patch('tickets/:id/status')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Transicionar estado del ticket' })
   transitionTicketStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -159,6 +172,7 @@ export class AssuranceController {
 
   @Post('tickets/:id/comments')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Agregar comentario al ticket' })
   async addComment(
     @Param('id', ParseUUIDPipe) id: string,
@@ -170,7 +184,15 @@ export class AssuranceController {
   }
 
   @Get('tickets/:id/comments')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.CONTRACTOR,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Listar comentarios del ticket' })
   async listComments(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     await this.ticketsService.getById(id, actor);
@@ -179,6 +201,7 @@ export class AssuranceController {
 
   @Post('tickets/:id/assign')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Asignar responsable o cola del ticket' })
   assignTicket(
     @Param('id', ParseUUIDPipe) id: string,
@@ -189,7 +212,15 @@ export class AssuranceController {
   }
 
   @Get('tickets/:id/timeline')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.CONTRACTOR,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Listar timeline del ticket' })
   async listTimeline(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     await this.ticketsService.getById(id, actor);
@@ -198,6 +229,7 @@ export class AssuranceController {
 
   @Post('tickets/:id/field-service')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Solicitar trabajo de campo hacia WFM' })
   requestFieldService(
     @Param('id', ParseUUIDPipe) id: string,
@@ -209,6 +241,7 @@ export class AssuranceController {
 
   @Post('tickets/:id/request-field-service')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Solicitar trabajo de campo hacia WFM (alias REST de fase 01)' })
   requestFieldServiceAlias(
     @Param('id', ParseUUIDPipe) id: string,
@@ -220,6 +253,7 @@ export class AssuranceController {
 
   @Post('tickets/:id/link-work-order')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Asociar una Work Order existente al ticket' })
   linkWorkOrder(
     @Param('id', ParseUUIDPipe) id: string,
@@ -230,7 +264,15 @@ export class AssuranceController {
   }
 
   @Get('tickets/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.TECHNICIAN,
+    UserRole.CONTRACTOR,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Obtener detalle de ticket' })
   getTicket(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     return this.ticketsService.getById(id, actor);
@@ -239,6 +281,7 @@ export class AssuranceController {
   @Patch('tickets/:id')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Actualizar campos editables del ticket' })
   updateTicket(
     @Param('id', ParseUUIDPipe) id: string,
@@ -249,7 +292,8 @@ export class AssuranceController {
   }
 
   @Get('sla-policies')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Listar políticas SLA del tenant' })
   listSlaPolicies() {
     return this.slaService.listPolicies();
@@ -257,13 +301,15 @@ export class AssuranceController {
 
   @Post('sla-policies')
   @Roles(UserRole.ADMIN)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE)
   @ApiOperation({ summary: 'Crear política SLA del tenant' })
   createSlaPolicy(@Body(new ZodValidationPipe(CreateSlaPolicySchema)) dto: CreateSlaPolicyDto) {
     return this.slaService.createPolicy(dto);
   }
 
   @Get('dashboard')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Resumen operativo de assurance' })
   @ApiOkResponse({ description: 'Resumen operativo de assurance', schema: dashboardSummarySchema })
   getDashboard() {
@@ -271,7 +317,8 @@ export class AssuranceController {
   }
 
   @Get('dashboard/summary')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.ASSURANCE_TICKETS_READ)
   @ApiOperation({ summary: 'Resumen operativo de assurance para dashboard' })
   @ApiOkResponse({
     description: 'Resumen operativo de assurance para dashboard',

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
+  AccessPermissionKey,
   PlatformRole,
   PersonType,
   CustomerSegment,
@@ -23,6 +24,8 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
@@ -56,7 +59,7 @@ type SubscriberWithDecryptedFields = Subscriber & {
 
 @ApiTags('crm')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('crm/subscribers')
 export class SubscribersController {
   constructor(
@@ -71,6 +74,7 @@ export class SubscribersController {
    */
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   // Audit manual limpio en SubscribersService — evita PII en newValue del interceptor (SWEEP-01).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear suscriptor' })
@@ -95,7 +99,16 @@ export class SubscribersController {
    * Roles: ADMIN, NOC, SALES, SUPPORT, ACCOUNTANT
    */
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.ACCOUNTANT,
+    UserRole.TECHNICIAN,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Listar suscriptores con filtros' })
   @ApiExtraModels(CrmListPaginationDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
@@ -173,7 +186,16 @@ export class SubscribersController {
    *   hasta que exista un `/search` typeahead dedicado.
    */
   @Get('search')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.ACCOUNTANT,
+    UserRole.TECHNICIAN,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Buscar suscriptor por documento, NIT, email o teléfono' })
   async search(
     @Query('documentNumber') documentNumber?: string,
@@ -197,7 +219,15 @@ export class SubscribersController {
    * Roles: ADMIN, SALES, SUPPORT, ACCOUNTANT
    */
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.ACCOUNTANT,
+    UserRole.TECHNICIAN,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Obtener suscriptor por ID' })
   async findById(@Param('id', ParseUUIDPipe) id: string) {
     const subscriber = await this.subscribersService.findById(id);
@@ -211,6 +241,7 @@ export class SubscribersController {
    */
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SALES)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar suscriptor' })
   async update(
@@ -228,6 +259,7 @@ export class SubscribersController {
    */
   @Patch(':id/section/:section')
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar sección del subscriber' })
   async updateSection(
@@ -247,6 +279,7 @@ export class SubscribersController {
    */
   @Delete(':id')
   @Roles(UserRole.ADMIN)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Eliminar suscriptor (soft delete)' })
   async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -261,6 +294,7 @@ export class SubscribersController {
    */
   @Patch(':id/status')
   @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Transición de estado del suscriptor' })
   async transitionStatus(
@@ -284,7 +318,15 @@ export class SubscribersController {
    * Roles: ADMIN, SALES, SUPPORT, ACCOUNTANT
    */
   @Get(':id/360')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.ACCOUNTANT,
+    UserRole.TECHNICIAN,
+    UserRole.AUDITOR,
+  )
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Ficha 360° del suscriptor' })
   async get360View(@Param('id', ParseUUIDPipe) id: string) {
     const view360 = await this.subscribersService.get360View(id);

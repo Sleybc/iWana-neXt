@@ -10,11 +10,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
 import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CreateOpportunityDto } from './dto/create-opportunity.dto';
@@ -25,13 +27,14 @@ import { OpportunityStage } from '../enums/opportunity-stage.enum';
 
 @ApiTags('opportunities')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('opportunities')
 export class OpportunitiesController {
   constructor(private readonly opportunitiesService: OpportunitiesService) {}
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Crear oportunidad comercial' })
   async create(@Body() dto: CreateOpportunityDto): Promise<{ data: Opportunity }> {
     const data = await this.opportunitiesService.create(dto);
@@ -39,7 +42,14 @@ export class OpportunitiesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar oportunidades comerciales' })
   @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
   @ApiQuery({ name: 'stage', required: false, enum: OpportunityStage })
@@ -58,7 +68,14 @@ export class OpportunitiesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Consultar oportunidad por id' })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Opportunity }> {
     const data = await this.opportunitiesService.findOne(id);
@@ -67,6 +84,7 @@ export class OpportunitiesController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Actualizar oportunidad comercial' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

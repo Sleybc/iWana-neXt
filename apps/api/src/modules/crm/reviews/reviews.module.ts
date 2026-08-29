@@ -18,6 +18,7 @@ import { StubBillingActivationAdapter } from '../adapters/stub-billing-activatio
 import { StubProvisioningActivationAdapter } from '../adapters/stub-provisioning-activation.adapter';
 import { TenantModule } from '../../tenant/tenant.module';
 import { ExecutionPolicyMode } from '../enums/execution-policy-mode.enum';
+import { AccessControlModule } from '../../access-control/access-control.module';
 
 class ReviewsExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
   async resolvePolicy(): Promise<{
@@ -40,6 +41,7 @@ class ReviewsExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     AuditModule,
     TenantModule,
     TypeOrmModule.forFeature([ProspectCase, CustomerActivation]),
+    AccessControlModule,
   ],
   controllers: [ReviewsController],
   providers: [

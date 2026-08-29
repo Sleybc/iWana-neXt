@@ -43,3 +43,19 @@ export const INVENTORY_NAV_GROUPS: PortalModuleSubnavGroup[] = [
 export function isInventoryNavId(id: string): id is InventoryTab {
   return INVENTORY_NAV_GROUPS.some((group) => group.items.some((item) => item.id === id));
 }
+
+/**
+ * Gate de pestaña Compras (spec MOD00 §2.2 nota / CA-GATE-06): el ítem
+ * `purchasing` solo se muestra con `inventory.purchasing.read` efectivo.
+ * Mismo mecanismo del contexto de permisos, sin fetch adicional.
+ */
+export function filterInventoryNavGroups(canReadPurchasing: boolean): PortalModuleSubnavGroup[] {
+  if (canReadPurchasing) {
+    return INVENTORY_NAV_GROUPS;
+  }
+
+  return INVENTORY_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => item.id !== 'purchasing'),
+  })).filter((group) => group.items.length > 0);
+}

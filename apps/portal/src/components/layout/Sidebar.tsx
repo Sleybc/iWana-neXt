@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import {
   CalendarClock,
   LayoutDashboard,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/components/access-control/permissions-context';
 import { TenantSeal } from './TenantSeal';
 import type { TenantSelf } from '@/lib/api-client';
 
@@ -37,6 +38,12 @@ interface NavItem {
   disabled?: boolean;
   badge?: string;
   allowedRoles?: UserRole[];
+  /**
+   * Permiso efectivo requerido — mapeo congelado (plan §2 / spec MOD00 §1.2).
+   * Un array expresa semántica OR (ítem Operaciones). `undefined` = sin gate
+   * (Inicio, siempre visible).
+   */
+  permission?: AccessPermissionKey | readonly AccessPermissionKey[];
 }
 
 interface NavGroup {
@@ -44,8 +51,12 @@ interface NavGroup {
   items: NavItem[];
 }
 
+type ItemVisibility = 'visible' | 'hidden' | 'skeleton';
+
 const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
 const MOBILE_DRAWER_QUERY = '(max-width: 1023px)';
+
+const NAV_LOADING_ANNOUNCEMENT = 'Cargando navegación';
 
 function resolveTenantDisplayName(profile?: TenantSelf | null): string {
   const brandingProductName = profile?.brandingProductName?.trim();
@@ -60,8 +71,9 @@ function resolveTenantDisplayName(profile?: TenantSelf | null): string {
 /**
  * Ítems de navegación del portal empresarial del tenant.
  *
- * Rutas activas en MVP: /dashboard, /dashboard/scheduling, /dashboard/settings.
- * Rutas futuras marcadas como disabled para no generar 404.
+ * Visibilidad por ítem: (techo estático `allowedRoles`) AND (permisos
+ * efectivos del contexto compartido). Mapeo congelado en el plan §2 y la
+ * spec MOD00 §1.2; `crm.customers.*` (deprecadas) no aparecen.
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §4.3
  */
 const navGroups: NavGroup[] = [
@@ -69,10 +81,30 @@ const navGroups: NavGroup[] = [
     group: 'Menú',
     items: [
       { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
-      { href: '/dashboard/crm/expedientes', label: 'Oportunidades', icon: BriefcaseBusiness },
-      { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
-      { href: '/dashboard/scheduling', label: 'Programación', icon: CalendarClock },
-      { href: '/dashboard/assurance', label: 'Mesa de ayuda', icon: LifeBuoy },
+      {
+        href: '/dashboard/crm/expedientes',
+        label: 'Oportunidades',
+        icon: BriefcaseBusiness,
+        permission: AccessPermissionKey.CRM_EXPEDIENTES_READ,
+      },
+      {
+        href: '/dashboard/crm/subscribers',
+        label: 'Suscriptores',
+        icon: Users,
+        permission: AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      },
+      {
+        href: '/dashboard/scheduling',
+        label: 'Programación',
+        icon: CalendarClock,
+        permission: AccessPermissionKey.WFM_SCHEDULE_READ,
+      },
+      {
+        href: '/dashboard/assurance',
+        label: 'Mesa de ayuda',
+        icon: LifeBuoy,
+        permission: AccessPermissionKey.ASSURANCE_TICKETS_READ,
+      },
       {
         href: '/dashboard/operations',
         label: 'Operaciones',
@@ -85,21 +117,42 @@ const navGroups: NavGroup[] = [
           UserRole.TECHNICIAN,
           UserRole.CONTRACTOR,
         ],
+        permission: [
+          AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+          AccessPermissionKey.OPERATIONS_TASKS_READ,
+          AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE,
+        ],
       },
       {
         href: '/dashboard/inventory',
         label: 'Inventario',
         icon: Package,
         allowedRoles: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
+        permission: AccessPermissionKey.INVENTORY_STOCK_READ,
       },
     ],
   },
   {
     group: 'Administración',
     items: [
-      { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
-      { href: '/dashboard/users', label: 'Usuarios', icon: Users },
-      { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
+      {
+        href: '/dashboard/settings',
+        label: 'Configuración',
+        icon: Settings,
+        permission: AccessPermissionKey.SETTINGS_READ,
+      },
+      {
+        href: '/dashboard/users',
+        label: 'Usuarios',
+        icon: Users,
+        permission: AccessPermissionKey.USERS_READ,
+      },
+      {
+        href: '/dashboard/commercial',
+        label: 'Comercial',
+        icon: HandCoins,
+        permission: AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+      },
     ],
   },
 ];
@@ -116,35 +169,97 @@ interface NavItemsProps {
 const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { status, effectivePermissions, hasAnyPermission } = usePermissions();
+
+  // Tripwire anti-nav vacía (spec MOD00 §1.5 / CA-DEP-02): fetch exitoso con
+  // set vacío en no-ADMIN ("tenant sin corte") → filtrado estático. La nav
+  // vacía para no-ADMIN es inaceptable en cualquier estado.
+  const isTripwireActive =
+    status === 'ready' && effectivePermissions.size === 0 && user?.role !== UserRole.ADMIN;
+  const useStaticFiltering = status === 'degraded' || isTripwireActive;
+
+  const resolveVisibility = (item: NavItem): ItemVisibility => {
+    if (!item.permission) {
+      return 'visible';
+    }
+
+    // Techo estático (espejo del @Roles estructural): un permiso efectivo
+    // jamás muestra un ítem cuyo techo de rol no lo contempla.
+    if (item.allowedRoles) {
+      if (!user?.role || !item.allowedRoles.includes(user.role as UserRole)) {
+        return 'hidden';
+      }
+    }
+
+    if (useStaticFiltering) {
+      return 'visible';
+    }
+
+    if (status === 'loading') {
+      return 'skeleton';
+    }
+
+    const required = Array.isArray(item.permission) ? item.permission : [item.permission];
+    return hasAnyPermission(required) ? 'visible' : 'hidden';
+  };
 
   return (
     <>
-      {navGroups.map((navGroup, groupIndex) => (
-        <div key={navGroup.group} className="mb-2">
-          <p
-            className={cn(
-              'mt-6 mb-2 px-4 text-xs font-semibold text-gray-600 dark:text-gray-300',
-              groupIndex === 0 && 'mt-0',
-              desktopCollapsed && 'lg:hidden',
-            )}
-          >
-            {navGroup.group}
-          </p>
+      {navGroups.map((navGroup, groupIndex) => {
+        const resolvedItems = navGroup.items.map((item) => ({
+          item,
+          visibility: resolveVisibility(item),
+        }));
 
-          <ul className="flex flex-col gap-1 px-2">
-            {navGroup.items
-              .filter((item) => {
-                if (!item.allowedRoles) {
-                  return true;
+        // Un grupo sin ítems visibles no renderiza su encabezado (CA-NAV-09).
+        if (!resolvedItems.some(({ visibility }) => visibility !== 'hidden')) {
+          return null;
+        }
+
+        return (
+          <div key={navGroup.group} className="mb-2">
+            <p
+              className={cn(
+                'mt-6 mb-2 px-4 text-xs font-semibold text-gray-600 dark:text-gray-300',
+                groupIndex === 0 && 'mt-0',
+                desktopCollapsed && 'lg:hidden',
+              )}
+            >
+              {navGroup.group}
+            </p>
+
+            <ul className="flex flex-col gap-1 px-2">
+              {resolvedItems.map(({ item, visibility }) => {
+                if (visibility === 'hidden') {
+                  return null;
                 }
 
-                if (!user?.role) {
-                  return false;
+                if (visibility === 'skeleton') {
+                  return (
+                    <li key={`${item.href}-skeleton`} aria-hidden="true">
+                      <span
+                        className={cn(
+                          'flex min-h-11 items-center gap-3 rounded-lg px-3 py-2',
+                          desktopCollapsed && 'lg:justify-center lg:px-2',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'h-5 w-5 shrink-0 animate-pulse bg-gray-100 dark:bg-dark-surface-3',
+                            desktopCollapsed ? 'lg:rounded-full' : 'rounded-md',
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            'h-3 w-24 animate-pulse rounded-md bg-gray-100 dark:bg-dark-surface-3',
+                            desktopCollapsed && 'lg:hidden',
+                          )}
+                        />
+                      </span>
+                    </li>
+                  );
                 }
 
-                return item.allowedRoles.includes(user.role as UserRole);
-              })
-              .map((item) => {
                 const isActive =
                   !item.disabled &&
                   (pathname === item.href || pathname.startsWith(`${item.href}/`));
@@ -221,9 +336,10 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                   </li>
                 );
               })}
-          </ul>
-        </div>
-      ))}
+            </ul>
+          </div>
+        );
+      })}
     </>
   );
 };
@@ -240,6 +356,7 @@ export const Sidebar = ({
   const tenantDisplayName = resolveTenantDisplayName(profile);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const drawerInert = isMobileViewport && !mobileOpen;
+  const { status } = usePermissions();
 
   // Persistir estado desktop en localStorage — solo al montar
   const setDesktopCollapsedRef = useRef(setDesktopCollapsed);
@@ -357,7 +474,12 @@ export const Sidebar = ({
 
       {/* MENÚ DE NAVEGACIÓN */}
       <div className="no-scrollbar flex flex-col overflow-y-auto flex-1 py-4">
-        <nav aria-label="Menú principal">
+        <nav aria-label="Menú principal" aria-busy={status === 'loading' || undefined}>
+          {status === 'loading' ? (
+            <p role="status" aria-live="polite" className="sr-only">
+              {NAV_LOADING_ANNOUNCEMENT}
+            </p>
+          ) : null}
           <Suspense fallback={null}>
             <NavItems desktopCollapsed={desktopCollapsed} />
           </Suspense>
