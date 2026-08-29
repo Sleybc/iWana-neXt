@@ -1,13 +1,14 @@
 # PRD - MOD00 Configuracion Control Plane
 
-**Version:** 1.6
+**Version:** 1.7
 **Estado:** Aprobado  
-**Fecha:** 2026-08-20
+**Fecha:** 2026-08-28
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
 **ADR aprobado:** docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md  
-**ADR relacionado:** docs/adrs/ADR-082-Reglas-Federadas-Taxation-Settings.md  
+**ADR relacionado:** ADR-082 (propuesto) — docs/adrs/ADR-082-Reglas-Federadas-Taxation-Settings.md  
+**ADR aprobado:** ADR-083 — docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md (aprobado por el CTO el 2026-08-28); gobierna el addendum §4.3.4  
 **HLD relacionado:** docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **Antecedente historico:** docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md  
 **PRDs relacionados:** docs/prds/PRD-MOD04-USUARIOS-INTERNOS-v1.1.md, docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md, docs/prds/PRD-MOD06-COMERCIAL-DEFINICION-v1.0.md
@@ -106,7 +107,7 @@ Casos de uso prioritarios:
 - RF-CFG-02 — La navegacion debe separar Organizacion, Usuarios y acceso, Marca, Calendario, Reglas, Operacion de campo y modulos futuros visibles. Prioridad: MVP.
 - RF-CFG-03 — Las secciones futuras pueden mostrarse como no disponibles si su modulo aun no existe, sin simular funcionalidad. Prioridad: MVP.
 - RF-CFG-04 — Cada seccion debe declarar el modulo owner de los datos que administra o consume. Prioridad: MVP.
-- RF-CFG-05 — La seccion **Reglas** (`/dashboard/settings/rules`) federada reune Reemplazos, Impuestos, Aplicacion de impuestos y Simulador sin que Configuracion posea `tax_definitions`, `tax_rules` ni `catalog_compatibility_rules`. Owners: Taxation (MOD07) y Commercial (MOD06). Prioridad: MVP. Ref: ADR-082.
+- RF-CFG-05 — La seccion **Reglas** (`/dashboard/settings/rules`) federada reune Reemplazos, Impuestos, Aplicacion de impuestos y Simulador sin que Configuracion posea `tax_definitions`, `tax_rules` ni `catalog_compatibility_rules`. Owners: Taxation (MOD07) y Commercial (MOD06). Prioridad: MVP. Ref: ADR-082 (propuesto).
 
 La politica global MFA del tenant se consolida dentro de `Usuarios y acceso`; `Seguridad` no se considera una seccion activa independiente del shell federado.
 
@@ -190,6 +191,61 @@ Tras revisar la ejecucion de Fase 01-05 y validar la aclaracion de negocio, se f
 - La asignacion de acceso a usuarios debe considerarse una operacion distinta del CRUD del catalogo de perfiles en el siguiente hardening aprobado.
 - El shell federado de settings debe exponer solo superficies operables para el usuario segun permisos efectivos o estado no operable explicito.
 - El alcance por sede de perfiles (`scope_site_id`) debe aplicarse en la resolucion efectiva de permisos antes de considerar cerrada la capacidad.
+
+### 4.3.4 Addendum de convergencia RBAC 2026-08-28 — permisos granulares en modulos operativos
+
+Gobernado por ADR-083 (aprobado por el CTO el 2026-08-28): docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md. Realiza la Fase 04 del roadmap (§10.1): permisos granulares por pantalla en los modulos operativos construidos, sobre catalogo `MOD00_ACCESS_V2`.
+
+Nuevos requerimientos:
+
+- `RF-ACC-14` — El catalogo pasa a `MOD00_ACCESS_V2`: claves nuevas por recurso real (`crm.subscribers.*`, `crm.expedientes.*`, `inventory.purchasing.*`), promocion a ASSIGNABLE de `commercial.catalog.*`, `assurance.tickets.*` e `inventory.stock.*`, deprecacion de `crm.customers.*` (nunca asignadas) y permanencia de `billing.*` en RESERVED hasta que exista el modulo backend. Prioridad: `MVP`.
+- `RF-ACC-15` — La matriz de compatibilidad `UserRole` -> permisos asignables se amplia segun la tabla de este addendum. Las ampliaciones marcadas con † no conceden acceso automatico: exigen perfil asignado por el ADMIN del tenant. Prioridad: `MVP`.
+- `RF-ACC-16` — El sistema siembra plantillas iniciales **"Acceso estandar {Categoria}"** por cada categoria base con perfiles, replicando la union de accesos vigentes por `@Roles`. En la migracion del corte, todo usuario activo no-ADMIN sin perfiles activos recibe automaticamente la plantilla estandar de su categoria: nadie pierde acceso que tenga vigente el dia del corte. Prioridad: `MVP`.
+- `RF-ACC-17` — El flujo de personalizacion del administrador se conserva: crear a partir de una plantilla (estandar o sugerida) y adaptarla, o crear un perfil desde cero. Las plantillas estandar no se mutan in place. Prioridad: `MVP`.
+- `RF-ACC-18` — Los modulos operativos (Suscriptores, Oportunidades/CRM, Assurance, Inventario, Compras, Comercial) se cablean con doble guard `@Roles` + `@Permissions` segun el mapeo del HLD §6.6. Los endpoints de escritura conservan `@Roles` estricto. Excepciones de este ciclo: datos tributarios de suscriptor (`@Roles`-only) y lectura acotada de expediente por tecnico (fase posterior con scoping por asignacion). Prioridad: `MVP`.
+- `RF-ACC-19` — Los permisos efectivos se sirven con cache Redis por usuario con invalidacion inmediata al mutar perfiles, permisos o asignaciones. Prioridad: `MVP`.
+- `RF-ACC-20` — La navegacion del portal y los gates de pagina se derivan de permisos efectivos (patron `requiredPermissions` del hub de Configuracion), reemplazando los roles estaticos del Sidebar. Prioridad: `MVP`.
+- `RF-ACC-21` — La vista de accesos efectivos de un usuario distingue el origen de cada permiso: plantilla estandar o perfil personalizado. Prioridad: `MVP+`.
+
+Matriz V2 de permisos nuevos y promovidos (fuente: union de `@Roles` vigentes por modulo; † = ampliacion deliberada segun PRD maestro §13.3 y PRD-MOD05-CRM-SUBSCRIBERS):
+
+| Permiso V2 | Uso visible | Categorias base asignables |
+| --- | --- | --- |
+| `crm.subscribers.read` | Ver Suscriptores | ADMIN, NOC, SALES, SUPPORT, ACCOUNTANT, TECHNICIAN†, AUDITOR† |
+| `crm.subscribers.manage` | Crear y editar Suscriptores | ADMIN, SALES, SUPPORT, ACCOUNTANT |
+| `crm.expedientes.read` | Ver Oportunidades | ADMIN, NOC, SALES, SUPPORT, AUDITOR† |
+| `crm.expedientes.manage` | Gestionar Oportunidades | ADMIN, SALES, SUPPORT |
+| `assurance.tickets.read` | Ver tickets y PQR | ADMIN, NOC, SUPPORT, TECHNICIAN, CONTRACTOR, AUDITOR† |
+| `assurance.tickets.manage` | Gestionar tickets y PQR | ADMIN, NOC, SUPPORT |
+| `inventory.stock.read` | Ver inventario | ADMIN, NOC, SUPPORT, TECHNICIAN†, AUDITOR† |
+| `inventory.stock.manage` | Gestionar inventario | ADMIN, NOC, SUPPORT |
+| `inventory.purchasing.read` | Ver compras y cotizaciones | ADMIN, NOC, SUPPORT, AUDITOR† |
+| `inventory.purchasing.manage` | Gestionar compras y cotizaciones | ADMIN, NOC, SUPPORT |
+| `commercial.catalog.read` | Ver catalogo comercial | ADMIN, NOC, SALES, SUPPORT, ACCOUNTANT, AUDITOR† |
+| `commercial.catalog.manage` | Gestionar catalogo, precios, bundles y promociones | ADMIN, ACCOUNTANT |
+
+Plantillas estandar V2 (contenido = matriz de su categoria; "actuales" = permisos V1 ya asignables):
+
+| Categoria base | Contenido de "Acceso estandar {Categoria}" |
+| --- | --- |
+| ADMIN | Todos los ASSIGNABLE (la plantilla "Administrador general" se actualiza a V2) |
+| NOC | 7 actuales + `crm.subscribers.read`, `crm.expedientes.read`, `assurance.tickets.read/manage`, `inventory.stock.read/manage`, `inventory.purchasing.read/manage`, `commercial.catalog.read` |
+| SUPPORT | 7 actuales + `crm.subscribers.read/manage`, `crm.expedientes.read/manage`, `assurance.tickets.read/manage`, `inventory.stock.read/manage`, `inventory.purchasing.read/manage`, `commercial.catalog.read` |
+| SALES | 4 actuales + `crm.subscribers.read/manage`, `crm.expedientes.read/manage`, `commercial.catalog.read` |
+| TECHNICIAN | 8 actuales + `crm.subscribers.read`, `assurance.tickets.read`, `inventory.stock.read` |
+| ACCOUNTANT | 2 actuales + `crm.subscribers.read/manage`, `commercial.catalog.read/manage` |
+| HR | 3 actuales (sin cambio) |
+| CONTRACTOR | 7 actuales + `assurance.tickets.read` |
+| AUDITOR | 5 actuales + los 6 permisos `*.read` nuevos/promovidos |
+| SUBSCRIBER / PARTNER / INVESTOR | Sin perfiles administrativos (sin cambio) |
+
+Criterios de aceptacion del addendum:
+
+1. Un ADMIN crea un perfil categoria `TECHNICIAN` a partir de la plantilla "Tecnico de campo", agrega "Ver Suscriptores" y lo asigna a un tecnico: el tecnico ve Suscriptores en el menu y puede consultarlos; un tecnico sin ese permiso no.
+2. Ningun usuario activo pierde accesos vigentes tras la migracion del corte (verificado por tests de seed/migracion).
+3. Los invariantes del catalogo cubren las claves V2, la matriz y las plantillas estandar.
+
+
 
 ### 4.4 Integracion con WFM
 
@@ -328,6 +384,8 @@ MVP recomendado:
 | Fase 04 | Gobierno avanzado   | Auditoria enriquecida, checklist de cambios sensibles, permisos granulares por pantalla y hardening operativo     |
 
 Fase 01 es la unica autorizada para ejecucion inmediata. Las fases posteriores requieren validacion de alcance antes de tocar codigo.
+
+Nota v1.7 (2026-08-28): el alcance de la Fase 04 en permisos granulares por pantalla queda definido y extendido por el addendum §4.3.4 y por ADR-083 (aprobado por el CTO el 2026-08-28): docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md.
 
 Para aprobacion CTO:
 

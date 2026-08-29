@@ -3,9 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Opportunity } from './entities/opportunity.entity';
 import { OpportunitiesController } from './opportunities.controller';
 import { OpportunitiesService } from './opportunities.service';
+import { AccessControlModule } from '../../access-control/access-control.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Opportunity])],
+  imports: [TypeOrmModule.forFeature([Opportunity]), AccessControlModule],
   controllers: [OpportunitiesController],
   providers: [OpportunitiesService],
   exports: [OpportunitiesService],

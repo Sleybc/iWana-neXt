@@ -17,7 +17,7 @@ El operador configura Reemplazos, Impuestos, Aplicación de impuestos y Simulado
 
 ### Gobernanza
 
-- ADR-082 en estado Propuesto.
+- ADR-082 (propuesto) hasta la fecha de este informe.
 - Notas de actualización en ADR-029 D3 y ADR-031 D1.
 - PRD MOD00 v1.6 (RF-CFG-05 sección Reglas).
 - PRD MOD06 v1.3 (UI tributaria fuera de Comercial).
@@ -60,7 +60,7 @@ El operador configura Reemplazos, Impuestos, Aplicación de impuestos y Simulado
 ## Riesgos abiertos
 
 - Dual motor IVA: tratamiento canónico en CRM; matcher de Taxation no redefine IVA por segmento.
-- ADR-082 sigue Propuesto hasta corte CTO.
+- ADR-082 (propuesto) hasta corte CTO.
 - Deep-links E2E de Comercial deben seguir el redirect a Settings.
 
 ## Verificación

@@ -74,6 +74,8 @@ import { BackfillTaxRuleApplications1140000000000 } from './114_backfill_tax_rul
 import { SeedDefaultIvaTaxRules1150000000000 } from './115_seed_default_iva_tax_rules';
 import { AddCustomerSegmentToExpedienteRecords1160000000000 } from './116_add_customer_segment_to_expediente_records';
 import { RepairOrganizationCompanyBusinessHoursSeed1170000000000 } from './117_repair_organization_company_business_hours_seed';
+import { SeedDefaultExecutionOrderTemplates1180000000000 } from './118_seed_default_execution_order_templates';
+import { SeedMod00AccessV21190000000000 } from './119_seed_mod00_access_v2_convergencia_rbac';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -228,6 +230,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SeedDefaultIvaTaxRules1150000000000,
   AddCustomerSegmentToExpedienteRecords1160000000000,
   RepairOrganizationCompanyBusinessHoursSeed1170000000000,
+  SeedDefaultExecutionOrderTemplates1180000000000,
+  SeedMod00AccessV21190000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

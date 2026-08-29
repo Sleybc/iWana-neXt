@@ -1,12 +1,13 @@
 # HLD - MOD00 Configuracion Control Plane
 
-**Version:** 1.6
+**Version:** 1.7
 **Estado:** Aprobado  
-**Fecha:** 2026-05-27
+**Fecha:** 2026-08-28
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **ADR aprobado:** docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md  
+**ADR aprobado:** ADR-083 — docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md (aprobado por el CTO el 2026-08-28); gobierna el addendum §6.6  
 **Plan de ejecucion:** docs/plans/2026-05-19-mod00-configuracion-control-plane.md  
 **Prompt de ejecucion:** docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md
 
@@ -406,6 +407,8 @@ Lectura obligatoria del pipeline:
 
 El catalogo se siembra de forma idempotente por tenant. Las claves son estables: no se renombran; si una clave cambia de significado se depreca y se crea una nueva. `ASSIGNABLE` significa que puede incluirse en perfiles de Fase 01. `RESERVED` significa visible solo como ruta futura, no asignable ni ejecutable por permisos granulares en esta fase.
 
+Nota v1.7: esta tabla refleja el catalogo V1 sembrado en Fase 01 y queda historica (ya no incluye las claves `operations.*` ni `access.assignments.manage` incorporadas despues de Fase 01). El catalogo vigente es `MOD00_ACCESS_V2` y su evolucion viven en §6.6.
+
 | Permiso                           | Modulo       | Estado Fase 01 | Uso                                                              |
 | --------------------------------- | ------------ | -------------- | ---------------------------------------------------------------- |
 | `settings.read`                   | settings     | ASSIGNABLE     | Ver centro de Configuracion                                      |
@@ -482,6 +485,69 @@ El analisis de la ejecucion implementada deja aprobados los siguientes refinamie
 4. El shell federado de settings debe consumir `requiredPermissions` o devolver estados no operables explicitos para evitar navegacion hacia rutas que luego terminan en `403`.
 5. El contrato `DELETE /organization/sites/:id` debe cerrarse en API, pruebas y portal para alinear implementacion con HLD aprobado.
 6. La superficie de `Sedes registradas` debe consolidarse como una tabla compacta unica con acciones por fila, sin panel persistente de detalle, reservando el detalle operativo profundo para modulos consumidores posteriores.
+
+### 6.6 Addendum de convergencia RBAC 2026-08-28 — catalogo `MOD00_ACCESS_V2` y cableado de modulos operativos
+
+Gobernado por ADR-083 (aprobado por el CTO el 2026-08-28): docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md. Detalle tecnico del addendum §4.3.4 del PRD v1.7. La regla de §6.2 se conserva: las claves son estables; `crm.customers.*` se depreca (filas `isActive = false`, miembros enum `@deprecated`) y se crean claves nuevas por recurso real.
+
+**Enum y catalogo (`@iwana/shared` + `access-control.constants.ts`):**
+
+- `AccessPermissionKey` agrega 8 miembros: `CRM_SUBSCRIBERS_READ/MANAGE`, `CRM_EXPEDIENTES_READ/MANAGE`, `INVENTORY_PURCHASING_READ/MANAGE`; `CRM_CUSTOMERS_READ/MANAGE` quedan `@deprecated`.
+- `AccessPermissionCatalogVersion` agrega `MOD00_ACCESS_V2`.
+- El seed autocurativo por tenant promueve las 6 claves existentes (availability `ASSIGNABLE`, `catalogVersion` V2, descripcion visible sin "en fase futura"), siembra las 8 nuevas como `ASSIGNABLE` V2 y marca inactivas las 2 deprecadas. La matriz `ROLE_ASSIGNABLE_PERMISSION_MATRIX` y las plantillas se actualizan a la tabla del PRD §4.3.4.
+- Migracion tenant numerada consecutiva, idempotente y reversible: up siembra catalogo V2, crea plantillas system "Acceso estandar {Categoria}" (una por categoria con perfiles, `baseRoleConstraint` = categoria) y asigna la estandar a cada usuario activo no-ADMIN sin perfiles activos. Down: elimina solo las asignaciones creadas por esta migracion, desactiva plantillas estandar y revierte filas V2. Mecanismo de reserva si G1 rechaza la asignacion masiva: fallback runtime documentado en ADR-083 D4 (no preferido).
+
+**Cableado por controller (doble guard `JwtAuthGuard -> RolesGuard -> PermissionsGuard`):**
+
+| Controller | Lectura (`@Permissions`) | Escritura (`@Permissions`) | Cambios de `@Roles` |
+| --- | --- | --- | --- |
+| `crm/subscribers/subscribers.controller.ts` | `crm.subscribers.read` | `crm.subscribers.manage` | GET de lista/detalle: + `TECHNICIAN`, + `AUDITOR` |
+| `crm/expedientes` + `opportunities`, `prospects`, `potentials`, `quotes`, `contacts`, `contracts`, `reviews`, `habeas-data` | `crm.expedientes.read` | `crm.expedientes.manage` | GET: + `AUDITOR` |
+| `crm/subscribers/subscriber-tax.controller.ts` | no cableado este ciclo | no cableado este ciclo | — |
+| `assurance/assurance.controller.ts` | `assurance.tickets.read` | `assurance.tickets.manage` | GET: + `AUDITOR` |
+| `inventory/inventory.controller.ts` | `inventory.stock.read` | `inventory.stock.manage` | GET: + `TECHNICIAN`, + `AUDITOR` |
+| `inventory/purchasing.controller.ts` | `inventory.purchasing.read` | `inventory.purchasing.manage` | GET: + `AUDITOR` |
+| `commercial/controllers/*` (catalog, bundle, promotion, compatibility, picker-search, dashboard) | `commercial.catalog.read` | `commercial.catalog.manage` | GET: + `AUDITOR` |
+
+Reglas del cableado:
+
+1. La ampliacion de `@Roles` aplica solo a endpoints de lectura con permiso granular — ADR-083 D2; los subconjuntos actuales de commercial (offers sin NOC, prices sin SUPPORT/NOC, compat sin ACCOUNTANT/NOC) se conservan via `@Roles`: el permiso unico no amplia lo que `@Roles` restringe.
+2. Los 2 endpoints de expedientes que hoy incluyen `TECHNICIAN` (trabajo asignado) y todo endpoint de datos tributarios permanecen `@Roles`-only.
+3. `billing.*` permanece RESERVED: no existe modulo backend.
+
+**Cache de permisos efectivos:**
+
+- `EffectivePermissionsService` agrega cache Redis clave `access:perms:{tenantId}:{userId}` (set de claves), TTL <= 60 s, miss -> calculo contra BD y write-through.
+- Invalidacion activa (`DEL`) en los mismos puntos que hoy auditan mutaciones: crear/editar/borrar perfil, reemplazo de permisos y asignacion de perfiles a usuario (`access-control.service.ts`).
+- La BD es fuente de verdad; fallo de Redis degrada a calculo directo, nunca a denegacion ni concesion.
+- Tokens de plataforma siguen pasando directo (sin cache).
+
+**Frontend (Fase 3, contrato con spec UX a emitir):**
+
+- Condicion dura de despliegue (G1, AI-PROD-UX 2026-08-28): el gating de navegacion se activa por tenant solo despues de que la migracion del corte (plantillas estandar + asignacion D4) haya corrido en ese tenant (flag o despliegue posterior). Activarlo antes dejaria la nav vacia para todo no-ADMIN sin perfiles.
+- Contexto compartido `usePermissions()` sobre `GET /access-control/me/effective-permissions`, alojado en el layout del dashboard (no dentro de Sidebar) para servir tambien a los gates de pagina; el Sidebar reemplaza `allowedRoles` estaticos por `requiredPermissions` (patron del hub de Configuracion); gates de pagina en Suscriptores, Oportunidades, Mesa de ayuda, Inventario (con Compras como gate de pestaña interna), Comercial y Programacion (aclaracion v1.7 por spec UX congelada 2026-08-28).
+- La pantalla `/dashboard/settings/access` presenta una sola seccion de sugeridos con una card por tipo de usuario (6 actuales -> 9, se suman SALES, ACCOUNTANT y HR), y la UI de usuarios advierte que cambiar la categoria base descarta perfiles incompatibles al guardar.
+- Prohibido ampliar permisos de backend desde la capa de presentacion (HLD-DE-06, HLD-MOD02-DASHBOARD-EMPRESA v2.0).
+
+**Testing:**
+
+- Invariantes de catalogo V2: claves usadas en `@Permissions` ⊆ catalogo activo; matriz ⊆ ASSIGNABLE; plantillas estandar ⊆ matriz de su categoria; claves deprecadas ausentes de matriz y plantillas.
+- HTTP por modulo cableado: matriz rol × permiso (200/403) incluyendo las tres ampliaciones †.
+- Seed/migracion: usuarios activos sin perfiles quedan cubiertos por estandar; idempotencia y down.
+- E2E piloto: tecnico con perfil "Ver Suscriptores" ve el menu y consulta; sin el permiso, no.
+- Adicionales G1: cambio de `UserRole` de un usuario deja de aportar perfiles incompatibles y invalida cache; invalidacion por abanico en mutaciones de perfil multi-usuario; fallo de Redis degrada a calculo BD sin denegar; tenant recien provisionado recibe catalogo V2 y plantillas estandar por la cadena de migraciones; tests negativos D7 (subscriber-tax y expedientes-TECHNICIAN sin cablear); invariante "todo handler con `@Permissions` declara tambien `@Roles`".
+
+### 6.6.1 Firmas G1 (2026-08-28)
+
+Productor del artefacto: AI-EM-ARCH. Firmas independientes con lectura de codigo real; condiciones incorporadas a este addendum.
+
+| Revisor | Veredicto | Alcance | Condiciones (incorporadas) |
+| --- | --- | --- | --- |
+| AI-SR-FULL | GO CON CONDICIONES | Factibilidad backend | (1) Canon de plantillas: el seed autocurativo (`ensureSystemRoleTemplatesSeeded`) no debe renombrar/sobrescribir las plantillas estandar V2 en drift-repair; canon de 9 categorias; SUBSCRIBER/PARTNER/INVESTOR sin plantilla. (2) Deprecacion canonica de `crm.customers.*` expresable en el seed (`isActive: false` o claves fuera del array) y `listPermissions` pasa a `MOD00_ACCESS_V2`; el seed absorbe promociones y metadatos. (3) Invalidacion de cache por abanico a usuarios con asignacion activa del perfil mutado, invalidacion tambien en cambio de `role`/`status` desde Users via puerto de `AccessControlModule`, y degrade a calculo BD ante fallo de Redis (nunca denegar), con tests dedicados. Asignacion masiva set-based (INSERT...SELECT por plantilla). |
+| AI-PROD-UX | GO CON CONDICIONES | Viabilidad UX | (1) Condicion dura de orden de despliegue: nav gating solo tras migracion del corte por tenant. (2) Gramatica de nav a congelar en spec: ocultar lo no efectivo (MVP) o 3 bandas ocultar/disabled/enlazar con `compatibilityMatrix`. (3) Estados de carga/error de nav sin bloquear navegacion; degrade presentacional al comportamiento estatico. (4) Una sola seccion de 9 sugeridos ordenada por tipo de usuario; extension de `SYSTEM_TEMPLATE_PROFILE_NAMES` (SALES, ACCOUNTANT, HR); vocabulario humano en UI. (5) Montaje del panel de accesos efectivos en el side peek de edicion de usuario (distincion de origen por cross-reference `isSystem`, sin cambio de contrato backend). (6) Advertencia de invalidacion de perfiles al cambiar categoria base, solo en edicion. |
+
+Contrato de la spec UX de Fase 3 (autor AI-PROD-UX, a congelar antes de implementar frontend): modelo de nav y mapeo modulo->permisos; gates de pagina con 3 estados y deep-links; access con 9 sugeridos y regeneracion de snapshots E2E; users con panel de accesos efectivos y advertencia de categoria; matrices de estado transversales, WCAG 2.2 AA con tokens reales y vocabulario de la spec prevalente.
+
 
 ---
 

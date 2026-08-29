@@ -14,8 +14,11 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CatalogItemType, CustomerSegment } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { CatalogService } from '../services/catalog.service';
@@ -40,7 +43,7 @@ import {
 @ApiTags('commercial-catalog')
 @ApiExtraModels(CommercialListMetaDto)
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('commercial/catalog')
 export class CatalogController {
   constructor(
@@ -49,7 +52,8 @@ export class CatalogController {
   ) {}
 
   @Get()
-  @Roles(...COMMERCIAL_CATALOG_READ_ROLES)
+  @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
     summary: 'Listar ítems del catálogo con filtros y paginación cursor/page',
     description:
@@ -72,7 +76,8 @@ export class CatalogController {
   }
 
   @Get(':id')
-  @Roles(...COMMERCIAL_CATALOG_READ_ROLES)
+  @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({ summary: 'Obtener ítem del catálogo por ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.catalogService.findOne(id);
@@ -81,6 +86,7 @@ export class CatalogController {
 
   @Post()
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Crear ítem en el catálogo (plan, producto o servicio)' })
   @ApiResponse({ status: 201, description: 'Ítem creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o campos de detalle faltantes' })
@@ -91,6 +97,7 @@ export class CatalogController {
 
   @Post('plans')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Crear plan comercial' })
   async createPlan(@Body() dto: CreatePlanCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.PLAN });
@@ -99,6 +106,7 @@ export class CatalogController {
 
   @Post('products')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Crear producto comercial' })
   async createProduct(@Body() dto: CreateProductCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.PRODUCT });
@@ -107,6 +115,7 @@ export class CatalogController {
 
   @Post('services')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Crear servicio comercial adicional' })
   async createService(@Body() dto: CreateServiceCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.SERVICE });
@@ -115,6 +124,7 @@ export class CatalogController {
 
   @Patch(':id')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Actualizar ítem del catálogo' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCatalogItemDto) {
     const data = await this.catalogService.update(id, dto);
@@ -123,6 +133,7 @@ export class CatalogController {
 
   @Delete(':id')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Eliminar ítem del catálogo (soft delete)' })
   async remove(@Param('id', ParseUUIDPipe) id: string) {
     await this.catalogService.remove(id);
@@ -132,7 +143,8 @@ export class CatalogController {
   // ─── Precios SCD ─────────────────────────────────────────────────────────
 
   @Get(':id/prices')
-  @Roles(...COMMERCIAL_PRICE_READ_ROLES)
+  @Roles(...COMMERCIAL_PRICE_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({ summary: 'Historial de precios de un ítem' })
   async getPriceHistory(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.priceHistoryService.getPriceHistory(id);
@@ -140,7 +152,8 @@ export class CatalogController {
   }
 
   @Get(':id/price')
-  @Roles(...COMMERCIAL_PRICE_READ_ROLES)
+  @Roles(...COMMERCIAL_PRICE_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({ summary: 'Precio vigente de un ítem para un segmento' })
   async getCurrentPrice(
     @Param('id', ParseUUIDPipe) id: string,
@@ -152,6 +165,7 @@ export class CatalogController {
 
   @Post(':id/prices')
   @Roles(...COMMERCIAL_BILLING_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @ApiOperation({ summary: 'Registrar nuevo precio (SCD Tipo 2)' })
   @ApiResponse({ status: 201, description: 'Precio creado y anterior cerrado atómicamente' })
   @ApiResponse({ status: 409, description: 'Precio idéntico ya vigente' })

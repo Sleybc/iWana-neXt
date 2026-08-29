@@ -311,4 +311,52 @@ describe('CreateUserModal', () => {
     expect(details).toHaveAttribute('open');
     expect(screen.getByLabelText(/disponible para despacho operativo/i)).toBeInTheDocument();
   });
+
+  it('CA-USR-07: no muestra la alerta de descarte al cambiar el tipo de usuario', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    // Referencias estables para efectos con dependencias de array
+    const techProfiles = [
+      {
+        id: 'tpl-tech',
+        name: 'Técnico de campo',
+        description: 'Plantilla de campo',
+        baseRoleConstraint: UserRole.TECHNICIAN,
+        scopeSiteId: null,
+        isSystem: true,
+        isActive: true,
+        permissions: [AccessPermissionKey.WFM_SCHEDULE_READ],
+        createdAt: '2026-05-25T00:00:00.000Z',
+        updatedAt: '2026-05-25T00:00:00.000Z',
+      },
+    ];
+
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={onSubmit}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={techProfiles}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+
+    // Selecciona Técnico de campo y marca su perfil, luego cambia el tipo
+    fireEvent.click(screen.getByRole('combobox', { name: 'Categoría base' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Técnico de campo' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Técnico de campo' }));
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Categoría base' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Monitoreo operativo' }));
+
+    // La selección se descarta en el formulario (sin perfiles compatibles con
+    // el nuevo tipo), pero SIN alerta: la advertencia solo existe en edición.
+    expect(await screen.findByText('Sin perfiles compatibles')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Perfiles descartados por el cambio de tipo de usuario'),
+    ).not.toBeInTheDocument();
+  });
 });

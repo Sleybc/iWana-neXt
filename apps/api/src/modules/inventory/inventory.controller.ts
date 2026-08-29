@@ -19,13 +19,15 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PickerSearchResponseDto } from '../../common/pagination';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Permissions } from '../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   CreateInventoryItemDto,
@@ -130,7 +132,7 @@ import { WriteOffService } from './services/write-off.service';
 @ApiTags('inventory')
 @ApiExtraModels(InventoryListMetaDto, PickerSearchResponseDto)
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('inventory')
 export class InventoryController {
   constructor(
@@ -151,7 +153,8 @@ export class InventoryController {
   ) {}
 
   @Get('items')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar items del inventario',
     description:
@@ -170,7 +173,8 @@ export class InventoryController {
   }
 
   @Get('items/search')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Buscar ítems de inventario para picker (typeahead)',
     description:
@@ -185,7 +189,8 @@ export class InventoryController {
   }
 
   @Get('items/catalog/options')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener opciones de catalogo para Compras' })
   listCatalogOptions(
     @Query(new ZodValidationPipe(ListCatalogOptionsQuerySchema)) query: ListCatalogOptionsQueryDto,
@@ -198,7 +203,8 @@ export class InventoryController {
   }
 
   @Get('items/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener detalle de item del inventario' })
   getItem(@Param('id', ParseUUIDPipe) id: string) {
     return this.inventoryItemService.getById(id);
@@ -206,6 +212,7 @@ export class InventoryController {
 
   @Post('items')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Crear item del inventario' })
   createItem(
     @Body(new ZodValidationPipe(CreateInventoryItemSchema)) body: CreateInventoryItemDto,
@@ -216,6 +223,7 @@ export class InventoryController {
 
   @Patch('items/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Actualizar item del inventario' })
   updateItem(
     @Param('id', ParseUUIDPipe) id: string,
@@ -228,13 +236,15 @@ export class InventoryController {
   @Delete('items/:id')
   @HttpCode(204)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Eliminar item del inventario' })
   deleteItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     return this.inventoryItemService.delete(id, actor);
   }
 
   @Get('categories')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar categorias de inventario',
     description:
@@ -253,7 +263,8 @@ export class InventoryController {
   }
 
   @Get('categories/suggest-prefix')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Sugerir codigo y prefijo de categoria de inventario' })
   suggestCategoryPrefix(
     @Query(new ZodValidationPipe(SuggestInventoryCategoryPrefixQuerySchema))
@@ -265,7 +276,8 @@ export class InventoryController {
   }
 
   @Get('categories/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener detalle de categoria de inventario' })
   getCategory(@Param('id', ParseUUIDPipe) id: string) {
     return this.inventoryCategoryService.getById(id);
@@ -273,6 +285,7 @@ export class InventoryController {
 
   @Post('categories')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Crear categoria de inventario' })
   createCategory(
     @Body(new ZodValidationPipe(CreateInventoryCategorySchema)) body: CreateInventoryCategoryDto,
@@ -283,6 +296,7 @@ export class InventoryController {
 
   @Patch('categories/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Actualizar categoria de inventario' })
   updateCategory(
     @Param('id', ParseUUIDPipe) id: string,
@@ -297,7 +311,8 @@ export class InventoryController {
   }
 
   @Get('locations')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar ubicaciones de stock',
     description:
@@ -315,7 +330,8 @@ export class InventoryController {
   }
 
   @Get('locations/search')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Buscar ubicaciones de stock para picker (typeahead)',
     description:
@@ -333,6 +349,7 @@ export class InventoryController {
 
   @Post('locations')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Crear ubicación de stock' })
   createLocation(
     @Body(new ZodValidationPipe(CreateStockLocationSchema)) body: CreateStockLocationDto,
@@ -342,6 +359,7 @@ export class InventoryController {
 
   @Patch('locations/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Actualizar ubicación de stock' })
   updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
@@ -351,7 +369,8 @@ export class InventoryController {
   }
 
   @Get('assets')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar activos serializados',
     description:
@@ -370,7 +389,8 @@ export class InventoryController {
   }
 
   @Get('assets/search')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Buscar activos serializados para picker (typeahead)',
     description: 'Lookup E-4: `q` sobre serial/asset tag/MAC/SKU. Máx. 20. `{ data, total }`.',
@@ -386,7 +406,8 @@ export class InventoryController {
   }
 
   @Get('assets/useful-life-alerts')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar alertas de vida útil de activos',
     description:
@@ -402,7 +423,8 @@ export class InventoryController {
   }
 
   @Get('assets/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Obtener ficha 360 de activo serializado',
     description:
@@ -421,7 +443,8 @@ export class InventoryController {
   }
 
   @Get('loans')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar comodatos de activos',
     description:
@@ -432,7 +455,8 @@ export class InventoryController {
   }
 
   @Get('balances')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Consultar balances de stock',
     description:
@@ -449,7 +473,8 @@ export class InventoryController {
   }
 
   @Get('movements')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Consultar kardex de movimientos de stock' })
   listMovements(
     @Query(new ZodValidationPipe(ListStockMovementsQuerySchema))
@@ -459,7 +484,8 @@ export class InventoryController {
   }
 
   @Get('movements/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener detalle de movimiento de stock' })
   getMovement(@Param('id', ParseUUIDPipe) id: string) {
     return this.stockMovementQueryService.getById(id);
@@ -467,6 +493,7 @@ export class InventoryController {
 
   @Post('adjustments')
   @Roles(UserRole.ADMIN)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Registrar ajuste manual de inventario' })
   createAdjustment(
     @Body(new ZodValidationPipe(CreateStockAdjustmentSchema)) body: CreateStockAdjustmentDto,
@@ -476,7 +503,8 @@ export class InventoryController {
   }
 
   @Get('issues')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar salidas (StockIssue)',
     description:
@@ -495,6 +523,7 @@ export class InventoryController {
 
   @Post('issues')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({
     summary: 'Crear salida (StockIssue)',
     description:
@@ -508,7 +537,8 @@ export class InventoryController {
   }
 
   @Get('issues/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener detalle de salida (StockIssue)' })
   getIssue(@Param('id', ParseUUIDPipe) id: string) {
     return this.stockIssueService.getById(id);
@@ -516,6 +546,7 @@ export class InventoryController {
 
   @Patch('issues/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({
     summary: 'Actualizar salida (StockIssue)',
     description:
@@ -531,6 +562,7 @@ export class InventoryController {
 
   @Post('issues/:id/cancel')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Cancelar salida (StockIssue)' })
   cancelIssue(
     @Param('id', ParseUUIDPipe) id: string,
@@ -543,6 +575,7 @@ export class InventoryController {
 
   @Post('issues/:id/dispatch')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({
     summary: 'Despachar salida (StockIssue)',
     description:
@@ -558,6 +591,7 @@ export class InventoryController {
 
   @Post('transfers')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({
     summary: 'Transferir stock entre ubicaciones',
     description:
@@ -572,6 +606,7 @@ export class InventoryController {
 
   @Post('movements/execution-order')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Registrar movimiento desde una OT' })
   movementFromExecutionOrder(
     @Body(new ZodValidationPipe(ExecutionOrderMovementSchema)) body: ExecutionOrderMovementDto,
@@ -585,6 +620,7 @@ export class InventoryController {
 
   @Post('movements/sale')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Registrar salida por venta' })
   sale(
     @Body(new ZodValidationPipe(SaleMovementSchema)) body: SaleMovementDto,
@@ -595,6 +631,7 @@ export class InventoryController {
 
   @Post('movements/internal-consumption')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Registrar consumo interno' })
   internalConsumption(
     @Body(new ZodValidationPipe(InternalConsumptionSchema)) body: InternalConsumptionDto,
@@ -608,6 +645,7 @@ export class InventoryController {
 
   @Post('returns')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Registrar retorno de inventario o activo' })
   registerReturn(
     @Body(new ZodValidationPipe(ReturnAssetSchema)) body: ReturnAssetDto,
@@ -618,6 +656,7 @@ export class InventoryController {
 
   @Post('write-offs')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Solicitar baja de inventario o activo (pendiente de aprobación)' })
   createWriteOffRequest(
     @Body(new ZodValidationPipe(WriteOffAssetSchema)) body: WriteOffAssetDto,
@@ -627,7 +666,8 @@ export class InventoryController {
   }
 
   @Get('write-offs')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Listar solicitudes y documentos de baja' })
   listWriteOffs(
     @Query(new ZodValidationPipe(ListWriteOffsQuerySchema)) query: ListWriteOffsQueryDto,
@@ -636,7 +676,8 @@ export class InventoryController {
   }
 
   @Get('write-offs/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener detalle de solicitud o documento de baja' })
   getWriteOff(@Param('id', ParseUUIDPipe) id: string) {
     return this.writeOffService.getById(id);
@@ -644,6 +685,7 @@ export class InventoryController {
 
   @Post('write-offs/:id/approve')
   @Roles(UserRole.ADMIN)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({
     summary: 'Aprobar solicitud de baja y aplicar al ledger',
     description:
@@ -660,6 +702,7 @@ export class InventoryController {
 
   @Post('write-offs/:id/reject')
   @Roles(UserRole.ADMIN)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({
     summary: 'Rechazar solicitud de baja',
     description:
@@ -675,6 +718,7 @@ export class InventoryController {
 
   @Post('counter-purchases')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Registrar ingreso directo por compra de mostrador' })
   createCounterPurchase(
     @Body(new ZodValidationPipe(CreateCounterPurchaseSchema)) body: CreateCounterPurchaseDto,
@@ -684,21 +728,24 @@ export class InventoryController {
   }
 
   @Get('dashboard')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener KPIs del dashboard de inventario' })
   getDashboard() {
     return this.inventoryDashboardService.getSummary();
   }
 
   @Get('replenishment/suggestions')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Consultar sugerencias de reposición de inventario' })
   listReplenishmentSuggestions() {
     return this.replenishmentService.listSuggestions();
   }
 
   @Get('counts')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({
     summary: 'Listar conteos físicos de inventario',
     description:
@@ -717,6 +764,7 @@ export class InventoryController {
 
   @Post('counts')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Crear conteo físico de inventario' })
   createCount(
     @Body(new ZodValidationPipe(CreateStockCountSchema)) body: CreateStockCountDto,
@@ -726,7 +774,8 @@ export class InventoryController {
   }
 
   @Get('counts/:id')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
   @ApiOperation({ summary: 'Obtener detalle de conteo físico' })
   getCount(@Param('id', ParseUUIDPipe) id: string) {
     return this.cycleCountService.getById(id);
@@ -734,6 +783,7 @@ export class InventoryController {
 
   @Patch('counts/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Capturar cantidades de un conteo físico' })
   updateCount(
     @Param('id', ParseUUIDPipe) id: string,
@@ -745,6 +795,7 @@ export class InventoryController {
 
   @Post('counts/:id/close')
   @Roles(UserRole.ADMIN)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Cerrar conteo físico y aplicar ajuste de inventario' })
   closeCount(
     @Param('id', ParseUUIDPipe) id: string,
@@ -757,6 +808,7 @@ export class InventoryController {
 
   @Post('counts/:id/cancel')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
   @ApiOperation({ summary: 'Cancelar conteo físico sin efecto en stock' })
   cancelCount(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
     return this.cycleCountService.cancel(id, actor);

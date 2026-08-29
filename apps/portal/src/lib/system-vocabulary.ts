@@ -28,7 +28,10 @@ const SYSTEM_TEMPLATE_PROFILE_NAMES: Partial<Record<UserRole, string>> = {
   [UserRole.ADMIN]: 'Administrador general',
   [UserRole.NOC]: 'Monitoreo operativo',
   [UserRole.SUPPORT]: 'Soporte inicial',
+  [UserRole.SALES]: 'Ventas',
   [UserRole.TECHNICIAN]: 'Técnico de campo',
+  [UserRole.ACCOUNTANT]: 'Contabilidad',
+  [UserRole.HR]: 'Talento humano',
   [UserRole.CONTRACTOR]: 'Contratista',
   [UserRole.AUDITOR]: 'Auditor',
 };

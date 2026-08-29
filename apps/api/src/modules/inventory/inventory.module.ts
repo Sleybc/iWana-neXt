@@ -71,12 +71,14 @@ import { WriteOffService } from './services/write-off.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
 import { InventoryDomainEventPublisher } from './services/inventory-domain-event-publisher.service';
 import { InventoryDomainEventsListener } from './listeners/inventory-domain-events.listener';
+import { AccessControlModule } from '../access-control/access-control.module';
 
 @Module({
   imports: [
     PartiesModule,
     CommercialModule,
     TenantModule,
+    AccessControlModule,
     TypeOrmModule.forFeature([
       InventoryItem,
       InventoryCategory,

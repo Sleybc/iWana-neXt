@@ -25,10 +25,12 @@ import {
 import { DataSource, EntityManager, In } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { AccessGovernanceService } from './services/access-governance.service';
+import { EffectivePermissionsService } from './services/effective-permissions.service';
 import {
-  MOD00_ACCESS_V1_CATALOG,
-  MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES,
-  ROLE_ASSIGNABLE_PERMISSION_MATRIX,
+  MOD00_ACCESS_V2_CATALOG,
+  MOD00_ACCESS_V2_DEPRECATED_KEYS,
+  MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES,
+  ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2,
 } from './access-control.constants';
 import {
   CreateAccessProfileDto,
@@ -78,6 +80,7 @@ export class AccessControlService {
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly accessGovernanceService: AccessGovernanceService,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
   ) {}
 
   async listPermissions() {
@@ -93,9 +96,9 @@ export class AccessControlService {
       });
 
       return {
-        version: AccessPermissionCatalogVersion.MOD00_ACCESS_V1,
+        version: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
         permissions,
-        compatibilityMatrix: ROLE_ASSIGNABLE_PERMISSION_MATRIX,
+        compatibilityMatrix: ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2,
       };
     });
   }
@@ -159,7 +162,7 @@ export class AccessControlService {
   ): Promise<AccessProfileView> {
     const ctx = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       await this.ensurePermissionCatalogSeeded(qr.manager, ctx.tenantId);
       this.ensureRoleAllowedForTenantProfiles(dto.baseRoleConstraint);
 
@@ -217,6 +220,9 @@ export class AccessControlService {
 
       return after;
     });
+
+    // Crear perfil no tiene usuarios asignados aún — no hay fan-out necesario.
+    return result;
   }
 
   async updateProfile(
@@ -226,7 +232,7 @@ export class AccessControlService {
   ): Promise<AccessProfileView> {
     const ctx = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       await this.ensurePermissionCatalogSeeded(qr.manager, ctx.tenantId);
 
       const profile = await this.findProfileEntity(qr.manager, ctx.tenantId, id);
@@ -307,11 +313,18 @@ export class AccessControlService {
 
       return after;
     });
+
+    // Invalidación por abanico: editar perfil afecta a usuarios con asignación activa
+    await this.effectivePermissionsService.invalidateByProfile(ctx.tenantId, ctx.schemaName, id);
+
+    return result;
   }
 
   async removeProfile(id: string, auditContext?: MutationAuditContext): Promise<void> {
     const ctx = TenantContext.getOrThrow();
 
+    // Capturar usuarios afectados antes de desactivar
+    let affectedUserIds: string[] = [];
     await runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       await this.ensurePermissionCatalogSeeded(qr.manager, ctx.tenantId);
 
@@ -330,6 +343,7 @@ export class AccessControlService {
       const assignments = await qr.manager.find(UserAccessProfile, {
         where: { tenantId: ctx.tenantId, profileId: id, isActive: true },
       });
+      affectedUserIds = [...new Set(assignments.map((a) => a.userId))];
       if (assignments.length > 0) {
         assignments.forEach((entry) => {
           entry.isActive = false;
@@ -352,6 +366,11 @@ export class AccessControlService {
         requestId: auditContext?.requestId ?? null,
       });
     });
+
+    await this.effectivePermissionsService.invalidateUsersPermissions(
+      ctx.tenantId,
+      affectedUserIds,
+    );
   }
 
   async replaceProfilePermissions(
@@ -361,7 +380,7 @@ export class AccessControlService {
   ): Promise<AccessProfileView> {
     const ctx = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       await this.ensurePermissionCatalogSeeded(qr.manager, ctx.tenantId);
 
       const profile = await this.findProfileEntity(qr.manager, ctx.tenantId, id);
@@ -416,6 +435,10 @@ export class AccessControlService {
 
       return after;
     });
+
+    await this.effectivePermissionsService.invalidateByProfile(ctx.tenantId, ctx.schemaName, id);
+
+    return result;
   }
 
   async replaceUserProfiles(
@@ -425,7 +448,7 @@ export class AccessControlService {
   ): Promise<{ userId: string; role: UserRole; profileIds: string[] }> {
     const ctx = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       await this.ensurePermissionCatalogSeeded(qr.manager, ctx.tenantId);
 
       const user = await qr.manager.findOne(User, {
@@ -435,9 +458,6 @@ export class AccessControlService {
         throw new NotFoundException(`Usuario ${userId} no encontrado.`);
       }
 
-      // Tercera copia de la frontera de procedencia (ADR-061 §4): la fila puede
-      // ser anterior al estrechamiento del dominio, asi que se comprueba el
-      // literal persistido, no el tipo.
       if (isPlatformOnlyRole(user.role)) {
         throw new ForbiddenException({
           code: 'PLATFORM_ROLE_NOT_TENANT_ASSIGNABLE',
@@ -531,25 +551,38 @@ export class AccessControlService {
         profileIds: newProfileIds,
       };
     });
+
+    await this.effectivePermissionsService.invalidateUserPermissions(ctx.tenantId, userId);
+
+    return result;
+  }
+
+  /**
+   * Puerto para invalidación desde UsersService en cambio de role/status.
+   */
+  async invalidateUserCache(tenantId: string, userId: string): Promise<void> {
+    await this.effectivePermissionsService.invalidateUserPermissions(tenantId, userId);
   }
 
   private async ensurePermissionCatalogSeeded(
     manager: EntityManager,
     tenantId: string,
   ): Promise<void> {
+    const catalogKeys = MOD00_ACCESS_V2_CATALOG.map((entry) => entry.permissionKey);
+    const allKeys = [...catalogKeys, ...MOD00_ACCESS_V2_DEPRECATED_KEYS];
     const existing = await manager.find(AccessPermissionCatalog, {
       where: {
         tenantId,
-        permissionKey: In(MOD00_ACCESS_V1_CATALOG.map((entry) => entry.permissionKey)),
+        permissionKey: In(allKeys),
       },
     });
 
     const existingByKey = new Map(existing.map((entry) => [entry.permissionKey, entry]));
-    const toSave = MOD00_ACCESS_V1_CATALOG.map((definition) => {
+    const toSave: AccessPermissionCatalog[] = [];
+
+    for (const definition of MOD00_ACCESS_V2_CATALOG) {
       const current = existingByKey.get(definition.permissionKey);
       if (current) {
-        // El seed canonico debe ser autocurativo: reusa filas existentes y reactiva
-        // entradas del catalogo si quedaron inactivas para evitar duplicados por tenant.
         current.moduleKey = definition.moduleKey;
         current.action = definition.action;
         current.description = definition.description;
@@ -557,71 +590,80 @@ export class AccessControlService {
         current.availability = definition.availability;
         current.isSystem = true;
         current.isActive = true;
-        return current;
+        toSave.push(current);
+      } else {
+        toSave.push(
+          manager.create(AccessPermissionCatalog, {
+            tenantId,
+            permissionKey: definition.permissionKey,
+            moduleKey: definition.moduleKey,
+            action: definition.action,
+            description: definition.description,
+            catalogVersion: definition.catalogVersion,
+            availability: definition.availability,
+            isSystem: true,
+            isActive: true,
+          }),
+        );
       }
+    }
 
-      return manager.create(AccessPermissionCatalog, {
-        tenantId,
-        permissionKey: definition.permissionKey,
-        moduleKey: definition.moduleKey,
-        action: definition.action,
-        description: definition.description,
-        catalogVersion: definition.catalogVersion,
-        availability: definition.availability,
-        isSystem: true,
-        isActive: true,
-      });
-    });
+    // Deprecación canónica: marcar inactivas las claves deprecadas
+    for (const deprecatedKey of MOD00_ACCESS_V2_DEPRECATED_KEYS) {
+      const current = existingByKey.get(deprecatedKey);
+      if (current && current.isActive) {
+        current.isActive = false;
+        current.isSystem = true;
+        toSave.push(current);
+      }
+    }
 
-    await manager.save(AccessPermissionCatalog, toSave);
+    if (toSave.length > 0) {
+      await manager.save(AccessPermissionCatalog, toSave);
+    }
   }
 
   private async ensureSystemRoleTemplatesSeeded(
     manager: EntityManager,
     tenantId: string,
   ): Promise<void> {
-    const templateNames = MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES.map((template) => template.name);
-    const templateRoles = MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES.map(
-      (template) => template.baseRoleConstraint,
-    );
+    // Canon V2: 9 plantillas con nombres canónicos exactos.
+    const templateNames = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.map((t) => t.name);
     const definitionsByName = new Map(
-      MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES.map((template) => [template.name, template]),
+      MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.map((t) => [t.name, t]),
     );
+
+    // Buscar solo por nombre canónico — no por baseRoleConstraint (G1 condición 1).
     const existingProfiles = await manager.find(AccessProfile, {
-      where: [
-        {
-          tenantId,
-          name: In(templateNames),
-        },
-        {
-          tenantId,
-          isSystem: true,
-          baseRoleConstraint: In(templateRoles),
-        },
-      ],
+      where: {
+        tenantId,
+        name: In(templateNames),
+      },
     });
 
-    const existingByName = new Map(existingProfiles.map((profile) => [profile.name, profile]));
-    const existingByRole = new Map(
-      existingProfiles.map((profile) => [profile.baseRoleConstraint, profile]),
-    );
-    const profilesToUpsert = MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES.flatMap((template) => {
-      const current =
-        existingByRole.get(template.baseRoleConstraint) ?? existingByName.get(template.name);
+    const existingByName = new Map(existingProfiles.map((p) => [p.name, p]));
+    const profilesToUpsert: AccessProfile[] = [];
+
+    for (const template of MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES) {
+      const current = existingByName.get(template.name);
       if (!current) {
-        return manager.create(AccessProfile, {
-          tenantId,
-          name: template.name,
-          description: template.description,
-          baseRoleConstraint: template.baseRoleConstraint,
-          scopeSiteId: null,
-          isSystem: true,
-          isActive: true,
-        });
+        profilesToUpsert.push(
+          manager.create(AccessProfile, {
+            tenantId,
+            name: template.name,
+            description: template.description,
+            baseRoleConstraint: template.baseRoleConstraint,
+            scopeSiteId: null,
+            isSystem: true,
+            isActive: true,
+          }),
+        );
+        continue;
       }
 
+      // Drift-repair determinista hacia el canon V2:
+      // solo repara campos canónicos; no renombra otras plantillas ni reactiva fuera del canon.
       const hasCanonicalDrift =
-        current.name !== template.name ||
         current.description !== template.description ||
         current.baseRoleConstraint !== template.baseRoleConstraint ||
         current.scopeSiteId !== null ||
@@ -629,32 +671,32 @@ export class AccessControlService {
         !current.isActive;
 
       if (!hasCanonicalDrift) {
-        return [];
+        continue;
       }
 
-      current.name = template.name;
       current.description = template.description;
       current.baseRoleConstraint = template.baseRoleConstraint;
-      // Las plantillas del sistema son globales para el tenant y no conservan scope legado.
       current.scopeSiteId = null;
       current.isSystem = true;
       current.isActive = true;
-      return current;
-    });
+      profilesToUpsert.push(current);
+    }
 
     const savedTemplates = profilesToUpsert.length
       ? await manager.save(AccessProfile, profilesToUpsert)
       : existingProfiles;
-    const upsertedProfileIds = new Set(savedTemplates.map((profile) => profile.id));
 
-    for (const profile of savedTemplates) {
+    // Determinar qué plantillas necesitan sync de permisos
+    // Incluye las recién creadas/upsertadas y las existentes que ya estaban canónicas
+    const allCanonicalProfiles = await manager.find(AccessProfile, {
+      where: { tenantId, name: In(templateNames), isSystem: true },
+    });
+
+    const savedIds = new Set(savedTemplates.map((p) => p.id));
+    for (const profile of allCanonicalProfiles) {
       const definition = definitionsByName.get(profile.name);
-      if (!definition) {
-        continue;
-      }
+      if (!definition) continue;
 
-      // El catalogo canonico ya fue sembrado antes de llegar aqui; si una plantilla deja
-      // de validar contra ese catalogo, el fallo debe ser visible para corregir la definicion.
       await this.validatePermissionKeys(
         manager,
         tenantId,
@@ -674,7 +716,7 @@ export class AccessControlService {
           (permissionKey, index) => permissionKey !== definition.permissionKeys[index],
         );
 
-      if (!upsertedProfileIds.has(profile.id) && !hasPermissionDrift) {
+      if (!savedIds.has(profile.id) && !hasPermissionDrift) {
         continue;
       }
 
@@ -705,7 +747,9 @@ export class AccessControlService {
   ): Promise<void> {
     this.ensureRoleAllowedForTenantProfiles(baseRoleConstraint);
 
-    const allowedPermissions = new Set(ROLE_ASSIGNABLE_PERMISSION_MATRIX[baseRoleConstraint] ?? []);
+    const allowedPermissions = new Set(
+      ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[baseRoleConstraint] ?? [],
+    );
     const permissions = permissionKeys.length
       ? await manager.find(AccessPermissionCatalog, {
           where: { tenantId, permissionKey: In(permissionKeys), isActive: true },
@@ -938,6 +982,6 @@ export class AccessControlService {
       return [];
     }
 
-    return [...(ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.ADMIN] ?? [])];
+    return [...(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN] ?? [])];
   }
 }

@@ -16,6 +16,7 @@ import { SubscriberCancellationListener } from './listeners/subscriber-cancellat
 import { PartiesModule } from '../../parties/parties.module';
 import { TaxationModule } from '../../taxation/taxation.module';
 import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
+import { AccessControlModule } from '../../access-control/access-control.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
     AuditModule,
     PartiesModule,
     TaxationModule,
+    AccessControlModule,
   ],
   controllers: [SubscribersController, SubscriberTaxController],
   providers: [

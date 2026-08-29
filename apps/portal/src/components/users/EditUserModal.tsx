@@ -1,7 +1,7 @@
 // apps/portal/src/components/users/EditUserModal.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,14 +14,17 @@ import {
 } from '@iwana/shared';
 import { Button, Select, cn } from '@iwana/ui';
 import {
+  accessControlApi,
   usersApi,
   type AccessPermissionsCatalog,
   type AccessProfileView,
+  type EffectivePermissionsSummary,
   type InternalUser,
   type UpdateInternalUserDto,
   ApiError,
 } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
+import { getAccessProfileDisplayName } from '@/lib/system-vocabulary';
 import {
   getPortalUserRoleLabel,
   getPortalUserStatusLabel,
@@ -33,6 +36,7 @@ import {
   portalFieldClassName,
   portalSelectTriggerClassName,
 } from '@/components/shared/portal-ui';
+import { EffectivePermissionsPanel } from '@/components/access-control/EffectivePermissionsPanel';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 import { UserProfileFields } from './UserProfileFields';
 
@@ -93,6 +97,39 @@ function mapError(err: unknown): string {
   return 'No fue posible completar la operación. Intenta de nuevo.';
 }
 
+/** Nombres visibles de los perfiles descartados, con fallback del vocabulario. */
+function resolveDiscardedProfileNames(
+  profileIds: string[],
+  availableProfiles: AccessProfileView[],
+): string[] {
+  return profileIds.reduce<string[]>((names, profileId) => {
+    const profile = availableProfiles.find((entry) => entry.id === profileId);
+    if (profile) {
+      names.push(getAccessProfileDisplayName(profile));
+    }
+    return names;
+  }, []);
+}
+
+/** Copy congelado por casos (spec MOD00 §4.5): n = 1 / 2–3 / > 3. */
+export function formatDiscardedProfilesMessage(profileNames: string[]): string {
+  const count = profileNames.length;
+  if (count === 0) {
+    return '';
+  }
+
+  if (count === 1) {
+    return `Al cambiar el tipo de usuario, 1 perfil dejó de ser compatible y se desmarcó: ${profileNames[0]}. Al guardar, quedará sin asignar.`;
+  }
+
+  const joined =
+    count <= 3
+      ? `${profileNames.slice(0, -1).join(', ')} y ${profileNames[count - 1]}`
+      : `${profileNames[0]}, ${profileNames[1]}, ${profileNames[2]} y ${count - 3} más`;
+
+  return `Al cambiar el tipo de usuario, ${count} perfiles dejaron de ser compatibles y se desmarcaron: ${joined}. Al guardar, quedarán sin asignar.`;
+}
+
 export function EditUserModal({
   isOpen,
   user,
@@ -112,7 +149,36 @@ export function EditUserModal({
   const [selectedCompanyRoleIds, setSelectedCompanyRoleIds] =
     useState<string[]>(initialCompanyRoleIds);
 
+  // Panel «Accesos efectivos» (spec MOD00 §4.1): estado guardado del usuario
+  // editado; se pide al abrir el peek y se refresca tras un guardado exitoso.
+  const [effectiveSummary, setEffectiveSummary] = useState<EffectivePermissionsSummary | null>(
+    null,
+  );
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  const [hasSummaryError, setHasSummaryError] = useState(false);
+
+  // Advertencia por descarte de perfiles al cambiar el tipo de usuario
+  // (spec MOD00 §4.5 — SOLO edición).
+  const [discardedProfileIds, setDiscardedProfileIds] = useState<string[]>([]);
+
   const changeEmailIdempotencyKeyRef = useRef<string | null>(null);
+  const previousRoleRef = useRef<string | undefined>(undefined);
+  const selectedCompanyRoleIdsRef = useRef<string[]>([]);
+  selectedCompanyRoleIdsRef.current = selectedCompanyRoleIds;
+
+  const loadEffectiveSummary = useCallback(async () => {
+    setIsSummaryLoading(true);
+    setHasSummaryError(false);
+    try {
+      const summary = await accessControlApi.getEffectivePermissions(user.id);
+      setEffectiveSummary(summary);
+    } catch {
+      setEffectiveSummary(null);
+      setHasSummaryError(true);
+    } finally {
+      setIsSummaryLoading(false);
+    }
+  }, [user.id]);
 
   const {
     register,
@@ -163,8 +229,11 @@ export function EditUserModal({
       setEmailToConfirm(null);
       setSelectedCompanyRoleIds(initialCompanyRoleIds);
       changeEmailIdempotencyKeyRef.current = null;
+      previousRoleRef.current = user.role;
+      setDiscardedProfileIds([]);
+      void loadEffectiveSummary();
     }
-  }, [initialCompanyRoleIds, isOpen, user, reset]);
+  }, [initialCompanyRoleIds, isOpen, user, reset, loadEffectiveSummary]);
 
   useEffect(() => {
     if (error) setServerError(error);
@@ -220,6 +289,24 @@ export function EditUserModal({
     );
   }, [availableProfiles, selectedBaseRole]);
 
+  // Detección del descarte por cambio de tipo de usuario (spec MOD00 §4.5).
+  // Se evalúa contra la selección vigente ANTES del filtro de compatibilidad;
+  // la alerta desaparece al revertir a un tipo que no descarte nada.
+  useEffect(() => {
+    const previousRole = previousRoleRef.current;
+    previousRoleRef.current = selectedBaseRole ?? undefined;
+
+    if (!selectedBaseRole || !previousRole || previousRole === selectedBaseRole) {
+      return;
+    }
+
+    const discarded = selectedCompanyRoleIdsRef.current.filter((profileId) => {
+      const profile = availableProfiles.find((entry) => entry.id === profileId);
+      return !profile || !profile.isActive || profile.baseRoleConstraint !== selectedBaseRole;
+    });
+    setDiscardedProfileIds(discarded);
+  }, [availableProfiles, selectedBaseRole]);
+
   const onFormSubmit = async (values: EditUserFormValues) => {
     setServerError(null);
     const dto: UpdateInternalUserDto = {};
@@ -259,6 +346,9 @@ export function EditUserModal({
     }
 
     await onSubmit(dto, normalizedSelectedCompanyRoleIds);
+    // El panel refleja el estado guardado: se refresca tras un guardado
+    // exitoso (spec MOD00 §4.1 / CA-USR-01).
+    void loadEffectiveSummary();
   };
 
   function toggleCompanyRole(profileId: string) {
@@ -416,7 +506,36 @@ export function EditUserModal({
             catalog={accessCatalog}
             onToggleProfile={toggleCompanyRole}
           />
+
+          {discardedProfileIds.length > 0 ? (
+            <PortalAlert
+              variant="warning"
+              title="Perfiles descartados por el cambio de tipo de usuario"
+              description={
+                <span className="block space-y-1">
+                  <span className="block">
+                    {formatDiscardedProfilesMessage(
+                      resolveDiscardedProfileNames(discardedProfileIds, availableProfiles),
+                    )}
+                  </span>
+                  <span className="block">
+                    Usa Cancelar para descartar todos los cambios de esta edición.
+                  </span>
+                </span>
+              }
+            />
+          ) : null}
         </section>
+
+        {/* Panel de accesos efectivos guardados — colapsado por defecto (spec MOD00 §4.1) */}
+        <EffectivePermissionsPanel
+          summary={effectiveSummary}
+          catalog={accessCatalog}
+          availableProfiles={availableProfiles}
+          isLoading={isSummaryLoading}
+          hasError={hasSummaryError}
+          onRetry={() => void loadEffectiveSummary()}
+        />
 
         {/* 2. Correo — flujo sensible, CTA secundaria */}
         <section

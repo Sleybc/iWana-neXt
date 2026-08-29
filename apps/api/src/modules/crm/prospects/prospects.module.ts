@@ -8,6 +8,7 @@ import { PlanCatalogReadPort } from '../ports/plan-catalog-read.port';
 import { CommercialModule } from '../../commercial/commercial.module';
 import { ProspectsController } from './prospects.controller';
 import { ProspectsService } from './prospects.service';
+import { AccessControlModule } from '../../access-control/access-control.module';
 import { ProspectQuotesService } from './quotes.service';
 
 @Module({
@@ -16,6 +17,7 @@ import { ProspectQuotesService } from './quotes.service';
     CommercialModule,
     TenantModule,
     TypeOrmModule.forFeature([ProspectCase, Quote]),
+    AccessControlModule,
   ],
   controllers: [ProspectsController],
   providers: [ProspectsService, ProspectQuotesService],

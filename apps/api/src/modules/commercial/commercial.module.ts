@@ -32,6 +32,7 @@ import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.ad
 import { CommercialCompatibilityReadAdapter } from './ports/commercial-compatibility-read.adapter';
 
 import { TaxationModule } from '../taxation/taxation.module';
+import { AccessControlModule } from '../access-control/access-control.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TaxationModule } from '../taxation/taxation.module';
       CompatibilityRule,
     ]),
     TaxationModule,
+    AccessControlModule,
   ],
   controllers: [
     CatalogController,

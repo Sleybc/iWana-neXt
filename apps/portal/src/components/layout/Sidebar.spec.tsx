@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react';
-import { UserRole } from '@iwana/shared';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { Sidebar } from './Sidebar';
 
 jest.mock('next/navigation', () => ({
@@ -11,6 +11,12 @@ const useAuthMock = jest.fn();
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
+}));
+
+const usePermissionsMock = jest.fn();
+
+jest.mock('@/components/access-control/permissions-context', () => ({
+  usePermissions: () => usePermissionsMock(),
 }));
 
 jest.mock('next/link', () => {
@@ -30,6 +36,43 @@ jest.mock('next/link', () => {
 jest.mock('./TenantSeal', () => ({
   TenantSeal: ({ name }: { name: string }) => <div data-testid="tenant-seal">{name}</div>,
 }));
+
+const ALL_NAV_PERMISSIONS: AccessPermissionKey[] = [
+  AccessPermissionKey.CRM_EXPEDIENTES_READ,
+  AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+  AccessPermissionKey.WFM_SCHEDULE_READ,
+  AccessPermissionKey.ASSURANCE_TICKETS_READ,
+  AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+  AccessPermissionKey.INVENTORY_STOCK_READ,
+  AccessPermissionKey.SETTINGS_READ,
+  AccessPermissionKey.USERS_READ,
+  AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+];
+
+function mockPermissionsReady(permissions: AccessPermissionKey[] = ALL_NAV_PERMISSIONS) {
+  usePermissionsMock.mockReturnValue({
+    status: 'ready',
+    effectivePermissions: new Set(permissions),
+    hasPermission: (permission: AccessPermissionKey) => permissions.includes(permission),
+    hasAnyPermission: (required: readonly AccessPermissionKey[]) =>
+      required.some((permission) => permissions.includes(permission)),
+    retry: jest.fn(),
+  });
+}
+
+function mockPermissionsStatus(
+  status: 'loading' | 'ready' | 'degraded',
+  permissions: AccessPermissionKey[] = [],
+) {
+  usePermissionsMock.mockReturnValue({
+    status,
+    effectivePermissions: new Set(permissions),
+    hasPermission: (permission: AccessPermissionKey) => permissions.includes(permission),
+    hasAnyPermission: (required: readonly AccessPermissionKey[]) =>
+      required.some((permission) => permissions.includes(permission)),
+    retry: jest.fn(),
+  });
+}
 
 type MatchMediaListener = (event: MediaQueryListEvent) => void;
 
@@ -80,6 +123,7 @@ describe('Sidebar', () => {
     useAuthMock.mockReturnValue({
       user: { role: UserRole.SUPPORT },
     });
+    mockPermissionsReady();
     mockMatchMedia(false);
   });
 
@@ -253,5 +297,118 @@ describe('Sidebar', () => {
       '/dashboard/users',
       '/dashboard/commercial',
     ]);
+  });
+
+  describe('gating por permisos efectivos (spec MOD00 §1)', () => {
+    it('CA-NAV-01: sin crm.subscribers.read el ítem Suscriptores no existe en el DOM', () => {
+      mockPermissionsReady(
+        ALL_NAV_PERMISSIONS.filter((key) => key !== AccessPermissionKey.CRM_SUBSCRIBERS_READ),
+      );
+
+      renderSidebar();
+
+      expect(screen.queryByRole('link', { name: 'Suscriptores' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Suscriptores')).not.toBeInTheDocument();
+    });
+
+    it('CA-NAV-02: el permiso efectivo muestra el ítem aunque el rol no esté en listas previas', () => {
+      useAuthMock.mockReturnValue({ user: { role: UserRole.TECHNICIAN } });
+      mockPermissionsReady([
+        AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+        AccessPermissionKey.SETTINGS_READ,
+      ]);
+
+      renderSidebar();
+
+      expect(screen.getByRole('link', { name: 'Suscriptores' })).toHaveAttribute(
+        'href',
+        '/dashboard/crm/subscribers',
+      );
+      // Sin techo estático que lo excluya, otros ítems con permiso también aparecen
+      expect(screen.getByRole('link', { name: 'Configuración' })).toBeInTheDocument();
+    });
+
+    it('CA-NAV-03: en carga cada slot gateado muestra un skeleton no focoable e Inicio es clicable', () => {
+      mockPermissionsStatus('loading');
+
+      renderSidebar();
+
+      // Inicio (sin gate) visible desde el primer render
+      const home = screen.getByRole('link', { name: 'Inicio' });
+      expect(home).toHaveAttribute('href', '/dashboard');
+
+      // Ningún ítem gateado real interactivo durante la carga
+      expect(screen.queryByRole('link', { name: 'Suscriptores' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Mesa de ayuda' })).not.toBeInTheDocument();
+
+      // Skeletons con forma de ítem: un li aria-hidden por slot gateado (9)
+      const nav = screen.getByRole('navigation', { name: 'Menú principal' });
+      const skeletonRows = nav.querySelectorAll('li[aria-hidden="true"]');
+      expect(skeletonRows).toHaveLength(9);
+      const focusablePlaceholders = Array.from(skeletonRows).filter(
+        (element) => element.querySelector('a, button, [tabindex]:not([tabindex="-1"])') !== null,
+      );
+      expect(focusablePlaceholders).toHaveLength(0);
+
+      // Anuncio sr-only y aria-busy del contenedor del menú
+      expect(screen.getByText('Cargando navegación')).toHaveAttribute('role', 'status');
+      expect(screen.getByRole('navigation', { name: 'Menú principal' })).toHaveAttribute(
+        'aria-busy',
+        'true',
+      );
+    });
+
+    it('CA-NAV-04: con datos ya resueltos ningún ítem visible se oculta después (sin flash)', () => {
+      mockPermissionsReady([AccessPermissionKey.SETTINGS_READ]);
+
+      renderSidebar();
+
+      // Resuelto: los ítems con permiso están y los que no, no existen;
+      // no hay estado intermedio con ítems reales que luego desaparecen.
+      expect(screen.getByRole('link', { name: 'Configuración' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Suscriptores' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Cargando navegación')).not.toBeInTheDocument();
+    });
+
+    it('CA-NAV-05: con el endpoint en error degrada al filtrado estático sin mensajes', () => {
+      mockPermissionsStatus('degraded');
+
+      renderSidebar();
+
+      // Filtrado estático: mismos ítems que hoy para SUPPORT
+      expect(screen.getByRole('link', { name: 'Mesa de ayuda' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Operaciones' })).toBeInTheDocument();
+      expect(screen.queryByText(/No pudimos/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('navigation', { name: 'Menú principal' })).not.toHaveAttribute(
+        'aria-busy',
+      );
+    });
+
+    it('CA-NAV-06: no-ADMIN con set vacío en ready cae a filtrado estático (tripwire)', () => {
+      useAuthMock.mockReturnValue({ user: { role: UserRole.SUPPORT } });
+      mockPermissionsStatus('ready', []);
+
+      renderSidebar();
+
+      expect(screen.getByRole('link', { name: 'Inicio' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Mesa de ayuda' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Configuración' })).toBeInTheDocument();
+    });
+
+    it('CA-NAV-09: un grupo sin ítems visibles no renderiza su encabezado', () => {
+      mockPermissionsReady(
+        ALL_NAV_PERMISSIONS.filter(
+          (key) =>
+            key !== AccessPermissionKey.SETTINGS_READ &&
+            key !== AccessPermissionKey.USERS_READ &&
+            key !== AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+        ),
+      );
+
+      renderSidebar();
+
+      expect(screen.getByText('Menú')).toBeInTheDocument();
+      expect(screen.queryByText('Administración')).not.toBeInTheDocument();
+    });
   });
 });

@@ -12,10 +12,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { ContactsService } from './contacts.service';
@@ -23,13 +25,14 @@ import { SubscriberContact } from './entities/subscriber-contact.entity';
 
 @ApiTags('contacts')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('subscribers/:subscriberId/contacts')
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Crear contacto de suscriptor' })
   @ApiResponse({ status: 201 })
   async create(
@@ -41,7 +44,14 @@ export class ContactsController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar contactos del suscriptor' })
   async findAll(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
@@ -52,6 +62,7 @@ export class ContactsController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Actualizar contacto del suscriptor' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -63,6 +74,7 @@ export class ContactsController {
 
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar contacto del suscriptor (soft delete)' })
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {

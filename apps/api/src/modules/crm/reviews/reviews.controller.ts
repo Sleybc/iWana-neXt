@@ -10,10 +10,12 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { closeSuccessSchema } from '../schemas/close-success.schema';
 import { sendToReviewSchema } from '../schemas/send-to-review.schema';
@@ -29,7 +31,7 @@ import { CustomerOverviewDto } from './dto/customer-overview.dto';
 
 @ApiTags('crm')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('crm')
 export class ReviewsController {
   constructor(
@@ -40,6 +42,7 @@ export class ReviewsController {
 
   @Post('prospects/:id/close-success')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Cerrar instalacion exitosa y activar cliente' })
   @UsePipes(new ZodBodyValidationPipe(closeSuccessSchema))
   async closeSuccess(
@@ -52,6 +55,7 @@ export class ReviewsController {
 
   @Post('prospects/:id/send-to-review')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Enviar prospecto a revision por expansion o refuerzo' })
   @UsePipes(new ZodBodyValidationPipe(sendToReviewSchema))
   async sendToReview(
@@ -64,6 +68,7 @@ export class ReviewsController {
 
   @Patch('reviews/:id/decision')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Registrar decision de revision' })
   async applyDecision(
     @Param('id', ParseUUIDPipe) id: string,
@@ -74,7 +79,14 @@ export class ReviewsController {
   }
 
   @Get('customers/:id/overview')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Obtener vista 360 compuesta del cliente/prospecto' })
   async getCustomerOverview(
     @Param('id', ParseUUIDPipe) id: string,

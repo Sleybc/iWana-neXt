@@ -10,11 +10,13 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
 import { ListMetaDto } from '../../../common/pagination';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
@@ -29,13 +31,14 @@ import { ProspectResponseDto } from '../prospects/dto/prospect-response.dto';
 
 @ApiTags('crm')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('crm/potentials')
 export class PotentialsController {
   constructor(private readonly potentialsService: PotentialsService) {}
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   // Audit manual limpio en PotentialsService — un solo canal (SWEEP-01).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear potencial comercial', deprecated: true })
@@ -46,7 +49,14 @@ export class PotentialsController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.SUPPORT,
+    UserRole.AUDITOR,
+    PlatformRole.SYSTEM_ADMIN,
+  )
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar potenciales comerciales', deprecated: true })
   @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
@@ -63,6 +73,7 @@ export class PotentialsController {
 
   @Post(':id/qualify')
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Calificar potencial y convertirlo en prospecto', deprecated: true })
   @UsePipes(new ZodBodyValidationPipe(qualifyPotentialSchema))
