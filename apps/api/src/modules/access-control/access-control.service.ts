@@ -692,6 +692,30 @@ export class AccessControlService {
       where: { tenantId, name: In(templateNames), isSystem: true },
     });
 
+    // Desactivar plantillas V1 legacy que duplican V2 (mismo baseRoleConstraint, nombre distinto)
+    const legacyV1Names = [
+      'Monitoreo operativo',
+      'Soporte inicial',
+      'Técnico de campo',
+      'Contratista',
+      'Auditor',
+    ];
+    const legacyProfiles = await manager.find(AccessProfile, {
+      where: { tenantId, name: In(legacyV1Names), isSystem: true, isActive: true },
+    });
+    if (legacyProfiles.length > 0) {
+      for (const legacy of legacyProfiles) {
+        // Solo desactivar si ya existe su reemplazo V2 para el mismo rol
+        const hasV2Replacement = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.some(
+          (t) => t.baseRoleConstraint === legacy.baseRoleConstraint,
+        );
+        if (hasV2Replacement) {
+          legacy.isActive = false;
+          await manager.save(AccessProfile, legacy);
+        }
+      }
+    }
+
     const savedIds = new Set(savedTemplates.map((p) => p.id));
     for (const profile of allCanonicalProfiles) {
       const definition = definitionsByName.get(profile.name);

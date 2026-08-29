@@ -173,7 +173,7 @@ export const SETTINGS_HUB_SECTION_COPY: Partial<
 
 export const ACCESS_SETTINGS_COPY = {
   pageTitle: 'Perfiles de acceso',
-  loadingSubtitle: 'Cargando perfiles de acceso y sus accesos',
+  loadingSubtitle: 'Cargando perfiles y accesos',
   restrictedTitle: 'Vista disponible para administradores',
   restrictedDescription: 'Solo las personas administradoras pueden acceder a esta sección.',
   pageSubtitle:
@@ -240,7 +240,7 @@ export const ACCESS_SETTINGS_COPY = {
   draftBannerTitle: 'Nuevo perfil en preparación',
   draftBannerDescription: (sourceName: string | null) =>
     sourceName
-      ? `Estás creando un nuevo perfil basado en ${sourceName}. Los accesos de ese perfil sugerido ya están activos y puedes ajustar el resto antes de guardarlo.`
+      ? `Estás creando un nuevo perfil basado en ${sourceName}. Los accesos de ese perfil sugerido ya están seleccionados y puedes ajustar el resto antes de guardarlo.`
       : 'Estás creando un nuevo perfil. Revisa sus datos y ajusta sus accesos antes de guardarlo.',
   draftSelectedProfileDescription: (profileName: string) =>
     `Revisa lo que «${profileName}» podrá ver o hacer en cada sección.`,

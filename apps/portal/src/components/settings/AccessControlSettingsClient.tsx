@@ -1698,6 +1698,9 @@ export function AccessControlSettingsClient() {
               >
                 {ACCESS_SETTINGS_COPY.roleFieldLabel}
               </label>
+              <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                Solo las personas de este tipo podrán usar este perfil.
+              </p>
               <Controller
                 name="baseRoleConstraint"
                 control={control}
