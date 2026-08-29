@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.78
+**Version:** 1.79
 **Estado:** Activo
-**Fecha:** 2026-08-29
+**Fecha:** 2026-08-30
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -1858,6 +1858,22 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - **Deuda y riesgos:** ninguna deuda critica. Observaciones P2/P3 de SEC-ENG y gaps transitorios (§8 spec: flag por tenant y Operaciones sin page-gate) registrados como deuda no bloqueante para v1.1. HLD §6.2 nota historica V1 quedo corregida.
 
 - **Cierre:** flujo granular funcionando end-to-end (tecnico crea perfil desde plantilla → agrega `crm.subscribers.read` → asigna en `/dashboard/users` → ve **Suscriptores** en nav y gate autoriza; sin permiso no existe en DOM y el deep-link rinde "Acceso restringido"). Listo para G6 (CI Linux por SHA) y `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-*`.
+
+### v1.79 — 2026-08-30 — Cierre copy iWana y deduplicacion a 9 plantillas
+
+**Autor:** AI-EM-ARCH (ejecutor) — `iwana-identity-ui-review` + `system-vocabulary-review` + `senior-ui-systems-designer`
+**Tipo:** Pulido de lenguaje + correccion de duplicados
+
+- **Hallazgo imagen:** 14 cards con descripciones tecnicas `Plantilla estándar NOC (MOD00_ACCESS_V2).` / `Plantilla estándar Soporte (MOD00_ACCESS_V2).` visibles en la 2ª linea gris — viola vocabulario canonico (siglas `NOC`, clave `MOD00_ACCESS_V2` sin contexto).
+- **Correcciones copy** (commit `003a247e`):
+  - `mod00-settings-labels.ts:176` `Cargando perfiles de acceso y sus accesos` → `Cargando perfiles y accesos`
+  - `mod00-settings-labels.ts:243` `ya están activos` → `ya están seleccionados`
+  - `AccessControlSettingsClient.tsx:1694` helper bajo `Tipo de usuario`: `Solo las personas de este tipo podrán usar este perfil.`
+  - `access-control.constants.ts:854-903` 9 descripciones V2 reescritas a operables: `Para monitoreo y supervisión operativa...` / `Para atención y soporte...` / `Para gestión comercial y ventas.` / `Para agenda y trabajo de campo.` / `Para gestión contable y facturación.` / `Para gestión de talento humano.` / `Para trabajo de campo externo.` / `Para consulta y auditoría.` / `Acceso completo...` — sin siglas ni versiones.
+- **Deduplicacion a 9** (commit `003a247e` cont. + `fix/access`): `access-control.service.ts:630` desactiva 5 legacy V1 (`Monitoreo operativo`, `Soporte inicial`, `Técnico de campo`, `Contratista`, `Auditor`) cuando existe su reemplazo V2; queda 1 perfil system por `baseRoleConstraint` ordenado por `SYSTEM_TEMPLATE_PROFILE_ORDER`. `pnpm --filter @iwana/api tsc` ✓.
+- **Fix infra `pnpm dev`** (commit `828098a4`): `runner.ts:77` referenciaba `118_seed_default_execution_order_templates` sin archivo (stashed como untracked) → `TS2307`; restaurado desde `stash@{0}^3`, `pnpm --filter @iwana/db build` ✓ y `pnpm db:migrate:all` → `All tenants migrated successfully`.
+- **Gates reverificados:** `audit:adr-citations` **BLOQUEANTE: 0** · `audit:doc-locations` **BLOQUEANTE: 0** · `access-control` 24/24 + `settings/*` 297/297 + `inventory-nav` 4/4.
+- **Merge y push:** `feat/mod00-convergencia-rbac-v2` → `main` (`c236a94f` + `003a247e` + `828098a4` = `main` en `origin/main`, working directory limpio).
 
 
 
