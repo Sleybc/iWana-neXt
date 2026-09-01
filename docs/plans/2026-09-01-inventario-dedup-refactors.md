@@ -3,9 +3,22 @@
 > **Modo AI-EM-ARCH:** Architect (deuda técnica clasificada; sin código productivo en este documento)
 > **Fecha:** 2026-09-01
 > **Módulos afectados:** MOD12 Inventario/SCM (frontend portal + backend API)
-> **Estado:** Propuesto — borrador de auditoría; pendiente de priorización y aprobación de alcance
+> **Estado:** Parcialmente ejecutado (2026-09-01) — D-BE1 ✅, D-BE3 (subset seguro) ✅, D-FE1 ✅ (drawers de catálogo) · D-BE2 bloqueado · D-FE2 descartado · D-BE4 diferido — ver §Estado de ejecución
 > **Origen:** auditoría multiagente de `2026-09-01-inventario-maestros-ubicacion-inventory-vs-settings.md` (v1.1) — hallazgos P3
 > **Relación con federación (ADR-084):** **ninguna bloqueante** — esta deuda no afecta boundaries ni la activación del alias federado
+
+## Estado de ejecución (2026-09-01)
+
+| # | Refactor | Resultado | Evidencia |
+|---|----------|-----------|-----------|
+| D-BE1 | Generador secuencial único | ✅ **Ejecutado** — `apps/api/src/modules/inventory/utils/sequential-number.ts` (helper `generateSequentialNumber`, patrón MAX/padStart(6)); 5 servicios delegan: `purchasing` (PR-/PO-), `goods-receipt` (GR-), `rfq` (RFQ-), `cycle-count` (CNT-), `supplier-profile` (PROV-). `MOV-` (stock-ledger) se conserva local a propósito: variante defensiva DESC+LIKE con semántica propia (los specs mockean `getOne`, no `getRawOne`) | Typecheck api verde; specs unitarios de los 5 servicios en verde (81/81) |
+| D-BE2 | `buildMeta` → `buildPageMeta` | ⛔ **Bloqueado** — `executor-custody.service.ts` pertenece al flujo paralelo de custodia ejecutor OT (sin commit en working tree); commitear el refactor arrastraría trabajo ajeno. Reaplicar cuando ese flujo se integre | Revertido a estado del flujo paralelo; verificado `private buildMeta` intacto |
+| D-FE1 | Shell compartido de drawers | ✅ **Ejecutado (par de catálogo)** — `InventorySideDrawerShell.tsx` centraliza overlay/aside accesible/cabecera Cerrar/pie/diálogo de descarte; migrados `InventoryCatalogDrawer` y `InventoryCategoryDrawer` sin cambio de comportamiento (specs 11/11) | Specs de ambos drawers en verde |
+| D-FE2 | Panels base de catálogo | 🗑 **Descartado** — incluso tras D-FE1, solo comparten ~30 líneas de chrome con columnas y lógica de tabla completamente distintas; la extracción añade indirección sin dedup real | Decisión documentada aquí |
+| D-BE3 | Envelopes ADR-065 | ✅ **Subset seguro ejecutado** — `stock-movement-query.service.ts` completa su meta incompleta vía `buildPageMeta` (aditivo, `randomAccess:false` preservado). El resto (retirar dual-emit de `supplier-profile`, añadir meta a asset-loan/lifecycle) es **migración de contrato planificada**: el FE ya prefiere `meta` (`SuppliersPanel.tsx:112-121`) pero la retirada de campos del wire exige migración OpenAPI+E2E coordinada | Spec `stock-movement-query.service.spec.ts` verde (no asertaba meta); descarga de riesgo documentada |
+| D-BE4 | Split `dto/index.ts` | ⏸ **Diferido** — el archivo está modificado por el flujo paralelo sin commit (no se puede separar el diff limpiamente) y el churn de re-export cruzaría con ese trabajo. Reintentar tras su integración | — |
+
+**Verificación global:** typecheck api+portal verde; todas las specs unitarias afectadas en verde; las 7 suites de integración HTTP/swagger que fallan en el árbol de trabajo fallan **también sin estos cambios** (verificado por stash temporal) — preexistentes del entorno/flujos paralelos, ajenos a este plan.
 
 ## Goal
 
