@@ -40,6 +40,32 @@ export const INVENTORY_NAV_GROUPS: PortalModuleSubnavGroup[] = [
   },
 ];
 
+export const INVENTORY_FEDERATED_TABS = ['catalog', 'suppliers', 'locations'] as const;
+
+export type InventoryFederatedTab = (typeof INVENTORY_FEDERATED_TABS)[number];
+
+export function isFederatedInventoryTab(id: string): id is InventoryFederatedTab {
+  return (INVENTORY_FEDERATED_TABS as readonly string[]).includes(id);
+}
+
+export const INVENTORY_FEDERATED_NAV_GROUPS: PortalModuleSubnavGroup[] = [
+  {
+    id: 'operation',
+    label: 'Operación',
+    items: [
+      { id: 'catalog', label: 'Catálogo', icon: Package },
+      { id: 'suppliers', label: 'Proveedores', icon: Truck },
+      { id: 'locations', label: 'Bodegas', icon: MapPin },
+    ],
+  },
+];
+
+/**
+ * Eyebrow "Maestros" del modo federado (ADR-084 D1). Es solo tipográfico
+ * dentro del grupo Operación; la pista lime de PortalModuleSubnav no cambia.
+ */
+export const INVENTORY_FEDERATED_EYEBROW = 'Maestros';
+
 export function isInventoryNavId(id: string): id is InventoryTab {
   return INVENTORY_NAV_GROUPS.some((group) => group.items.some((item) => item.id === id));
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Button,
@@ -16,6 +17,7 @@ import {
   TabsTrigger,
 } from '@iwana/ui';
 import {
+  AccessPermissionKey,
   InventoryCategoryStatus,
   PurchaseOrderStatus,
   SerializedAssetStatus,
@@ -27,6 +29,7 @@ import {
 } from '@iwana/shared';
 import { Package, Tags } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/components/access-control/permissions-context';
 import {
   ApiError,
   type AddSupplierQuoteDto,
@@ -141,7 +144,13 @@ import {
   shouldOpenLocationCreateFromUrl,
   type InventoryTab,
 } from './inventory-tab-params';
-import { INVENTORY_NAV_GROUPS } from './inventory-nav';
+import {
+  INVENTORY_FEDERATED_EYEBROW,
+  INVENTORY_FEDERATED_NAV_GROUPS,
+  INVENTORY_NAV_GROUPS,
+  filterInventoryNavGroups,
+  isFederatedInventoryTab,
+} from './inventory-nav';
 import {
   EMPTY_INVENTORY_LIST_META,
   INVENTORY_LIST_PAGE_SIZE,
@@ -151,6 +160,7 @@ import {
   mergeById,
 } from './inventory-list-pagination';
 import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
+import { trackEvent } from '@/lib/analytics';
 
 export type { InventoryTab };
 
@@ -211,9 +221,10 @@ function mapInventoryError(error: unknown): string {
 
 interface InventoryClientProps {
   initialTab?: string;
+  federatedMode?: boolean;
 }
 
-export function InventoryClient({ initialTab }: InventoryClientProps) {
+export function InventoryClient({ initialTab, federatedMode = false }: InventoryClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -225,7 +236,13 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const canAdjustStock = user?.role === UserRole.ADMIN;
   // Contrato: no reutilizar canAdjustStock para bajas — flag de aprobación independiente.
   const canApproveWriteOff = user?.role === UserRole.ADMIN;
-  const [activeTab, setActiveTab] = useState<InventoryTab>(resolveInventoryTab(initialTab));
+  const [activeTab, setActiveTab] = useState<InventoryTab>(() => {
+    const resolved = resolveInventoryTab(initialTab);
+    if (federatedMode && !isFederatedInventoryTab(resolved)) {
+      return 'catalog';
+    }
+    return resolved;
+  });
   const [locationCustodyFilter, setLocationCustodyFilter] = useState<LocationMatrixCustodyFilter>(
     () => resolveLocationCustodyFilter(searchParams.get('custody')),
   );
@@ -393,7 +410,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     number | null
   >(null);
   const [isSubmittingInlineCategory, setIsSubmittingInlineCategory] = useState(false);
-  const [catalogSubView, setCatalogSubView] = useState<CatalogSubView>('products');
+  const [catalogSubView, setCatalogSubView] = useState<CatalogSubView>('categories');
   const [categories, setCategories] = useState<InventoryCategoryRecord[]>([]);
   const [categoriesMeta, setCategoriesMeta] =
     useState<InventoryListMeta>(EMPTY_INVENTORY_LIST_META);
@@ -833,14 +850,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     if (!tabFromUrl) {
       if (!initialTab) {
-        setActiveTab((current) => (current === 'overview' ? current : 'overview'));
+        const fallback: InventoryTab = federatedMode ? 'catalog' : 'overview';
+        setActiveTab((current) => (current === fallback ? current : fallback));
       }
       return;
     }
 
     const nextTab = resolveInventoryTab(tabFromUrl);
+    if (federatedMode && !isFederatedInventoryTab(nextTab)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', nextTab);
+      router.replace(`/dashboard/inventory?${params.toString()}`);
+      return;
+    }
     setActiveTab((current) => (current === nextTab ? current : nextTab));
-  }, [initialTab, searchParams]);
+  }, [federatedMode, initialTab, router, searchParams]);
 
   useEffect(() => {
     const custodyFromUrl = resolveLocationCustodyFilter(searchParams.get('custody'));
@@ -975,7 +999,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const handleTabChange = useCallback(
     (value: string) => {
       const nextTab = resolveInventoryTab(value);
+      if (federatedMode && !isFederatedInventoryTab(nextTab)) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('tab', nextTab);
+        router.replace(`/dashboard/inventory?${params.toString()}`);
+        return;
+      }
       setActiveTab(nextTab);
+      trackEvent('inventory.tab.view', { tab: nextTab });
 
       const nextSearchParams = new URLSearchParams(searchParams.toString());
       if (nextTab === 'overview') {
@@ -987,7 +1018,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       const nextQuery = nextSearchParams.toString();
       router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [federatedMode, pathname, router, searchParams],
   );
 
   const loadSupplierLabels = useCallback(async (supplierIds: string[]) => {
@@ -2195,12 +2226,41 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     [pathname, router, searchParams],
   );
 
+  // CA-GATE-06: Compras se oculta solo con permisos efectivos resueltos. En
+  // loading/degradado o tripwire (set vacío) queda visible — mismo criterio del
+  // Sidebar; la barrera real sigue siendo el backend (PermissionsGuard).
+  const { status: permissionsStatus, effectivePermissions, hasAnyPermission } = usePermissions();
+  const canReadPurchasing =
+    federatedMode ||
+    permissionsStatus !== 'ready' ||
+    effectivePermissions.size === 0 ||
+    user?.role === UserRole.ADMIN ||
+    hasAnyPermission([AccessPermissionKey.INVENTORY_PURCHASING_READ]);
+  const navGroups = federatedMode
+    ? INVENTORY_FEDERATED_NAV_GROUPS
+    : filterInventoryNavGroups(canReadPurchasing);
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Inventario"
-        subtitle="Compras, bodegas, activos y movimientos en un solo lugar."
+        title={federatedMode ? 'Inventario — Maestros' : 'Inventario'}
+        subtitle={
+          federatedMode
+            ? 'Catálogo, proveedores y bodegas. Configuración operativa federada en Ajustes.'
+            : 'Compras, bodegas, activos y movimientos en un solo lugar.'
+        }
       />
+      {federatedMode ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="portal-eyebrow">{INVENTORY_FEDERATED_EYEBROW}</p>
+          <Link
+            href="/dashboard/inventory"
+            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-iwana-primary hover:bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-2 dark:text-iwana-primary-300"
+          >
+            Ir a Inventario completo
+          </Link>
+        </div>
+      ) : null}
 
       {error && (
         <PortalAlert variant="error" title="No fue posible cargar Inventario" description={error} />
@@ -2217,13 +2277,15 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       )}
 
       <PortalModuleSubnav
-        groups={INVENTORY_NAV_GROUPS}
+        groups={navGroups}
         value={activeTab}
         onValueChange={handleTabChange}
-        ariaLabel="Secciones de inventario"
+        ariaLabel={
+          federatedMode ? 'Secciones de maestros de inventario' : 'Secciones de inventario'
+        }
       />
 
-      {activeTab === 'overview' ? (
+      {activeTab === 'overview' && !federatedMode ? (
         <div className="space-y-6 mb-6">
           <InventoryDashboard summary={summary} isLoading={isLoading} />
 
@@ -2402,16 +2464,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                   className={portalResourceTabListClassName}
                 >
                   <TabsTrigger
-                    value="products"
-                    className={portalResourceTabTriggerClassName(catalogSubView === 'products')}
-                  >
-                    <Package
-                      className={portalResourceTabIconClassName(catalogSubView === 'products')}
-                      aria-hidden="true"
-                    />
-                    Productos
-                  </TabsTrigger>
-                  <TabsTrigger
                     value="categories"
                     className={portalResourceTabTriggerClassName(catalogSubView === 'categories')}
                   >
@@ -2420,6 +2472,16 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                       aria-hidden="true"
                     />
                     Categorías
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="products"
+                    className={portalResourceTabTriggerClassName(catalogSubView === 'products')}
+                  >
+                    <Package
+                      className={portalResourceTabIconClassName(catalogSubView === 'products')}
+                      aria-hidden="true"
+                    />
+                    Productos
                   </TabsTrigger>
                 </TabsList>
 

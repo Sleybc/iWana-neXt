@@ -19,6 +19,7 @@ import {
 import { cn, interactiveFocusClassName } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePermissions } from '@/components/access-control/permissions-context';
+import { trackEvent } from '@/lib/analytics';
 import { TenantSeal } from './TenantSeal';
 import type { TenantSelf } from '@/lib/api-client';
 
@@ -299,6 +300,18 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                     <Link
                       href={item.href}
                       title={desktopCollapsed ? item.label : undefined}
+                      onClick={() => {
+                        if (item.href === '/dashboard/inventory') {
+                          trackEvent('inventory.tab.view', { tab: 'overview' });
+                        }
+                        if (item.href === '/dashboard/settings') {
+                          trackEvent('inventory.tab.view', { tab: 'settings' });
+                        }
+                        if (item.href.startsWith('/dashboard/inventory?tab=')) {
+                          const tab = item.href.split('tab=')[1]?.split('&')[0] ?? 'overview';
+                          trackEvent('inventory.tab.view', { tab });
+                        }
+                      }}
                       className={cn(
                         'group flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
                         interactiveFocusClassName,

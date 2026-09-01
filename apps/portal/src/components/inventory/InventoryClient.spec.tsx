@@ -315,6 +315,11 @@ function mockMatchMedia(matchesLg: boolean) {
   });
 }
 
+function openCatalogProductsTab() {
+  fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Productos' }));
+}
+
 describe('InventoryClient', () => {
   beforeEach(() => {
     mockMatchMedia(true);
@@ -1589,7 +1594,7 @@ describe('InventoryClient', () => {
         expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+      openCatalogProductsTab();
 
       await act(async () => {
         jest.advanceTimersByTime(1);
@@ -1631,7 +1636,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+    openCatalogProductsTab();
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Nuevo producto' })).toBeInTheDocument();
@@ -1721,7 +1726,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+    openCatalogProductsTab();
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Crear categoría aquí' }));
 
@@ -1776,7 +1781,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+    openCatalogProductsTab();
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     fireEvent.change(screen.getByLabelText('Nombre'), {
       target: { value: 'Router WiFi 7' },
@@ -1801,7 +1806,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+    openCatalogProductsTab();
     fireEvent.click(await screen.findByRole('button', { name: 'Nuevo producto' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Crear categoría aquí' }));
     fireEvent.change(screen.getByLabelText('Nombre de la categoría'), {
@@ -1828,7 +1833,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Catálogo' }));
+    openCatalogProductsTab();
 
     const skuCells = await screen.findAllByText('ONT-001');
     // El último es la celda de la tabla de catálogo (renderiza después del resumen)
