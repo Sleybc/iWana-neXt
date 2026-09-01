@@ -29,6 +29,7 @@ import {
   InviteSuppliersInput,
   InviteSuppliersSchema,
 } from '../dto';
+import { generateSequentialNumber } from '../utils/sequential-number';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { isPostgresUniqueViolation } from './inventory-postgres.util';
 import { SupplierProfileService } from './supplier-profile.service';
@@ -87,7 +88,13 @@ export class RfqService {
           throw new ConflictException('La solicitud ya tiene una ronda de cotización activa.');
         }
 
-        const rfqNumber = await this.generateRfqNumber(manager, tenantId);
+        const rfqNumber = await generateSequentialNumber(manager, {
+          entity: PurchaseRfq,
+          alias: 'rfq',
+          columnName: 'rfq_number',
+          prefix: 'RFQ-',
+          tenantId,
+        });
 
         try {
           return await manager.save(
@@ -484,23 +491,5 @@ export class RfqService {
     }
 
     return request;
-  }
-
-  private async generateRfqNumber(
-    manager: Pick<EntityManager, 'createQueryBuilder'>,
-    tenantId: string,
-  ): Promise<string> {
-    const result = await manager
-      .createQueryBuilder(PurchaseRfq, 'rfq')
-      .select('MAX(rfq.rfq_number)', 'maxValue')
-      .where('rfq.tenant_id = :tenantId', { tenantId })
-      .getRawOne<{ maxValue?: string | null }>();
-
-    const latestNumber = result?.maxValue ?? 'RFQ-000000';
-    const latestSequence = latestNumber.slice('RFQ-'.length);
-    const nextSequence = (Number.parseInt(latestSequence || '0', 10) + 1)
-      .toString()
-      .padStart(6, '0');
-    return `RFQ-${nextSequence}`;
   }
 }

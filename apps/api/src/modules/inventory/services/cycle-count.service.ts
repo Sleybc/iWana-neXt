@@ -24,6 +24,7 @@ import {
   UpdateStockCountInput,
   UpdateStockCountSchema,
 } from '../dto';
+import { generateSequentialNumber } from '../utils/sequential-number';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
   InventoryDomainEventPublisher,
@@ -78,22 +79,6 @@ export class CycleCountService {
     if (status === StockCountStatus.CLOSED || status === StockCountStatus.CANCELLED) {
       throw new BadRequestException('El conteo está cerrado o cancelado y no admite cambios.');
     }
-  }
-
-  private async generateCountNumber(manager: EntityManager, tenantId: string): Promise<string> {
-    const result = await manager
-      .createQueryBuilder(StockCount, 'count')
-      .select('MAX(count.count_number)', 'maxValue')
-      .where('count.tenant_id = :tenantId', { tenantId })
-      .getRawOne<{ maxValue?: string | null }>();
-
-    const prefix = 'CNT-';
-    const latestNumber = result?.maxValue ?? `${prefix}000000`;
-    const latestSequence = latestNumber.slice(prefix.length);
-    const nextSequence = (Number.parseInt(latestSequence || '0', 10) + 1)
-      .toString()
-      .padStart(6, '0');
-    return `${prefix}${nextSequence}`;
   }
 
   private mapLine(line: StockCountLine, item?: InventoryItem | null): StockCountLineView {
@@ -165,7 +150,13 @@ export class CycleCountService {
               });
         const consumableById = new Map(items.map((item) => [item.id, item]));
 
-        const countNumber = await this.generateCountNumber(manager, tenantId);
+        const countNumber = await generateSequentialNumber(manager, {
+          entity: StockCount,
+          alias: 'count',
+          columnName: 'count_number',
+          prefix: 'CNT-',
+          tenantId,
+        });
         const count = await manager.save(
           StockCount,
           manager.create(StockCount, {

@@ -23,6 +23,7 @@ import {
   StockMovementOrigin,
 } from '@iwana/shared';
 import { ReceivePurchaseOrderInput, ReceivePurchaseOrderSchema } from '../dto';
+import { generateSequentialNumber } from '../utils/sequential-number';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingService } from './purchasing.service';
 import { InventoryCostingService } from './inventory-costing.service';
@@ -109,7 +110,13 @@ export class GoodsReceiptService {
           });
 
           const purchaseOrderLineMap = new Map(purchaseOrderLines.map((line) => [line.id, line]));
-          const receiptNumber = await this.generateReceiptNumber(manager, tenantId);
+          const receiptNumber = await generateSequentialNumber(manager, {
+            entity: GoodsReceipt,
+            alias: 'receipt',
+            columnName: 'receipt_number',
+            prefix: 'GR-',
+            tenantId,
+          });
           const receipt = await manager.save(
             GoodsReceipt,
             manager.create(GoodsReceipt, {
@@ -382,23 +389,5 @@ export class GoodsReceiptService {
     );
 
     return orderFullyReceived ? GoodsReceiptStatus.COMPLETED : GoodsReceiptStatus.PARTIAL;
-  }
-
-  private async generateReceiptNumber(
-    manager: Pick<EntityManager, 'createQueryBuilder'>,
-    tenantId: string,
-  ): Promise<string> {
-    const result = await manager
-      .createQueryBuilder(GoodsReceipt, 'receipt')
-      .select('MAX(receipt.receipt_number)', 'maxValue')
-      .where('receipt.tenant_id = :tenantId', { tenantId })
-      .getRawOne<{ maxValue?: string | null }>();
-
-    const latestNumber = result?.maxValue ?? 'GR-000000';
-    const latestSequence = latestNumber.slice('GR-'.length);
-    const nextSequence = (Number.parseInt(latestSequence || '0', 10) + 1)
-      .toString()
-      .padStart(6, '0');
-    return `GR-${nextSequence}`;
   }
 }

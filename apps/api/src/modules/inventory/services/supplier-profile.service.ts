@@ -31,6 +31,7 @@ import {
   SupplierPartySummary,
 } from '../ports/supplier-party.port';
 import { isPostgresUniqueViolation } from './inventory-postgres.util';
+import { generateSequentialNumber } from '../utils/sequential-number';
 import { buildPageMeta } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
 
@@ -120,7 +121,13 @@ export class SupplierProfileService {
     const canSavepoint = typeof manager.query === 'function';
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      const supplierCode = await this.generateSupplierCode(manager, tenantId);
+      const supplierCode = await generateSequentialNumber(manager, {
+        entity: SupplierProfile,
+        alias: 'sp',
+        columnName: 'supplier_code',
+        prefix: 'PROV-',
+        tenantId,
+      });
 
       if (canSavepoint) {
         await manager.query(`SAVEPOINT supplier_code_attempt`);
@@ -455,23 +462,5 @@ export class SupplierProfileService {
       updatedAt: profile.updatedAt,
       party,
     };
-  }
-
-  private async generateSupplierCode(
-    manager: Pick<EntityManager, 'createQueryBuilder'>,
-    tenantId: string,
-  ): Promise<string> {
-    const result = await manager
-      .createQueryBuilder(SupplierProfile, 'sp')
-      .select('MAX(sp.supplier_code)', 'maxValue')
-      .where('sp.tenant_id = :tenantId', { tenantId })
-      .getRawOne<{ maxValue?: string | null }>();
-
-    const latestNumber = result?.maxValue ?? 'PROV-000000';
-    const latestSequence = latestNumber.slice('PROV-'.length);
-    const nextSequence = (Number.parseInt(latestSequence || '0', 10) + 1)
-      .toString()
-      .padStart(6, '0');
-    return `PROV-${nextSequence}`;
   }
 }

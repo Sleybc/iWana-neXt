@@ -22,6 +22,7 @@ import {
 } from '@iwana/shared';
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
+import { generateSequentialNumber } from '../utils/sequential-number';
 import {
   AddSupplierQuoteInput,
   AddSupplierQuoteSchema,
@@ -98,14 +99,13 @@ export class PurchasingService {
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       withTransaction(qr.manager, async (manager) => {
-        const requestNumber = await this.generateSequentialNumber(
-          manager,
-          PurchaseRequest,
-          'request',
-          'request_number',
-          'PR-',
+        const requestNumber = await generateSequentialNumber(manager, {
+          entity: PurchaseRequest,
+          alias: 'request',
+          columnName: 'request_number',
+          prefix: 'PR-',
           tenantId,
-        );
+        });
 
         const request = await manager.save(
           PurchaseRequest,
@@ -859,14 +859,13 @@ export class PurchasingService {
       input.partyRefId,
     );
 
-    const orderNumber = await this.generateSequentialNumber(
-      manager,
-      PurchaseOrder,
-      'purchaseOrder',
-      'order_number',
-      'PO-',
+    const orderNumber = await generateSequentialNumber(manager, {
+      entity: PurchaseOrder,
+      alias: 'purchaseOrder',
+      columnName: 'order_number',
+      prefix: 'PO-',
       tenantId,
-    );
+    });
 
     const order = await manager.save(
       PurchaseOrder,
@@ -965,27 +964,5 @@ export class PurchasingService {
     }
 
     return line;
-  }
-
-  private async generateSequentialNumber(
-    manager: Pick<EntityManager, 'createQueryBuilder'>,
-    entity: typeof PurchaseRequest | typeof PurchaseOrder,
-    alias: string,
-    columnName: string,
-    prefix: string,
-    tenantId: string,
-  ): Promise<string> {
-    const result = await manager
-      .createQueryBuilder(entity, alias)
-      .select(`MAX(${alias}.${columnName})`, 'maxValue')
-      .where(`${alias}.tenant_id = :tenantId`, { tenantId })
-      .getRawOne<{ maxValue?: string | null }>();
-
-    const latestNumber = result?.maxValue ?? `${prefix}000000`;
-    const latestSequence = latestNumber.slice(prefix.length);
-    const nextSequence = (Number.parseInt(latestSequence || '0', 10) + 1)
-      .toString()
-      .padStart(6, '0');
-    return `${prefix}${nextSequence}`;
   }
 }

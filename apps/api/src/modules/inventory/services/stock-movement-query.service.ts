@@ -11,6 +11,7 @@ import {
   runInTenantSchema,
 } from '@iwana/db';
 import { StockAdjustmentReason, StockMovementOrigin } from '@iwana/shared';
+import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { ListStockMovementsQueryInput, ListStockMovementsQuerySchema } from '../dto';
 
@@ -127,12 +128,8 @@ export class StockMovementQueryService {
         total,
         page,
         limit,
-        meta: {
-          capabilities: {
-            randomAccess: false as const,
-            sortableFields: [] as const,
-          },
-        },
+        // Meta completa ADR-065 (aditivo): el envelope previo solo traía capabilities.
+        meta: buildPageMeta({ total, page, limit, randomAccess: false, sortableFields: [] }),
       };
     });
   }
