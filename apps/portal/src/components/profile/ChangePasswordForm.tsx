@@ -3,27 +3,27 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { ShieldCheck } from 'lucide-react';
 import { Button, Card, CardContent, FormStatus, Input, SectionHeader } from '@iwana/ui';
+import { changePasswordSchema, type ChangePasswordFormValues } from '@iwana/shared';
 import { ApiError, authApi } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
 
-const schema = z
-  .object({
-    currentPassword: z.string().min(1, 'La contraseña actual es requerida'),
-    newPassword: z
-      .string()
-      .min(10, 'La nueva contraseña debe tener al menos 10 caracteres')
-      .max(128, 'Máximo 128 caracteres'),
-    confirmPassword: z.string().min(1, 'Confirma la nueva contraseña'),
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    message: 'Las contraseñas no coinciden',
-    path: ['confirmPassword'],
-  });
-
-type FormValues = z.infer<typeof schema>;
+/**
+ * Extrae el detalle de validación de un 400: Nest devuelve `message` como
+ * arreglo y el mensaje plano del ApiError cae al genérico en ese caso.
+ */
+function readValidationDetail(error: ApiError): string | null {
+  if (typeof error.details !== 'object' || error.details === null) {
+    return null;
+  }
+  const message = (error.details as Record<string, unknown>)['message'];
+  if (Array.isArray(message)) {
+    const parts = message.filter((part): part is string => typeof part === 'string');
+    return parts.length > 0 ? parts.join(' ') : null;
+  }
+  return typeof message === 'string' && message.length > 0 ? message : null;
+}
 
 /**
  * Cambio de contraseña para la sesion autenticada del portal.
@@ -38,11 +38,11 @@ export function ChangePasswordForm() {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+  } = useForm<ChangePasswordFormValues>({
+    resolver: zodResolver(changePasswordSchema),
   });
 
-  const onSubmit = async (values: FormValues) => {
+  const onSubmit = async (values: ChangePasswordFormValues) => {
     setServerError(null);
     setSuccess(false);
 
@@ -58,7 +58,15 @@ export function ChangePasswordForm() {
         setServerError('La contraseña actual es incorrecta.');
         return;
       }
-      // Un 400 de política muestra el mensaje del servidor (P-14).
+      // Un 400 de política muestra el detalle de validación (P-14).
+      if (error instanceof ApiError && error.status === 400) {
+        setServerError(readValidationDetail(error) ?? error.message);
+        return;
+      }
+      if (error instanceof ApiError && error.status === 409) {
+        setServerError('La solicitud entra en conflicto con el estado actual de la cuenta.');
+        return;
+      }
       if (error instanceof ApiError) {
         setServerError(error.message);
         return;

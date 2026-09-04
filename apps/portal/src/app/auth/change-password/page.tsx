@@ -4,34 +4,16 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { changePasswordSchema, type ChangePasswordFormValues } from '@iwana/shared';
 import { useRouter } from 'next/navigation';
 import { authApi, ApiError } from '@/lib/api-client';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { cn } from '@iwana/ui';
 
 /**
- * Esquema Zod para cambio de contrasena obligatorio.
- * Politica NIST SP 800-63B: min 10 chars, mayuscula, minuscula, numero, especial.
+ * Cambio obligatorio de contrasena: usa el esquema unico de `@iwana/shared`
+ * (P-14, Ola 2), identico a la politica del servidor.
  */
-const changePasswordSchema = z
-  .object({
-    currentPassword: z.string().min(1, 'La contrasena actual es requerida'),
-    newPassword: z
-      .string()
-      .min(10, 'Minimo 10 caracteres')
-      .regex(/[A-Z]/, 'Debe contener al menos una mayuscula')
-      .regex(/[a-z]/, 'Debe contener al menos una minuscula')
-      .regex(/[0-9]/, 'Debe contener al menos un numero')
-      .regex(/[^A-Za-z0-9]/, 'Debe contener al menos un caracter especial'),
-    confirmPassword: z.string().min(1, 'Confirma tu nueva contrasena'),
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    message: 'Las contrasenas no coinciden',
-    path: ['confirmPassword'],
-  });
-
-type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
 
 /**
  * Pagina de cambio obligatorio de contrasena para el portal de suscriptores.

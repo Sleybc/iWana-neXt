@@ -34,7 +34,9 @@ const schema = z.object({
 
 const emailSchema = z.object({
   email: z.string().email('Email inválido').max(255),
-  currentPassword: z.string().min(10, 'Debes confirmar con tu contraseña actual').max(128),
+  // Solo campo requerido: la contraseña actual se verifica contra el hash y
+  // una credencial legada corta debe poder confirmar el cambio (P-14, Ola 2).
+  currentPassword: z.string().min(1, 'Debes confirmar con tu contraseña actual').max(128),
 });
 
 type FormValues = z.infer<typeof schema>;
