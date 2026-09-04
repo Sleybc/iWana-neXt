@@ -26,6 +26,8 @@ export * from './components/CheckboxCard';
 export * from './components/Select';
 export * from './components/FormField';
 export * from './components/FormSection';
+export * from './components/FormStatus';
+export * from './components/SectionHeader';
 export * from './components/Card';
 export * from './components/Badge';
 export * from './components/Alert';

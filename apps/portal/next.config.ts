@@ -31,8 +31,7 @@ function resolvePortalApiProxyBase(): string {
  * los scripts de bootstrap inline de Next y los estilos inline de React
  * (vercel/next.js#80997). En desarrollo, webpack necesita ademas 'unsafe-eval'
  * (runtime de modulos); sin el, la hidratacion falla y AuthProvider nunca
- * dispara /auth/me (E2E queda en «Validando sesión...»). El portal anade
- * https://www.gravatar.com a img-src, consistente con images.remotePatterns.
+ * dispara /auth/me (E2E queda en «Validando sesión...»).
  * Normalizada a una sola linea antes de emitirse.
  */
 const scriptSrcDirective =
@@ -43,7 +42,7 @@ const scriptSrcDirective =
 const contentSecurityPolicy = `default-src 'self';
   ${scriptSrcDirective};
   style-src 'self' 'unsafe-inline';
-  img-src 'self' blob: data: https://www.gravatar.com https://*.tile.openstreetmap.org;
+  img-src 'self' blob: data: https://*.tile.openstreetmap.org;
   font-src 'self';
   connect-src 'self';
   object-src 'none';
@@ -87,13 +86,7 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'www.gravatar.com',
-        pathname: '/avatar/**',
-      },
-    ],
+    remotePatterns: [],
   },
 };
 

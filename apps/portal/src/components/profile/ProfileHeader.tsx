@@ -22,12 +22,12 @@ export function ProfileHeader({ profile, roleLabel }: ProfileHeaderProps) {
     <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-border-2 dark:bg-dark-surface-2">
       <div className="relative shrink-0">
         <div
+          role="img"
           className="flex h-20 w-20 items-center justify-center rounded-full bg-iwana-primary ring-4 ring-iwana-primary/15"
           aria-label={`Avatar de ${fullName}`}
         >
           <span className="select-none text-2xl font-bold text-white">{initials}</span>
         </div>
-        <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white bg-green-400 dark:border-dark-surface-2" />
       </div>
 
       <div className="min-w-0 flex-1">

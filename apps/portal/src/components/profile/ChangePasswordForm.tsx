@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, ShieldCheck } from 'lucide-react';
-import { Button, Card, CardContent, Input } from '@iwana/ui';
+import { ShieldCheck } from 'lucide-react';
+import { Button, Card, CardContent, FormStatus, Input, SectionHeader } from '@iwana/ui';
 import { ApiError, authApi } from '@/lib/api-client';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 const schema = z
   .object({
@@ -30,6 +31,7 @@ type FormValues = z.infer<typeof schema>;
 export function ChangePasswordForm() {
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const { logout } = useAuth();
 
   const {
     register,
@@ -48,10 +50,17 @@ export function ChangePasswordForm() {
       await authApi.changePassword(values.currentPassword, values.newPassword);
       setSuccess(true);
       reset();
-      setTimeout(() => setSuccess(false), 4000);
+      // C-3: tras el cambio voluntario la sesión se cierra; el token
+      // anterior no sigue vivo aunque el servidor lo revoque.
+      await logout();
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
         setServerError('La contraseña actual es incorrecta.');
+        return;
+      }
+      // Un 400 de política muestra el mensaje del servidor (P-14).
+      if (error instanceof ApiError) {
+        setServerError(error.message);
         return;
       }
 
@@ -62,22 +71,14 @@ export function ChangePasswordForm() {
   return (
     <Card>
       <CardContent className="p-6 md:p-7">
-        <div className="mb-6 flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
-            <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Seguridad de acceso
-            </p>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Cambiar contraseña
-            </h2>
-            <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Refuerza la cuenta con una clave robusta y diferente a la usada en otros servicios.
-            </p>
-          </div>
-        </div>
+        <SectionHeader
+          icon={ShieldCheck}
+          eyebrow="Seguridad de acceso"
+          title="Cambiar contraseña"
+          headingLevel={2}
+          description="Refuerza la cuenta con una clave robusta y diferente a la usada en otros servicios."
+          className="mb-6"
+        />
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <Input
@@ -107,22 +108,17 @@ export function ChangePasswordForm() {
             {...register('confirmPassword')}
           />
 
-          {serverError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">
-              {serverError}
-            </div>
-          )}
-
-          {success && (
-            <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
-              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-              Contraseña actualizada correctamente.
-            </div>
-          )}
+          <FormStatus
+            status={serverError ? 'error' : success ? 'success' : 'idle'}
+            message={serverError ?? (success ? 'Contraseña actualizada correctamente.' : undefined)}
+            autoDismissMs={success ? 3000 : false}
+            onDismiss={() => setSuccess(false)}
+            id="change-password-status"
+          />
 
           <div className="flex justify-end pt-2">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Actualizando...' : 'Actualizar contraseña'}
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
+              Actualizar contraseña
             </Button>
           </div>
         </form>
