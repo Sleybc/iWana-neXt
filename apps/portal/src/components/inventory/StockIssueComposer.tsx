@@ -355,6 +355,7 @@ export function StockIssueComposer({
     'with-stock': null,
     catalog: null,
   });
+  // ADR-065 §9 (desviación aceptada por AI-EM-ARCH en consolidación S2): la paginación del selector de captura vive en estado por ser lista efímera del flujo de creación, no en URL.
   const [pickablesByScope, setPickablesByScope] = useState<
     Record<PickableScope, PickableScopeState>
   >({

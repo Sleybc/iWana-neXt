@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { InventoryTrackingMode, StockBalanceCondition } from '@iwana/shared';
+import { InventoryTrackingMode, SerializedAssetStatus, StockBalanceCondition } from '@iwana/shared';
 import { SERIAL_QTY_HELP_TEXT, StockIssueLineSidePeek } from './StockIssueLineSidePeek';
 import type { StockIssueDraftLine } from './stock-issue-draft';
 
@@ -18,7 +18,7 @@ jest.mock('@/lib/api-client', () => {
             inventoryItemId: 'item-serial',
             serialNumber: 'SN-001',
             assetTag: null,
-            currentStatus: 'AVAILABLE',
+            currentStatus: SerializedAssetStatus.AVAILABLE,
             currentLocationId: 'loc-1',
           },
           {
@@ -27,7 +27,7 @@ jest.mock('@/lib/api-client', () => {
             inventoryItemId: 'item-serial',
             serialNumber: 'SN-002',
             assetTag: null,
-            currentStatus: 'AVAILABLE',
+            currentStatus: SerializedAssetStatus.AVAILABLE,
             currentLocationId: 'loc-1',
           },
         ],
@@ -175,6 +175,42 @@ describe('StockIssueLineSidePeek', () => {
     const { inventoryApi } = jest.requireMock('@/lib/api-client') as {
       inventoryApi: { listAssets: jest.Mock };
     };
+    // El servidor devuelve el serial excluido: solo `excludeIds` (filtro cliente
+    // en `searchPickableSerializedAssets`) puede sacarlo de las opciones.
+    inventoryApi.listAssets.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'asset-1',
+          tenantId: 'tenant-1',
+          inventoryItemId: 'item-serial',
+          serialNumber: 'SN-001',
+          assetTag: null,
+          currentStatus: SerializedAssetStatus.AVAILABLE,
+          currentLocationId: 'loc-1',
+        },
+        {
+          id: 'asset-9',
+          tenantId: 'tenant-1',
+          inventoryItemId: 'item-serial',
+          serialNumber: 'SN-009',
+          assetTag: null,
+          currentStatus: SerializedAssetStatus.AVAILABLE,
+          currentLocationId: 'loc-1',
+        },
+      ],
+      meta: {
+        nextCursor: null,
+        total: 2,
+        totalIsEstimate: false,
+        page: null,
+        limit: 50,
+        totalPages: null,
+        hasMore: false,
+        mode: 'cursor',
+        capabilities: { randomAccess: false, sortableFields: [] },
+        sort: null,
+      },
+    });
     render(
       <StockIssueLineSidePeek
         {...baseProps}
@@ -201,6 +237,11 @@ describe('StockIssueLineSidePeek', () => {
         undefined,
       );
     });
+
+    // `excludeIds=['asset-9']` lo saca de las opciones aunque el servidor lo
+    // devuelva; la presencia de SN-001 prueba que la lista sí cargó.
+    expect(await screen.findByRole('option', { name: /SN-001/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /SN-009/ })).not.toBeInTheDocument();
   });
 
   it('Guardar cambios reabre con los valores actuales y confirma sobre la línea', async () => {

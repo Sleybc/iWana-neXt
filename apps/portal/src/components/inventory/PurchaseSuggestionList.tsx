@@ -49,11 +49,14 @@ export function PurchaseSuggestionList({
   return (
     <div className="space-y-2">
       {suggestions.map((suggestion) => {
+        // WCAG 2.5.8: en la rama con panel el checkbox es el único blanco táctil
+        // (24px); sin panel la fila completa es el label y conserva su tamaño.
+        const checkBoxSizeClassName = onOpenItem ? 'h-6 w-6' : 'h-4 w-4';
         const content = (
           <>
             <input
               type="checkbox"
-              className={`mt-1 h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
+              className={`mt-1 ${checkBoxSizeClassName} rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
               aria-label={`Seleccionar ${suggestion.productLabel}`}
               checked={suggestion.selected}
               onChange={() => onToggle(suggestion.itemId)}

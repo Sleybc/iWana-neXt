@@ -17,7 +17,12 @@ export interface StockIssueSubmitLineInput {
   isManual: boolean;
   condition: StockBalanceCondition;
   lotId: string;
-  serializedAssetId: string;
+  /**
+   * @deprecated Singular de transición S1: usa `serializedAssetIds`. Se mantiene
+   * como opcional solo para lecturas legacy; `resolveLineSerializedAssetIds` lo
+   * absorbe cuando el grupo viene vacío.
+   */
+  serializedAssetId?: string;
   /**
    * Grupo de seriales v2 (MOD12 S2): para ítems serializados su longitud es la
    * cantidad de la línea. El singular queda como respaldo de transición.
