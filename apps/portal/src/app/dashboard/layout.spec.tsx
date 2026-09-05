@@ -15,7 +15,8 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => ({
-    user: { id: 'user-1' },
+    // Rol operativo: el layout solo carga getMe() para ADMIN/NOC/ACCOUNTANT/SUPPORT
+    user: { id: 'user-1', role: 'ADMIN' },
     isLoading: false,
   }),
 }));
