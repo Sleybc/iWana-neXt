@@ -81,6 +81,17 @@ export interface StockIssueLineInput {
 }
 
 /**
+ * Serial de una línea en la lectura del detalle de una salida
+ * (`GET /api/v1/inventory/issues/:id`): id del activo más su número de serie
+ * legible (SPEC MOD12 S2 §5.5), para que el borrador de edición reconstruya
+ * el grupo sin heurística de reagrupación.
+ */
+export interface StockIssueLineSerialRef {
+  id: string;
+  serialNumber: string;
+}
+
+/**
  * Línea de salida en la lectura del detalle de una salida
  * (`GET /api/v1/inventory/issues/:id`).
  *
@@ -101,10 +112,11 @@ export interface StockIssueLineRecord {
    */
   serializedAssetId: string | null;
   /**
-   * Grupo de seriales de la línea (MOD12 S2 §5.1 · punto 5 de lectura); vacío
-   * para ítems no serializados.
+   * Grupo de seriales de la línea (MOD12 S2 §5.5, enmienda de lectura
+   * autorizada por AI-EM-ARCH): id + número de serie legible por elemento;
+   * vacío para ítems no serializados.
    */
-  serializedAssetIds: string[];
+  serializedAssets: StockIssueLineSerialRef[];
   condition: StockBalanceCondition;
   createdAt: string;
   updatedAt: string;

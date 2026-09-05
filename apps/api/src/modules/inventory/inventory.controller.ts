@@ -564,7 +564,10 @@ export class InventoryController {
   @ApiOperation({
     summary: 'Crear salida (StockIssue)',
     description:
-      'Reserva la cantidad solicitada por línea. Responde 400 si no hay disponible suficiente (existencia − comprometido).',
+      'Reserva la cantidad solicitada por línea; con seriales múltiples (MOD12 S2 · serializedAssetIds) ' +
+      'la cantidad debe coincidir con el número de seriales del grupo y la reserva es N. ' +
+      'Responde 400 si no hay disponible suficiente (existencia − comprometido) o si un serial ' +
+      'es de otro artículo, de otra bodega, no está disponible o ya está comprometido.',
   })
   createIssue(
     @Body(new ZodValidationPipe(CreateStockIssueSchema)) body: CreateStockIssueDto,
@@ -608,7 +611,12 @@ export class InventoryController {
   @Get('issues/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
-  @ApiOperation({ summary: 'Obtener detalle de salida (StockIssue)' })
+  @ApiOperation({
+    summary: 'Obtener detalle de salida (StockIssue)',
+    description:
+      'Cada línea incluye serializedAssets (id + número de serie legible, MOD12 S2 · B5) ' +
+      'para reconstruir el grupo de seriales sin heurística de reagrupación.',
+  })
   getIssue(@Param('id', ParseUUIDPipe) id: string) {
     return this.stockIssueService.getById(id);
   }

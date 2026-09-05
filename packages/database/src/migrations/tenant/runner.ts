@@ -82,6 +82,7 @@ import { NormalizeUomToCanonicalCatalog12200000000000 } from './122_normalize_uo
 import { AddInventoryItemBarcode1230000000000 } from './123_add_inventory_item_barcode';
 import { AddSupplierQuoteTaxes1240000000000 } from './124_add_supplier_quote_taxes';
 import { AddSupplierQuoteShippingArrangement1250000000000 } from './125_add_supplier_quote_shipping_arrangement';
+import { CreateStockIssueLineSerials1260000000000 } from './126_create_stock_issue_line_serials';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -244,6 +245,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddInventoryItemBarcode1230000000000,
   AddSupplierQuoteTaxes1240000000000,
   AddSupplierQuoteShippingArrangement1250000000000,
+  CreateStockIssueLineSerials1260000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -19,6 +19,7 @@ jest.mock('@iwana/db', () => ({
   StockBalance: class StockBalance {},
   StockIssue: class StockIssue {},
   StockIssueLine: class StockIssueLine {},
+  StockIssueLineSerial: class StockIssueLineSerial {},
   StockLocation: class StockLocation {},
   TenantContext: {
     getOrThrow: jest.fn().mockReturnValue({
@@ -45,8 +46,8 @@ const OTHER_LOCATION_ID = '99999999-9999-4999-8999-999999999999';
 const SERIALIZED_ITEM_ID = '33333333-3333-4333-8333-333333333333';
 const CONSUMABLE_ITEM_ID = '44444444-4444-4333-8333-444444444444';
 const OTHER_ITEM_ID = '55555555-5555-4555-8555-555555555555';
-const ASSET_ID = '66666666-6666-4666-8666-666666666666';
-const ASSET_OTHER_ITEM_ID = '77777777-7777-4777-8777-777777777777';
+const ASSET_A = '66666666-6666-4666-8666-666666666666';
+const ASSET_B = '88888888-8888-4888-8888-888888888888';
 
 const serializedItem = {
   id: SERIALIZED_ITEM_ID,
@@ -62,7 +63,7 @@ const consumableItem = {
 
 function buildAsset(overrides: Record<string, unknown> = {}) {
   return {
-    id: ASSET_ID,
+    id: ASSET_A,
     tenantId: 'tenant-001',
     inventoryItemId: SERIALIZED_ITEM_ID,
     serialNumber: 'SN-0001',
@@ -75,12 +76,15 @@ function buildAsset(overrides: Record<string, unknown> = {}) {
 interface SerialManagerOptions {
   items?: Array<Record<string, unknown>>;
   assets?: Array<Record<string, unknown>>;
+  /** Seriales comprometidos por OTRA salida (respuesta del pre-chequeo sobre la hija). */
   committedAssetIds?: string[];
+  saveError?: unknown;
 }
 
 /**
  * Manager falso para B3: `find` resuelve ítems/activos por id, el query
- * builder del chequeo de comprometidos responde con las filas indicadas.
+ * builder del pre-chequeo de comprometidos (tabla hija) responde con las
+ * filas indicadas y `save` puede forzar el error de carrera del índice único.
  */
 function buildSerialManager(options: SerialManagerOptions = {}) {
   const items = options.items ?? [serializedItem, consumableItem];
@@ -111,9 +115,6 @@ function buildSerialManager(options: SerialManagerOptions = {}) {
       if (entity?.name === 'SerializedAsset') {
         return assets.filter((asset) => ids.includes(asset['id'] as string));
       }
-      if (entity?.name === 'StockIssueLine') {
-        return [];
-      }
       return [];
     }),
     findOne: jest
@@ -135,13 +136,18 @@ function buildSerialManager(options: SerialManagerOptions = {}) {
         },
       ),
     create: jest.fn((_entity: unknown, payload: unknown) => payload),
-    save: jest
-      .fn()
-      .mockImplementationOnce(async (_entity: unknown, payload: Record<string, unknown>) => ({
-        id: 'issue-001',
-        ...payload,
-      }))
-      .mockImplementation(async (_entity: unknown, payload: unknown) => payload),
+    save: jest.fn().mockImplementation(async (entity: { name?: string }, payload: unknown) => {
+      if (options.saveError && entity?.name === 'StockIssueLineSerial') {
+        throw options.saveError;
+      }
+      if (Array.isArray(payload)) {
+        return payload.map((row, index) => ({
+          id: `${entity?.name ?? 'row'}-${index}-saved`,
+          ...(row as Record<string, unknown>),
+        }));
+      }
+      return { id: `${entity?.name ?? 'row'}-saved`, ...(payload as Record<string, unknown>) };
+    }),
     delete: jest.fn().mockResolvedValue({ affected: 0 }),
     createQueryBuilder: jest.fn().mockReturnValue(committedQb),
   };
@@ -149,12 +155,13 @@ function buildSerialManager(options: SerialManagerOptions = {}) {
   return { manager, committedQb };
 }
 
-function createService() {
+function createService(balanceOverrides?: Partial<Record<string, jest.Mock>>) {
   const balanceService = {
     getAvailabilityWithManager: jest
       .fn()
       .mockResolvedValue({ onHand: 10, reserved: 0, available: 10 }),
     applyDeltaWithManager: jest.fn().mockResolvedValue({}),
+    ...balanceOverrides,
   } as unknown as StockBalanceService;
   const domainEventPublisher = {
     captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
@@ -183,6 +190,7 @@ interface SerialTestLine {
   itemId: string;
   requestedQty: number;
   condition: StockBalanceCondition;
+  serializedAssetIds?: string[];
   serializedAssetId?: string | null;
   lotId?: string | null;
 }
@@ -196,12 +204,43 @@ function baseCreateInput(lines: SerialTestLine[]) {
   };
 }
 
-describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
+describe('StockIssueService integridad del grupo de seriales (MOD12 S2 · B3)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('rechaza 400 en español la línea serializada sin serializedAssetId', async () => {
+  it('CA-S2-05: acepta una línea con N seriales como una línea de cantidad N y reserva N', async () => {
+    const { manager } = buildSerialManager({
+      assets: [buildAsset(), buildAsset({ id: ASSET_B, serialNumber: 'SN-0002' })],
+    });
+    runWithManager(manager);
+    const balanceService = {
+      getAvailabilityWithManager: jest
+        .fn()
+        .mockResolvedValue({ onHand: 10, reserved: 0, available: 10 }),
+      applyDeltaWithManager: jest.fn().mockResolvedValue({}),
+    };
+
+    const created = await createService(balanceService).create(
+      baseCreateInput([
+        {
+          itemId: SERIALIZED_ITEM_ID,
+          requestedQty: 2,
+          serializedAssetIds: [ASSET_A, ASSET_B],
+          condition: StockBalanceCondition.NEW,
+        },
+      ]),
+      actor,
+    );
+
+    expect(created.lines).toHaveLength(1);
+    expect(balanceService.applyDeltaWithManager).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reservedDelta: 2, delta: 0 }),
+    );
+  });
+
+  it('rechaza la línea serializada sin seriales (400 en español)', async () => {
     const { manager } = buildSerialManager();
     runWithManager(manager);
 
@@ -213,11 +252,34 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
         actor,
       ),
     ).rejects.toThrow(
-      'El ítem CFO-SER-ROGPN-TPL-XC220 exige seleccionar el activo serializado que sale.',
+      'El ítem CFO-SER-ROGPN-TPL-XC220 exige seleccionar los activos serializados que salen.',
     );
   });
 
-  it('rechaza el serial que pertenece a otro artículo', async () => {
+  it('rechaza la cantidad incoherente con el número de seriales del grupo', async () => {
+    const { manager } = buildSerialManager({
+      assets: [buildAsset(), buildAsset({ id: ASSET_B, serialNumber: 'SN-0002' })],
+    });
+    runWithManager(manager);
+
+    await expect(
+      createService().create(
+        baseCreateInput([
+          {
+            itemId: SERIALIZED_ITEM_ID,
+            requestedQty: 3,
+            serializedAssetIds: [ASSET_A, ASSET_B],
+            condition: StockBalanceCondition.NEW,
+          },
+        ]),
+        actor,
+      ),
+    ).rejects.toThrow(
+      'La cantidad solicitada del ítem CFO-SER-ROGPN-TPL-XC220 debe coincidir con el número de seriales seleccionados (2 seriales, cantidad 3).',
+    );
+  });
+
+  it('rechaza el serial que pertenece a otro artículo (CA-S2-06)', async () => {
     const { manager } = buildSerialManager({
       assets: [buildAsset({ inventoryItemId: OTHER_ITEM_ID })],
     });
@@ -229,7 +291,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
           {
             itemId: SERIALIZED_ITEM_ID,
             requestedQty: 1,
-            serializedAssetId: ASSET_ID,
+            serializedAssetIds: [ASSET_A],
             condition: StockBalanceCondition.NEW,
           },
         ]),
@@ -238,7 +300,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
     ).rejects.toThrow('pertenece a otro artículo');
   });
 
-  it('rechaza el serial que no está en la bodega de origen', async () => {
+  it('rechaza el serial que no está en la bodega de origen (CA-S2-06)', async () => {
     const { manager } = buildSerialManager({
       assets: [buildAsset({ currentLocationId: OTHER_LOCATION_ID })],
     });
@@ -250,7 +312,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
           {
             itemId: SERIALIZED_ITEM_ID,
             requestedQty: 1,
-            serializedAssetId: ASSET_ID,
+            serializedAssetIds: [ASSET_A],
             condition: StockBalanceCondition.NEW,
           },
         ]),
@@ -259,7 +321,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
     ).rejects.toThrow('no está en la bodega de origen');
   });
 
-  it('rechaza el serial en estado no disponible', async () => {
+  it('rechaza el serial en estado no disponible (CA-S2-06)', async () => {
     const { manager } = buildSerialManager({
       assets: [buildAsset({ currentStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN })],
     });
@@ -271,7 +333,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
           {
             itemId: SERIALIZED_ITEM_ID,
             requestedQty: 1,
-            serializedAssetId: ASSET_ID,
+            serializedAssetIds: [ASSET_A],
             condition: StockBalanceCondition.NEW,
           },
         ]),
@@ -280,8 +342,8 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
     ).rejects.toThrow('no está disponible para salida');
   });
 
-  it('rechaza el serial repetido entre líneas de la misma salida', async () => {
-    const { manager } = buildSerialManager();
+  it('rechaza el serial comprometido por otra salida no terminal (pre-chequeo amable)', async () => {
+    const { manager, committedQb } = buildSerialManager({ committedAssetIds: [ASSET_A] });
     runWithManager(manager);
 
     await expect(
@@ -290,57 +352,51 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
           {
             itemId: SERIALIZED_ITEM_ID,
             requestedQty: 1,
-            serializedAssetId: ASSET_ID,
-            condition: StockBalanceCondition.NEW,
-          },
-          {
-            itemId: SERIALIZED_ITEM_ID,
-            requestedQty: 1,
-            serializedAssetId: ASSET_ID,
-            condition: StockBalanceCondition.NEW,
-          },
-        ]),
-        actor,
-      ),
-    ).rejects.toThrow('está repetido en la salida');
-  });
-
-  it('rechaza cantidad distinta de 1 en línea con serial (adelanto de dispatch)', async () => {
-    const { manager } = buildSerialManager();
-    runWithManager(manager);
-
-    await expect(
-      createService().create(
-        baseCreateInput([
-          {
-            itemId: SERIALIZED_ITEM_ID,
-            requestedQty: 2,
-            serializedAssetId: ASSET_ID,
-            condition: StockBalanceCondition.NEW,
-          },
-        ]),
-        actor,
-      ),
-    ).rejects.toThrow('deben solicitar cantidad 1');
-  });
-
-  it('rechaza el serial comprometido por otra salida no terminal', async () => {
-    const { manager } = buildSerialManager({ committedAssetIds: [ASSET_ID] });
-    runWithManager(manager);
-
-    await expect(
-      createService().create(
-        baseCreateInput([
-          {
-            itemId: SERIALIZED_ITEM_ID,
-            requestedQty: 1,
-            serializedAssetId: ASSET_ID,
+            serializedAssetIds: [ASSET_A],
             condition: StockBalanceCondition.NEW,
           },
         ]),
         actor,
       ),
     ).rejects.toThrow('ya está comprometido en otra salida');
+
+    // El pre-chequeo vive en la tabla hija con el predicado de estados no terminales.
+    expect(committedQb.where).toHaveBeenCalledWith('serial.tenant_id = :tenantId', {
+      tenantId: 'tenant-001',
+    });
+    const terminalCall = committedQb.andWhere.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('issue_status NOT IN'),
+    );
+    expect(terminalCall).toBeDefined();
+    expect(terminalCall?.[1]).toEqual({
+      serialTerminalStatuses: [
+        StockIssueStatus.CANCELLED,
+        StockIssueStatus.DISPATCHED,
+        StockIssueStatus.RECEIVED,
+      ],
+    });
+  });
+
+  it('un serial despachado (estado terminal en la espejo) puede comprometerse en una salida nueva', async () => {
+    // El pre-chequeo filtra por issue_status NOT IN (terminal): un serial cuya
+    // fila hija quedó en DISPATCHED no vuelve a aparecer como comprometido.
+    const { manager, committedQb } = buildSerialManager({ committedAssetIds: [] });
+    runWithManager(manager);
+
+    const created = await createService().create(
+      baseCreateInput([
+        {
+          itemId: SERIALIZED_ITEM_ID,
+          requestedQty: 1,
+          serializedAssetIds: [ASSET_A],
+          condition: StockBalanceCondition.NEW,
+        },
+      ]),
+      actor,
+    );
+
+    expect(created.lines).toHaveLength(1);
+    expect(committedQb.getRawMany).toHaveBeenCalledTimes(1);
   });
 
   it('rechaza con 400 (no 404) cuando el activo no existe', async () => {
@@ -353,7 +409,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
           {
             itemId: SERIALIZED_ITEM_ID,
             requestedQty: 1,
-            serializedAssetId: ASSET_ID,
+            serializedAssetIds: [ASSET_A],
             condition: StockBalanceCondition.NEW,
           },
         ]),
@@ -364,7 +420,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
     expect(error).toBeInstanceOf(BadRequestException);
   });
 
-  it('crea la salida cuando el serial es válido (control positivo)', async () => {
+  it('crea la salida con grupo y singular de compatibilidad S1 (control positivo)', async () => {
     const { manager } = buildSerialManager();
     runWithManager(manager);
 
@@ -373,7 +429,7 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
         {
           itemId: SERIALIZED_ITEM_ID,
           requestedQty: 1,
-          serializedAssetId: ASSET_ID,
+          serializedAssetId: ASSET_A, // payload singular S1, normalizado en el borde del schema
           condition: StockBalanceCondition.NEW,
         },
         { itemId: CONSUMABLE_ITEM_ID, requestedQty: 3, condition: StockBalanceCondition.NEW },
@@ -384,7 +440,69 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
     expect(created.lines).toHaveLength(2);
   });
 
-  it('el update que reemplaza líneas revalida el serial contra la bodega nueva', async () => {
+  it('alimenta el singular de transición con el primer serial del grupo y persiste la hija', async () => {
+    const { manager } = buildSerialManager({
+      assets: [buildAsset(), buildAsset({ id: ASSET_B, serialNumber: 'SN-0002' })],
+    });
+    runWithManager(manager);
+
+    await createService().create(
+      baseCreateInput([
+        {
+          itemId: SERIALIZED_ITEM_ID,
+          requestedQty: 2,
+          serializedAssetIds: [ASSET_A, ASSET_B],
+          condition: StockBalanceCondition.NEW,
+        },
+      ]),
+      actor,
+    );
+
+    const serialSave = (manager.save as jest.Mock).mock.calls.find(
+      (call: unknown[]) => (call[0] as { name?: string })?.name === 'StockIssueLineSerial',
+    );
+    expect(serialSave).toBeDefined();
+    const rows = serialSave?.[1] as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        serializedAssetId: ASSET_A,
+        issueStatus: StockIssueStatus.REQUESTED,
+        issueId: 'StockIssue-saved',
+      }),
+    );
+
+    const lineSave = (manager.save as jest.Mock).mock.calls.find(
+      (call: unknown[]) => (call[0] as { name?: string })?.name === 'StockIssueLine',
+    );
+    const linePayload = (lineSave?.[1] as Array<Record<string, unknown>>)?.[0];
+    expect(linePayload?.serializedAssetId).toBe(ASSET_A);
+    expect(linePayload?.requestedQty).toBe('2.00');
+  });
+
+  it('traduce la carrera del índice único parcial (23505) a 400 en español', async () => {
+    const { manager } = buildSerialManager({ saveError: { code: '23505' } });
+    runWithManager(manager);
+
+    const error = await createService()
+      .create(
+        baseCreateInput([
+          {
+            itemId: SERIALIZED_ITEM_ID,
+            requestedQty: 1,
+            serializedAssetIds: [ASSET_A],
+            condition: StockBalanceCondition.NEW,
+          },
+        ]),
+        actor,
+      )
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).message).toContain('ya está comprometido en otra salida');
+  });
+
+  it('el update que reemplaza líneas revalida el grupo contra la bodega nueva', async () => {
     const issue = {
       id: 'issue-001',
       tenantId: 'tenant-001',
@@ -397,15 +515,9 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
       transaction: jest
         .fn()
         .mockImplementation(async (work: (m: unknown) => unknown) => work(manager)),
-      find: jest.fn().mockImplementation(async (entity: any, query?: any) => {
+      find: jest.fn().mockImplementation(async (entity: any) => {
         if (entity?.name === 'InventoryItem') {
           return [serializedItem];
-        }
-        if (entity?.name === 'SerializedAsset') {
-          return [];
-        }
-        if (entity?.name === 'StockIssueLine') {
-          return [];
         }
         return [];
       }),
@@ -434,7 +546,6 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
         select: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        innerJoin: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue([]),
       }),
     };
@@ -450,6 +561,6 @@ describe('StockIssueService integridad de serial (B3 · CA-S1-06)', () => {
         },
         actor,
       ),
-    ).rejects.toThrow('exige seleccionar el activo serializado que sale');
+    ).rejects.toThrow('exige seleccionar los activos serializados que salen');
   });
 });

@@ -98,6 +98,7 @@ export { AssetLoanAssignment } from './asset-loan-assignment.entity';
 export { InventoryWriteOff } from './inventory-write-off.entity';
 export { StockIssue } from './stock-issue.entity';
 export { StockIssueLine } from './stock-issue-line.entity';
+export { StockIssueLineSerial } from './stock-issue-line-serial.entity';
 export { StockCount } from './stock-count.entity';
 export { StockCountLine } from './stock-count-line.entity';
 export { SupplierProfile } from './supplier-profile.entity';

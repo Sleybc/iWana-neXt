@@ -14,6 +14,7 @@ import {
   SerializedAsset,
   StockIssue,
   StockIssueLine,
+  StockIssueLineSerial,
   StockLocation,
   TenantContext,
   runInTenantSchema,
@@ -44,7 +45,18 @@ import {
 import { clampPage } from '../../../common/pagination/clamp-page';
 import type { ListResponse } from '@iwana/shared';
 
-export type StockIssueDetail = StockIssue & { lines: StockIssueLine[] };
+/** Serial de una línea en la lectura del detalle (MOD12 S2 §5.5): id + número legible. */
+export interface StockIssueLineSerialRef {
+  id: string;
+  serialNumber: string;
+}
+
+/** Línea del detalle de una salida: entidad + grupo de seriales legible. */
+export type StockIssueDetailLine = StockIssueLine & {
+  serializedAssets: StockIssueLineSerialRef[];
+};
+
+export type StockIssueDetail = StockIssue & { lines: StockIssueDetailLine[] };
 
 /** Modos de seguimiento que exigen activo serializado concreto en la salida (D2). */
 const SERIALIZED_TRACKING_MODES: ReadonlySet<InventoryTrackingMode> = new Set([
@@ -65,10 +77,19 @@ const SERIAL_COMMIT_TERMINAL_STATUSES: StockIssueStatus[] = [
   StockIssueStatus.RECEIVED,
 ];
 
-interface SerialIntegrityLineInput {
+interface SerializedGroupLineInput {
   itemId: string;
   requestedQty: string | number;
-  serializedAssetId?: string | null;
+  serializedAssetIds: string[];
+}
+
+interface DispatchLedgerLine {
+  itemId: string;
+  quantity: number;
+  lotId: string | null;
+  serializedAssetId: string | null;
+  serialNumber: null;
+  condition: StockBalanceCondition;
 }
 
 @Injectable()
@@ -164,20 +185,31 @@ export class StockIssueService {
     return this.stockBalanceService.getAvailabilityWithManager(manager, tenantId, input);
   }
 
+  /**
+   * MOD12 S2 · ajuste G1: la aritmética de cantidades la decide el tamaño del
+   * grupo de seriales. El singular de transición (`serializedAssetId`) queda
+   * fuera de esa aritmética: un grupo vacío es una línea no serializada y usa
+   * la cantidad solicitada.
+   */
+  private resolveLineQuantity(
+    line: { requestedQty: string | number },
+    serializedAssetCount: number,
+  ): number {
+    const requestedQty = this.toNumeric(line.requestedQty);
+    return serializedAssetCount > 0 ? serializedAssetCount : requestedQty;
+  }
+
   private async reserveLineQuantity(
     manager: EntityManager,
     tenantId: string,
     sourceLocationId: string,
     line: {
       itemId: string;
-      requestedQty: string | number;
-      lotId?: string | null;
-      condition?: StockBalanceCondition | null;
-      serializedAssetId?: string | null;
+      lotId?: string | null | undefined;
+      condition?: StockBalanceCondition | null | undefined;
     },
+    quantity: number,
   ): Promise<void> {
-    const requestedQty = this.toNumeric(line.requestedQty);
-    const quantity = line.serializedAssetId ? 1 : requestedQty;
     const condition = line.condition ?? StockBalanceCondition.NEW;
     const availability = await this.getAvailability(manager, tenantId, {
       itemId: line.itemId,
@@ -209,15 +241,11 @@ export class StockIssueService {
     sourceLocationId: string,
     line: {
       itemId: string;
-      requestedQty: string | number;
-      lotId?: string | null;
-      condition?: StockBalanceCondition | null;
-      serializedAssetId?: string | null;
+      lotId?: string | null | undefined;
+      condition?: StockBalanceCondition | null | undefined;
     },
+    quantity: number,
   ): Promise<void> {
-    const requestedQty = this.toNumeric(line.requestedQty);
-    const quantity = line.serializedAssetId ? 1 : requestedQty;
-
     await this.stockBalanceService.applyDeltaWithManager(manager, {
       tenantId,
       itemId: line.itemId,
@@ -230,17 +258,20 @@ export class StockIssueService {
   }
 
   /**
-   * Integridad de serial en la salida (MOD12 S1 · B3, D2 bloqueante).
+   * Integridad del grupo de seriales en la salida (MOD12 S2 · B3, extiende B3 de S1).
    *
-   * Capa de servicio, no zod: necesita ítems y activos del tenant. Carga en
-   * batch (`find` + `In`) dentro de la transacción del llamador, nunca un
-   * query por línea. `excludeIssueId` evita que el `update` colisione con sus
-   * propias líneas al reemplazarlas o al cambiar de bodega.
+   * Capa de servicio, no zod: necesita ítems y activos del tenant. Carga ítems
+   * y activos en batch (`find` + `In`) dentro de la transacción del llamador,
+   * nunca un query por serial. Las reglas por serial (pertenencia al ítem,
+   * bodega origen, estado disponible) aplican uno a uno; los repetidos se
+   * controlan dentro de la línea (ya en el schema) y entre líneas de la misma
+   * salida. `excludeIssueId` evita que el `update` colisione con su propia
+   * salida al reemplazar líneas o al cambiar de bodega.
    */
-  private async assertSerializedLineIntegrity(
+  private async assertSerializedGroupsIntegrity(
     manager: EntityManager,
     tenantId: string,
-    lines: SerialIntegrityLineInput[],
+    lines: SerializedGroupLineInput[],
     sourceLocationId: string,
     excludeIssueId?: string,
   ): Promise<void> {
@@ -265,24 +296,27 @@ export class StockIssueService {
       return;
     }
 
+    // Regla B3.1: grupo no vacío y cantidad coherente con el número de seriales.
     for (const line of serializedLines) {
-      if (!line.serializedAssetId) {
-        const sku = itemById.get(line.itemId)?.sku ?? line.itemId;
+      const sku = itemById.get(line.itemId)?.sku ?? line.itemId;
+      if (line.serializedAssetIds.length === 0) {
         throw new BadRequestException(
-          `El ítem ${sku} exige seleccionar el activo serializado que sale.`,
+          `El ítem ${sku} exige seleccionar los activos serializados que salen.`,
         );
       }
-      if (Number(line.requestedQty) !== 1) {
+      if (Number(line.requestedQty) !== line.serializedAssetIds.length) {
         throw new BadRequestException(
-          'Las líneas con activo serializado deben solicitar cantidad 1.',
+          `La cantidad solicitada del ítem ${sku} debe coincidir con el número de ` +
+            `seriales seleccionados (${line.serializedAssetIds.length} seriales, ` +
+            `cantidad ${Number(line.requestedQty)}).`,
         );
       }
     }
 
-    const assetIds = [...new Set(serializedLines.map((line) => line.serializedAssetId as string))];
+    const allAssetIds = serializedLines.flatMap((line) => line.serializedAssetIds);
     const foundAssets =
       (await manager.find(SerializedAsset, {
-        where: { tenantId, id: In(assetIds) },
+        where: { tenantId, id: In([...new Set(allAssetIds)]) },
       })) ?? [];
     const assetById = new Map(foundAssets.map((asset) => [asset.id, asset]));
     const assetLabel = (assetId: string): string => {
@@ -290,57 +324,64 @@ export class StockIssueService {
       return serial ? `El activo ${serial}` : 'El activo serializado seleccionado';
     };
 
+    // Un serial no puede repetirse entre líneas de la misma salida
+    // (el schema ya rechaza los repetidos dentro de una línea).
     const seenAssetIds = new Set<string>();
-    for (const line of serializedLines) {
-      const assetId = line.serializedAssetId as string;
+    let repeatedAssetId: string | null = null;
+    for (const assetId of allAssetIds) {
       if (seenAssetIds.has(assetId)) {
-        throw new BadRequestException(`${assetLabel(assetId)} está repetido en la salida.`);
+        repeatedAssetId = assetId;
+        break;
       }
       seenAssetIds.add(assetId);
     }
+    if (repeatedAssetId) {
+      throw new BadRequestException(`${assetLabel(repeatedAssetId)} está repetido en la salida.`);
+    }
 
+    // Regla B3.2: cada serial del grupo mantiene las validaciones de S1.
     for (const line of serializedLines) {
-      const assetId = line.serializedAssetId as string;
-      const asset = assetById.get(assetId);
-      if (!asset) {
-        throw new BadRequestException(
-          'El activo serializado seleccionado no existe en la bodega de origen.',
-        );
-      }
-      if (asset.inventoryItemId !== line.itemId) {
-        throw new BadRequestException(
-          `${assetLabel(assetId)} pertenece a otro artículo y no puede salir en esta línea.`,
-        );
-      }
-      if (asset.currentLocationId !== sourceLocationId) {
-        throw new BadRequestException(
-          `${assetLabel(assetId)} no está en la bodega de origen de la salida.`,
-        );
-      }
-      if (!SERIAL_DISPATCHABLE_STATUSES.includes(asset.currentStatus)) {
-        throw new BadRequestException(
-          `${assetLabel(assetId)} no está disponible para salida (estado ${asset.currentStatus}).`,
-        );
+      for (const assetId of line.serializedAssetIds) {
+        const asset = assetById.get(assetId);
+        if (!asset) {
+          throw new BadRequestException(
+            'El activo serializado seleccionado no existe en la bodega de origen.',
+          );
+        }
+        if (asset.inventoryItemId !== line.itemId) {
+          throw new BadRequestException(
+            `${assetLabel(assetId)} pertenece a otro artículo y no puede salir en esta línea.`,
+          );
+        }
+        if (asset.currentLocationId !== sourceLocationId) {
+          throw new BadRequestException(
+            `${assetLabel(assetId)} no está en la bodega de origen de la salida.`,
+          );
+        }
+        if (!SERIAL_DISPATCHABLE_STATUSES.includes(asset.currentStatus)) {
+          throw new BadRequestException(
+            `${assetLabel(assetId)} no está disponible para salida (estado ${asset.currentStatus}).`,
+          );
+        }
       }
     }
 
+    // Regla B3.3: sin seriales comprometidos por otra salida no terminal.
+    // Pre-chequeo amable sobre la tabla hija (autoritativa desde el backfill
+    // de la migración 126); el 23505 del índice único parcial es el respaldo
+    // de carrera y se traduce a 400 en español en `insertIssueLineSerials`.
     const committedQb = manager
-      .createQueryBuilder(StockIssueLine, 'line')
-      .innerJoin(
-        StockIssue,
-        'issue',
-        'issue.id = line.issue_id AND issue.tenant_id = line.tenant_id',
-      )
-      .select('line.serialized_asset_id', 'serializedAssetId')
-      .where('line.tenant_id = :tenantId', { tenantId })
-      .andWhere('line.serialized_asset_id IN (:...serialAssetIds)', {
-        serialAssetIds: assetIds,
+      .createQueryBuilder(StockIssueLineSerial, 'serial')
+      .select('serial.serialized_asset_id', 'serializedAssetId')
+      .where('serial.tenant_id = :tenantId', { tenantId })
+      .andWhere('serial.serialized_asset_id IN (:...serialAssetIds)', {
+        serialAssetIds: [...seenAssetIds],
       })
-      .andWhere('issue.status NOT IN (:...serialTerminalStatuses)', {
+      .andWhere('serial.issue_status NOT IN (:...serialTerminalStatuses)', {
         serialTerminalStatuses: SERIAL_COMMIT_TERMINAL_STATUSES,
       });
     if (excludeIssueId) {
-      committedQb.andWhere('issue.id != :excludeSerialIssueId', {
+      committedQb.andWhere('serial.issue_id != :excludeSerialIssueId', {
         excludeSerialIssueId: excludeIssueId,
       });
     }
@@ -351,6 +392,159 @@ export class StockIssueService {
         `${assetLabel(firstCommitted.serializedAssetId)} ya está comprometido en otra salida.`,
       );
     }
+  }
+
+  /** Grupo de seriales de la salida: una consulta para todas sus líneas. */
+  private async loadIssueSerials(
+    manager: EntityManager,
+    tenantId: string,
+    issueId: string,
+  ): Promise<StockIssueLineSerial[]> {
+    return (
+      (await manager.find(StockIssueLineSerial, {
+        where: { tenantId, issueId },
+        order: { createdAt: 'ASC' },
+      })) ?? []
+    );
+  }
+
+  private groupSerialAssetIdsByLine(serials: StockIssueLineSerial[]): Map<string, string[]> {
+    const groupsByLine = new Map<string, string[]>();
+    for (const row of serials) {
+      const group = groupsByLine.get(row.lineId) ?? [];
+      group.push(row.serializedAssetId);
+      groupsByLine.set(row.lineId, group);
+    }
+    return groupsByLine;
+  }
+
+  private isUniqueViolationError(error: unknown): boolean {
+    const directCode = (error as { code?: string } | null)?.code;
+    if (directCode === '23505') {
+      return true;
+    }
+    const driverCode = (error as { driverError?: { code?: string } } | null)?.driverError?.code;
+    return driverCode === '23505';
+  }
+
+  /**
+   * Inserta las filas hijas del grupo. El pre-chequeo de comprometidos es
+   * amable; la carrera entre dos salidas la cierra el índice único parcial
+   * (`23505`), que aquí se traduce a 400 en español.
+   */
+  private async insertIssueLineSerials(
+    manager: EntityManager,
+    serialRows: StockIssueLineSerial[],
+  ): Promise<void> {
+    if (serialRows.length === 0) {
+      return;
+    }
+
+    try {
+      await manager.save(StockIssueLineSerial, serialRows);
+    } catch (error) {
+      if (this.isUniqueViolationError(error)) {
+        throw new BadRequestException('El activo serializado ya está comprometido en otra salida.');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Sincroniza la espejo `issue_status` con la cabecera (set-based, un solo
+   * UPDATE) dentro de la transacción del llamador. PostgreSQL no admite
+   * predicados inter-tabla en índices parciales: la columna espejo de la propia
+   * tabla es la que habilita `uq_stock_issue_line_serials_active_asset`.
+   */
+  private async syncSerialMirrorStatus(
+    manager: EntityManager,
+    issueId: string,
+    status: StockIssueStatus,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .update(StockIssueLineSerial)
+      .set({ issueStatus: status, updatedAt: new Date() })
+      .where('issue_id = :issueId', { issueId })
+      .execute();
+  }
+
+  /** Vista legible del grupo (id + número de serie) agrupada por línea. */
+  private async buildLineSerialViews(
+    manager: EntityManager,
+    tenantId: string,
+    serials: StockIssueLineSerial[],
+  ): Promise<Map<string, StockIssueLineSerialRef[]>> {
+    const assetIds = [...new Set(serials.map((row) => row.serializedAssetId))];
+    const serialNumberById = new Map<string, string>();
+    if (assetIds.length > 0) {
+      const assets =
+        (await manager.find(SerializedAsset, {
+          where: { tenantId, id: In(assetIds) },
+        })) ?? [];
+      for (const asset of assets) {
+        if (asset.serialNumber) {
+          serialNumberById.set(asset.id, asset.serialNumber);
+        }
+      }
+    }
+
+    const viewsByLine = new Map<string, StockIssueLineSerialRef[]>();
+    for (const row of serials) {
+      const views = viewsByLine.get(row.lineId) ?? [];
+      views.push({
+        id: row.serializedAssetId,
+        serialNumber: serialNumberById.get(row.serializedAssetId) ?? '',
+      });
+      viewsByLine.set(row.lineId, views);
+    }
+    return viewsByLine;
+  }
+
+  private withSerialAssets(
+    lines: StockIssueLine[],
+    viewsByLine: Map<string, StockIssueLineSerialRef[]>,
+  ): StockIssueDetailLine[] {
+    return lines.map((line) => ({ ...line, serializedAssets: viewsByLine.get(line.id) ?? [] }));
+  }
+
+  /**
+   * MOD12 S2 · B4 (ajuste G1): el grupo de seriales explota en N inputs de
+   * kardex (uno por serial, cantidad 1) y una línea por cada salida no
+   * serializada. Preserva la granularidad del kardex y del `serializedAssetId`
+   * en los eventos de dominio, sin tocar el ledger.
+   */
+  private buildDispatchLedgerLines(
+    issueLines: StockIssueLine[],
+    serialsByLineId: Map<string, string[]>,
+  ): DispatchLedgerLine[] {
+    const ledgerLines: DispatchLedgerLine[] = [];
+    for (const line of issueLines) {
+      const group = serialsByLineId.get(line.id) ?? [];
+      const condition = line.condition ?? StockBalanceCondition.NEW;
+      if (group.length > 0) {
+        for (const serializedAssetId of group) {
+          ledgerLines.push({
+            itemId: line.itemId,
+            quantity: 1,
+            lotId: line.lotId ?? null,
+            serializedAssetId,
+            serialNumber: null,
+            condition,
+          });
+        }
+      } else {
+        ledgerLines.push({
+          itemId: line.itemId,
+          quantity: this.toNumeric(line.requestedQty),
+          lotId: line.lotId ?? null,
+          serializedAssetId: null,
+          serialNumber: null,
+          condition,
+        });
+      }
+    }
+    return ledgerLines;
   }
 
   private async resolveLocation(
@@ -482,14 +676,14 @@ export class StockIssueService {
         this.assertDistinctLocations(sourceLocation, destinationLocation);
         this.assertDestinationTypeForDispatch(validated.type, destinationLocation);
 
-        // MOD12 S1 · B3: el serial de un ítem serializado es bloqueante desde la creación.
-        await this.assertSerializedLineIntegrity(
+        // MOD12 S2 · B3: el grupo de seriales de un ítem serializado es bloqueante desde la creación.
+        await this.assertSerializedGroupsIntegrity(
           manager,
           tenantId,
           validated.lines.map((line) => ({
             itemId: line.itemId,
             requestedQty: line.requestedQty,
-            serializedAssetId: line.serializedAssetId ?? null,
+            serializedAssetIds: line.serializedAssetIds ?? [],
           })),
           validated.sourceLocationId,
         );
@@ -511,6 +705,8 @@ export class StockIssueService {
           }),
         );
 
+        // El singular de transición se alimenta con el PRIMER serial del grupo
+        // (compatibilidad de lecturas); queda fuera de la aritmética de cantidades.
         const lines = await manager.save(
           StockIssueLine,
           validated.lines.map((line) =>
@@ -521,17 +717,43 @@ export class StockIssueService {
               requestedQty: line.requestedQty.toFixed(2),
               dispatchedQty: null,
               lotId: line.lotId ?? null,
-              serializedAssetId: line.serializedAssetId ?? null,
+              serializedAssetId: line.serializedAssetIds?.[0] ?? null,
               condition: line.condition,
             }),
           ),
         );
 
-        for (const line of lines) {
-          await this.reserveLineQuantity(manager, tenantId, validated.sourceLocationId, line);
+        // MOD12 S2 · B2: el grupo queda autoritativo en la tabla hija.
+        const serialRows: StockIssueLineSerial[] = [];
+        lines.forEach((savedLine, index) => {
+          const group = validated.lines[index]?.serializedAssetIds ?? [];
+          for (const serializedAssetId of group) {
+            serialRows.push(
+              manager.create(StockIssueLineSerial, {
+                tenantId,
+                lineId: savedLine.id,
+                issueId: issue.id,
+                issueStatus: issue.status,
+                serializedAssetId,
+              }),
+            );
+          }
+        });
+        await this.insertIssueLineSerials(manager, serialRows);
+
+        for (const line of validated.lines) {
+          // MOD12 S2 · ajuste G1: la reserva la decide el tamaño del grupo;
+          // una línea sin seriales reserva su cantidad solicitada.
+          await this.reserveLineQuantity(
+            manager,
+            tenantId,
+            validated.sourceLocationId,
+            line,
+            this.resolveLineQuantity(line, line.serializedAssetIds?.length ?? 0),
+          );
         }
 
-        return { ...issue, lines };
+        return { ...issue, lines: this.withSerialAssets(lines, new Map()) };
       }),
     );
   }
@@ -650,7 +872,13 @@ export class StockIssueService {
         order: { createdAt: 'ASC' },
       });
 
-      return { ...issue, lines };
+      // MOD12 S2 · B5: el detalle devuelve el grupo de seriales de cada línea
+      // (id + número de serie legible) para que la edición reconstruya el
+      // grupo sin heurística de reagrupación.
+      const issueSerials = await this.loadIssueSerials(qr.manager, tenantId, id);
+      const viewsByLine = await this.buildLineSerialViews(qr.manager, tenantId, issueSerials);
+
+      return { ...issue, lines: this.withSerialAssets(lines, viewsByLine) };
     });
   }
 
@@ -694,8 +922,14 @@ export class StockIssueService {
               where: { issueId: id, tenantId },
               order: { createdAt: 'ASC' },
             });
+            const replaySerials = await this.loadIssueSerials(manager, tenantId, id);
+            const replayViews = await this.buildLineSerialViews(manager, tenantId, replaySerials);
             return {
-              detail: { ...issue, lines: existingLines, stockMovementId: issue.stockMovementId },
+              detail: {
+                ...issue,
+                lines: this.withSerialAssets(existingLines, replayViews),
+                stockMovementId: issue.stockMovementId,
+              },
               movementResult: null,
             };
           }
@@ -717,6 +951,10 @@ export class StockIssueService {
             throw new BadRequestException('La salida debe incluir al menos una línea.');
           }
 
+          // MOD12 S2: grupo de seriales de la salida (una consulta para todas las líneas).
+          const issueSerials = await this.loadIssueSerials(manager, tenantId, id);
+          const serialsByLineId = this.groupSerialAssetIdsByLine(issueSerials);
+
           const sourceLocation = await this.resolveLocation(
             manager,
             tenantId,
@@ -730,21 +968,27 @@ export class StockIssueService {
           this.assertDistinctLocations(sourceLocation, destinationLocation);
           this.assertDestinationTypeForDispatch(issue.type, destinationLocation);
 
+          // MOD12 S2 · B4: la verificación "cantidad 1 por serial" vive en el
+          // elemento; a nivel de línea la coherencia es cantidad = tamaño del grupo.
           for (const line of issueLines) {
             const requestedQty = this.toNumeric(line.requestedQty);
+            const groupSize = serialsByLineId.get(line.id)?.length ?? 0;
 
-            if (line.serializedAssetId && requestedQty !== 1) {
+            if (groupSize > 0 && requestedQty !== groupSize) {
               throw new BadRequestException(
-                'Las líneas con activo serializado deben solicitar cantidad 1.',
+                'La cantidad solicitada no coincide con el número de seriales de la línea.',
               );
             }
 
+            const quantity = this.resolveLineQuantity(line, groupSize);
+
             // Libera la reserva propia antes del ledger para que no bloquee su despacho (D-F3B-5/6).
-            await this.releaseLineQuantity(manager, tenantId, sourceLocation.id, line);
+            await this.releaseLineQuantity(manager, tenantId, sourceLocation.id, line, quantity);
           }
 
           for (const line of issueLines) {
-            const quantity = line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty);
+            const groupSize = serialsByLineId.get(line.id)?.length ?? 0;
+            const quantity = this.resolveLineQuantity(line, groupSize);
             const availability = await this.getAvailability(manager, tenantId, {
               itemId: line.itemId,
               locationId: sourceLocation.id,
@@ -759,6 +1003,7 @@ export class StockIssueService {
             }
           }
 
+          const ledgerLines = this.buildDispatchLedgerLines(issueLines, serialsByLineId);
           const idempotencyKey = `stock-issue:${issue.id}`;
           const originRefId =
             issue.commercialRefId ??
@@ -777,14 +1022,7 @@ export class StockIssueService {
                     commercialRefId: issue.commercialRefId ?? issue.originRefId ?? originRefId,
                     idempotencyKey,
                     notes: validated.handoffNotes ?? validated.handoffMethod,
-                    lines: issueLines.map((line) => ({
-                      itemId: line.itemId,
-                      quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
-                      lotId: line.lotId ?? null,
-                      serializedAssetId: line.serializedAssetId ?? null,
-                      serialNumber: null,
-                      condition: line.condition ?? StockBalanceCondition.NEW,
-                    })),
+                    lines: ledgerLines,
                   },
                   actor,
                 )
@@ -798,14 +1036,7 @@ export class StockIssueService {
                       reason: issue.reason ?? 'Consumo interno',
                       idempotencyKey,
                       notes: validated.handoffNotes ?? validated.handoffMethod,
-                      lines: issueLines.map((line) => ({
-                        itemId: line.itemId,
-                        quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
-                        lotId: line.lotId ?? null,
-                        serializedAssetId: line.serializedAssetId ?? null,
-                        serialNumber: null,
-                        condition: line.condition ?? StockBalanceCondition.NEW,
-                      })),
+                      lines: ledgerLines,
                     },
                     actor,
                   )
@@ -820,14 +1051,7 @@ export class StockIssueService {
                       handoffReference: validated.handoffMethod,
                       handoffNotes: validated.handoffNotes ?? null,
                       notes: null,
-                      lines: issueLines.map((line) => ({
-                        itemId: line.itemId,
-                        quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
-                        lotId: line.lotId ?? null,
-                        serializedAssetId: line.serializedAssetId ?? null,
-                        serialNumber: null,
-                        condition: line.condition ?? StockBalanceCondition.NEW,
-                      })),
+                      lines: ledgerLines,
                     },
                     actor,
                   );
@@ -842,11 +1066,15 @@ export class StockIssueService {
 
           const savedIssue = await manager.save(StockIssue, issue);
 
+          // MOD12 S2: la espejo issue_status se sincroniza en la misma transacción
+          // (un solo UPDATE set-based); habilita el reciclaje del índice parcial.
+          await this.syncSerialMirrorStatus(manager, savedIssue.id, StockIssueStatus.DISPATCHED);
+
           await manager.save(
             StockIssueLine,
             issueLines.map((line) => {
-              const requestedQty = this.toNumeric(line.requestedQty);
-              const quantity = line.serializedAssetId ? 1 : requestedQty;
+              const groupSize = serialsByLineId.get(line.id)?.length ?? 0;
+              const quantity = this.resolveLineQuantity(line, groupSize);
               return { ...line, dispatchedQty: quantity.toFixed(2) };
             }),
           );
@@ -855,11 +1083,12 @@ export class StockIssueService {
             where: { issueId: id, tenantId },
             order: { createdAt: 'ASC' },
           });
+          const viewsByLine = await this.buildLineSerialViews(manager, tenantId, issueSerials);
 
           return {
             detail: {
               ...savedIssue,
-              lines: finalLines,
+              lines: this.withSerialAssets(finalLines, viewsByLine),
               stockMovementId: savedIssue.stockMovementId!,
             },
             movementResult: movement,
@@ -937,6 +1166,10 @@ export class StockIssueService {
           where: { tenantId, issueId: id },
           order: { createdAt: 'ASC' },
         });
+        // Grupo vigente antes de reemplazar: libera por el tamaño real del grupo,
+        // no por el singular de transición (MOD12 S2 · ajuste G1).
+        const previousSerials = await this.loadIssueSerials(manager, tenantId, id);
+        const previousGroups = this.groupSerialAssetIdsByLine(previousSerials);
 
         issue.type = nextType;
         issue.sourceLocationId = validated.sourceLocationId ?? issue.sourceLocationId;
@@ -967,24 +1200,32 @@ export class StockIssueService {
         const saved = await manager.save(StockIssue, issue);
 
         if (validated.lines) {
-          // MOD12 S1 · B3: al reemplazar líneas se revalida contra la bodega NUEVA,
-          // excluyendo la propia salida del chequeo de comprometidos.
-          await this.assertSerializedLineIntegrity(
+          // MOD12 S2 · B3: al reemplazar líneas se revalida el grupo contra la
+          // bodega NUEVA, excluyendo la propia salida del chequeo de comprometidos.
+          await this.assertSerializedGroupsIntegrity(
             manager,
             tenantId,
             validated.lines.map((line) => ({
               itemId: line.itemId,
               requestedQty: line.requestedQty,
-              serializedAssetId: line.serializedAssetId ?? null,
+              serializedAssetIds: line.serializedAssetIds ?? [],
             })),
             saved.sourceLocationId,
             id,
           );
 
           for (const line of previousLines) {
-            await this.releaseLineQuantity(manager, tenantId, previousSourceLocationId, line);
+            await this.releaseLineQuantity(
+              manager,
+              tenantId,
+              previousSourceLocationId,
+              line,
+              this.resolveLineQuantity(line, previousGroups.get(line.id)?.length ?? 0),
+            );
           }
 
+          // El delete de líneas arrastra las filas hijas por ON DELETE CASCADE:
+          // el reemplazo que reusa seriales de la misma salida no auto-colisiona.
           await manager.delete(StockIssueLine, { tenantId, issueId: id });
           const nextLines = await manager.save(
             StockIssueLine,
@@ -996,14 +1237,41 @@ export class StockIssueService {
                 requestedQty: line.requestedQty.toFixed(2),
                 dispatchedQty: null,
                 lotId: line.lotId ?? null,
-                serializedAssetId: line.serializedAssetId ?? null,
+                serializedAssetId: line.serializedAssetIds?.[0] ?? null,
                 condition: line.condition,
               }),
             ),
           );
 
-          for (const line of nextLines) {
-            await this.reserveLineQuantity(manager, tenantId, saved.sourceLocationId, line);
+          // MOD12 S2 · B2: la reinsertión de la hija sincroniza la espejo con el
+          // estado actual de la cabecera (no terminal: los estados terminales
+          // entran solo por despacho o cancelación).
+          const serialRows: StockIssueLineSerial[] = [];
+          nextLines.forEach((savedLine, index) => {
+            const group = validated.lines?.[index]?.serializedAssetIds ?? [];
+            for (const serializedAssetId of group) {
+              serialRows.push(
+                manager.create(StockIssueLineSerial, {
+                  tenantId,
+                  lineId: savedLine.id,
+                  issueId: id,
+                  issueStatus: saved.status,
+                  serializedAssetId,
+                }),
+              );
+            }
+          });
+          await this.insertIssueLineSerials(manager, serialRows);
+
+          for (const line of validated.lines) {
+            // MOD12 S2 · ajuste G1: la reserva la decide el tamaño del grupo.
+            await this.reserveLineQuantity(
+              manager,
+              tenantId,
+              saved.sourceLocationId,
+              line,
+              this.resolveLineQuantity(line, line.serializedAssetIds?.length ?? 0),
+            );
           }
         } else if (
           validated.sourceLocationId &&
@@ -1011,21 +1279,37 @@ export class StockIssueService {
         ) {
           // MOD12 S1 · B3: al cambiar de bodega las líneas vigentes deben seguir
           // cumpliendo contra la bodega NUEVA (el serial pudo quedar en el origen anterior).
-          await this.assertSerializedLineIntegrity(
+          await this.assertSerializedGroupsIntegrity(
             manager,
             tenantId,
             previousLines.map((line) => ({
               itemId: line.itemId,
               requestedQty: line.requestedQty,
-              serializedAssetId: line.serializedAssetId,
+              serializedAssetIds: previousGroups.get(line.id) ?? [],
             })),
             saved.sourceLocationId,
             id,
           );
 
           for (const line of previousLines) {
-            await this.releaseLineQuantity(manager, tenantId, previousSourceLocationId, line);
-            await this.reserveLineQuantity(manager, tenantId, saved.sourceLocationId, line);
+            const quantity = this.resolveLineQuantity(
+              line,
+              previousGroups.get(line.id)?.length ?? 0,
+            );
+            await this.releaseLineQuantity(
+              manager,
+              tenantId,
+              previousSourceLocationId,
+              line,
+              quantity,
+            );
+            await this.reserveLineQuantity(
+              manager,
+              tenantId,
+              saved.sourceLocationId,
+              line,
+              quantity,
+            );
           }
         }
 
@@ -1033,8 +1317,14 @@ export class StockIssueService {
           where: { tenantId, issueId: id },
           order: { createdAt: 'ASC' },
         });
+        const currentSerials = await this.loadIssueSerials(manager, tenantId, id);
+        const viewsByLine = await this.buildLineSerialViews(manager, tenantId, currentSerials);
 
-        return { ...saved, lines, createdByUserId: saved.createdByUserId ?? actor.sub };
+        return {
+          ...saved,
+          lines: this.withSerialAssets(lines, viewsByLine),
+          createdByUserId: saved.createdByUserId ?? actor.sub,
+        };
       }),
     );
   }
@@ -1063,14 +1353,29 @@ export class StockIssueService {
           order: { createdAt: 'ASC' },
         });
 
+        // MOD12 S2 · ajuste G1: libera por el tamaño real del grupo de seriales.
+        const issueSerials = await this.loadIssueSerials(manager, tenantId, id);
+        const serialsByLineId = this.groupSerialAssetIdsByLine(issueSerials);
         for (const line of lines) {
-          await this.releaseLineQuantity(manager, tenantId, issue.sourceLocationId, line);
+          await this.releaseLineQuantity(
+            manager,
+            tenantId,
+            issue.sourceLocationId,
+            line,
+            this.resolveLineQuantity(line, serialsByLineId.get(line.id)?.length ?? 0),
+          );
         }
 
         issue.status = StockIssueStatus.CANCELLED;
         issue.closedAt = new Date();
 
-        return manager.save(StockIssue, issue);
+        const savedIssue = await manager.save(StockIssue, issue);
+
+        // MOD12 S2: espejo sincronizada en la misma transacción; libera el
+        // compromiso de los seriales (reciclaje del índice parcial).
+        await this.syncSerialMirrorStatus(manager, id, StockIssueStatus.CANCELLED);
+
+        return savedIssue;
       }),
     );
   }

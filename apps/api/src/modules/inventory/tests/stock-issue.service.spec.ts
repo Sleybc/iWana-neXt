@@ -19,6 +19,7 @@ jest.mock('@iwana/db', () => ({
   StockBalance: class StockBalance {},
   StockIssue: class StockIssue {},
   StockIssueLine: class StockIssueLine {},
+  StockIssueLineSerial: class StockIssueLineSerial {},
   StockLocation: class StockLocation {},
   TenantContext: {
     getOrThrow: jest.fn().mockReturnValue({
@@ -28,6 +29,16 @@ jest.mock('@iwana/db', () => ({
   },
   runInTenantSchema: jest.fn(),
 }));
+
+/** Query builder falso del UPDATE set-based de la espejo issue_status (MOD12 S2). */
+function buildMirrorUpdateQb() {
+  return {
+    update: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 const actor: JwtPayload = {
   sub: 'support-001',
@@ -409,7 +420,9 @@ describe('StockIssueService', () => {
         }
         return null;
       }),
-      find: jest.fn().mockResolvedValue(existingLines),
+      find: jest
+        .fn()
+        .mockImplementation(async (entity) => (entity === StockIssueLine ? existingLines : [])),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
@@ -430,7 +443,8 @@ describe('StockIssueService', () => {
     );
 
     expect(result.stockMovementId).toBe('movement-001');
-    expect(result.lines).toEqual(existingLines);
+    // MOD12 S2: las líneas del detalle llevan el grupo de seriales (vacío si no aplica).
+    expect(result.lines).toEqual(existingLines.map((line) => ({ ...line, serializedAssets: [] })));
     expect(manager.save).not.toHaveBeenCalled();
     expect(ledger.recordStockIssueTransferWithManager).not.toHaveBeenCalled();
     expect(ledger.recordStockIssueSaleWithManager).not.toHaveBeenCalled();
@@ -532,11 +546,15 @@ describe('StockIssueService', () => {
       },
     ];
     const balanceService = createStockBalanceServiceMock();
+    const mirrorQb = buildMirrorUpdateQb();
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       findOne: jest.fn().mockResolvedValue(existing),
-      find: jest.fn().mockResolvedValue(issueLines),
+      find: jest
+        .fn()
+        .mockImplementation(async (entity) => (entity === StockIssueLine ? issueLines : [])),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue(mirrorQb),
     };
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
       work({ manager }),
@@ -547,6 +565,12 @@ describe('StockIssueService', () => {
 
     expect(cancelled.status).toBe(StockIssueStatus.CANCELLED);
     expect(manager.save).toHaveBeenCalled();
+    // MOD12 S2: la espejo issue_status se sincroniza con la cabecera.
+    expect(mirrorQb.set).toHaveBeenCalledWith({
+      issueStatus: StockIssueStatus.CANCELLED,
+      updatedAt: expect.any(Date),
+    });
+    expect(mirrorQb.where).toHaveBeenCalledWith('issue_id = :issueId', { issueId: 'issue-001' });
     expect(balanceService.applyDeltaWithManager).toHaveBeenCalledWith(
       manager,
       expect.objectContaining({
@@ -596,6 +620,7 @@ describe('StockIssueService', () => {
       recordStockIssueInternalConsumptionWithManager: jest.fn(),
     };
 
+    const mirrorQb = buildMirrorUpdateQb();
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
@@ -626,6 +651,7 @@ describe('StockIssueService', () => {
         return [];
       }),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue(mirrorQb),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
@@ -655,6 +681,12 @@ describe('StockIssueService', () => {
       StockIssue,
       expect.objectContaining({ status: StockIssueStatus.DISPATCHED, stockMovementId: 'mov-001' }),
     );
+    // MOD12 S2: la espejo issue_status se sincroniza tras despachar.
+    expect(mirrorQb.set).toHaveBeenCalledWith({
+      issueStatus: StockIssueStatus.DISPATCHED,
+      updatedAt: expect.any(Date),
+    });
+    expect(mirrorQb.where).toHaveBeenCalledWith('issue_id = :issueId', { issueId: 'issue-001' });
   });
 
   it('rejects dispatch when source and destination locations are the same', async () => {
@@ -700,6 +732,7 @@ describe('StockIssueService', () => {
         return [];
       }),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue(buildMirrorUpdateQb()),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
@@ -782,6 +815,7 @@ describe('StockIssueService', () => {
         return [];
       }),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue(buildMirrorUpdateQb()),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
@@ -861,6 +895,7 @@ describe('StockIssueService', () => {
         return [];
       }),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue(buildMirrorUpdateQb()),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
@@ -1047,6 +1082,7 @@ describe('StockIssueService', () => {
         return [];
       }),
       save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue(buildMirrorUpdateQb()),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
