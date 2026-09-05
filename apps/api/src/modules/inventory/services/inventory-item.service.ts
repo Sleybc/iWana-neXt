@@ -101,6 +101,13 @@ function buildBarcodeConflictMessage(barcode: string, owner: InventoryItem): str
   return `El código de barras ${barcode} ya está asignado al artículo ${owner.sku} (${owner.name}). Indica otro código o deja el campo vacío.`;
 }
 
+/**
+ * Fase S2 · CA-S2-03 (copy aprobado G1, spec §A5.3): mensaje accionable que
+ * dirige a regularizar con salidas o ajustes — la recepción no vacía saldo.
+ */
+const TRACKING_MODE_CHANGE_BLOCKED_MESSAGE =
+  'Este producto tiene saldo en bodega o activos registrados, así que no permite cambiar su Control de material. Regulariza con salidas o ajustes y vuelve a intentarlo.';
+
 export interface InventoryItemResponse {
   id: string;
   tenantId: string;
@@ -911,6 +918,17 @@ export class InventoryItemService {
         throw new NotFoundException('El articulo de inventario solicitado no existe.');
       }
 
+      // Fase S2 (CA-S2-03): el cambio de Control de material redefine cómo se
+      // despacha el producto. Con saldo en bodega o activos registrados, la
+      // decisión exige regularizar primero (salidas o ajustes): la otra vía
+      // hacia el estado contradictorio que A1 cierra en el alta/edición.
+      if (
+        validated.trackingMode !== undefined &&
+        validated.trackingMode !== existing.trackingMode
+      ) {
+        await this.assertTrackingModeChangeAllowed(qr.manager, tenantId, id);
+      }
+
       const category = await this.resolveCategoryForUpdate(validated, existing);
 
       // Unicidad por tenant del código de barras (CA-F4-02): si el update fija
@@ -931,6 +949,10 @@ export class InventoryItemService {
         ...validated,
         categoryId: category?.id ?? existing.categoryId,
         category: validated.category ?? existing.category,
+        // Fase S2 (ajuste G1): el cruce itemKind ↔ trackingMode del esquema de
+        // creación exige que itemKind participe en la visión fusionada; sin él
+        // la regla cruzada nunca dispararía en edición.
+        itemKind: validated.itemKind ?? existing.itemKind,
         trackingMode: validated.trackingMode ?? existing.trackingMode,
         assetControlled: validated.assetControlled ?? existing.assetControlled,
         purchaseUnitOfMeasure:
@@ -954,6 +976,7 @@ export class InventoryItemService {
         name: mergedForValidation.name,
         categoryId: mergedForValidation.categoryId,
         category: mergedForValidation.category,
+        itemKind: mergedForValidation.itemKind,
         trackingMode: mergedForValidation.trackingMode,
         unitOfMeasure: mergedForValidation.unitOfMeasure,
         assetControlled: mergedForValidation.assetControlled,
@@ -1055,6 +1078,37 @@ export class InventoryItemService {
       throw new BadRequestException(
         'No se puede eliminar el producto porque tiene stock, activos o movimientos asociados.',
       );
+    }
+  }
+
+  /**
+   * Fase S2 (CA-S2-03): bloquea el cambio de Control de material cuando el
+   * ítem tiene saldo (> 0) en `stock_balances` o filas en `serialized_assets`.
+   * Consulta parametrizada bajo `runInTenantSchema` — mismo patrón de flags
+   * que `assertItemCanBeDeleted`.
+   */
+  private async assertTrackingModeChangeAllowed(
+    manager: EntityManager,
+    tenantId: string,
+    itemId: string,
+  ): Promise<void> {
+    const [flags] = (await manager.query(
+      `
+        SELECT
+          EXISTS(
+            SELECT 1 FROM stock_balances
+            WHERE tenant_id = $1 AND item_id = $2 AND quantity_on_hand > 0
+          ) AS has_stock,
+          EXISTS(
+            SELECT 1 FROM serialized_assets
+            WHERE tenant_id = $1 AND inventory_item_id = $2
+          ) AS has_assets
+      `,
+      [tenantId, itemId],
+    )) as Array<Record<string, boolean>>;
+
+    if (flags && (flags.has_stock || flags.has_assets)) {
+      throw new BadRequestException(TRACKING_MODE_CHANGE_BLOCKED_MESSAGE);
     }
   }
 

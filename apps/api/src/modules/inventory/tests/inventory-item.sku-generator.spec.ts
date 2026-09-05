@@ -157,7 +157,9 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
       {
         name: 'Switch 24p',
         categoryId: CATEGORY_ID,
-        trackingMode: InventoryTrackingMode.SERIALIZED,
+        // S2: pareja coherente — el SKU STK viene de itemKind STOCK, no del tracking.
+        itemKind: InventoryItemKind.STOCK,
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
         unitOfMeasure: 'UNIT',
       },
       actor,
@@ -188,7 +190,9 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
       {
         name: 'ONT GPON',
         categoryId: CATEGORY_ID,
-        trackingMode: InventoryTrackingMode.SERIALIZED,
+        // S2: pareja coherente — el SKU STK viene de itemKind STOCK, no del tracking.
+        itemKind: InventoryItemKind.STOCK,
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
         unitOfMeasure: 'UNIT',
       },
       actor,
@@ -216,7 +220,9 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
         {
           name: 'ONT GPON',
           categoryId: CATEGORY_ID,
-          trackingMode: InventoryTrackingMode.SERIALIZED,
+          // S2: pareja coherente — el SKU STK viene de itemKind STOCK, no del tracking.
+          itemKind: InventoryItemKind.STOCK,
+          trackingMode: InventoryTrackingMode.CONSUMABLE,
           unitOfMeasure: 'UNIT',
         },
         actor,

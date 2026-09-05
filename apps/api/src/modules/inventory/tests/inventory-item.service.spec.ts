@@ -437,6 +437,9 @@ describe('InventoryItemService', () => {
       name: 'ONT',
       categoryId: '11111111-1111-4111-8111-111111111111',
       category: InventoryItemCategory.CPE,
+      // S2: el merge de update revalida el cruce itemKind ↔ trackingMode contra
+      // el esquema de creación, así que el fixture de ítem serializado lo declara.
+      itemKind: InventoryItemKind.SERIALIZED,
       trackingMode: InventoryTrackingMode.SERIALIZED,
       unitOfMeasure: 'UNIT',
       assetControlled: true,

@@ -53,6 +53,7 @@ import {
   INVENTORY_CATALOG_INVENTORY_CONTROLLED_LABEL,
   INVENTORY_CATALOG_INVENTORY_SECTION_DESCRIPTION,
   INVENTORY_CATALOG_INVENTORY_SECTION_TITLE,
+  INVENTORY_CATALOG_ITEM_KIND_HELP_TEXT,
   INVENTORY_CATALOG_LEAD_TIME_ERROR,
   INVENTORY_CATALOG_LEAD_TIME_HELP_TEXT,
   INVENTORY_CATALOG_LEAD_TIME_LABEL,
@@ -93,9 +94,11 @@ import {
   INVENTORY_CATALOG_SUPPLIERS_NO_PERMISSION_HELP_TEXT,
   INVENTORY_CATALOG_TARGET_STOCK_HELP_TEXT,
   INVENTORY_CATALOG_TARGET_STOCK_LABEL,
+  INVENTORY_CATALOG_TRACKING_MODE_HELP_TEXT,
   INVENTORY_CATALOG_USEFUL_LIFE_ERROR,
   INVENTORY_CATALOG_USEFUL_LIFE_HELP_TEXT,
   INVENTORY_CATALOG_USEFUL_LIFE_LABEL,
+  INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
   INVENTORY_LAST_PURCHASE_COST_LABEL,
   INVENTORY_STANDARD_COST_LABEL,
   INVENTORY_UNIT_OF_MEASURE_OPTIONS,
@@ -178,6 +181,15 @@ function requiresAssetControlled(trackingMode: InventoryTrackingMode): boolean {
     trackingMode === InventoryTrackingMode.SERIALIZED ||
     trackingMode === InventoryTrackingMode.FIXED_ASSET
   );
+}
+
+/**
+ * Fase S2 (CA-S2-01): un Control de material serializado es «serial» o «activo
+ * fijo»; mismo criterio que `requiresAssetControlled`, nombrado para leer el
+ * cruce con Tipo de producto.
+ */
+function isSerializedTrackingMode(trackingMode: InventoryTrackingMode): boolean {
+  return requiresAssetControlled(trackingMode);
 }
 
 function formFromItem(item: InventoryItemRecord): CatalogFormState {
@@ -328,7 +340,27 @@ export function validateCatalogBarcode(
   return check.ok ? null : check.message;
 }
 
-type CatalogFieldErrorKey = CatalogNumericFieldKey | CatalogPurchaseUomFieldKey | 'barcode';
+/**
+ * Fase S2 · CA-S2-01: espejo cliente del cruce Tipo de producto ↔ Control de
+ * material (backend autoritativo vía refineInventoryItemMaster). Con la guía
+ * proactiva en ambas direcciones la contradicción no se construye a mano, pero
+ * un ítem ya inconsistente hidratado desde el catálogo sí puede llegar al
+ * guardado: se bloquea aquí con el mismo copy que devuelve la API.
+ */
+export function validateCatalogItemCoherence(
+  form: Pick<CatalogFormState, 'itemKind' | 'trackingMode'>,
+): string | null {
+  const coherent =
+    (form.itemKind === InventoryItemKind.SERIALIZED) ===
+    isSerializedTrackingMode(form.trackingMode);
+  return coherent ? null : INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE;
+}
+
+type CatalogFieldErrorKey =
+  | CatalogNumericFieldKey
+  | CatalogPurchaseUomFieldKey
+  | 'barcode'
+  | 'trackingMode';
 
 const CATALOG_PURCHASE_UOM_FIELD_KEYS: readonly CatalogPurchaseUomFieldKey[] = [
   'purchaseUnitOfMeasure',
@@ -509,8 +541,9 @@ export function InventoryCatalogDrawer({
 
   async function handleSubmit() {
     // A3: se revalida al construir el payload, no solo en blur. Incluye las
-    // reglas cruzadas compra→base (dimensional D2 y factor > 0) y el par
-    // código de barras + formato (F4, CA-F4-08 + dígito de control).
+    // reglas cruzadas compra→base (dimensional D2 y factor > 0), el par
+    // código de barras + formato (F4, CA-F4-08 + dígito de control) y el cruce
+    // Tipo de producto ↔ Control de material (S2, CA-S2-01).
     const errors: Partial<Record<CatalogFieldErrorKey, string>> = {
       ...validateCatalogNumericFields(form),
       ...validateCatalogPurchaseUom(form),
@@ -518,6 +551,10 @@ export function InventoryCatalogDrawer({
     const barcodeError = validateCatalogBarcode(form);
     if (barcodeError) {
       errors.barcode = barcodeError;
+    }
+    const itemCoherenceError = validateCatalogItemCoherence(form);
+    if (itemCoherenceError) {
+      errors.trackingMode = itemCoherenceError;
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -570,13 +607,35 @@ export function InventoryCatalogDrawer({
     );
   }
 
+  /**
+   * Guía proactiva S2 (CA-S2-02, ajuste G1 de AI-PROD-UX — ambas direcciones):
+   * hacia serial o activo fijo fuerza assetControlled Y ajusta Tipo de producto
+   * a «Con serial» en el mismo cambio; el helperText del campo lo explica.
+   */
   function handleTrackingModeChange(next: InventoryTrackingMode) {
-    // Guía proactiva §8.1: hacia serial o activo fijo fuerza assetControlled en el mismo cambio.
-    setForm((current) => ({
-      ...current,
-      trackingMode: next,
-      assetControlled: requiresAssetControlled(next) ? true : current.assetControlled,
-    }));
+    const nextForm: CatalogFormState = { ...form, trackingMode: next };
+    if (isSerializedTrackingMode(next)) {
+      nextForm.assetControlled = true;
+      nextForm.itemKind = InventoryItemKind.SERIALIZED;
+    }
+    setForm(nextForm);
+    // El error del cruce se reevalúa en el mismo cambio (patrón barcode): se
+    // limpia si la pareja quedó coherente, se fija si el guardado lo rechazaría.
+    handleFieldValidation('trackingMode', validateCatalogItemCoherence(nextForm));
+  }
+
+  /**
+   * Guía proactiva S2 (CA-S2-02): elegir «Con serial» ajusta Control de
+   * material a «Con serial» en el mismo cambio; un control ya serializado
+   * («Activo fijo») se respeta — el copy G1 anuncia que luego puede cambiarse.
+   */
+  function handleItemKindChange(next: InventoryItemKind) {
+    const nextForm: CatalogFormState = { ...form, itemKind: next };
+    if (next === InventoryItemKind.SERIALIZED && !isSerializedTrackingMode(nextForm.trackingMode)) {
+      nextForm.trackingMode = InventoryTrackingMode.SERIALIZED;
+    }
+    setForm(nextForm);
+    handleFieldValidation('trackingMode', validateCatalogItemCoherence(nextForm));
   }
 
   function handleUnitOfMeasureChange(next: string) {
@@ -760,7 +819,8 @@ export function InventoryCatalogDrawer({
                   value,
                   label: getInventoryItemKindLabel(value),
                 }))}
-                onChange={(e) => updateForm('itemKind', e.target.value as InventoryItemKind)}
+                onChange={(e) => handleItemKindChange(e.target.value as InventoryItemKind)}
+                helperText={INVENTORY_CATALOG_ITEM_KIND_HELP_TEXT}
               />
               <Select
                 label="Categoría"
@@ -782,6 +842,8 @@ export function InventoryCatalogDrawer({
                   label: getInventoryTrackingModeLabel(value),
                 }))}
                 onChange={(e) => handleTrackingModeChange(e.target.value as InventoryTrackingMode)}
+                helperText={INVENTORY_CATALOG_TRACKING_MODE_HELP_TEXT}
+                error={fieldErrors.trackingMode ?? ''}
               />
               <Select
                 label="Unidad de medida"

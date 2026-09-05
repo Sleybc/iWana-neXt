@@ -9,6 +9,7 @@ import request from 'supertest';
 import {
   InventoryItemCategory,
   InventoryCategoryStatus,
+  InventoryItemKind,
   InventoryTrackingMode,
   PurchaseRequestLineSourceKind,
   PurchaseRequestType,
@@ -438,6 +439,7 @@ describe('InventoryController HTTP', () => {
         sku: 'ONU-HG8145',
         name: 'ONU Huawei',
         categoryId: '11111111-1111-4111-8111-111111111111',
+        itemKind: InventoryItemKind.SERIALIZED,
         trackingMode: InventoryTrackingMode.SERIALIZED,
         unitOfMeasure: 'UNIT',
       })
@@ -451,6 +453,8 @@ describe('InventoryController HTTP', () => {
       sku: 'ONU-HG8145',
       name: 'ONU Huawei',
       categoryId: '11111111-1111-4111-8111-111111111111',
+      // S2: el cruce itemKind ↔ trackingMode exige pareja coherente en el alta.
+      itemKind: InventoryItemKind.SERIALIZED,
       trackingMode: InventoryTrackingMode.SERIALIZED,
       unitOfMeasure: 'UNIT',
     };
@@ -529,6 +533,77 @@ describe('InventoryController HTTP', () => {
         expect.objectContaining({ barcode: '036000291452', barcodeType: 'UPCA' }),
         expect.objectContaining({ sub: 'support-001' }),
       );
+    });
+  });
+
+  describe('coherencia del maestro: cruce itemKind ↔ trackingMode (Fase S2 · CA-S2-01)', () => {
+    it('rechaza con 400 crear "Con serial" + "Consumible" con el mensaje que nombra ambos campos', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({
+          sku: 'CPE-SER-ONU-TPL-XC220',
+          name: 'Onu Tp Link',
+          categoryId: '11111111-1111-4111-8111-111111111111',
+          itemKind: 'SERIALIZED',
+          trackingMode: 'CONSUMABLE',
+          unitOfMeasure: 'UNIT',
+        })
+        .expect(400);
+
+      expect(JSON.stringify(response.body)).toContain(
+        'Tipo de producto y Control de material no coinciden',
+      );
+      expect(inventoryItemServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con 400 crear "Consumible" (tipo) + "Con serial" (control), dirección inversa', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({
+          sku: 'CPE-STK-ONU-TPL-XC220',
+          name: 'Onu Tp Link',
+          categoryId: '11111111-1111-4111-8111-111111111111',
+          itemKind: 'CONSUMABLE',
+          trackingMode: 'SERIALIZED',
+          unitOfMeasure: 'UNIT',
+        })
+        .expect(400);
+
+      expect(inventoryItemServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con 400 editar con la contradicción explícita en el payload', async () => {
+      const itemId = '11111111-1111-4111-8111-111111111111';
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/v1/inventory/items/${itemId}`)
+        .set('Authorization', 'Bearer support-token')
+        .send({ itemKind: 'SERIALIZED', trackingMode: 'CONSUMABLE' })
+        .expect(400);
+
+      expect(JSON.stringify(response.body)).toContain(
+        'Tipo de producto y Control de material no coinciden',
+      );
+      expect(inventoryItemServiceMock.update).not.toHaveBeenCalled();
+    });
+
+    it('acepta crear la combinación coherente "Con serial" + "Activo fijo"', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({
+          sku: 'CPE-SER-ONU-TPL-XC220',
+          name: 'Onu Tp Link',
+          categoryId: '11111111-1111-4111-8111-111111111111',
+          itemKind: 'SERIALIZED',
+          trackingMode: 'FIXED_ASSET',
+          unitOfMeasure: 'UNIT',
+        })
+        .expect(201);
+
+      expect(inventoryItemServiceMock.create).toHaveBeenCalled();
     });
   });
 

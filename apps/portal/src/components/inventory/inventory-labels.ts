@@ -1078,3 +1078,21 @@ export const INVENTORY_CATALOG_USEFUL_LIFE_LABEL = 'Vida útil (meses)';
 export const INVENTORY_CATALOG_USEFUL_LIFE_HELP_TEXT =
   'Meses de vida útil esperada del activo. Alimenta las alertas de vencimiento.';
 export const INVENTORY_CATALOG_USEFUL_LIFE_ERROR = 'Debe ser un número entero mayor que cero.';
+
+/* ————————————————————————————————————————————————————————————————
+ * Fase S2 · Coherencia del maestro (spec 2026-09-05 §4, copy aprobado G1 §A5).
+ * Error espejo del backend (`refineInventoryItemMaster`, dto/index.ts) y guía
+ * proactiva en ambas direcciones del drawer de catálogo.
+ * ———————————————————————————————————————————————————————————————— */
+
+/** Error S2 · CA-S2-01: espejo del mensaje de la API (copy G1 §A5.1). */
+export const INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE =
+  'Tipo de producto y Control de material no coinciden: un producto "Con serial" debe tener Control de material "Con serial" o "Activo fijo". Ajusta Control de material para guardar.';
+
+/** helperText del Select «Tipo de producto» (copy G1 §A5.2). */
+export const INVENTORY_CATALOG_ITEM_KIND_HELP_TEXT =
+  'Al elegir "Con serial", Control de material se ajusta a "Con serial"; luego puedes cambiarlo a "Activo fijo".';
+
+/** helperText del Select «Control de material» (dirección inversa, ajuste G1 de AI-PROD-UX). */
+export const INVENTORY_CATALOG_TRACKING_MODE_HELP_TEXT =
+  'Al elegir "Con serial" o "Activo fijo", Tipo de producto se ajusta a "Con serial".';

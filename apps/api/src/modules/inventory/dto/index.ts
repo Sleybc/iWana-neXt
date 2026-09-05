@@ -304,12 +304,21 @@ const inventoryItemMasterFields = {
   status: z.nativeEnum(InventoryItemStatus).optional().default(InventoryItemStatus.ACTIVE),
 };
 
+/**
+ * Fase S2 · CA-S2-01 (copy aprobado G1, spec §A5.1): nombra los campos como los
+ * ve el operador — nunca los enums crudos. Espejo en portal:
+ * `INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE` (inventory-labels.ts).
+ */
+export const INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE =
+  'Tipo de producto y Control de material no coinciden: un producto "Con serial" debe tener Control de material "Con serial" o "Activo fijo". Ajusta Control de material para guardar.';
+
 function refineInventoryItemMaster<T extends z.ZodTypeAny>(schema: T) {
   return schema.superRefine((value, ctx) => {
     const input = value as {
       unitOfMeasure?: string | null;
       purchaseUnitOfMeasure?: string | null;
       purchaseToBaseUomFactor?: number | null;
+      itemKind?: InventoryItemKind;
       trackingMode: InventoryTrackingMode;
       assetControlled?: boolean;
       reorderPoint?: number;
@@ -440,6 +449,30 @@ function refineInventoryItemMaster<T extends z.ZodTypeAny>(schema: T) {
         code: z.ZodIssueCode.custom,
         message: 'Los articulos serializados o de activo fijo requieren control de activo.',
         path: ['assetControlled'],
+      });
+    }
+
+    /**
+     * Coherencia del maestro (Fase S2 · CA-S2-01): un producto «Con serial» es
+     * serializado de punta a punta, así que `itemKind` y `trackingMode` no
+     * pueden contradecirse. En creación ambos campos están presentes; en
+     * edición parcial solo se pronuncia cuando la contradicción viaja explícita
+     * en el payload — el estado fusionado lo revalida `InventoryItemService.update`
+     * contra el esquema de creación con `itemKind` incluido.
+     */
+    const itemKindSerialized = input.itemKind === InventoryItemKind.SERIALIZED;
+    const itemKindMentioned = input.itemKind !== undefined;
+    const trackingModeMentioned = input.trackingMode !== undefined;
+
+    const contradiction =
+      (itemKindSerialized && trackingModeMentioned && !requiresAssetControl) ||
+      (requiresAssetControl && itemKindMentioned && !itemKindSerialized);
+
+    if (contradiction) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
+        path: ['trackingMode'],
       });
     }
   });
