@@ -448,13 +448,19 @@ describe('SchedulingClient', () => {
       'true',
     );
 
-    const operationalViews = screen.getByRole('group', { name: 'Vistas operativas' });
-    expect(within(operationalViews).getByRole('button', { name: 'Día' })).toBeInTheDocument();
-    expect(within(operationalViews).getByRole('button', { name: 'Lista' })).toBeInTheDocument();
-
-    const analyticalViews = screen.getByRole('group', { name: 'Vistas analíticas' });
-    expect(within(analyticalViews).getByRole('button', { name: 'Semana' })).toBeInTheDocument();
-    expect(within(analyticalViews).getByRole('button', { name: 'Mes' })).toBeInTheDocument();
+    // El toolbar consolida las vistas en un único grupo "Vista de agenda":
+    // las operativas (Día, Lista) van primero y las analíticas (Semana, Mes) después.
+    expect(screen.queryByRole('group', { name: 'Vistas operativas' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Vistas analíticas' })).not.toBeInTheDocument();
+    const agendaViews = screen.getByRole('group', { name: 'Vista de agenda' });
+    const viewLabels = within(agendaViews)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim());
+    expect(viewLabels).toEqual(['Día', 'Lista', 'Semana', 'Mes']);
+    expect(within(agendaViews).getByRole('button', { name: 'Día' })).toBeInTheDocument();
+    expect(within(agendaViews).getByRole('button', { name: 'Lista' })).toBeInTheDocument();
+    expect(within(agendaViews).getByRole('button', { name: 'Semana' })).toBeInTheDocument();
+    expect(within(agendaViews).getByRole('button', { name: 'Mes' })).toBeInTheDocument();
   });
 
   it('recomienda lista cuando la jornada visible alcanza alta densidad', async () => {
@@ -801,7 +807,7 @@ describe('SchedulingClient', () => {
 
     expect(await screen.findByText('OT-001')).toBeInTheDocument();
     expect(tasksApiMock.executionOrders.get).toHaveBeenCalledWith('eo-001');
-    const openButton = screen.getByRole('button', { name: 'Abrir OT' });
+    const openButton = screen.getByRole('button', { name: 'Abrir orden de trabajo' });
     expect(openButton).toBeInTheDocument();
     fireEvent.click(openButton);
     expect(pushMock).toHaveBeenCalledWith('/dashboard/operations?executionOrderId=eo-001');
@@ -937,7 +943,9 @@ describe('SchedulingClient', () => {
   it('shows manual visit language instead of generic business capture', async () => {
     render(<SchedulingClient surface="agenda" />);
 
-    expect(await screen.findByText('Crear solicitud manual')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Crear solicitud manual' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Agendar tarea')).not.toBeInTheDocument();
   });
 
