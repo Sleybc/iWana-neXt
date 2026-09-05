@@ -78,6 +78,9 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
           <Link href="/dashboard/settings" className={portalInlineTextLinkClassName}>
             Ver en configuración
           </Link>
+          <Link href="/dashboard/profile" className={portalInlineTextLinkClassName}>
+            Ver mi perfil
+          </Link>
         </div>
       }
     >

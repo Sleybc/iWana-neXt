@@ -8,7 +8,6 @@ import type {
   DispatchStockIssueDto,
   InventoryItemRecord,
   SerializedAssetRecord,
-  StockBalanceRecord,
   StockIssueDetailRecord,
   StockIssueRecord,
   StockLocationRecord,
@@ -64,10 +63,8 @@ function mapIssuesListError(error: unknown): string {
 
 export interface StockIssuesWorkspaceProps {
   items?: InventoryItemRecord[];
-  balances?: StockBalanceRecord[];
   assets?: SerializedAssetRecord[];
   locations?: StockLocationRecord[];
-  issueItemFrequency?: Record<string, number>;
   /** Incrementar tras mutaciones del padre. */
   listRevision?: number;
   isSubmitting?: boolean;
@@ -82,10 +79,8 @@ export interface StockIssuesWorkspaceProps {
 
 function StockIssuesWorkspaceInner({
   items = [],
-  balances = [],
   assets = [],
   locations = [],
-  issueItemFrequency = {},
   listRevision = 0,
   isSubmitting,
   error,
@@ -328,10 +323,6 @@ function StockIssuesWorkspaceInner({
     <StockIssueComposer
       mode={workspaceMode === 'edit' ? 'edit' : 'create'}
       editIssue={workspaceMode === 'edit' ? editingIssue : null}
-      items={items}
-      balances={balances}
-      assets={assets}
-      issueItemFrequency={issueItemFrequency}
       isSubmitting={Boolean(isSubmitting)}
       error={actionError}
       onDirtyChange={setComposerDirty}

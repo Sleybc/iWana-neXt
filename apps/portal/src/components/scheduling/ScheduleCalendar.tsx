@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -10,6 +11,7 @@ import {
 } from 'react';
 import { CalendarX2, Check, X } from 'lucide-react';
 import {
+  Avatar,
   Badge,
   Button,
   Popover,
@@ -18,7 +20,7 @@ import {
   cn,
   interactiveFocusClassName,
 } from '@iwana/ui';
-import { ScheduleEventStatus } from '@iwana/shared';
+import { formatFullName, ScheduleEventStatus } from '@iwana/shared';
 import type {
   InternalUser,
   WfmScheduleEvent,
@@ -69,6 +71,7 @@ interface ScheduleCalendarProps {
   pendingVisitRequests?: WfmVisitRequest[] | undefined;
   selectedPendingVisitRequestId?: string | null | undefined;
   pendingAsideContent?: ReactNode;
+  showPendingVisitsRail?: boolean | undefined;
   displayWindow?: DailyDisplayWindow | undefined;
   dailyDraft?: DailyDraftEvent | null | undefined;
   onSelectEvent: (event: WfmScheduleEvent) => void;
@@ -137,27 +140,15 @@ function getDraftValidationMessage(validationState: DailyDraftEvent['validationS
   }
 }
 
-function getTechnicianInitials(
-  technician: Pick<InternalUser, 'firstName' | 'lastName' | 'email'>,
-): string {
-  const initials = [technician.firstName?.[0], technician.lastName?.[0]]
-    .filter(Boolean)
-    .join('')
-    .toUpperCase();
-
-  if (initials) {
-    return initials;
-  }
-
-  return technician.email.slice(0, 2).toUpperCase();
-}
-
 function DailyResponsibleIdentity({
   technician,
 }: {
   technician: Pick<InternalUser, 'firstName' | 'lastName' | 'email'>;
 }) {
   const fullName = getTechnicianDisplayName(technician);
+  // El avatar nunca deriva del email (contrato §5): sin nombre → icono.
+  const personName = formatFullName(technician.firstName, technician.lastName);
+  const nameId = useId();
 
   return (
     <Popover>
@@ -170,11 +161,12 @@ function DailyResponsibleIdentity({
             interactiveFocusClassName,
           )}
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-iwana-primary text-[11px] font-semibold text-white shadow-sm">
-            {getTechnicianInitials(technician)}
-          </span>
+          <Avatar size="sm" name={personName} labelledById={nameId} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">
+            <span
+              id={nameId}
+              className="block truncate text-sm font-semibold text-gray-900 dark:text-white"
+            >
               {fullName}
             </span>
           </span>
@@ -1145,6 +1137,7 @@ function DailyAgenda({
   pendingVisitRequests,
   selectedPendingVisitRequestId,
   pendingAsideContent,
+  showPendingVisitsRail = true,
   displayWindow = DEFAULT_DISPLAY_WINDOW,
   dailyDraft,
   onSelectEvent,
@@ -1163,6 +1156,7 @@ function DailyAgenda({
   | 'pendingVisitRequests'
   | 'selectedPendingVisitRequestId'
   | 'pendingAsideContent'
+  | 'showPendingVisitsRail'
   | 'displayWindow'
   | 'dailyDraft'
   | 'onSelectEvent'
@@ -1248,8 +1242,13 @@ function DailyAgenda({
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-      <div className="grid xl:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="min-w-0 border-b border-gray-200 dark:border-dark-border xl:border-b-0 xl:border-r">
+      <div className={cn('grid', showPendingVisitsRail && 'xl:grid-cols-[minmax(0,1fr)_300px]')}>
+        <section
+          className={cn(
+            'min-w-0 border-gray-200 dark:border-dark-border',
+            showPendingVisitsRail && 'border-b xl:border-b-0 xl:border-r',
+          )}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-dark-border">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
@@ -1509,13 +1508,15 @@ function DailyAgenda({
                               />
                             ) : null}
 
-                            {events.length === 0 && !rowDraft && (
-                              <div className="pointer-events-none absolute inset-x-0 top-2 flex px-5">
-                                <p className="text-sm text-gray-400 dark:text-gray-400">
-                                  Arrastra un pendiente o haz clic para crear.
-                                </p>
-                              </div>
-                            )}
+                            {(onPendingVisitDrop || onCreateEventSlot) &&
+                              events.length === 0 &&
+                              !rowDraft && (
+                                <div className="pointer-events-none absolute inset-x-0 top-2 flex px-5">
+                                  <p className="text-sm text-gray-400 dark:text-gray-400">
+                                    Arrastra un pendiente o haz clic para crear.
+                                  </p>
+                                </div>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -1527,13 +1528,15 @@ function DailyAgenda({
           )}
         </section>
 
-        <PendingVisitsRail
-          pendingVisitRequests={pendingVisitRequests}
-          selectedPendingVisitRequestId={selectedPendingVisitRequestId}
-          pendingAsideContent={pendingAsideContent}
-          onSelectPendingVisit={onSelectPendingVisit}
-          onOpenPendingVisitsInbox={onOpenPendingVisitsInbox}
-        />
+        {showPendingVisitsRail ? (
+          <PendingVisitsRail
+            pendingVisitRequests={pendingVisitRequests}
+            selectedPendingVisitRequestId={selectedPendingVisitRequestId}
+            pendingAsideContent={pendingAsideContent}
+            onSelectPendingVisit={onSelectPendingVisit}
+            onOpenPendingVisitsInbox={onOpenPendingVisitsInbox}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -1547,6 +1550,7 @@ export function ScheduleCalendar({
   pendingVisitRequests,
   selectedPendingVisitRequestId,
   pendingAsideContent,
+  showPendingVisitsRail,
   displayWindow,
   dailyDraft,
   onSelectEvent,
@@ -1598,6 +1602,7 @@ export function ScheduleCalendar({
           pendingVisitRequests={pendingVisitRequests}
           selectedPendingVisitRequestId={selectedPendingVisitRequestId}
           pendingAsideContent={pendingAsideContent}
+          showPendingVisitsRail={showPendingVisitsRail}
           displayWindow={displayWindow}
           dailyDraft={dailyDraft}
           onSelectEvent={onSelectEvent}

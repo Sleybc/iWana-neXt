@@ -309,6 +309,24 @@ describe('AuthController HTTP', () => {
     );
   });
 
+  it('P-05: POST /api/v1/auth/change-password limpia la cookie de access', async () => {
+    mockAuthService.changePassword.mockResolvedValue(undefined);
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({
+        currentPassword: 'OldPassw0rd!',
+        newPassword: 'NewPassw0rd!',
+      })
+      .expect(200);
+
+    const setCookie = response.headers['set-cookie'] as unknown;
+    expect(setCookie).toBeDefined();
+    const cookies = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+    expect(cookies).toContain('portalAccessToken=;');
+  });
+
   // ---------------------------------------------------------------------------
   // MOD01 — primer ingreso: contrato HTTP del indicador de cambio forzado
   //

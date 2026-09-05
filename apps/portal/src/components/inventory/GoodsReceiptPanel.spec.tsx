@@ -1,9 +1,23 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GoodsReceiptStatus, PurchaseOrderStatus } from '@iwana/shared';
+import { inventoryApi } from '@/lib/api-client';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
 import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
 import { formatInventoryDate, formatInventoryDateTime } from './inventory-labels';
+
+jest.mock('@/lib/api-client', () => {
+  const actual = jest.requireActual('@/lib/api-client');
+  return {
+    ...actual,
+    inventoryApi: {
+      ...actual.inventoryApi,
+      searchItemsForPicker: jest.fn(),
+    },
+  };
+});
+
+const searchItemsForPickerMock = inventoryApi.searchItemsForPicker as jest.Mock;
 
 jest.mock('./InventoryLocationPicker', () => ({
   InventoryLocationPicker: ({
@@ -95,6 +109,10 @@ const locations = [
 ] as never;
 
 describe('GoodsReceiptPanel', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    searchItemsForPickerMock.mockResolvedValue({ data: [], total: 0 });
+  });
   it('precarga líneas pendientes de la orden sin pedir ids manuales', () => {
     render(
       <GoodsReceiptPanel
@@ -308,5 +326,155 @@ describe('GoodsReceiptPanel', () => {
         ],
       }),
     );
+  });
+
+  it('F5b: muestra la equivalencia compra → base antes de confirmar (CA-F5B-10)', () => {
+    const convertibleItems = [
+      {
+        id: 'item-1',
+        sku: 'ONT-001',
+        name: 'ONT WiFi 6',
+        unitOfMeasure: 'UNIT',
+        purchaseUnitOfMeasure: 'BOX',
+        purchaseToBaseUomFactor: '100',
+      },
+    ] as never;
+
+    render(
+      <GoodsReceiptPanel
+        order={order}
+        orderLines={orderLines}
+        items={convertibleItems}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastReceipt={null}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(
+      screen.getByText('Equivalencia: 5 cajas = 500 unidades en unidad base.'),
+    ).toBeInTheDocument();
+  });
+
+  it('F5b: sin unidad de compra no muestra equivalencia (CA-F5B-06)', () => {
+    render(
+      <GoodsReceiptPanel
+        order={order}
+        orderLines={orderLines}
+        items={items}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastReceipt={null}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(screen.queryByText(/Equivalencia:/)).not.toBeInTheDocument();
+  });
+  it('F5b: maestro legacy dimensionalmente inválido no muestra equivalencia (regresión M-4)', () => {
+    // Litro → metro con factor: el backend lo rechazará al enviar; el panel
+    // no debe anticipar una equivalencia dimensionalmente imposible.
+    const dimensionallyInvalidItems = [
+      {
+        id: 'item-1',
+        sku: 'ONT-001',
+        name: 'ONT WiFi 6',
+        unitOfMeasure: 'METER',
+        purchaseUnitOfMeasure: 'LITER',
+        purchaseToBaseUomFactor: '1',
+      },
+    ] as never;
+
+    render(
+      <GoodsReceiptPanel
+        order={order}
+        orderLines={orderLines}
+        items={dimensionallyInvalidItems}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastReceipt={null}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(screen.queryByText(/Equivalencia:/)).not.toBeInTheDocument();
+  });
+});
+
+describe('GoodsReceiptPanel · F4 captura por código de barras (CA-F4-05)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    searchItemsForPickerMock.mockResolvedValue({ data: [], total: 0 });
+  });
+
+  function renderPanel() {
+    return render(
+      <GoodsReceiptPanel
+        order={order}
+        orderLines={orderLines}
+        items={items}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastReceipt={null}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+      />,
+    );
+  }
+
+  it('introducir el código ubica la línea sin búsqueda manual', async () => {
+    searchItemsForPickerMock.mockResolvedValue({
+      data: [{ id: 'item-1', label: 'ONT WiFi 6', sublabel: 'SKU ONT-001' }],
+      total: 1,
+    });
+    renderPanel();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Código de barras' }), {
+      target: { value: '4006381333931' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ubicar línea' }));
+
+    expect(searchItemsForPickerMock).toHaveBeenCalledWith({ q: '4006381333931' });
+    expect(await screen.findByText('Ubicado: SKU ONT-001 · ONT WiFi 6.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cantidad a recibir')).toHaveFocus();
+    });
+  });
+
+  it('avisa cuando el código es de un producto sin línea en la orden', async () => {
+    searchItemsForPickerMock.mockResolvedValue({
+      data: [{ id: 'item-9', label: 'Cable drop', sublabel: 'SKU CAB-009' }],
+      total: 1,
+    });
+    renderPanel();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Código de barras' }), {
+      target: { value: '8412345678905' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ubicar línea' }));
+
+    expect(
+      await screen.findByText(
+        'Ese código es de SKU CAB-009 · Cable drop, que no tiene línea en esta orden.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('avisa cuando ningún producto del catálogo usa ese código', async () => {
+    searchItemsForPickerMock.mockResolvedValue({ data: [], total: 0 });
+    renderPanel();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Código de barras' }), {
+      target: { value: '0000000000000' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ubicar línea' }));
+
+    expect(
+      await screen.findByText('Ningún producto del catálogo usa ese código.'),
+    ).toBeInTheDocument();
   });
 });

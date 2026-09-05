@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePathname } from 'next/navigation';
+import { formatFullName } from '@iwana/shared';
 import {
   authApi,
   clearPendingPlatformMfaLogin,
@@ -66,10 +67,7 @@ function buildPlatformDisplayName(platformProfile?: PlatformUserProfile | null):
     return null;
   }
 
-  const fullName = [platformProfile.firstName, platformProfile.lastName]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .join(' ')
-    .trim();
+  const fullName = formatFullName(platformProfile.firstName, platformProfile.lastName).trim();
 
   return fullName || null;
 }

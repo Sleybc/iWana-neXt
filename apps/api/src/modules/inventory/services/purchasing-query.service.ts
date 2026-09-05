@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import {
   PurchaseOrder,
   PurchaseRequest,
@@ -10,10 +10,25 @@ import {
   PurchaseRfqInvitation,
   SupplierQuote,
   SupplierQuoteLine,
+  SupplierQuoteTax,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
-import { PurchaseRfqStatus, PurchaseRequestPriority, PurchaseRequestStatus } from '@iwana/shared';
+import {
+  PurchaseOrderStatus,
+  PurchaseRequestFulfillmentStatus,
+  PurchaseRfqStatus,
+  PurchaseRequestPriority,
+  PurchaseRequestStatus,
+  TaxContext,
+  TaxQuoteEffect,
+} from '@iwana/shared';
+import {
+  TaxCatalogReadPort,
+  type TaxDefinitionSnapshot,
+} from '../../taxation/ports/tax-catalog-read.port';
+import { type SupplierQuoteTaxApiSnapshot } from '../utils/quote-tax-calc';
+import { resolvePurchaseRequestFulfillment } from '../utils/purchase-request-fulfillment';
 import {
   ListPurchaseRequestsQueryInput,
   ListPurchaseRequestsQuerySchema,
@@ -41,6 +56,58 @@ function toNumeric(value: string | number | null | undefined): number {
   return Number.parseFloat(value ?? '0');
 }
 
+function toPresetBaseRate(value: string | null): number | null {
+  if (value == null || String(value).trim() === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mapPurchaseTaxPreset(snapshot: TaxDefinitionSnapshot) {
+  return {
+    code: snapshot.code,
+    name: snapshot.name,
+    category: snapshot.category,
+    baseRate: toPresetBaseRate(snapshot.baseRate),
+    treatment: snapshot.treatment,
+    context: snapshot.context,
+  };
+}
+
+function resolveQuotePayableAmount(quote: SupplierQuote): string {
+  if (quote.payableAmount != null && String(quote.payableAmount).trim() !== '') {
+    return String(quote.payableAmount);
+  }
+  const amount = toNumeric(quote.amount);
+  const shipping = toNumeric(quote.shippingCost);
+  if (quote.shippingArrangement === 'PAY_CARRIER' || quote.shippingArrangement === 'FREE') {
+    return amount.toFixed(2);
+  }
+  return (amount + shipping).toFixed(2);
+}
+
+function mapPersistedQuoteTax(
+  row: SupplierQuoteTax,
+  catalogByCode: Map<string, TaxDefinitionSnapshot>,
+): SupplierQuoteTaxApiSnapshot {
+  const preset = catalogByCode.get(row.taxCode);
+  const effect =
+    row.effect === TaxQuoteEffect.ADD || row.effect === TaxQuoteEffect.WITHHOLD
+      ? row.effect
+      : TaxQuoteEffect.WITHHOLD;
+  return {
+    code: row.taxCode,
+    name: preset?.name ?? row.taxCode,
+    category: row.taxCategory,
+    effect,
+    applies: true,
+    rate: row.rate,
+    baseAmount: row.baseAmount,
+    taxAmount: row.taxAmount,
+  };
+}
+
 /** Normaliza columnas `date` de TypeORM/pg a YYYY-MM-DD. */
 function toDateOnlyString(value: string | Date | null | undefined): string | null {
   if (value == null || value === '') {
@@ -56,6 +123,14 @@ function toDateOnlyString(value: string | Date | null | undefined): string | nul
   return trimmed.length >= 10 ? trimmed.slice(0, 10) : null;
 }
 
+/**
+ * Fila de listado: la entidad tal cual más el eje derivado de abastecimiento.
+ * `fulfillmentStatus` no se persiste (ver `resolvePurchaseRequestFulfillment`).
+ */
+export type PurchaseRequestListRow = PurchaseRequest & {
+  fulfillmentStatus: PurchaseRequestFulfillmentStatus;
+};
+
 const ACTIVE_RFQ_STATUSES = [
   PurchaseRfqStatus.DRAFT,
   PurchaseRfqStatus.SENT,
@@ -68,11 +143,71 @@ export class PurchasingQueryService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly supplierPartyPort: SupplierPartyPort,
     private readonly purchasingPolicyService: PurchasingPolicyService,
+    @Inject(TaxCatalogReadPort) private readonly taxCatalogPort: TaxCatalogReadPort,
   ) {}
+
+  /**
+   * Resuelve el eje de abastecimiento de una página de solicitudes con UNA sola
+   * consulta agregada sobre `purchase_orders` (nada de N+1). El agrupado por
+   * solicitud+estado acota las filas a lo mínimo necesario para el resolutor.
+   */
+  private async resolveFulfillmentByRequestId(
+    manager: EntityManager,
+    tenantId: string,
+    requestIds: readonly string[],
+  ): Promise<Map<string, PurchaseRequestFulfillmentStatus>> {
+    if (requestIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await manager
+      .createQueryBuilder(PurchaseOrder, 'po')
+      .select('po.purchase_request_id', 'purchaseRequestId')
+      .addSelect('po.status', 'status')
+      .where('po.tenant_id = :tenantId', { tenantId })
+      .andWhere('po.purchase_request_id IN (:...requestIds)', { requestIds })
+      .groupBy('po.purchase_request_id')
+      .addGroupBy('po.status')
+      .getRawMany<{ purchaseRequestId: string; status: PurchaseOrderStatus }>();
+
+    const statusesByRequestId = new Map<string, PurchaseOrderStatus[]>();
+    for (const row of rows) {
+      const bucket = statusesByRequestId.get(row.purchaseRequestId) ?? [];
+      bucket.push(row.status);
+      statusesByRequestId.set(row.purchaseRequestId, bucket);
+    }
+
+    const fulfillmentByRequestId = new Map<string, PurchaseRequestFulfillmentStatus>();
+    for (const [requestId, statuses] of statusesByRequestId) {
+      fulfillmentByRequestId.set(requestId, resolvePurchaseRequestFulfillment(statuses));
+    }
+
+    return fulfillmentByRequestId;
+  }
+
+  /** Adjunta el eje derivado sin alterar la forma del resto de la entidad. */
+  private async attachFulfillmentStatus(
+    manager: EntityManager,
+    tenantId: string,
+    requests: PurchaseRequest[],
+  ): Promise<PurchaseRequestListRow[]> {
+    const fulfillmentByRequestId = await this.resolveFulfillmentByRequestId(
+      manager,
+      tenantId,
+      requests.map((request) => request.id),
+    );
+
+    return requests.map((request) =>
+      Object.assign(request, {
+        fulfillmentStatus:
+          fulfillmentByRequestId.get(request.id) ?? PurchaseRequestFulfillmentStatus.NOT_ORDERED,
+      }),
+    );
+  }
 
   async listRequests(
     query: ListPurchaseRequestsQueryInput,
-  ): Promise<ListResponse<PurchaseRequest>> {
+  ): Promise<ListResponse<PurchaseRequestListRow>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListPurchaseRequestsQuerySchema.parse(query);
     assertExclusivePageCursor(validated);
@@ -93,8 +228,6 @@ export class PurchasingQueryService {
         qb.andWhere('request.status IN (:...pendingQuoteStatuses)', {
           pendingQuoteStatuses: [PurchaseRequestStatus.DRAFT, PurchaseRequestStatus.PENDING_QUOTES],
         });
-      } else if (validated.status) {
-        qb.andWhere('request.status = :status', { status: validated.status });
       } else if (validated.kpiPreset === 'pendingApproval') {
         qb.andWhere('request.status = :status', {
           status: PurchaseRequestStatus.PENDING_APPROVAL,
@@ -102,9 +235,26 @@ export class PurchasingQueryService {
       } else if (validated.kpiPreset === 'readyForPo') {
         qb.andWhere('request.status = :status', { status: PurchaseRequestStatus.APPROVED });
       } else if (validated.kpiPreset === 'pendingReceipt') {
-        qb.andWhere('request.status = :status', {
-          status: PurchaseRequestStatus.CONVERTED_TO_PO,
+        // Por recibir = CONVERTED_TO_PO con al menos una orden recepcionable.
+        // Sin este EXISTS, una PR totalmente recibida (PO FULLY_RECEIVED/CLOSED)
+        // seguía contando como "Por recibir" aunque el workbench ya la muestra
+        // como cerrada (ver getPurchaseNextAction). Misma definición que el
+        // workbench: órdenes en APPROVED o PARTIALLY_RECEIVED.
+        qb.andWhere('request.status = :pendingReceiptStatus', {
+          pendingReceiptStatus: PurchaseRequestStatus.CONVERTED_TO_PO,
         });
+        qb.andWhere(
+          `EXISTS (SELECT 1 FROM purchase_orders po WHERE po.purchase_request_id = request.id AND po.tenant_id = :pendingReceiptTenantId AND po.status IN (:...pendingReceiptOrderStatuses))`,
+          {
+            pendingReceiptTenantId: tenantId,
+            pendingReceiptOrderStatuses: [
+              PurchaseOrderStatus.APPROVED,
+              PurchaseOrderStatus.PARTIALLY_RECEIVED,
+            ],
+          },
+        );
+      } else if (validated.status) {
+        qb.andWhere('request.status = :status', { status: validated.status });
       }
 
       if (validated.priority) {
@@ -155,7 +305,7 @@ export class PurchasingQueryService {
           .take(limit)
           .getMany();
         return {
-          data: rows,
+          data: await this.attachFulfillmentStatus(qr.manager, tenantId, rows),
           meta: buildPageMeta({
             total,
             page,
@@ -176,7 +326,7 @@ export class PurchasingQueryService {
       const rows = await qb.take(limit + 1).getMany();
       const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.createdAt);
       return {
-        data,
+        data: await this.attachFulfillmentStatus(qr.manager, tenantId, data),
         meta: buildCursorMeta({
           nextCursor,
           total,
@@ -188,6 +338,9 @@ export class PurchasingQueryService {
 
   async getRequestDetail(purchaseRequestId: string) {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const catalog = await this.taxCatalogPort.listByContext(TaxContext.PURCHASE);
+    const purchaseTaxPresets = catalog.map(mapPurchaseTaxPreset);
+    const catalogByCode = new Map(catalog.map((entry) => [entry.code, entry]));
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const request = await qr.manager.findOne(PurchaseRequest, {
@@ -222,7 +375,7 @@ export class PurchasingQueryService {
 
       const lineIds = lines.map((line) => line.id);
       const quoteIds = quotes.map((quote) => quote.id);
-      const [awards, quoteLines] = await Promise.all([
+      const [awards, quoteLines, quoteTaxes] = await Promise.all([
         lineIds.length
           ? qr.manager.find(PurchaseRequestLineAward, {
               where: { tenantId, purchaseRequestLineId: In(lineIds) },
@@ -235,6 +388,12 @@ export class PurchasingQueryService {
               order: { createdAt: 'ASC' },
             })
           : Promise.resolve([] as SupplierQuoteLine[]),
+        quoteIds.length
+          ? qr.manager.find(SupplierQuoteTax, {
+              where: { tenantId, supplierQuoteId: In(quoteIds) },
+              order: { createdAt: 'ASC' },
+            })
+          : Promise.resolve([] as SupplierQuoteTax[]),
       ]);
 
       const quoteLinesByQuoteId = new Map<string, SupplierQuoteLine[]>();
@@ -244,9 +403,18 @@ export class PurchasingQueryService {
         quoteLinesByQuoteId.set(quoteLine.supplierQuoteId, bucket);
       }
 
+      const quoteTaxesByQuoteId = new Map<string, SupplierQuoteTaxApiSnapshot[]>();
+      for (const taxRow of quoteTaxes) {
+        const bucket = quoteTaxesByQuoteId.get(taxRow.supplierQuoteId) ?? [];
+        bucket.push(mapPersistedQuoteTax(taxRow, catalogByCode));
+        quoteTaxesByQuoteId.set(taxRow.supplierQuoteId, bucket);
+      }
+
       const quotesWithLines = quotes.map((quote) => ({
         ...quote,
         lines: quoteLinesByQuoteId.get(quote.id) ?? [],
+        taxes: quoteTaxesByQuoteId.get(quote.id) ?? [],
+        payableAmount: resolveQuotePayableAmount(quote),
       }));
 
       const estimatedAmount = quotesWithLines.reduce(
@@ -277,8 +445,13 @@ export class PurchasingQueryService {
 
       const requestNeededBy = toDateOnlyString(request.neededByDate);
 
+      // Mismo eje derivado que el listado, resuelto con las órdenes ya cargadas.
+      const requestWithFulfillment: PurchaseRequestListRow = Object.assign(request, {
+        fulfillmentStatus: resolvePurchaseRequestFulfillment(orders.map((order) => order.status)),
+      });
+
       return {
-        request,
+        request: requestWithFulfillment,
         lines,
         quotes: quotesWithLines,
         awards,
@@ -288,6 +461,7 @@ export class PurchasingQueryService {
         })),
         estimatedAmount,
         approvalPolicy,
+        purchaseTaxPresets,
         rfq: activeRfq
           ? {
               rfq: activeRfq,

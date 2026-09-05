@@ -18,6 +18,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiExtraModels,
@@ -385,6 +386,7 @@ export class UsersController {
    * La regla de ownership vive en el servicio (H-08) → 403 si el actor no es el dueño.
    */
   @Patch(':id/login-email')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso del propio usuario' })
   @ApiResponse({
@@ -395,6 +397,7 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'Contraseña actual invalida u otros datos invalidos.' })
   @ApiResponse({ status: 403, description: 'Solo puedes cambiar tu propio email de acceso.' })
   @ApiResponse({ status: 409, description: 'El nuevo email ya está en uso.' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async changeLoginEmail(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ChangeUserLoginEmailDto,

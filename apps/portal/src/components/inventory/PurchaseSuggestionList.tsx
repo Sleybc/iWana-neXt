@@ -1,5 +1,6 @@
 'use client';
 
+import { SkeletonBlock } from '@iwana/ui';
 import { PortalEmptyState, interactiveFocusClassName } from '@/components/shared/portal-ui';
 
 interface PurchaseSuggestionListProps {
@@ -23,7 +24,13 @@ export function PurchaseSuggestionList({
   onToggle,
 }: PurchaseSuggestionListProps) {
   if (isLoading) {
-    return <p className="text-sm text-gray-500 dark:text-gray-400">Cargando sugerencias...</p>;
+    return (
+      <div className="space-y-2" aria-label="Cargando material disponible" role="status">
+        <SkeletonBlock className="h-16 w-full" />
+        <SkeletonBlock className="h-16 w-full" />
+        <SkeletonBlock className="h-16 w-full" />
+      </div>
+    );
   }
 
   if (suggestions.length === 0) {

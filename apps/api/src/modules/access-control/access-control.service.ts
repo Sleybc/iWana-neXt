@@ -27,6 +27,7 @@ import { AuditService } from '../audit/audit.service';
 import { AccessGovernanceService } from './services/access-governance.service';
 import { EffectivePermissionsService } from './services/effective-permissions.service';
 import {
+  MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES,
   MOD00_ACCESS_V2_CATALOG,
   MOD00_ACCESS_V2_DEPRECATED_KEYS,
   MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES,
@@ -38,6 +39,17 @@ import {
   ReplaceUserProfilesDto,
   UpdateAccessProfileDto,
 } from './dto/access-control.dto';
+
+const LEGACY_V1_TEMPLATE_NAMES: readonly string[] = MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES.filter(
+  (template) => template.baseRoleConstraint !== UserRole.ADMIN,
+).map((template) => template.name);
+
+const V2_TEMPLATE_NAME_BY_ROLE = new Map(
+  MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.map((template) => [
+    template.baseRoleConstraint,
+    template.name,
+  ]),
+);
 
 interface MutationAuditContext {
   userId?: string | null;
@@ -103,12 +115,16 @@ export class AccessControlService {
     });
   }
 
-  async listProfiles(): Promise<AccessProfileView[]> {
+  async listProfiles(auditContext?: MutationAuditContext): Promise<AccessProfileView[]> {
     const ctx = TenantContext.getOrThrow();
+    let remappedProfileIds: string[] = [];
+    let remappedAssignmentCount = 0;
 
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
       await this.ensurePermissionCatalogSeeded(qr.manager, ctx.tenantId);
-      await this.ensureSystemRoleTemplatesSeeded(qr.manager, ctx.tenantId);
+      const remap = await this.ensureSystemRoleTemplatesSeeded(qr.manager, ctx.tenantId);
+      remappedProfileIds = remap.remappedProfileIds;
+      remappedAssignmentCount = remap.remappedAssignmentCount;
       const profiles = await qr.manager.find(AccessProfile, {
         where: { tenantId: ctx.tenantId, isActive: true },
         order: { isSystem: 'DESC', name: 'ASC' },
@@ -117,6 +133,34 @@ export class AccessControlService {
 
       return this.toProfileViews(qr.manager, ctx.tenantId, profiles);
     });
+
+    if (remappedProfileIds.length > 0) {
+      await this.effectivePermissionsService.invalidateByProfiles(
+        ctx.tenantId,
+        ctx.schemaName,
+        remappedProfileIds,
+      );
+
+      await this.auditService.log({
+        tenantId: ctx.tenantId,
+        schemaName: ctx.schemaName,
+        userId: auditContext?.userId ?? null,
+        action: AuditAction.UPDATE,
+        entityType: 'user_access_profiles',
+        entityId: 'v1-to-v2-remap',
+        oldValue: { source: 'MOD00_ACCESS_V1_TEMPLATES' },
+        newValue: {
+          catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
+          remappedProfileIds,
+          remappedAssignmentCount,
+        },
+        ipAddress: auditContext?.ipAddress ?? null,
+        userAgent: auditContext?.userAgent ?? null,
+        requestId: auditContext?.requestId ?? null,
+      });
+    }
+
+    return result;
   }
 
   async getEffectivePermissionsSummary(userId: string): Promise<EffectivePermissionsSummaryView> {
@@ -626,9 +670,10 @@ export class AccessControlService {
   private async ensureSystemRoleTemplatesSeeded(
     manager: EntityManager,
     tenantId: string,
-  ): Promise<void> {
+  ): Promise<{ remappedProfileIds: string[]; remappedAssignmentCount: number }> {
     // Canon V2: 9 plantillas con nombres canónicos exactos.
     const templateNames = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.map((t) => t.name);
+    const v2NameSet = new Set(templateNames);
     const definitionsByName = new Map(
       MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.map((t) => [t.name, t]),
     );
@@ -692,29 +737,18 @@ export class AccessControlService {
       where: { tenantId, name: In(templateNames), isSystem: true },
     });
 
-    // Desactivar plantillas V1 legacy que duplican V2 (mismo baseRoleConstraint, nombre distinto)
-    const legacyV1Names = [
-      'Monitoreo operativo',
-      'Soporte inicial',
-      'Técnico de campo',
-      'Contratista',
-      'Auditor',
-    ];
-    const legacyProfiles = await manager.find(AccessProfile, {
-      where: { tenantId, name: In(legacyV1Names), isSystem: true, isActive: true },
-    });
-    if (legacyProfiles.length > 0) {
-      for (const legacy of legacyProfiles) {
-        // Solo desactivar si ya existe su reemplazo V2 para el mismo rol
-        const hasV2Replacement = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.some(
-          (t) => t.baseRoleConstraint === legacy.baseRoleConstraint,
-        );
-        if (hasV2Replacement) {
-          legacy.isActive = false;
-          await manager.save(AccessProfile, legacy);
-        }
+    const canonicalByName = new Map<string, AccessProfile>();
+    for (const profile of [...allCanonicalProfiles, ...savedTemplates]) {
+      if (v2NameSet.has(profile.name)) {
+        canonicalByName.set(profile.name, profile);
       }
     }
+
+    const remapped = await this.remapLegacyV1AssignmentsToCanonicalV2(
+      manager,
+      tenantId,
+      canonicalByName,
+    );
 
     const savedIds = new Set(savedTemplates.map((p) => p.id));
     for (const profile of allCanonicalProfiles) {
@@ -751,6 +785,111 @@ export class AccessControlService {
         definition.permissionKeys,
       );
     }
+
+    return remapped;
+  }
+
+  /**
+   * Reasigna asignaciones activas de plantillas V1 a la plantilla V2 del mismo
+   * `baseRoleConstraint` antes de desactivar la V1. Incluye V1 ya inactivas
+   * que aún tengan asignaciones vivas. Idempotente (ON CONFLICT DO NOTHING).
+   * No remapea ni desactiva V1 si la V2 canónica no está activa.
+   */
+  private async remapLegacyV1AssignmentsToCanonicalV2(
+    manager: EntityManager,
+    tenantId: string,
+    canonicalByName: Map<string, AccessProfile>,
+  ): Promise<{ remappedProfileIds: string[]; remappedAssignmentCount: number }> {
+    const empty = { remappedProfileIds: [] as string[], remappedAssignmentCount: 0 };
+    const legacyNameSet = new Set<string>(LEGACY_V1_TEMPLATE_NAMES);
+    const legacyProfiles = (
+      await manager.find(AccessProfile, {
+        where: { tenantId, name: In([...LEGACY_V1_TEMPLATE_NAMES]), isSystem: true },
+      })
+    ).filter((profile) => legacyNameSet.has(profile.name));
+
+    if (legacyProfiles.length === 0) {
+      return empty;
+    }
+
+    const remappable: Array<{ v1: AccessProfile; v2: AccessProfile }> = [];
+    for (const v1 of legacyProfiles) {
+      if (!v1.baseRoleConstraint) {
+        continue;
+      }
+      const v2Name = V2_TEMPLATE_NAME_BY_ROLE.get(v1.baseRoleConstraint);
+      if (!v2Name) {
+        continue;
+      }
+      const v2 = canonicalByName.get(v2Name);
+      if (!v2 || !v2.isActive) {
+        continue;
+      }
+      remappable.push({ v1, v2 });
+    }
+
+    if (remappable.length === 0) {
+      return empty;
+    }
+
+    const v1Ids = remappable.map((pair) => pair.v1.id);
+
+    const insertedRows = (await manager.query(
+      `
+        INSERT INTO user_access_profiles (tenant_id, user_id, profile_id, valid_from, valid_to, is_active)
+        SELECT uap.tenant_id, uap.user_id, v2.id, CURRENT_DATE, NULL, true
+        FROM user_access_profiles uap
+        INNER JOIN access_profiles v1
+          ON v1.id = uap.profile_id
+         AND v1.tenant_id = uap.tenant_id
+         AND v1.is_system = true
+         AND v1.name = ANY($2::text[])
+        INNER JOIN access_profiles v2
+          ON v2.tenant_id = uap.tenant_id
+         AND v2.is_system = true
+         AND v2.is_active = true
+         AND v2.deleted_at IS NULL
+         AND v2.name = CASE v1.name
+           WHEN 'Monitoreo operativo' THEN 'Acceso estándar NOC'
+           WHEN 'Soporte inicial' THEN 'Acceso estándar Soporte'
+           WHEN 'Técnico de campo' THEN 'Acceso estándar Técnico'
+           WHEN 'Contratista' THEN 'Acceso estándar Contratista'
+           WHEN 'Auditor' THEN 'Acceso estándar Auditoría'
+           ELSE NULL
+         END
+        WHERE uap.tenant_id = $1
+          AND uap.is_active = true
+          AND uap.profile_id = ANY($3::uuid[])
+        ON CONFLICT (tenant_id, user_id, profile_id) WHERE is_active = true DO NOTHING
+        RETURNING id
+      `,
+      [tenantId, [...LEGACY_V1_TEMPLATE_NAMES], v1Ids],
+    )) as Array<{ id: string }> | undefined;
+
+    await manager.query(
+      `
+        UPDATE user_access_profiles
+           SET is_active = false,
+               valid_to = COALESCE(valid_to, CURRENT_DATE)
+         WHERE tenant_id = $1
+           AND is_active = true
+           AND profile_id = ANY($2::uuid[])
+      `,
+      [tenantId, v1Ids],
+    );
+
+    const stillActiveV1 = remappable.map((pair) => pair.v1).filter((profile) => profile.isActive);
+    if (stillActiveV1.length > 0) {
+      for (const legacy of stillActiveV1) {
+        legacy.isActive = false;
+      }
+      await manager.save(AccessProfile, stillActiveV1);
+    }
+
+    return {
+      remappedProfileIds: [...new Set(remappable.flatMap((pair) => [pair.v1.id, pair.v2.id]))],
+      remappedAssignmentCount: Array.isArray(insertedRows) ? insertedRows.length : 0,
+    };
   }
 
   private ensureRoleAllowedForTenantProfiles(role: UserRole): void {

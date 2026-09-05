@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Input, Select } from '@iwana/ui';
+import { Button, FormStatus, Input, Select } from '@iwana/ui';
 import { MapPin, Phone, UserRound } from 'lucide-react';
 import { PersonType } from '@iwana/shared';
 import type { UpdateSubscriberPayload } from '@iwana/shared';
@@ -52,7 +52,9 @@ function SectionCard({
       <div className="px-5 py-5">
         {children}
 
-        {error && <p className="mt-3 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        <div className="mt-3">
+          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
+        </div>
 
         <div className="mt-5 flex justify-end">
           <Button

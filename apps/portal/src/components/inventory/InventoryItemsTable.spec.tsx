@@ -49,6 +49,8 @@ const baseItem: InventoryItemRecord = {
   usefulLifeMonths: 36,
   commercialReferenceId: null,
   status: InventoryItemStatus.ACTIVE,
+  barcode: null,
+  barcodeType: null,
   createdAt: '2026-06-25T12:00:00.000Z',
   updatedAt: '2026-06-25T12:00:00.000Z',
 };
@@ -91,5 +93,22 @@ describe('InventoryItemsTable · costo promedio (G6 / D-F4-9)', () => {
     const row = screen.getByRole('row', { name: /ONT WiFi 6/i });
     expect(within(row).getByText(INVENTORY_NO_COST_LABEL)).toBeInTheDocument();
     expect(within(row).queryByText(formatInventoryCurrency('115000'))).not.toBeInTheDocument();
+  });
+});
+
+describe('InventoryItemsTable · etiqueta de unidad (ADR-085 F5b)', () => {
+  it('mapea el código canónico a etiqueta en español (UNIT → Unidad)', () => {
+    render(<InventoryItemsTable items={[{ ...baseItem, unitOfMeasure: 'UNIT' }]} />);
+
+    const row = screen.getByRole('row', { name: /ONT WiFi 6/i });
+    expect(within(row).getByText('Unidad')).toBeInTheDocument();
+    expect(within(row).queryByText('UNIT')).not.toBeInTheDocument();
+  });
+
+  it('conserva valores fuera de catálogo tal cual (compatibilidad pre-122)', () => {
+    render(<InventoryItemsTable items={[baseItem]} />);
+
+    const row = screen.getByRole('row', { name: /ONT WiFi 6/i });
+    expect(within(row).getByText('unidad')).toBeInTheDocument();
   });
 });

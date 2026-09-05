@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
 import {
@@ -10,6 +10,7 @@ import {
   PurchaseRfq,
   SupplierQuote,
   SupplierQuoteLine,
+  SupplierQuoteTax,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -18,14 +19,27 @@ import {
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
   PurchaseRfqStatus,
+  QuoteShippingArrangement,
+  TaxContext,
   type ListResponse,
 } from '@iwana/shared';
+import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
+import {
+  computeQuoteTaxes,
+  formatTaxRate,
+  QuoteTaxCalcError,
+  toSupplierQuoteTaxApiSnapshot,
+  type QuoteTaxCalcResult,
+  type SupplierQuoteTaxApiSnapshot,
+} from '../utils/quote-tax-calc';
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { generateSequentialNumber } from '../utils/sequential-number';
 import {
   AddSupplierQuoteInput,
   AddSupplierQuoteSchema,
+  UpdateSupplierQuoteInput,
+  UpdateSupplierQuoteSchema,
   ApprovePurchaseRequestInput,
   ApprovePurchaseRequestSchema,
   CancelPurchaseOrderInput,
@@ -88,6 +102,7 @@ export class PurchasingService {
     private readonly purchasingPolicyService: PurchasingPolicyService,
     private readonly rfqService: RfqService,
     private readonly supplierProfileService: SupplierProfileService,
+    @Inject(TaxCatalogReadPort) private readonly taxCatalogPort: TaxCatalogReadPort,
   ) {}
 
   async createPurchaseRequest(
@@ -218,9 +233,10 @@ export class PurchasingService {
     purchaseRequestId: string,
     input: AddSupplierQuoteInput,
     actor: JwtPayload,
-  ): Promise<SupplierQuote & { lines: SupplierQuoteLine[] }> {
+  ): Promise<SupplierQuote & { lines: SupplierQuoteLine[]; taxes: SupplierQuoteTaxApiSnapshot[] }> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = AddSupplierQuoteSchema.parse(input);
+    const catalog = await this.taxCatalogPort.listByContext(TaxContext.PURCHASE);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       withTransaction(qr.manager, async (manager) => {
@@ -288,6 +304,29 @@ export class PurchasingService {
           throw new BadRequestException('Indica el monto total de la cotización.');
         }
 
+        const shippingArrangement =
+          validated.shippingArrangement ?? QuoteShippingArrangement.ON_INVOICE;
+        const shippingCost =
+          shippingArrangement === QuoteShippingArrangement.FREE
+            ? 0
+            : Number(validated.shippingCost.toFixed(2));
+        const shippingInPayable =
+          shippingArrangement === QuoteShippingArrangement.ON_INVOICE ? shippingCost : 0;
+        let taxComputation: QuoteTaxCalcResult;
+        try {
+          taxComputation = computeQuoteTaxes({
+            amount: Number(quoteAmount.toFixed(2)),
+            shippingCost: shippingInPayable,
+            taxes: validated.taxes ?? [],
+            catalog,
+          });
+        } catch (error) {
+          if (error instanceof QuoteTaxCalcError) {
+            throw new BadRequestException(error.message);
+          }
+          throw error;
+        }
+
         const quote = await manager.save(
           SupplierQuote,
           manager.create(SupplierQuote, {
@@ -296,7 +335,9 @@ export class PurchasingService {
             partyRefId: validated.partyRefId,
             quoteNumber: validated.quoteNumber,
             amount: quoteAmount.toFixed(2),
-            shippingCost: validated.shippingCost.toFixed(2),
+            shippingCost: shippingCost.toFixed(2),
+            shippingArrangement,
+            payableAmount: taxComputation.payableAmount.toFixed(2),
             currency: validated.currency,
             validUntil: validated.validUntil ?? null,
             notes: validated.notes ?? null,
@@ -319,6 +360,25 @@ export class PurchasingService {
                 ),
               )
             : [];
+
+        if (taxComputation.taxes.length > 0) {
+          await manager.save(
+            SupplierQuoteTax,
+            taxComputation.taxes.map((taxLine) =>
+              manager.create(SupplierQuoteTax, {
+                tenantId,
+                supplierQuoteId: quote.id,
+                taxCode: taxLine.taxCode,
+                taxCategory: taxLine.taxCategory,
+                effect: taxLine.effect,
+                rate: formatTaxRate(taxLine.rate),
+                baseAmount: taxLine.baseAmount.toFixed(2),
+                taxAmount: taxLine.taxAmount.toFixed(2),
+                taxDefinitionId: taxLine.taxDefinitionId,
+              }),
+            ),
+          );
+        }
 
         if (validated.rfqInvitationId) {
           await this.rfqService.applyQuoteToInvitation(manager, tenantId, {
@@ -361,7 +421,197 @@ export class PurchasingService {
         }
 
         void actor;
-        return { ...quote, lines };
+        return {
+          ...quote,
+          lines,
+          taxes: taxComputation.taxes.map(toSupplierQuoteTaxApiSnapshot),
+          payableAmount: taxComputation.payableAmount.toFixed(2),
+        };
+      }),
+    );
+  }
+
+  async updateSupplierQuote(
+    purchaseRequestId: string,
+    quoteId: string,
+    input: UpdateSupplierQuoteInput,
+    actor: JwtPayload,
+  ): Promise<SupplierQuote & { lines: SupplierQuoteLine[]; taxes: SupplierQuoteTaxApiSnapshot[] }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = UpdateSupplierQuoteSchema.parse(input);
+    const catalog = await this.taxCatalogPort.listByContext(TaxContext.PURCHASE);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const request = await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
+        if (
+          ![
+            PurchaseRequestStatus.DRAFT,
+            PurchaseRequestStatus.PENDING_QUOTES,
+            PurchaseRequestStatus.PENDING_APPROVAL,
+          ].includes(request.status)
+        ) {
+          throw new BadRequestException('Esta solicitud ya no admite correcciones de cotización.');
+        }
+
+        const quote = await manager.findOne(SupplierQuote, {
+          where: { id: quoteId, tenantId, purchaseRequestId },
+        });
+        if (!quote) {
+          throw new NotFoundException('La cotización no existe en esta solicitud.');
+        }
+
+        const awardUsingQuote = await manager.findOne(PurchaseRequestLineAward, {
+          where: { tenantId, supplierQuoteId: quote.id },
+        });
+        if (awardUsingQuote) {
+          throw new BadRequestException(
+            'Esta cotización ya forma parte de una adjudicación y no se puede corregir.',
+          );
+        }
+
+        if (quote.rfqId) {
+          const rfq = await manager.findOne(PurchaseRfq, { where: { id: quote.rfqId, tenantId } });
+          if (!rfq || ![PurchaseRfqStatus.SENT, PurchaseRfqStatus.RECEIVING].includes(rfq.status)) {
+            throw new BadRequestException('La ronda de cotización ya no admite correcciones.');
+          }
+        }
+
+        const requestLines = await manager.find(PurchaseRequestLine, {
+          where: { tenantId, purchaseRequestId },
+        });
+        const requestLineById = new Map(requestLines.map((line) => [line.id, line]));
+
+        let quoteAmount = validated.amount;
+        let quoteLinesToPersist: Array<{
+          purchaseRequestLineId: string;
+          quantity: string;
+          unitCost: string;
+          lineAmount: string;
+        }> = [];
+
+        if (requestLines.length > 0) {
+          if (!validated.lines?.length) {
+            throw new BadRequestException(
+              'La solicitud tiene líneas: registra al menos un precio unitario por producto.',
+            );
+          }
+
+          const seenLineIds = new Set<string>();
+          let amountTotal = 0;
+
+          for (const lineInput of validated.lines) {
+            if (seenLineIds.has(lineInput.purchaseRequestLineId)) {
+              throw new BadRequestException('Hay líneas de cotización duplicadas.');
+            }
+            seenLineIds.add(lineInput.purchaseRequestLineId);
+
+            const requestLine = requestLineById.get(lineInput.purchaseRequestLineId);
+            if (!requestLine) {
+              throw new BadRequestException(
+                'Una o más líneas de cotización no pertenecen a esta solicitud.',
+              );
+            }
+
+            const quantity = toNumeric(requestLine.quantityRequested);
+            if (!(quantity > 0)) {
+              throw new BadRequestException('La cantidad de una línea de solicitud no es válida.');
+            }
+
+            const lineAmount = quantity * lineInput.unitCost;
+            amountTotal += lineAmount;
+            quoteLinesToPersist.push({
+              purchaseRequestLineId: lineInput.purchaseRequestLineId,
+              quantity: toQuantity(quantity),
+              unitCost: lineInput.unitCost.toFixed(2),
+              lineAmount: lineAmount.toFixed(2),
+            });
+          }
+
+          quoteAmount = amountTotal;
+        } else if (quoteAmount === undefined) {
+          throw new BadRequestException('Indica el monto total de la cotización.');
+        }
+
+        const shippingArrangement =
+          validated.shippingArrangement ?? QuoteShippingArrangement.ON_INVOICE;
+        const shippingCost =
+          shippingArrangement === QuoteShippingArrangement.FREE
+            ? 0
+            : Number(validated.shippingCost.toFixed(2));
+        const shippingInPayable =
+          shippingArrangement === QuoteShippingArrangement.ON_INVOICE ? shippingCost : 0;
+        let taxComputation: QuoteTaxCalcResult;
+        try {
+          taxComputation = computeQuoteTaxes({
+            amount: Number(quoteAmount.toFixed(2)),
+            shippingCost: shippingInPayable,
+            taxes: validated.taxes ?? [],
+            catalog,
+          });
+        } catch (error) {
+          if (error instanceof QuoteTaxCalcError) {
+            throw new BadRequestException(error.message);
+          }
+          throw error;
+        }
+
+        quote.quoteNumber = validated.quoteNumber;
+        quote.amount = quoteAmount.toFixed(2);
+        quote.shippingCost = shippingCost.toFixed(2);
+        quote.shippingArrangement = shippingArrangement;
+        quote.payableAmount = taxComputation.payableAmount.toFixed(2);
+        quote.currency = validated.currency;
+        quote.validUntil = validated.validUntil ?? null;
+        quote.notes = validated.notes ?? null;
+        await manager.save(SupplierQuote, quote);
+
+        await manager.delete(SupplierQuoteLine, { tenantId, supplierQuoteId: quote.id });
+        await manager.delete(SupplierQuoteTax, { tenantId, supplierQuoteId: quote.id });
+
+        const lines =
+          quoteLinesToPersist.length > 0
+            ? await manager.save(
+                SupplierQuoteLine,
+                quoteLinesToPersist.map((line) =>
+                  manager.create(SupplierQuoteLine, {
+                    tenantId,
+                    supplierQuoteId: quote.id,
+                    purchaseRequestLineId: line.purchaseRequestLineId,
+                    quantity: line.quantity,
+                    unitCost: line.unitCost,
+                    lineAmount: line.lineAmount,
+                  }),
+                ),
+              )
+            : [];
+
+        if (taxComputation.taxes.length > 0) {
+          await manager.save(
+            SupplierQuoteTax,
+            taxComputation.taxes.map((taxLine) =>
+              manager.create(SupplierQuoteTax, {
+                tenantId,
+                supplierQuoteId: quote.id,
+                taxCode: taxLine.taxCode,
+                taxCategory: taxLine.taxCategory,
+                effect: taxLine.effect,
+                rate: formatTaxRate(taxLine.rate),
+                baseAmount: taxLine.baseAmount.toFixed(2),
+                taxAmount: taxLine.taxAmount.toFixed(2),
+                taxDefinitionId: taxLine.taxDefinitionId,
+              }),
+            ),
+          );
+        }
+
+        void actor;
+        return {
+          ...quote,
+          lines,
+          taxes: taxComputation.taxes.map(toSupplierQuoteTaxApiSnapshot),
+          payableAmount: taxComputation.payableAmount.toFixed(2),
+        };
       }),
     );
   }

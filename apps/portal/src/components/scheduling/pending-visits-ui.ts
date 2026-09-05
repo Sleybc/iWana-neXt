@@ -179,6 +179,18 @@ const TERMINAL_VISIT_REQUEST_STATUSES = new Set<VisitRequestStatus>([
   VisitRequestStatus.EXPIRED,
 ]);
 
+/**
+ * Estados programables del rail de pendientes (contrato `scope=actionable`
+ * de visit-requests). La exclusión de terminales no basta: SCHEDULED e
+ * IN_EXECUTION tienen trabajo activo y no deben volver a programarse.
+ */
+export const ACTIONABLE_VISIT_REQUEST_STATUSES = new Set<VisitRequestStatus>([
+  VisitRequestStatus.PENDING,
+  VisitRequestStatus.NEEDS_CONTEXT,
+  VisitRequestStatus.READY_TO_SCHEDULE,
+  VisitRequestStatus.REQUIRES_RESCHEDULE,
+]);
+
 export function canAccessPendingVisits(role: string | null | undefined): boolean {
   return Boolean(role && PENDING_VISIT_ROLES.has(role));
 }
@@ -190,8 +202,8 @@ export function isTerminalVisitRequestStatus(status: VisitRequestStatus): boolea
 export function filterActionablePendingVisitRequests(
   visitRequests: WfmVisitRequest[] | null | undefined,
 ): WfmVisitRequest[] {
-  return (visitRequests ?? []).filter(
-    (visitRequest) => !isTerminalVisitRequestStatus(visitRequest.status),
+  return (visitRequests ?? []).filter((visitRequest) =>
+    ACTIONABLE_VISIT_REQUEST_STATUSES.has(visitRequest.status),
   );
 }
 

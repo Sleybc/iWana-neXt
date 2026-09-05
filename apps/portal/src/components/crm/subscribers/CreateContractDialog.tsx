@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
 import { CustomerSegment } from '@iwana/shared';
+import { FormStatus } from '@iwana/ui';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
 import {
@@ -288,11 +289,7 @@ export function CreateContractDialog({
             className="flex-1 overflow-y-auto"
           >
             <div className="space-y-6 p-6">
-              {saveError && (
-                <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                  {saveError}
-                </div>
-              )}
+              <FormStatus status={saveError ? 'error' : 'idle'} message={saveError ?? undefined} />
 
               {/* ── Plan ─────────────────────────────────────────────────── */}
               <div>

@@ -1,17 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button } from '@iwana/ui';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Eye,
-  FileBadge2,
-  FileText,
-  Loader2,
-  Trash2,
-  Upload,
-} from 'lucide-react';
+import { Badge, Button, FormStatus } from '@iwana/ui';
+import { CheckCircle2, Eye, FileBadge2, FileText, Loader2, Trash2, Upload } from 'lucide-react';
 import {
   crmApi,
   type DocumentReviewStatus,
@@ -322,12 +313,7 @@ export function DocumentSupportSection({
 
   return (
     <div className="space-y-5">
-      {error ? (
-        <div className="flex items-start gap-2 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>{error}</span>
-        </div>
-      ) : null}
+      <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
 
       <div className="rounded-[18px] border border-gray-100 bg-iwana-surface-soft px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3/60">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

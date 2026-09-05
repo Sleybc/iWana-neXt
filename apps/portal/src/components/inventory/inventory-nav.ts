@@ -16,17 +16,37 @@ import type { InventoryTab } from '@/components/inventory/inventory-tab-params';
 
 export const INVENTORY_NAV_GROUPS: PortalModuleSubnavGroup[] = [
   {
+    // Grupo anclado primero sin eyebrow (spec v1.3 §2.2): un solo ítem y su
+    // label accesible viaja en el grupo, no en un heading visible.
+    id: 'overview',
+    label: 'Vista general',
+    hideLabel: true,
+    items: [{ id: 'overview', label: 'Vista general', icon: LayoutDashboard }],
+  },
+  {
+    id: 'masters',
+    label: 'Maestros',
+    items: [
+      { id: 'catalog', label: 'Catálogo', icon: Package },
+      { id: 'locations', label: 'Bodegas', icon: MapPin },
+    ],
+  },
+  {
     id: 'operation',
     label: 'Operación',
     items: [
-      { id: 'overview', label: 'Vista general', icon: LayoutDashboard },
-      { id: 'catalog', label: 'Catálogo', icon: Package },
       { id: 'stock', label: 'Existencias', icon: Warehouse },
-      { id: 'purchasing', label: 'Compras', icon: ShoppingCart },
-      { id: 'suppliers', label: 'Proveedores', icon: Truck },
-      { id: 'locations', label: 'Bodegas', icon: MapPin },
       { id: 'issues', label: 'Salidas', icon: ArrowUpFromLine },
       { id: 'counts', label: 'Conteos', icon: ClipboardCheck },
+    ],
+  },
+  {
+    // El grupo completo viaja con el gate inventory.purchasing.read (v1.3 §2.3).
+    id: 'supply',
+    label: 'Abastecimiento',
+    items: [
+      { id: 'purchasing', label: 'Compras', icon: ShoppingCart },
+      { id: 'suppliers', label: 'Proveedores', icon: Truck },
     ],
   },
   {
@@ -71,17 +91,15 @@ export function isInventoryNavId(id: string): id is InventoryTab {
 }
 
 /**
- * Gate de pestaña Compras (spec MOD00 §2.2 nota / CA-GATE-06): el ítem
- * `purchasing` solo se muestra con `inventory.purchasing.read` efectivo.
- * Mismo mecanismo del contexto de permisos, sin fetch adicional.
+ * Gate por grupo Abastecimiento (CA-GATE-06, spec subnav Inventario v1.3 §2.3,
+ * cierra D-3): sin `inventory.purchasing.read` efectivo el grupo completo
+ * (Compras + Proveedores) desaparece del nav; el grupo `overview` jamás se
+ * filtra. Mismo mecanismo del contexto de permisos, sin fetch adicional.
  */
 export function filterInventoryNavGroups(canReadPurchasing: boolean): PortalModuleSubnavGroup[] {
   if (canReadPurchasing) {
     return INVENTORY_NAV_GROUPS;
   }
 
-  return INVENTORY_NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => item.id !== 'purchasing'),
-  })).filter((group) => group.items.length > 0);
+  return INVENTORY_NAV_GROUPS.filter((group) => group.id !== 'supply');
 }

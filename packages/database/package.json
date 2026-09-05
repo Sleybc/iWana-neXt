@@ -9,7 +9,7 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "eslint src --ext .ts",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:integration": "jest --config jest.integration.config.js --passWithNoTests",
     "clean": "node ../../scripts/clean-paths.mjs dist",
     "migration:run": "typeorm migration:run -d dist/data-source.js",

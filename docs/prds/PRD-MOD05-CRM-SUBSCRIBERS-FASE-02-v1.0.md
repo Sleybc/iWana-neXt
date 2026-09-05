@@ -1,7 +1,8 @@
 # PRD - MOD05 CRM Módulo Subscriber — Fase 02 (Frontend Portal)
 
 **Version:** 1.0  
-**Estado:** Propuesto  
+**Estado:** Superado  
+**Superado por:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md (2026-09-04, D1 del CTO) — su contenido normativo vigente se consolida en Fase 03 y Fase 04. Se conserva como referencia historica; no citar como norma.  
 **Fecha:** 2026-04-17  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  

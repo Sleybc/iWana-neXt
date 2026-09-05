@@ -18,8 +18,10 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { PurchasingController } from '../purchasing.controller';
+import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
@@ -38,6 +40,8 @@ jest.mock('@iwana/db', () => ({
   runInTenantSchema: jest.fn(),
   PurchaseRequest: class PurchaseRequest {},
   SupplierQuote: class SupplierQuote {},
+  SupplierQuoteLine: class SupplierQuoteLine {},
+  SupplierQuoteTax: class SupplierQuoteTax {},
   PurchaseOrder: class PurchaseOrder {},
   PurchaseOrderLine: class PurchaseOrderLine {},
   GoodsReceipt: class GoodsReceipt {},
@@ -360,12 +364,45 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
           useValue: { assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined) },
         },
         { provide: SupplierPartyPort, useValue: supplierPartyPortMock },
+        {
+          provide: TaxCatalogReadPort,
+          useValue: {
+            listByContext: jest.fn().mockResolvedValue([
+              {
+                id: 'def-iva',
+                code: 'IVA_19',
+                name: 'IVA 19%',
+                category: 'VAT',
+                baseRate: '19',
+                treatment: 'STANDARD',
+                context: 'BOTH',
+                isActive: true,
+              },
+              {
+                id: 'def-rete-iva',
+                code: 'RETE_IVA',
+                name: 'Rete IVA',
+                category: 'WITHHOLDING',
+                baseRate: '15',
+                treatment: 'STANDARD',
+                context: 'PURCHASE',
+                isActive: true,
+              },
+            ]),
+            findActiveByCode: jest.fn(),
+            resolveSystemPreset: jest.fn(),
+            findById: jest.fn(),
+          },
+        },
         { provide: GoodsReceiptService, useValue: { receivePurchaseOrder: jest.fn() } },
         { provide: DataSource, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -498,6 +535,12 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
 
     expect(detail.body.request.id).toBe(requestId);
     expect(detail.body.lines).toHaveLength(1);
+    expect(detail.body.purchaseTaxPresets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'IVA_19', name: 'IVA 19%', baseRate: 19 }),
+        expect.objectContaining({ code: 'RETE_IVA', name: 'Rete IVA', baseRate: 15 }),
+      ]),
+    );
 
     await request(app.getHttpServer())
       .post(`/api/v1/purchasing/requests/${requestId}/approve`)
@@ -505,7 +548,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       .send({ exceptionReason: 'Urgencia operativa de prueba no aplica aquí.' })
       .expect(400);
 
-    await request(app.getHttpServer())
+    const quoteResponse = await request(app.getHttpServer())
       .post(`/api/v1/purchasing/requests/${requestId}/quotes`)
       .set('Authorization', 'Bearer support-token')
       .send({
@@ -520,6 +563,9 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         ],
       })
       .expect(201);
+
+    expect(quoteResponse.body.payableAmount).toBe('480000.00');
+    expect(quoteResponse.body.taxes).toEqual([]);
 
     await request(app.getHttpServer())
       .post(`/api/v1/purchasing/requests/${requestId}/approve`)
@@ -569,6 +615,49 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       .expect(200);
 
     expect(providerSummary.body.displayName).toBe('Proveedor demo');
+  });
+
+  it('rechaza tributos duplicados en POST quotes con 400', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Reposición ONT duplicado fiscal',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.HIGH,
+        requestingArea: 'Operaciones',
+        justification: 'Reposición preventiva para evitar quiebre de stock en cuadrillas.',
+        neededByDate: '2026-07-15',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 1,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/purchasing/requests/${created.body.id as string}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/requests/${created.body.id as string}/quotes`)
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        partyRefId: '55555555-5555-4555-8555-555555555555',
+        quoteNumber: 'Q-DUP-TAX',
+        currency: 'cop',
+        lines: [{ purchaseRequestLineId: detail.body.lines[0].id, unitCost: 100 }],
+        taxes: [
+          { code: 'IVA_19', applies: true, rate: 19 },
+          { code: 'IVA_19', applies: true, rate: 5 },
+        ],
+      })
+      .expect(400);
   });
 
   it('expone búsqueda paginada de proveedores para compras', async () => {

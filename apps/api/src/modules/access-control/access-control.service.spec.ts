@@ -240,6 +240,7 @@ describe('AccessControlService', () => {
       }),
       create: jest.fn((_entity, value) => value),
       delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
       save: jest.fn(async (entity, value) => {
         if (entity === AccessProfile || entity === AccessPermissionCatalog) return value;
         return value;
@@ -403,6 +404,7 @@ describe('AccessControlService', () => {
       }),
       create: jest.fn((_entity, value) => value),
       delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
       save: jest
         .fn()
         .mockResolvedValueOnce(undefined)
@@ -570,6 +572,7 @@ describe('AccessControlService', () => {
       }),
       create: jest.fn((_entity, value) => value),
       delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
       save: jest.fn(async (entity, value) => {
         if (entity === AccessProfile) {
           return value;
@@ -654,6 +657,7 @@ describe('AccessControlService', () => {
       }),
       create: jest.fn((_entity, value) => value),
       delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
       save: jest.fn(async (entity, value) => {
         if (entity === AccessProfile) {
           return value;
@@ -802,6 +806,7 @@ describe('AccessControlService', () => {
       ),
       create: jest.fn((_entity, value) => value),
       delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
       save: jest.fn(async (_entity, value) => value),
     };
 

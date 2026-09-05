@@ -38,7 +38,12 @@ const ERROR_COPY = {
 
 const CHECKING_ANNOUNCEMENT = 'Verificando acceso';
 
-const restrictedShellClassName =
+/**
+ * Shell visual del estado restringido del gate de página. Exportado para que
+ * el estado restringido inline de gates de pestaña (spec subnav Inventario
+ * v1.3 §2.4) reutilice la misma cadena — prohibido duplicarla.
+ */
+export const restrictedShellClassName =
   'flex flex-col items-start gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 md:p-8';
 
 interface PagePermissionGateProps {

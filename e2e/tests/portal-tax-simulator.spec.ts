@@ -2,6 +2,16 @@ import { expect, test, type Page } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -168,6 +178,9 @@ async function setupTaxMocks(page: Page) {
     }
 
     if (pathname.endsWith('/taxation/definitions') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
+      expect(route.request().url()).toContain('/taxation/definitions');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -234,6 +247,9 @@ async function setupTaxMocks(page: Page) {
     }
 
     if (pathname.endsWith('/commercial/tax/simulate') && method === 'POST') {
+      await assertTenantHeader(route);
+      expect(method).toBe('POST');
+      expect(route.request().url()).toContain('/commercial/tax/simulate');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

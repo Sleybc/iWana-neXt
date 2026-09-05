@@ -7,6 +7,7 @@ import { ExpedienteService } from '../expediente.service';
 import { PipelineRecommendationService } from '../pipeline-recommendation.service';
 import { StatusTransitionService } from '../status-transition.service';
 import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 
 type OpenApiRecord = Record<string, unknown>;
 
@@ -22,6 +23,10 @@ describe('ExpedientesController Swagger', () => {
         { provide: CompletenessCalculator, useValue: {} },
         { provide: PipelineRecommendationService, useValue: {} },
         { provide: ExpedienteDetailBootstrapService, useValue: {} },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 

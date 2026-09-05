@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NestMiddleware,
   NotFoundException,
   UnauthorizedException,
@@ -23,6 +24,12 @@ export type TenantResolutionSource = 'jwt-verified' | 'public-header' | 'none';
 
 type TenantResolutionRequest = Request & {
   iwanaTenantResolutionSource?: TenantResolutionSource;
+  /**
+   * `sub` del JWT verificado en la rama `jwt-verified` (P-09, Ola 2).
+   * Lo consume el tracker del rate limiter global para el bucket por sujeto.
+   * Nunca sale de input del cliente: solo se fija desde claims firmados.
+   */
+  iwanaVerifiedSub?: string;
 };
 
 /**
@@ -51,6 +58,8 @@ type TenantResolutionRequest = Request & {
  */
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(TenantMiddleware.name);
+
   constructor(
     private readonly tenantService: TenantService,
     private readonly jwtService: JwtService,
@@ -70,6 +79,10 @@ export class TenantMiddleware implements NestMiddleware {
       if (tenant.schemaName !== jwtPayload.schemaName) {
         throw new UnauthorizedException('El token contiene un schema de tenant invalido.');
       }
+
+      // P-09: el `sub` verificado queda en el request para el bucket por
+      // sujeto del rate limiter (corre despues del middleware, antes de guards).
+      (req as TenantResolutionRequest).iwanaVerifiedSub = jwtPayload.sub;
 
       return this.runWithTenantContext(req, tenant, next, 'jwt-verified');
     }
@@ -106,7 +119,14 @@ export class TenantMiddleware implements NestMiddleware {
     const tenant = await this.tenantService.findBySlug(tenantSlug);
 
     if (!tenant) {
-      throw new NotFoundException(`Tenant "${tenantSlug}" no encontrado.`);
+      // P-17: sin eco del slug — el identificador pedido no vuelve en el
+      // cuerpo. El codigo 404 se conserva: el login del portal lo mapea a su
+      // mensaje util (LoginForm.tsx) y unificar codigos sin FE degradaria esa
+      // UX (escalado como [CONSULTA] a EM-ARCH).
+      this.logger.warn(
+        `Resolucion de tenant inexistente [slug=${tenantSlug} ruta=${this.getNormalizedPath(req)}].`,
+      );
+      throw new NotFoundException('Empresa no encontrada.');
     }
 
     return this.runWithTenantContext(req, tenant, next, 'public-header');
@@ -231,19 +251,18 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   private ensureTenantIsOperable(tenantSlug: string, tenantStatus: TenantStatus): void {
-    // Tenants SUSPENDED e INACTIVE no pueden operar
-    if (tenantStatus === TenantStatus.SUSPENDED) {
-      throw new ForbiddenException(
-        `El tenant "${tenantSlug}" esta suspendido. Contactar soporte iWana.`,
+    // P-17: mensaje unico sin estado comercial (SUSPENDED / INACTIVE /
+    // MARKED_FOR_DELETION no se revelan a anonimos); el detalle va al log del
+    // servidor. El codigo 403 se conserva por la misma razon que el 404.
+    if (
+      tenantStatus === TenantStatus.SUSPENDED ||
+      tenantStatus === TenantStatus.INACTIVE ||
+      tenantStatus === TenantStatus.MARKED_FOR_DELETION
+    ) {
+      this.logger.warn(
+        `Resolucion de tenant no operable [slug=${tenantSlug} estado=${tenantStatus}].`,
       );
-    }
-
-    if (tenantStatus === TenantStatus.INACTIVE) {
-      throw new ForbiddenException(`El tenant "${tenantSlug}" esta inactivo.`);
-    }
-
-    if (tenantStatus === TenantStatus.MARKED_FOR_DELETION) {
-      throw new ForbiddenException(`El tenant "${tenantSlug}" esta marcado para eliminacion.`);
+      throw new ForbiddenException('La empresa no esta disponible. Contactar soporte iWana.');
     }
   }
 }

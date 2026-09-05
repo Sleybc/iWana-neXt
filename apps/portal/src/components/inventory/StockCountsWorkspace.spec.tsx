@@ -21,6 +21,7 @@ jest.mock('@/lib/api-client', () => {
     inventoryApi: {
       ...actual.inventoryApi,
       listCounts: jest.fn(),
+      searchItemsForPicker: jest.fn(),
     },
   };
 });
@@ -30,6 +31,7 @@ jest.mock('./InventoryLocationPicker', () => ({
 }));
 
 const listCountsMock = inventoryApi.listCounts as jest.Mock;
+const searchItemsForPickerMock = inventoryApi.searchItemsForPicker as jest.Mock;
 
 const locations = [
   {
@@ -77,6 +79,7 @@ describe('StockCountsWorkspace', () => {
     });
     Element.prototype.scrollIntoView = jest.fn();
     listCountsMock.mockResolvedValue({ data: [], meta: pageMeta(0) });
+    searchItemsForPickerMock.mockResolvedValue({ data: [], total: 0 });
   });
 
   it('muestra estado vacío y permite iniciar creación', async () => {
@@ -255,5 +258,91 @@ describe('StockCountsWorkspace', () => {
     });
     expect(screen.queryByTestId('count-row-count-p1-0')).not.toBeInTheDocument();
     expect(listCountsMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, limit: 20 }));
+  });
+});
+
+describe('StockCountsWorkspace · F4 captura por código de barras (CA-F4-05)', () => {
+  const detailLines = [
+    {
+      id: 'line-1',
+      tenantId: 'tenant-1',
+      countId: 'count-1',
+      itemId: 'item-1',
+      lotId: null,
+      condition: 'NEW',
+      expectedQty: '10.00',
+      countedQty: null,
+      variance: null,
+      itemSku: 'CAB-01',
+      itemName: 'Cable',
+      createdAt: '2026-07-18T12:00:00.000Z',
+    },
+  ];
+
+  function renderWithDetail() {
+    listCountsMock.mockResolvedValue({ data: [baseCount], meta: pageMeta(1) });
+    const onOpenDetail = jest.fn().mockResolvedValue({ ...baseCount, lines: detailLines });
+    render(
+      <StockCountsWorkspace
+        locations={locations}
+        categories={[]}
+        canClose
+        onCreate={jest.fn()}
+        onUpdate={jest.fn()}
+        onClose={jest.fn()}
+        onCancel={jest.fn()}
+        onOpenDetail={onOpenDetail}
+        onRefresh={jest.fn()}
+      />,
+    );
+  }
+
+  async function openDetail() {
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Abrir' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
+    // Marcador solo del detalle (el número también aparece en la fila del inbox).
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Guardar cantidades' })).toBeInTheDocument();
+    });
+  }
+
+  it('introducir el código ubica la línea sin búsqueda manual', async () => {
+    searchItemsForPickerMock.mockResolvedValue({
+      data: [{ id: 'item-1', label: 'Cable', sublabel: 'SKU CAB-01' }],
+      total: 1,
+    });
+    renderWithDetail();
+    await openDetail();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Código de barras' }), {
+      target: { value: '4006381333931' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ubicar línea' }));
+
+    expect(searchItemsForPickerMock).toHaveBeenCalledWith({ q: '4006381333931' });
+    expect(await screen.findByText('Ubicado: SKU CAB-01 · Cable.')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cantidad contada CAB-01')).toHaveFocus();
+    });
+  });
+
+  it('avisa cuando el código no está en este conteo', async () => {
+    searchItemsForPickerMock.mockResolvedValue({
+      data: [{ id: 'item-9', label: 'Otro', sublabel: 'SKU OTR-09' }],
+      total: 1,
+    });
+    renderWithDetail();
+    await openDetail();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Código de barras' }), {
+      target: { value: '8412345678905' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ubicar línea' }));
+
+    expect(
+      await screen.findByText('Ese código es de SKU OTR-09 · Otro, que no está en este conteo.'),
+    ).toBeInTheDocument();
   });
 });

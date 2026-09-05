@@ -27,6 +27,7 @@ import {
 } from '../audit/audit.constants';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
+import { isAccountLocked, remainingLockoutMinutes } from '../../common/account-lockout.policy';
 import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
 import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
@@ -998,8 +999,24 @@ export class AuthService {
       const user = await qr.manager.findOne(User, { where: { id: userId } });
       if (!user) throw new NotFoundException('Usuario no encontrado.');
 
+      // P-09: contador de fallos por cuenta — mismos umbrales del login
+      // (5 intentos / lockout 15 min). `PlatformUser` no tiene estas columnas:
+      // el contador solo aplica a la rama de tenant (documentado).
+      if (isAccountLocked(user)) {
+        throw new UnauthorizedException(
+          `Cuenta bloqueada temporalmente. Intenta en ${remainingLockoutMinutes(user)} minuto(s).`,
+        );
+      }
+
       const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
       if (!passwordValid) {
+        await this.registerFailedAttempt(qr.manager, user);
+        void this.auditService.log({
+          action: AuditAction.LOGIN_FAILED,
+          entityType: 'User',
+          entityId: user.id,
+          userId: user.id,
+        });
         throw new UnauthorizedException(
           'La contraseña actual no coincide con la que usas para iniciar sesión.',
         );
@@ -1010,6 +1027,8 @@ export class AuthService {
       await qr.manager.update(User, userId, {
         passwordHash: newHash,
         passwordResetRequired: false,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
       });
 
       // Revocar todos los refresh tokens activos del usuario
@@ -1018,6 +1037,16 @@ export class AuthService {
         { userId, revokedAt: undefined },
         { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
       );
+
+      // P-05: paridad con la rama de plataforma y con `logout` — el access
+      // token en curso (cookie) deja de servir de inmediato. `JwtStrategy`
+      // rechaza todo `jti` en esta blacklist en ambas audiencias, asi que la
+      // asimetria no era deliberada: era el hueco de 15 min del informe.
+      const expiresAt = actor.exp ?? 0;
+      const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
+      if (remainingTtl > 0) {
+        await this.redis.set(`jti:blacklist:${actor.jti}`, '1', 'EX', remainingTtl);
+      }
 
       // Registrar cambio de contrasena en audit trail
       void this.auditService.log({

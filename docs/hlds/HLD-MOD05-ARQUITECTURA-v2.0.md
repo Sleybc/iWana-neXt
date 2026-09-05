@@ -1,8 +1,9 @@
 # HLD - MOD05 CRM Arquitectura
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Estado:** Aprobado  
-**Fecha:** 2026-04-04  
+**Fecha:** 2026-09-04  
+**Historial:** v2.2 (2026-09-04) corrige el ciclo de vida del subscriber contra ADR-027 y promueve los puertos de inventario y ticketing de stub a lectura real, conforme a PRD Fase 04 §9.5 y §7.3.  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md  
@@ -38,8 +39,10 @@ El diseño reemplaza el modelo dual PotentialLead/ProspectCase de Sprint 01 (ver
 - CrmModule no accede a tablas de otros modulos directamente.
 - Consume cobertura y catalogo de MOD03 via puertos tipados (ICoverageReadPort, IPlanCatalogReadPort).
 - Resuelve actores y lecturas de cotizacion via `CrmActorReadPort` y `CrmQuoteReadPort`, sin consultas directas cross-module desde los servicios del expediente.
-- Facturacion, provisioning, inventario, ticketing → puertos con stubs hasta implementacion real.
-- Subscriber se crea solo al alcanzar CLIENTE_ACTIVO; no comparte ciclo de vida con expediente.
+- Facturacion y provisioning → puertos con stubs hasta implementacion real.
+- Inventario (MOD12) y ticketing (MOD10) → **puertos de lectura reales** desde PRD Fase 04 §7.3: el CRM consulta comodatos y tickets del suscriptor por interfaz tipada, sin leer sus tablas (ADR-048, ADR-038).
+- Subscriber se crea al alcanzar `LISTO_PARA_INSTALACION` (estado `PROSPECT`) y se activa al alcanzar `CLIENTE_ACTIVO` (estado `ACTIVE`); no comparte ciclo de vida con expediente. Conversion two-stage idempotente segun ADR-027 (Aprobado).
+  > **Correccion 2026-09-04 (PRD Fase 04 §9.5).** Este punto afirmaba que el subscriber se creaba *solo* al alcanzar `CLIENTE_ACTIVO`, contradiciendo a ADR-027 (Aprobado) y a la implementacion real desde la Fase 03. El HLD era entregable obligatorio de aquella fase y no se actualizo.
 
 ---
 

@@ -335,6 +335,64 @@ describe('EditUserModal', () => {
     });
   });
 
+  it('CA-ACC-POST-06: shows suggested-profile help in the edit peek when a suggested profile is selected', async () => {
+    render(
+      <EditUserModal
+        isOpen={true}
+        user={baseUser}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={{
+          version: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
+          permissions: [
+            {
+              id: 'perm-1',
+              tenantId: 'tenant-1',
+              permissionKey: AccessPermissionKey.SETTINGS_READ,
+              moduleKey: 'settings',
+              action: 'read',
+              description: 'Ver centro de Configuración',
+              catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
+              availability: AccessPermissionAvailability.ASSIGNABLE,
+              isSystem: true,
+              isActive: true,
+            },
+          ],
+          compatibilityMatrix,
+        }}
+        availableProfiles={[
+          {
+            id: 'template-tech',
+            name: 'Técnico de campo',
+            description: 'Perfil sugerido de campo',
+            baseRoleConstraint: UserRole.TECHNICIAN,
+            scopeSiteId: null,
+            isSystem: true,
+            isActive: true,
+            permissions: [AccessPermissionKey.WFM_SCHEDULE_READ],
+            createdAt: '2026-05-25T00:00:00.000Z',
+            updatedAt: '2026-05-25T00:00:00.000Z',
+          },
+        ]}
+        initialCompanyRoleIds={['template-tech']}
+      />,
+    );
+
+    expect(await screen.findByRole('dialog', { name: 'Editar usuario' })).toBeInTheDocument();
+    expect(screen.getByText(/Un perfil sugerido no se edita en/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Perfiles de acceso' })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/access',
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Técnico de campo' }));
+
+    expect(screen.queryByText(/Un perfil sugerido no se edita en/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Perfiles de acceso' })).not.toBeInTheDocument();
+  });
+
   it('should send operational dispatch changes when the checkbox is toggled', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 

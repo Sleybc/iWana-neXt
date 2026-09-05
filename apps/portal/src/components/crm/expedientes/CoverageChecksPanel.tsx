@@ -1,8 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
-import { CircleAlert, Loader2, MapPin, MapPinCheck, MapPinX, Radar } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  FormStatus,
+  Input,
+  Select,
+} from '@iwana/ui';
+import { Loader2, MapPin, MapPinCheck, MapPinX, Radar } from 'lucide-react';
 import { crmApi, type CoverageCheckRecord, type CreateCoverageCheckDto } from '@/lib/api-client';
 import { getSafeCrmErrorMessage } from './crm-error-message';
 
@@ -234,12 +244,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
                 placeholder="Distancia desde el nodo"
               />
             </div>
-            {error && (
-              <div className="flex items-start gap-3 rounded-2xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <p>{error}</p>
-              </div>
-            )}
+            <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
                 Cancelar

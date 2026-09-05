@@ -18,6 +18,10 @@ function clampPercentage(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
 
+function roundPercentage(value: number): number {
+  return Math.round(clampPercentage(value) * 100) / 100;
+}
+
 export function getExecutionOrderCompletionDisplay(
   completion: ExecutionOrderCompletionSource | null | undefined,
 ): ExecutionOrderCompletionDisplay {
@@ -27,7 +31,7 @@ export function getExecutionOrderCompletionDisplay(
   if (completed !== null && total !== null) {
     const safeCompleted = Math.max(0, completed);
     const safeTotal = Math.max(0, total);
-    const value = safeTotal > 0 ? clampPercentage((safeCompleted / safeTotal) * 100) : 0;
+    const value = safeTotal > 0 ? roundPercentage((safeCompleted / safeTotal) * 100) : 0;
 
     return {
       value,
@@ -38,7 +42,7 @@ export function getExecutionOrderCompletionDisplay(
 
   const progress = finiteNumber(completion?.progress);
   if (progress !== null) {
-    const value = clampPercentage(progress);
+    const value = roundPercentage(progress);
     return {
       value,
       label: `${value}%`,

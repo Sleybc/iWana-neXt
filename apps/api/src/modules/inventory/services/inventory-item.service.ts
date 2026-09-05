@@ -10,6 +10,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import { InventoryCategory, InventoryItem, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
+  InventoryBarcodeType,
   InventoryItemCategory,
   InventoryItemKind,
   InventoryItemStatus,
@@ -74,6 +75,32 @@ function isSkuUniqueViolation(
   return driverError.code === '23505' && driverError.constraint === 'uq_inventory_items_tenant_sku';
 }
 
+/**
+ * Violación del índice único PARCIAL `(tenant_id, barcode) WHERE barcode IS NOT
+ * NULL` (migración 123). La unicidad es por tenant; el catch es el respaldo de
+ * carrera del pre-check explícito, que es quien da el mensaje útil.
+ */
+function isBarcodeUniqueViolation(
+  error: unknown,
+): error is QueryFailedError & { driverError: UniqueConstraintDriverError } {
+  if (!(error instanceof QueryFailedError)) {
+    return false;
+  }
+
+  const driverError = error.driverError as UniqueConstraintDriverError;
+  return (
+    driverError.code === '23505' && driverError.constraint === 'uq_inventory_items_tenant_barcode'
+  );
+}
+
+/**
+ * Mensaje de colisión ÚTIL (PRD §11.5.2, CA-F4-02): identifica el artículo que
+ * ya usa el código, para que el operador no tenga que buscarlo a mano.
+ */
+function buildBarcodeConflictMessage(barcode: string, owner: InventoryItem): string {
+  return `El código de barras ${barcode} ya está asignado al artículo ${owner.sku} (${owner.name}). Indica otro código o deja el campo vacío.`;
+}
+
 export interface InventoryItemResponse {
   id: string;
   tenantId: string;
@@ -108,6 +135,8 @@ export interface InventoryItemResponse {
   leadTimeDays: number | null;
   usefulLifeMonths: number | null;
   commercialReferenceId: string | null;
+  barcode: string | null;
+  barcodeType: InventoryBarcodeType | null;
   status: InventoryItemStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -176,6 +205,8 @@ function mapItemToResponse(
     leadTimeDays: item.leadTimeDays,
     usefulLifeMonths: item.usefulLifeMonths,
     commercialReferenceId: item.commercialReferenceId,
+    barcode: item.barcode,
+    barcodeType: item.barcodeType,
     status: item.status,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -248,6 +279,8 @@ function mapCreateInputToEntity(
     leadTimeDays: validated.leadTimeDays ?? null,
     usefulLifeMonths: validated.usefulLifeMonths ?? null,
     commercialReferenceId: validated.commercialReferenceId ?? null,
+    barcode: validated.barcode ?? null,
+    barcodeType: validated.barcodeType ?? null,
     status: validated.status,
   };
 }
@@ -315,6 +348,10 @@ function mapUpdateInputToEntity(
   }
   if (validated.commercialReferenceId !== undefined) {
     patch.commercialReferenceId = validated.commercialReferenceId ?? null;
+  }
+  if (validated.barcode !== undefined) patch.barcode = validated.barcode ?? null;
+  if (validated.barcodeType !== undefined) {
+    patch.barcodeType = validated.barcodeType ?? null;
   }
   if (validated.status !== undefined) patch.status = validated.status;
 
@@ -533,8 +570,10 @@ export class InventoryItemService {
 
       if (validated.search) {
         const term = `%${validated.search.toLowerCase()}%`;
+        // La búsqueda del catálogo también localiza por código de barras
+        // (RF-CAT-15, CA-F4-04).
         qb.andWhere(
-          "(LOWER(item.sku) LIKE :term OR LOWER(item.name) LIKE :term OR LOWER(COALESCE(item.brand, '')) LIKE :term OR LOWER(COALESCE(item.model, '')) LIKE :term)",
+          "(LOWER(item.sku) LIKE :term OR LOWER(item.name) LIKE :term OR LOWER(COALESCE(item.brand, '')) LIKE :term OR LOWER(COALESCE(item.model, '')) LIKE :term OR LOWER(COALESCE(item.barcode, '')) LIKE :term)",
           { term },
         );
       }
@@ -683,7 +722,7 @@ export class InventoryItemService {
         .createQueryBuilder(InventoryItem, 'item')
         .where('item.tenant_id = :tenantId', { tenantId })
         .andWhere(
-          "(LOWER(item.sku) LIKE :like ESCAPE '\\' OR LOWER(item.name) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.brand, '')) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.model, '')) LIKE :like ESCAPE '\\')",
+          "(LOWER(item.sku) LIKE :like ESCAPE '\\' OR LOWER(item.name) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.brand, '')) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.model, '')) LIKE :like ESCAPE '\\' OR LOWER(COALESCE(item.barcode, '')) LIKE :like ESCAPE '\\')",
           { like },
         );
 
@@ -741,6 +780,18 @@ export class InventoryItemService {
     const category = await this.resolveCategoryForCreate(validated);
 
     const item = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // Unicidad por tenant del código de barras (CA-F4-02): pre-check con
+      // mensaje que identifica el artículo que ya lo usa.
+      if (validated.barcode) {
+        const barcodeOwner = await qr.manager.findOne(InventoryItem, {
+          where: { tenantId, barcode: validated.barcode },
+        });
+
+        if (barcodeOwner) {
+          throw new ConflictException(buildBarcodeConflictMessage(validated.barcode, barcodeOwner));
+        }
+      }
+
       if (validated.sku) {
         const existing = await qr.manager.findOne(InventoryItem, {
           where: {
@@ -753,10 +804,17 @@ export class InventoryItemService {
           throw new ConflictException('Ya existe un item de inventario con ese SKU.');
         }
 
-        return qr.manager.save(
-          InventoryItem,
-          qr.manager.create(InventoryItem, mapCreateInputToEntity(tenantId, validated, category)),
-        );
+        try {
+          return await qr.manager.save(
+            InventoryItem,
+            qr.manager.create(InventoryItem, mapCreateInputToEntity(tenantId, validated, category)),
+          );
+        } catch (error) {
+          if (isBarcodeUniqueViolation(error)) {
+            throw await this.barcodeConflictOrFail(qr.manager, tenantId, validated.barcode!);
+          }
+          throw error;
+        }
       }
 
       for (let attempt = 0; attempt < SKU_GENERATION_RETRY_LIMIT; attempt += 1) {
@@ -772,6 +830,12 @@ export class InventoryItemService {
             ),
           );
         } catch (error) {
+          // El código de barras no cambia entre intentos: una colisión no se
+          // resuelve reintentando con otro SKU.
+          if (isBarcodeUniqueViolation(error)) {
+            throw await this.barcodeConflictOrFail(qr.manager, tenantId, validated.barcode!);
+          }
+
           if (attempt === SKU_GENERATION_RETRY_LIMIT - 1 && isSkuUniqueViolation(error)) {
             throw new ConflictException('No fue posible generar un SKU unico para el producto.');
           }
@@ -806,6 +870,29 @@ export class InventoryItemService {
     );
   }
 
+  /**
+   * Respaldo de carrera para la colisión de código de barras: busca al artículo
+   * que ya lo usa y lanza 409 con mensaje útil. Si el dueño ya no existe
+   * (borrado concurrente), degrada a un mensaje sin artículo identificado.
+   */
+  private async barcodeConflictOrFail(
+    manager: EntityManager,
+    tenantId: string,
+    barcode: string,
+  ): Promise<ConflictException> {
+    const owner = await manager.findOne(InventoryItem, {
+      where: { tenantId, barcode },
+    });
+
+    if (!owner) {
+      return new ConflictException(
+        `El código de barras ${barcode} ya está en uso por otro artículo del tenant.`,
+      );
+    }
+
+    return new ConflictException(buildBarcodeConflictMessage(barcode, owner));
+  }
+
   async update(
     id: string,
     input: UpdateInventoryItemInput,
@@ -825,6 +912,19 @@ export class InventoryItemService {
       }
 
       const category = await this.resolveCategoryForUpdate(validated, existing);
+
+      // Unicidad por tenant del código de barras (CA-F4-02): si el update fija
+      // un código que ya usa OTRO artículo, se rechaza identificando al dueño.
+      // Editable tras la creación (PRD §11 regla 6); limpiar el par es válido.
+      if (validated.barcode) {
+        const barcodeOwner = await qr.manager.findOne(InventoryItem, {
+          where: { tenantId, barcode: validated.barcode },
+        });
+
+        if (barcodeOwner && barcodeOwner.id !== existing.id) {
+          throw new ConflictException(buildBarcodeConflictMessage(validated.barcode, barcodeOwner));
+        }
+      }
 
       const mergedForValidation = {
         ...existing,
@@ -870,7 +970,15 @@ export class InventoryItemService {
 
       const previousCategoryId = existing.categoryId;
       Object.assign(existing, mapUpdateInputToEntity(validated, category));
-      const saved = await qr.manager.save(InventoryItem, existing);
+      let saved: InventoryItem;
+      try {
+        saved = await qr.manager.save(InventoryItem, existing);
+      } catch (error) {
+        if (isBarcodeUniqueViolation(error) && validated.barcode) {
+          throw await this.barcodeConflictOrFail(qr.manager, tenantId, validated.barcode);
+        }
+        throw error;
+      }
 
       const resolvedCategory =
         category ??
@@ -985,7 +1093,10 @@ export class InventoryItemService {
 
       if (validated.search) {
         const term = `%${validated.search.toLowerCase()}%`;
-        qb.andWhere('(LOWER(item.sku) LIKE :term OR LOWER(item.name) LIKE :term)', { term });
+        qb.andWhere(
+          "(LOWER(item.sku) LIKE :term OR LOWER(item.name) LIKE :term OR LOWER(COALESCE(item.barcode, '')) LIKE :term)",
+          { term },
+        );
       }
 
       const items = await qb.getMany();

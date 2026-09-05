@@ -26,6 +26,16 @@ const MOCK_TOKEN =
 
 const MOCK_TENANT = 'tenant-prueba';
 
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT);
+}
+
 const MOCK_ME = {
   sub: 'user-admin-uuid-001',
   email: 'sha256:admin-hash-ficticio',
@@ -234,9 +244,14 @@ async function setupMocks(page: Page) {
     }
 
     if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
+      expect(route.request().url()).toContain('/commercial/catalog');
       const type = parsed.searchParams.get('type');
       const pageNum = Number.parseInt(parsed.searchParams.get('page') ?? '1', 10) || 1;
       const limit = Number.parseInt(parsed.searchParams.get('limit') ?? '20', 10) || 20;
+      expect(Number.isInteger(pageNum)).toBe(true);
+      expect(limit).toBeGreaterThan(0);
       const name = parsed.searchParams.get('name');
 
       if (type === 'PLAN') {

@@ -1,4 +1,6 @@
 // packages/ui/src/components/FormStatus.spec.tsx
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FormStatus } from './FormStatus';
@@ -8,6 +10,11 @@ function textOf(html: string): string {
 }
 
 describe('FormStatus', () => {
+  it('declara use client porque usa hooks y el barrel se importa desde layouts RSC', () => {
+    const source = readFileSync(join(__dirname, 'FormStatus.tsx'), 'utf8');
+    expect(source).toMatch(/^(\/\/[^\n]*\r?\n)?'use client';/);
+  });
+
   it('idle renderiza la region viva vacia, nunca null', () => {
     const html = renderToStaticMarkup(<FormStatus status="idle" message="Nunca visible" />);
 

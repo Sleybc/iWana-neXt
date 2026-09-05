@@ -276,7 +276,7 @@ function nextEv1Uuid(): string {
              tracking_mode, unit_of_measure, status, purchasable
            ) VALUES (
              $1, 'EV1-ONU-001', 'EV1 ONU serializado', 'STOCK', 'CPE', $2,
-             'SERIALIZED', 'UND', 'ACTIVE', false
+              'SERIALIZED', 'UNIT', 'ACTIVE', false
            )
            RETURNING id::text AS id`,
           [tenantId, categoryId],

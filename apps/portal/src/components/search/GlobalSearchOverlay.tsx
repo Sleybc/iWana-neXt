@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Loader2, Search } from 'lucide-react';
+import { FormStatus } from '@iwana/ui';
 import { GlobalSearchResultItem } from './GlobalSearchResultItem';
 import type { GlobalSearchGroup, GlobalSearchItem } from '@/lib/api-client';
 
@@ -44,7 +45,7 @@ export function GlobalSearchOverlay({
   const trimmedQuery = query.trim();
 
   return (
-    <div className="absolute top-full left-0 right-0 z-50 mt-3">
+    <div className="absolute top-full left-0 right-0 z-(--z-popover) mt-3">
       <div className="overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.18)] dark:border-dark-border-2 dark:bg-dark-surface-2">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
           <div>
@@ -93,11 +94,7 @@ export function GlobalSearchOverlay({
             </div>
           ) : null}
 
-          {error ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-              {error}
-            </div>
-          ) : null}
+          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
 
           {!isLoading && !error && trimmedQuery.length >= 2 && !hasResults ? (
             <div className="px-2 py-5 text-sm text-gray-500 dark:text-gray-400">

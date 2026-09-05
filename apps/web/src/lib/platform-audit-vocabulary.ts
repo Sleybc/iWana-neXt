@@ -1,3 +1,4 @@
+import { formatFullName } from '@iwana/shared';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const STANDALONE_ACTIONS = new Set([
@@ -72,7 +73,7 @@ function pickSubjectName(entry: PlatformActivitySource): string | null {
 
   const first = typeof payload.firstName === 'string' ? payload.firstName.trim() : '';
   const last = typeof payload.lastName === 'string' ? payload.lastName.trim() : '';
-  const fullName = [first, last].filter(Boolean).join(' ');
+  const fullName = formatFullName(first, last);
   if (isSafeVisibleName(fullName)) {
     return fullName;
   }

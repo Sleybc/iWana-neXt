@@ -1,5 +1,6 @@
 import type { BadgeProps } from '@iwana/ui';
 import {
+  formatFullName,
   SlaBreachStatus,
   TicketFieldDecision,
   TicketPriority,
@@ -271,7 +272,7 @@ export function getAssuranceUserDisplayName(user: InternalUser | null | undefine
     return 'No asignado';
   }
 
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(user.firstName, user.lastName).trim();
   return fullName || user.email;
 }
 

@@ -8,7 +8,7 @@ import { changePasswordSchema, type ChangePasswordFormValues } from '@iwana/shar
 import { useRouter } from 'next/navigation';
 import { authApi, ApiError } from '@/lib/api-client';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
-import { cn } from '@iwana/ui';
+import { cn, FormStatus } from '@iwana/ui';
 
 /**
  * Cambio obligatorio de contrasena: usa el esquema unico de `@iwana/shared`
@@ -360,27 +360,10 @@ export default function ChangePasswordPage() {
             </label>
 
             {/* Error del servidor */}
-            {serverError && (
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-              >
-                <svg
-                  className="h-5 w-5 flex-shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <span>{serverError}</span>
-              </div>
-            )}
+            <FormStatus
+              status={serverError ? 'error' : 'idle'}
+              message={serverError ?? undefined}
+            />
 
             <button
               type="submit"

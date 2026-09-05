@@ -177,7 +177,7 @@ export const ACCESS_SETTINGS_COPY = {
   restrictedTitle: 'Vista disponible para administradores',
   restrictedDescription: 'Solo las personas administradoras pueden acceder a esta sección.',
   pageSubtitle:
-    'Crea perfiles de acceso, define lo que puede usar cada uno y apóyate en perfiles sugeridos para empezar más rápido.',
+    'Crear un perfil aquí no cambia a quién lo usa. Para que alguien deje el perfil sugerido, debes reemplazarlo en Usuarios.',
   authPolicyEyebrow: 'Políticas de autenticación',
   authPolicyTitle: 'Verificación en dos pasos global',
   authPolicyDescription:
@@ -198,30 +198,34 @@ export const ACCESS_SETTINGS_COPY = {
   authPolicyAdminHint:
     'Este ajuste aplica a toda la empresa y solo puede cambiarlo un administrador.',
   templatesTitle: 'Perfiles sugeridos',
-  templatesDescription:
-    'Estos perfiles sugeridos te ayudan a crear nuevos perfiles de acceso con menos trabajo manual.',
+  peekListIntro:
+    'Ya están en uso y no se editan aquí. Elegir no mueve a nadie: en Usuarios quitas el sugerido y dejas solo el nuevo.',
   templateFallbackDescription: 'Perfil sugerido',
+  suggestedMeta: (roleLabel: string, accessCount: number) =>
+    `${roleLabel} · ${accessCount} accesos`,
   profilesTitle: 'Perfiles personalizados',
-  profilesDescription: 'Crea perfiles propios para tu empresa y define qué puede hacer cada uno.',
+  profilesDescription:
+    'Crea perfiles propios para tu empresa y define qué puede hacer cada uno. Las personas no los usan hasta que los asignas en Usuarios.',
+  profilesEmptyPostCutTitle: 'Tus equipos ya usan los perfiles sugeridos',
+  profilesEmptyPostCutDescription:
+    'No se editan aquí. Crear uno a partir del sugerido no mueve a nadie: después debes ir a Usuarios, quitar el perfil sugerido y dejar solo el nuevo.',
   profilesEmptyTitle: 'Aún no has creado perfiles personalizados',
   profilesEmptyDescription:
     'Cuando crees tu primer perfil, aparecerá aquí para que puedas editarlo y revisar sus accesos.',
   createProfileAction: 'Crear perfil',
-  createFromTemplateAction: 'Crear a partir de este perfil',
   previewAction: 'Ver lo que permite',
-  useSuggestedSelector: 'Usar un perfil sugerido',
-  useSuggestedHelp: 'Empieza con un perfil sugerido y ajusta solo lo necesario.',
+  previewSuggestedAria: (name: string) => `Ver lo que permite ${name}`,
   startFromScratchLabel: 'Empezar desde cero',
-  startFromScratchHelp: 'Crea el perfil desde cero y define sus accesos paso a paso.',
-  chooseSuggestedFeedback:
-    'Elige un perfil sugerido y pulsa «Crear a partir de este perfil» para comenzar.',
-  peekEyebrow: 'Lo que permite este perfil',
+  startFromScratchHelp: 'Define los accesos paso a paso. Luego asígnalo en Usuarios.',
+  peekDetailHeading: 'Lo que permite este perfil',
   peekEmptyDescription: 'Sin accesos asignados a este perfil sugerido.',
+  useThisProfileAction: 'Usar este perfil',
+  backToListAction: 'Volver a la lista',
   saveChangesAction: 'Guardar cambios',
   saveDraftAction: 'Guardar perfil',
   searchEmptyTitle: 'No encontramos accesos en esta sección',
   clearSearchAction: 'Limpiar búsqueda',
-  permissionFallback: 'Acceso no descrito',
+  permissionFallback: 'Acceso sin descripción',
   keepProfileActiveLabel: 'Mantener perfil activo',
   retryAction: 'Reintentar',
   sessionExpiredError: 'Tu sesión expiró. Inicia sesión nuevamente.',
@@ -245,13 +249,28 @@ export const ACCESS_SETTINGS_COPY = {
   draftSelectedProfileDescription: (profileName: string) =>
     `Revisa lo que «${profileName}» podrá ver o hacer en cada sección.`,
   noCompatiblePermissionsTitle: 'Sin accesos disponibles',
-  noCompatiblePermissionsDescription: 'No hay accesos activos para mostrar en este momento.',
+  noCompatiblePermissionsDescription:
+    'No hay accesos para mostrar en este perfil. Verifica el tipo de usuario o consulta con soporte si esperabas ver opciones aquí.',
   noProfileSelectedDescription: 'Elige un perfil de la lista para revisar o cambiar sus accesos.',
   editProfileDescription:
     'Modifica el nombre, la descripción y el tipo de usuario permitido para este perfil.',
   createProfileDescription:
     'Crea un perfil de acceso para organizar lo que cada equipo puede ver o usar.',
+  draftFieldsTitle: 'Datos del nuevo perfil',
   roleFieldLabel: 'Tipo de usuario permitido',
+  roleFieldHelp: 'Solo las personas de este tipo podrán usar este perfil.',
+  nextStepBannerTitle: 'Perfil creado. Debes asignarlo en Usuarios',
+  nextStepBannerFromSuggestedDescription: (name: string) =>
+    `Nadie cambió de perfil. En Usuarios, abre a la persona y deja marcado solo «${name}»: quita el perfil sugerido. Si dejas ambos, sumará los accesos de los dos.`,
+  nextStepBannerFromScratchDescription: (name: string) =>
+    `Nadie usa este perfil todavía. En Usuarios, abre a la persona y deja marcado «${name}».`,
+  nextStepBannerAction: 'Ir a Usuarios',
+  usersPath: '/dashboard/users',
+  usersSuggestedHelpPrefix: 'Un perfil sugerido no se edita en ',
+  usersSuggestedHelpLinkLabel: 'Perfiles de acceso',
+  usersSuggestedHelpSuffix:
+    '. Para cambiar lo que permite, créalo allí y, en esta lista, deja solo el nuevo: quita el sugerido. Si dejas ambos, sumará los accesos.',
+  accessSettingsPath: '/dashboard/settings/access',
 } as const;
 
 export const OPERATIONAL_EVENTUALITY_TYPE_LABELS = {
@@ -607,7 +626,8 @@ export const SETTINGS_ACCESS_SHORTCUTS_COPY = {
     },
     access: {
       title: 'Perfiles de acceso',
-      description: 'Administra perfiles de acceso, perfiles sugeridos y accesos por sección.',
+      description:
+        'Crea perfiles nuevos a partir de los sugeridos. Para que alguien los use, debes reemplazar el perfil sugerido en Usuarios.',
     },
     fieldOperations: {
       title: 'Operaciones de campo',
@@ -641,8 +661,8 @@ export function getAccessModuleLabel(moduleKey: string): string {
     access: 'Acceso',
     'access-control': 'Control de acceso',
     operations: 'Operaciones',
-    wfm: 'Operaciones de campo',
-    crm: 'CRM',
+    wfm: 'Programación',
+    crm: 'Oportunidades',
     commercial: 'Comercial',
     assurance: 'Mesa de ayuda',
     inventory: 'Inventario',

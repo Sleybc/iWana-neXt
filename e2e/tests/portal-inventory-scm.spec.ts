@@ -138,7 +138,10 @@ async function assignIssueLineSerial(
 }
 
 async function openStockIssueComposer(main: import('@playwright/test').Locator) {
-  await main.getByRole('button', { name: 'Salidas' }).click();
+  await main
+    .getByRole('navigation', { name: 'Secciones de inventario' })
+    .getByRole('button', { name: 'Salidas', exact: true })
+    .click();
   await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
   await main.getByRole('button', { name: 'Crear salida' }).first().click();
   await expect(main.getByRole('heading', { name: 'Nueva salida' })).toBeVisible();
@@ -331,7 +334,7 @@ function buildCatalogItem(overrides: Record<string, unknown> = {}) {
     categoryName: 'CPE',
     categoryCode: 'CPE',
     trackingMode: 'SERIALIZED',
-    unitOfMeasure: 'UND',
+    unitOfMeasure: 'UNIT',
     baseCost: '185000',
     minimumStock: '5',
     purchasable: true,
@@ -339,7 +342,7 @@ function buildCatalogItem(overrides: Record<string, unknown> = {}) {
     assetControlled: true,
     preferredSupplierRefId: 'party-001',
     supplierSku: 'SUP-ONT-HG',
-    purchaseUnitOfMeasure: 'caja',
+    purchaseUnitOfMeasure: 'BOX',
     purchaseToBaseUomFactor: '10',
     standardCost: '185000',
     lastPurchaseCost: null,
@@ -375,6 +378,10 @@ function buildPurchaseRequest(overrides: Record<string, unknown> = {}) {
     approvedByUserId: NOC_USER_ID,
     neededByDate: '2026-07-01',
     notes: null,
+    // Eje de abastecimiento derivado que emite el API junto a `status`:
+    // `status` se detiene en CONVERTED_TO_PO y no distingue mercancía en
+    // tránsito de mercancía ya recibida; este campo sí.
+    fulfillmentStatus: 'NOT_ORDERED',
     createdAt: nowIso(-5000),
     updatedAt: nowIso(-1000),
     ...overrides,
@@ -1219,7 +1226,7 @@ async function setupInventoryMocks(
             itemId: ITEM_CONSUMABLE_ID,
             itemSku: 'CAB-DROP',
             itemName: 'Cable drop',
-            unitOfMeasure: 'metro',
+            unitOfMeasure: 'METER',
             available: '0.00',
             pendingPurchase: '0.00',
             minimumStock: '10.00',
@@ -1241,7 +1248,7 @@ async function setupInventoryMocks(
             itemId: ITEM_ID,
             itemSku: 'ONT-HG8245',
             itemName: 'ONT Huawei HG8245',
-            unitOfMeasure: 'UND',
+            unitOfMeasure: 'UNIT',
             available: '3.00',
             pendingPurchase: '0.00',
             minimumStock: '5.00',
@@ -2857,6 +2864,8 @@ async function setupInventoryMocks(
         const request = state.purchaseRequests.find((entry) => entry.id === body.purchaseRequestId);
         if (request) {
           request.status = 'CONVERTED_TO_PO';
+          // Orden recien emitida (APPROVED): mercancia en transito.
+          request.fulfillmentStatus = 'PENDING_RECEIPT';
           request.updatedAt = nowIso();
         }
 
@@ -2902,6 +2911,8 @@ async function setupInventoryMocks(
       const request = state.purchaseRequests.find((entry) => entry.id === body.purchaseRequestId);
       if (request) {
         request.status = 'CONVERTED_TO_PO';
+        // Orden recien emitida (APPROVED): mercancia en transito.
+        request.fulfillmentStatus = 'PENDING_RECEIPT';
         request.updatedAt = nowIso();
       }
 
@@ -2978,6 +2989,23 @@ async function setupInventoryMocks(
           line.receivedQuantity = line.quantity;
         }
       });
+
+      // Recepcion completa: la orden queda FULLY_RECEIVED y la solicitud pasa a
+      // RECEIVED en el eje de abastecimiento. El `status` administrativo sigue
+      // en CONVERTED_TO_PO —el API real tampoco lo mueve— y por eso el listado
+      // depende de `fulfillmentStatus` para no mostrar como pendiente algo ya
+      // recibido.
+      const receivedOrder = state.purchaseOrders.find((entry) => entry.id === orderId);
+      if (receivedOrder) {
+        receivedOrder.status = 'FULLY_RECEIVED';
+        const receivedRequest = state.purchaseRequests.find(
+          (entry) => entry.id === receivedOrder.purchaseRequestId,
+        );
+        if (receivedRequest) {
+          receivedRequest.fulfillmentStatus = 'RECEIVED';
+          receivedRequest.updatedAt = nowIso();
+        }
+      }
 
       await route.fulfill({
         status: 201,
@@ -3556,6 +3584,7 @@ test.describe('Portal Inventario / SCM', () => {
     const main = page.locator('main');
 
     await main.getByRole('button', { name: 'Catálogo' }).click();
+    await main.getByRole('tab', { name: 'Productos' }).click();
     await expect(main.getByText('Catálogo de productos')).toBeVisible();
 
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
@@ -4112,6 +4141,47 @@ test.describe('Portal Inventario / SCM', () => {
     const wtwOptionTexts = await page.getByRole('listbox').getByRole('option').allTextContents();
     expect(wtwOptionTexts.every((opt) => !opt.includes('CLI-001'))).toBe(true);
     expect(wtwOptionTexts.every((opt) => !opt.includes('Sitio cliente demo'))).toBe(true);
+  });
+
+  test('separa mercancía recibida de mercancía en tránsito en el KPI y en el listado', async ({
+    page,
+  }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+    // Dos solicitudes con el mismo `status` administrativo (CONVERTED_TO_PO) y
+    // distinto abastecimiento: es el escenario que hacía contar como «Por
+    // recibir» una compra cuya mercancía ya estaba en bodega.
+    state.purchaseRequests.unshift(
+      buildPurchaseRequest({
+        id: 'pr-received-1',
+        requestNumber: 'PR-000500',
+        title: 'Compra con mercancía ya recibida',
+        status: 'CONVERTED_TO_PO',
+        fulfillmentStatus: 'RECEIVED',
+      }),
+      buildPurchaseRequest({
+        id: 'pr-transit-1',
+        requestNumber: 'PR-000501',
+        title: 'Compra con mercancía en tránsito',
+        status: 'CONVERTED_TO_PO',
+        fulfillmentStatus: 'PENDING_RECEIPT',
+      }),
+    );
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+    await main.getByRole('button', { name: 'Compras' }).click();
+    await expect(main.getByText('Resumen de compras')).toBeVisible();
+
+    // Solo la solicitud en tránsito cuenta: la recibida ya no está «por recibir».
+    await expect(main.getByRole('button', { name: /Recepción\s+1\s+Por recibir/ })).toBeVisible();
+
+    await expect(
+      main.getByRole('row', { name: /PR-000500/ }).getByText('Recibida y cerrada'),
+    ).toBeVisible();
+    await expect(
+      main.getByRole('row', { name: /PR-000501/ }).getByText('Convertida en orden de compra'),
+    ).toBeVisible();
   });
 
   test('aprueba urgencia operativa con excepción justificada', async ({ page }) => {

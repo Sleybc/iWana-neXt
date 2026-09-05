@@ -177,6 +177,19 @@ describe('TasksController Swagger', () => {
       | Record<string, unknown>
       | undefined;
     expect(detailProperties?.template).toEqual(expect.objectContaining({ nullable: true }));
+    const templateReference = schemas.ExecutionOrderTemplateReference as
+      | {
+          required?: string[];
+          properties?: Record<string, { type?: string; items?: { $ref?: string } }>;
+        }
+      | undefined;
+    expect(templateReference?.properties?.requirements).toEqual(
+      expect.objectContaining({
+        type: 'array',
+        items: { $ref: '#/components/schemas/ExecutionOrderTemplateRequirement' },
+      }),
+    );
+    expect(templateReference?.required ?? []).not.toContain('requirements');
     expect(schemas.RegisterItemUsageCommand?.properties).toEqual(
       expect.objectContaining({ quantity: { type: 'integer', minimum: 1 } }),
     );

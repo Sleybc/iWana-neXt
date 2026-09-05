@@ -110,7 +110,7 @@ const profiles: Array<Record<string, unknown>> = [
 ];
 
 const permissionsCatalog = {
-  version: 'MOD00_ACCESS_V1',
+  version: 'MOD00_ACCESS_V2',
   permissions: [
     {
       id: 'perm-1',
@@ -119,7 +119,7 @@ const permissionsCatalog = {
       moduleKey: 'settings',
       action: 'read',
       description: 'Ver centro de Configuración',
-      catalogVersion: 'MOD00_ACCESS_V1',
+      catalogVersion: 'MOD00_ACCESS_V2',
       availability: 'ASSIGNABLE',
       isSystem: true,
       isActive: true,
@@ -131,7 +131,7 @@ const permissionsCatalog = {
       moduleKey: 'access-control',
       action: 'manage',
       description: 'Administrar perfiles de acceso',
-      catalogVersion: 'MOD00_ACCESS_V1',
+      catalogVersion: 'MOD00_ACCESS_V2',
       availability: 'ASSIGNABLE',
       isSystem: true,
       isActive: true,
@@ -181,10 +181,46 @@ const extraSuggestedProfiles: Array<Record<string, unknown>> = [
     updatedAt: '2026-05-21T00:00:00.000Z',
   },
   {
+    id: 'template-sales',
+    name: 'Ventas',
+    description: 'Perfil sugerido para gestión comercial y ventas.',
+    baseRoleConstraint: 'SALES',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
     id: 'template-tech',
     name: 'Técnico de campo',
     description: 'Perfil sugerido para agenda y ejecución de campo.',
     baseRoleConstraint: 'TECHNICIAN',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-accountant',
+    name: 'Contabilidad',
+    description: 'Perfil sugerido para gestión contable y facturación.',
+    baseRoleConstraint: 'ACCOUNTANT',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-hr',
+    name: 'Talento humano',
+    description: 'Perfil sugerido para gestión de talento humano.',
+    baseRoleConstraint: 'HR',
     scopeSiteId: null,
     isSystem: true,
     isActive: true,
@@ -451,31 +487,23 @@ test.describe('Portal settings access UI', () => {
         .getByRole('button', { name: 'Crear perfil' }),
     ).toHaveCount(0);
 
-    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Plantillas iniciales' })).toHaveCount(0);
     await expect(page.getByText('Usar como base')).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: /Crear a partir de este perfil/ }).first(),
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /Crear a partir de este perfil/ })).toHaveCount(
+      0,
+    );
 
-    const suggestedPanel = page
-      .getByRole('heading', { name: 'Perfiles sugeridos' })
-      .locator('xpath=ancestor::section[1]');
-    const suggestedTitle = suggestedPanel.getByText('Administrador general', { exact: true });
-    const suggestedCreate = suggestedPanel.getByRole('button', {
-      name: 'Crear a partir de este perfil Administrador general',
-    });
-    const titleBox = await suggestedTitle.boundingBox();
-    const createBox = await suggestedCreate.boundingBox();
-    expect(titleBox).toBeTruthy();
-    expect(createBox).toBeTruthy();
-    const overlaps =
-      titleBox!.x < createBox!.x + createBox!.width &&
-      titleBox!.x + titleBox!.width > createBox!.x &&
-      titleBox!.y < createBox!.y + createBox!.height &&
-      titleBox!.y + titleBox!.height > createBox!.y;
-    expect(overlaps).toBe(false);
-    expect(titleBox!.y + titleBox!.height).toBeLessThanOrEqual(createBox!.y);
+    await customProfilesPanel.getByRole('button', { name: 'Crear perfil' }).click();
+    const creationPeek = page.getByRole('dialog', { name: 'Perfiles sugeridos' });
+    await expect(creationPeek).toBeVisible();
+    await expect(
+      creationPeek.getByRole('button', { name: 'Ver lo que permite Administrador general' }),
+    ).toBeVisible();
+    await expect(creationPeek.getByRole('button', { name: 'Empezar desde cero' })).toBeVisible();
+    await expect(creationPeek.getByRole('button', { name: /Editar/ })).toHaveCount(0);
+    await creationPeek.getByRole('button', { name: 'Cerrar' }).click();
+    await expect(creationPeek).toHaveCount(0);
 
     const mfaHeading = page.getByRole('heading', { name: 'Verificación en dos pasos global' });
     await mfaHeading.scrollIntoViewIfNeeded();
@@ -496,7 +524,7 @@ test.describe('Portal settings access UI', () => {
     expect(deleteIds).toHaveLength(0);
   });
 
-  test('con 0 perfiles personalizados muestra sugeridos en el primer viewport desktop', async ({
+  test('con 0 perfiles personalizados el empty y Crear perfil caben en el primer viewport desktop', async ({
     page,
   }) => {
     await setupAccessUiMocks(page, { includeCustomProfiles: false });
@@ -504,12 +532,21 @@ test.describe('Portal settings access UI', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openAccessSettings(page);
 
-    await expect(page.getByText('Aún no has creado perfiles personalizados')).toBeVisible();
+    await expect(page.getByText('Tus equipos ya usan los perfiles sugeridos')).toBeVisible();
+    await expect(page.getByText('Aún no has creado perfiles personalizados')).toHaveCount(0);
+    await expect(page.getByText(/Crear uno a partir del sugerido no mueve a nadie/)).toBeVisible();
+    await expect(
+      page.getByText(
+        'Crear un perfil aquí no cambia a quién lo usa. Para que alguien deje el perfil sugerido, debes reemplazarlo en Usuarios.',
+      ),
+    ).toBeVisible();
     await expect(page.getByText('Sin perfil seleccionado')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeInViewport();
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toHaveCount(0);
+    await expect(page.getByText('Tus equipos ya usan los perfiles sugeridos')).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Crear perfil' })).toBeInViewport();
   });
 
-  test('en desktop 1440×900 con 6 sugeridos los CTAs caben apilados en cada card', async ({
+  test('al crear, el peek muestra 9 filas compactas en orden canónico, no 9 cards en página', async ({
     page,
   }) => {
     await setupAccessUiMocks(page, {
@@ -520,46 +557,40 @@ test.describe('Portal settings access UI', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openAccessSettings(page);
 
-    const suggestedPanel = page
-      .getByRole('heading', { name: 'Perfiles sugeridos' })
-      .locator('xpath=ancestor::section[1]');
-    const cards = suggestedPanel.locator('div.rounded-2xl').filter({
-      has: page.getByRole('button', { name: /Crear a partir de este perfil/ }),
-    });
-    await expect(cards).toHaveCount(6);
-
-    const firstFour = await Promise.all(
-      [0, 1, 2, 3].map(async (index) => cards.nth(index).boundingBox()),
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Crear a partir de este perfil/ })).toHaveCount(
+      0,
     );
-    expect(firstFour.every((box) => box)).toBeTruthy();
-    expect(Math.abs(firstFour[0]!.y - firstFour[3]!.y)).toBeLessThan(4);
 
-    const card = cards.filter({ hasText: 'Administrador general' }).first();
-    const previewButton = card.getByRole('button', {
-      name: /Ver lo que permite Administrador general/,
-    });
-    const createButton = card.getByRole('button', {
-      name: 'Crear a partir de este perfil Administrador general',
-    });
+    await page.getByRole('button', { name: 'Crear perfil' }).click();
+    const peek = page.getByRole('dialog');
+    await expect(peek.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
+    const suggestedRows = peek.getByRole('button', { name: /Ver lo que permite / });
+    await expect(suggestedRows).toHaveCount(9);
+    await expect(suggestedRows.nth(0)).toHaveAccessibleName(
+      'Ver lo que permite Administrador general',
+    );
+    await expect(suggestedRows.nth(3)).toHaveAccessibleName('Ver lo que permite Ventas');
+    await expect(suggestedRows.nth(6)).toHaveAccessibleName('Ver lo que permite Talento humano');
+    await expect(peek.getByRole('button', { name: 'Empezar desde cero' })).toBeVisible();
 
-    const cardBox = await card.boundingBox();
-    const previewBox = await previewButton.boundingBox();
-    const createBox = await createButton.boundingBox();
-    expect(cardBox).toBeTruthy();
-    expect(previewBox).toBeTruthy();
-    expect(createBox).toBeTruthy();
+    const firstRowBox = await suggestedRows.first().boundingBox();
+    expect(firstRowBox).toBeTruthy();
+    expect(firstRowBox!.height).toBeGreaterThanOrEqual(44);
 
-    expect(createBox!.y).toBeGreaterThan(previewBox!.y + previewBox!.height - 1);
-    expect(previewBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
-    expect(previewBox!.x + previewBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
-    expect(createBox!.x + createBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
-    expect(previewBox!.height).toBeGreaterThanOrEqual(44);
-    expect(createBox!.height).toBeGreaterThanOrEqual(44);
-    expect(previewBox!.height).toBeLessThanOrEqual(52);
-    expect(createBox!.height).toBeLessThanOrEqual(52);
+    await suggestedRows.first().click();
+    await expect(peek.getByRole('heading', { name: 'Lo que permite este perfil' })).toBeVisible();
+    await expect(peek.getByRole('button', { name: 'Usar este perfil' })).toBeVisible();
+    await expect(peek.getByRole('button', { name: 'Volver a la lista' })).toBeVisible();
+    await peek.getByRole('button', { name: 'Usar este perfil' }).click();
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Nuevo perfil en preparación')).toBeVisible();
+    await expect(page.getByLabel('Nombre')).toBeVisible();
+    await expect(page.getByLabel('Tipo de usuario permitido')).toBeVisible();
   });
 
-  test('con una sola sugerencia la card ocupa una columna contenida en desktop', async ({
+  test('con una sola sugerencia no hay galería en página; el peek lista una fila', async ({
     page,
   }) => {
     await setupAccessUiMocks(page, { includeCustomProfiles: false });
@@ -567,22 +598,15 @@ test.describe('Portal settings access UI', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openAccessSettings(page);
 
-    const suggestedPanel = page
-      .getByRole('heading', { name: 'Perfiles sugeridos' })
-      .locator('xpath=ancestor::section[1]');
-    const suggestedCards = suggestedPanel.locator('div.rounded-2xl').filter({
-      has: page.getByRole('button', { name: /Crear a partir de este perfil/ }),
-    });
-    await expect(suggestedCards).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toHaveCount(0);
+    await expect(page.getByText('Administrador general')).toHaveCount(0);
 
-    const panelBox = await suggestedPanel.boundingBox();
-    const cardBox = await suggestedCards.first().boundingBox();
-
-    expect(cardBox).toBeTruthy();
-    expect(panelBox).toBeTruthy();
-    expect(cardBox!.width).toBeLessThan(panelBox!.width * 0.35);
-    expect(cardBox!.x).toBeGreaterThanOrEqual(panelBox!.x);
-    expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width);
+    await page.getByRole('button', { name: 'Crear perfil' }).click();
+    const peek = page.getByRole('dialog', { name: 'Perfiles sugeridos' });
+    await expect(peek.getByRole('button', { name: /Ver lo que permite / })).toHaveCount(1);
+    await expect(
+      peek.getByRole('button', { name: 'Ver lo que permite Administrador general' }),
+    ).toBeVisible();
   });
 
   test('en mobile el pie MFA apila la ayuda encima del CTA sin solape', async ({ page }) => {
@@ -614,6 +638,41 @@ test.describe('Portal settings access UI', () => {
     expect(saveBox).toBeTruthy();
     expect(saveBox!.y).toBeGreaterThanOrEqual(hintBox!.y + hintBox!.height);
     expect(saveBox!.width).toBeGreaterThanOrEqual(panelBox!.width * 0.9);
+  });
+
+  test('en mobile el peek de creación tiene filas de 44px y footer alcanzable sin solape', async ({
+    page,
+  }) => {
+    await setupAccessUiMocks(page, {
+      includeCustomProfiles: false,
+      includeFullSuggestedCatalog: true,
+    });
+    await seedAdminSession(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openAccessSettings(page);
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: 'Crear perfil' }).click();
+    const peek = page.getByRole('dialog');
+    await expect(peek.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
+
+    const firstRow = peek.getByRole('button', { name: /Ver lo que permite / }).first();
+    const rowBox = await firstRow.boundingBox();
+    expect(rowBox).toBeTruthy();
+    expect(rowBox!.height).toBeGreaterThanOrEqual(44);
+
+    await firstRow.click();
+    const useThisProfile = peek.getByRole('button', { name: 'Usar este perfil' });
+    const backToList = peek.getByRole('button', { name: 'Volver a la lista' });
+    await expect(useThisProfile).toBeVisible();
+    await expect(backToList).toBeVisible();
+
+    const useBox = await useThisProfile.boundingBox();
+    const backBox = await backToList.boundingBox();
+    expect(useBox).toBeTruthy();
+    expect(backBox).toBeTruthy();
+    expect(useBox!.y + useBox!.height).toBeLessThanOrEqual(backBox!.y + 1);
+    expect(backBox!.y + backBox!.height).toBeLessThanOrEqual(844);
   });
 
   for (const viewport of viewports) {

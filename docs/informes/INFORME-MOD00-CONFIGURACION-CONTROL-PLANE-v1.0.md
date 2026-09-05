@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.79
+**Version:** 1.93
 **Estado:** Activo
-**Fecha:** 2026-08-30
+**Fecha:** 2026-08-29
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -1874,6 +1874,196 @@ La auditoría de `/dashboard/settings` fijó un resultado inicial de 51/100: sin
 - **Fix infra `pnpm dev`** (commit `828098a4`): `runner.ts:77` referenciaba `118_seed_default_execution_order_templates` sin archivo (stashed como untracked) → `TS2307`; restaurado desde `stash@{0}^3`, `pnpm --filter @iwana/db build` ✓ y `pnpm db:migrate:all` → `All tenants migrated successfully`.
 - **Gates reverificados:** `audit:adr-citations` **BLOQUEANTE: 0** · `audit:doc-locations` **BLOQUEANTE: 0** · `access-control` 24/24 + `settings/*` 297/297 + `inventory-nav` 4/4.
 - **Merge y push:** `feat/mod00-convergencia-rbac-v2` → `main` (`c236a94f` + `003a247e` + `828098a4` = `main` en `origin/main`, working directory limpio).
+
+### v1.80 — 2026-08-29 — Auditoría post-ejecución: G6 NO-GO y hueco de edición post-corte
+
+**Autor:** AI-EM-ARCH (orquestador)
+**Tipo:** Auditoría de ejecución del plan `docs/plans/2026-08-28-mod00-convergencia-rbac-granular.md`
+**Agentes:** AI-PROD-UX, AI-FE-PLATFORM, AI-SR-FULL, AI-SR-QA
+**Esta entrada supercede** el «Cierre» y «ninguna deuda crítica» de v1.78 y el tono de cierre de v1.79. El código de Fases 1–3 **no se revierte**; el **cierre de módulo y G6 quedan abiertos**.
+
+#### Síntoma del CTO
+
+Al entrar a `/dashboard/settings/access` no hay camino visible para modificar los perfiles ya creados. Tras D4 esos perfiles vivos son las 9 plantillas `isSystem`, listadas como sugeridos (solo clonar). «Editar» / «Editar accesos» existen solo en personalizados, vacíos en el tenant recién cortado.
+
+#### Dictámenes
+
+| Rol | Veredicto |
+| --- | --- |
+| AI-PROD-UX | P0 de discoverability. Spec v1.8 y Fase 3 no cubren el empty post-corte. |
+| AI-FE-PLATFORM | Implementación fiel al contrato. No es bug de cableado. |
+| AI-SR-FULL | No es 403: `PATCH` / `PUT …/permissions` mutan `isSystem`; el seed lo revierte. No hay fork+reasignar. |
+| AI-SR-QA | **G6 NO-GO.** No firma G6.5 ni G7. v1.78/v1.79 no son evidencia de cierre. |
+
+#### Decisiones del orquestador (congeladas)
+
+1. **Opción A (GO):** copy + IA post-corte. Spec prevalente **v1.9** `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` + nota v1.1 en `docs/specs/2026-08-28-mod00-convergencia-nav-gates-ux.md`. Crear **no mueve** a nadie; hay que **reemplazar** en Usuarios. CA-ACC-POST-01…06. FE **GO** contra ese freeze. Sin tokens ni endpoints.
+2. **Opción B (fuera):** copy-on-write + reasignación masiva. Evolución si CA-ACC-POST-05 no se cumple en operación.
+3. **Opción C (descartada):** edición in-place de plantillas. Choca RF-ACC-17; `ensureSystemRoleTemplatesSeeded` reescribe drift en cada `GET /profiles`.
+
+Condición 7 de QA queda respondida: el único camino es **clonar + reemplazar en Usuarios**, con E2E de ese journey (CA-ACC-POST-05). El E2E **aún no existe** → G6 sigue NO-GO.
+
+#### Lockout V1 (AI-SR-FULL, verificación)
+
+**PARCIAL.** Tras `GET /profiles` el seed desactiva las 5 plantillas V1 (`Monitoreo operativo`, `Soporte inicial`, `Técnico de campo`, `Contratista`, `Auditor`) **sin** remap de `user_access_profiles`. Efectivos filtran `AccessProfile.isActive: true`. Un no-ADMIN cuya única asignación activa es esa V1 queda con **0** permisos de perfil. ADMIN se salva por baseline. La 119 no remapea. No hay test del caso.
+
+Arreglo mínimo (no ejecutado): reasignar asignaciones V1 activas a la plantilla V2 del mismo `baseRoleConstraint` **antes** de desactivar; invalidar cache; test TECHNICIAN. No basta con dejar V1 viva: no trae claves V2 y Fase 2 seguiría 403.
+
+#### Condiciones de AI-SR-QA para reabrir G6
+
+1. Playwright del piloto técnico → Suscriptores (positivo y negativo, sesión real).
+2. Playwright de las 6 rutas padre (CA-GATE-01) y 2 subrutas (CA-GATE-02).
+3. E2E Access `MOD00_ACCESS_V2` + 9 cards (el spec ejecutable sigue en V1 / `toHaveCount(6)`; el PNG desktop muestra 9).
+4. HTTP 200/403 con `PermissionsGuard` real en assurance, inventory, purchasing, commercial y un GET/POST de cada subrecurso CRM.
+5. Test de `invalidateUserPermissions` al cambiar `role`/`status`.
+6. Coverage `access-control/**` ≥ 80 % con reporte, no N/N PASSED.
+7. E2E del journey congelado (clonar → Usuarios reemplaza) — CA-ACC-POST-05.
+8. Review AI-SEC-ENG como artefacto en `docs/security/` (o informe firmado), no un párrafo de v1.78.
+9. G6, G6.5 y G7 en entradas distintas, cada una con SHA. G6.5 = CI Linux por SHA (ADR-069).
+
+#### Pendiente (sin código en esta sesión)
+
+- Prompt de ejecución FE contra spec v1.9 (cuando el CTO autorice implementar).
+- Hotfix lockout V1→V2 (AI-SR-FULL) como condición de G6, no como carril de copy.
+- Informe de fase propio de la convergencia; esta entrada no sustituye G6.5/G7.
+
+### v1.81 — 2026-08-29 — Ejecucion autorizada: hotfix V1 + UI v1.9
+
+**Autor:** AI-EM-ARCH (orquestador)
+**Tipo:** Handoff de ejecucion (CTO: «Continua»)
+
+- Prompts: `docs/prompts/PROMPT-MOD00-ACCESO-HOTFIX-LOCKOUT-V1-v1.0.md` (AI-SR-FULL) y `docs/prompts/PROMPT-MOD00-ACCESO-POST-CORTE-UI-V19-v1.0.md` (AI-FE-PLATFORM).
+- Tracks en paralelo contra contratos congelados (spec v1.9; sin endpoints nuevos).
+- G6 sigue **NO-GO** hasta las 9 condiciones de v1.80.
+
+### v1.82 — 2026-08-29 — Hotfix lockout V1→V2 ejecutado (AI-SR-FULL)
+
+**Autor:** AI-SR-FULL
+**Tipo:** Ejecucion de hotfix (`PROMPT-MOD00-ACCESO-HOTFIX-LOCKOUT-V1-v1.0.md`)
+**Veredicto:** **GO** (tests §4.3 verdes; typecheck API; migración 120 registrada; `@iwana/db` build OK). G6 sigue **NO-GO** (no se firma).
+
+Lockout **PARCIAL** de v1.80 cerrado en backend:
+
+1. `ensureSystemRoleTemplatesSeeded` remapea asignaciones activas de las 5 plantillas V1 a la V2 canónica del mismo `baseRoleConstraint` (incluye V1 ya `isActive=false` con asignaciones vivas) **antes** de desactivar V1. `INSERT…SELECT` + `ON CONFLICT … DO NOTHING`. Cache invalidada por `invalidateByProfiles` de V1 y V2 tras el commit de `listProfiles`.
+2. Migración tenant **120** (`120_remap_mod00_access_v1_lockout.ts`) set-based, provenance reversible (`access_v1_remap_120_*`), registrada en `runner.ts`. Down restaura solo lo que esta migración tocó.
+3. Tests §4.3: TECHNICIAN no queda en `[]`; V1 ya inactiva se cura; ADMIN baseline intacto; personalizado + V1 no se pierde ni rompe unique; seed + 120 idempotentes; cache invalidada.
+
+Sin endpoints nuevos. Sin edición in-place de V2. Canon de 9 plantillas intacto.
+
+### v1.83 — 2026-08-29 — UI post-corte spec v1.9 (AI-FE-PLATFORM)
+
+**Autor:** AI-FE-PLATFORM
+**Tipo:** Ejecución UI (`PROMPT-MOD00-ACCESO-POST-CORTE-UI-V19-v1.0.md`) contra spec v1.9
+**Veredicto:** **GO** para CA-ACC-POST-01…04 y 06 en unit; E2E access 11/11 (9 cards + empty post-corte + axe 0 en 6 combos). No se firma G6. CA-ACC-POST-05 queda para AI-SR-QA.
+
+Copy e IA post-corte visibles, sin tokens nuevos, sin endpoints, sin Editar en cards sugeridas, sin copy-on-write:
+
+1. Empty condicionado: 0 personalizados + ≥1 sugerido → `Tus equipos ya usan los perfiles sugeridos`; 0+0 → `Aún no has creado perfiles personalizados`. Un solo `Crear perfil`. Loading conservado: `Cargando perfiles y accesos`.
+2. Banner §6.6 tras guardar perfil **nuevo** (`PortalAlert` success + `live="polite"` + `Ir a Usuarios`). Copy distinto desde sugerido vs desde cero. No aparece al guardar solo accesos de un personalizado existente.
+3. Ayuda §6.7 en `CompanyRolesAssignmentSection` (Create y Edit) si hay ≥1 `isSystem` seleccionado, con enlace a `/dashboard/settings/access`.
+4. Tests: Jest Access + Users (CA-ACC-POST-01…04, 06, cards sin Editar). E2E `MOD00_ACCESS_V2`, 9 sugeridos (SALES/ACCOUNTANT/HR), 6 snapshots regenerados y confirmados sin `--update-snapshots`.
+
+No commits en esta sesión.
+
+### v1.84 — 2026-08-29 — SEC-ENG hotfix V1→V2
+
+**Autor:** AI-EM-ARCH (orquestador) · Review: AI-SEC-ENG
+**Tipo:** Gate AppSec del hotfix (no G6 del plan)
+**Artefacto:** `docs/security/SECURITY-REVIEW-MOD00-HOTFIX-LOCKOUT-V1-v1.0.md`
+
+- **Veredicto:** APROBADO CON DEUDA. P0 0 · P1 0. No bloquea merge.
+- **P2 (backlog AI-SR-FULL, no este freeze):** down de 120 por par usuario/perfil en vez de `assignment_id`; remap sin audit CUD en `GET listProfiles`.
+- **P3:** fan-out de cache que traga errores; JOIN V2 en 120 sin `is_active = true`.
+- Cierra la condición 8 de v1.80 **solo para este hotfix**. El review SEC-ENG de toda la superficie Fase 2 (doble guard) sigue pendiente como artefacto propio.
+- Condición operativa: `pnpm db:migrate:all` (120) en cada tenant.
+
+### v1.85 — 2026-08-29 — Deuda hotfix P2/P3 + faltante Fase 2 (local)
+
+**Autor:** AI-EM-ARCH (orquestador) · Ejecución: AI-SR-FULL · Review: AI-SEC-ENG
+**Tipo:** Remediación de deuda + cierre de evidencia HTTP Fase 2
+**Veredicto:** Deuda P2/P3 del hotfix **cerrada en código**. Superficie Fase 2 **APROBADO CON DEUDA** (P0 0 · P1 1 fail-closed). G6 sigue **NO-GO**.
+
+1. **Hotfix P2/P3:** `listProfiles` audita el lote V1→V2 (`AuditAction.UPDATE`, ids de perfil + conteo, sin emails ni `userIds`). SQL runtime exige `v2.is_active = true` y no remapea si la V2 está inactiva. Migración **120** (tenants nuevos) persiste provenance V2 por `assignment_id` y valida schema en down. Migración **121** (tenants que ya corrieron 120, incl. `tenant_iwana` local) añade `assignment_id` a la provenance 120 y remapea residuales solo con V2 activa.
+2. **Fase 2 faltante:** OpenAPI `GET /access-control/permissions` declara `MOD00_ACCESS_V2`. Test Users: `invalidateUserPermissions` al cambiar `role`/`status`. HTTP 200/403 con `PermissionsGuard` real: assurance, inventory, purchasing, 6 controllers commercial (incluye ACCOUNTANT en catálogo), 8 subrecursos CRM. `ZodBodyValidationPipe` en prospects/reviews/potentials quedó en `@Body(...)` para no validar el UUID del path.
+3. **AppSec Fase 2:** `docs/security/SECURITY-REVIEW-MOD00-CONVERGENCIA-FASE-02-v1.0.md`. P1 residual: TECHNICIAN/CONTRACTOR en escritura de tickets vs matriz (fail-closed; no se concede `assurance.tickets.manage` por la puerta de atrás).
+4. **Local:** `pnpm db:migrate:all` aplica 121 en schemas tenant ACTIVE.
+
+G6 no se firma. Siguen abiertas las condiciones 1–2, 6–7 y 9 de v1.80 (Playwright piloto/gates, coverage ≥80 % con reporte, CA-ACC-POST-05, SHA por gate).
+
+### v1.86 — 2026-08-29 — Catálogo de sugeridos en peek (opción B)
+
+**Autor:** AI-EM-ARCH (orquestador) · UX: AI-PROD-UX · DS: AI-DS-OWNER · FE: AI-FE-PLATFORM · QA: AI-SR-QA
+**Tipo:** Re-IA de `/dashboard/settings/access` (sin API)
+**Plan:** `docs/plans/2026-08-29-mod00-acceso-catalogo-sugeridos-en-peek.md` v1.1
+**Veredicto:** **GO CON DEUDA**. G6 sigue **NO-GO**.
+
+1. **Contrato:** spec prevalente **v1.10** (galería de 9 cards fuera de página; un `PortalSidePeek` de dos momentos; CA-ACC-UX-14 sustituido; UX-15/16/18 Superados; UX-21…30). Spec Fase 3 **v1.2**. DS-OWNER **GO CON CONDICIONES** en §10.1 (sin primitiva nueva; foco al cambiar de momento).
+2. **Portal:** `Crear perfil` abre el peek (lista compacta de 9 + desde cero → detalle readonly → `Usar este perfil` deja borrador, sin `POST`). Empty post-corte y banner §6.6 conservados.
+3. **Evidencia:** Jest cliente 62 passed. Playwright `portal-settings-access-ui` 12 passed; 6 snapshots regenerados contra el primer viewport sin grid.
+4. **Deuda:** el nombre del borrador sigue en el diálogo de datos del workspace (no inline); el foco al nombre sí ocurre (CA-ACC-UX-25). POST-05 no se cierra aquí.
+
+### v1.87 — 2026-08-29 — CA-ACC-UX-25 inline
+
+**Autor:** AI-EM-ARCH (ejecutor)
+**Tipo:** Cierre de deuda UX-25
+**Veredicto:** Deuda del nombre en diálogo **cerrada**. G6 sigue **NO-GO**. POST-05 no se cierra aquí.
+
+Tras `Usar este perfil` / `Empezar desde cero`, nombre, descripción, tipo de usuario y «mantener activo» viven en el workspace (`Datos del nuevo perfil`, barra lima + píldora En edición). El diálogo queda solo para **Editar** un personalizado ya guardado. Jest cliente 62 passed.
+
+### v1.88 — 2026-08-29 — Review identidad Access (peek + borrador)
+
+**Autor:** AI-EM-ARCH · Review: AI-DS-OWNER, AI-PROD-UX, dirección visual (Firma + skills identity/senior-ui/ui-ux-pro-max)
+**Tipo:** Auditoría de alineación (sin implementación)
+**Veredicto consolidado:** **ALINEADA CON DEUDA**. P0 0 · P1 0. Script mecánico: 0 deterministas; 3 heurísticos lima-50 **descartados** (píldora En edición, spec §10).
+
+Puntajes de tracks: DS 95 · UX 92 · visual sistémico 87. Puntaje consolidado (hallazgos únicos): **88/100** (aceptable con mejoras). Firma reconocible: peek, empty, MFA, barra lima de fila. Deuda: pozo `rounded-2xl` del borrador, override `bg-gray-50` en toolbar desktop, lima del peek sin par oscuro, `loading` ausente en Guardar perfil.
+
+### v1.89 — 2026-08-29 — Cierre P2/P3 identidad Access
+
+**Autor:** AI-EM-ARCH · Ejecución: AI-FE-PLATFORM · Sello: AI-DS-OWNER
+**Tipo:** Remediación visual (sin API)
+**Veredicto:** **ALINEADO**. P2 residuales: ninguno. DS-OWNER **100/100**. Jest cliente **66 passed**.
+
+Cerrado: pozo del borrador → `shadow-iwana-active` + `.portal-eyebrow`; toolbar sin `bg-gray-50`; lima del peek con par oscuro; `loading={isSaving}` en los tres Guardar; peek detalle/filas con eyebrow, `divide-y`, hover de tabla y `tabular-nums`. Loading subtitle **no** se alargó (freeze v1.79).
+
+### v1.90 — 2026-08-29 — Tabs de sección Access como píldora inset
+
+**Autor:** AI-EM-ARCH · Ejecución: AI-FE-PLATFORM
+**Tipo:** Remediación visual (sin API)
+**Causa:** `portalModuleTabTriggerClassName` no tenía geometría de píldora; el navy activo rellenaba la pista `rounded-xl` con esquinas cuadradas.
+
+Completado el class-token existente: trigger `inline-flex items-center rounded-lg min-h-11`; pista `items-center`. Contador `tabular-nums` con `gap-2` (sin `ml-2`). Navy sigue marcando la sección actual; lima no. Sin primitiva nueva.
+
+### v1.91 — 2026-08-29 — Peek Perfiles sugeridos (momento lista)
+
+**Autor:** AI-EM-ARCH · Review: [DS-OWNER](e754bee2-e2e4-4dd0-ac82-2002cdb1afc5) GO CON CONDICIONES (94/100) · [PROD-UX](4d6e42b9-f843-42ab-b46e-1f645ae85a95) bump v1.11 · [FE-PLATFORM](ac756a77-8e68-41c4-ab2e-fe08ada1e820) composición
+**Tipo:** Remediación visual + copy de presentación (sin API)
+**Desempate lima ×9:** DS-OWNER conserva `Ver lo que permite` en lima AA (señal de interacción). PROD-UX pedía gris; no se aplica. No chevron. No eyebrow simulado en children.
+
+Cerrado: intro `text-xs` y copy corto (POST-02 intacto); 9 filas en `divide-gray-100`; «Empezar desde cero» fuera del catálogo, pozo `iwana-surface-soft` + Plus lima. Spec Access **v1.11**. CA-ACC-UX-31 / 33.
+
+### v1.92 — 2026-08-29 — Peek Access: lima de preview solo en hover
+
+**Autor:** AI-EM-ARCH · Ejecución: AI-FE-PLATFORM
+**Tipo:** Remediación visual (sin API)
+**Causa:** el lima estático ×9 convertía el catálogo en un índice de enlaces (CA-ACC-UX-32). Firma: lima = avance/interacción, no adorno.
+
+`Ver lo que permite` en reposo es meta gris; lima AA en `group-hover` / `group-focus-visible`. Momento detalle: `.portal-eyebrow-muted` por sección y `divide-gray-100`. Spec Access **v1.12**. El avance del flujo sigue siendo `Usar este perfil`.
+
+### v1.93 — 2026-08-29 — Peek Access: shells de tabla (borde + sombra dual)
+
+**Autor:** AI-EM-ARCH · Ejecución: AI-FE-PLATFORM
+**Tipo:** Remediación visual (sin API)
+**Causa:** el catálogo era una tira plana `divide-y` y «Empezar desde cero» un pozo `rounded-lg`; radios y bordes no coincidían; sin profundidad de Firma.
+
+Las 9 filas van en `portalDataTableShellClassName` + `shadow-iwana-card`. El camino vacío usa el mismo `rounded-2xl` / `border-gray-200` / sombra dual, con relleno `iwana-surface-soft`. Sin galería de 9 cards. Spec Access **v1.13**.
+
+
+
+
+
+
+
 
 
 

@@ -4,10 +4,20 @@ import {
   IsOptional,
   IsString,
   Length,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import { ApiSchema } from '@nestjs/swagger';
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_DIGIT_PATTERN,
+  PASSWORD_LOWERCASE_PATTERN,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_SPECIAL_PATTERN,
+  PASSWORD_UPPERCASE_PATTERN,
+} from '../../../common/password-policy';
 
 /**
  * DTO de login.
@@ -92,8 +102,12 @@ export class ResetPasswordDto {
   token: string;
 
   @IsString()
-  @MinLength(10)
-  @MaxLength(128)
+  @MinLength(PASSWORD_MIN_LENGTH)
+  @MaxLength(PASSWORD_MAX_LENGTH)
+  @Matches(PASSWORD_UPPERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_LOWERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_DIGIT_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_SPECIAL_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
   newPassword: string;
 
   @IsEmail()
@@ -108,18 +122,20 @@ export class ResetPasswordDto {
  */
 export class ChangePasswordDto {
   @IsString({ message: 'Ingresa tu contraseña actual para confirmar el cambio.' })
-  @MinLength(10, {
-    message: 'La contraseña actual debe tener entre 10 y 128 caracteres.',
-  })
+  @IsNotEmpty({ message: 'Ingresa tu contraseña actual para confirmar el cambio.' })
   currentPassword: string;
 
   @IsString({ message: 'Ingresa una nueva contraseña.' })
-  @MinLength(10, {
+  @MinLength(PASSWORD_MIN_LENGTH, {
     message: 'La nueva contraseña debe tener entre 10 y 128 caracteres.',
   })
-  @MaxLength(128, {
+  @MaxLength(PASSWORD_MAX_LENGTH, {
     message: 'La nueva contraseña debe tener entre 10 y 128 caracteres.',
   })
+  @Matches(PASSWORD_UPPERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_LOWERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_DIGIT_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_SPECIAL_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
   newPassword: string;
 }
 

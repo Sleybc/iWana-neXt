@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ClipboardList } from 'lucide-react';
-import { UserRole, WorkOrderPriority, WorkOrderSourceContext, WfmWorkType } from '@iwana/shared';
+import {
+  formatFullName,
+  UserRole,
+  WorkOrderPriority,
+  WorkOrderSourceContext,
+  WfmWorkType,
+} from '@iwana/shared';
 import {
   ApiError,
   assuranceApi,
@@ -193,7 +199,7 @@ function toExpedienteDisplayName(expediente: {
 
   const firstName = toOptionalTrimmedText(expediente.firstName);
   const lastName = toOptionalTrimmedText(expediente.lastName);
-  const personName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const personName = formatFullName(firstName, lastName).trim();
   if (personName) {
     return personName;
   }

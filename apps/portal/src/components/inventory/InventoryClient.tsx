@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
+  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -27,15 +28,17 @@ import {
   WriteOffStatus,
   StockMovementOrigin,
 } from '@iwana/shared';
-import { Package, Tags } from 'lucide-react';
+import { Lock, Package, Tags } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePermissions } from '@/components/access-control/permissions-context';
+import { restrictedShellClassName } from '@/components/access-control/PagePermissionGate';
 import {
   ApiError,
   type AddSupplierQuoteDto,
   type CancelPurchaseOrderDto,
   type CancelPurchaseRequestDto,
   type UpdatePurchaseRequestDto,
+  type UpdateSupplierQuoteDto,
   type CreateInventoryItemDto,
   type CreateInventoryCategoryDto,
   type CreatePurchaseOrderDto,
@@ -163,6 +166,18 @@ import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 import { trackEvent } from '@/lib/analytics';
 
 export type { InventoryTab };
+
+/**
+ * Etiquetas accesibles de los tabpanels exteriores (a11y): fuente única
+ * INVENTORY_NAV_GROUPS, sin duplicar literales. Los TabsTrigger exteriores se
+ * retiraron (navegación por subnav) y la primitiva TabsContent genera un
+ * `aria-labelledby` colgando; se sustituye por `aria-label` derivado.
+ * Cubre `catalog, purchasing, suppliers, stock, locations, issues, counts,
+ * assets, movements, writeoffs` (`overview` no renderiza TabsContent).
+ */
+const INVENTORY_TAB_PANEL_LABELS: Record<string, string> = Object.fromEntries(
+  INVENTORY_NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.id, item.label])),
+);
 
 const ASSET_DETAIL_SECTION_LIMIT = 20;
 
@@ -432,6 +447,11 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
   const [commercialProductOptions, setCommercialProductOptions] = useState<
     Array<{ id: string; name: string }>
   >([]);
+  // F1 drawer de catálogo: opciones del selector de proveedor preferido.
+  // Solo se cargan con INVENTORY_PURCHASING_READ efectivo (nunca sin permiso: sin 403).
+  const [supplierOptions, setSupplierOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoadingSupplierOptions, setIsLoadingSupplierOptions] = useState(false);
+  const [supplierOptionsError, setSupplierOptionsError] = useState<string | null>(null);
 
   const activeCategoryOptions = useMemo(
     () =>
@@ -932,6 +952,25 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
     void loadCommercialProductOptions();
   }, [activeTab, catalogDrawerOpen, loadCommercialProductOptions]);
 
+  const loadSupplierOptions = useCallback(async () => {
+    setIsLoadingSupplierOptions(true);
+    setSupplierOptionsError(null);
+    try {
+      const response = await purchasingApi.listSuppliers({ limit: PICKER_SOFT_CAP });
+      setSupplierOptions(
+        (response.data ?? []).map((supplier) => ({
+          id: supplier.partyRefId,
+          name: supplier.party?.displayName?.trim() || 'Proveedor asignado',
+        })),
+      );
+    } catch (loadError) {
+      setSupplierOptions([]);
+      setSupplierOptionsError(mapInventoryError(loadError));
+    } finally {
+      setIsLoadingSupplierOptions(false);
+    }
+  }, []);
+
   const openLocationCreateDialog = useCallback(() => {
     setLocationEditItem(null);
     setLocationSubmitError(null);
@@ -1238,13 +1277,54 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
     // eslint-disable-next-line react-hooks/exhaustive-deps -- filtros ubicaciones + custody
   }, [locationListFilters, locationCustodyFilter]);
 
+  // CA-GATE-06 (v1.3): el grupo Abastecimiento (Compras + Proveedores) se
+  // oculta solo con permisos efectivos resueltos. En loading/degradado o
+  // tripwire (set vacío) queda visible — mismo criterio del Sidebar; la
+  // barrera real sigue siendo el backend (PermissionsGuard).
+  const { status: permissionsStatus, effectivePermissions, hasAnyPermission } = usePermissions();
+  const canReadPurchasing =
+    federatedMode ||
+    permissionsStatus !== 'ready' ||
+    effectivePermissions.size === 0 ||
+    user?.role === UserRole.ADMIN ||
+    hasAnyPermission([AccessPermissionKey.INVENTORY_PURCHASING_READ]);
+  const navGroups = federatedMode
+    ? INVENTORY_FEDERATED_NAV_GROUPS
+    : filterInventoryNavGroups(canReadPurchasing);
+
+  // Estado restringido inline (spec subnav Inventario v1.3 §2.4): deep-link a
+  // una pestaña del grupo Abastecimiento sin llave efectiva. La negación de
+  // canReadPurchasing implica contexto resuelto, set no vacío, rol no-ADMIN y
+  // ausencia de la llave (y no-federado). No redirige: la URL se conserva.
+  // Declarado antes de los efectos de precarga: lo consulta el fetch de
+  // opciones de catálogo de Compras (SEC-P3-01).
+  const showTabRestrictedGate =
+    !canReadPurchasing && (activeTab === 'purchasing' || activeTab === 'suppliers');
+
   useEffect(() => {
     if (activeTab !== 'purchasing') {
       return;
     }
 
+    // SEC-P3-01: con el estado restringido inline el workspace no se monta y
+    // el fetch de opciones de catálogo se descartaría; no se dispara.
+    if (showTabRestrictedGate) {
+      return;
+    }
+
     void loadCatalogOptions();
-  }, [activeTab, loadCatalogOptions]);
+  }, [activeTab, loadCatalogOptions, showTabRestrictedGate]);
+
+  // F1 drawer de catálogo (spec §7): el fetch de proveedores solo se dispara
+  // con permiso efectivo de compras. Sin permiso el drawer degrada con
+  // explicación y el 403 nunca puede existir.
+  useEffect(() => {
+    if (!catalogDrawerOpen || !canReadPurchasing) {
+      return;
+    }
+
+    void loadSupplierOptions();
+  }, [catalogDrawerOpen, canReadPurchasing, loadSupplierOptions]);
 
   useEffect(() => {
     if (!createProductOpen || !createCategoryInlineOpen || !createCategoryInlineName.trim()) {
@@ -1710,6 +1790,26 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
       await loadData(true);
     } catch (submitError) {
       setQuoteError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingQuote(false);
+    }
+  }
+
+  async function handleUpdateQuote(
+    requestId: string,
+    quoteId: string,
+    payload: UpdateSupplierQuoteDto,
+  ): Promise<boolean> {
+    setIsSubmittingQuote(true);
+    setQuoteError(null);
+    try {
+      const quote = await purchasingApi.updateQuote(requestId, quoteId, payload);
+      setLatestQuoteAmount(quote.amount);
+      await loadData(true);
+      return true;
+    } catch (submitError) {
+      setQuoteError(mapInventoryError(submitError));
+      return false;
     } finally {
       setIsSubmittingQuote(false);
     }
@@ -2226,20 +2326,6 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
     [pathname, router, searchParams],
   );
 
-  // CA-GATE-06: Compras se oculta solo con permisos efectivos resueltos. En
-  // loading/degradado o tripwire (set vacío) queda visible — mismo criterio del
-  // Sidebar; la barrera real sigue siendo el backend (PermissionsGuard).
-  const { status: permissionsStatus, effectivePermissions, hasAnyPermission } = usePermissions();
-  const canReadPurchasing =
-    federatedMode ||
-    permissionsStatus !== 'ready' ||
-    effectivePermissions.size === 0 ||
-    user?.role === UserRole.ADMIN ||
-    hasAnyPermission([AccessPermissionKey.INVENTORY_PURCHASING_READ]);
-  const navGroups = federatedMode
-    ? INVENTORY_FEDERATED_NAV_GROUPS
-    : filterInventoryNavGroups(canReadPurchasing);
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -2284,6 +2370,39 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
           federatedMode ? 'Secciones de maestros de inventario' : 'Secciones de inventario'
         }
       />
+
+      {showTabRestrictedGate ? (
+        <section
+          className={restrictedShellClassName}
+          aria-labelledby="inventory-tab-restricted-title"
+        >
+          <Badge variant="warning" className="gap-1.5">
+            <Lock className="h-3.5 w-3.5" aria-hidden={true} />
+            Acceso restringido
+          </Badge>
+          <h2
+            id="inventory-tab-restricted-title"
+            className="text-xl font-semibold text-gray-900 dark:text-white md:text-2xl"
+          >
+            No tienes acceso a esta sección
+          </h2>
+          <p className="max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-400">
+            Tu tipo de usuario y sus perfiles asignados no incluyen el acceso necesario para usar
+            esta sección.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              className="min-h-11"
+              onClick={() => handleTabChange('overview')}
+            >
+              Volver a Vista general
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {activeTab === 'overview' && !federatedMode ? (
         <div className="space-y-6 mb-6">
@@ -2401,9 +2520,14 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
         </div>
       ) : null}
 
-      {activeTab !== 'overview' ? (
+      {activeTab !== 'overview' && !showTabRestrictedGate ? (
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsContent value="catalog" className="space-y-6">
+          <TabsContent
+            value="catalog"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.catalog}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             {catalogFeedback ? (
               <PortalAlert
                 variant="success"
@@ -2551,7 +2675,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             </PortalPanel>
           </TabsContent>
 
-          <TabsContent value="purchasing" className="space-y-6">
+          <TabsContent
+            value="purchasing"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.purchasing}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             {catalogOptionsError ? (
               <PortalAlert
                 variant="error"
@@ -2598,6 +2727,7 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
               isSubmittingCounterPurchase={isSubmittingCounterPurchase}
               onCreateRequest={handleCreateRequest}
               onAddQuote={handleAddQuote}
+              onUpdateQuote={handleUpdateQuote}
               onApproveRequest={handleApproveRequest}
               onCreateAwards={handleCreateAwards}
               onRejectRequest={handleRejectRequest}
@@ -2625,7 +2755,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             />
           </TabsContent>
 
-          <TabsContent value="suppliers" className="space-y-6">
+          <TabsContent
+            value="suppliers"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.suppliers}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <PortalPanel
               eyebrow="Abastecimiento"
               title="Proveedores"
@@ -2659,7 +2794,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             </PortalPanel>
           </TabsContent>
 
-          <TabsContent value="stock" className="space-y-6">
+          <TabsContent
+            value="stock"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.stock}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <PortalPanel
               eyebrow="Operación"
               title="Existencias"
@@ -2702,7 +2842,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             </PortalPanel>
           </TabsContent>
 
-          <TabsContent value="locations" className="space-y-6">
+          <TabsContent
+            value="locations"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.locations}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <PortalPanel
               eyebrow="Red logística"
               title="Bodegas"
@@ -2735,7 +2880,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             </PortalPanel>
           </TabsContent>
 
-          <TabsContent value="issues" className="space-y-6">
+          <TabsContent
+            value="issues"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.issues}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <StockIssuesWorkspace
               error={error}
               listRevision={issuesListRevision}
@@ -2751,7 +2901,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             />
           </TabsContent>
 
-          <TabsContent value="counts" className="space-y-6">
+          <TabsContent
+            value="counts"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.counts}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <StockCountsWorkspace
               locations={locations}
               categories={categories}
@@ -2770,7 +2925,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             />
           </TabsContent>
 
-          <TabsContent value="assets" className="space-y-6">
+          <TabsContent
+            value="assets"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.assets}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <AssetsWorkspace
               items={items}
               locations={locations}
@@ -2783,7 +2943,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             />
           </TabsContent>
 
-          <TabsContent value="movements" className="space-y-6">
+          <TabsContent
+            value="movements"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.movements}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <MovementsWorkspace
               saleForm={saleForm}
               onSaleFormChange={setSaleForm}
@@ -2796,7 +2961,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             />
           </TabsContent>
 
-          <TabsContent value="writeoffs" className="space-y-6">
+          <TabsContent
+            value="writeoffs"
+            aria-label={INVENTORY_TAB_PANEL_LABELS.writeoffs}
+            aria-labelledby={undefined}
+            className="space-y-6"
+          >
             <WriteOffsPanel
               pending={pendingWriteOffs}
               requestForm={writeOffForm}
@@ -2953,6 +3123,15 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
           item={catalogEditItem}
           categories={categories}
           commercialProductOptions={commercialProductOptions}
+          supplierOptions={supplierOptions}
+          supplierOptionsLoading={isLoadingSupplierOptions}
+          supplierOptionsError={supplierOptionsError}
+          canReadPurchasing={canReadPurchasing}
+          preferredSupplierName={
+            catalogEditItem.preferredSupplierRefId
+              ? (supplierLabels[catalogEditItem.preferredSupplierRefId] ?? null)
+              : null
+          }
           isSubmitting={isSubmittingCatalogItem}
           error={catalogSubmitError}
           onClose={() => {

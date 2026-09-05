@@ -3,6 +3,8 @@
 import {
   AssetLifecycleEventType,
   GoodsReceiptStatus,
+  INVENTORY_UNITS_OF_MEASURE,
+  InventoryBarcodeType,
   InventoryItemCategory,
   InventoryItemKind,
   InventoryItemStatus,
@@ -30,6 +32,10 @@ import {
   WriteOffReason,
   WriteOffStatus,
 } from '@iwana/shared';
+import {
+  isPurchaseRequestFullyReceived,
+  type PurchaseRequestFulfillmentSource,
+} from './purchase-filters';
 
 function resolveLabel<T extends string>(value: T, labels: Record<T, string>): string {
   return labels[value] ?? value;
@@ -364,6 +370,63 @@ export function getInventoryTrackingModeLabel(value: InventoryTrackingMode): str
   return resolveLabel(value, INVENTORY_TRACKING_MODE_LABELS);
 }
 
+/* ————————————————————————————————————————————————————————————————
+ * Código de barras (MOD12 · F4 · PRD §11 delta v1.1).
+ * Etiquetas en español para el Select de formato: nunca el enum crudo en
+ * vistas finales (system-vocabulary-review). La validación por formato vive
+ * en `@iwana/shared` (`validateBarcodeValue`); el backend es autoritativo.
+ * ———————————————————————————————————————————————————————————————— */
+
+export const INVENTORY_BARCODE_TYPE_LABELS: Record<InventoryBarcodeType, string> = {
+  [InventoryBarcodeType.EAN13]: 'EAN-13',
+  [InventoryBarcodeType.UPCA]: 'UPC-A',
+  [InventoryBarcodeType.CODE128]: 'Code 128',
+  [InventoryBarcodeType.OTHER]: 'Otro',
+};
+
+export function getInventoryBarcodeTypeLabel(value: InventoryBarcodeType): string {
+  return resolveLabel(value, INVENTORY_BARCODE_TYPE_LABELS);
+}
+
+/** Opciones del Select de formato, derivadas del enum canónico (nunca hardcodeadas). */
+export const INVENTORY_BARCODE_TYPE_OPTIONS: ReadonlyArray<{
+  value: InventoryBarcodeType;
+  label: string;
+}> = Object.values(InventoryBarcodeType).map((value) => ({
+  value,
+  label: getInventoryBarcodeTypeLabel(value),
+}));
+
+/** Etiqueta del campo de captura (alta, edición y flujos con el producto en la mano). */
+export const INVENTORY_BARCODE_LABEL = 'Código de barras';
+/** Etiqueta del Select de formato junto al valor (regla «van juntos», CA-F4-08). */
+export const INVENTORY_BARCODE_TYPE_LABEL = 'Formato del código';
+/** Opción vacía del Select de formato: sin código no hay formato. */
+export const INVENTORY_BARCODE_NO_CODE_LABEL = 'Sin código de barras';
+/** Ayuda en el alta: opcional (regla 1) y fuera de la identidad del SKU (regla 5). */
+export const INVENTORY_BARCODE_CREATE_HELP_TEXT =
+  'Opcional. Sirve para identificar el producto al recibir, contar y despachar. No forma parte del código del producto.';
+/** Ayuda en edición: editable tras crear (regla 6), a diferencia del código. */
+export const INVENTORY_BARCODE_EDIT_HELP_TEXT =
+  'Opcional. Se puede corregir después, a diferencia del código. Para quitarlo, deja vacíos el código y el formato.';
+/** Mitad de la pareja sin formato (espejo cliente de CA-F4-08; el backend decide). */
+export const INVENTORY_BARCODE_PAIR_TYPE_MISSING_MESSAGE =
+  'Indica el formato del código: el formato va junto al código.';
+/** Mitad de la pareja sin valor (espejo cliente de CA-F4-08; el backend decide). */
+export const INVENTORY_BARCODE_PAIR_VALUE_MISSING_MESSAGE =
+  'Indica el código junto al formato, o deja ambos vacíos.';
+
+/**
+ * Opciones de unidad base desde el catálogo canónico (ADR-085 D1 · F5a).
+ * Derivadas de la única fuente en `@iwana/shared`: el usuario solo ve la
+ * etiqueta en español (system-vocabulary-review: sin códigos crudos); el código
+ * viaja como valor del Select y lo valida el backend.
+ */
+export const INVENTORY_UNIT_OF_MEASURE_OPTIONS: ReadonlyArray<{
+  value: string;
+  label: string;
+}> = INVENTORY_UNITS_OF_MEASURE.map(({ code, label }) => ({ value: code, label }));
+
 export function getStockLocationTypeLabel(value: StockLocationType): string {
   return resolveLabel(value, STOCK_LOCATION_TYPE_LABELS);
 }
@@ -498,6 +561,15 @@ export function getWarrantyCoverageLabel(warrantyUntil: string | null | undefine
 export function getPurchaseRequestStatusLabel(value: PurchaseRequestStatus): string {
   return resolveLabel(value, PURCHASE_REQUEST_STATUS_LABELS);
 }
+
+/**
+ * Etiqueta del estado administrativo cuando la mercancía ya entró a bodega.
+ *
+ * `PurchaseRequestStatus` se detiene en `CONVERTED_TO_PO` por diseño del
+ * dominio, así que sin este matiz una solicitud ya recibida se seguiría leyendo
+ * como si la orden estuviera en curso.
+ */
+export const PURCHASE_REQUEST_RECEIVED_STATUS_LABEL = 'Recibida y cerrada';
 
 export function getPurchaseRequestTypeLabel(value: PurchaseRequestType): string {
   return resolveLabel(value, PURCHASE_REQUEST_TYPE_LABELS);
@@ -646,6 +718,17 @@ export function formatInventoryCurrency(value: string | number | null | undefine
   }).format(Number.isFinite(numeric) ? numeric : 0);
 }
 
+/** Dos decimales COP. Solo superficies de cotización (subtotales, tributos, neto). */
+export function formatInventoryMoney(value: string | number | null | undefined): string {
+  const numeric = typeof value === 'number' ? value : Number.parseFloat(value ?? '0');
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(numeric) ? numeric : 0);
+}
+
 const APPROVAL_LEVEL_LABELS: Record<string, string> = {
   BUYER: 'Comprador',
   BUYER_MANAGER: 'Jefe de compras',
@@ -752,6 +835,34 @@ export function getPurchaseRequestStatusBadgeVariant(
   return PURCHASE_REQUEST_STATUS_VARIANTS[value] ?? 'neutral';
 }
 
+export interface PurchaseRequestDisplayStatus {
+  label: string;
+  variant: PurchaseBadgeVariant;
+}
+
+/**
+ * Estado visible de una solicitud de compra: único punto que combina el ciclo
+ * administrativo (`status`) con el eje de abastecimiento (`fulfillmentStatus`).
+ *
+ * Toda vista que pinte el estado de una solicitud debe pasar por aquí para que
+ * la celda del listado y la ficha del workbench no diverjan.
+ */
+export function getPurchaseRequestDisplayStatus(
+  request: PurchaseRequestFulfillmentSource,
+): PurchaseRequestDisplayStatus {
+  if (
+    request.status === PurchaseRequestStatus.CONVERTED_TO_PO &&
+    isPurchaseRequestFullyReceived(request)
+  ) {
+    return { label: PURCHASE_REQUEST_RECEIVED_STATUS_LABEL, variant: 'success' };
+  }
+
+  return {
+    label: getPurchaseRequestStatusLabel(request.status),
+    variant: getPurchaseRequestStatusBadgeVariant(request.status),
+  };
+}
+
 export function getPurchaseRequestPriorityBadgeVariant(
   value: PurchaseRequestPriority,
 ): PurchaseBadgeVariant {
@@ -855,3 +966,115 @@ export function formatInventoryCostOrNone(value: string | number | null | undefi
   }
   return formatInventoryCurrency(numeric);
 }
+
+/* ————————————————————————————————————————————————————————————————
+ * Drawer de catálogo · secciones Compras, Inventario y Activos (F1).
+ * Copy exacto de docs/specs/2026-09-02-mod12-catalogo-drawer-secciones-f1-ux.md §3/§6/§7/§8.
+ * Unidad de compra y factor incorporados el 2026-09-03 tras completarse
+ * F5a/F5b del ADR-085 (la sección ya estaba diseñada para recibirlos, §9).
+ * ———————————————————————————————————————————————————————————————— */
+
+/** Descripción del header del drawer de edición de catálogo (spec §2.3). */
+export const INVENTORY_CATALOG_DRAWER_DESCRIPTION =
+  'Edita los datos del producto: identificación, compras, inventario, activos y relación comercial.';
+
+/**
+ * Ayuda del bloque Costos del drawer (spec §4). No pisa
+ * `INVENTORY_AVERAGE_COST_HELP_TEXT`: esa constante se consume en otras superficies.
+ */
+export const INVENTORY_CATALOG_COSTS_SECTION_HELP_TEXT =
+  'El costo promedio y el último costo de compra se actualizan al recibir compras. El costo estándar se captura en la sección Compras.';
+
+/** Secciones del drawer de catálogo (HLD §7, spec §2.1/§3). */
+export const INVENTORY_CATALOG_PURCHASING_SECTION_TITLE = 'Compras';
+export const INVENTORY_CATALOG_PURCHASING_SECTION_DESCRIPTION =
+  'Define si el producto se puede comprar y sus condiciones de abastecimiento.';
+export const INVENTORY_CATALOG_INVENTORY_SECTION_TITLE = 'Inventario';
+export const INVENTORY_CATALOG_INVENTORY_SECTION_DESCRIPTION =
+  'Define si el producto se controla en bodega y sus niveles de referencia.';
+export const INVENTORY_CATALOG_ASSETS_SECTION_TITLE = 'Activos';
+export const INVENTORY_CATALOG_ASSETS_SECTION_DESCRIPTION =
+  'Define si el producto se gestiona como activo y su vida útil.';
+
+/** Sección Compras — comprable y proveedor (spec §3.1/§7). */
+export const INVENTORY_CATALOG_PURCHASABLE_LABEL = 'Comprable';
+export const INVENTORY_CATALOG_PURCHASABLE_HELP_TEXT =
+  'Si lo activas, el producto aparece en el selector de compras.';
+export const INVENTORY_CATALOG_PREFERRED_SUPPLIER_LABEL = 'Proveedor preferido';
+export const INVENTORY_CATALOG_PREFERRED_SUPPLIER_HELP_TEXT =
+  'Proveedor que el sistema sugiere en solicitudes de compra.';
+export const INVENTORY_CATALOG_NO_PREFERRED_SUPPLIER_LABEL = 'Sin proveedor preferido';
+export const INVENTORY_CATALOG_SUPPLIERS_LOADING_LABEL = 'Cargando proveedores…';
+export const INVENTORY_CATALOG_SUPPLIERS_LOADING_HELP_TEXT = 'Cargando la lista de proveedores.';
+export const INVENTORY_CATALOG_SUPPLIERS_LOAD_ERROR_HELP_TEXT =
+  'No pudimos cargar la lista de proveedores. Reintenta abriendo de nuevo el producto.';
+export const INVENTORY_CATALOG_SUPPLIERS_NO_PERMISSION_HELP_TEXT =
+  'Para cambiar el proveedor necesitas acceso al módulo de Compras.';
+export const INVENTORY_CATALOG_NO_SUPPLIERS_REGISTERED_LABEL = 'Sin proveedores registrados';
+export const INVENTORY_CATALOG_NO_SUPPLIERS_HELP_TEXT = 'Puedes crearlos en Compras > Proveedores.';
+export const INVENTORY_CATALOG_SAVED_SUPPLIER_LABEL = 'Proveedor guardado';
+
+/** Sección Compras — referencia y costos de captura (spec §3.1). */
+export const INVENTORY_CATALOG_SUPPLIER_SKU_LABEL = 'Código del proveedor';
+export const INVENTORY_CATALOG_SUPPLIER_SKU_HELP_TEXT =
+  'Referencia con la que el proveedor identifica este producto.';
+export const INVENTORY_CATALOG_BASE_COST_LABEL = 'Costo base';
+export const INVENTORY_CATALOG_BASE_COST_HELP_TEXT =
+  'Costo de compra de referencia para este producto.';
+export const INVENTORY_CATALOG_COST_NEGATIVE_ERROR = 'El costo no puede ser negativo.';
+export const INVENTORY_CATALOG_STANDARD_COST_HELP_TEXT =
+  'Costo de referencia para valoración y compras. Se muestra también en la sección Costos.';
+
+/** Sección Compras — condiciones de compra (spec §3.1). */
+export const INVENTORY_CATALOG_MINIMUM_ORDER_QTY_LABEL = 'Cantidad mínima de compra';
+export const INVENTORY_CATALOG_MINIMUM_ORDER_QTY_HELP_TEXT =
+  'Cantidad mínima que el proveedor acepta por pedido.';
+export const INVENTORY_CATALOG_ORDER_MULTIPLE_LABEL = 'Múltiplo de compra';
+export const INVENTORY_CATALOG_ORDER_MULTIPLE_HELP_TEXT =
+  'El pedido se ajusta a múltiplos de esta cantidad.';
+export const INVENTORY_CATALOG_POSITIVE_QTY_ERROR = 'Debe ser mayor que cero.';
+export const INVENTORY_CATALOG_LEAD_TIME_LABEL = 'Tiempo de entrega (días)';
+export const INVENTORY_CATALOG_LEAD_TIME_HELP_TEXT =
+  'Días entre que se hace el pedido y se recibe el producto.';
+export const INVENTORY_CATALOG_LEAD_TIME_ERROR = 'Debe ser un número entero mayor o igual a cero.';
+
+/** Sección Compras — unidad de compra y factor de conversión (ADR-085 D1/D2 · incorporación 2026-09-03). */
+export const INVENTORY_CATALOG_PURCHASE_UOM_LABEL = 'Unidad de compra';
+export const INVENTORY_CATALOG_PURCHASE_UOM_NO_UNIT_LABEL = 'Sin unidad de compra';
+export const INVENTORY_CATALOG_PURCHASE_UOM_HELP_TEXT =
+  'Unidad en la que el proveedor entrega el producto. Junto con el factor de conversión determina a cuántas unidades base equivale una compra.';
+export const INVENTORY_CATALOG_PURCHASE_UOM_DIMENSION_ERROR =
+  'La conversión solo es válida entre unidades de la misma dimensión: longitud con longitud, masa con masa, volumen con volumen. Las unidades de empaque (caja, rollo, paquete) sí conviven con unidad.';
+export const INVENTORY_CATALOG_PURCHASE_FACTOR_LABEL = 'Factor de conversión a unidad base';
+export const INVENTORY_CATALOG_PURCHASE_FACTOR_HELP_TEXT =
+  'Cuántas unidades base trae una unidad de compra. Ejemplo: 1 caja = 100 unidades.';
+export const INVENTORY_CATALOG_PURCHASE_FACTOR_ERROR =
+  'Con unidad de compra, el factor de conversión debe ser mayor que cero.';
+
+/** Sección Inventario (spec §3.2). */
+export const INVENTORY_CATALOG_INVENTORY_CONTROLLED_LABEL = 'Control de inventario';
+export const INVENTORY_CATALOG_INVENTORY_CONTROLLED_HELP_TEXT =
+  'Actívalo si el producto se recibe, almacena y descuenta en bodegas.';
+export const INVENTORY_CATALOG_MINIMUM_STOCK_LABEL = 'Stock mínimo';
+export const INVENTORY_CATALOG_MINIMUM_STOCK_HELP_TEXT =
+  'Si las existencias bajan de este valor, el producto aparece en Productos bajo mínimo.';
+export const INVENTORY_CATALOG_TARGET_STOCK_LABEL = 'Stock objetivo';
+export const INVENTORY_CATALOG_TARGET_STOCK_HELP_TEXT =
+  'Cantidad deseada en bodega cuando el producto está bien abastecido.';
+export const INVENTORY_CATALOG_STOCK_NEGATIVE_ERROR = 'No puede ser negativo.';
+export const INVENTORY_CATALOG_REORDER_POINT_LABEL = 'Punto de reorden';
+export const INVENTORY_CATALOG_REORDER_POINT_HELP_TEXT =
+  'Nivel de referencia para sugerir reposición.';
+export const INVENTORY_CATALOG_REORDER_POINT_NEGATIVE_ERROR =
+  'El punto de reorden no puede ser negativo.';
+
+/** Sección Activos (spec §3.3/§8.1). */
+export const INVENTORY_CATALOG_ASSET_CONTROLLED_LABEL = 'Control de activo';
+export const INVENTORY_CATALOG_ASSET_CONTROLLED_HELP_TEXT =
+  'Actívalo si el producto se gestiona como activo con ciclo de vida: asignación, instalación y baja.';
+export const INVENTORY_CATALOG_ASSET_CONTROLLED_LOCKED_HELP_TEXT =
+  'Los productos con serial o activo fijo requieren control de activo.';
+export const INVENTORY_CATALOG_USEFUL_LIFE_LABEL = 'Vida útil (meses)';
+export const INVENTORY_CATALOG_USEFUL_LIFE_HELP_TEXT =
+  'Meses de vida útil esperada del activo. Alimenta las alertas de vencimiento.';
+export const INVENTORY_CATALOG_USEFUL_LIFE_ERROR = 'Debe ser un número entero mayor que cero.';

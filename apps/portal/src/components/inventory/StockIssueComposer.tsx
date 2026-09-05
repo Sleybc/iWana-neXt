@@ -1,24 +1,27 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, Select } from '@iwana/ui';
-import { StockIssueType, StockLocationType } from '@iwana/shared';
+import { Button, Input, Select, SkeletonBlock } from '@iwana/ui';
+import {
+  StockIssueType,
+  StockLocationType,
+  getInventoryUnitOfMeasureLabel,
+  type StockIssuePickableItem,
+} from '@iwana/shared';
 import {
   inventoryApi,
-  mapPickerSearchResponse,
   type CreateStockIssueDto,
-  type InventoryItemRecord,
-  type PickerSearchItemDto,
-  type SerializedAssetRecord,
-  type StockBalanceRecord,
+  type ListPickableItemsParams,
   type StockIssueDetailRecord,
   type StockLocationRecord,
   type UpdateStockIssueDto,
 } from '@/lib/api-client';
+import { normalizeListMeta } from '@/lib/list-meta';
 import {
   PortalAlert,
   PortalEmptyState,
   PortalSectionHeader,
+  PortalTablePagination,
   CreateModeSummaryFooter,
   CreateModeMobileCaptureFooter,
   CreateModeMobileStepIndicator,
@@ -26,13 +29,20 @@ import {
 import {
   STOCK_COMMITTED_NEXT_STEP_TEXT,
   formatInventoryQuantity,
+  getStockBalanceConditionLabel,
   getStockIssueTypeHelperLabel,
   getStockIssueTypeLabel,
 } from './inventory-labels';
 import { PurchaseSelectionBar } from './PurchaseSelectionBar';
 import { PurchaseSuggestionList } from './PurchaseSuggestionList';
-import { StockIssueCatalogSelector } from './StockIssueCatalogSelector';
-import { StockIssueDraftLinesTable } from './StockIssueDraftLinesTable';
+import {
+  StockIssueCatalogSelector,
+  type StockIssueCatalogConditionBreakdown,
+} from './StockIssueCatalogSelector';
+import {
+  StockIssueDraftLinesTable,
+  type StockIssueDraftLineError,
+} from './StockIssueDraftLinesTable';
 import { StockIssueSourceTabs, type StockIssueSourceTab } from './StockIssueSourceTabs';
 import {
   addCatalogSelectionToDraft,
@@ -46,34 +56,90 @@ import {
   updateDraftLineLot,
   updateDraftLineQuantity,
   updateDraftLineSerializedAsset,
+  type StockIssueDraftItemHydration,
   type StockIssueDraftLine,
+  type StockIssueDraftState,
 } from './stock-issue-draft';
+import { applySingleLotPreselectionToDraftLines } from './stock-issue-line-utils';
 import { buildDraftFromIssueDetail } from './stock-issue-draft-from-detail';
 import { showDestinationForIssueType } from './stock-issue-form-utils';
-import { buildCreateStockIssuePayload, buildUpdateStockIssuePayload } from './stock-issue-submit';
-import { buildAvailableQuantityByItemAtLocation } from './stock-issue-balance-utils';
-import { buildStockIssueSuggestions } from './stock-issue-suggestions';
+import {
+  buildCreateStockIssuePayload,
+  buildUpdateStockIssuePayload,
+  validateStockIssueDraftLines,
+} from './stock-issue-submit';
 import { InventoryLocationPicker } from './InventoryLocationPicker';
-import { inventoryHasMore } from './inventory-list-pagination';
 
 type DestinationOptionsByType = Map<StockLocationType, StockLocationRecord[]>;
 export type StockIssueComposerMode = 'create' | 'edit';
 
-/** Parse label/sublabel F4 → sku/name aproximados para el borrador. */
-function pickerItemToCatalogSelection(item: PickerSearchItemDto): {
-  id: string;
-  sku: string;
-  name: string;
-  unitOfMeasure: string;
-} {
-  const sub = item.sublabel?.trim() ?? '';
-  const skuFromSub = sub.replace(/^SKU\s+/i, '').trim();
-  return {
-    id: item.id,
-    sku: skuFromSub || item.id.slice(0, 8),
-    name: item.label,
-    unitOfMeasure: 'unidad',
-  };
+type PickableScope = 'with-stock' | 'catalog';
+
+const PICKABLE_PAGE_LIMIT = 25;
+const PICKABLE_EDIT_PRELOAD_LIMIT = 100;
+const PICKABLE_SEARCH_DEBOUNCE_MS = 300;
+const LIST_SKELETON_DELAY_MS = 300;
+
+function scopeForTab(tab: StockIssueSourceTab): PickableScope {
+  return tab === 'suggestions' ? 'with-stock' : 'catalog';
+}
+
+interface PickableScopeState {
+  items: StockIssuePickableItem[];
+  total: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+function emptyScopeState(): PickableScopeState {
+  return { items: [], total: 0, hasMore: false, nextCursor: null, loading: false, error: null };
+}
+
+function parseDecimalAmount(value: string | null | undefined): number {
+  if (value == null || value === '') {
+    return 0;
+  }
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Muestra el skeleton solo si la carga supera el umbral (evita parpadeo). */
+function useDelayedFlag(active: boolean, delayMs: number): boolean {
+  const [delayed, setDelayed] = useState(false);
+
+  useEffect(() => {
+    if (!active) {
+      setDelayed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setDelayed(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [active, delayMs]);
+
+  return delayed;
+}
+
+function formatConditionBreakdownText(item: StockIssuePickableItem): string {
+  const parts = item.availability
+    .filter((entry) => parseDecimalAmount(entry.available) > 0)
+    .map(
+      (entry) =>
+        `${formatInventoryQuantity(entry.available)} ${getStockBalanceConditionLabel(entry.condition).toLowerCase()}`,
+    );
+  if (parts.length === 0) {
+    return 'Sin disponible en origen';
+  }
+  return parts.join(' · ');
+}
+
+function buildConditionBreakdown(
+  item: StockIssuePickableItem,
+): StockIssueCatalogConditionBreakdown[] {
+  return item.availability
+    .filter((entry) => parseDecimalAmount(entry.available) > 0)
+    .map((entry) => ({ condition: entry.condition, available: entry.available }));
 }
 
 interface ComposerSnapshot {
@@ -140,16 +206,17 @@ const TYPE_OPTIONS = Object.values(StockIssueType).map((type) => ({
   label: getStockIssueTypeLabel(type),
 }));
 
+function mapPickableError(error: unknown): string {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : 'No fue posible cargar el material disponible.';
+}
+
 export interface StockIssueComposerProps {
   mode?: StockIssueComposerMode;
   editIssue?: StockIssueDetailRecord | null;
-  /** Seed opcional; el composer carga catálogo vía lookup F4 y balances por origen. */
-  items?: InventoryItemRecord[];
-  balances?: StockBalanceRecord[];
-  assets?: SerializedAssetRecord[];
   locations?: StockLocationRecord[];
   destinationOptions?: DestinationOptionsByType;
-  issueItemFrequency?: Record<string, number>;
   isSubmitting?: boolean;
   error?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
@@ -161,12 +228,8 @@ export interface StockIssueComposerProps {
 export function StockIssueComposer({
   mode = 'create',
   editIssue = null,
-  items: seedItems = [],
-  balances: seedBalances = [],
-  assets: seedAssets = [],
   locations: _locations = [],
   destinationOptions: _destinationOptions,
-  issueItemFrequency = {},
   isSubmitting = false,
   error = null,
   onDirtyChange,
@@ -187,73 +250,73 @@ export function StockIssueComposer({
   const [costCenter, setCostCenter] = useState('');
   const [reason, setReason] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sourceTab, setSourceTab] = useState<StockIssueSourceTab>('suggestions');
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([]);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<string[]>([]);
   const [selectedDraftLineIds, setSelectedDraftLineIds] = useState<string[]>([]);
   const [draft, setDraft] = useState(createEmptyStockIssueDraft());
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [lineErrors, setLineErrors] = useState<Record<string, StockIssueDraftLineError>>({});
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const [mobileStep, setMobileStep] = useState<'capture' | 'review'>('capture');
+  const [editInitializing, setEditInitializing] = useState(false);
   const editBaselineRef = useRef<ComposerSnapshot | null>(null);
-  const [knownItems, setKnownItems] = useState<InventoryItemRecord[]>(seedItems);
-  const [balances, setBalances] = useState<StockBalanceRecord[]>(seedBalances);
-  const [assets, setAssets] = useState<SerializedAssetRecord[]>(seedAssets);
-  const [balancesTruncated, setBalancesTruncated] = useState(false);
-  const [catalogHits, setCatalogHits] = useState<PickerSearchItemDto[]>([]);
-  const [catalogSearching, setCatalogSearching] = useState(false);
-  const [catalogSearchError, setCatalogSearchError] = useState<string | null>(null);
+  const editHydratedRef = useRef<string | null>(null);
+  const abortByScopeRef = useRef<Record<PickableScope, AbortController | null>>({
+    'with-stock': null,
+    catalog: null,
+  });
+  const [pickablesByScope, setPickablesByScope] = useState<
+    Record<PickableScope, PickableScopeState>
+  >({
+    'with-stock': emptyScopeState(),
+    catalog: emptyScopeState(),
+  });
 
-  const itemsById = useMemo(() => new Map(knownItems.map((item) => [item.id, item])), [knownItems]);
   const isDesktopLayout = useMinWidth(768);
   const showDestination = showDestinationForIssueType(type);
   const showStockContext = Boolean(sourceLocationId.trim());
+  const activeScope = scopeForTab(sourceTab);
+  const activeScopeState = pickablesByScope[activeScope];
+  const showListSkeleton = useDelayedFlag(activeScopeState.loading, LIST_SKELETON_DELAY_MS);
 
-  const availableByItemId = useMemo(
-    () => buildAvailableQuantityByItemAtLocation(balances, sourceLocationId),
-    [balances, sourceLocationId],
-  );
-
-  const suggestionRecords = useMemo(
-    () =>
-      buildStockIssueSuggestions({
-        items: knownItems,
-        balances,
-        sourceLocationId,
-        search: catalogSearch,
-        issueItemFrequency,
-      }),
-    [knownItems, balances, sourceLocationId, catalogSearch, issueItemFrequency],
-  );
+  const pickableById = useMemo(() => {
+    const map = new Map<string, StockIssuePickableItem>();
+    for (const scope of ['with-stock', 'catalog'] as const) {
+      for (const item of pickablesByScope[scope].items) {
+        if (!map.has(item.itemId)) {
+          map.set(item.itemId, item);
+        }
+      }
+    }
+    return map;
+  }, [pickablesByScope]);
 
   const suggestionRows = useMemo(
     () =>
-      suggestionRecords.map((suggestion) => ({
-        itemId: suggestion.itemId,
-        productLabel: suggestion.productLabel,
-        helperLabel: suggestion.helperLabel,
-        selected: selectedSuggestionIds.includes(suggestion.itemId),
+      pickablesByScope['with-stock'].items.map((item) => ({
+        itemId: item.itemId,
+        productLabel: `${item.sku} · ${item.name}`,
+        helperLabel: `Disponible en origen: ${formatInventoryQuantity(item.totalAvailable)} ${getInventoryUnitOfMeasureLabel(item.unitOfMeasure)} · ${formatConditionBreakdownText(item)}`,
+        selected: selectedSuggestionIds.includes(item.itemId),
       })),
-    [suggestionRecords, selectedSuggestionIds],
+    [pickablesByScope, selectedSuggestionIds],
   );
 
-  const selectionCount = selectedSuggestionIds.length + selectedCatalogIds.length;
-
   const catalogRows = useMemo(() => {
-    return catalogHits.map((hit) => {
-      const selection = pickerItemToCatalogSelection(hit);
-      return {
-        id: hit.id,
-        productLabel: hit.sublabel ? `${hit.label} — ${hit.sublabel}` : hit.label,
-        categoryName: '—',
-        unitLabel: selection.unitOfMeasure,
-        availableLabel: showStockContext
-          ? formatInventoryQuantity(availableByItemId.get(hit.id) ?? 0)
-          : null,
-        selected: selectedCatalogIds.includes(hit.id),
-      };
-    });
-  }, [catalogHits, selectedCatalogIds, showStockContext, availableByItemId]);
+    return pickablesByScope.catalog.items.map((item) => ({
+      id: item.itemId,
+      productLabel: `${item.sku} · ${item.name}`,
+      categoryName: item.categoryName?.trim() ? item.categoryName : 'Sin categoría',
+      unitLabel: getInventoryUnitOfMeasureLabel(item.unitOfMeasure),
+      availableLabel: showStockContext ? formatInventoryQuantity(item.totalAvailable) : null,
+      conditions: showStockContext ? buildConditionBreakdown(item) : [],
+      selected: selectedCatalogIds.includes(item.itemId),
+    }));
+  }, [pickablesByScope, selectedCatalogIds, showStockContext]);
+
+  const selectionCount = selectedSuggestionIds.length + selectedCatalogIds.length;
 
   const summaryLabel = useMemo(() => {
     const destinationLabel = showDestination
@@ -318,41 +381,113 @@ export function StockIssueComposer({
     draft.lines.length,
   ]);
 
-  useEffect(() => {
-    if (!isEditMode || !editIssue) {
-      editBaselineRef.current = null;
-      return;
+  async function fetchPickableScope(
+    scope: PickableScope,
+    input: { source: string; q: string; cursor?: string | null; append?: boolean; limit?: number },
+  ): Promise<void> {
+    abortByScopeRef.current[scope]?.abort();
+    const controller = new AbortController();
+    abortByScopeRef.current[scope] = controller;
+
+    if (!input.append) {
+      setPickablesByScope((current) => ({
+        ...current,
+        [scope]: { ...current[scope], loading: true, error: null },
+      }));
+    } else {
+      setPickablesByScope((current) => ({
+        ...current,
+        [scope]: { ...current[scope], loading: true, error: null },
+      }));
     }
 
-    const { header, draft: initialDraft } = buildDraftFromIssueDetail(editIssue, itemsById);
-    setType(header.type);
-    setSourceLocationId(header.sourceLocationId);
-    setDestinationLocationId(header.destinationLocationId);
-    setCommercialRefId(header.commercialRefId);
-    setOriginRefId(header.originRefId);
-    setCostCenter(header.costCenter);
-    setReason(header.reason);
-    setDraft(initialDraft);
-    setCatalogSearch('');
-    setSourceTab('suggestions');
-    setSelectedSuggestionIds([]);
-    setSelectedCatalogIds([]);
-    setSelectedDraftLineIds([]);
-    setValidationError(null);
-    setDuplicateNotice(null);
-    setMobileStep('capture');
+    const params: ListPickableItemsParams = {
+      sourceLocationId: input.source,
+      scope,
+      ...(input.q.trim() ? { q: input.q.trim() } : {}),
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+      limit: input.limit ?? PICKABLE_PAGE_LIMIT,
+    };
 
-    editBaselineRef.current = buildComposerSnapshot({
-      type: header.type,
-      sourceLocationId: header.sourceLocationId,
-      destinationLocationId: header.destinationLocationId,
-      commercialRefId: header.commercialRefId,
-      originRefId: header.originRefId,
-      costCenter: header.costCenter,
-      reason: header.reason,
-      lines: initialDraft.lines,
+    try {
+      const response = await inventoryApi.listPickableItems(params, { signal: controller.signal });
+      if (controller.signal.aborted) {
+        return;
+      }
+      const meta = normalizeListMeta(response.meta, {
+        dataLength: response.data.length,
+        limit: params.limit ?? PICKABLE_PAGE_LIMIT,
+      });
+      setPickablesByScope((current) => {
+        const previous = current[scope];
+        const merged = input.append
+          ? [
+              ...previous.items,
+              ...response.data.filter(
+                (item) => !previous.items.some((row) => row.itemId === item.itemId),
+              ),
+            ]
+          : response.data;
+        return {
+          ...current,
+          [scope]: {
+            items: merged,
+            total: meta.total,
+            hasMore: meta.hasMore,
+            nextCursor: meta.nextCursor,
+            loading: false,
+            error: null,
+          },
+        };
+      });
+    } catch (fetchError: unknown) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      setPickablesByScope((current) => ({
+        ...current,
+        [scope]: {
+          ...current[scope],
+          ...(input.append ? {} : { items: [], total: 0, hasMore: false, nextCursor: null }),
+          loading: false,
+          error: mapPickableError(fetchError),
+        },
+      }));
+    }
+  }
+
+  function retryActiveScope(): void {
+    if (!sourceLocationId.trim() || editInitializing) {
+      return;
+    }
+    void fetchPickableScope(activeScope, {
+      source: sourceLocationId.trim(),
+      q: debouncedSearch,
     });
-  }, [isEditMode, editIssue, itemsById]);
+  }
+
+  function handleLoadMore(): void {
+    const cursor = pickablesByScope[activeScope].nextCursor;
+    if (!sourceLocationId.trim() || !cursor) {
+      return;
+    }
+    void fetchPickableScope(activeScope, {
+      source: sourceLocationId.trim(),
+      q: debouncedSearch,
+      cursor,
+      append: true,
+    });
+  }
+
+  // Debounce 300 de la búsqueda: el mismo endpoint B1 resuelve `q` en servidor
+  // (sku/nombre/marca/modelo/código) para ambas pestañas.
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedSearch(catalogSearch),
+      PICKABLE_SEARCH_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [catalogSearch]);
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -362,118 +497,277 @@ export function StockIssueComposer({
     onDraftLineCountChange?.(draft.lines.length);
   }, [draft.lines.length, onDraftLineCountChange]);
 
+  // Al editar el borrador, el error de validación local deja de aplicar: se
+  // recalcula en el próximo envío en vez de quedar fijo.
   useEffect(() => {
-    const query = catalogSearch.trim();
-    if (query.length < 2) {
-      setCatalogHits([]);
-      setCatalogSearching(false);
-      setCatalogSearchError(null);
+    setValidationError(null);
+  }, [draft]);
+
+  // Carga S1 (reemplaza listBalances(100) + listAssets(100) + N+1 getItem(40) y la
+  // derivación cliente buildStockIssueSuggestions): el efecto sobre el origen y
+  // la búsqueda alimenta ambas pestañas desde B1, con `meta.total` en los
+  // contadores y "Cargar más" como affordance de paginado.
+  useEffect(() => {
+    const source = sourceLocationId.trim();
+    if (!source || editInitializing) {
+      return;
+    }
+    void fetchPickableScope(activeScope, { source, q: debouncedSearch });
+  }, [sourceLocationId, activeScope, debouncedSearch, editInitializing]);
+
+  // El contador de la pestaña inactiva también refleja `meta.total` del servidor.
+  useEffect(() => {
+    const source = sourceLocationId.trim();
+    if (!source || editInitializing) {
+      return;
+    }
+    const inactive: PickableScope = activeScope === 'with-stock' ? 'catalog' : 'with-stock';
+    void fetchPickableScope(inactive, { source, q: debouncedSearch });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- total inactivo por cambio de origen/búsqueda
+  }, [sourceLocationId, debouncedSearch, editInitializing]);
+
+  useEffect(() => {
+    const scopes = abortByScopeRef.current;
+    return () => {
+      scopes['with-stock']?.abort();
+      scopes.catalog?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showStockContext) {
+      setPickablesByScope({ 'with-stock': emptyScopeState(), catalog: emptyScopeState() });
+    }
+  }, [showStockContext]);
+
+  // Inicialización del modo edición (S1): la cabecera sale del detalle y las
+  // líneas se hidratan con el caché B1 (trackingMode + lots[] + availability[]);
+  // las líneas cuyo ítem no esté en la primera página se resuelven con getItem
+  // (acotado a las líneas, solo edición) para que C3 no persista por esta vía.
+  useEffect(() => {
+    if (!isEditMode || !editIssue) {
+      editBaselineRef.current = null;
       return;
     }
 
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      setCatalogSearching(true);
-      setCatalogSearchError(null);
-      void inventoryApi
-        .searchItemsForPicker({ q: query }, { signal: controller.signal })
-        .then((response) => {
-          const mapped = mapPickerSearchResponse(response);
-          setCatalogHits(mapped.items);
-        })
-        .catch((searchError: unknown) => {
-          if (controller.signal.aborted) return;
-          setCatalogHits([]);
-          setCatalogSearchError(
-            searchError instanceof Error ? searchError.message : 'No fue posible buscar productos.',
-          );
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) {
-            setCatalogSearching(false);
+    if (editHydratedRef.current === editIssue.id) {
+      return;
+    }
+
+    let cancelled = false;
+    setEditInitializing(true);
+    setType(editIssue.type);
+    setSourceLocationId(editIssue.sourceLocationId);
+    setDestinationLocationId(editIssue.destinationLocationId ?? '');
+    setCommercialRefId(editIssue.commercialRefId ?? '');
+    setOriginRefId(editIssue.originRefId ?? '');
+    setCostCenter(editIssue.costCenter ?? '');
+    setReason(editIssue.reason ?? '');
+    setDraft(createEmptyStockIssueDraft());
+    setCatalogSearch('');
+    setDebouncedSearch('');
+    setSourceTab('suggestions');
+    setSelectedSuggestionIds([]);
+    setSelectedCatalogIds([]);
+    setSelectedDraftLineIds([]);
+    setValidationError(null);
+    setLineErrors({});
+    setDuplicateNotice(null);
+    setMobileStep('capture');
+
+    const source = editIssue.sourceLocationId.trim();
+    void (async () => {
+      const loaded = new Map<string, StockIssuePickableItem>();
+      if (source) {
+        try {
+          const [withStock, catalog] = await Promise.all([
+            inventoryApi.listPickableItems({
+              sourceLocationId: source,
+              scope: 'with-stock',
+              limit: PICKABLE_EDIT_PRELOAD_LIMIT,
+            }),
+            inventoryApi.listPickableItems({
+              sourceLocationId: source,
+              scope: 'catalog',
+              limit: PICKABLE_EDIT_PRELOAD_LIMIT,
+            }),
+          ]);
+          if (!cancelled) {
+            const withStockMeta = normalizeListMeta(withStock.meta, {
+              dataLength: withStock.data.length,
+              limit: PICKABLE_EDIT_PRELOAD_LIMIT,
+            });
+            const catalogMeta = normalizeListMeta(catalog.meta, {
+              dataLength: catalog.data.length,
+              limit: PICKABLE_EDIT_PRELOAD_LIMIT,
+            });
+            setPickablesByScope({
+              'with-stock': {
+                items: withStock.data,
+                total: withStockMeta.total,
+                hasMore: withStockMeta.hasMore,
+                nextCursor: withStockMeta.nextCursor,
+                loading: false,
+                error: null,
+              },
+              catalog: {
+                items: catalog.data,
+                total: catalogMeta.total,
+                hasMore: catalogMeta.hasMore,
+                nextCursor: catalogMeta.nextCursor,
+                loading: false,
+                error: null,
+              },
+            });
+            for (const item of [...withStock.data, ...catalog.data]) {
+              if (!loaded.has(item.itemId)) {
+                loaded.set(item.itemId, item);
+              }
+            }
           }
+        } catch {
+          // Sin caché B1 el borrador se arma con el respaldo legacy; el error de
+          // carga lo muestra la lista activa con su Reintentar.
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+      const { header, draft: initialDraft } = buildDraftFromIssueDetail(
+        editIssue,
+        new Map(),
+        loaded,
+      );
+      const missingItemIds = [
+        ...new Set(
+          initialDraft.lines.filter((line) => !loaded.has(line.itemId)).map((line) => line.itemId),
+        ),
+      ];
+      if (missingItemIds.length > 0) {
+        const resolved = await Promise.all(
+          missingItemIds.map((itemId) => inventoryApi.getItem(itemId).catch(() => null)),
+        );
+        if (cancelled) {
+          return;
+        }
+        const fallbackById = new Map(
+          resolved.filter((item) => item != null).map((item) => [item!.id, item!]),
+        );
+        const { draft: patched } = buildDraftFromIssueDetail(editIssue, fallbackById, loaded);
+        setDraft(patched);
+        editBaselineRef.current = buildComposerSnapshot({
+          type: header.type,
+          sourceLocationId: header.sourceLocationId,
+          destinationLocationId: header.destinationLocationId,
+          commercialRefId: header.commercialRefId,
+          originRefId: header.originRefId,
+          costCenter: header.costCenter,
+          reason: header.reason,
+          lines: patched.lines,
         });
-    }, 300);
+      } else {
+        setDraft(initialDraft);
+        editBaselineRef.current = buildComposerSnapshot({
+          type: header.type,
+          sourceLocationId: header.sourceLocationId,
+          destinationLocationId: header.destinationLocationId,
+          commercialRefId: header.commercialRefId,
+          originRefId: header.originRefId,
+          costCenter: header.costCenter,
+          reason: header.reason,
+          lines: initialDraft.lines,
+        });
+      }
+      setType(header.type);
+      setSourceLocationId(header.sourceLocationId);
+      setDestinationLocationId(header.destinationLocationId);
+      setCommercialRefId(header.commercialRefId);
+      setOriginRefId(header.originRefId);
+      setCostCenter(header.costCenter);
+      setReason(header.reason);
+      editHydratedRef.current = editIssue.id;
+      setEditInitializing(false);
+    })();
 
     return () => {
-      controller.abort();
-      window.clearTimeout(timer);
+      cancelled = true;
     };
-  }, [catalogSearch]);
+  }, [isEditMode, editIssue]);
 
+  /**
+   * F4 (RF-CAT-16, CA-F4-05): un lector deja el código completo en el buscador
+   * y el backend lo resuelve a una sola coincidencia; marcarla evita el clic
+   * manual. Vale para cualquier búsqueda con un único resultado.
+   */
   useEffect(() => {
-    if (!sourceLocationId.trim()) {
-      setBalances([]);
-      setAssets([]);
-      setBalancesTruncated(false);
+    if (!debouncedSearch.trim() || activeScopeState.items.length !== 1) {
       return;
     }
+    const [single] = activeScopeState.items;
+    if (!single) {
+      return;
+    }
+    if (activeScope === 'with-stock') {
+      setSelectedSuggestionIds((current) =>
+        current.includes(single.itemId) ? current : [...current, single.itemId],
+      );
+    } else {
+      setSelectedCatalogIds((current) =>
+        current.includes(single.itemId) ? current : [...current, single.itemId],
+      );
+    }
+  }, [activeScopeState.items, debouncedSearch, activeScope]);
 
-    const controller = new AbortController();
-    void Promise.all([
-      inventoryApi.listBalances({ locationId: sourceLocationId, limit: 100 }),
-      inventoryApi.listAssets({ locationId: sourceLocationId, limit: 100 }),
-    ])
-      .then(async ([balancesResponse, assetsResponse]) => {
-        if (controller.signal.aborted) return;
-        setBalances(balancesResponse.data);
-        setAssets(assetsResponse.data);
-        setBalancesTruncated(inventoryHasMore(balancesResponse.meta));
+  /**
+   * Coherencia resumen ↔ línea: si la línea hidratada trae un único lote en su
+   * condición, nace con ese lote para que la columna "Disponible en origen" no
+   * salte del total a 0 mientras el operador no elige. Con varios lotes decide él.
+   */
+  function withSingleLotPreselection(
+    next: StockIssueDraftState,
+    lineIds?: readonly string[],
+  ): StockIssueDraftState {
+    return {
+      lines: applySingleLotPreselectionToDraftLines(next.lines, {
+        ...(lineIds ? { lineIds } : {}),
+      }),
+    };
+  }
 
-        const itemIds = [
-          ...new Set(balancesResponse.data.map((row) => row.itemId).filter(Boolean)),
-        ].slice(0, 40);
-        const missing = itemIds.filter((id) => !itemsById.has(id));
-        if (missing.length === 0) return;
-
-        const fetched = await Promise.all(
-          missing.map((id) => inventoryApi.getItem(id).catch(() => null)),
-        );
-        if (controller.signal.aborted) return;
-        const resolved = fetched.filter((row): row is InventoryItemRecord => row != null);
-        if (resolved.length === 0) return;
-        setKnownItems((prev) => {
-          const next = new Map(prev.map((item) => [item.id, item]));
-          for (const item of resolved) {
-            next.set(item.id, item);
-          }
-          return [...next.values()];
-        });
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setBalances([]);
-        setAssets([]);
-        setBalancesTruncated(false);
-      });
-
-    return () => controller.abort();
-    // itemsById intentionally omitted — enrichment uses latest map inside effect start
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch on source change
-  }, [sourceLocationId]);
+  function clearLineError(lineId: string): void {
+    setLineErrors((current) => {
+      if (!(lineId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[lineId];
+      return next;
+    });
+  }
 
   function handleAddSelectedProducts() {
-    const fromSuggestions = suggestionRecords
-      .filter((row) => selectedSuggestionIds.includes(row.itemId))
-      .map((row) => {
-        const known = itemsById.get(row.itemId);
-        return {
-          id: row.itemId,
-          sku: known?.sku ?? row.itemId.slice(0, 8),
-          name: known?.name ?? row.productLabel,
-          unitOfMeasure: known?.unitOfMeasure ?? 'unidad',
-        };
-      });
-    const fromCatalog = catalogHits
-      .filter((hit) => selectedCatalogIds.includes(hit.id))
-      .map(pickerItemToCatalogSelection);
-    const uniqueItems = new Map(
-      [...fromSuggestions, ...fromCatalog].map((item) => [item.id, item]),
-    );
-    const selections = [...uniqueItems.values()];
+    const selections = [...selectedSuggestionIds, ...selectedCatalogIds]
+      .map((itemId) => pickableById.get(itemId))
+      .filter((item): item is StockIssuePickableItem => item != null)
+      .map((item) => ({
+        id: item.itemId,
+        sku: item.sku,
+        name: item.name,
+        unitOfMeasure: item.unitOfMeasure,
+        trackingMode: item.trackingMode,
+        lots: item.lots,
+        availability: item.availability,
+        availableSerialCount: item.availableSerialCount,
+      }));
+    const uniqueItems = new Map(selections.map((item) => [item.id, item]));
 
-    const result = addCatalogSelectionToDraft(draft, selections);
-    setDraft(result.draft);
+    const result = addCatalogSelectionToDraft(draft, [...uniqueItems.values()]);
+    const existingLineIds = new Set(draft.lines.map((line) => line.id));
+    const addedLineIds = result.draft.lines
+      .filter((line) => !existingLineIds.has(line.id))
+      .map((line) => line.id);
+    setDraft(withSingleLotPreselection(result.draft, addedLineIds));
     setSelectedSuggestionIds([]);
     setSelectedCatalogIds([]);
 
@@ -501,7 +795,36 @@ export function StockIssueComposer({
     }
   }
 
+  function handleItemChange(lineId: string, hydration: StockIssueDraftItemHydration | null) {
+    clearLineError(lineId);
+    setDraft((current) => {
+      if (!hydration) {
+        return withSingleLotPreselection(updateDraftLineItem(current, lineId, '', '', ''), [
+          lineId,
+        ]);
+      }
+      return withSingleLotPreselection(
+        updateDraftLineItem(
+          current,
+          lineId,
+          hydration.itemId,
+          hydration.productLabel,
+          hydration.unitOfMeasure,
+          {
+            trackingMode: hydration.trackingMode,
+            lots: hydration.lots,
+            availability: hydration.availability,
+            availableSerialCount: hydration.availableSerialCount,
+          },
+        ),
+        [lineId],
+      );
+    });
+  }
+
   function resetComposer() {
+    abortByScopeRef.current['with-stock']?.abort();
+    abortByScopeRef.current.catalog?.abort();
     setType(StockIssueType.TECHNICIAN_CUSTODY);
     setSourceLocationId('');
     setSourceLocationLabel(null);
@@ -512,22 +835,23 @@ export function StockIssueComposer({
     setCostCenter('');
     setReason('');
     setCatalogSearch('');
-    setCatalogHits([]);
+    setDebouncedSearch('');
+    setPickablesByScope({ 'with-stock': emptyScopeState(), catalog: emptyScopeState() });
     setSourceTab('suggestions');
     setSelectedSuggestionIds([]);
     setSelectedCatalogIds([]);
     setSelectedDraftLineIds([]);
     setDraft(createEmptyStockIssueDraft());
     setValidationError(null);
+    setLineErrors({});
     setDuplicateNotice(null);
     setMobileStep('capture');
-    setBalances([]);
-    setAssets([]);
-    setBalancesTruncated(false);
+    editHydratedRef.current = null;
   }
 
   function mapDraftLinesForSubmit() {
     return draft.lines.map((line) => ({
+      lineId: line.id,
       itemId: line.itemId,
       productLabel: line.productLabel,
       requestedQty: line.requestedQty,
@@ -535,10 +859,45 @@ export function StockIssueComposer({
       condition: line.condition,
       lotId: line.lotId,
       serializedAssetId: line.serializedAssetId,
+      trackingMode: line.trackingMode,
     }));
   }
 
+  function focusControl(controlId: string): void {
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(controlId);
+      if (target && typeof target.focus === 'function') {
+        target.focus({ preventScroll: false });
+      }
+    });
+  }
+
   async function handleSubmit() {
+    // S1/CA-S1-05: el botón queda habilitado y el bloqueo se vuelve efectivo al
+    // enviar (mejor a11y que `disabled`): error global + inline por línea y foco
+    // al primer inválido. El serial sale de la línea, no de knownItems.
+    const lines = mapDraftLinesForSubmit();
+    const fieldErrors = validateStockIssueDraftLines(lines, new Map());
+    if (fieldErrors.length > 0) {
+      const byLineId: Record<string, StockIssueDraftLineError> = {};
+      for (const fieldError of fieldErrors) {
+        const line = lines[fieldError.lineIndex];
+        if (line && !(line.lineId in byLineId)) {
+          byLineId[line.lineId] = {
+            message: fieldError.message,
+            controlId: fieldError.controlId,
+          };
+        }
+      }
+      setLineErrors(byLineId);
+      setValidationError(fieldErrors[0]?.message ?? 'Revisa las líneas del borrador.');
+      if (fieldErrors[0]) {
+        focusControl(fieldErrors[0].controlId);
+      }
+      return;
+    }
+    setLineErrors({});
+
     const submitInput = {
       type,
       sourceLocationId,
@@ -547,8 +906,8 @@ export function StockIssueComposer({
       originRefId,
       costCenter,
       reason,
-      lines: mapDraftLinesForSubmit(),
-      itemsById,
+      lines,
+      itemsById: new Map(),
     };
 
     setValidationError(null);
@@ -587,7 +946,7 @@ export function StockIssueComposer({
         description={
           isEditMode
             ? 'Puedes ajustar tipo, origen, destino y referencias mientras la salida esté solicitada.'
-            : 'Tipo, origen y destino. El movimiento contable se genera al despachar.'
+            : 'Tipo, origen y destino. Al despachar se genera el movimiento de inventario y se registra el costo operativo de la salida.'
         }
       />
       <div className="grid gap-3 md:grid-cols-2">
@@ -612,6 +971,8 @@ export function StockIssueComposer({
             const nextSource = nextId ?? '';
             setSourceLocationId(nextSource);
             setSourceLocationLabel(item ? item.label : null);
+            setSelectedSuggestionIds([]);
+            setSelectedCatalogIds([]);
             if (destinationLocationId === nextSource) {
               setDestinationLocationId('');
               setDestinationLocationLabel(null);
@@ -663,6 +1024,101 @@ export function StockIssueComposer({
     </section>
   );
 
+  const captureList = (() => {
+    if (!showStockContext) {
+      return (
+        <PortalEmptyState
+          className="w-full"
+          title="Selecciona la bodega de origen"
+          description={
+            sourceTab === 'suggestions'
+              ? 'Con el origen definido verás el material disponible para agregar a la salida.'
+              : 'Con el origen definido verás el catálogo con el disponible de cada producto.'
+          }
+        />
+      );
+    }
+
+    if (activeScopeState.loading && !showListSkeleton && activeScopeState.items.length === 0) {
+      return null;
+    }
+
+    if (activeScopeState.error && activeScopeState.items.length === 0) {
+      return (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar el material"
+          description={activeScopeState.error}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={retryActiveScope}>
+              Reintentar
+            </Button>
+          }
+        />
+      );
+    }
+
+    if (sourceTab === 'suggestions') {
+      return (
+        <>
+          <PurchaseSuggestionList
+            suggestions={suggestionRows}
+            isLoading={showListSkeleton}
+            emptyTitle="Esta bodega no tiene material disponible"
+            emptyDescription="Cambia de bodega o usa Catálogo / línea manual para armar la salida."
+            onToggle={(itemId) =>
+              setSelectedSuggestionIds((current) =>
+                current.includes(itemId)
+                  ? current.filter((value) => value !== itemId)
+                  : [...current, itemId],
+              )
+            }
+          />
+          <PortalTablePagination
+            hasMore={activeScopeState.hasMore}
+            onLoadMore={handleLoadMore}
+            loading={activeScopeState.loading}
+            resourceLabel="productos"
+            shown={activeScopeState.items.length}
+            total={activeScopeState.total}
+          />
+        </>
+      );
+    }
+
+    const trimmedQuery = debouncedSearch.trim();
+    return (
+      <>
+        <StockIssueCatalogSelector
+          rows={catalogRows}
+          isLoading={showListSkeleton}
+          showAvailableColumn={showStockContext}
+          emptyTitle={trimmedQuery ? 'No hay ítems que coincidan' : 'No hay ítems en el catálogo'}
+          emptyDescription={
+            trimmedQuery
+              ? 'Ajusta la búsqueda o cambia a la pestaña Con material.'
+              : 'Crea productos en el catálogo para poder armar salidas.'
+          }
+          onToggle={(itemId) =>
+            setSelectedCatalogIds((current) =>
+              current.includes(itemId)
+                ? current.filter((value) => value !== itemId)
+                : [...current, itemId],
+            )
+          }
+        />
+        <PortalTablePagination
+          hasMore={activeScopeState.hasMore}
+          onLoadMore={handleLoadMore}
+          loading={activeScopeState.loading}
+          resourceLabel="productos"
+          shown={activeScopeState.items.length}
+          total={activeScopeState.total}
+        />
+      </>
+    );
+  })();
+
   const captureSection = (
     <section className="space-y-4">
       <PortalSectionHeader
@@ -683,71 +1139,19 @@ export function StockIssueComposer({
       />
       <StockIssueSourceTabs
         value={sourceTab}
-        suggestionCount={suggestionRecords.length}
-        catalogCount={catalogHits.length}
+        suggestionCount={pickablesByScope['with-stock'].total}
+        catalogCount={pickablesByScope.catalog.total}
         onValueChange={setSourceTab}
       />
       <Input
         id="issue-catalog-search"
         label="Buscar ítem"
-        placeholder="Escribe al menos 2 caracteres"
+        placeholder="Buscar por código, nombre o marca"
+        helperText="Puedes escanear el código de barras: con una sola coincidencia queda marcada para agregar."
         value={catalogSearch}
         onChange={(event) => setCatalogSearch(event.target.value)}
       />
-      {balancesTruncated && showStockContext ? (
-        <PortalAlert
-          variant="warning"
-          title="Existencias parciales en origen"
-          description="Hay más saldos en esta bodega de los cargados. Afina la búsqueda en catálogo si no ves un producto."
-        />
-      ) : null}
-      {sourceTab === 'suggestions' ? (
-        showStockContext ? (
-          <PurchaseSuggestionList
-            suggestions={suggestionRows}
-            emptyTitle="No hay material disponible en origen"
-            emptyDescription="Cambia de bodega o usa Catálogo / línea manual para armar la salida."
-            onToggle={(itemId) =>
-              setSelectedSuggestionIds((current) =>
-                current.includes(itemId)
-                  ? current.filter((value) => value !== itemId)
-                  : [...current, itemId],
-              )
-            }
-          />
-        ) : (
-          <PortalEmptyState
-            className="w-full"
-            title="Selecciona la bodega de origen"
-            description="Con el origen definido verás el material disponible para agregar a la salida."
-          />
-        )
-      ) : catalogSearch.trim().length < 2 ? (
-        <PortalEmptyState
-          className="w-full"
-          title="Escribe al menos 2 caracteres"
-          description="La búsqueda consulta el catálogo en el servidor; ya no se precarga un tope silencioso."
-        />
-      ) : catalogSearchError ? (
-        <PortalAlert
-          variant="error"
-          title="No fue posible buscar productos"
-          description={catalogSearchError}
-        />
-      ) : (
-        <StockIssueCatalogSelector
-          rows={catalogRows}
-          isLoading={catalogSearching}
-          showAvailableColumn={showStockContext}
-          onToggle={(itemId) =>
-            setSelectedCatalogIds((current) =>
-              current.includes(itemId)
-                ? current.filter((value) => value !== itemId)
-                : [...current, itemId],
-            )
-          }
-        />
-      )}
+      {captureList}
       <PurchaseSelectionBar
         count={selectionCount}
         disabled={isSubmitting}
@@ -775,38 +1179,55 @@ export function StockIssueComposer({
         <PortalAlert variant="warning" title="Productos omitidos" description={duplicateNotice} />
       ) : null}
       {draft.lines.length === 0 ? (
-        <PortalEmptyState
-          title="Aún no hay líneas en el borrador"
-          description="Selecciona ítems desde el catálogo o agrega una línea manual."
-        />
+        editInitializing ? (
+          <div className="space-y-2" aria-label="Cargando líneas de la salida" role="status">
+            <SkeletonBlock className="h-16 w-full" />
+            <SkeletonBlock className="h-16 w-full" />
+          </div>
+        ) : (
+          <PortalEmptyState
+            title="Aún no hay líneas en el borrador"
+            description="Selecciona ítems desde el catálogo o agrega una línea manual."
+          />
+        )
       ) : (
         <StockIssueDraftLinesTable
           lines={draft.lines}
-          items={knownItems}
-          balances={balances}
-          assets={assets}
           sourceLocationId={sourceLocationId}
           selectedLineIds={selectedDraftLineIds}
-          {...(showStockContext ? { showAvailableColumn: true as const } : {})}
-          onItemChange={(lineId, itemId, productLabel, unitOfMeasure) =>
+          showAvailableColumn={showStockContext}
+          pickableById={pickableById}
+          lineErrors={lineErrors}
+          onItemChange={handleItemChange}
+          onQuantityChange={(lineId, value) => {
+            clearLineError(lineId);
+            setDraft((current) => updateDraftLineQuantity(current, lineId, value));
+          }}
+          onConditionChange={(lineId, condition) => {
+            clearLineError(lineId);
             setDraft((current) =>
-              updateDraftLineItem(current, lineId, itemId, productLabel, unitOfMeasure),
-            )
-          }
-          onQuantityChange={(lineId, value) =>
-            setDraft((current) => updateDraftLineQuantity(current, lineId, value))
-          }
-          onConditionChange={(lineId, condition) =>
-            setDraft((current) => updateDraftLineCondition(current, lineId, condition))
-          }
-          onLotChange={(lineId, lotId) =>
-            setDraft((current) => updateDraftLineLot(current, lineId, lotId))
-          }
-          onSerializedAssetChange={(lineId, serializedAssetId) =>
+              // Cambiar la condición limpia el lote; si la nueva condición tiene un solo
+              // lote se vuelve a preseleccionar en vez de volver a mostrar 0.
+              withSingleLotPreselection(updateDraftLineCondition(current, lineId, condition), [
+                lineId,
+              ]),
+            );
+          }}
+          onLotChange={(lineId, lotId) => {
+            clearLineError(lineId);
+            setDraft((current) => updateDraftLineLot(current, lineId, lotId));
+          }}
+          onSerializedAssetChange={(lineId, serializedAssetId, serializedAssetLabel) => {
+            clearLineError(lineId);
             setDraft((current) =>
-              updateDraftLineSerializedAsset(current, lineId, serializedAssetId),
-            )
-          }
+              updateDraftLineSerializedAsset(
+                current,
+                lineId,
+                serializedAssetId,
+                serializedAssetLabel,
+              ),
+            );
+          }}
           onToggleLine={(lineId) =>
             setSelectedDraftLineIds((current) =>
               current.includes(lineId)

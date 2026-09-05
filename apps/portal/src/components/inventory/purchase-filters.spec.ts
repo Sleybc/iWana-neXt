@@ -1,11 +1,19 @@
-import { PurchaseRequestPriority, PurchaseRequestStatus, PurchaseRequestType } from '@iwana/shared';
+import {
+  PurchaseRequestFulfillmentStatus,
+  PurchaseRequestPriority,
+  PurchaseRequestStatus,
+  PurchaseRequestType,
+} from '@iwana/shared';
 import type { PurchaseRequestRecord } from '@/lib/api-client';
 import {
   filterPurchaseRequests,
   findFirstRequestForKpiWorkbench,
+  isPurchaseRequestFullyReceived,
   isPurchaseRequestOverdue,
+  isPurchaseRequestPendingReceipt,
   kpiPresetToFilters,
   resolveActiveKpiPreset,
+  resolvePurchaseRequestFulfillmentStatus,
 } from './purchase-filters';
 
 function buildRequest(overrides: Partial<PurchaseRequestRecord> = {}): PurchaseRequestRecord {
@@ -86,5 +94,79 @@ describe('purchase-filters', () => {
 
     expect(findFirstRequestForKpiWorkbench('pendingReceipt', requests)?.id).toBe('receive-me');
     expect(findFirstRequestForKpiWorkbench('pendingQuotes', requests)).toBeNull();
+  });
+
+  it('omite solicitudes ya recibidas al abrir el workbench del KPI Por recibir', () => {
+    const requests = [
+      buildRequest({
+        id: 'ya-recibida',
+        status: PurchaseRequestStatus.CONVERTED_TO_PO,
+        fulfillmentStatus: PurchaseRequestFulfillmentStatus.RECEIVED,
+      }),
+      buildRequest({
+        id: 'en-transito',
+        status: PurchaseRequestStatus.CONVERTED_TO_PO,
+        fulfillmentStatus: PurchaseRequestFulfillmentStatus.PENDING_RECEIPT,
+      }),
+    ];
+
+    expect(findFirstRequestForKpiWorkbench('pendingReceipt', requests)?.id).toBe('en-transito');
+  });
+
+  it('resuelve el abastecimiento del API y degrada cuando no llega', () => {
+    expect(
+      resolvePurchaseRequestFulfillmentStatus(
+        buildRequest({
+          status: PurchaseRequestStatus.CONVERTED_TO_PO,
+          fulfillmentStatus: PurchaseRequestFulfillmentStatus.RECEIVED,
+        }),
+      ),
+    ).toBe(PurchaseRequestFulfillmentStatus.RECEIVED);
+
+    // API sin desplegar: CONVERTED_TO_PO conserva el comportamiento previo.
+    expect(
+      resolvePurchaseRequestFulfillmentStatus(
+        buildRequest({ status: PurchaseRequestStatus.CONVERTED_TO_PO }),
+      ),
+    ).toBe(PurchaseRequestFulfillmentStatus.PENDING_RECEIPT);
+
+    expect(
+      resolvePurchaseRequestFulfillmentStatus(
+        buildRequest({ status: PurchaseRequestStatus.APPROVED }),
+      ),
+    ).toBe(PurchaseRequestFulfillmentStatus.NOT_ORDERED);
+  });
+
+  it('clasifica mercancía en tránsito y solicitudes cerradas por recepción', () => {
+    const received = buildRequest({
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+      fulfillmentStatus: PurchaseRequestFulfillmentStatus.RECEIVED,
+    });
+    const partial = buildRequest({
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+      fulfillmentStatus: PurchaseRequestFulfillmentStatus.PARTIALLY_RECEIVED,
+    });
+    const pending = buildRequest({
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+      fulfillmentStatus: PurchaseRequestFulfillmentStatus.PENDING_RECEIPT,
+    });
+
+    expect(isPurchaseRequestPendingReceipt(pending)).toBe(true);
+    expect(isPurchaseRequestPendingReceipt(partial)).toBe(true);
+    expect(isPurchaseRequestPendingReceipt(received)).toBe(false);
+    expect(isPurchaseRequestFullyReceived(received)).toBe(true);
+    expect(isPurchaseRequestFullyReceived(pending)).toBe(false);
+  });
+
+  it('pendingReceipt KPI usa solo kpiPreset para excluir recibidas en servidor', () => {
+    // El servidor aplica EXISTS de órdenes APPROVED/PARTIALLY_RECEIVED.
+    // No fijar status evita que Estado=Convertida incluya cerradas.
+    expect(kpiPresetToFilters('pendingReceipt')).toEqual({ kpiPreset: 'pendingReceipt' });
+  });
+
+  it('estado CONVERTED_TO_PO solo no activa el KPI Por recibir', () => {
+    // Estado incluye cerradas; el KPI exige kpiPreset explícito.
+    expect(resolveActiveKpiPreset({ status: PurchaseRequestStatus.CONVERTED_TO_PO })).toBeNull();
+    expect(resolveActiveKpiPreset(kpiPresetToFilters('pendingReceipt'))).toBe('pendingReceipt');
   });
 });

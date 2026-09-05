@@ -4,14 +4,14 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 
 ## Índice
 
-1. [KPI / metric cards](#1-kpi--metric-cards) · 2. [Tabla operativa](#2-tabla-operativa-datatable) · 3. [Panel / card de contenido](#3-panel--card-de-contenido) · 4. [Tabs de módulo](#4-tabs-de-módulo) · 5. [Empty states](#5-empty-states) · 6. [Loading](#6-loading) · 7. [Alertas y feedback](#7-alertas-y-feedback) · 8. [Formularios](#8-formularios) · 9. [Side peek / drawer de detalle](#9-side-peek--drawer-de-detalle) · 10. [Shell (sidebar/header)](#10-shell-sidebarheader) · 11. [Eyebrows y headers de sección](#11-eyebrows-y-headers-de-sección) · 12. [Auth](#12-auth) · 13. [Timeline de actividad](#13-timeline-de-actividad)
+1. [KPI / metric cards](#1-kpi--metric-cards) · 2. [Tabla operativa](#2-tabla-operativa-datatable) · 3. [Panel / card de contenido](#3-panel--card-de-contenido) · 4. [Tabs de módulo](#4-tabs-de-módulo) · 5. [Empty states](#5-empty-states) · 6. [Loading](#6-loading) · 7. [Alertas y feedback](#7-alertas-y-feedback) · 8. [Formularios](#8-formularios) · 9. [Side peek / drawer de detalle](#9-side-peek--drawer-de-detalle) · 10. [Shell (sidebar/header)](#10-shell-sidebarheader) · 11. [Eyebrows y headers de sección](#11-eyebrows-y-headers-de-sección) · 12. [Auth](#12-auth) · 13. [Timeline de actividad](#13-timeline-de-actividad) · 14. [Chip de salud de módulo](#14-chip-de-salud-de-módulo) · 15. [Foco de hoy](#15-foco-de-hoy-inicio)
 
 ## 1. KPI / metric cards
 
-- **Usa:** `portalMetricCardShellClassName` + `portalMetricCardAccentClassName(accent)` (acentos `neutral/primary/warning/danger`) de `portal-ui.tsx`.
-- **Anatomía (Firma §2.1):** eyebrow + cifra rol *title* en azul noche + icono neutro + **delta como badge tonal** (nunca texto de color suelto) + hueco para sparkline.
+- **Usa:** `PortalDashboardMetric` en el home; `portalMetricCardShellClassName` + acentos `neutral/primary/warning/danger` en otras métricas.
+- **Anatomía (Firma §4/2.1 + elevación 2026-09-04):** eyebrow opcional + cifra rol *title* en compact (`font-thin-exo text-3xl text-iwana-primary`) o mono `text-2xl` en default + icono neutro + **delta como badge tonal** (lima solo `tone: progress`) + sparkline **solo si** hay ≥2 puntos reales.
 - **Límite: 5–9 métricas núcleo por vista**; el resto va tras progressive disclosure. >12 KPIs por vista es anti-patrón.
-- **Nunca:** inventar una card de métrica local; usar lima para deltas negativos o alertas (eso es `error`/`warning`).
+- **Nunca:** inventar una card de métrica local; usar lima para deltas negativos o alertas; pintar un trazo de sparkline sin serie; % YoY ficticio.
 
 ## 2. Tabla operativa (DataTable)
 
@@ -69,7 +69,8 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 
 ## 4. Tabs de módulo
 
-- **Usa:** `portalModuleTabsShellClassName` / `-GroupClassName` / `-DividerClassName` / `-TrackClassName` / `-TriggerClassName`, con estado activo `portalTabActiveClassName` (activo = `bg-iwana-primary text-white`) e inactivo `portalTabInactiveClassName`.
+- **Usa:** `portalModuleTabsShellClassName` / `-GroupClassName` / `-DividerClassName` / `-TrackClassName` / `-TriggerClassName`.
+- Pista: `rounded-xl p-1 items-center`. Trigger: píldora inset `rounded-lg min-h-11` (activo = `bg-iwana-primary text-white`). Lima no marca la sección actual — el subrayado lima es de `portalResourceTabTriggerClassName` / `PortalModuleSubnav`, no de esta pista.
 - Volver a una tab no pierde el estado de filtros (dirección: filtros en URL).
 
 ## 5. Empty states
@@ -122,6 +123,19 @@ Qué usar (y qué nunca) al construir cada patrón de pantalla. Fuentes reales: 
 ## 13. Timeline de actividad
 
 - Línea vertical con degradado a transparente + nodos anillados (`bg-iwana-secondary` activo / `bg-iwana-primary/20` pasado) + timestamps en `font-mono` (prototipo expediente; Firma §3.3).
+
+## 14. Chip de salud de módulo
+
+- **Usa:** `PortalModuleHealthChip` en `portal-ui.tsx`. Contrato: `docs/specs/2026-09-04-portal-dashboard-centro-mando-ds-contrato.md`.
+- **Dónde:** banda B1b del inicio (`Salud de la operación`). Mapa de estado por módulo, no KPI.
+- **Anatomía:** rótulo de producto + badge (Al día lima AA / Atención warning / En riesgo error / Sin dato neutral) + cifra opcional de **señal** en `font-mono tabular-nums` + chevron. Cáscara blanca `rounded-2xl` `min-h-11` `shadow-iwana-soft`.
+- **Nunca:** `PortalDashboardMetric` para salud de módulo; lima en Atención o En riesgo; cifra `0` cuando la fuente falló; tinte de cáscara de urgencia; card-dentro-de-card.
+
+## 15. Foco de hoy (inicio)
+
+- **Usa:** `PortalPanel` + `ProgressMeter` de `@iwana/ui`. Ratio derivado de contratos existentes (`dashboard-today-focus.ts`).
+- **Degradado azul→lima:** solo el relleno de la barra (firma §3). Porcentaje `text-iwana-secondary-700`.
+- **Nunca:** gauge radial, 0 % si no hay denominador o la fuente falló, serie inventada.
 
 ---
 

@@ -1,5 +1,14 @@
 import { DataSource } from 'typeorm';
-import { runInTenantSchema } from '@iwana/db';
+import {
+  PurchaseRequest,
+  PurchaseRequestLine,
+  PurchaseRequestLineAward,
+  PurchaseRfq,
+  SupplierQuote,
+  SupplierQuoteLine,
+  SupplierQuoteTax,
+  runInTenantSchema,
+} from '@iwana/db';
 import {
   GoodsReceiptStatus,
   InventoryTrackingMode,
@@ -10,11 +19,17 @@ import {
   PurchaseRequestPriority,
   PurchaseRequestStatus,
   PurchaseRequestType,
+  PurchaseRfqStatus,
   StockBalanceCondition,
   StockMovementOrigin,
+  TaxCategory,
+  TaxContext,
+  TaxTreatment,
+  QuoteShippingArrangement,
   UserRole,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
@@ -35,6 +50,8 @@ jest.mock('@iwana/db', () => ({
   PurchaseRequestLine: class PurchaseRequestLine {},
   PurchaseRequestLineAward: class PurchaseRequestLineAward {},
   SupplierQuote: class SupplierQuote {},
+  SupplierQuoteLine: class SupplierQuoteLine {},
+  SupplierQuoteTax: class SupplierQuoteTax {},
   PurchaseOrder: class PurchaseOrder {},
   PurchaseOrderLine: class PurchaseOrderLine {},
   PurchaseRfq: class PurchaseRfq {},
@@ -55,6 +72,13 @@ const actor: JwtPayload = {
 };
 
 const mockRunInTenantSchema = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
+
+const emptyTaxCatalogPort = {
+  listByContext: jest.fn().mockResolvedValue([]),
+  findActiveByCode: jest.fn().mockResolvedValue(null),
+  resolveSystemPreset: jest.fn().mockResolvedValue(null),
+  findById: jest.fn().mockResolvedValue(null),
+} as unknown as TaxCatalogReadPort;
 
 function createNumberQueryBuilder(maxValue: string | null) {
   return {
@@ -160,6 +184,7 @@ describe('PurchasingService', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.createPurchaseRequest(
@@ -238,6 +263,7 @@ describe('PurchasingService', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(service.approvePurchaseRequest('pr-001', {}, actor)).rejects.toThrow('cotización');
@@ -270,6 +296,7 @@ describe('PurchasingService', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.approvePurchaseRequest(
@@ -309,6 +336,7 @@ describe('PurchasingService', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -370,6 +398,7 @@ describe('PurchasingService', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.createLineAwards(
@@ -485,6 +514,7 @@ describe('PurchasingService', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.createPurchaseOrderFromRequest(
@@ -565,6 +595,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.rejectPurchaseRequest(
@@ -617,6 +648,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.cancelPurchaseRequest(
@@ -651,6 +683,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -696,6 +729,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.updatePurchaseRequest(
@@ -743,6 +777,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -770,6 +805,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -799,6 +835,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.approvePurchaseOrder('po-pend-001', actor);
@@ -825,6 +862,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(service.approvePurchaseOrder('po-already-001', actor)).rejects.toThrow(
@@ -860,6 +898,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.cancelPurchaseOrder(
@@ -896,6 +935,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -927,6 +967,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -956,6 +997,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.closePurchaseOrder('po-fully-001', actor);
@@ -982,6 +1024,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(service.closePurchaseOrder('po-partial-001', actor)).rejects.toThrow(
@@ -1009,6 +1052,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -1046,6 +1090,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await service.addSupplierQuote(
@@ -1101,6 +1146,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -1147,6 +1193,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await service.addSupplierQuote(
@@ -1204,6 +1251,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     const result = await service.addSupplierQuote(
@@ -1269,6 +1317,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await service.addSupplierQuote(
@@ -1318,6 +1367,7 @@ describe('PurchasingService', () => {
       new PurchasingPolicyService(),
       { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
       supplierProfileServiceMock,
+      emptyTaxCatalogPort,
     );
 
     await expect(
@@ -1337,6 +1387,587 @@ describe('PurchasingService', () => {
         actor,
       ),
     ).rejects.toThrow('no pertenecen a esta solicitud');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('persiste payableAmount y taxes calculados (CA-25-04)', async () => {
+    const requestRecord = {
+      id: 'pr-quote-tax',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.DRAFT,
+      notes: null as string | null,
+    };
+    const savedQuotes: unknown[] = [];
+    const savedTaxes: unknown[] = [];
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        if (Array.isArray(payload)) {
+          savedTaxes.push(...payload);
+          return payload.map((row, index) => ({ id: `tax-${index + 1}`, ...row }));
+        }
+        const saved = { id: 'quote-tax-001', ...payload };
+        savedQuotes.push(saved);
+        return saved;
+      }),
+    };
+
+    const catalogPort = {
+      ...emptyTaxCatalogPort,
+      listByContext: jest.fn().mockResolvedValue([
+        {
+          id: 'def-iva',
+          code: 'IVA_19',
+          name: 'IVA 19%',
+          category: TaxCategory.VAT,
+          jurisdictionLevel: 'NATIONAL',
+          municipalityCode: null,
+          baseRate: '19',
+          treatment: TaxTreatment.STANDARD,
+          context: TaxContext.BOTH,
+          origin: 'SYSTEM',
+          isActive: true,
+          notes: null,
+        },
+        {
+          id: 'def-fte',
+          code: 'RETE_FUENTE_SERVICIOS',
+          name: 'Retención en la fuente — Servicios',
+          category: TaxCategory.WITHHOLDING,
+          jurisdictionLevel: 'NATIONAL',
+          municipalityCode: null,
+          baseRate: '4',
+          treatment: TaxTreatment.STANDARD,
+          context: TaxContext.PURCHASE,
+          origin: 'SYSTEM',
+          isActive: true,
+          notes: null,
+        },
+        {
+          id: 'def-ica',
+          code: 'RETE_ICA',
+          name: 'ReteICA — Bogotá',
+          category: TaxCategory.MUNICIPAL,
+          jurisdictionLevel: 'MUNICIPAL',
+          municipalityCode: '11001',
+          baseRate: '0.414',
+          treatment: TaxTreatment.STANDARD,
+          context: TaxContext.PURCHASE,
+          origin: 'SYSTEM',
+          isActive: true,
+          notes: null,
+        },
+        {
+          id: 'def-rete-iva',
+          code: 'RETE_IVA',
+          name: 'Rete IVA',
+          category: TaxCategory.WITHHOLDING,
+          jurisdictionLevel: 'NATIONAL',
+          municipalityCode: null,
+          baseRate: '15',
+          treatment: TaxTreatment.STANDARD,
+          context: TaxContext.PURCHASE,
+          origin: 'SYSTEM',
+          isActive: true,
+          notes: null,
+        },
+      ]),
+    } as unknown as TaxCatalogReadPort;
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      catalogPort,
+    );
+
+    const result = await service.addSupplierQuote(
+      'pr-quote-tax',
+      {
+        partyRefId: 'party-001',
+        quoteNumber: 'Q-TAX-001',
+        amount: 100,
+        currency: 'COP',
+        taxes: [
+          { code: 'IVA_19', applies: true, rate: 19 },
+          { code: 'RETE_FUENTE_SERVICIOS', applies: true, rate: 4 },
+          { code: 'RETE_ICA', applies: true, rate: 0.414 },
+          { code: 'RETE_IVA', applies: true, rate: 15 },
+        ],
+      },
+      actor,
+    );
+
+    expect(savedQuotes[0]).toEqual(
+      expect.objectContaining({
+        amount: '100.00',
+        shippingCost: '0.00',
+        payableAmount: '111.74',
+      }),
+    );
+    expect(savedTaxes).toHaveLength(4);
+    expect(result.taxes).toHaveLength(4);
+    expect(result.payableAmount).toBe('111.74');
+    expect(result.taxes.find((row) => row.code === 'RETE_IVA')).toEqual(
+      expect.objectContaining({ taxAmount: '2.85', effect: 'WITHHOLD', applies: true }),
+    );
+  });
+
+  it('rechaza código inactivo o fuera de PURCHASE con 400', async () => {
+    const requestRecord = {
+      id: 'pr-quote-bad-tax',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.DRAFT,
+      notes: null as string | null,
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    await expect(
+      service.addSupplierQuote(
+        'pr-quote-bad-tax',
+        {
+          partyRefId: 'party-001',
+          quoteNumber: 'Q-BAD',
+          amount: 100,
+          currency: 'COP',
+          taxes: [{ code: 'IVA_19', applies: true, rate: 19 }],
+        },
+        actor,
+      ),
+    ).rejects.toThrow('catálogo de compras');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('legacy sin taxes persiste payableAmount = amount + shipping', async () => {
+    const requestRecord = {
+      id: 'pr-quote-legacy',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.DRAFT,
+      notes: null as string | null,
+    };
+    const savedQuotes: unknown[] = [];
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        const saved = { id: 'quote-legacy-001', ...payload };
+        savedQuotes.push(saved);
+        return saved;
+      }),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    const result = await service.addSupplierQuote(
+      'pr-quote-legacy',
+      {
+        partyRefId: 'party-001',
+        quoteNumber: 'Q-LEGACY',
+        amount: 2000,
+        shippingCost: 250,
+        currency: 'COP',
+      },
+      actor,
+    );
+
+    expect(savedQuotes[0]).toEqual(
+      expect.objectContaining({
+        amount: '2000.00',
+        shippingCost: '250.00',
+        payableAmount: '2250.00',
+      }),
+    );
+    expect(result.taxes).toEqual([]);
+  });
+
+  it('el flete al transportador no entra al neto del proveedor', async () => {
+    const requestRecord = {
+      id: 'pr-quote-carrier',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.DRAFT,
+      notes: null as string | null,
+    };
+    const savedQuotes: unknown[] = [];
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        const saved = { id: 'quote-carrier-001', ...payload };
+        savedQuotes.push(saved);
+        return saved;
+      }),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    await service.addSupplierQuote(
+      'pr-quote-carrier',
+      {
+        partyRefId: 'party-001',
+        quoteNumber: 'Q-CARRIER',
+        amount: 2000,
+        shippingCost: 250,
+        shippingArrangement: QuoteShippingArrangement.PAY_CARRIER,
+        currency: 'COP',
+      },
+      actor,
+    );
+
+    expect(savedQuotes[0]).toEqual(
+      expect.objectContaining({
+        amount: '2000.00',
+        shippingCost: '250.00',
+        shippingArrangement: QuoteShippingArrangement.PAY_CARRIER,
+        payableAmount: '2000.00',
+      }),
+    );
+  });
+
+  it('envío gratis fuerza shippingCost 0 aunque el cliente envíe un monto', async () => {
+    const requestRecord = {
+      id: 'pr-quote-free',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.DRAFT,
+      notes: null as string | null,
+    };
+    const savedQuotes: unknown[] = [];
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        const saved = { id: 'quote-free-001', ...payload };
+        savedQuotes.push(saved);
+        return saved;
+      }),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    await service.addSupplierQuote(
+      'pr-quote-free',
+      {
+        partyRefId: 'party-001',
+        quoteNumber: 'Q-FREE',
+        amount: 2000,
+        shippingCost: 99,
+        shippingArrangement: QuoteShippingArrangement.FREE,
+        currency: 'COP',
+      },
+      actor,
+    );
+
+    expect(savedQuotes[0]).toEqual(
+      expect.objectContaining({
+        shippingCost: '0.00',
+        shippingArrangement: QuoteShippingArrangement.FREE,
+        payableAmount: '2000.00',
+      }),
+    );
+  });
+
+  function createUpdateQuoteHarness(options: {
+    requestStatus?: PurchaseRequestStatus;
+    quote?: Record<string, unknown>;
+    award?: Record<string, unknown> | null;
+    rfq?: { id: string; status: PurchaseRfqStatus } | null;
+    requestLines?: Array<Record<string, unknown>>;
+  }) {
+    const requestRecord = {
+      id: 'pr-update',
+      tenantId: 'tenant-001',
+      status: options.requestStatus ?? PurchaseRequestStatus.PENDING_APPROVAL,
+      notes: null as string | null,
+    };
+    const quoteRecord = {
+      id: 'quote-001',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-update',
+      partyRefId: 'party-001',
+      quoteNumber: 'Q-OLD',
+      amount: '1000.00',
+      shippingCost: '100.00',
+      shippingArrangement: QuoteShippingArrangement.ON_INVOICE,
+      payableAmount: '1100.00',
+      currency: 'COP',
+      validUntil: null as string | null,
+      notes: null as string | null,
+      rfqId: null as string | null,
+      ...options.quote,
+    };
+    const deleted: Array<{ entity: unknown; where: unknown }> = [];
+    const savedQuotes: unknown[] = [];
+    const savedTaxes: unknown[] = [];
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation((entity: unknown) => {
+        if (entity === PurchaseRequest) {
+          return requestRecord;
+        }
+        if (entity === SupplierQuote) {
+          return quoteRecord;
+        }
+        if (entity === PurchaseRequestLineAward) {
+          return options.award ?? null;
+        }
+        if (entity === PurchaseRfq) {
+          return options.rfq ?? null;
+        }
+        return null;
+      }),
+      find: jest.fn().mockImplementation((entity: unknown) => {
+        if (entity === PurchaseRequestLine) {
+          return options.requestLines ?? [];
+        }
+        return [];
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (entity: unknown, payload: unknown) => {
+        if (entity === SupplierQuote) {
+          savedQuotes.push(payload);
+          return payload;
+        }
+        if (entity === SupplierQuoteTax) {
+          savedTaxes.push(payload);
+          return payload;
+        }
+        if (entity === SupplierQuoteLine) {
+          return payload;
+        }
+        return payload;
+      }),
+      delete: jest.fn().mockImplementation(async (entity: unknown, where: unknown) => {
+        deleted.push({ entity, where });
+        return { affected: 1 };
+      }),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    return { service, manager, quoteRecord, savedQuotes, savedTaxes, deleted };
+  }
+
+  it('corrige una cotización en PENDING_APPROVAL y recalcula el neto', async () => {
+    const { service, manager, savedQuotes, deleted } = createUpdateQuoteHarness({});
+
+    const result = await service.updateSupplierQuote(
+      'pr-update',
+      'quote-001',
+      {
+        quoteNumber: 'Q-NEW',
+        amount: 2000,
+        shippingCost: 250,
+        shippingArrangement: QuoteShippingArrangement.ON_INVOICE,
+        currency: 'COP',
+      },
+      actor,
+    );
+
+    expect(savedQuotes[0]).toEqual(
+      expect.objectContaining({
+        quoteNumber: 'Q-NEW',
+        amount: '2000.00',
+        shippingCost: '250.00',
+        payableAmount: '2250.00',
+      }),
+    );
+    expect(result.payableAmount).toBe('2250.00');
+    expect(manager.delete).toHaveBeenCalledWith(SupplierQuoteLine, {
+      tenantId: 'tenant-001',
+      supplierQuoteId: 'quote-001',
+    });
+    expect(manager.delete).toHaveBeenCalledWith(SupplierQuoteTax, {
+      tenantId: 'tenant-001',
+      supplierQuoteId: 'quote-001',
+    });
+    expect(deleted).toHaveLength(2);
+  });
+
+  it('permite corregir una cotización de RFQ mientras la ronda recibe respuestas', async () => {
+    const { service, savedQuotes } = createUpdateQuoteHarness({
+      quote: { rfqId: 'rfq-001' },
+      rfq: { id: 'rfq-001', status: PurchaseRfqStatus.RECEIVING },
+    });
+
+    await service.updateSupplierQuote(
+      'pr-update',
+      'quote-001',
+      {
+        quoteNumber: 'Q-RFQ',
+        amount: 800,
+        currency: 'COP',
+      },
+      actor,
+    );
+
+    expect(savedQuotes[0]).toEqual(
+      expect.objectContaining({ quoteNumber: 'Q-RFQ', amount: '800.00' }),
+    );
+  });
+
+  it('rechaza corregir si la solicitud ya está aprobada', async () => {
+    const { service, manager } = createUpdateQuoteHarness({
+      requestStatus: PurchaseRequestStatus.APPROVED,
+    });
+
+    await expect(
+      service.updateSupplierQuote(
+        'pr-update',
+        'quote-001',
+        { quoteNumber: 'Q-NEW', amount: 2000, currency: 'COP' },
+        actor,
+      ),
+    ).rejects.toThrow('Esta solicitud ya no admite correcciones de cotización.');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('rechaza corregir si la ronda de cotización ya cerró', async () => {
+    const { service, manager } = createUpdateQuoteHarness({
+      quote: { rfqId: 'rfq-001' },
+      rfq: { id: 'rfq-001', status: PurchaseRfqStatus.CLOSED },
+    });
+
+    await expect(
+      service.updateSupplierQuote(
+        'pr-update',
+        'quote-001',
+        { quoteNumber: 'Q-NEW', amount: 2000, currency: 'COP' },
+        actor,
+      ),
+    ).rejects.toThrow('La ronda de cotización ya no admite correcciones.');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('rechaza corregir una cotización ya adjudicada', async () => {
+    const { service, manager } = createUpdateQuoteHarness({
+      award: { id: 'award-001', supplierQuoteId: 'quote-001' },
+    });
+
+    await expect(
+      service.updateSupplierQuote(
+        'pr-update',
+        'quote-001',
+        { quoteNumber: 'Q-NEW', amount: 2000, currency: 'COP' },
+        actor,
+      ),
+    ).rejects.toThrow('Esta cotización ya forma parte de una adjudicación y no se puede corregir.');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('responde 404 si la cotización no pertenece a la solicitud', async () => {
+    const requestRecord = {
+      id: 'pr-update',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.PENDING_APPROVAL,
+      notes: null as string | null,
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation((entity: unknown) => {
+        if (entity === PurchaseRequest) {
+          return requestRecord;
+        }
+        return null;
+      }),
+      find: jest.fn().mockResolvedValue([]),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    await expect(
+      service.updateSupplierQuote(
+        'pr-update',
+        'quote-missing',
+        { quoteNumber: 'Q-NEW', amount: 2000, currency: 'COP' },
+        actor,
+      ),
+    ).rejects.toThrow('La cotización no existe en esta solicitud.');
     expect(manager.save).not.toHaveBeenCalled();
   });
 });
@@ -1390,6 +2021,7 @@ describe('PurchasingQueryService', () => {
             awardedPartyRefId: 'party-001',
           },
         ])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]),
     };
     const supplierPartyPort: jest.Mocked<SupplierPartyPort> = {
@@ -1403,6 +2035,7 @@ describe('PurchasingQueryService', () => {
       {} as DataSource,
       supplierPartyPort,
       new PurchasingPolicyService(),
+      emptyTaxCatalogPort,
     );
 
     const result = await service.getRequestDetail('pr-001');
@@ -1424,6 +2057,141 @@ describe('PurchasingQueryService', () => {
       }),
     );
     expect(supplierPartyPort.getSupplierSummariesBatch).not.toHaveBeenCalled();
+    expect(result.quotes[0]?.taxes).toEqual([]);
+    expect(result.quotes[0]?.payableAmount).toBe('100000.00');
+    expect(result.purchaseTaxPresets).toEqual([]);
+  });
+
+  it('estimatedAmount de aprobación no incluye IVA (CA-25-09)', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'pr-policy',
+        tenantId: 'tenant-001',
+        requestNumber: 'PR-000099',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        exceptionReason: null,
+        justification: 'Reposición preventiva de equipos de acceso para cuadrillas.',
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      find: jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: 'quote-iva',
+            tenantId: 'tenant-001',
+            purchaseRequestId: 'pr-policy',
+            amount: '490000',
+            shippingCost: '0',
+            payableAmount: '583100.00',
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]),
+    };
+    const supplierPartyPort: jest.Mocked<SupplierPartyPort> = {
+      getSupplierSummary: jest.fn(),
+      getSupplierSummariesBatch: jest.fn().mockResolvedValue(new Map()),
+      searchSuppliers: jest.fn(),
+    } as never;
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingQueryService(
+      {} as DataSource,
+      supplierPartyPort,
+      new PurchasingPolicyService(),
+      emptyTaxCatalogPort,
+    );
+
+    const result = await service.getRequestDetail('pr-policy');
+
+    expect(result.estimatedAmount).toBe(490000);
+    expect(result.approvalPolicy.approvalLevel).toBe('BUYER');
+    expect(result.quotes[0]?.payableAmount).toBe('583100.00');
+  });
+
+  it('CA-25-11: GET detail expone presets PURCHASE del catálogo', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'pr-presets',
+        tenantId: 'tenant-001',
+        requestNumber: 'PR-000025',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        exceptionReason: null,
+        justification: 'Reposición preventiva de equipos de acceso para cuadrillas.',
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      find: jest.fn().mockResolvedValue([]),
+    };
+    const supplierPartyPort: jest.Mocked<SupplierPartyPort> = {
+      getSupplierSummary: jest.fn(),
+      getSupplierSummariesBatch: jest.fn().mockResolvedValue(new Map()),
+      searchSuppliers: jest.fn(),
+    } as never;
+    const catalogPort = {
+      ...emptyTaxCatalogPort,
+      listByContext: jest.fn().mockResolvedValue([
+        {
+          id: 'def-iva',
+          code: 'IVA_19',
+          name: 'IVA 19%',
+          category: TaxCategory.VAT,
+          baseRate: '19',
+          treatment: TaxTreatment.STANDARD,
+          context: TaxContext.BOTH,
+          isActive: true,
+        },
+        {
+          id: 'def-rete-iva',
+          code: 'RETE_IVA',
+          name: 'Rete IVA',
+          category: TaxCategory.WITHHOLDING,
+          baseRate: '15',
+          treatment: TaxTreatment.STANDARD,
+          context: TaxContext.PURCHASE,
+          isActive: true,
+        },
+      ]),
+    } as unknown as TaxCatalogReadPort;
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingQueryService(
+      {} as DataSource,
+      supplierPartyPort,
+      new PurchasingPolicyService(),
+      catalogPort,
+    );
+
+    const result = await service.getRequestDetail('pr-presets');
+
+    expect(catalogPort.listByContext).toHaveBeenCalledWith(TaxContext.PURCHASE);
+    expect(result.purchaseTaxPresets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'IVA_19',
+          name: 'IVA 19%',
+          baseRate: 19,
+          context: TaxContext.BOTH,
+        }),
+        expect.objectContaining({
+          code: 'RETE_IVA',
+          name: 'Rete IVA',
+          baseRate: 15,
+          context: TaxContext.PURCHASE,
+        }),
+      ]),
+    );
   });
 
   it('enriches RFQ invitations with supplier displayName', async () => {
@@ -1488,6 +2256,7 @@ describe('PurchasingQueryService', () => {
       {} as DataSource,
       supplierPartyPort,
       new PurchasingPolicyService(),
+      emptyTaxCatalogPort,
     );
 
     const result = await service.getRequestDetail('pr-010');
@@ -1523,6 +2292,7 @@ describe('PurchasingQueryService', () => {
       {} as DataSource,
       supplierPartyPort,
       new PurchasingPolicyService(),
+      emptyTaxCatalogPort,
     );
 
     const result = await service.getProviderSummary('party-001');
@@ -1553,6 +2323,7 @@ describe('PurchasingQueryService', () => {
       {} as DataSource,
       supplierPartyPort,
       new PurchasingPolicyService(),
+      emptyTaxCatalogPort,
     );
 
     const result = await service.searchSuppliers({ search: 'norte', page: 2 });

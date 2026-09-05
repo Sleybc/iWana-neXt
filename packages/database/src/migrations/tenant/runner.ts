@@ -76,6 +76,12 @@ import { AddCustomerSegmentToExpedienteRecords1160000000000 } from './116_add_cu
 import { RepairOrganizationCompanyBusinessHoursSeed1170000000000 } from './117_repair_organization_company_business_hours_seed';
 import { SeedDefaultExecutionOrderTemplates1180000000000 } from './118_seed_default_execution_order_templates';
 import { SeedMod00AccessV21190000000000 } from './119_seed_mod00_access_v2_convergencia_rbac';
+import { RemapMod00AccessV1ToV21200000000000 } from './120_remap_mod00_access_v1_lockout';
+import { HardenMod00AccessV1RemapProvenance12100000000000 } from './121_harden_mod00_access_v1_remap_provenance';
+import { NormalizeUomToCanonicalCatalog12200000000000 } from './122_normalize_uom_to_canonical_catalog';
+import { AddInventoryItemBarcode1230000000000 } from './123_add_inventory_item_barcode';
+import { AddSupplierQuoteTaxes1240000000000 } from './124_add_supplier_quote_taxes';
+import { AddSupplierQuoteShippingArrangement1250000000000 } from './125_add_supplier_quote_shipping_arrangement';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -232,6 +238,12 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   RepairOrganizationCompanyBusinessHoursSeed1170000000000,
   SeedDefaultExecutionOrderTemplates1180000000000,
   SeedMod00AccessV21190000000000,
+  RemapMod00AccessV1ToV21200000000000,
+  HardenMod00AccessV1RemapProvenance12100000000000,
+  NormalizeUomToCanonicalCatalog12200000000000,
+  AddInventoryItemBarcode1230000000000,
+  AddSupplierQuoteTaxes1240000000000,
+  AddSupplierQuoteShippingArrangement1250000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

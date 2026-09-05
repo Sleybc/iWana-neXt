@@ -653,6 +653,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@iwana/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@radix-ui/react-label':
         specifier: ^2.1.8
         version: 2.1.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

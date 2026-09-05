@@ -24,6 +24,7 @@ import type {
   StockMovementResultRecord,
   SupplierSummaryRecord,
   UpdatePurchaseRequestDto,
+  UpdateSupplierQuoteDto,
   CreateCounterPurchaseDto,
 } from '@/lib/api-client';
 import { ApiError, purchasingApi } from '@/lib/api-client';
@@ -136,6 +137,11 @@ interface PurchaseWorkspaceProps {
   isSubmittingCounterPurchase?: boolean;
   onCreateRequest: (payload: CreatePurchaseRequestDto) => Promise<PurchaseCreateRequestResult>;
   onAddQuote: (requestId: string, payload: AddSupplierQuoteDto) => Promise<void>;
+  onUpdateQuote: (
+    requestId: string,
+    quoteId: string,
+    payload: UpdateSupplierQuoteDto,
+  ) => Promise<boolean>;
   onApproveRequest: (
     requestId: string,
     payload?: { exceptionReason?: string; notes?: string },
@@ -198,6 +204,7 @@ function PurchaseWorkspaceInner({
   isSubmittingCounterPurchase = false,
   onCreateRequest,
   onAddQuote,
+  onUpdateQuote,
   onApproveRequest,
   onCreateAwards,
   onRejectRequest,
@@ -785,6 +792,15 @@ function PurchaseWorkspaceInner({
           await onAddQuote(selectedRequestId, payload);
           await loadDetail(selectedRequestId);
           await onRefresh();
+        }}
+        onUpdateQuote={async (quoteId, payload) => {
+          if (!selectedRequestId) return false;
+          const updated = await onUpdateQuote(selectedRequestId, quoteId, payload);
+          if (updated) {
+            await loadDetail(selectedRequestId);
+            await onRefresh();
+          }
+          return updated;
         }}
         onApprove={async (payload) => {
           if (!selectedRequestId) return;

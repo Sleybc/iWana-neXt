@@ -12,6 +12,7 @@ import type {
   PurchaseRequestLineRecord,
   PurchaseRfqDetailRecord,
   PurchaseRfqInvitationRecord,
+  PurchaseTaxPresetRecord,
   SupplierQuoteRecord,
 } from '@/lib/api-client';
 import { purchasingApi } from '@/lib/api-client';
@@ -22,8 +23,8 @@ import {
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 import {
-  formatInventoryCurrency,
   formatInventoryDate,
+  formatInventoryMoney,
   getPurchaseRfqInvitationStatusBadgeVariant,
   getPurchaseRfqInvitationStatusLabel,
   getPurchaseRfqStatusLabel,
@@ -32,14 +33,30 @@ import {
 } from './inventory-labels';
 import {
   buildQuoteLinesPayload,
+  sumQuoteLinesTotal,
   type QuoteLineUnitCostMap,
   SupplierQuoteLinesEditor,
 } from './SupplierQuoteLinesEditor';
+import { QuoteEconomicsFields } from './QuoteEconomicsFields';
 import {
-  QuoteShippingFields,
+  INITIAL_QUOTE_SHIPPING,
+  isQuoteShippingValid,
   resolveShippingCost,
   type QuoteShippingValue,
 } from './QuoteShippingFields';
+import {
+  areQuoteTaxesValid,
+  buildQuoteTaxesPayload,
+  createInitialQuoteTaxState,
+  resolveQuotePayableAmount,
+  type QuoteTaxState,
+} from './quote-tax-calc';
+import {
+  hydrateQuoteShipping,
+  hydrateQuoteTaxes,
+  hydrateQuoteUnitCosts,
+} from './quote-form-hydrate';
+import { getQuoteSaveBlockers } from './quote-form-validity';
 import { SupplierMultiPicker, type SupplierMultiSelection } from './SupplierMultiPicker';
 
 interface RfqInvitationsPanelProps {
@@ -48,6 +65,8 @@ interface RfqInvitationsPanelProps {
   rfqDetail: PurchaseRfqDetailRecord | null;
   quotes?: SupplierQuoteRecord[];
   requestLines?: PurchaseRequestLineRecord[];
+  purchaseTaxPresets?: PurchaseTaxPresetRecord[] | undefined;
+  awardedQuoteIds?: readonly string[];
   disabled?: boolean;
   onRefresh: () => Promise<void>;
 }
@@ -79,28 +98,64 @@ function canRegisterQuote(
   );
 }
 
+const QUOTE_CORRECTION_REQUEST_STATUSES: PurchaseRequestStatus[] = [
+  PurchaseRequestStatus.DRAFT,
+  PurchaseRequestStatus.PENDING_QUOTES,
+  PurchaseRequestStatus.PENDING_APPROVAL,
+];
+
+function canModifyInvitationQuote(
+  requestStatus: PurchaseRequestStatus,
+  rfqStatus: PurchaseRfqStatus | undefined,
+  invitationStatus: PurchaseRfqInvitationStatus,
+  linkedQuote: SupplierQuoteRecord | undefined,
+  awardedQuoteIds: ReadonlySet<string>,
+): boolean {
+  if (!linkedQuote || awardedQuoteIds.has(linkedQuote.id)) {
+    return false;
+  }
+  if (!QUOTE_CORRECTION_REQUEST_STATUSES.includes(requestStatus)) {
+    return false;
+  }
+  if (!rfqStatus || ![PurchaseRfqStatus.SENT, PurchaseRfqStatus.RECEIVING].includes(rfqStatus)) {
+    return false;
+  }
+  return invitationStatus === PurchaseRfqInvitationStatus.RESPONDED;
+}
+
+function toQuoteCurrency(value: string | undefined): PurchaseCurrencyOption {
+  if (value === 'USD' || value === 'EUR' || value === 'COP') {
+    return value;
+  }
+  return 'COP';
+}
+
 export function RfqInvitationsPanel({
   purchaseRequestId,
   requestStatus,
   rfqDetail,
   quotes = [],
   requestLines = [],
+  purchaseTaxPresets,
+  awardedQuoteIds = [],
   disabled = false,
   onRefresh,
 }: RfqInvitationsPanelProps) {
+  const awardedQuoteIdSet = useMemo(() => new Set(awardedQuoteIds), [awardedQuoteIds]);
   const [selectedSuppliers, setSelectedSuppliers] = useState<SupplierMultiSelection[]>([]);
   const [responseDeadline, setResponseDeadline] = useState('');
   const [notes, setNotes] = useState('');
   const [rfqCurrency, setRfqCurrency] = useState<PurchaseCurrencyOption>('COP');
   const [declineReason, setDeclineReason] = useState('');
   const [quoteFormInvitationId, setQuoteFormInvitationId] = useState<string | null>(null);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState('');
   const [quoteAmount, setQuoteAmount] = useState('');
   const [quoteUnitCosts, setQuoteUnitCosts] = useState<QuoteLineUnitCostMap>({});
-  const [quoteShipping, setQuoteShipping] = useState<QuoteShippingValue>({
-    isFree: false,
-    amount: '',
-  });
+  const [quoteShipping, setQuoteShipping] = useState<QuoteShippingValue>(INITIAL_QUOTE_SHIPPING);
+  const [quoteTaxes, setQuoteTaxes] = useState<QuoteTaxState>(() =>
+    createInitialQuoteTaxState(purchaseTaxPresets),
+  );
   const [quoteCurrency, setQuoteCurrency] = useState<PurchaseCurrencyOption>('COP');
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,15 +167,51 @@ export function RfqInvitationsPanel({
 
   const canStartRfq = !rfq && requestStatus === PurchaseRequestStatus.DRAFT;
   const panelDisabled = disabled || isBusy;
+  const hasInvitations = invitations.length > 0;
+  const hasPendingSelection = selectedSuppliers.length > 0;
+  // La selección del picker es estado local: solo las invitaciones persistidas
+  // habilitan el envío (el backend exige ≥1 con 400). Sin este guard el
+  // operador intenta enviar con el chip seleccionado pero sin invitar.
+  const sendBlockedReason =
+    !rfqStatus || !canSend(rfqStatus)
+      ? null
+      : !hasInvitations && !hasPendingSelection
+        ? 'Invita al menos un proveedor antes de enviar la solicitud.'
+        : !hasInvitations
+          ? 'Pulsa «Invitar seleccionados» para confirmar la invitación y luego «Enviar solicitud».'
+          : hasPendingSelection
+            ? 'Tienes proveedores seleccionados sin invitar. Invítalos o quítalos antes de enviar.'
+            : null;
+  const sendDisabled = panelDisabled || sendBlockedReason !== null;
   const usesQuoteLines = requestLines.length > 0;
   const quoteLinesPayload = buildQuoteLinesPayload(quoteUnitCosts, requestLines);
   const quoteAmountTouched = quoteAmount.trim().length > 0;
   const parsedQuoteAmount = Number.parseFloat(quoteAmount);
   const quoteAmountValid = Number.isFinite(parsedQuoteAmount) && parsedQuoteAmount > 0;
   const resolvedShippingCost = resolveShippingCost(quoteShipping);
+  const quoteTaxesValid = areQuoteTaxesValid(quoteTaxes);
   const quoteFormValid =
     (usesQuoteLines ? quoteLinesPayload.length > 0 : quoteAmountValid) &&
-    resolvedShippingCost !== null;
+    isQuoteShippingValid(quoteShipping) &&
+    quoteTaxesValid;
+  const quoteBaseAmount = usesQuoteLines
+    ? sumQuoteLinesTotal(quoteUnitCosts, requestLines)
+    : quoteAmountValid
+      ? parsedQuoteAmount
+      : 0;
+  const quoteTaxesPayload = buildQuoteTaxesPayload(quoteTaxes);
+  const quoteSaveBlockers = getQuoteSaveBlockers({
+    quoteNumber,
+    usesQuoteLines,
+    hasQuotedLines: quoteLinesPayload.length > 0,
+    quoteAmountValid,
+    shippingValid: isQuoteShippingValid(quoteShipping),
+    taxesValid: quoteTaxesValid,
+  });
+  const quoteNumberError =
+    quoteNumber.trim().length === 0 && quoteFormValid
+      ? 'Indica el número de cotización para guardar.'
+      : undefined;
 
   const invitationSummary = useMemo(() => {
     const counts = new Map<PurchaseRfqInvitationStatus, number>();
@@ -175,7 +266,7 @@ export function RfqInvitationsPanel({
   }
 
   async function handleSend() {
-    if (!rfq) {
+    if (!rfq || invitations.length === 0) {
       return;
     }
 
@@ -213,45 +304,78 @@ export function RfqInvitationsPanel({
     }, 'Declinación registrada.');
   }
 
-  function openQuoteForm(invitation: PurchaseRfqInvitationRecord) {
-    setQuoteFormInvitationId(invitation.id);
+  function resetQuoteFormFields() {
     setQuoteNumber('');
     setQuoteAmount('');
     setQuoteUnitCosts({});
-    setQuoteShipping({ isFree: false, amount: '' });
-    setQuoteCurrency((rfq?.currency as PurchaseCurrencyOption) ?? 'COP');
+    setQuoteShipping(INITIAL_QUOTE_SHIPPING);
+    setQuoteTaxes(createInitialQuoteTaxState(purchaseTaxPresets));
+  }
+
+  function fillQuoteForm(quote: SupplierQuoteRecord) {
+    setQuoteNumber(quote.quoteNumber);
+    setQuoteAmount(quote.amount);
+    setQuoteUnitCosts(hydrateQuoteUnitCosts(quote));
+    setQuoteShipping(hydrateQuoteShipping(quote));
+    setQuoteTaxes(hydrateQuoteTaxes(quote, purchaseTaxPresets));
+    setQuoteCurrency(toQuoteCurrency(quote.currency));
+  }
+
+  function openQuoteForm(invitation: PurchaseRfqInvitationRecord) {
+    setQuoteFormInvitationId(invitation.id);
+    setEditingQuoteId(null);
+    resetQuoteFormFields();
+    setQuoteCurrency(toQuoteCurrency(rfq?.currency));
+    setError(null);
+    setSuccess(null);
+  }
+
+  function openModifyQuoteForm(
+    invitation: PurchaseRfqInvitationRecord,
+    quote: SupplierQuoteRecord,
+  ) {
+    setQuoteFormInvitationId(invitation.id);
+    setEditingQuoteId(quote.id);
+    fillQuoteForm(quote);
     setError(null);
     setSuccess(null);
   }
 
   function closeQuoteForm() {
     setQuoteFormInvitationId(null);
-    setQuoteNumber('');
-    setQuoteAmount('');
-    setQuoteUnitCosts({});
-    setQuoteShipping({ isFree: false, amount: '' });
+    setEditingQuoteId(null);
+    resetQuoteFormFields();
   }
 
   async function handleRegisterInvitationQuote(invitation: PurchaseRfqInvitationRecord) {
-    if (quoteNumber.trim().length === 0 || !quoteFormValid || resolvedShippingCost === null) {
+    if (quoteNumber.trim().length === 0 || !quoteFormValid) {
       return;
     }
 
-    await runAction(async () => {
-      await purchasingApi.addQuote(purchaseRequestId, {
-        partyRefId: invitation.partyRefId,
-        rfqInvitationId: invitation.id,
-        quoteNumber: quoteNumber.trim(),
-        currency: quoteCurrency,
-        shippingCost: resolvedShippingCost,
-        ...(usesQuoteLines ? { lines: quoteLinesPayload } : { amount: parsedQuoteAmount }),
-      });
-      setQuoteFormInvitationId(null);
-      setQuoteNumber('');
-      setQuoteAmount('');
-      setQuoteUnitCosts({});
-      setQuoteShipping({ isFree: false, amount: '' });
-    }, 'Cotización registrada.');
+    const economicPayload = {
+      quoteNumber: quoteNumber.trim(),
+      currency: quoteCurrency,
+      shippingCost: resolvedShippingCost,
+      shippingArrangement: quoteShipping.arrangement,
+      ...(usesQuoteLines ? { lines: quoteLinesPayload } : { amount: parsedQuoteAmount }),
+      ...(quoteTaxesPayload.length > 0 ? { taxes: quoteTaxesPayload } : {}),
+    };
+
+    await runAction(
+      async () => {
+        if (editingQuoteId) {
+          await purchasingApi.updateQuote(purchaseRequestId, editingQuoteId, economicPayload);
+        } else {
+          await purchasingApi.addQuote(purchaseRequestId, {
+            partyRefId: invitation.partyRefId,
+            rfqInvitationId: invitation.id,
+            ...economicPayload,
+          });
+        }
+        closeQuoteForm();
+      },
+      editingQuoteId ? 'Cotización actualizada.' : 'Cotización registrada.',
+    );
   }
 
   function triggerBlobDownload(blob: Blob, filename: string) {
@@ -309,7 +433,7 @@ export function RfqInvitationsPanel({
       <PortalSectionHeader
         eyebrow="Invitar proveedores"
         title="Solicitud de cotización"
-        description="Invita proveedores, envía la ronda y haz seguimiento de respuestas."
+        description="Selecciona proveedores, pulsa Invitar seleccionados y luego Envía la ronda para pedir cotizaciones."
       />
 
       {error ? <PortalAlert variant="error" title="Cotización" description={error} /> : null}
@@ -403,7 +527,12 @@ export function RfqInvitationsPanel({
               </Button>
             ) : null}
             {rfqStatus && canSend(rfqStatus) ? (
-              <Button type="button" disabled={panelDisabled} onClick={() => void handleSend()}>
+              <Button
+                type="button"
+                disabled={sendDisabled}
+                title={sendBlockedReason ?? undefined}
+                onClick={() => void handleSend()}
+              >
                 Enviar solicitud
               </Button>
             ) : null}
@@ -418,6 +547,10 @@ export function RfqInvitationsPanel({
               </Button>
             ) : null}
           </div>
+
+          {rfqStatus && canSend(rfqStatus) && sendBlockedReason ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{sendBlockedReason}</p>
+          ) : null}
 
           {invitationSummary.size > 0 ? (
             <div className="flex flex-wrap gap-2 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
@@ -464,7 +597,15 @@ export function RfqInvitationsPanel({
                     (quote) => quote.rfqInvitationId === invitation.id,
                   );
                   const showRegisterQuote = canRegisterQuote(rfqStatus, invitationStatus);
+                  const showModifyQuote = canModifyInvitationQuote(
+                    requestStatus,
+                    rfqStatus,
+                    invitationStatus,
+                    linkedQuote,
+                    awardedQuoteIdSet,
+                  );
                   const quoteFormOpen = quoteFormInvitationId === invitation.id;
+                  const isEditingQuote = quoteFormOpen && editingQuoteId !== null;
                   return (
                     <div
                       key={invitation.id}
@@ -481,7 +622,8 @@ export function RfqInvitationsPanel({
                           </p>
                           {linkedQuote ? (
                             <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                              Cotización: {formatInventoryCurrency(linkedQuote.amount)}
+                              Cotización:{' '}
+                              {formatInventoryMoney(resolveQuotePayableAmount(linkedQuote))}
                             </p>
                           ) : null}
                         </div>
@@ -513,6 +655,18 @@ export function RfqInvitationsPanel({
                               Registrar cotización
                             </Button>
                           ) : null}
+                          {showModifyQuote && linkedQuote ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              disabled={panelDisabled}
+                              aria-label={`Modificar cotización de ${supplierName}`}
+                              onClick={() => openModifyQuoteForm(invitation, linkedQuote)}
+                            >
+                              Modificar cotización
+                            </Button>
+                          ) : null}
                           {invitationStatus === PurchaseRfqInvitationStatus.INVITED ? (
                             <Button
                               type="button"
@@ -534,7 +688,9 @@ export function RfqInvitationsPanel({
                               label="Número de cotización"
                               value={quoteNumber}
                               disabled={panelDisabled}
+                              requiredIndicator
                               onChange={(event) => setQuoteNumber(event.target.value)}
+                              error={quoteNumberError}
                             />
                             <Select
                               label="Moneda"
@@ -576,32 +732,41 @@ export function RfqInvitationsPanel({
                               }
                             />
                           )}
-                          <QuoteShippingFields
-                            value={quoteShipping}
-                            onChange={setQuoteShipping}
+                          <QuoteEconomicsFields
+                            shipping={quoteShipping}
+                            onShippingChange={setQuoteShipping}
+                            taxes={quoteTaxes}
+                            onTaxesChange={setQuoteTaxes}
+                            amount={quoteBaseAmount}
+                            presets={purchaseTaxPresets}
                             disabled={panelDisabled}
+                            saveHint={quoteSaveBlockers[0] ?? null}
+                            footer={
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={
+                                    panelDisabled ||
+                                    !quoteFormValid ||
+                                    quoteNumber.trim().length === 0
+                                  }
+                                  onClick={() => void handleRegisterInvitationQuote(invitation)}
+                                >
+                                  {isEditingQuote ? 'Guardar cambios' : 'Guardar cotización'}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={panelDisabled}
+                                  onClick={closeQuoteForm}
+                                >
+                                  Cancelar
+                                </Button>
+                              </>
+                            }
                           />
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={
-                                panelDisabled || !quoteFormValid || quoteNumber.trim().length === 0
-                              }
-                              onClick={() => void handleRegisterInvitationQuote(invitation)}
-                            >
-                              Guardar cotización
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={panelDisabled}
-                              onClick={closeQuoteForm}
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
                         </div>
                       ) : null}
                     </div>

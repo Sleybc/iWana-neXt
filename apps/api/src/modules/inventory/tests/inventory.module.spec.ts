@@ -15,10 +15,14 @@ import { TenantContactPort } from '../ports/tenant-contact.port';
 import { TenantContactPortAdapter } from '../ports/tenant-contact.adapter';
 import { PurchasingController } from '../purchasing.controller';
 import { TenantService } from '../../tenant/tenant.service';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import {
   CommercialProductReferencePort,
   CommercialProductReferencePortAdapter,
 } from '../ports/commercial-product-reference.port';
+import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import {
   INVENTORY_MOVEMENT_PORT,
   InventoryMovementPortAdapter,
@@ -41,7 +45,9 @@ import { PurchasingService } from '../services/purchasing.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
+import { ExecutorCustodyService } from '../services/executor-custody.service';
 import { StockIssueService } from '../services/stock-issue.service';
+import { StockIssuePickingService } from '../services/stock-issue-picking.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { InventoryCostingService } from '../services/inventory-costing.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
@@ -70,7 +76,9 @@ describe('InventoryModule', () => {
         InventoryCostingService,
         StockMovementQueryService,
         StockIssueService,
+        StockIssuePickingService,
         StockBalanceService,
+        ExecutorCustodyService,
         SerializedAssetService,
         PurchasingPolicyService,
         PurchasingQueryService,
@@ -136,8 +144,24 @@ describe('InventoryModule', () => {
           provide: TenantContactPort,
           useExisting: TenantContactPortAdapter,
         },
+        {
+          provide: TaxCatalogReadPort,
+          useValue: {
+            listByContext: jest.fn().mockResolvedValue([]),
+            findActiveByCode: jest.fn(),
+            resolveSystemPreset: jest.fn(),
+            findById: jest.fn(),
+          },
+        },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     expect(moduleRef).toBeDefined();
     expect(moduleRef.get(InventoryModule)).toBeInstanceOf(InventoryModule);

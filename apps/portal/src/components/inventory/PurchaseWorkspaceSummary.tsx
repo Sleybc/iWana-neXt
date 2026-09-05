@@ -16,6 +16,7 @@ import {
   type PurchaseKpiPreset,
   isPendingQuoteStatus,
   isPurchaseRequestOverdue,
+  isPurchaseRequestPendingReceipt,
   resolveActiveKpiPreset,
   type PurchaseRequestFilters,
 } from './purchase-filters';
@@ -89,7 +90,9 @@ function countMetric(requests: PurchaseRequestRecord[], preset: PurchaseKpiPrese
     case 'readyForPo':
       return requests.filter((r) => r.status === PurchaseRequestStatus.APPROVED).length;
     case 'pendingReceipt':
-      return requests.filter((r) => r.status === PurchaseRequestStatus.CONVERTED_TO_PO).length;
+      // Cuenta por abastecimiento (mercancía en tránsito), no por estado
+      // administrativo: una solicitud ya recibida no está «por recibir».
+      return requests.filter(isPurchaseRequestPendingReceipt).length;
     case 'urgent':
       return requests.filter((r) => r.priority === PurchaseRequestPriority.URGENT).length;
     case 'overdue':

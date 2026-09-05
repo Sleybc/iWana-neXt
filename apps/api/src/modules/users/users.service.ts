@@ -6,7 +6,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as bcrypt from 'bcryptjs';
@@ -43,6 +45,14 @@ import {
   type PickerSearchResult,
 } from '../../common/pagination';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { MailerService } from '../mailer/mailer.service';
+import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
+import { loginEmailChangedTemplate } from '../mailer/templates/login-email-changed.template';
+import {
+  isAccountLocked,
+  nextFailedAttemptUpdate,
+  remainingLockoutMinutes,
+} from '../../common/account-lockout.policy';
 import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
 import {
@@ -133,6 +143,8 @@ export class UsersService {
     private readonly tenantService: TenantService,
     private readonly searchQueueService: SearchQueueService,
     private readonly effectivePermissionsService: EffectivePermissionsService,
+    private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @InjectQueue(USERS_BULK_CREATE_QUEUE)
     private readonly usersBulkCreateQueue: Queue<UsersBulkCreateJobPayload>,
@@ -1088,8 +1100,21 @@ export class UsersService {
 
   /**
    * Cambia el email de acceso del propio usuario.
-   * Si el usuario coincide con el ADMIN principal del tenant, sincroniza también
-   * el email de contacto de la empresa en public.tenants.
+   *
+   * P-02 (Ola 2): el cambio reapunta el canal de recuperacion, asi que lleva
+   * tres controles — aviso no bloqueante a la direccion anterior (sin el email
+   * nuevo ni PII adicional), `emailVerified = false` + re-verificacion del
+   * email nuevo reutilizando el flujo existente, y decision de sincronizacion
+   * del contacto de la empresa solo en el servidor.
+   *
+   * Acceso tras el cambio: NO queda condicionado a verificar (decision
+   * documentada — degradaria el login por un cambio legitimo); la UI muestra
+   * el estado no verificado via `emailVerified`.
+   *
+   * `syncCompanyContactEmail` del DTO esta deprecado y se ignora: el servidor
+   * decide segun si el actor es el admin principal (RF-USR-04 del PRD v1.2).
+   * El cliente no impone efectos sobre `public.tenants` ([CONSULTA C-2] a
+   * AI-FE-PLATFORM para retirar el booleano).
    */
   async changeLoginEmail(
     id: string,
@@ -1108,16 +1133,42 @@ export class UsersService {
         throw new ForbiddenException('No tienes permisos para cambiar este email de acceso.');
       }
 
+      // P-09: contador de fallos por cuenta — el oraculo de `currentPassword`
+      // comparte umbrales con el login (5 intentos / lockout 15 min).
+      if (isAccountLocked(user)) {
+        throw new UnauthorizedException(
+          `Cuenta bloqueada temporalmente. Intenta en ${remainingLockoutMinutes(user)} minuto(s).`,
+        );
+      }
+
       const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
       if (!passwordValid) {
+        const lockoutUpdate = nextFailedAttemptUpdate(user);
+        await qr.manager.update(User, user.id, lockoutUpdate);
+        if (lockoutUpdate.lockedUntil) {
+          await this.auditService.log({
+            action: AuditAction.ACCOUNT_LOCKED,
+            entityType: 'User',
+            entityId: user.id,
+            userId: user.id,
+            newValue: {
+              lockedUntil: lockoutUpdate.lockedUntil,
+              failedLoginAttempts: lockoutUpdate.failedLoginAttempts,
+            },
+          });
+        }
         throw new BadRequestException('La contraseña actual no es válida.');
       }
 
       const normalizedEmail = dto.email.toLowerCase().trim();
       const previousEmailHash = user.emailHash;
       const nextEmailHash = hashEmail(normalizedEmail);
+      const loginEmailChanged = nextEmailHash !== previousEmailHash;
 
-      if (nextEmailHash !== previousEmailHash) {
+      // Direccion anterior en memoria para el aviso — nunca se loguea ni persiste.
+      const previousEmail = loginEmailChanged ? user.email : null;
+
+      if (loginEmailChanged) {
         const existingUser = await qr.manager.findOne(User, {
           where: { email: normalizedEmail },
           withDeleted: false,
@@ -1129,11 +1180,19 @@ export class UsersService {
 
         user.email = normalizedEmail;
         user.emailHash = nextEmailHash;
+        // El nuevo canal de recuperacion aun no esta verificado: se resetea y
+        // se emite token para el flujo existente de re-verificacion.
+        user.emailVerified = false;
+        user.emailVerificationToken = crypto.randomBytes(32).toString('hex');
+        user.failedLoginAttempts = 0;
+        user.lockedUntil = null;
         await qr.manager.save(User, user);
       }
 
-      const shouldSyncContactEmail = dto.syncCompanyContactEmail !== false;
-      const shouldUpdateTenantContactEmail = shouldSyncContactEmail
+      // El servidor decide: solo el admin principal sincroniza el contacto de
+      // la empresa. El flag del cliente se ignora (deprecado, se conserva en
+      // el DTO para no romper el contrato).
+      const shouldUpdateTenantContactEmail = loginEmailChanged
         ? await this.isPrincipalAdminUser(user.tenantId, user.id)
         : false;
 
@@ -1155,10 +1214,37 @@ export class UsersService {
         },
         newValue: {
           nextEmailHash,
-          loginEmailChanged: nextEmailHash !== previousEmailHash,
+          loginEmailChanged,
           companyContactEmailSynced: shouldUpdateTenantContactEmail,
+          emailVerifiedReset: loginEmailChanged,
+          previousAddressNotified: loginEmailChanged,
         },
       });
+
+      if (loginEmailChanged && previousEmail) {
+        // Aviso a la direccion anterior: no bloqueante, sin el email nuevo.
+        this.fireAndForget(
+          this.mailerService.sendMail({
+            to: previousEmail,
+            ...loginEmailChangedTemplate({ changedAt: new Date().toISOString() }),
+          }),
+          'aviso de cambio de email a direccion anterior',
+        );
+
+        // Re-verificacion del email nuevo: mismo enlace y template del flujo
+        // existente (`resendVerificationEmail`), emitido aqui porque ya se
+        // posee el token dentro de la transaccion.
+        const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
+        this.fireAndForget(
+          this.mailerService.sendMail({
+            to: normalizedEmail,
+            ...emailVerificationTemplate({
+              verifyLink: `${frontendUrl}/auth/verify-email?token=${user.emailVerificationToken}`,
+            }),
+          }),
+          'correo de re-verificacion de email nuevo',
+        );
+      }
 
       this.fireAndForget(
         this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id),
@@ -1537,7 +1623,16 @@ export class UsersService {
     });
   }
 
-  /** Actualiza solo los campos de perfil del usuario autenticado. */
+  /**
+   * Actualiza solo los campos de perfil del usuario autenticado.
+   *
+   * P-07 (Ola 2, condicion ADR-086 §5): la auditoria va con `await` dentro de
+   * `runInTenantSchema` — igual que create/update/remove/resetPassword — y
+   * registra QUE cambio. Como la denylist (`audit-sanitize.policy.ts`) redacta
+   * cualquier valor o marcador bajo claves PII (incluso `{campo: 'changed'}`),
+   * se persiste la lista de campos bajo la clave no-PII `changedFields`: es lo
+   * unico que sobrevive a `sanitizeAuditPayload` (fijado en test).
+   */
   async updateMe(
     actorId: string,
     dto: UpdateProfileDto,
@@ -1551,27 +1646,58 @@ export class UsersService {
         throw new NotFoundException(`Usuario ${actorId} no encontrado.`);
       }
 
-      if (dto.firstName !== undefined) user.firstName = dto.firstName?.trim() ?? null;
-      if (dto.lastName !== undefined) user.lastName = dto.lastName?.trim() ?? null;
-      if (dto.phone !== undefined) user.phone = dto.phone ?? null;
-      if (dto.jobTitle !== undefined) user.jobTitle = dto.jobTitle ?? null;
-      if (dto.documentType !== undefined) user.documentType = dto.documentType ?? null;
-      if (dto.documentNumber !== undefined)
-        user.documentNumber = dto.documentNumber?.trim() ?? null;
-      if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl ?? null;
+      const changedFields: string[] = [];
+      const trackChange = (field: string, before: unknown, after: unknown): void => {
+        if (before !== after) changedFields.push(field);
+      };
+
+      if (dto.firstName !== undefined) {
+        const next = dto.firstName?.trim() ?? null;
+        trackChange('firstName', user.firstName ?? null, next);
+        user.firstName = next;
+      }
+      if (dto.lastName !== undefined) {
+        const next = dto.lastName?.trim() ?? null;
+        trackChange('lastName', user.lastName ?? null, next);
+        user.lastName = next;
+      }
+      if (dto.phone !== undefined) {
+        const next = dto.phone ?? null;
+        trackChange('phone', user.phone ?? null, next);
+        user.phone = next;
+      }
+      if (dto.jobTitle !== undefined) {
+        const next = dto.jobTitle ?? null;
+        trackChange('jobTitle', user.jobTitle ?? null, next);
+        user.jobTitle = next;
+      }
+      if (dto.documentType !== undefined) {
+        const next = dto.documentType ?? null;
+        trackChange('documentType', user.documentType ?? null, next);
+        user.documentType = next;
+      }
+      if (dto.documentNumber !== undefined) {
+        const next = dto.documentNumber?.trim() ?? null;
+        trackChange('documentNumber', user.documentNumber ?? null, next);
+        user.documentNumber = next;
+      }
+      if (dto.avatarUrl !== undefined) {
+        const next = dto.avatarUrl ?? null;
+        trackChange('avatarUrl', user.avatarUrl ?? null, next);
+        user.avatarUrl = next;
+      }
 
       await qr.manager.save(User, user);
 
-      this.fireAndForget(
-        this.auditService.log({
-          action: AuditAction.UPDATE,
-          entityType: 'UserProfile',
-          entityId: user.id,
-          userId: actorId,
-          ipAddress,
-        }),
-        'auditoria update perfil propio',
-      );
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'UserProfile',
+        entityId: user.id,
+        userId: actorId,
+        oldValue: null,
+        newValue: { changedFields },
+        ipAddress,
+      });
 
       return this.toDto(user);
     });

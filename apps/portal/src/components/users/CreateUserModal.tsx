@@ -14,6 +14,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  FormStatus,
   Select,
   cn,
 } from '@iwana/ui';
@@ -488,14 +489,16 @@ export function CreateUserModal({
               </details>
             </div>
 
-            {serverError ? (
-              <PortalAlert
-                variant="error"
-                title="No se pudo crear el usuario"
-                description={serverError}
-                icon={AlertTriangle}
-              />
-            ) : null}
+            <FormStatus
+              status={serverError ? 'error' : 'idle'}
+              message={
+                serverError ? (
+                  <>
+                    <span>No se pudo crear el usuario.</span> <span>{serverError}</span>
+                  </>
+                ) : undefined
+              }
+            />
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <Button

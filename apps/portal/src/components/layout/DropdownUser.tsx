@@ -1,10 +1,11 @@
 // apps/portal/src/components/layout/DropdownUser.tsx
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import {
+  Avatar,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -34,9 +35,10 @@ export const DropdownUser = () => {
     }
   };
 
-  // displayName: nombre real del usuario si está disponible, si no el rol
+  // displayName: nombre real del usuario si está disponible, si no el rol (nunca email).
   const displayName = user?.displayName ?? 'Usuario';
   const subtitle = user?.subtitle ?? '';
+  const nameId = useId();
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -48,15 +50,13 @@ export const DropdownUser = () => {
       >
         <button type="button">
           <span className="hidden text-right lg:block">
-            <span className="block text-sm font-medium text-gray-800 dark:text-white">
+            <span id={nameId} className="block text-sm font-medium text-gray-800 dark:text-white">
               {displayName}
             </span>
             <span className="block text-xs text-gray-500 dark:text-gray-400">{subtitle}</span>
           </span>
 
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 dark:bg-dark-surface-4">
-            <UserIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-          </span>
+          <Avatar size="md" name={displayName} labelledById={nameId} />
 
           <ChevronDown
             className={cn(

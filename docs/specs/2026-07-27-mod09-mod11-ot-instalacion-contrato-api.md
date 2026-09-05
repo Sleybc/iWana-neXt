@@ -1,8 +1,9 @@
 # Contrato API y eventos para OT de instalacion
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Estado:** Congelación arquitectónica G4 — implementación contract-first en curso  
-**Fecha:** 2026-07-27  
+**Fecha:** 2026-07-27 (v1.1: 2026-08-31)  
+**Cambio v1.0 → v1.1 (re-sync de conformidad):** precondicion de estado explícita para registro de consumo y evidencia (§3), distribución de `allowedActions` pre-inicio reducida a `START` (§14) y prohibición de auto-promoción silenciosa de estado. Sin cambio de forma de DTOs, enums ni paths. Detalle en §14.  
 **Owner de implementacion:** AI-SR-FULL  
 **Review requerido:** AI-SEC-ENG, AI-SR-QA, AI-DATA-ENG si cambia persistencia  
 **ADR:** `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (Aprobado)
@@ -111,8 +112,8 @@ Artefactos obligatorios de congelación:
 | Asignar/reasignar | permiso de supervision, actor elegible, OT no terminal | Nueva version y evento de asignacion |
 | Iniciar | ejecutor asignado y permiso de ejecución | `IN_PROGRESS` |
 | Registrar actividad | OT en progreso/bloqueada y tipo permitido por plantilla | Entrada append-only |
-| Registrar consumo | custodia y disponibilidad validadas por MOD12 | Movimiento pendiente/confirmado |
-| Agregar evidencia | asset disponible, ligado al mismo tenant+OT, no reutilizado, tipo/tamaño permitido y requisito aplicable | Metadata con hash de servidor |
+| Registrar consumo | OT en progreso/bloqueada; custodia y disponibilidad validadas por MOD12 | Movimiento pendiente/confirmado |
+| Agregar evidencia | OT en progreso/bloqueada; asset disponible, ligado al mismo tenant+OT, no reutilizado, tipo/tamaño permitido y requisito aplicable | Metadata con hash de servidor |
 | Bloquear/desbloquear | causa tipada y permiso | Estado/excepcion auditable |
 | Cerrar | gate completo, version vigente y resultado valido | Estado terminal |
 | Crear seguimiento | OT terminal o bloqueada segun politica | Nueva necesidad/OT vinculada |
@@ -307,3 +308,12 @@ AI-PLAT-OPS aporta evidencia TLS en G5/G7; AI-SEC-ENG verifica el contrato en G3
 - CA-API-19: auditoría durable sobrevive fallo de entrega y llega a retry/DLQ sin perder trazabilidad.
 - CA-API-20: una evidencia ajena, reutilizada, en cuarentena o con MIME real inválido nunca se vincula ni se sirve.
 - CA-API-21: la matriz endpoint×permiso×ABAC y la política 401/403/404 se aplican sin excepciones.
+
+## 14. Nota de re-sync v1.1 — registro pre-inicio (2026-08-31)
+
+Remediación de conformidad registrada en `docs/prompts/PROMPT-MOD11-OT-REGISTRO-PRE-INICIO-REMEDIACION-v1.0.md` y `docs/informes/INFORME-MOD11-OT-REGISTRO-PRE-INICIO-REMEDIACION-v1.0.md`. Regla de producto: **nada se registra en la OT hasta "Iniciar ejecución"**.
+
+1. `allowedActions` pre-inicio (CREATED/ASSIGNED/EN_ROUTE) entrega solo `START` al ejecutor asignado o pool sin asignar; IN_PROGRESS, BLOCKED, terminales y supervisión sin cambio. Sigue siendo ayuda de UI, no reemplazo de autorización (§2, §5.6).
+2. Los comandos Registrar actividad, Registrar consumo y Agregar evidencia exigen OT en progreso/bloqueada; con la OT pre-inicio responden `409 EXECUTION_ORDER_NOT_STARTED` con mensaje accionable.
+3. Ningún comando de registro promueve el estado de la OT ni fija `startedAt`: Iniciar es la única transición a `IN_PROGRESS` y la única emisión de `ExecutionOrderStartedV1`, requerida por la convergencia de proyecciones de ADR-068. En la saga MOD11–MOD12, `InventoryConsumptionRequestedV1` ya no se emite pre-inicio.
+4. Sin cambio de forma: enums, DTOs y paths de este contrato permanecen congelados en v1; esta nota es aclaración de precondiciones y distribución de `allowedActions`, alineada a la precondición ya declarada para Registrar actividad en §3.

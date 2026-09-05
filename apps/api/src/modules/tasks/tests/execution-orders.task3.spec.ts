@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { HttpException } from '@nestjs/common';
+import { HttpException, ConflictException } from '@nestjs/common';
 import { runInTenantSchema, ExecutionOrderOutboxEvent } from '@iwana/db';
 import {
   ExecutionOrderItemAction,
@@ -13,6 +13,7 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
 import { ExecutionOrderReliabilityService } from '../services/execution-order-reliability.service';
+import type { IEvidenceAssetPort } from '../ports/evidence-asset.port';
 
 jest.mock('../services/tasks.service', () => ({
   TasksService: class TasksService {},
@@ -127,20 +128,17 @@ describe('ExecutionOrdersService — allowedActions computation (Task 3.4)', () 
     ...terminalStatuses,
   ];
 
-  // ── Active statuses: assigned tech gets execute actions ────────────────────
+  // ── Pre-start statuses: assigned tech can only start execution ────────────
 
-  describe('técnico asignado — estados activos', () => {
+  describe('técnico asignado — estados pre-inicio', () => {
     nonTerminalStatuses.forEach((status) => {
-      it(`estado ${status}: START, REGISTER_ACTIVITY, REGISTER_ITEM_USAGE, REGISTER_EVIDENCE`, () => {
+      it(`estado ${status}: solo START`, () => {
         const order = mockOrder({ status, assignedTechnicianId: 'tech-001' });
         const actions = service.computeAllowedActions(order as never, techActor());
-        expect(actions).toContain('START');
-        expect(actions).toContain('REGISTER_ACTIVITY');
-        expect(actions).toContain('REGISTER_ITEM_USAGE');
-        expect(actions).toContain('REGISTER_EVIDENCE');
-        expect(actions).not.toContain('BLOCK');
-        expect(actions).not.toContain('CLOSE');
-        expect(actions).not.toContain('UNBLOCK');
+        expect(actions.sort()).toEqual(['START']);
+        expect(actions).not.toContain('REGISTER_ACTIVITY');
+        expect(actions).not.toContain('REGISTER_ITEM_USAGE');
+        expect(actions).not.toContain('REGISTER_EVIDENCE');
       });
     });
 
@@ -284,14 +282,14 @@ describe('ExecutionOrdersService — allowedActions computation (Task 3.4)', () 
   // ── Contractor assigned ───────────────────────────────────────────────────
 
   describe('contratista asignado', () => {
-    it('recibe acciones de ejecución en estado ASSIGNED', () => {
+    it('recibe solo START en estado ASSIGNED', () => {
       const order = mockOrder({
         status: ExecutionOrderStatus.ASSIGNED,
         assignedTechnicianId: 'contractor-001',
       });
       const actions = service.computeAllowedActions(order as never, contractorActor());
-      expect(actions).toContain('START');
-      expect(actions).toContain('REGISTER_ACTIVITY');
+      expect(actions.sort()).toEqual(['START']);
+      expect(actions).not.toContain('REGISTER_ACTIVITY');
     });
 
     it('no recibe acciones de ejecución si no está asignado', () => {
@@ -344,7 +342,7 @@ describe('ExecutionOrdersService — allowedActions computation (Task 3.4)', () 
         status: ExecutionOrderStatus.CREATED,
         assignedTech: true,
         role: UserRole.TECHNICIAN,
-        expected: ['START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE'],
+        expected: ['START'],
       },
       {
         status: ExecutionOrderStatus.CREATED,
@@ -362,7 +360,7 @@ describe('ExecutionOrdersService — allowedActions computation (Task 3.4)', () 
         status: ExecutionOrderStatus.ASSIGNED,
         assignedTech: true,
         role: UserRole.TECHNICIAN,
-        expected: ['START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE'],
+        expected: ['START'],
       },
       {
         status: ExecutionOrderStatus.ASSIGNED,
@@ -374,7 +372,7 @@ describe('ExecutionOrdersService — allowedActions computation (Task 3.4)', () 
         status: ExecutionOrderStatus.EN_ROUTE,
         assignedTech: true,
         role: UserRole.TECHNICIAN,
-        expected: ['START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE'],
+        expected: ['START'],
       },
       {
         status: ExecutionOrderStatus.EN_ROUTE,
@@ -486,6 +484,289 @@ describe('ExecutionOrdersService — allowedActions computation (Task 3.4)', () 
         expect(actions.sort()).toEqual(expected.sort());
       });
     });
+  });
+});
+
+// ─── Remediación MOD11: guarda de registro pre-inicio ───────────────────────
+
+describe('ExecutionOrdersService — guarda de registro pre-inicio (remediación MOD11)', () => {
+  let service: ExecutionOrdersService;
+  let reliabilityService: {
+    beginIdempotent: jest.Mock;
+    completeIdempotency: jest.Mock;
+    appendAuditIntent: jest.Mock;
+    appendOutbox: jest.Mock;
+  };
+  let evidenceAssetPort: jest.Mocked<IEvidenceAssetPort>;
+  let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
+
+  const preStartStatuses = [
+    ExecutionOrderStatus.CREATED,
+    ExecutionOrderStatus.ASSIGNED,
+    ExecutionOrderStatus.EN_ROUTE,
+  ];
+  const startedStatuses = [ExecutionOrderStatus.IN_PROGRESS, ExecutionOrderStatus.BLOCKED];
+  const ASSET_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  beforeEach(() => {
+    reliabilityService = {
+      beginIdempotent: jest.fn().mockResolvedValue({
+        intentId: 'intent-001',
+        replay: false,
+        resourceRef: null,
+        resultStatus: 'PENDING',
+        resourceVersion: null,
+      }),
+      completeIdempotency: jest.fn().mockResolvedValue(undefined),
+      appendAuditIntent: jest.fn().mockResolvedValue(undefined),
+      appendOutbox: jest.fn().mockResolvedValue(undefined),
+    };
+    evidenceAssetPort = {
+      createUploadIntent: jest.fn(),
+      getAssetStatus: jest.fn(),
+      getSignedUrl: jest.fn(),
+      claimAsset: jest.fn(),
+    } as jest.Mocked<IEvidenceAssetPort>;
+    service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliabilityService as never,
+      undefined,
+      undefined,
+      evidenceAssetPort,
+    );
+    mockRunInTenantSchema = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
+    jest.clearAllMocks();
+  });
+
+  function buildManager(status: ExecutionOrderStatus) {
+    const order = {
+      id: 'eo-001',
+      tenantId: 'tenant-001',
+      status,
+      version: 1,
+      assignedTechnicianId: 'tech-001',
+      assignedCrewId: null,
+      startedAt: null,
+      closedAt: null,
+      result: null,
+      closeNotes: null,
+      updatedByUserId: null,
+      taskId: null,
+      ticketId: null,
+      templateRequirementsSnapshot: null,
+    };
+    const persisted: Array<Record<string, unknown>> = [];
+    const queryBuilder: Record<string, jest.Mock> = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn((payload: Record<string, unknown>) => {
+        persisted.push(payload);
+        return queryBuilder;
+      }),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const manager = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(order)
+        .mockResolvedValueOnce({
+          id: 'upload-intent-001',
+          executionOrderId: 'eo-001',
+          tenantId: 'tenant-001',
+          mediaAssetId: ASSET_UUID,
+          status: 'PENDING_ANALYSIS',
+          expiresAt: new Date(Date.now() + 60_000),
+        }),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      save: jest
+        .fn()
+        .mockImplementation(async (_entity: unknown, payload: Record<string, unknown>) => ({
+          ...payload,
+          id: (payload.id as string) ?? 'resource-001',
+          createdAt: new Date(),
+        })),
+      create: jest.fn((_entity: unknown, payload: Record<string, unknown>) => payload),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    return { manager, order, persisted };
+  }
+
+  describe('comandos de registro en estado pre-inicio → 409 EXECUTION_ORDER_NOT_STARTED', () => {
+    preStartStatuses.forEach((status) => {
+      it(`registerFieldWork rechaza estado ${status}`, async () => {
+        const { manager, persisted } = buildManager(status);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerFieldWork(
+            'eo-001',
+            { activityType: 'INSTALLATION', description: 'Intento antes de iniciar' },
+            techActor(),
+          ),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EXECUTION_ORDER_NOT_STARTED' }),
+        });
+        expect(persisted).toHaveLength(0);
+      });
+
+      it(`registerItemUsage rechaza estado ${status}`, async () => {
+        const { manager, persisted } = buildManager(status);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerItemUsage(
+            'eo-001',
+            {
+              itemId: 'item-001',
+              technicianCustodyId: 'tech-001',
+              quantity: 1,
+              action: ExecutionOrderItemAction.INSTALL,
+              finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+            },
+            techActor(),
+          ),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EXECUTION_ORDER_NOT_STARTED' }),
+        });
+        expect(persisted).toHaveLength(0);
+      });
+
+      it(`registerEvidence rechaza estado ${status}`, async () => {
+        const { manager, persisted } = buildManager(status);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        await expect(
+          service.registerEvidence(
+            'eo-001',
+            {
+              mediaAssetId: ASSET_UUID,
+              evidenceType: 'PHOTO',
+              requirementKey: 'req-photo',
+              expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+            },
+            techActor(),
+          ),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EXECUTION_ORDER_NOT_STARTED' }),
+        });
+        expect(persisted).toHaveLength(0);
+      });
+    });
+  });
+
+  describe('comandos de registro con ejecución iniciada → éxito sin mutar la OT', () => {
+    startedStatuses.forEach((status) => {
+      it(`registerFieldWork tiene éxito en ${status} y no cambia status ni startedAt`, async () => {
+        const { manager, order, persisted } = buildManager(status);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        const result = await service.registerFieldWork(
+          'eo-001',
+          { activityType: 'INSTALLATION', description: 'Trabajo realizado' },
+          techActor(),
+        );
+
+        expect(result).toBeDefined();
+        expect(order.status).toBe(status);
+        expect(order.startedAt).toBeNull();
+        expect(persisted[0]).toMatchObject({ status, startedAt: null });
+        expect(reliabilityService.appendOutbox).not.toHaveBeenCalled();
+      });
+
+      it(`registerItemUsage tiene éxito en ${status} y solo emite InventoryConsumptionRequestedV1`, async () => {
+        const { manager, order, persisted } = buildManager(status);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        const result = await service.registerItemUsage(
+          'eo-001',
+          {
+            itemId: 'item-001',
+            technicianCustodyId: 'tech-001',
+            quantity: 1,
+            action: ExecutionOrderItemAction.INSTALL,
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          },
+          techActor(),
+          {
+            idempotencyKey: 'usage-key-remediation-001',
+            correlationId: '00000000-0000-4000-8000-000000000040',
+          },
+        );
+
+        expect(result).toBeDefined();
+        expect(order.status).toBe(status);
+        expect(order.startedAt).toBeNull();
+        expect(persisted[0]).toMatchObject({ status, startedAt: null });
+        expect(reliabilityService.appendOutbox).toHaveBeenCalledTimes(1);
+        expect(reliabilityService.appendOutbox).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ eventType: 'InventoryConsumptionRequestedV1' }),
+        );
+      });
+
+      it(`registerEvidence tiene éxito en ${status} sin emitir eventos`, async () => {
+        const { manager, order, persisted } = buildManager(status);
+        evidenceAssetPort.getAssetStatus.mockResolvedValue({ status: 'AVAILABLE' } as never);
+        evidenceAssetPort.claimAsset.mockResolvedValue(undefined as never);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+          fn({ manager } as never),
+        );
+
+        const result = await service.registerEvidence(
+          'eo-001',
+          {
+            mediaAssetId: ASSET_UUID,
+            evidenceType: 'PHOTO',
+            requirementKey: 'req-photo',
+            expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+          techActor(),
+        );
+
+        expect(result).toBeDefined();
+        expect(order.status).toBe(status);
+        expect(order.startedAt).toBeNull();
+        expect(persisted[0]).toMatchObject({ status, startedAt: null });
+        expect(reliabilityService.appendOutbox).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  it('start() es la única vía a IN_PROGRESS: emite ExecutionOrderStartedV1 y registra la actividad START sin pasar por la guarda', async () => {
+    const { manager } = buildManager(ExecutionOrderStatus.ASSIGNED);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    const result = await service.start('eo-001', { note: 'Inicio de ejecución' }, techActor(), {
+      idempotencyKey: 'start-key-remediation-001',
+      correlationId: '00000000-0000-4000-8000-000000000041',
+    });
+
+    expect(result.status).toBe(ExecutionOrderStatus.IN_PROGRESS);
+    expect(result.startedAt).toBeInstanceOf(Date);
+    expect(reliabilityService.appendOutbox).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: 'ExecutionOrderStartedV1' }),
+    );
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ activityType: 'START' }),
+    );
   });
 });
 

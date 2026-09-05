@@ -26,6 +26,7 @@ import { TenantContext, runInTenantSchema } from '@iwana/db';
 
 jest.mock('@iwana/db', () => ({
   PurchaseRequest: class PurchaseRequest {},
+  PurchaseOrder: class PurchaseOrder {},
   StockIssue: class StockIssue {},
   StockIssueLine: class StockIssueLine {},
   StockLocation: class StockLocation {},
@@ -44,6 +45,10 @@ jest.mock('@iwana/db', () => ({
 
 function chainableQb(overrides?: Record<string, jest.Mock>) {
   const qb = {
+    select: jest.fn().mockReturnThis(),
+    groupBy: jest.fn().mockReturnThis(),
+    addGroupBy: jest.fn().mockReturnThis(),
+    getRawMany: jest.fn().mockResolvedValue([]),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
@@ -126,6 +131,12 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
         {} as DataSource,
         {} as never,
         new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
       );
       const result = await service.listRequests({
         search: 'reposición',
@@ -156,6 +167,12 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
         {} as DataSource,
         {} as never,
         new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
       );
       const result = await service.listRequests({ page: 2, limit: 10 });
 
@@ -181,6 +198,12 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
         {} as DataSource,
         {} as never,
         new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
       );
       await service.listRequests({ kpiPreset: 'overdue' });
 
@@ -195,6 +218,186 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
           ],
         }),
       );
+    });
+
+    it('kpiPreset pendingReceipt excluye solicitudes totalmente recibidas', async () => {
+      const qb = chainableQb();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { createQueryBuilder: jest.fn().mockReturnValue(qb) } }),
+      );
+
+      const service = new PurchasingQueryService(
+        {} as DataSource,
+        {} as never,
+        new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
+      );
+      await service.listRequests({ kpiPreset: 'pendingReceipt' });
+
+      expect(qb.andWhere).toHaveBeenCalledWith('request.status = :pendingReceiptStatus', {
+        pendingReceiptStatus: PurchaseRequestStatus.CONVERTED_TO_PO,
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('EXISTS'),
+        expect.objectContaining({
+          pendingReceiptOrderStatuses: expect.arrayContaining(['APPROVED', 'PARTIALLY_RECEIVED']),
+        }),
+      );
+    });
+
+    it('kpiPreset pendingReceipt prevalece sobre status explícito', async () => {
+      const qb = chainableQb();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { createQueryBuilder: jest.fn().mockReturnValue(qb) } }),
+      );
+
+      const service = new PurchasingQueryService(
+        {} as DataSource,
+        {} as never,
+        new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
+      );
+      await service.listRequests({
+        kpiPreset: 'pendingReceipt',
+        status: PurchaseRequestStatus.CONVERTED_TO_PO,
+      });
+
+      // No debe aplicar el filtro plano por estado: debe exigir órdenes pendientes.
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('EXISTS'),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('PurchasingQueryService.listRequests · fulfillmentStatus derivado', () => {
+    function buildService() {
+      return new PurchasingQueryService(
+        {} as DataSource,
+        {} as never,
+        new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
+      );
+    }
+
+    function mockManager(
+      requestQb: ReturnType<typeof chainableQb>,
+      orderQb?: ReturnType<typeof chainableQb>,
+    ) {
+      const createQueryBuilder = jest
+        .fn()
+        .mockReturnValueOnce(requestQb)
+        .mockReturnValue(orderQb ?? chainableQb());
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { createQueryBuilder } }),
+      );
+      return createQueryBuilder;
+    }
+
+    it('enriquece cada fila con una sola consulta agregada sobre purchase_orders', async () => {
+      const requests = [
+        { id: 'pr-1', createdAt: new Date('2026-09-01T10:00:00Z') },
+        { id: 'pr-2', createdAt: new Date('2026-09-01T09:00:00Z') },
+        { id: 'pr-3', createdAt: new Date('2026-09-01T08:00:00Z') },
+      ];
+      const requestQb = chainableQb({ getMany: jest.fn().mockResolvedValue(requests) });
+      const orderQb = chainableQb({
+        getRawMany: jest.fn().mockResolvedValue([
+          { purchaseRequestId: 'pr-1', status: 'CLOSED' },
+          { purchaseRequestId: 'pr-1', status: 'CANCELLED' },
+          { purchaseRequestId: 'pr-2', status: 'APPROVED' },
+          { purchaseRequestId: 'pr-2', status: 'FULLY_RECEIVED' },
+        ]),
+      });
+      const createQueryBuilder = mockManager(requestQb, orderQb);
+
+      const result = await buildService().listRequests({ limit: 20 });
+
+      expect(createQueryBuilder).toHaveBeenCalledTimes(2);
+      expect(orderQb.getRawMany).toHaveBeenCalledTimes(1);
+      expect(orderQb.where).toHaveBeenCalledWith('po.tenant_id = :tenantId', {
+        tenantId: 'tenant-001',
+      });
+      expect(orderQb.andWhere).toHaveBeenCalledWith('po.purchase_request_id IN (:...requestIds)', {
+        requestIds: ['pr-1', 'pr-2', 'pr-3'],
+      });
+      expect(result.data.map((row) => row.fulfillmentStatus)).toEqual([
+        'RECEIVED',
+        'PENDING_RECEIPT',
+        'NOT_ORDERED',
+      ]);
+    });
+
+    it('modo page también expone fulfillmentStatus', async () => {
+      const requestQb = chainableQb({
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue([{ id: 'pr-9', createdAt: new Date() }]),
+      });
+      const orderQb = chainableQb({
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([{ purchaseRequestId: 'pr-9', status: 'PARTIALLY_RECEIVED' }]),
+      });
+      mockManager(requestQb, orderQb);
+
+      const result = await buildService().listRequests({ page: 1, limit: 10 });
+
+      expect(result.meta.mode).toBe('page');
+      expect(result.data[0]?.fulfillmentStatus).toBe('PARTIALLY_RECEIVED');
+    });
+
+    it('no consulta purchase_orders cuando la página viene vacía', async () => {
+      const requestQb = chainableQb();
+      const orderQb = chainableQb();
+      const createQueryBuilder = mockManager(requestQb, orderQb);
+
+      const result = await buildService().listRequests({ limit: 20 });
+
+      expect(result.data).toEqual([]);
+      expect(createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(orderQb.getRawMany).not.toHaveBeenCalled();
+    });
+
+    it('mantiene alineado el preset pendingReceipt con el eje derivado', async () => {
+      // El EXISTS filtra por APPROVED/PARTIALLY_RECEIVED; el eje derivado de esas
+      // mismas filas nunca puede resolverse como RECEIVED.
+      const requestQb = chainableQb({
+        getMany: jest.fn().mockResolvedValue([
+          { id: 'pr-a', createdAt: new Date('2026-09-01T10:00:00Z') },
+          { id: 'pr-b', createdAt: new Date('2026-09-01T09:00:00Z') },
+        ]),
+      });
+      const orderQb = chainableQb({
+        getRawMany: jest.fn().mockResolvedValue([
+          { purchaseRequestId: 'pr-a', status: 'APPROVED' },
+          { purchaseRequestId: 'pr-a', status: 'CLOSED' },
+          { purchaseRequestId: 'pr-b', status: 'PARTIALLY_RECEIVED' },
+        ]),
+      });
+      mockManager(requestQb, orderQb);
+
+      const result = await buildService().listRequests({ kpiPreset: 'pendingReceipt' });
+
+      expect(result.data.map((row) => row.fulfillmentStatus)).toEqual([
+        'PENDING_RECEIPT',
+        'PARTIALLY_RECEIVED',
+      ]);
+      expect(result.data.every((row) => row.fulfillmentStatus !== 'RECEIVED')).toBe(true);
     });
   });
 

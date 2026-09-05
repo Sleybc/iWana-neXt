@@ -22,7 +22,7 @@ import {
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 import {
-  formatInventoryCurrency,
+  formatInventoryMoney,
   getPurchaseRequestLineStatusLabel,
   getSupplierDisplayLabel,
 } from './inventory-labels';
@@ -301,8 +301,8 @@ export function AwardLinesPanel({
                           >
                             Usar {quote.quoteNumber} (
                             {quoteLine
-                              ? `${formatInventoryCurrency(quoteLine.unitCost)} / u.`
-                              : formatInventoryCurrency(quote.amount)}
+                              ? `${formatInventoryMoney(quoteLine.unitCost)} / u.`
+                              : formatInventoryMoney(quote.amount)}
                             )
                           </button>
                         );
@@ -367,8 +367,8 @@ export function AwardLinesPanel({
                           <option key={quote.id} value={quote.id}>
                             {quote.quoteNumber} ·{' '}
                             {quoteLine
-                              ? `${formatInventoryCurrency(quoteLine.unitCost)} / u.`
-                              : formatInventoryCurrency(quote.amount)}
+                              ? `${formatInventoryMoney(quoteLine.unitCost)} / u.`
+                              : formatInventoryMoney(quote.amount)}
                           </option>
                         );
                       })}

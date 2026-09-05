@@ -121,6 +121,7 @@ jest.mock('@/lib/api-client', () => ({
     getRequestDetail: jest.fn(),
     createRequest: jest.fn(),
     addQuote: jest.fn(),
+    updateQuote: jest.fn(),
     approveRequest: jest.fn(),
     rejectRequest: jest.fn(),
     cancelRequest: jest.fn(),

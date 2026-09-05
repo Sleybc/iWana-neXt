@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskExecutionMode, TaskStatus, WfmWorkType } from '@iwana/shared';
 import { OperationsClient } from './OperationsClient';
-import { ApiError, tasksApi } from '@/lib/api-client';
-import type { ExecutionOrderTemplateVersion } from '@iwana/shared';
+import { ApiError, inventoryApi, tasksApi } from '@/lib/api-client';
 import {
   getMissingRequirements,
   isValidFutureEvidenceExpiry,
-  resolveAssignedTemplateVersion,
+  deriveTemplateFromDetail,
   normalizeExecutionOrderEvidence,
   normalizeExecutionOrderCollection,
   collectExecutionOrderCollectionPages,
@@ -42,6 +41,7 @@ jest.mock('@/lib/api-client', () => ({
   inventoryApi: {
     listItems: jest.fn().mockResolvedValue({ data: [] }),
     listLocations: jest.fn().mockResolvedValue({ data: [] }),
+    getExecutorCustody: jest.fn(),
   },
   crmApi: {
     listExpedientes: jest.fn().mockResolvedValue({ data: [], total: 0 }),
@@ -81,7 +81,9 @@ jest.mock('@/lib/api-client', () => ({
       listActivities: jest.fn().mockResolvedValue([]),
       listItemUsage: jest.fn().mockResolvedValue([]),
       listEvidence: jest.fn().mockResolvedValue({ data: [] }),
-      listTemplateVersions: jest.fn().mockResolvedValue({ data: [] }),
+      // El detalle debe bastar para operar la OT: el catálogo de versiones de
+      // plantilla queda reservado a la gestión (roles ADMIN/NOC/SUPPORT).
+      listTemplateVersions: jest.fn(),
     },
   },
   usersApi: {
@@ -349,7 +351,6 @@ describe('OperationsClient', () => {
     jest
       .mocked(tasksApi.executionOrders.listEvidence)
       .mockRejectedValue(new Error('Endpoint no disponible'));
-    jest.mocked(tasksApi.executionOrders.listTemplateVersions).mockResolvedValue({ data: [] });
     window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-001');
 
     try {
@@ -367,7 +368,86 @@ describe('OperationsClient', () => {
     }
   });
 
-  it('mantiene la OT y bloquea el cierre si falla la plantilla aplicada', async () => {
+  it('deriva la plantilla del snapshot del detalle sin consultar el catálogo de versiones', async () => {
+    const order = {
+      id: 'eo-snapshot-001',
+      number: 'OT-SNAPSHOT-001',
+      version: 1,
+      status: 'IN_PROGRESS',
+      workType: WfmWorkType.INSTALLATION,
+      template: {
+        id: 'tpl-001',
+        key: 'INSTALACION_FIBRA',
+        version: 1,
+        label: 'Instalación fibra',
+        requirements: [
+          {
+            key: 'CUSTOMER_SIGNATURE',
+            label: 'Firma del cliente',
+            required: true,
+            kind: 'EVIDENCE',
+            evidenceType: 'SIGNATURE',
+          },
+        ],
+      },
+      schedule: {
+        eventId: 'event-001',
+        window: {
+          startAt: '2026-07-30T14:00:00.000Z',
+          endAt: '2026-07-30T16:00:00.000Z',
+        },
+      },
+      site: { id: 'site-001', label: 'Sitio autorizado' },
+      completion: { progress: 0 },
+      syncState: 'IN_SYNC',
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: ['CLOSE'],
+      createdAt: '2026-07-30T12:00:00.000Z',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    } as never;
+
+    jest.mocked(tasksApi.executionOrders.get).mockResolvedValue(order);
+    jest.mocked(tasksApi.executionOrders.listActivities).mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 25, total: 0 },
+    } as never);
+    jest.mocked(tasksApi.executionOrders.listItemUsage).mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 25, total: 0 },
+    } as never);
+    jest.mocked(tasksApi.executionOrders.listEvidence).mockResolvedValue({
+      data: [],
+      meta: {
+        nextCursor: null,
+        total: 0,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+    window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-snapshot-001');
+
+    try {
+      render(<OperationsClient />);
+
+      expect((await screen.findAllByText('OT-SNAPSHOT-001')).length).toBeGreaterThanOrEqual(1);
+      // El checklist se pinta desde el snapshot del detalle…
+      expect(await screen.findByText('Firma del cliente')).toBeInTheDocument();
+      // …el cierre queda habilitado…
+      expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
+      // …y no se consulta el catálogo vivo de versiones de plantilla.
+      expect(tasksApi.executionOrders.listTemplateVersions).not.toHaveBeenCalled();
+    } finally {
+      window.history.pushState({}, '', '/dashboard/operations');
+    }
+  });
+
+  it('mantiene la OT y bloquea el cierre cuando el detalle no trae snapshot de plantilla', async () => {
     const order = {
       id: 'eo-template-error',
       number: 'OT-TEMPLATE-ERROR',
@@ -420,9 +500,6 @@ describe('OperationsClient', () => {
         sort: null,
       },
     });
-    jest
-      .mocked(tasksApi.executionOrders.listTemplateVersions)
-      .mockRejectedValue(new Error('plantilla no disponible'));
     window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-template-error');
 
     try {
@@ -430,32 +507,70 @@ describe('OperationsClient', () => {
 
       expect((await screen.findAllByText('OT-TEMPLATE-ERROR')).length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('Plantilla no disponible').length).toBeGreaterThanOrEqual(1);
-      expect(
-        screen.getByText(
-          'No fue posible cargar la plantilla aplicada. La orden se conserva abierta y el cierre permanece bloqueado.',
-        ),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Requisitos no disponibles')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).not.toBeInTheDocument();
+      // Sin snapshot no hay fallo de red: la OT se consulta en modo degradado.
+      expect(screen.queryByText('No fue posible completar la operación')).not.toBeInTheDocument();
+      expect(tasksApi.executionOrders.listTemplateVersions).not.toHaveBeenCalled();
     } finally {
       window.history.pushState({}, '', '/dashboard/operations');
     }
   });
 
-  it('no sustituye la versión asignada por otra versión de plantilla', () => {
-    const assignedVersion: ExecutionOrderTemplateVersion = {
-      id: 'tplv-3',
-      templateId: 'tpl-001',
-      key: 'INSTALACION_FIBRA',
-      version: 3,
-      label: 'Instalación fibra',
-      workType: WfmWorkType.INSTALLATION,
-      status: 'PUBLISHED',
-      requirements: [],
-      reasonCatalogs: [],
-    };
+  describe('deriveTemplateFromDetail', () => {
+    it('devuelve null cuando la OT no tiene plantilla o snapshot', () => {
+      expect(deriveTemplateFromDetail(null)).toBeNull();
+      expect(deriveTemplateFromDetail({ template: null } as never)).toBeNull();
+      expect(
+        deriveTemplateFromDetail({
+          workType: WfmWorkType.INSTALLATION,
+          template: { id: 'tpl-001', key: 'K', version: 1, label: 'L' },
+        } as never),
+      ).toBeNull();
+    });
 
-    expect(resolveAssignedTemplateVersion([assignedVersion], 3)).toBe(assignedVersion);
-    expect(resolveAssignedTemplateVersion([assignedVersion], 2)).toBeNull();
+    it('proyecta la referencia congelada al shape de versión usado por el drawer', () => {
+      const detail = {
+        workType: WfmWorkType.INSTALLATION,
+        template: {
+          id: 'tpl-001',
+          key: 'INSTALACION_FIBRA',
+          version: 2,
+          label: 'Instalación fibra',
+          requirements: [
+            {
+              key: 'CUSTOMER_SIGNATURE',
+              label: 'Firma del cliente',
+              required: true,
+              kind: 'EVIDENCE',
+              evidenceType: 'SIGNATURE',
+            },
+          ],
+        },
+      } as never;
+
+      const template = deriveTemplateFromDetail(detail);
+
+      expect(template).toEqual({
+        id: 'tpl-001',
+        templateId: 'tpl-001',
+        key: 'INSTALACION_FIBRA',
+        version: 2,
+        label: 'Instalación fibra',
+        workType: WfmWorkType.INSTALLATION,
+        status: 'PUBLISHED',
+        requirements: [
+          {
+            key: 'CUSTOMER_SIGNATURE',
+            label: 'Firma del cliente',
+            required: true,
+            kind: 'EVIDENCE',
+            evidenceType: 'SIGNATURE',
+          },
+        ],
+        reasonCatalogs: [],
+      });
+    });
   });
 
   describe('expiración de evidencia', () => {
@@ -570,5 +685,203 @@ describe('OperationsClient', () => {
     removeItem.mockRestore();
     clear.mockRestore();
     open?.mockRestore();
+  });
+
+  describe('custodia del ejecutor', () => {
+    beforeEach(() => {
+      // El mock del módulo se comparte entre tests: limpia el historial de
+      // llamadas para que los conteos arranquen en cero.
+      jest.mocked(inventoryApi.getExecutorCustody).mockClear();
+    });
+
+    const listMeta = {
+      nextCursor: null,
+      total: 1,
+      totalIsEstimate: false,
+      page: 1,
+      limit: 25,
+      totalPages: 1,
+      hasMore: false,
+      mode: 'page',
+      capabilities: { randomAccess: true, sortableFields: [] },
+      sort: null,
+    };
+
+    function buildCustodyOrder(id: string, number: string, withAssignee: boolean) {
+      return {
+        id,
+        number,
+        version: 1,
+        status: 'IN_PROGRESS',
+        workType: WfmWorkType.INSTALLATION,
+        template: {
+          id: 'tpl-001',
+          key: 'INSTALACION_FIBRA',
+          version: 1,
+          label: 'Instalación fibra',
+        },
+        schedule: {
+          eventId: 'event-001',
+          window: {
+            startAt: '2026-08-31T14:00:00.000Z',
+            endAt: '2026-08-31T16:00:00.000Z',
+          },
+        },
+        ...(withAssignee
+          ? {
+              assignee: { type: 'TECHNICIAN', id: 'tech-001', displayLabel: 'Carlos López' },
+            }
+          : {}),
+        site: { id: 'site-001', label: 'Sitio autorizado' },
+        completion: { progress: 0 },
+        syncState: 'IN_SYNC',
+        inventoryReconciliation: 'NOT_REQUIRED',
+        allowedActions: [],
+        createdAt: '2026-08-31T12:00:00.000Z',
+        updatedAt: '2026-08-31T12:00:00.000Z',
+      } as never;
+    }
+
+    function buildCustodyResponse(locationName: string, serial: string) {
+      return {
+        location: {
+          id: 'loc-mobile-001',
+          name: locationName,
+          type: 'MOBILE_TECHNICIAN',
+          responsibleType: 'TECHNICIAN',
+          responsibleRefId: 'tech-001',
+        },
+        assets: {
+          items: [
+            {
+              id: 'custody-asset-001',
+              inventoryItemId: 'item-001',
+              serialNumber: serial,
+              currentStatus: 'ASSIGNED_TO_TECHNICIAN',
+            },
+          ],
+          meta: listMeta,
+        },
+        balances: {
+          items: [],
+          meta: { ...listMeta, total: 0, totalPages: 0 },
+        },
+      } as never;
+    }
+
+    function mockExecutionOrderCollections() {
+      jest.mocked(tasksApi.executionOrders.listActivities).mockResolvedValue([] as never);
+      jest.mocked(tasksApi.executionOrders.listItemUsage).mockResolvedValue([] as never);
+      jest
+        .mocked(tasksApi.executionOrders.listEvidence)
+        .mockResolvedValue({ data: [], meta: listMeta } as never);
+    }
+
+    it('consulta la custodia con el responsable asignado y la muestra en el drawer', async () => {
+      jest
+        .mocked(tasksApi.executionOrders.get)
+        .mockResolvedValue(buildCustodyOrder('eo-custody-001', 'OT-CUSTODY-001', true));
+      mockExecutionOrderCollections();
+      jest
+        .mocked(inventoryApi.getExecutorCustody)
+        .mockResolvedValue(buildCustodyResponse('Bodega móvil de Carlos López', 'ONT-2026-001'));
+      window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-custody-001');
+
+      try {
+        render(<OperationsClient />);
+
+        expect(await screen.findByText('En custodia del ejecutor')).toBeInTheDocument();
+        expect(inventoryApi.getExecutorCustody).toHaveBeenCalledWith('tech-001', {
+          page: 1,
+          limit: 25,
+        });
+        expect(screen.getByText('Bodega móvil de Carlos López')).toBeInTheDocument();
+        expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+      } finally {
+        window.history.pushState({}, '', '/dashboard/operations');
+      }
+    });
+
+    it('descarta la respuesta tardía de una apertura previa sin pisar el drawer vigente', async () => {
+      const user = userEvent.setup();
+      let resolveFirstCustody: (value: never) => void = () => undefined;
+      jest
+        .mocked(tasksApi.executionOrders.get)
+        .mockResolvedValue(buildCustodyOrder('eo-custody-late', 'OT-CUSTODY-LATE', true));
+      mockExecutionOrderCollections();
+      jest.mocked(inventoryApi.getExecutorCustody).mockImplementationOnce(
+        () =>
+          new Promise<never>((resolve) => {
+            resolveFirstCustody = resolve;
+          }),
+      );
+      window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-custody-late');
+
+      try {
+        render(<OperationsClient />);
+
+        await waitFor(() => {
+          expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1);
+        });
+
+        // El usuario cierra el drawer mientras la custodia sigue en vuelo: el
+        // cierre invalida la apertura (seq guard).
+        await user.click(screen.getByRole('button', { name: 'Cerrar detalle operativo' }));
+        expect(screen.queryByText('OT-CUSTODY-LATE')).not.toBeInTheDocument();
+
+        // La respuesta tardía llega después: no reabre el drawer ni pinta datos.
+        await act(async () => {
+          resolveFirstCustody(buildCustodyResponse('Custodia tardía', 'ONT-TARDIO-001'));
+        });
+        expect(screen.queryByText('Custodia tardía')).not.toBeInTheDocument();
+        expect(screen.queryByText('ONT-TARDIO-001')).not.toBeInTheDocument();
+        expect(screen.queryByText('En custodia del ejecutor')).not.toBeInTheDocument();
+      } finally {
+        window.history.pushState({}, '', '/dashboard/operations');
+      }
+    });
+
+    it('no consulta la custodia cuando la OT no tiene responsable asignado', async () => {
+      jest
+        .mocked(tasksApi.executionOrders.get)
+        .mockResolvedValue(buildCustodyOrder('eo-custody-none', 'OT-SIN-ASSIGNEE', false));
+      mockExecutionOrderCollections();
+      window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-custody-none');
+
+      try {
+        render(<OperationsClient />);
+
+        expect((await screen.findAllByText('OT-SIN-ASSIGNEE')).length).toBeGreaterThanOrEqual(1);
+        expect(inventoryApi.getExecutorCustody).not.toHaveBeenCalled();
+        expect(
+          screen.getByText('El ejecutor no tiene equipos ni materiales en custodia'),
+        ).toBeInTheDocument();
+      } finally {
+        window.history.pushState({}, '', '/dashboard/operations');
+      }
+    });
+
+    it('mantiene la OT operativa cuando la custodia responde 404 (endpoint pendiente)', async () => {
+      jest
+        .mocked(tasksApi.executionOrders.get)
+        .mockResolvedValue(buildCustodyOrder('eo-custody-404', 'OT-CUSTODY-404', true));
+      mockExecutionOrderCollections();
+      jest
+        .mocked(inventoryApi.getExecutorCustody)
+        .mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'Endpoint no disponible'));
+      window.history.pushState({}, '', '/dashboard/operations?executionOrderId=eo-custody-404');
+
+      try {
+        render(<OperationsClient />);
+
+        expect((await screen.findAllByText('OT-CUSTODY-404')).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getByText('Custodia no disponible')).toBeInTheDocument();
+        // El resto del drawer sigue operativo: bloques visibles y acción de refresco.
+        expect(screen.getByText('Equipos y materiales')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
+      } finally {
+        window.history.pushState({}, '', '/dashboard/operations');
+      }
+    });
   });
 });

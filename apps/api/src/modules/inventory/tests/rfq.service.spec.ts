@@ -436,6 +436,24 @@ describe('RfqService', () => {
     );
   });
 
+  it('CA-25-13: segundo POST a la misma invitación lanza 409', async () => {
+    const { manager, save } = buildManager({
+      rfq: { status: PurchaseRfqStatus.SENT },
+      invitation: { status: PurchaseRfqInvitationStatus.INVITED, partyRefId: PARTY_REF_ID },
+      duplicateQuote: { id: 'quote-existing', rfqInvitationId: INVITATION_ID },
+    });
+
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
+    await expect(
+      service.applyQuoteToInvitation(manager as never, 'tenant-001', {
+        rfqInvitationId: INVITATION_ID,
+        partyRefId: PARTY_REF_ID,
+        quote: { id: 'quote-new' } as SupplierQuote,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('applyQuoteToInvitation valida proveedor invitado', async () => {
     const { manager } = buildManager({
       rfq: { status: PurchaseRfqStatus.SENT },

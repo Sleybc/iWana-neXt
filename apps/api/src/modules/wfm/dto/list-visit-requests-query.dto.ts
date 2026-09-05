@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -35,6 +36,8 @@ export const ListVisitRequestsQuerySchema = z.object({
   expedienteId: z.string().uuid().optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
+  /** Alcance del listado. actionable: bandeja "Pendientes por programar" sin trabajo ya agendado. */
+  scope: z.enum(['all', 'actionable']).optional().default('all'),
   page: z.number().int().min(1).optional().default(1),
   limit: z.number().int().min(1).max(100).optional().default(20),
 });
@@ -118,6 +121,18 @@ export class ListVisitRequestsQueryDto {
   @IsOptional()
   @IsDateString({ strict: false })
   to?: string;
+
+  @ApiPropertyOptional({
+    enum: ['all', 'actionable'],
+    default: 'all',
+    description:
+      'Alcance del listado. all (default): comportamiento actual. actionable: solo estados programables ' +
+      '(PENDING, NEEDS_CONTEXT, READY_TO_SCHEDULE, REQUIRES_RESCHEDULE) y sin trabajo de campo ya agendado ' +
+      'para la unidad de origen (ADR-076 D2).',
+  })
+  @IsOptional()
+  @IsIn(['all', 'actionable'])
+  scope?: 'all' | 'actionable';
 
   @ApiPropertyOptional({ example: 1, minimum: 1, default: 1, description: 'Numero de pagina' })
   @IsOptional()

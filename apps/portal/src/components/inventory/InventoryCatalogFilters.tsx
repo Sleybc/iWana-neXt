@@ -111,7 +111,7 @@ export function InventoryCatalogFilters({
       <PortalSearchField
         id="catalog-product-search"
         label="Buscar producto"
-        placeholder="Código, nombre, marca o modelo"
+        placeholder="Código, código de barras, nombre, marca o modelo"
         className="w-full"
         value={filters.search ?? ''}
         onChange={(value) => {

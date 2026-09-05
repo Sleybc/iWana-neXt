@@ -341,9 +341,11 @@ export const portalModuleTabsDividerClassName =
   'h-px w-full shrink-0 bg-gray-200 dark:bg-dark-border md:h-auto md:w-px md:self-stretch';
 
 export const portalModuleTabsTrackClassName =
-  'flex flex-wrap gap-1 rounded-xl bg-gray-100/90 p-1 dark:bg-dark-surface-3';
+  'flex flex-wrap items-center gap-1 rounded-xl bg-gray-100/90 p-1 dark:bg-dark-surface-3';
 
+/** Píldora inset en la pista (`rounded-lg` + `p-1`). Activo = navy, no lima. */
 export const portalModuleTabTriggerClassName = cn(
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors',
   'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
   'data-[state=active]:bg-iwana-primary data-[state=active]:text-white data-[state=active]:shadow-sm',
   'dark:data-[state=active]:bg-iwana-primary dark:data-[state=active]:text-white',
@@ -549,8 +551,13 @@ interface PortalDashboardMetricBaseProps {
   /** Ícono decorativo; tono derivado de `accent`. */
   icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
   /**
+   * Serie real para sparkline. Omitida, vacía o con <2 puntos → no se pinta trazo.
+   * Prohibido interpolar o inventar valores.
+   */
+  sparkline?: readonly number[];
+  /**
    * Densidad de cáscara (DS v1.7 / UX U-D3). `'default'` = póster v1.4 (Assurance).
-   * `'compact'` = KPI vertical min-h-24 flex-col text-2xl rounded-2xl — solo home B1.
+   * `'compact'` = KPI vertical min-h-28, cifra title — solo home B1.
    */
   density?: 'default' | 'compact';
   className?: string;
@@ -584,6 +591,40 @@ const portalDashboardMetricDeltaBadgeVariant: Record<
 const defaultPortalDashboardMetricFormat = (value: number) =>
   new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value);
 
+function PortalMetricSparkline({ values }: { values: readonly number[] }) {
+  if (values.length < 2) return null;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const width = 72;
+  const height = 28;
+  const points = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * width;
+      const y = height - ((value - min) / range) * (height - 2) - 1;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="mt-2 h-7 w-[4.5rem] text-iwana-primary dark:text-iwana-primary-200"
+      aria-hidden={true}
+      data-testid="portal-metric-sparkline"
+    >
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        points={points}
+      />
+    </svg>
+  );
+}
+
 /** Indicador del home del portal — contrato DS §1 (sin acento lima). */
 export function PortalDashboardMetric({
   eyebrow,
@@ -602,6 +643,7 @@ export function PortalDashboardMetric({
   onRetry,
   icon: Icon,
   density = 'default',
+  sparkline,
   className,
 }: PortalDashboardMetricProps) {
   const isInteractive = Boolean(href || onClick);
@@ -610,13 +652,17 @@ export function PortalDashboardMetric({
   const isCompact = density === 'compact';
 
   const shellClassName = cn(
-    'flex min-h-24 flex-col justify-center border px-4 py-3 shadow-iwana-soft',
-    isCompact ? 'rounded-2xl' : 'rounded-3xl',
+    'flex flex-col justify-center border px-4 py-3 shadow-iwana-soft',
+    isCompact ? 'min-h-28 rounded-2xl' : 'min-h-24 rounded-3xl',
     portalMetricCardAccentClassName(accent),
     isInteractive && interactiveFocusClassName,
     isInteractive && 'transition-shadow hover:shadow-iwana-active',
     className,
   );
+
+  const valueClassName = isCompact
+    ? 'mt-0.5 font-thin-exo text-3xl tabular-nums tracking-tight text-iwana-primary dark:text-white'
+    : 'mt-0.5 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white';
 
   let valueSlot: ReactNode;
   if (isLoading) {
@@ -638,7 +684,7 @@ export function PortalDashboardMetric({
     );
   } else {
     valueSlot = (
-      <p className="mt-0.5 font-mono text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
+      <p className={valueClassName}>
         {formatValue(value)}
         {total !== undefined && total !== null ? (
           <span className={cn('ml-1 text-sm font-normal', portalMetricMutedTextClassName(accent))}>
@@ -688,6 +734,7 @@ export function PortalDashboardMetric({
           {description}
         </div>
       ) : null}
+      {sparkline && sparkline.length >= 2 ? <PortalMetricSparkline values={sparkline} /> : null}
     </div>
   );
 
@@ -721,6 +768,143 @@ export function PortalDashboardMetric({
   return (
     <article aria-busy={isLoading || undefined} className={shellClassName}>
       {body}
+    </article>
+  );
+}
+
+export type PortalModuleHealthStatus = 'ok' | 'attention' | 'at-risk' | 'unknown';
+export type PortalModuleHealthChipState = 'idle' | 'loading' | 'error';
+
+const portalModuleHealthBadge: Record<
+  PortalModuleHealthStatus,
+  { label: string; variant: 'lime' | 'warning' | 'error' | 'neutral' }
+> = {
+  ok: { label: 'Al día', variant: 'lime' },
+  attention: { label: 'Atención', variant: 'warning' },
+  'at-risk': { label: 'En riesgo', variant: 'error' },
+  unknown: { label: 'Sin dato', variant: 'neutral' },
+};
+
+export const portalModuleHealthChipShellClassName = cn(
+  'flex min-h-11 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2',
+  'text-left shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2',
+);
+
+const defaultPortalModuleHealthFormat = (value: number) =>
+  new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value);
+
+export interface PortalModuleHealthChipProps {
+  label: string;
+  status: PortalModuleHealthStatus;
+  /** Solo señal (Atención / En riesgo). `null` = no se pinta cifra. */
+  value?: number | null;
+  formatValue?: (value: number) => string;
+  state?: PortalModuleHealthChipState;
+  href?: string;
+  onClick?: () => void;
+  onRetry?: () => void;
+  className?: string;
+}
+
+/** Chip de mapa de módulo — B1b del inicio. No es una card de KPI. */
+export function PortalModuleHealthChip({
+  label,
+  status,
+  value = null,
+  formatValue = defaultPortalModuleHealthFormat,
+  state = 'idle',
+  href,
+  onClick,
+  onRetry,
+  className,
+}: PortalModuleHealthChipProps) {
+  const isLoading = state === 'loading';
+  const isError = state === 'error';
+  const badge = portalModuleHealthBadge[isError ? 'unknown' : status];
+  const showValue =
+    !isLoading && !isError && (status === 'attention' || status === 'at-risk') && value != null;
+  const accessibleName = showValue
+    ? `${label}, ${badge.label}, ${formatValue(value)}`
+    : `${label}, ${badge.label}`;
+  const isInteractive = Boolean(href || onClick) && !isError;
+
+  const shellClassName = cn(
+    portalModuleHealthChipShellClassName,
+    isInteractive && interactiveFocusClassName,
+    isInteractive && 'transition-shadow hover:shadow-iwana-active',
+    className,
+  );
+
+  const body = isLoading ? (
+    <>
+      <SkeletonBlock className="h-4 w-28 rounded-md" />
+      <SkeletonBlock className="ml-auto h-5 w-16 rounded-full" />
+    </>
+  ) : (
+    <>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+        {label}
+      </span>
+      {showValue ? (
+        <span className="font-mono text-sm font-semibold tabular-nums text-iwana-primary dark:text-iwana-primary-200">
+          {formatValue(value)}
+        </span>
+      ) : null}
+      <Badge variant={badge.variant}>{badge.label}</Badge>
+      {isError && onRetry ? (
+        <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+          Reintentar
+        </Button>
+      ) : (
+        <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden={true} />
+      )}
+    </>
+  );
+
+  if (href && isInteractive) {
+    return (
+      <Link
+        href={href}
+        aria-label={accessibleName}
+        aria-busy={isLoading || undefined}
+        className={shellClassName}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  if (onClick && isInteractive) {
+    return (
+      <button
+        type="button"
+        aria-label={accessibleName}
+        aria-busy={isLoading || undefined}
+        className={shellClassName}
+        onClick={onClick}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <article aria-busy={isLoading || undefined} className={shellClassName}>
+      {isError ? (
+        <>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+            {label}
+          </span>
+          <Badge variant="neutral">Sin dato</Badge>
+          {onRetry ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+              Reintentar
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        body
+      )}
     </article>
   );
 }
@@ -1980,6 +2164,11 @@ export interface PortalModuleSubnavGroup {
   id: string;
   label: string;
   items: PortalModuleSubnavItem[];
+  /**
+   * v1.3 — aditivo (default false). Oculta el eyebrow del grupo en pantalla.
+   * `label` sigue siendo obligatorio: es el nombre accesible del grupo.
+   */
+  hideLabel?: boolean;
 }
 
 export interface PortalModuleSubnavProps {
@@ -2038,6 +2227,10 @@ function PortalModuleSubnavList({
     >
       {groups.map((group, index) => {
         const headingId = `${labelledByPrefix}-${group.id}`;
+        // v1.3 (hideLabel): sin eyebrow, la lista pasa a aria-label para no
+        // dejar un aria-labelledby apuntando a un heading inexistente; el
+        // wrapper recibe la compensación de alineación documentada en tokens.
+        const hideLabel = group.hideLabel === true;
         return (
           <Fragment key={group.id}>
             {isHorizontal && index > 0 ? (
@@ -2047,12 +2240,15 @@ function PortalModuleSubnavList({
                 className={portalModuleSubnavDividerClassName}
               />
             ) : null}
-            <div className="space-y-1">
-              <p className="portal-eyebrow px-1" id={headingId}>
-                {group.label}
-              </p>
+            <div className={cn('space-y-1', hideLabel && 'portal-subnav-group-sans-label')}>
+              {hideLabel ? null : (
+                <p className="portal-eyebrow px-1" id={headingId}>
+                  {group.label}
+                </p>
+              )}
               <ul
-                aria-labelledby={headingId}
+                aria-label={hideLabel ? group.label : undefined}
+                aria-labelledby={hideLabel ? undefined : headingId}
                 className={isHorizontal ? 'flex flex-row gap-1' : 'flex flex-col gap-1'}
               >
                 {group.items.map((item) => {

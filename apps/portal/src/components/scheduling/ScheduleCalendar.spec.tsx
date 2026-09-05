@@ -12,6 +12,7 @@ import {
   getDailyTimelineWidthPercent,
 } from './ScheduleCalendar';
 import { buildDailyDraftFromDrop, serializePendingVisitDragPayload } from './daily-schedule-draft';
+import type { WfmVisitRequest } from '@/lib/api-client';
 
 const technician = {
   id: 'tech-1',
@@ -56,6 +57,46 @@ const day = {
   shortLabel: 'JUE 05',
   events: [buildEvent()],
 };
+
+function buildPendingVisitRequest(): WfmVisitRequest {
+  return {
+    id: 'visit-1',
+    tenantId: 'tenant-1',
+    status: VisitRequestStatus.READY_TO_SCHEDULE,
+    originContext: WorkOrderSourceContext.CRM,
+    originRef: 'exp-1',
+    originLabel: 'Expediente',
+    customerDisplayName: 'Cliente Norte',
+    workType: WfmWorkType.INSTALLATION,
+    priority: WorkOrderPriority.NORMAL,
+    title: 'Instalación fibra',
+    description: null,
+    requestedWindowStartAt: null,
+    requestedWindowEndAt: null,
+    slaDueAt: null,
+    address: 'Calle 1',
+    municipality: 'Bogotá',
+    sector: 'Norte',
+    latitude: null,
+    longitude: null,
+    organizationSiteId: 'site-1',
+    expedienteId: null,
+    subscriberId: null,
+    ticketId: null,
+    contractId: null,
+    scheduleEventId: null,
+    workOrderId: null,
+    requestedByUserId: 'user-1',
+    scheduledByUserId: null,
+    scheduledAt: null,
+    cancelledAt: null,
+    cancelledByUserId: null,
+    cancelReason: null,
+    createdAt: '2026-06-05T08:00:00.000Z',
+    updatedAt: '2026-06-05T08:00:00.000Z',
+    deletedAt: null,
+  };
+}
 
 describe('ScheduleCalendar', () => {
   beforeEach(() => {
@@ -272,45 +313,7 @@ describe('ScheduleCalendar', () => {
         technicians={[technician as any]}
         view="day"
         techniciansById={new Map([['tech-1', technician as any]])}
-        pendingVisitRequests={[
-          {
-            id: 'visit-1',
-            tenantId: 'tenant-1',
-            status: VisitRequestStatus.READY_TO_SCHEDULE,
-            originContext: WorkOrderSourceContext.CRM,
-            originRef: 'exp-1',
-            originLabel: 'Expediente',
-            customerDisplayName: 'Cliente Norte',
-            workType: WfmWorkType.INSTALLATION,
-            priority: WorkOrderPriority.NORMAL,
-            title: 'Instalación fibra',
-            description: null,
-            requestedWindowStartAt: null,
-            requestedWindowEndAt: null,
-            slaDueAt: null,
-            address: 'Calle 1',
-            municipality: 'Bogotá',
-            sector: 'Norte',
-            latitude: null,
-            longitude: null,
-            organizationSiteId: 'site-1',
-            expedienteId: null,
-            subscriberId: null,
-            ticketId: null,
-            contractId: null,
-            scheduleEventId: null,
-            workOrderId: null,
-            requestedByUserId: 'user-1',
-            scheduledByUserId: null,
-            scheduledAt: null,
-            cancelledAt: null,
-            cancelledByUserId: null,
-            cancelReason: null,
-            createdAt: '2026-06-05T08:00:00.000Z',
-            updatedAt: '2026-06-05T08:00:00.000Z',
-            deletedAt: null,
-          },
-        ]}
+        pendingVisitRequests={[buildPendingVisitRequest()]}
         onSelectEvent={jest.fn()}
       />,
     );
@@ -347,6 +350,47 @@ describe('ScheduleCalendar', () => {
 
     expect(screen.getByText('Sin pendientes inmediatos')).toBeInTheDocument();
     expect(screen.queryByText('Cliente ya agendado')).not.toBeInTheDocument();
+  });
+
+  it('oculta el rail de pendientes y el hint de despacho con showPendingVisitsRail=false', () => {
+    render(
+      <ScheduleCalendar
+        days={[{ ...day, events: [] } as any]}
+        technicians={[technician as any]}
+        view="day"
+        techniciansById={new Map([['tech-1', technician as any]])}
+        pendingVisitRequests={[buildPendingVisitRequest()]}
+        showPendingVisitsRail={false}
+        onSelectEvent={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('Pendientes por programar')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sin pendientes inmediatos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ver bandeja completa')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Arrastra un pendiente o haz clic para crear.'),
+    ).not.toBeInTheDocument();
+
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  it('muestra el rail de pendientes y el hint de despacho por defecto sin la prop', () => {
+    render(
+      <ScheduleCalendar
+        days={[{ ...day, events: [] } as any]}
+        technicians={[technician as any]}
+        view="day"
+        techniciansById={new Map([['tech-1', technician as any]])}
+        pendingVisitRequests={[buildPendingVisitRequest()]}
+        onSelectEvent={jest.fn()}
+        onCreateEventSlot={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
+    expect(screen.getByText('Cliente Norte')).toBeInTheDocument();
+    expect(screen.getByText('Arrastra un pendiente o haz clic para crear.')).toBeInTheDocument();
   });
 
   it('dispara drop de pendiente sobre franja diaria', () => {

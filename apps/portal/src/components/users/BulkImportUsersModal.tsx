@@ -13,6 +13,7 @@ import {
 } from '@iwana/ui';
 import {
   DocumentType,
+  formatFullName,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
@@ -834,7 +835,7 @@ export function BulkImportUsersModal({
                         </span>
                       </td>
                       <td className="max-w-[150px] truncate px-3 py-2 text-gray-900 dark:text-white">
-                        {[row.firstName, row.lastName].filter(Boolean).join(' ') || '—'}
+                        {formatFullName(row.firstName, row.lastName) || '—'}
                       </td>
                       <td className="px-3 py-2">
                         {row.isValid ? (

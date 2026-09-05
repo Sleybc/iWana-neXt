@@ -41,10 +41,13 @@ import {
   USERS_BULK_CREATE_QUEUE,
 } from '@iwana/shared';
 import { UsersService } from './users.service';
+import { ConfigService } from '@nestjs/config';
+import { MailerService } from '../mailer/mailer.service';
 import { AuditService } from '../audit/audit.service';
 import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 
 jest.mock('bcryptjs', () => {
   const actual = jest.requireActual('bcryptjs') as Record<string, unknown>;
@@ -132,6 +135,7 @@ type MockQr = {
     count: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
+    update: jest.Mock;
     softRemove: jest.Mock;
     restore: jest.Mock;
     createQueryBuilder: jest.Mock;
@@ -164,6 +168,7 @@ function setupRunInTenantSchema(
       }),
     softRemove: jest.fn().mockResolvedValue(undefined),
     restore: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
     createQueryBuilder: jest.fn(),
     ...managerOverrides,
   };
@@ -195,6 +200,9 @@ describe('UsersService', () => {
   };
   let searchQueueServiceMock: { enqueueUserUpsert: jest.Mock; enqueueUserDelete: jest.Mock };
   let redisMock: { get: jest.Mock; set: jest.Mock };
+  let mailerServiceMock: { sendMail: jest.Mock };
+  let configServiceMock: { get: jest.Mock };
+  let effectivePermissionsMock: { invalidateUserPermissions: jest.Mock };
   let bulkQueueMock: {
     add: jest.Mock;
     getJob: jest.Mock;
@@ -220,6 +228,16 @@ describe('UsersService', () => {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue('OK'),
     };
+    mailerServiceMock = { sendMail: jest.fn().mockResolvedValue(undefined) };
+    configServiceMock = {
+      get: jest.fn().mockImplementation((key: string, def?: unknown) => {
+        if (key === 'FRONTEND_URL') return 'http://localhost:3001';
+        return def;
+      }),
+    };
+    effectivePermissionsMock = {
+      invalidateUserPermissions: jest.fn().mockResolvedValue(undefined),
+    };
     bulkQueueMock = {
       add: jest.fn().mockResolvedValue({ id: 'job-bulk-1' }),
       getJob: jest.fn().mockResolvedValue(null),
@@ -232,7 +250,10 @@ describe('UsersService', () => {
         { provide: AuditService, useValue: auditServiceMock },
         { provide: TenantService, useValue: tenantServiceMock },
         { provide: SearchQueueService, useValue: searchQueueServiceMock },
+        { provide: EffectivePermissionsService, useValue: effectivePermissionsMock },
         { provide: REDIS_CLIENT, useValue: redisMock },
+        { provide: MailerService, useValue: mailerServiceMock },
+        { provide: ConfigService, useValue: configServiceMock },
         { provide: getQueueToken(USERS_BULK_CREATE_QUEUE), useValue: bulkQueueMock },
       ],
     }).compile();
@@ -1193,6 +1214,42 @@ describe('UsersService', () => {
       );
 
       expect(result.id).toBe(TARGET_ID);
+    });
+
+    it('invalida permisos efectivos al cambiar role o status', async () => {
+      const entity = buildUserEntity({
+        id: TARGET_ID,
+        status: UserStatus.ACTIVE,
+        role: UserRole.NOC,
+      });
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(entity),
+        save: jest.fn().mockResolvedValue(entity),
+      });
+
+      await service.update(
+        TARGET_ID,
+        { status: UserStatus.SUSPENDED, role: UserRole.SUPPORT },
+        ADMIN_ID,
+        UserRole.ADMIN,
+      );
+
+      expect(effectivePermissionsMock.invalidateUserPermissions).toHaveBeenCalledWith(
+        MOCK_TENANT_CTX.tenantId,
+        TARGET_ID,
+      );
+    });
+
+    it('no invalida permisos efectivos si solo cambia el perfil visible', async () => {
+      const entity = buildUserEntity({ id: TARGET_ID });
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(entity),
+        save: jest.fn().mockImplementation(async (_e: unknown, instance: unknown) => instance),
+      });
+
+      await service.update(TARGET_ID, { firstName: 'Ana' }, ADMIN_ID, UserRole.ADMIN);
+
+      expect(effectivePermissionsMock.invalidateUserPermissions).not.toHaveBeenCalled();
     });
 
     it('lanza ForbiddenException si no-ADMIN intenta modificar a otro usuario', async () => {

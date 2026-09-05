@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HabeasDataController } from '../habeas-data.controller';
 import { HabeasDataService } from '../habeas-data.service';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 
 describe('HabeasDataController', () => {
   let controller: HabeasDataController;
@@ -16,7 +17,13 @@ describe('HabeasDataController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HabeasDataController],
-      providers: [{ provide: HabeasDataService, useValue: serviceMock }],
+      providers: [
+        { provide: HabeasDataService, useValue: serviceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+      ],
     }).compile();
 
     controller = module.get<HabeasDataController>(HabeasDataController);

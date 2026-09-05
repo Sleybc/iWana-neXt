@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { FormPanel, FormSectionTitle } from '@iwana/ui';
+import { getTenantInitials } from '@iwana/shared';
 
 export interface SectionCompleteness {
   label: string;
@@ -23,11 +24,13 @@ interface TenantCreateSummaryProps {
   provisioningStatus: ProvisioningStatus;
 }
 
+/**
+ * Iniciales de identidad de tenant, unificadas con `TenantSeal` (portal) vía
+ * `getTenantInitials`. Fuera de `Avatar` por contrato (identidad de tenant,
+ * no de persona). `'iW'` es el repliegue de marca transitoria de esta vista.
+ */
 function getInitials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return 'iW';
-  if (words.length === 1) return (words[0]?.slice(0, 2) ?? 'iW').toUpperCase();
-  return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase();
+  return getTenantInitials(name, 'iW');
 }
 
 const PROV_CONFIG = {

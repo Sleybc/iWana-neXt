@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button } from '@iwana/ui';
+import { Button, FormStatus } from '@iwana/ui';
 import {
   TaskExecutionMode,
   TaskOriginContext,
@@ -13,7 +13,6 @@ import {
   TaskRecipientType,
 } from '@iwana/shared';
 import type { CreateOperationalTaskDto } from '@/lib/api-client';
-import { PortalAlert } from '@/components/shared/portal-ui';
 import { TaskCoreFields } from './TaskCoreFields';
 import type { TaskIntakeValues } from './task-intake-schema';
 import { taskIntakeSchema, INTERNAL_RECIPIENT_TYPES } from './task-intake-schema';
@@ -156,9 +155,16 @@ export function TaskForm({
         </div>
       )}
 
-      {error && (
-        <PortalAlert variant="error" title="No fue posible crear la tarea" description={error} />
-      )}
+      <FormStatus
+        status={error ? 'error' : 'idle'}
+        message={
+          error ? (
+            <>
+              <span>No fue posible crear la tarea.</span> <span>{error}</span>
+            </>
+          ) : undefined
+        }
+      />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={isSubmitting}>

@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Param,
-  ParseUUIDPipe,
-  Patch,
-  Post,
-  UseGuards,
-  UsePipes,
-} from '@nestjs/common';
+import { Body, Controller, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccessPermissionKey, PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -34,10 +25,9 @@ export class ProspectsController {
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Programar instalacion de prospecto', deprecated: true })
-  @UsePipes(new ZodBodyValidationPipe(scheduleInstallationSchema))
   async scheduleInstallation(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ScheduleInstallationDto,
+    @Body(new ZodBodyValidationPipe(scheduleInstallationSchema)) dto: ScheduleInstallationDto,
   ): Promise<{ data: ProspectResponseDto }> {
     const data = await this.prospectsService.scheduleInstallation(id, dto);
     return { data };
@@ -47,10 +37,9 @@ export class ProspectsController {
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Reprogramar instalacion o visita tecnica', deprecated: true })
-  @UsePipes(new ZodBodyValidationPipe(rescheduleInstallationSchema))
   async rescheduleInstallation(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: RescheduleInstallationDto,
+    @Body(new ZodBodyValidationPipe(rescheduleInstallationSchema)) dto: RescheduleInstallationDto,
   ): Promise<{ data: ProspectResponseDto }> {
     const data = await this.prospectsService.rescheduleInstallation(id, dto);
     return { data };

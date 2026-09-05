@@ -212,7 +212,7 @@ describe('PortalDashboardMetric', () => {
     expect(screen.getByText('12')).toHaveClass('text-2xl');
   });
 
-  it('con density=compact usa KPI vertical min-h-24 flex-col text-2xl rounded-2xl (DS v1.7 / U-D3)', () => {
+  it('con density=compact usa KPI vertical min-h-28, cifra title y rounded-2xl (CA-EV-01)', () => {
     const { container } = render(
       <PortalDashboardMetric
         density="compact"
@@ -223,13 +223,50 @@ describe('PortalDashboardMetric', () => {
       />,
     );
 
-    expect(container.firstElementChild?.className).toMatch(/min-h-24/);
+    expect(container.firstElementChild?.className).toMatch(/min-h-28/);
     expect(container.firstElementChild?.className).toMatch(/flex-col/);
     expect(container.firstElementChild?.className).toMatch(/rounded-2xl/);
     expect(container.firstElementChild?.className).not.toMatch(/min-h-14/);
     expect(container.firstElementChild?.className).not.toMatch(/flex-row/);
-    expect(screen.getByText('12')).toHaveClass('text-2xl');
+    expect(screen.getByText('12')).toHaveClass('font-thin-exo');
+    expect(screen.getByText('12')).toHaveClass('text-3xl');
+    expect(screen.getByText('12')).not.toHaveClass('font-mono');
     expect(screen.getByText('Programadas para la jornada').className).toMatch(/sr-only/);
+  });
+
+  it('sin sparkline no pinta serie (CA-EV-02)', () => {
+    const { container } = render(
+      <PortalDashboardMetric density="compact" label="Visitas de hoy" value={12} icon={Calendar} />,
+    );
+
+    expect(container.querySelector('[data-testid="portal-metric-sparkline"]')).toBeNull();
+  });
+
+  it('sparkline con un punto no pinta trazo; con dos sí (CA-EV-03)', () => {
+    const { rerender } = render(
+      <PortalDashboardMetric
+        density="compact"
+        label="Visitas de hoy"
+        value={12}
+        sparkline={[4]}
+        icon={Calendar}
+      />,
+    );
+
+    expect(screen.queryByTestId('portal-metric-sparkline')).not.toBeInTheDocument();
+
+    rerender(
+      <PortalDashboardMetric
+        density="compact"
+        label="Visitas de hoy"
+        value={12}
+        sparkline={[2, 5, 4]}
+        icon={Calendar}
+      />,
+    );
+
+    const sparkline = screen.getByTestId('portal-metric-sparkline');
+    expect(sparkline.querySelector('polyline')).toHaveAttribute('points');
   });
 });
 

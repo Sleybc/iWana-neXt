@@ -1,3 +1,4 @@
+import { formatFullName } from '@iwana/shared';
 import { entityLabel } from './entityLabel';
 
 interface AuditDisplayEntry {
@@ -53,7 +54,7 @@ function pickSubjectFromPayload(payload: Record<string, unknown> | null): Displa
 
   const firstName = valueAsString(payload.firstName);
   const lastName = valueAsString(payload.lastName);
-  const fullNameFromParts = [firstName, lastName].filter(Boolean).join(' ');
+  const fullNameFromParts = formatFullName(firstName, lastName);
   const email = valueAsString(payload.email);
 
   if (fullNameFromParts) {

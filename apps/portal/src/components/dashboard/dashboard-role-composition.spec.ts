@@ -3,6 +3,7 @@ import {
   DASHBOARD_ACTION_REGISTRY,
   DASHBOARD_BLOCK_REGISTRY,
   DASHBOARD_METRIC_REGISTRY,
+  DASHBOARD_MODULE_HEALTH_REGISTRY,
   DASHBOARD_ROLE_AUTHORIZATION_CEILING,
   DASHBOARD_ROLE_COMPOSITION,
   getDashboardRoleComposition,
@@ -12,8 +13,10 @@ import {
   resolveDashboardBlock,
   resolveDashboardDataSources,
   resolveDashboardMetric,
+  resolveDashboardModuleHealth,
   resolvePromotedFoldedBlockIds,
   resolveDashboardMetricAccent,
+  splitDashboardModuleHealthIds,
   toLocalDayKey,
   type DashboardActionId,
   type DashboardBlockId,
@@ -35,20 +38,26 @@ describe('dashboard-role-composition', () => {
     const composition = getDashboardRoleComposition(role);
     const ceiling = DASHBOARD_ROLE_AUTHORIZATION_CEILING[role];
 
-    it('incluye bloque de identidad (B3) y al menos una tarea o destino útil', () => {
+    it('incluye identidad B3 y al menos un destino útil (CA-V2-01)', () => {
       expect(composition.showOperationalTenantCard).toBe(true);
 
       const primary = resolveDashboardAction(composition.primaryActionId);
       expect(primary.label.length).toBeGreaterThan(0);
       expect(primary.href.startsWith('/dashboard')).toBe(true);
 
-      const hasQuickActions = listCompositionBlockIds(composition).includes('quick-actions');
-      expect(hasQuickActions).toBe(true);
+      const hasModuleHealth = composition.moduleHealthIds.length > 0;
+      const hasWorkSurface = listCompositionBlockIds(composition).length > 0;
+      const hasProfileDestination = ceiling.actionIds.includes('view-profile');
+      expect(hasModuleHealth || hasWorkSurface || hasProfileDestination).toBe(true);
     });
 
-    it('no compone métricas, bloques ni acciones fuera del techo de autorización', () => {
+    it('no compone métricas, bloques, salud de módulos ni acciones fuera del techo de autorización', () => {
       for (const metricId of composition.metricIds) {
         expect(ceiling.metricIds).toContain(metricId);
+      }
+
+      for (const moduleHealthId of composition.moduleHealthIds) {
+        expect(ceiling.moduleHealthIds).toContain(moduleHealthId);
       }
 
       for (const blockId of listCompositionBlockIds(composition)) {
@@ -88,7 +97,7 @@ describe('dashboard-role-composition', () => {
     const auditor = getDashboardRoleComposition(UserRole.AUDITOR);
     expect(auditor.metricIds).toEqual([]);
     expect(auditor.dominantBlockId).toBeNull();
-    expect(listCompositionBlockIds(auditor)).toEqual(['change-history', 'quick-actions']);
+    expect(listCompositionBlockIds(auditor)).toEqual(['change-history']);
     expect(auditor.supportBlockIds).toContain('change-history');
     expect(auditor.primaryActionId).toBe('view-profile');
     expect(DASHBOARD_ROLE_AUTHORIZATION_CEILING[UserRole.AUDITOR].blockIds).toContain(
@@ -144,6 +153,14 @@ describe('dashboard-role-composition', () => {
 
     for (const definition of Object.values(DASHBOARD_BLOCK_REGISTRY)) {
       expect(resolveDashboardBlock(definition.id)).toBe(definition);
+    }
+  });
+
+  it('ningún rol incluye el panel Accesos rápidos (CA-CM-09)', () => {
+    expect(Object.keys(DASHBOARD_BLOCK_REGISTRY)).not.toContain('quick-actions');
+    for (const role of ALL_ROLES) {
+      const ids = listCompositionBlockIds(getDashboardRoleComposition(role)) as readonly string[];
+      expect(ids).not.toContain('quick-actions');
     }
   });
 
@@ -254,5 +271,61 @@ describe('resolveDashboardMetricAccent', () => {
     expect(resolveDashboardMetricAccent({ declared: 'danger', value: 0, hasDelta: true })).toBe(
       'danger',
     );
+  });
+
+  it('ADMIN compone B1b con siete chips de producto y Operaciones sin fuente', () => {
+    const ids = getDashboardRoleComposition(UserRole.ADMIN).moduleHealthIds;
+    expect(ids).toEqual([
+      'scheduling',
+      'help-desk',
+      'commercial',
+      'opportunities',
+      'inventory',
+      'configuration',
+      'operations',
+    ]);
+    expect(DASHBOARD_MODULE_HEALTH_REGISTRY.operations.sources).toEqual([]);
+    expect(resolveDashboardModuleHealth('scheduling').label).toBe('Programación');
+    expect(splitDashboardModuleHealthIds(ids).overflowIds).toEqual([]);
+  });
+
+  it('técnico y contratista tienen Programación de navegación y no piden resúmenes en el fan-out', () => {
+    expect(getDashboardRoleComposition(UserRole.TECHNICIAN).moduleHealthIds).toEqual([
+      'scheduling',
+    ]);
+    expect(getDashboardRoleComposition(UserRole.CONTRACTOR).moduleHealthIds).toEqual([
+      'scheduling',
+    ]);
+    expect(resolveDashboardDataSources(UserRole.TECHNICIAN)).toEqual(['public-branding']);
+  });
+
+  it('vista base no monta B1b', () => {
+    for (const role of [
+      UserRole.AUDITOR,
+      UserRole.HR,
+      UserRole.SUBSCRIBER,
+      UserRole.PARTNER,
+      UserRole.INVESTOR,
+    ]) {
+      expect(getDashboardRoleComposition(role).moduleHealthIds).toEqual([]);
+    }
+  });
+
+  it('el overflow recorta Operaciones y conserva los chips con contrato', () => {
+    const nine = [
+      'scheduling',
+      'help-desk',
+      'commercial',
+      'opportunities',
+      'inventory',
+      'configuration',
+      'operations',
+      'scheduling',
+      'help-desk',
+    ] as const;
+    const split = splitDashboardModuleHealthIds(nine);
+    expect(split.visibleIds).not.toContain('operations');
+    expect(split.overflowIds).toEqual(['operations']);
+    expect(split.visibleIds).toHaveLength(8);
   });
 });

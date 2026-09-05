@@ -37,6 +37,12 @@ export interface ExecutionOrderTemplateReference {
   key: string;
   version: number;
   label: string;
+  /**
+   * Requisitos congelados al crear la OT (snapshot inmutable, DATA-P1-3).
+   * Aditivo v1.x: se omite cuando el snapshot no está disponible; el portal
+   * no debe consultar el catálogo vivo de plantillas para operar la OT.
+   */
+  requirements?: ExecutionOrderTemplateRequirement[];
 }
 
 export interface ExecutionOrderScheduleView {
@@ -158,12 +164,24 @@ export interface RegisterActivityCommand {
   }>;
 }
 
+export interface UpdateActivityCommand {
+  activityType?: string;
+  description?: string;
+}
+
 export interface RegisterItemUsageCommand {
   itemId: string;
   quantity: number;
   serialNumber?: string | null;
   action: ExecutionOrderItemAction;
   finalDisposition: InventoryDisposition;
+  /**
+   * Semántica dual documentada (no cambiar sin decisión de arquitectura):
+   * en MOD11 (validación de consumo, `assertCustodyAssignment`) es el ID del
+   * usuario técnico/cuadrilla asignado a la OT; el worker MOD12 materializa
+   * en el ledger el UUID de la ubicación móvil (stock_locations) asociada a
+   * ese responsable. Ver informe de fase de custodia del ejecutor.
+   */
   technicianCustodyId: string;
 }
 
@@ -303,6 +321,17 @@ export interface CreateExecutionOrderTemplateCommand {
   workType: WfmWorkType;
   requirements: ExecutionOrderTemplateRequirement[];
   reasonCatalogs?: string[];
+}
+
+/** Resumen de plantilla para catálogos y listados de administración. */
+export interface ExecutionOrderTemplateSummary {
+  id: string;
+  key: string;
+  label: string;
+  workType: WfmWorkType;
+  status: 'DRAFT' | 'PUBLISHED' | 'RETIRED';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateExecutionOrderTemplateVersionCommand {

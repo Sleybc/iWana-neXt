@@ -40,13 +40,25 @@ export type DashboardBlockId =
   | 'pipeline'
   | 'inventory'
   | 'next-configuration'
-  | 'change-history'
-  | 'quick-actions';
+  | 'change-history';
+
+/** Chips de B1b — salud de módulos (centro de mando). */
+export type DashboardModuleHealthId =
+  | 'scheduling'
+  | 'help-desk'
+  | 'commercial'
+  | 'opportunities'
+  | 'inventory'
+  | 'configuration'
+  | 'operations';
+
+export type DashboardModuleHealthStatus = 'ok' | 'attention' | 'at-risk' | 'unknown';
 
 export interface DashboardRoleComposition {
   primaryActionId: DashboardActionId;
   secondaryActionId: DashboardActionId | null;
   metricIds: readonly DashboardMetricId[];
+  moduleHealthIds: readonly DashboardModuleHealthId[];
   dominantBlockId: DashboardBlockId | null;
   supportBlockIds: readonly DashboardBlockId[];
   foldedBlockIds: readonly DashboardBlockId[];
@@ -103,12 +115,22 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
   UserRole,
   {
     metricIds: readonly DashboardMetricId[];
+    moduleHealthIds: readonly DashboardModuleHealthId[];
     blockIds: readonly DashboardBlockId[];
     actionIds: readonly DashboardActionId[];
   }
 > = {
   [UserRole.ADMIN]: {
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
+    moduleHealthIds: [
+      'scheduling',
+      'help-desk',
+      'commercial',
+      'opportunities',
+      'inventory',
+      'configuration',
+      'operations',
+    ],
     blockIds: [
       'field-attention',
       'help-desk',
@@ -117,7 +139,6 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
       'inventory',
       'next-configuration',
       'change-history',
-      'quick-actions',
     ],
     actionIds: [
       'register-subscriber',
@@ -131,58 +152,69 @@ export const DASHBOARD_ROLE_AUTHORIZATION_CEILING: Record<
   },
   [UserRole.NOC]: {
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4'],
-    blockIds: ['field-attention', 'inventory', 'quick-actions'],
+    moduleHealthIds: ['scheduling', 'help-desk', 'inventory', 'operations'],
+    blockIds: ['field-attention', 'inventory'],
     actionIds: ['schedule-visit', 'view-today-agenda', 'view-profile'],
   },
   [UserRole.SUPPORT]: {
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4'],
-    blockIds: ['help-desk', 'field-attention', 'quick-actions'],
+    moduleHealthIds: ['scheduling', 'help-desk', 'operations'],
+    blockIds: ['help-desk', 'field-attention'],
     actionIds: ['register-case', 'register-subscriber', 'view-profile'],
   },
   [UserRole.SALES]: {
     metricIds: ['I-5', 'I-6', 'I-7'],
-    blockIds: ['commercial-attention', 'pipeline', 'quick-actions'],
+    moduleHealthIds: ['commercial', 'opportunities', 'operations'],
+    blockIds: ['commercial-attention', 'pipeline'],
     actionIds: ['register-subscriber', 'new-opportunity', 'view-profile'],
   },
   [UserRole.ACCOUNTANT]: {
     metricIds: ['I-5'],
-    blockIds: ['commercial-attention', 'quick-actions'],
+    moduleHealthIds: ['commercial'],
+    blockIds: ['commercial-attention'],
     actionIds: ['review-plans-without-price', 'view-profile'],
   },
   [UserRole.TECHNICIAN]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    moduleHealthIds: ['scheduling'],
+    blockIds: [],
     actionIds: ['view-today-agenda', 'view-profile'],
   },
   [UserRole.CONTRACTOR]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    moduleHealthIds: ['scheduling'],
+    blockIds: [],
     actionIds: ['view-today-agenda', 'view-profile'],
   },
   // D-SEC-01 / C-13: listado aprobado (SEC GO condicionado); sin página «ver todo».
   [UserRole.AUDITOR]: {
     metricIds: [],
-    blockIds: ['change-history', 'quick-actions'],
+    moduleHealthIds: [],
+    blockIds: ['change-history'],
     actionIds: ['view-profile'],
   },
   [UserRole.HR]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    moduleHealthIds: [],
+    blockIds: [],
     actionIds: ['view-profile'],
   },
   [UserRole.SUBSCRIBER]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    moduleHealthIds: [],
+    blockIds: [],
     actionIds: ['view-profile'],
   },
   [UserRole.PARTNER]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    moduleHealthIds: [],
+    blockIds: [],
     actionIds: ['view-profile'],
   },
   [UserRole.INVESTOR]: {
     metricIds: [],
-    blockIds: ['quick-actions'],
+    moduleHealthIds: [],
+    blockIds: [],
     actionIds: ['view-profile'],
   },
 };
@@ -329,20 +361,87 @@ export const DASHBOARD_BLOCK_REGISTRY: Record<DashboardBlockId, DashboardBlockDe
     title: 'Historial de cambios',
     sources: ['audit'],
   },
-  'quick-actions': {
-    id: 'quick-actions',
-    title: 'Accesos rápidos',
+};
+
+export interface DashboardModuleHealthDefinition {
+  id: DashboardModuleHealthId;
+  label: string;
+  /** Fuentes remotas; vacío = chip de navegación honesto (Sin dato). */
+  sources: readonly DashboardDataSourceId[];
+  /** Destino cuando no hay señal que reconcilie un filtro. */
+  fallbackHref: string;
+}
+
+export const DASHBOARD_MODULE_HEALTH_REGISTRY: Record<
+  DashboardModuleHealthId,
+  DashboardModuleHealthDefinition
+> = {
+  scheduling: {
+    id: 'scheduling',
+    label: 'Programación',
+    sources: ['wfm'],
+    fallbackHref: '/dashboard/scheduling',
+  },
+  'help-desk': {
+    id: 'help-desk',
+    label: 'Mesa de ayuda',
+    sources: ['assurance'],
+    fallbackHref: '/dashboard/assurance',
+  },
+  commercial: {
+    id: 'commercial',
+    label: 'Comercial',
+    sources: ['commercial'],
+    fallbackHref: '/dashboard/commercial',
+  },
+  opportunities: {
+    id: 'opportunities',
+    label: 'Oportunidades',
+    sources: ['crm'],
+    fallbackHref: '/dashboard/crm/expedientes?view=open',
+  },
+  inventory: {
+    id: 'inventory',
+    label: 'Inventario',
+    sources: ['inventory'],
+    fallbackHref: '/dashboard/inventory',
+  },
+  configuration: {
+    id: 'configuration',
+    label: 'Configuración',
+    sources: ['tenant-summary'],
+    fallbackHref: '/dashboard/settings',
+  },
+  operations: {
+    id: 'operations',
+    label: 'Operaciones',
     sources: [],
+    fallbackHref: '/dashboard/operations',
   },
 };
+
+/** Tope visual B1b. Los chips de overflow salen tras «Ver más módulos». */
+export const DASHBOARD_MODULE_HEALTH_VISIBLE_CAP = 8;
+export const DASHBOARD_MODULE_HEALTH_OVERFLOW_IDS: readonly DashboardModuleHealthId[] = [
+  'operations',
+];
 
 export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleComposition> = {
   [UserRole.ADMIN]: {
     primaryActionId: 'register-subscriber',
     secondaryActionId: 'schedule-visit',
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4', 'I-5', 'I-6', 'I-7'],
+    moduleHealthIds: [
+      'scheduling',
+      'help-desk',
+      'commercial',
+      'opportunities',
+      'inventory',
+      'configuration',
+      'operations',
+    ],
     dominantBlockId: 'field-attention',
-    supportBlockIds: ['next-configuration', 'change-history', 'quick-actions'],
+    supportBlockIds: ['next-configuration', 'change-history'],
     foldedBlockIds: ['help-desk', 'commercial-attention', 'inventory'],
     showOperationalTenantCard: true,
   },
@@ -350,8 +449,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'schedule-visit',
     secondaryActionId: 'view-today-agenda',
     metricIds: ['I-1', 'I-2', 'I-3', 'I-4'],
+    moduleHealthIds: ['scheduling', 'help-desk', 'inventory', 'operations'],
     dominantBlockId: 'field-attention',
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: ['inventory'],
     showOperationalTenantCard: true,
   },
@@ -359,8 +459,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'register-case',
     secondaryActionId: 'register-subscriber',
     metricIds: ['I-3', 'I-4', 'I-1', 'I-2'],
+    moduleHealthIds: ['scheduling', 'help-desk', 'operations'],
     dominantBlockId: 'help-desk',
-    supportBlockIds: ['field-attention', 'quick-actions'],
+    supportBlockIds: ['field-attention'],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -368,8 +469,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'register-subscriber',
     secondaryActionId: 'new-opportunity',
     metricIds: ['I-5', 'I-6', 'I-7'],
+    moduleHealthIds: ['commercial', 'opportunities', 'operations'],
     dominantBlockId: 'commercial-attention',
-    supportBlockIds: ['pipeline', 'quick-actions'],
+    supportBlockIds: ['pipeline'],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -377,8 +479,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'review-plans-without-price',
     secondaryActionId: null,
     metricIds: ['I-5'],
+    moduleHealthIds: ['commercial'],
     dominantBlockId: 'commercial-attention',
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -386,8 +489,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-today-agenda',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: ['scheduling'],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -395,8 +499,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-today-agenda',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: ['scheduling'],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -404,9 +509,10 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: [],
     dominantBlockId: null,
     // UX §4.9 B2b — historial minimizado (últimos N, sin «ver todo»).
-    supportBlockIds: ['change-history', 'quick-actions'],
+    supportBlockIds: ['change-history'],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -414,8 +520,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: [],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -423,8 +530,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: [],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -432,8 +540,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: [],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -441,8 +550,9 @@ export const DASHBOARD_ROLE_COMPOSITION: Record<UserRole, DashboardRoleCompositi
     primaryActionId: 'view-profile',
     secondaryActionId: null,
     metricIds: [],
+    moduleHealthIds: [],
     dominantBlockId: null,
-    supportBlockIds: ['quick-actions'],
+    supportBlockIds: [],
     foldedBlockIds: [],
     showOperationalTenantCard: true,
   },
@@ -486,7 +596,8 @@ export function toLocalDayKey(date: Date = new Date()): string {
 
 /**
  * Fuentes a pedir en el fan-out para un rol (R-1):
- * solo contratos autorizados y usados por la composición.
+ * solo contratos autorizados y usados por métricas y bloques.
+ * B1b reutiliza esas fuentes; no añade peticiones (técnico no pide el resumen de campo).
  */
 export function resolveDashboardDataSources(role: UserRole): readonly DashboardDataSourceId[] {
   const composition = getDashboardRoleComposition(role);
@@ -587,4 +698,40 @@ export function resolveDashboardMetricAccent(options: {
   }
   const hasSignal = (value != null && value > 0) || hasDelta;
   return hasSignal ? declared : 'neutral';
+}
+
+export function resolveDashboardModuleHealth(
+  id: DashboardModuleHealthId,
+): DashboardModuleHealthDefinition {
+  return DASHBOARD_MODULE_HEALTH_REGISTRY[id];
+}
+
+/**
+ * Parte la lista de chips en visibles vs overflow («Ver más módulos»).
+ * Los chips de overflow (Operaciones) salen primero si se supera el tope.
+ */
+export function splitDashboardModuleHealthIds(ids: readonly DashboardModuleHealthId[]): {
+  visibleIds: readonly DashboardModuleHealthId[];
+  overflowIds: readonly DashboardModuleHealthId[];
+} {
+  if (ids.length <= DASHBOARD_MODULE_HEALTH_VISIBLE_CAP) {
+    return { visibleIds: ids, overflowIds: [] };
+  }
+
+  const overflowSet = new Set<DashboardModuleHealthId>(DASHBOARD_MODULE_HEALTH_OVERFLOW_IDS);
+  const pinned: DashboardModuleHealthId[] = [];
+  const overflow: DashboardModuleHealthId[] = [];
+  for (const id of ids) {
+    if (overflowSet.has(id)) overflow.push(id);
+    else pinned.push(id);
+  }
+
+  if (pinned.length <= DASHBOARD_MODULE_HEALTH_VISIBLE_CAP) {
+    return { visibleIds: pinned, overflowIds: overflow };
+  }
+
+  return {
+    visibleIds: pinned.slice(0, DASHBOARD_MODULE_HEALTH_VISIBLE_CAP),
+    overflowIds: [...pinned.slice(DASHBOARD_MODULE_HEALTH_VISIBLE_CAP), ...overflow],
+  };
 }

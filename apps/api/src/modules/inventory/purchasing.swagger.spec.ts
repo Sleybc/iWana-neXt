@@ -1,6 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
@@ -34,14 +37,23 @@ describe('PurchasingController Swagger', () => {
         { provide: RfqPdfService, useValue: {} },
         { provide: SupplierProfileService, useValue: {} },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   it('documenta paginación cursor ADR-064 en solicitudes de compra', () => {
@@ -65,6 +77,34 @@ describe('PurchasingController Swagger', () => {
     const listOrders = document.paths['/purchasing/orders']?.get;
     expect(listOrders?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
     expect(listOrders?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
+  });
+
+  it('documenta el eje derivado fulfillmentStatus en listado y detalle', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Purchasing Test').setVersion('1.0').build(),
+    );
+
+    const listRequests = document.paths['/purchasing/requests']?.get;
+    expect(listRequests?.description).toContain('fulfillmentStatus');
+    const okResponse = listRequests?.responses?.['200'] as { description?: string } | undefined;
+    expect(okResponse?.description).toContain('fulfillmentStatus');
+
+    const getDetail = document.paths['/purchasing/requests/{id}']?.get;
+    expect(getDetail?.description).toContain('fulfillmentStatus');
+
+    const schemas = document.components?.schemas as
+      | Record<string, { properties?: Record<string, unknown> }>
+      | undefined;
+    const fulfillmentProperty = schemas?.PurchaseRequestFulfillmentDto?.properties
+      ?.fulfillmentStatus as { enum?: string[]; allOf?: unknown } | undefined;
+    expect(fulfillmentProperty).toBeDefined();
+
+    const enumSchema = schemas?.PurchaseRequestFulfillmentStatus as { enum?: string[] } | undefined;
+    const documentedValues = fulfillmentProperty?.enum ?? enumSchema?.enum ?? [];
+    expect(documentedValues.sort()).toEqual(
+      ['NOT_ORDERED', 'PARTIALLY_RECEIVED', 'PENDING_RECEIPT', 'RECEIVED'].sort(),
+    );
   });
 
   it('documenta endpoints RFQ del modulo purchasing', () => {
@@ -152,5 +192,42 @@ describe('PurchasingController Swagger', () => {
     expect(document.paths['/purchasing/suppliers']?.get?.summary).toBe(
       'Listar proveedores con perfil comercial',
     );
+  });
+
+  it('CA-25-12: documenta taxes en POST de cotizaciones y presets en GET detail', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Purchasing Test').setVersion('1.0').build(),
+    );
+
+    const addQuote = document.paths['/purchasing/requests/{id}/quotes']?.post;
+    expect(addQuote?.summary).toBe('Registrar cotización para una solicitud');
+    expect(addQuote?.description).toContain('taxes');
+
+    const schemas = document.components?.schemas as
+      | Record<string, { properties?: Record<string, unknown> }>
+      | undefined;
+    expect(schemas?.AddSupplierQuoteDto?.properties?.taxes).toBeDefined();
+    expect(schemas?.AddSupplierQuoteDto?.properties?.shippingArrangement).toBeDefined();
+    expect(schemas?.AddSupplierQuoteTaxDto).toBeDefined();
+
+    const getDetail = document.paths['/purchasing/requests/{id}']?.get;
+    expect(getDetail?.description).toContain('purchaseTaxPresets');
+  });
+
+  it('documenta PATCH para corregir una cotización registrada', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Purchasing Test').setVersion('1.0').build(),
+    );
+
+    const updateQuote = document.paths['/purchasing/requests/{id}/quotes/{quoteId}']?.patch;
+    expect(updateQuote?.summary).toBe('Corregir una cotización registrada');
+    const schemas = document.components?.schemas as
+      | Record<string, { properties?: Record<string, unknown> }>
+      | undefined;
+    expect(schemas?.UpdateSupplierQuoteDto).toBeDefined();
+    expect(document.paths['/purchasing/quotes/{id}']?.patch).toBeUndefined();
+    expect(document.paths['/purchasing/quotes/{id}']?.put).toBeUndefined();
   });
 });

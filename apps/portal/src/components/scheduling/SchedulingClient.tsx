@@ -608,6 +608,9 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         ? wfmApi.visitRequests.list({
             page: 1,
             limit: isDashboardSurface ? 12 : 8,
+            // El backend filtra estados programables y excluye trabajo ya agendado;
+            // el filtro local de pending-visits-ui queda como defensa en profundidad.
+            scope: 'actionable',
           })
         : Promise.resolve<ListWfmVisitRequestsResponse | null>(null);
 
@@ -1299,6 +1302,7 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
                       view={filters.view}
                       pendingVisitRequests={pendingVisitResponse?.items ?? []}
                       selectedPendingVisitRequestId={selectedPendingVisitRequest?.id ?? null}
+                      showPendingVisitsRail={canManage}
                       pendingAsideContent={
                         filters.view === 'day' && !dailyDraft
                           ? renderPendingDispatchPanel(true)

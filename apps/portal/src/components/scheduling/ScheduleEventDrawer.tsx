@@ -164,9 +164,11 @@ export function ScheduleEventDrawer({
                 <span>{getEventReferenceLabel(event)}</span>
               </p>
             </div>
-            <p className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300">
-              {event.description || 'Sin descripción interna registrada para esta actividad.'}
-            </p>
+            {event.description?.trim() ? (
+              <p className="mt-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300">
+                {event.description}
+              </p>
+            ) : null}
           </section>
 
           {workOrderWarning ? (
@@ -215,11 +217,11 @@ export function ScheduleEventDrawer({
                   id="agenda-order"
                   className="text-sm font-semibold text-gray-900 dark:text-white"
                 >
-                  Resumen de la orden de trabajo
+                  Orden vinculada — qué aporta
                 </h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  La información completa se registra en la orden de trabajo; Agenda solo muestra su
-                  resumen.
+                  Solo lo que la orden añade o cambia respecto a la visita. Ventana, sitio y
+                  responsable se coordinan en Contexto operativo arriba.
                 </p>
               </div>
             </div>
@@ -232,6 +234,7 @@ export function ScheduleEventDrawer({
                 error={executionOrderError}
                 syncState={syncState}
                 readonly
+                variant="agenda-compact"
                 canOpen={hasExecutionOrder && Boolean(onOpenExecutionOrder)}
                 {...(onRefreshDetail ? { onRefreshDetail } : {})}
                 {...(executionOrderError && onRetry ? { onRetry } : {})}
@@ -259,40 +262,31 @@ export function ScheduleEventDrawer({
             />
           ) : null}
 
-          {/* ── Historial de cambios ── */}
+          {/* ── Historial de cambios — compacto ── */}
           <section
             aria-labelledby="agenda-history"
-            className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 dark:border-dark-border dark:bg-dark-surface-2"
           >
-            <h3 id="agenda-history" className="text-sm font-semibold text-gray-900 dark:text-white">
+            <h3
+              id="agenda-history"
+              className="text-xs font-semibold tracking-tight text-gray-900 dark:text-white"
+            >
               Historial de cambios
             </h3>
-            <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              <p className="flex items-center justify-between py-1.5">
-                <span>
-                  Creado: {formatChangeTimestamp(event.createdAt ?? event.scheduledStartAt)}
-                </span>
+            <div className="mt-1.5 space-y-0.5 text-xs leading-4 text-gray-500 dark:text-gray-400">
+              <p>Creado: {formatChangeTimestamp(event.createdAt ?? event.scheduledStartAt)}</p>
+              <p>
+                Última modificación:{' '}
+                {formatChangeTimestamp(event.updatedAt ?? event.scheduledStartAt)}
               </p>
-              <p className="flex items-center justify-between py-1.5">
-                <span>
-                  Última modificación:{' '}
-                  {formatChangeTimestamp(event.updatedAt ?? event.scheduledStartAt)}
-                </span>
-              </p>
-              <p className="flex items-center justify-between py-1.5">
-                <span>Tipo: {getWfmWorkTypeLabel(event.type)}</span>
-              </p>
-              <p className="flex items-center justify-between py-1.5">
-                <span>Estado: {getScheduleEventStatusLabel(event.status)}</span>
+              <p>
+                Tipo: {getWfmWorkTypeLabel(event.type)} · Estado:{' '}
+                {getScheduleEventStatusLabel(event.status)}
               </p>
               {event.assignedUserId ? (
-                <p className="flex items-center justify-between py-1.5">
-                  <span>
-                    Responsable:{' '}
-                    {technician
-                      ? getTechnicianDisplayName(technician)
-                      : 'Responsable no disponible'}
-                  </span>
+                <p className="truncate">
+                  Responsable:{' '}
+                  {technician ? getTechnicianDisplayName(technician) : 'Responsable no disponible'}
                 </p>
               ) : null}
             </div>

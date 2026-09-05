@@ -1,8 +1,10 @@
+import { InventoryTrackingMode, StockBalanceCondition } from '@iwana/shared';
 import {
   addCatalogSelectionToDraft,
   applyBulkQuantityToDraftLines,
   createEmptyStockIssueDraft,
   removeDraftLine,
+  updateDraftLineItem,
 } from './stock-issue-draft';
 
 describe('stock-issue-draft', () => {
@@ -105,5 +107,104 @@ describe('stock-issue-draft', () => {
 
     expect(next.lines[0]?.requestedQty).toBe('5');
     expect(next.lines[1]?.requestedQty).toBe('1');
+  });
+
+  it('hidrata trackingMode, lotes y disponibilidad desde la selección (S1/C3)', () => {
+    const lots = [
+      {
+        lotId: 'lot-a',
+        lotNumber: 'LOTE-042',
+        expiryDate: null,
+        condition: StockBalanceCondition.NEW,
+        available: '6',
+      },
+    ];
+    const availability = [
+      {
+        condition: StockBalanceCondition.NEW,
+        quantityOnHand: '6',
+        quantityReserved: '0',
+        available: '6',
+      },
+      {
+        condition: StockBalanceCondition.REFURBISHED,
+        quantityOnHand: '2',
+        quantityReserved: '0',
+        available: '2',
+      },
+    ];
+
+    const result = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+      {
+        id: 'item-1',
+        sku: 'ONT-001',
+        name: 'ONT WiFi 6',
+        unitOfMeasure: 'UNIT',
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+        lots,
+        availability,
+        availableSerialCount: 2,
+      },
+    ]);
+
+    expect(result.draft.lines[0]).toMatchObject({
+      trackingMode: InventoryTrackingMode.SERIALIZED,
+      lots,
+      availability,
+      availableSerialCount: 2,
+      condition: StockBalanceCondition.NEW,
+    });
+  });
+
+  it('la condición inicial es la primera con disponible (D3)', () => {
+    const result = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+      {
+        id: 'item-1',
+        sku: 'CAB-010',
+        name: 'Cable drop',
+        unitOfMeasure: 'METER',
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+        lots: [],
+        availability: [
+          {
+            condition: StockBalanceCondition.NEW,
+            quantityOnHand: '0',
+            quantityReserved: '0',
+            available: '0',
+          },
+          {
+            condition: StockBalanceCondition.REFURBISHED,
+            quantityOnHand: '3',
+            quantityReserved: '0',
+            available: '3',
+          },
+        ],
+        availableSerialCount: 0,
+      },
+    ]);
+
+    expect(result.draft.lines[0]?.condition).toBe(StockBalanceCondition.REFURBISHED);
+  });
+
+  it('updateDraftLineItem rehidrata la línea en la vía manual', () => {
+    const initial = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+      { id: 'item-1', sku: 'ONT-001', name: 'ONT WiFi 6', unitOfMeasure: 'unidad' },
+    ]);
+    const lineId = initial.draft.lines[0]!.id;
+
+    const next = updateDraftLineItem(initial.draft, lineId, 'item-9', 'SER-9 · Router', 'UNIT', {
+      trackingMode: InventoryTrackingMode.SERIALIZED,
+      lots: [],
+      availability: [],
+      availableSerialCount: 0,
+    });
+
+    expect(next.lines[0]).toMatchObject({
+      itemId: 'item-9',
+      trackingMode: InventoryTrackingMode.SERIALIZED,
+      lotId: '',
+      serializedAssetId: '',
+      requestedQty: '1',
+    });
   });
 });

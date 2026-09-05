@@ -92,12 +92,6 @@ jest.mock('@/lib/api-client', () => {
   };
 });
 
-jest.mock('./QuickActionsPanel', () => ({
-  QuickActionsPanel: ({ role }: { role: string }) => (
-    <div data-testid="quick-actions">Accesos rápidos · {role}</div>
-  ),
-}));
-
 jest.mock('./RecentActivityPanel', () => ({
   RecentActivityPanel: ({
     entries,
@@ -374,7 +368,12 @@ describe('DashboardClient', () => {
 
     expect(screen.getByText('Casos abiertos')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByTestId('quick-actions')).toBeInTheDocument();
+    expect(screen.getByTestId('change-history')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ver mi perfil/i })).toHaveAttribute(
+      'href',
+      '/dashboard/profile',
+    );
+    expect(screen.queryByText(/Accesos rápidos/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Panel en preparación/i)).not.toBeInTheDocument();
   });
 
@@ -442,12 +441,20 @@ describe('DashboardClient', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
     expect(screen.getByLabelText('Indicadores núcleo')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Foco de hoy' })).toBeInTheDocument();
+      expect(screen.getByText('Visitas del día frente a la carga')).toBeInTheDocument();
+    });
     expect(screen.getByText('Visitas de hoy')).toBeInTheDocument();
     expect(screen.getByText('Casos abiertos')).toBeInTheDocument();
 
     const companySection = screen.getByLabelText('Estado de la empresa');
     expect(companySection).toBeInTheDocument();
     expect(within(companySection).getByText(/Ver en configuración/i)).toBeInTheDocument();
+    expect(within(companySection).getByRole('link', { name: /Ver mi perfil/i })).toHaveAttribute(
+      'href',
+      '/dashboard/profile',
+    );
     expect(within(companySection).queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
@@ -826,7 +833,13 @@ describe('DashboardClient', () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: /Reintentar/i }));
+    await user.click(
+      within(
+        screen
+          .getByText(/No pudimos cargar el próximo paso de configuración/i)
+          .closest('section') ?? document.body,
+      ).getByRole('button', { name: /Reintentar/i }),
+    );
     await waitFor(() => {
       expect(
         screen.queryByText(/No pudimos cargar el próximo paso de configuración/i),
@@ -972,6 +985,9 @@ describe('DashboardClient', () => {
 
     const alertLink = within(fieldPanel).getByRole('link', { name: /Aviso de campo 1/i });
     expect(alertLink).toHaveAttribute('href', '/dashboard/scheduling/agenda');
+    expect(within(fieldPanel).getByRole('table', { name: 'Avisos de campo' })).toBeInTheDocument();
+    expect(within(fieldPanel).getByText('Aviso')).toBeInTheDocument();
+    expect(within(fieldPanel).getByText('Estado')).toBeInTheDocument();
     expect(alertLink.className).not.toMatch(/rounded-xl/);
     expect(alertLink.className).not.toMatch(/(?:^|\s)border(?:\s|$)/);
     expect(within(fieldPanel).queryByText(/OVERDUE|DRAFT_SOON/)).not.toBeInTheDocument();
@@ -1279,7 +1295,7 @@ describe('DashboardClient', () => {
     const pending = screen.getByRole('link', { name: /Solicitudes por programar/i });
     expect(pending.className).not.toMatch(/bg-amber/);
     expect(pending.className).not.toMatch(/bg-rose/);
-    expect(pending.className).toMatch(/min-h-24/);
+    expect(pending.className).toMatch(/min-h-28/);
     expect(pending.className).toMatch(/flex-col/);
     expect(pending.className).not.toMatch(/min-h-14/);
     expect(pending.className).not.toMatch(/flex-row/);
@@ -1304,8 +1320,9 @@ describe('DashboardClient', () => {
     // B2 adaptativo (Opción A): dominante bajo (al día) → modo banda.
     triggerDominantResize(200);
     expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
-    const supportGrid = document.querySelector('.xl\\:grid-cols-3');
+    const supportGrid = document.querySelector('.md\\:grid-cols-2');
     expect(supportGrid?.className).toMatch(/md:grid-cols-2/);
+    expect(document.querySelector('.xl\\:grid-cols-3')).toBeNull();
 
     const emptyTitle = screen.getByText('Sin avisos de campo');
     expect(emptyTitle.parentElement?.parentElement?.className).not.toMatch(/bg-iwana-surface-soft/);
@@ -1356,7 +1373,7 @@ describe('DashboardClient', () => {
     expect(document.querySelector('.xl\\:grid-cols-12')).not.toBeNull();
   });
 
-  it('B2 adaptativo: apoyo de 2 paneles usa md:grid-cols-2 en banda (SUPPORT)', async () => {
+  it('B2 adaptativo: apoyo de 1 panel usa contenedor xl:max-w-2xl en banda (SUPPORT)', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'u-support', role: UserRole.SUPPORT, tenantId: 't-1', displayName: 'Soporte' },
       isLoading: false,
@@ -1374,10 +1391,11 @@ describe('DashboardClient', () => {
 
     expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
     expect(document.querySelector('.xl\\:grid-cols-3')).toBeNull();
-    expect(document.querySelector('.md\\:grid-cols-2')).not.toBeNull();
+    expect(document.querySelector('.md\\:grid-cols-2')).toBeNull();
+    expect(document.querySelector('.xl\\:max-w-2xl')).not.toBeNull();
   });
 
-  it('B2 adaptativo: apoyo de 1 panel usa contenedor xl:max-w-2xl en banda (NOC)', async () => {
+  it('B2 adaptativo: sin apoyo, el dominante ocupa el ancho completo (NOC)', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'u-noc', role: UserRole.NOC, tenantId: 't-1', displayName: 'NOC' },
       isLoading: false,
@@ -1394,6 +1412,166 @@ describe('DashboardClient', () => {
     expect(document.querySelector('.xl\\:grid-cols-12')).toBeNull();
     expect(document.querySelector('.xl\\:grid-cols-3')).toBeNull();
     expect(document.querySelector('.md\\:grid-cols-2')).toBeNull();
-    expect(document.querySelector('.xl\\:max-w-2xl')).not.toBeNull();
+    expect(document.querySelector('.xl\\:max-w-2xl')).toBeNull();
+    expect(document.querySelector('.xl\\:col-span-4')).toBeNull();
+  });
+
+  it('B1b: administradora ve el mapa de módulos con señal y Operaciones sin cifra', async () => {
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Programación, En riesgo, 1/ })).toBeInTheDocument();
+    });
+
+    const band = screen.getByLabelText('Salud de la operación');
+    expect(within(band).getByRole('link', { name: /Programación, En riesgo, 1/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/dashboard/scheduling/agenda'),
+    );
+    expect(
+      within(band).getByRole('link', { name: /Mesa de ayuda, En riesgo, 1/ }),
+    ).toBeInTheDocument();
+    expect(within(band).getByRole('link', { name: /Comercial, En riesgo, 4/ })).toBeInTheDocument();
+    expect(within(band).getByRole('link', { name: 'Oportunidades, Al día' })).toBeInTheDocument();
+    expect(within(band).getByRole('link', { name: 'Inventario, Al día' })).toBeInTheDocument();
+    expect(within(band).getByRole('link', { name: 'Configuración, Al día' })).toBeInTheDocument();
+    expect(within(band).getByRole('link', { name: 'Operaciones, Sin dato' })).toHaveAttribute(
+      'href',
+      '/dashboard/operations',
+    );
+    expect(within(band).queryByText('10')).not.toBeInTheDocument();
+  });
+
+  it('B1b: técnico navega a la agenda sin pedir el resumen de campo', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-tech', role: UserRole.TECHNICIAN, tenantId: 't-1', displayName: 'Técnico' },
+      isLoading: false,
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Programación, Sin dato' })).toBeInTheDocument();
+    });
+
+    expect(wfmGetSummary).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Programación, Sin dato' })).toHaveAttribute(
+      'href',
+      '/dashboard/scheduling/agenda',
+    );
+    expect(screen.queryByLabelText('Indicadores núcleo')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Foco de hoy' })).not.toBeInTheDocument();
+  });
+
+  it('B1b: vista base no monta la banda', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'u-hr', role: UserRole.HR, tenantId: 't-1', displayName: 'Talento' },
+      isLoading: false,
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: 'Demo ISP' })).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Salud de la operación')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Foco de hoy' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Ver mi perfil/i })).toHaveAttribute(
+        'href',
+        '/dashboard/profile',
+      );
+    });
+
+    expect(screen.queryByText(/Accesos rápidos/i)).not.toBeInTheDocument();
+  });
+
+  it('B1b: error de campo pinta Sin dato y no finge 0', async () => {
+    const { ApiError } = jest.requireMock('@/lib/api-client') as {
+      ApiError: new (status: number, message: string) => Error;
+    };
+    wfmGetSummary.mockRejectedValue(new ApiError(500, 'wfm down'));
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('No pudimos cargar el estado de algunos módulos. Reintenta.'),
+      ).toBeInTheDocument();
+    });
+
+    const band = screen.getByLabelText('Salud de la operación');
+    expect(within(band).getAllByText('Sin dato').length).toBeGreaterThanOrEqual(1);
+    expect(
+      within(band).queryByRole('link', { name: /Programación, En riesgo/ }),
+    ).not.toBeInTheDocument();
+    expect(within(band).getAllByRole('button', { name: 'Reintentar' }).length).toBeGreaterThan(0);
+    expect(screen.getByText('No pudimos cargar el foco de campo. Reintenta.')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('Foco de hoy: ratio real y ProgressMeter; I-1 sin vencidas usa delta lima', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 3,
+      overdueCount: 0,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 0,
+        readyToScheduleCount: 0,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      },
+      alerts: [],
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Visitas del día frente a la carga')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('heading', { name: 'Foco de hoy' })).toBeInTheDocument();
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    expect(screen.getByText('Sin vencidas')).toBeInTheDocument();
+    const focusPanel = screen.getByRole('heading', { name: 'Foco de hoy' }).closest('section');
+    expect(
+      within(focusPanel as HTMLElement).getByRole('link', { name: 'Ver la agenda de hoy' }),
+    ).toHaveAttribute('href', '/dashboard/scheduling/agenda');
+  });
+
+  it('Foco de hoy: denominador 0 no pinta barra al 0 %', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 0,
+      overdueCount: 0,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 0,
+        readyToScheduleCount: 0,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      },
+      alerts: [],
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sin carga que medir')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('heading', { name: 'Foco de hoy' })).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 });

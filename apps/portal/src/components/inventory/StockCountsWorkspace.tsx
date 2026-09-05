@@ -38,6 +38,7 @@ import {
   getStockCountStatusLabel,
 } from './inventory-labels';
 import { InventoryLocationPicker } from './InventoryLocationPicker';
+import { resolveBarcodeToCatalogItem } from './inventory-barcode-capture';
 
 /**
  * El backend explica por qué se bloqueó el movimiento pero no el próximo paso.
@@ -140,6 +141,17 @@ function StockCountsWorkspaceInner({
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // F4 (RF-CAT-16): captura por código — ubica la línea del conteo sin búsqueda manual.
+  const [barcodeQuery, setBarcodeQuery] = useState('');
+  const [isLocatingBarcode, setIsLocatingBarcode] = useState(false);
+  const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
+  const [locatedLineId, setLocatedLineId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBarcodeQuery('');
+    setBarcodeNotice(null);
+    setLocatedLineId(null);
+  }, [detail?.id]);
 
   const locationMap = useMemo(
     () => new Map(locations.map((location) => [location.id, location])),
@@ -298,6 +310,57 @@ function StockCountsWorkspaceInner({
     }
   }
 
+  /**
+   * F4 (RF-CAT-16, CA-F4-05): el código entra como `q` al lookup E-4 existente
+   * (el backend ya resuelve `barcode`) y la línea queda ubicada y enfocada sin
+   * búsqueda manual. La etiqueta del hallazgo se muestra para verificación.
+   */
+  async function handleBarcodeLocate() {
+    if (!detail) {
+      return;
+    }
+
+    setIsLocatingBarcode(true);
+    try {
+      const result = await resolveBarcodeToCatalogItem(barcodeQuery);
+      if (result.status === 'empty') {
+        setLocatedLineId(null);
+        setBarcodeNotice('Escribe o escanea un código para ubicar su línea.');
+        return;
+      }
+      if (result.status === 'not-found') {
+        setLocatedLineId(null);
+        setBarcodeNotice('Ningún producto del catálogo usa ese código.');
+        return;
+      }
+      const hitLabel = result.hit.sublabel
+        ? `${result.hit.sublabel} · ${result.hit.label}`
+        : result.hit.label;
+      const line = detail.lines.find((entry) => entry.itemId === result.hit.itemId);
+      if (!line) {
+        setLocatedLineId(null);
+        setBarcodeNotice(`Ese código es de ${hitLabel}, que no está en este conteo.`);
+        return;
+      }
+      setLocatedLineId(line.id);
+      setBarcodeNotice(`Ubicado: ${hitLabel}.`);
+      const countedInput = document.getElementById(`count-qty-${line.id}`);
+      countedInput?.focus();
+      try {
+        countedInput?.scrollIntoView({ block: 'center' });
+      } catch {
+        // jsdom
+      }
+    } catch (locateError) {
+      setLocatedLineId(null);
+      setBarcodeNotice(
+        locateError instanceof Error ? locateError.message : 'No fue posible ubicar el código.',
+      );
+    } finally {
+      setIsLocatingBarcode(false);
+    }
+  }
+
   async function handleSaveQuantities() {
     if (!detail) {
       return;
@@ -449,6 +512,35 @@ function StockCountsWorkspaceInner({
       >
         <div className="space-y-4">
           {actionError ? <StockCountErrorAlert message={actionError} /> : null}
+          <div className="rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <Input
+                label="Código de barras"
+                value={barcodeQuery}
+                onChange={(event) => setBarcodeQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void handleBarcodeLocate();
+                  }
+                }}
+                helperText="Escanea o escribe el código para ubicar su línea sin buscar a mano."
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                loading={isLocatingBarcode}
+                onClick={() => void handleBarcodeLocate()}
+              >
+                Ubicar línea
+              </Button>
+            </div>
+            {barcodeNotice ? (
+              <p role="status" className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                {barcodeNotice}
+              </p>
+            ) : null}
+          </div>
           <div className={portalDataTableShellClassName}>
             <table className="min-w-full">
               <thead>
@@ -462,7 +554,12 @@ function StockCountsWorkspaceInner({
               </thead>
               <tbody>
                 {detail.lines.map((line) => (
-                  <tr key={line.id} className={portalTableRowHoverClassName}>
+                  <tr
+                    key={line.id}
+                    className={`${portalTableRowHoverClassName} ${
+                      locatedLineId === line.id ? 'bg-iwana-primary/5 dark:bg-dark-surface-2' : ''
+                    }`}
+                  >
                     <td className={portalDataTableCellClassName}>{line.itemSku ?? '—'}</td>
                     <td className={portalDataTableCellClassName}>{line.itemName ?? line.itemId}</td>
                     <td className={`${portalDataTableCellClassName} tabular-nums`}>
@@ -471,6 +568,7 @@ function StockCountsWorkspaceInner({
                     <td className={portalDataTableCellClassName}>
                       {editable ? (
                         <Input
+                          id={`count-qty-${line.id}`}
                           type="number"
                           min="0"
                           step="any"

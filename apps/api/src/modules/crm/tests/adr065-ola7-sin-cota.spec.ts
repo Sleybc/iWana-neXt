@@ -13,6 +13,7 @@ import { PurchasingService } from '../../inventory/services/purchasing.service';
 import { PurchasingPolicyService } from '../../inventory/services/purchasing-policy.service';
 import { RfqService } from '../../inventory/services/rfq.service';
 import { SupplierProfileService } from '../../inventory/services/supplier-profile.service';
+import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { WorkOrdersService } from '../../wfm/services/work-orders.service';
 import { UserRole } from '@iwana/shared';
 
@@ -145,6 +146,10 @@ describe('ADR-065 Ola 7 — endpoints sin cota', () => {
         { provide: PurchasingPolicyService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: SupplierProfileService, useValue: {} },
+        {
+          provide: TaxCatalogReadPort,
+          useValue: { listByContext: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
     const service = module.get(PurchasingService);

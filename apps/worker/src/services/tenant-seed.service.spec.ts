@@ -151,7 +151,7 @@ describe('TenantSeedService', () => {
   });
 
   describe('seedTaxPresets', () => {
-    it('siembra los 6 presets Colombia si no existen', async () => {
+    it('siembra los 7 presets Colombia si no existen', async () => {
       const manager = {
         query: jest
           .fn()
@@ -166,6 +166,8 @@ describe('TenantSeedService', () => {
           .mockResolvedValueOnce([]) // quinto preset no existe
           .mockResolvedValueOnce(undefined) // insert
           .mockResolvedValueOnce([]) // sexto preset no existe
+          .mockResolvedValueOnce(undefined) // insert
+          .mockResolvedValueOnce([]) // séptimo preset no existe
           .mockResolvedValueOnce(undefined), // insert
       };
 
@@ -179,8 +181,8 @@ describe('TenantSeedService', () => {
 
       await service.seedTaxPresets('tenant_test_schema');
 
-      // 6 SELECT (check) + 6 INSERT de preset + 1 backfill de aplicaciones
-      expect(manager.query).toHaveBeenCalledTimes(13);
+      // 7 SELECT (check) + 7 INSERT de preset + 1 backfill de aplicaciones
+      expect(manager.query).toHaveBeenCalledTimes(15);
       // Primer SELECT verifica 'IVA_19'
       expect(manager.query.mock.calls[0][1]).toContain('IVA_19');
     });
@@ -200,8 +202,8 @@ describe('TenantSeedService', () => {
 
       await service.seedTaxPresets('tenant_test_schema');
 
-      // 6 checks de preset + 1 backfill de aplicaciones (0 filas si ya existen)
-      expect(manager.query).toHaveBeenCalledTimes(7);
+      // 7 checks de preset + 1 backfill de aplicaciones (0 filas si ya existen)
+      expect(manager.query).toHaveBeenCalledTimes(8);
     });
   });
 });

@@ -12,17 +12,24 @@ import {
   type Ref,
 } from 'react';
 import { ExpedienteStatus, UserRole } from '@iwana/shared';
-import { Badge } from '@iwana/ui';
+import { Badge, ProgressMeter } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
   PortalDashboardMetric,
   PortalEmptyState,
+  PortalModuleHealthChip,
   PortalNavListRow,
   PortalPanel,
   PortalSkeletonBlock,
+  PortalDataTableHead,
   interactiveFocusClassName,
+  portalDataTableBodyClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableShellClassName,
   portalInlineTextLinkClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
@@ -56,7 +63,6 @@ import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-
 import { TenantSummaryCard } from './TenantSummaryCard';
 import { OnboardingAlerts } from './OnboardingAlerts';
 import { RecentActivityPanel } from './RecentActivityPanel';
-import { QuickActionsPanel } from './QuickActionsPanel';
 import {
   getDashboardRoleComposition,
   isUserRole,
@@ -65,13 +71,17 @@ import {
   resolveDashboardMetric,
   resolveDashboardMetricAccent,
   resolvePromotedFoldedBlockIds,
+  splitDashboardModuleHealthIds,
   toLocalDayKey,
   type DashboardBlockId,
   type DashboardDataSourceId,
   type DashboardMetricId,
   type DashboardMetricSourceStatus,
+  type DashboardModuleHealthId,
   type DashboardRoleComposition,
 } from './dashboard-role-composition';
+import { resolveModuleHealthChip, type ModuleHealthSnapshot } from './dashboard-module-health';
+import { resolveTodayFocus } from './dashboard-today-focus';
 import type { OnboardingOperationState } from './OnboardingAlerts';
 
 type LoadStatus = 'idle' | 'loading' | 'updating' | 'success' | 'error';
@@ -230,14 +240,20 @@ function metricValue(metricId: DashboardMetricId, sources: DashboardSourcesState
 function metricDelta(
   metricId: DashboardMetricId,
   sources: DashboardSourcesState,
-): { label: string; tone: 'warning' | 'danger' | 'neutral' } | undefined {
+): { label: string; tone: 'warning' | 'danger' | 'neutral' | 'progress' } | undefined {
   if (metricId === 'I-1') {
     const overdue = sources.wfm.data?.overdueCount ?? 0;
     if (overdue > 0) return { label: `${overdue} vencidas`, tone: 'danger' };
+    const today = sources.wfm.data?.todayCount ?? 0;
+    if (today > 0) return { label: 'Sin vencidas', tone: 'progress' };
   }
   if (metricId === 'I-2') {
     const overdueSla = sources.wfm.data?.pendingInbox.overdueSlaCount ?? 0;
     if (overdueSla > 0) return { label: `${overdueSla} con atención vencida`, tone: 'warning' };
+  }
+  if (metricId === 'I-3') {
+    const atRisk = sources.assurance.data?.atRiskCount ?? 0;
+    if (atRisk > 0) return { label: `${atRisk} en riesgo`, tone: 'warning' };
   }
   if (metricId === 'I-4') {
     const breached = sources.assurance.data?.breachedCount ?? 0;
@@ -257,6 +273,47 @@ function metricSourceStatus(
   if (statuses.some((s) => s === 'updating')) return 'updating';
   if (statuses.every((s) => s === 'success' || s === 'idle')) return 'success';
   return 'loading';
+}
+
+function buildModuleHealthSnapshot(
+  sources: DashboardSourcesState,
+  requestedSources: readonly DashboardDataSourceId[],
+  todayLocalDate: string,
+): ModuleHealthSnapshot {
+  return {
+    requestedSources: new Set(requestedSources),
+    sourceStatus: (id) => sources[id].status,
+    todayLocalDate,
+    wfm: sources.wfm.data
+      ? {
+          overdueCount: sources.wfm.data.overdueCount,
+          readyToScheduleCount: sources.wfm.data.pendingInbox.readyToScheduleCount,
+          overdueSlaCount: sources.wfm.data.pendingInbox.overdueSlaCount,
+          alertsCount: sources.wfm.data.alerts.length,
+        }
+      : null,
+    assurance: sources.assurance.data
+      ? {
+          atRiskCount: sources.assurance.data.atRiskCount,
+          breachedCount: sources.assurance.data.breachedCount,
+        }
+      : null,
+    commercial: sources.commercial.data
+      ? {
+          offersAtRiskCount: sources.commercial.data.offersAtRiskCount,
+          missingCurrentPriceCount: sources.commercial.data.missingCurrentPriceCount,
+        }
+      : null,
+    inventory: sources.inventory.data
+      ? {
+          itemsCount: sources.inventory.data.itemsCount,
+          totalOnHand: sources.inventory.data.totalOnHand,
+        }
+      : null,
+    configurationAlertCount: sources['tenant-summary'].data
+      ? sources['tenant-summary'].data.alerts.length
+      : null,
+  };
 }
 
 function resolveOnboardingOperationState(sources: DashboardSourcesState): OnboardingOperationState {
@@ -337,7 +394,16 @@ function MetricsSkeleton({ metricIds }: { metricIds: readonly DashboardMetricId[
 function IdentityOnlyCard({ branding }: { branding: TenantPublicBranding | null }) {
   const name = branding?.displayName ?? branding?.productName ?? 'Tu empresa';
   return (
-    <PortalPanel compact title={name} description="Identidad visible de tu organización">
+    <PortalPanel
+      compact
+      title={name}
+      description="Identidad visible de tu organización"
+      actions={
+        <Link href="/dashboard/profile" className={portalInlineTextLinkClassName}>
+          Ver mi perfil
+        </Link>
+      }
+    >
       <p className="text-sm text-gray-600 dark:text-gray-400">
         El detalle operativo vive en Configuración cuando tu perfil lo permita.
       </p>
@@ -435,6 +501,82 @@ function fieldAlertSeverityVariant(
   return 'info';
 }
 
+function TodayFocusBlock({
+  requestedSources,
+  sources,
+  onRetrySource,
+}: {
+  requestedSources: readonly DashboardDataSourceId[];
+  sources: DashboardSourcesState;
+  onRetrySource: (sourceId: DashboardDataSourceId) => void;
+}) {
+  const focus = resolveTodayFocus(requestedSources, {
+    wfm: {
+      status: sources.wfm.status,
+      todayCount: sources.wfm.data?.todayCount ?? null,
+      overdueCount: sources.wfm.data?.overdueCount ?? null,
+    },
+    assurance: {
+      status: sources.assurance.status,
+      openCount: sources.assurance.data?.openCount ?? null,
+      atRiskCount: sources.assurance.data?.atRiskCount ?? null,
+      breachedCount: sources.assurance.data?.breachedCount ?? null,
+    },
+    commercial: {
+      status: sources.commercial.status,
+      catalogSellableActiveCount: sources.commercial.data?.catalogSellableActiveCount ?? null,
+      catalogActiveCount: sources.commercial.data?.catalogActiveCount ?? null,
+    },
+  });
+
+  if (focus.kind === 'hidden') return null;
+  if (focus.kind === 'loading') {
+    return <BlockLoading title="Foco de hoy" rows={2} />;
+  }
+  if (focus.kind === 'error') {
+    return (
+      <BlockError
+        title="Foco de hoy"
+        message={focus.message}
+        onRetry={() => onRetrySource(focus.retrySource)}
+      />
+    );
+  }
+  if (focus.kind === 'empty') {
+    return (
+      <PortalPanel compact title={focus.title}>
+        <BlockEmpty
+          title="Sin carga que medir"
+          description={focus.description}
+          action={
+            <Link href={focus.href} className={portalInlineTextLinkClassName}>
+              {focus.actionLabel}
+            </Link>
+          }
+        />
+      </PortalPanel>
+    );
+  }
+
+  return (
+    <PortalPanel compact title={focus.title} description={focus.label}>
+      <ProgressMeter
+        value={focus.percent}
+        label={focus.hint}
+        ariaLabel={`${focus.label}: ${focus.percent} por ciento`}
+      />
+      <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
+        <span className="font-mono tabular-nums">{focus.done}</span>
+        {' de '}
+        <span className="font-mono tabular-nums">{focus.total}</span>
+      </p>
+      <Link href={focus.href} className={`${portalInlineTextLinkClassName} mt-2`}>
+        {focus.actionLabel}
+      </Link>
+    </PortalPanel>
+  );
+}
+
 function FieldAttentionBlock({
   sources,
   onRetry,
@@ -477,24 +619,40 @@ function FieldAttentionBlock({
           }
         />
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-dark-border-2">
-          {alerts.slice(0, maxItems).map((alert) => (
-            <li key={alert.id}>
-              <Link
-                href="/dashboard/scheduling/agenda"
-                className={`flex min-h-11 flex-col gap-1 px-1 py-3 transition-colors hover:bg-iwana-surface-soft/60 dark:hover:bg-dark-surface-3/50 ${interactiveFocusClassName}`}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{alert.title}</p>
-                  <Badge variant={fieldAlertSeverityVariant(alert.severity)}>
-                    {fieldAlertSeverityLabel(alert.severity)}
-                  </Badge>
-                </div>
-                <p className="text-xs text-gray-600 dark:text-gray-400">{alert.description}</p>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className={portalDataTableShellClassName}>
+          <table className="w-full min-w-[20rem] text-left" aria-label="Avisos de campo">
+            <thead>
+              <tr className={portalDataTableHeadRowClassName}>
+                <PortalDataTableHead>Aviso</PortalDataTableHead>
+                <PortalDataTableHead>Estado</PortalDataTableHead>
+              </tr>
+            </thead>
+            <tbody className={portalDataTableBodyClassName}>
+              {alerts.slice(0, maxItems).map((alert) => (
+                <tr key={alert.id} className={portalTableRowHoverClassName}>
+                  <td className={portalDataTableCellClassName}>
+                    <Link
+                      href="/dashboard/scheduling/agenda"
+                      className={`block min-h-11 ${interactiveFocusClassName}`}
+                    >
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {alert.title}
+                      </span>
+                      <span className="mt-1 block text-xs text-gray-600 dark:text-gray-400">
+                        {alert.description}
+                      </span>
+                    </Link>
+                  </td>
+                  <td className={portalDataTableCellClassName}>
+                    <Badge variant={fieldAlertSeverityVariant(alert.severity)}>
+                      {fieldAlertSeverityLabel(alert.severity)}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </PortalPanel>
   );
@@ -932,17 +1090,96 @@ function renderDashboardBlock({
         </section>
       );
     }
-    case 'quick-actions':
-      return (
-        <section key={blockId} aria-label={resolveDashboardBlock(blockId).title}>
-          <QuickActionsPanel role={role} />
-        </section>
-      );
     default: {
       const _exhaustive: never = blockId;
       return _exhaustive;
     }
   }
+}
+
+function ModuleHealthBand({
+  moduleHealthIds,
+  sources,
+  requestedSources,
+  today,
+  firstLoadPending,
+  overflowOpen,
+  onToggleOverflow,
+  onRetrySource,
+}: {
+  moduleHealthIds: readonly DashboardModuleHealthId[];
+  sources: DashboardSourcesState;
+  requestedSources: readonly DashboardDataSourceId[];
+  today: string;
+  firstLoadPending: boolean;
+  overflowOpen: boolean;
+  onToggleOverflow: () => void;
+  onRetrySource: (sourceId: DashboardDataSourceId) => void;
+}) {
+  const snapshot = buildModuleHealthSnapshot(sources, requestedSources, today);
+  const { visibleIds, overflowIds } = splitDashboardModuleHealthIds(moduleHealthIds);
+  const renderedIds = overflowOpen ? [...visibleIds, ...overflowIds] : visibleIds;
+  const chips = renderedIds.map((id) => resolveModuleHealthChip(id, snapshot));
+  const failedSources = new Set<DashboardDataSourceId>();
+  for (const chip of chips) {
+    if (chip.state === 'error') {
+      for (const sourceId of chip.sources) failedSources.add(sourceId);
+    }
+  }
+
+  return (
+    <section aria-label="Salud de la operación" className="space-y-2">
+      <p className="portal-eyebrow">Salud de la operación</p>
+      {failedSources.size > 0 ? (
+        <PortalAlert
+          variant="error"
+          title="No pudimos cargar el estado de algunos módulos. Reintenta."
+          live="polite"
+          action={
+            <button
+              type="button"
+              className={portalInlineTextLinkClassName}
+              onClick={() => {
+                for (const sourceId of failedSources) onRetrySource(sourceId);
+              }}
+            >
+              Reintentar
+            </button>
+          }
+        />
+      ) : null}
+      {firstLoadPending ? (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true">
+          {Array.from({ length: Math.min(4, moduleHealthIds.length) || 4 }).map((_, index) => (
+            <PortalSkeletonBlock key={index} className="h-11 rounded-2xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {chips.map((chip) => (
+            <PortalModuleHealthChip
+              key={chip.id}
+              label={chip.label}
+              status={chip.status}
+              value={chip.value}
+              state={chip.state}
+              {...(chip.state === 'error' ? {} : { href: chip.href })}
+            />
+          ))}
+        </div>
+      )}
+      {overflowIds.length > 0 ? (
+        <button
+          type="button"
+          className={portalInlineTextLinkClassName}
+          aria-expanded={overflowOpen}
+          onClick={onToggleOverflow}
+        >
+          {overflowOpen ? 'Ocultar módulos' : 'Ver más módulos'}
+        </button>
+      ) : null}
+    </section>
+  );
 }
 
 /**
@@ -961,6 +1198,7 @@ export function DashboardClient() {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [highlightCommercial, setHighlightCommercial] = useState(false);
   const [foldedOpen, setFoldedOpen] = useState(false);
+  const [moduleHealthOverflowOpen, setModuleHealthOverflowOpen] = useState(false);
   // B2 adaptativo: false = retícula spec (8/4); true = banda full-width + apoyo en grilla.
   const [bandMode, setBandMode] = useState(false);
   const lastFetchedAtRef = useRef<string | null>(null);
@@ -1278,6 +1516,12 @@ export function DashboardClient() {
         }
       />
 
+      <TodayFocusBlock
+        requestedSources={resolveDashboardDataSources(role)}
+        sources={sources}
+        onRetrySource={retrySource}
+      />
+
       {/* B1 · Indicadores núcleo — grilla unificada de hasta 4 por fila (UX §2.2 · U-D5) */}
       {composition.metricIds.length > 0 ? (
         <section aria-label="Indicadores núcleo">
@@ -1344,53 +1588,88 @@ export function DashboardClient() {
         </section>
       ) : null}
 
+      {/* B1b · Salud de la operación */}
+      {composition.moduleHealthIds.length > 0 ? (
+        <ModuleHealthBand
+          moduleHealthIds={composition.moduleHealthIds}
+          sources={sources}
+          requestedSources={resolveDashboardDataSources(role)}
+          today={today}
+          firstLoadPending={firstLoadPending}
+          overflowOpen={moduleHealthOverflowOpen}
+          onToggleOverflow={() => setModuleHealthOverflowOpen((open) => !open)}
+          onRetrySource={retrySource}
+        />
+      ) : null}
+
       {/* B2 / B2b — adaptativo por altura (Opción A): banda si la columna
-          dominante es baja, retícula spec 8/4 en caso contrario. */}
-      {bandMode && composition.dominantBlockId ? (
-        <div className="flex flex-col gap-3">
-          <div ref={dominantColumnRef} className="flex flex-col gap-3">
-            {dominantColumnContent}
-          </div>
-          {supportIds.length === 3 ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {supportBlocks}
-            </div>
-          ) : supportIds.length === 2 ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{supportBlocks}</div>
-          ) : supportIds.length === 1 ? (
-            <div className="grid grid-cols-1 gap-3 xl:max-w-2xl">{supportBlocks}</div>
-          ) : null}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
-          {composition.dominantBlockId ? (
-            <div ref={dominantColumnRef} className="xl:col-span-8 flex flex-col gap-3">
+          dominante es baja, retícula spec 8/4 en caso contrario. Sin columna
+          vacía cuando el rol no tiene bloques de apoyo. */}
+      {composition.dominantBlockId || supportIds.length > 0 ? (
+        bandMode && composition.dominantBlockId ? (
+          <div className="flex flex-col gap-3">
+            <div ref={dominantColumnRef} className="flex flex-col gap-3">
               {dominantColumnContent}
             </div>
-          ) : null}
-
-          <div
-            className={`flex flex-col gap-3 ${composition.dominantBlockId ? 'xl:col-span-4' : 'xl:col-span-12'}`}
-          >
-            {supportBlocks}
+            {supportIds.length === 3 ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {supportBlocks}
+              </div>
+            ) : supportIds.length === 2 ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{supportBlocks}</div>
+            ) : supportIds.length === 1 ? (
+              <div className="grid grid-cols-1 gap-3 xl:max-w-2xl">{supportBlocks}</div>
+            ) : null}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
+            {composition.dominantBlockId ? (
+              <div
+                ref={dominantColumnRef}
+                className={`flex flex-col gap-3 ${supportIds.length > 0 ? 'xl:col-span-8' : 'xl:col-span-12'}`}
+              >
+                {dominantColumnContent}
+              </div>
+            ) : null}
+
+            {supportIds.length > 0 ? (
+              <div
+                className={`flex flex-col gap-3 ${composition.dominantBlockId ? 'xl:col-span-4' : 'xl:col-span-12'}`}
+              >
+                {supportBlocks}
+              </div>
+            ) : null}
+          </div>
+        )
+      ) : null}
 
       {/* B3 · Estado de la empresa */}
       {composition.showOperationalTenantCard ? (
         <section aria-label="Estado de la empresa">
           {(() => {
+            const requested = new Set(resolveDashboardDataSources(role));
+            const waitsForMe = requested.has('tenant-me');
+            const waitsForSummary = requested.has('tenant-summary');
             const meStatus = sources['tenant-me'].status;
             const summaryStatus = sources['tenant-summary'].status;
+            const brandingStatus = sources['public-branding'].status;
             const hasOperational = Boolean(operationalTenant && operationalSettings);
+            const sourcePending = (status: typeof meStatus) =>
+              status === 'idle' || status === 'loading';
+            // Solo esperar fuentes que el rol pide. Vista base no llama tenant-me
+            // ni summary: si se espera idle, B3 queda en esqueleto para siempre.
             const b3Pending =
               !hasOperational &&
-              (meStatus === 'idle' ||
-                meStatus === 'loading' ||
-                summaryStatus === 'idle' ||
-                summaryStatus === 'loading');
-            const b3Failed = !hasOperational && (meStatus === 'error' || summaryStatus === 'error');
+              (waitsForMe || waitsForSummary
+                ? (waitsForMe && sourcePending(meStatus)) ||
+                  (waitsForSummary && sourcePending(summaryStatus))
+                : sourcePending(brandingStatus));
+            const b3Failed =
+              !hasOperational &&
+              (waitsForMe || waitsForSummary
+                ? (waitsForMe && meStatus === 'error') ||
+                  (waitsForSummary && summaryStatus === 'error')
+                : brandingStatus === 'error');
 
             if (b3Pending) {
               return <BlockLoading title="Estado de la empresa" rows={2} />;
@@ -1401,8 +1680,9 @@ export function DashboardClient() {
                   title="Estado de la empresa"
                   message="No pudimos cargar el resumen de tu empresa. Reintenta en unos minutos."
                   onRetry={() => {
-                    retrySource('tenant-summary');
-                    retrySource('tenant-me');
+                    if (waitsForSummary) retrySource('tenant-summary');
+                    if (waitsForMe) retrySource('tenant-me');
+                    if (!waitsForMe && !waitsForSummary) retrySource('public-branding');
                   }}
                 />
               );

@@ -1,10 +1,11 @@
 // apps/web/src/components/layout/DropdownUser.tsx
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import {
+  Avatar,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -27,19 +28,6 @@ export function platformRoleToLabel(role: string): string {
   return labels[role] ?? role;
 }
 
-/** Avatar circular con la inicial del nombre del usuario */
-export function UserAvatar({ displayName }: { displayName: string }) {
-  const initial = displayName[0]?.toUpperCase() ?? 'U';
-  return (
-    <div
-      className="h-8 w-8 rounded-full bg-iwana-primary-100 text-iwana-primary-700 flex items-center justify-center text-sm font-semibold shrink-0"
-      aria-hidden="true"
-    >
-      {initial}
-    </div>
-  );
-}
-
 export const DropdownUser = () => {
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -60,6 +48,7 @@ export const DropdownUser = () => {
 
   const displayName = user?.displayName ?? 'Usuario';
   const subtitle = user?.role ? platformRoleToLabel(user.role) : 'Sesión no inicializada';
+  const nameId = useId();
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -71,13 +60,13 @@ export const DropdownUser = () => {
       >
         <button type="button">
           <span className="hidden text-right lg:block">
-            <span className="block text-sm font-medium text-gray-800 dark:text-white">
+            <span id={nameId} className="block text-sm font-medium text-gray-800 dark:text-white">
               {displayName}
             </span>
             <span className="block text-xs text-gray-500 dark:text-gray-400">{subtitle}</span>
           </span>
 
-          <UserAvatar displayName={displayName} />
+          <Avatar size="md" variant="soft" name={displayName} labelledById={nameId} />
 
           <ChevronDown
             className={cn(

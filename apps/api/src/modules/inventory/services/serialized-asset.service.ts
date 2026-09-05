@@ -164,8 +164,11 @@ export class SerializedAssetService {
         qb.andWhere('asset.inventory_item_id = :itemId', { itemId: validated.itemId });
       }
 
+      // MOD12 S1 · B2: `status` es lista (valor único normalizado a un elemento).
       if (validated.status) {
-        qb.andWhere('asset.current_status = :status', { status: validated.status });
+        qb.andWhere('asset.current_status IN (:...statuses)', {
+          statuses: validated.status,
+        });
       }
 
       if (validated.locationId) {

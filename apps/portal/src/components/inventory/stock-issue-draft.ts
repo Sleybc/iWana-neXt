@@ -1,10 +1,20 @@
-import { StockBalanceCondition } from '@iwana/shared';
+import {
+  InventoryTrackingMode,
+  StockBalanceCondition,
+  type StockIssuePickableAvailability,
+  type StockIssuePickableLot,
+} from '@iwana/shared';
 
 export interface StockIssueDraftCatalogSelection {
   id: string;
   sku: string;
   name: string;
   unitOfMeasure: string;
+  /** Hidratación S1 desde `StockIssuePickableItem`: corrige C3 (el flag serial sale de la línea). */
+  trackingMode?: InventoryTrackingMode;
+  lots?: StockIssuePickableLot[];
+  availability?: StockIssuePickableAvailability[];
+  availableSerialCount?: number;
 }
 
 export interface StockIssueDraftLine {
@@ -17,6 +27,19 @@ export interface StockIssueDraftLine {
   condition: StockBalanceCondition;
   lotId: string;
   serializedAssetId: string;
+  /** Etiqueta del serial elegido para el picker (se resuelve al elegir; en edición se hidrata). */
+  serializedAssetLabel: string;
+  /**
+   * Modo de seguimiento del ítem (S1). `serialized` se deriva de aquí con
+   * `isSerializedTrackingMode`, nunca de `knownItems` (corrección directa de C3).
+   */
+  trackingMode: InventoryTrackingMode;
+  /** Lotes con saldo en la bodega de origen para este ítem (contrato B1). */
+  lots: StockIssuePickableLot[];
+  /** Disponible por condición en la bodega de origen (contrato B1, D3: sin filtro a NEW). */
+  availability: StockIssuePickableAvailability[];
+  /** Seriales disponibles en la bodega (contrato B1); 0 + serializado = aviso explícito. */
+  availableSerialCount: number;
 }
 
 export interface StockIssueDraftState {
@@ -40,16 +63,56 @@ function createDraftLineId(): string {
 }
 
 function createBaseDraftLine(
-  partial: Omit<StockIssueDraftLine, 'id' | 'condition' | 'lotId' | 'serializedAssetId'> &
-    Partial<Pick<StockIssueDraftLine, 'condition' | 'lotId' | 'serializedAssetId'>>,
+  partial: Pick<
+    StockIssueDraftLine,
+    'itemId' | 'productLabel' | 'requestedQty' | 'unitOfMeasure' | 'isManual'
+  > &
+    Partial<Omit<StockIssueDraftLine, 'id'>>,
 ): StockIssueDraftLine {
   return {
     id: createDraftLineId(),
     condition: StockBalanceCondition.NEW,
     lotId: '',
     serializedAssetId: '',
+    serializedAssetLabel: '',
+    trackingMode: InventoryTrackingMode.CONSUMABLE,
+    lots: [],
+    availability: [],
+    availableSerialCount: 0,
     ...partial,
   };
+}
+
+function parseDecimalAmount(value: string | null | undefined): number {
+  if (value == null || value === '') {
+    return 0;
+  }
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Condición inicial de una línea recién agregada: la primera con disponible > 0
+ * según el contrato B1 (D3: REFURBISHED/DAMAGED también despachan). Sin dato del
+ * servidor se conserva NEW para no adivinar.
+ */
+function resolveInitialConditionForSelection(
+  selection: Pick<StockIssueDraftCatalogSelection, 'availability'>,
+): StockBalanceCondition {
+  const firstAvailable = selection.availability?.find(
+    (entry) => parseDecimalAmount(entry.available) > 0,
+  );
+  return firstAvailable?.condition ?? StockBalanceCondition.NEW;
+}
+
+export interface StockIssueDraftItemHydration {
+  itemId: string;
+  productLabel: string;
+  unitOfMeasure: string;
+  trackingMode: InventoryTrackingMode;
+  lots: StockIssuePickableLot[];
+  availability: StockIssuePickableAvailability[];
+  availableSerialCount: number;
 }
 
 export function createEmptyStockIssueDraft(): StockIssueDraftState {
@@ -102,6 +165,15 @@ export function addCatalogSelectionToDraft(
         requestedQty: '1',
         unitOfMeasure: selection.unitOfMeasure,
         isManual: false,
+        // La condición nace en la primera con disponible > 0 cuando hay dato del
+        // servidor; sin dato se conserva el default NEW (línea manual sin hidratar).
+        condition: resolveInitialConditionForSelection(selection),
+        ...(selection.trackingMode ? { trackingMode: selection.trackingMode } : {}),
+        ...(selection.lots ? { lots: selection.lots } : {}),
+        ...(selection.availability ? { availability: selection.availability } : {}),
+        ...(selection.availableSerialCount != null
+          ? { availableSerialCount: selection.availableSerialCount }
+          : {}),
       }),
     );
   }
@@ -149,6 +221,7 @@ export function updateDraftLineItem(
   itemId: string,
   productLabel: string,
   unitOfMeasure: string,
+  hydration?: Omit<StockIssueDraftItemHydration, 'itemId' | 'productLabel' | 'unitOfMeasure'>,
 ): StockIssueDraftState {
   return {
     lines: draft.lines.map((line) =>
@@ -158,8 +231,20 @@ export function updateDraftLineItem(
             itemId,
             productLabel,
             unitOfMeasure,
+            trackingMode: hydration?.trackingMode ?? InventoryTrackingMode.CONSUMABLE,
+            lots: hydration?.lots ?? [],
+            availability: hydration?.availability ?? [],
+            availableSerialCount: hydration?.availableSerialCount ?? 0,
+            // Al cambiar de ítem la condición anterior puede no tener disponible;
+            // se reubica en la primera con saldo cuando hay dato del servidor.
+            condition:
+              hydration?.availability && hydration.availability.length > 0
+                ? (hydration.availability.find((entry) => parseDecimalAmount(entry.available) > 0)
+                    ?.condition ?? StockBalanceCondition.NEW)
+                : line.condition,
             lotId: '',
             serializedAssetId: '',
+            serializedAssetLabel: '',
             requestedQty: '1',
           }
         : line,
@@ -203,10 +288,13 @@ export function updateDraftLineSerializedAsset(
   draft: StockIssueDraftState,
   lineId: string,
   serializedAssetId: string,
+  serializedAssetLabel = '',
 ): StockIssueDraftState {
   return {
     lines: draft.lines.map((line) =>
-      line.id === lineId ? { ...line, serializedAssetId, requestedQty: '1', lotId: '' } : line,
+      line.id === lineId
+        ? { ...line, serializedAssetId, serializedAssetLabel, requestedQty: '1', lotId: '' }
+        : line,
     ),
   };
 }

@@ -31,6 +31,8 @@ export * from './components/SectionHeader';
 export * from './components/Card';
 export * from './components/Badge';
 export * from './components/Alert';
+export * from './components/Avatar';
+export { getInitials } from '@iwana/shared';
 export * from './components/OtpInput';
 export * from './components/Dialog';
 export * from './components/Tabs';

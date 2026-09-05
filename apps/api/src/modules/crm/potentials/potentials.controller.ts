@@ -7,7 +7,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AccessPermissionKey, PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
@@ -42,8 +41,9 @@ export class PotentialsController {
   // Audit manual limpio en PotentialsService — un solo canal (SWEEP-01).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear potencial comercial', deprecated: true })
-  @UsePipes(new ZodBodyValidationPipe(createPotentialSchema))
-  async create(@Body() dto: CreatePotentialDto): Promise<{ data: PotentialResponseDto }> {
+  async create(
+    @Body(new ZodBodyValidationPipe(createPotentialSchema)) dto: CreatePotentialDto,
+  ): Promise<{ data: PotentialResponseDto }> {
     const data = await this.potentialsService.create(dto);
     return { data };
   }
@@ -76,10 +76,9 @@ export class PotentialsController {
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Calificar potencial y convertirlo en prospecto', deprecated: true })
-  @UsePipes(new ZodBodyValidationPipe(qualifyPotentialSchema))
   async qualify(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: QualifyPotentialDto,
+    @Body(new ZodBodyValidationPipe(qualifyPotentialSchema)) dto: QualifyPotentialDto,
   ): Promise<{ data: ProspectResponseDto }> {
     const data = await this.potentialsService.qualify(id, dto);
     return { data };

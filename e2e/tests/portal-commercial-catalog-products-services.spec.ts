@@ -2,6 +2,16 @@ import { expect, test } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -242,6 +252,8 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
     }
 
     if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
       const type = url.searchParams.get('type');
 
       if (type === 'PLAN') {
@@ -292,11 +304,15 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
     }
 
     if (pathname.endsWith('/commercial/catalog/services') && method === 'POST') {
+      await assertTenantHeader(route);
+      expect(method).toBe('POST');
       const body = JSON.parse(route.request().postData() ?? '{}') as {
         name: string;
         description?: string;
         chargeType: 'ONE_TIME' | 'ON_DEMAND' | 'RECURRING';
       };
+      expect(body).toHaveProperty('name');
+      expect(body).toHaveProperty('chargeType');
 
       const createdId = 'srv-prioritario';
 

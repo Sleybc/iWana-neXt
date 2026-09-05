@@ -3,7 +3,8 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Badge, Button, Input, ProgressMeter, Select } from '@iwana/ui';
+import { Badge, Button, FormStatus, Input, ProgressMeter, Select } from '@iwana/ui';
+import { formatFullName } from '@iwana/shared';
 const ExpedienteSections = dynamic(
   () =>
     import('@/components/crm/expedientes/sections/ExpedienteSections').then(
@@ -123,7 +124,7 @@ function getCurrentUserDisplayName(
     return null;
   }
 
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(user.firstName, user.lastName).trim();
   return fullName || user.displayName || null;
 }
 
@@ -980,11 +981,14 @@ export default function ExpedienteDetailPage() {
           description={coordinationError}
         />
       )}
-      {expediente.dataConsentRevoked && (
-        <p className="rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-          El consentimiento de tratamiento de datos fue revocado.
-        </p>
-      )}
+      <FormStatus
+        status={expediente.dataConsentRevoked ? 'error' : 'idle'}
+        message={
+          expediente.dataConsentRevoked
+            ? 'El consentimiento de tratamiento de datos fue revocado.'
+            : undefined
+        }
+      />
       {installationReadiness && (
         <div
           className={`rounded-[20px] border px-4 py-4 shadow-iwana-soft ${

@@ -2,7 +2,7 @@
 'use client';
 
 import type { InternalUser, UsersPaginationMeta } from '@/lib/api-client';
-import { isPlatformOnlyRole, UserRole, UserStatus } from '@iwana/shared';
+import { formatFullName, isPlatformOnlyRole, UserRole, UserStatus } from '@iwana/shared';
 import { Pencil, Plus, Trash2, ShieldCheck, KeyRound, Loader2, Upload } from 'lucide-react';
 import { Badge, Button, Select, cn } from '@iwana/ui';
 import {
@@ -393,7 +393,7 @@ export function UsersTable({
                     <td className={portalDataTableCellClassName}>
                       <div className="flex flex-col">
                         <span className="font-medium text-gray-900 dark:text-white">
-                          {[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}
+                          {formatFullName(user.firstName, user.lastName) || user.email}
                         </span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
                           {user.email}

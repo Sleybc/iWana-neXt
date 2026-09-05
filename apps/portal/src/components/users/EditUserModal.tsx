@@ -8,11 +8,12 @@ import { z } from 'zod';
 import { ChevronDown, ShieldAlert } from 'lucide-react';
 import {
   type AccessPermissionKey,
+  formatFullName,
   PLATFORM_ONLY_ROLES,
   TENANT_ASSIGNABLE_ROLES,
   UserRole,
 } from '@iwana/shared';
-import { Button, Select, cn } from '@iwana/ui';
+import { Button, FormStatus, Select, cn } from '@iwana/ui';
 import {
   accessControlApi,
   usersApi,
@@ -66,7 +67,7 @@ function getDefaultOperationalResource(role: string | UserRole | undefined): boo
 }
 
 function buildProfileSummary(user: InternalUser): string {
-  const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
+  const name = formatFullName(user.firstName, user.lastName);
   const parts = [name || null, user.jobTitle || null].filter(Boolean);
   if (parts.length === 0) {
     return 'Nombre, contacto, documento y preferencias';
@@ -658,13 +659,16 @@ export function EditUserModal({
           </div>
         </details>
 
-        {serverError && (
-          <PortalAlert
-            variant="error"
-            title="No fue posible guardar los cambios"
-            description={serverError}
-          />
-        )}
+        <FormStatus
+          status={serverError ? 'error' : 'idle'}
+          message={
+            serverError ? (
+              <>
+                <span>No fue posible guardar los cambios.</span> <span>{serverError}</span>
+              </>
+            ) : undefined
+          }
+        />
       </form>
     </PortalSidePeek>
   );

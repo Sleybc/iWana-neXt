@@ -7,7 +7,6 @@ import {
   Patch,
   Post,
   UseGuards,
-  UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccessPermissionKey, PlatformRole, UserRole } from '@iwana/shared';
@@ -44,10 +43,9 @@ export class ReviewsController {
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Cerrar instalacion exitosa y activar cliente' })
-  @UsePipes(new ZodBodyValidationPipe(closeSuccessSchema))
   async closeSuccess(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CloseSuccessDto,
+    @Body(new ZodBodyValidationPipe(closeSuccessSchema)) dto: CloseSuccessDto,
   ): Promise<{ data: ProspectResponseDto }> {
     const data = await this.activationService.closeSuccess(id, dto);
     return { data };
@@ -57,10 +55,9 @@ export class ReviewsController {
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiOperation({ summary: 'Enviar prospecto a revision por expansion o refuerzo' })
-  @UsePipes(new ZodBodyValidationPipe(sendToReviewSchema))
   async sendToReview(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SendToReviewDto,
+    @Body(new ZodBodyValidationPipe(sendToReviewSchema)) dto: SendToReviewDto,
   ): Promise<{ data: ReviewResponseDto }> {
     const data = await this.reviewCoordinationService.sendToReview(id, dto);
     return { data };

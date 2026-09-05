@@ -16,10 +16,9 @@ import {
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
+  getPurchaseRequestDisplayStatus,
   getPurchaseRequestPriorityBadgeVariant,
   getPurchaseRequestPriorityLabel,
-  getPurchaseRequestStatusBadgeVariant,
-  getPurchaseRequestStatusLabel,
   getPurchaseRequestTypeLabel,
 } from './inventory-labels';
 import { isPurchaseRequestOverdue } from './purchase-filters';
@@ -103,6 +102,7 @@ export function PurchaseRequestsTable({
             const isOverdue = isPurchaseRequestOverdue(request);
             const isUrgent = request.priority === PurchaseRequestPriority.URGENT;
             const hasException = Boolean(request.exceptionReason?.trim());
+            const displayStatus = getPurchaseRequestDisplayStatus(request);
 
             return (
               <tr
@@ -138,9 +138,7 @@ export function PurchaseRequestsTable({
                   {request.requestingArea ?? 'Sin área'}
                 </td>
                 <td className={portalDataTableCellClassName}>
-                  <Badge variant={getPurchaseRequestStatusBadgeVariant(request.status)}>
-                    {getPurchaseRequestStatusLabel(request.status)}
-                  </Badge>
+                  <Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
                 </td>
                 <td
                   className={`${portalDataTableCellClassName} ${isOverdue ? 'font-medium text-rose-700 dark:text-rose-300' : ''}`}

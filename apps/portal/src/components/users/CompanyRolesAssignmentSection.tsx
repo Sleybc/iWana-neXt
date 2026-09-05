@@ -1,10 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { type AccessPermissionKey, type UserRole } from '@iwana/shared';
 import type { AccessPermissionsCatalog, AccessProfileView } from '@/lib/api-client';
 import { getAccessProfileDisplayName } from '@/lib/system-vocabulary';
-import { PortalAlert } from '@/components/shared/portal-ui';
-import { SectionAccordion } from '@iwana/ui';
+import { interactiveFocusClassName, PortalAlert } from '@/components/shared/portal-ui';
+import { ACCESS_SETTINGS_COPY } from '@/components/settings/mod00-settings-labels';
+import { SectionAccordion, cn } from '@iwana/ui';
 import { buildCompanyRolePreview } from './company-role-preview';
 
 interface CompanyRolesAssignmentSectionProps {
@@ -61,11 +63,13 @@ function ProfilesContent({
   selectedProfileIds,
   onToggleProfile,
   previewDescription,
+  showSuggestedHelp,
 }: {
   compatibleProfiles: AccessProfileView[];
   selectedProfileIds: string[];
   onToggleProfile: (profileId: string) => void;
   previewDescription: string;
+  showSuggestedHelp: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -108,6 +112,22 @@ function ProfilesContent({
         />
       )}
 
+      {showSuggestedHelp ? (
+        <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+          {ACCESS_SETTINGS_COPY.usersSuggestedHelpPrefix}
+          <Link
+            href={ACCESS_SETTINGS_COPY.accessSettingsPath}
+            className={cn(
+              'font-medium text-iwana-primary underline underline-offset-2 dark:text-iwana-primary-300',
+              interactiveFocusClassName,
+            )}
+          >
+            {ACCESS_SETTINGS_COPY.usersSuggestedHelpLinkLabel}
+          </Link>
+          {ACCESS_SETTINGS_COPY.usersSuggestedHelpSuffix}
+        </p>
+      ) : null}
+
       {compatibleProfiles.length > 0 ? (
         <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
           <span className="font-medium text-gray-700 dark:text-gray-300">Accesos finales: </span>
@@ -148,6 +168,9 @@ export function CompanyRolesAssignmentSection({
     compatibilityMatrix,
   });
   const previewDescription = formatPermissionPreview(preview.permissionKeys, catalog);
+  const showSuggestedHelp = compatibleProfiles.some(
+    (profile) => profile.isSystem && selectedProfileIds.includes(profile.id),
+  );
 
   const content = (
     <ProfilesContent
@@ -155,6 +178,7 @@ export function CompanyRolesAssignmentSection({
       selectedProfileIds={selectedProfileIds}
       onToggleProfile={onToggleProfile}
       previewDescription={previewDescription}
+      showSuggestedHelp={showSuggestedHelp}
     />
   );
 

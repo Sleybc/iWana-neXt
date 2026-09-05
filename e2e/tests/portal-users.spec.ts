@@ -174,6 +174,16 @@ const MOCK_PROFILE = {
 // ---------------------------------------------------------------------------
 
 /**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114 (PROMPT-MOD04-PERFIL-TESTS
+ * Paso 5): el cliente siempre transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT);
+}
+
+/**
  * Registra las rutas mockeadas comunes para un ADMIN autenticado.
  * Cubre /auth/me, /users y /users/:id/password.
  */
@@ -333,6 +343,7 @@ async function setupAuthenticatedAdminMocks(
 
     // GET /users/:id — perfil del usuario autenticado
     if (url.match(/\/users\/[^/]+$/) && method === 'GET') {
+      await assertTenantHeader(route);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -8,6 +8,7 @@ import { InventoryItemService } from './services/inventory-item.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockIssueService } from './services/stock-issue.service';
+import { StockIssuePickingService } from './services/stock-issue-picking.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockLocationService } from './services/stock-location.service';
@@ -16,6 +17,8 @@ import { ReplenishmentService } from './services/replenishment.service';
 import { CycleCountService } from './services/cycle-count.service';
 import { AssetLoanService } from './services/asset-loan.service';
 import { WriteOffService } from './services/write-off.service';
+import { ExecutorCustodyService } from './services/executor-custody.service';
+import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 
 function getRequestSchema(
   operation: Record<string, unknown> | undefined,
@@ -40,15 +43,21 @@ describe('InventoryController Swagger', () => {
         { provide: StockLocationService, useValue: {} },
         { provide: SerializedAssetService, useValue: {} },
         { provide: StockBalanceService, useValue: {} },
+        { provide: ExecutorCustodyService, useValue: {} },
         { provide: StockLedgerService, useValue: {} },
         { provide: StockMovementQueryService, useValue: {} },
         { provide: StockIssueService, useValue: {} },
+        { provide: StockIssuePickingService, useValue: {} },
         { provide: CounterPurchaseService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
         { provide: ReplenishmentService, useValue: {} },
         { provide: CycleCountService, useValue: {} },
         { provide: AssetLoanService, useValue: {} },
         { provide: WriteOffService, useValue: {} },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 
@@ -194,6 +203,41 @@ describe('InventoryController Swagger', () => {
     const alerts = document.paths['/inventory/assets/useful-life-alerts']?.get;
     expect(alerts).toBeDefined();
     expect(alerts?.summary).toBe('Listar alertas de vida útil de activos');
+  });
+
+  it('documenta picking de salidas con existencias (MOD12 S1 · B1)', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const pickableItems = document.paths['/inventory/issues/pickable-items']?.get;
+
+    expect(pickableItems).toBeDefined();
+    expect(pickableItems?.summary).toBe('Listar ítems elegibles para salida con existencias');
+    expect(pickableItems?.description).toContain('page');
+    expect(
+      pickableItems?.parameters?.some((p) => 'name' in p && p.name === 'sourceLocationId'),
+    ).toBe(true);
+    expect(pickableItems?.parameters?.some((p) => 'name' in p && p.name === 'scope')).toBe(true);
+    expect(pickableItems?.parameters?.some((p) => 'name' in p && p.name === 'q')).toBe(true);
+    expect(pickableItems?.parameters?.some((p) => 'name' in p && p.name === 'page')).toBe(true);
+    expect(pickableItems?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
+  });
+
+  it('documenta status múltiple en el listado de activos (MOD12 S1 · B2)', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const listAssets = document.paths['/inventory/assets']?.get;
+    const statusParam = listAssets?.parameters?.find((p) => 'name' in p && p.name === 'status') as
+      | { description?: string }
+      | undefined;
+
+    expect(listAssets).toBeDefined();
+    expect(statusParam?.description).toContain('comas');
   });
 
   it('documenta listado de comodatos', () => {

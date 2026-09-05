@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { OtpInput, Button } from '@iwana/ui';
+import { OtpInput, Button, FormStatus } from '@iwana/ui';
 import { ApiError } from '@/lib/api-client';
 import { useAuth } from './AuthProvider';
 
@@ -102,26 +102,11 @@ export function MfaVerifyForm() {
         </p>
       </div>
 
-      {error && (
-        <div
-          role="alert"
-          className="w-full flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-        >
-          <svg
-            className="h-4 w-4 mt-0.5 flex-shrink-0"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-              clipRule="evenodd"
-            />
-          </svg>
-          {error}
-        </div>
-      )}
+      <FormStatus
+        status={error ? 'error' : 'idle'}
+        message={error ?? undefined}
+        className="w-full"
+      />
 
       <Button
         type="submit"

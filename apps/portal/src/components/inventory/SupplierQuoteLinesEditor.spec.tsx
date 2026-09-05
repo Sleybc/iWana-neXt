@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PurchaseRequestLineSourceKind, PurchaseRequestLineStatus } from '@iwana/shared';
 import type { PurchaseRequestLineRecord } from '@/lib/api-client';
+import { formatInventoryMoney } from './inventory-labels';
 import {
   buildQuoteLinesPayload,
   SupplierQuoteLinesEditor,
@@ -43,7 +44,7 @@ describe('SupplierQuoteLinesEditor', () => {
     expect(screen.getByText('Cable UTP')).toBeInTheDocument();
     expect(screen.getByText('Conector RJ45')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Costo unitario de Cable UTP'), '1000');
+    await user.type(screen.getByLabelText('Costo unitario de Cable UTP (sin IVA)'), '1000');
     expect(onChange).toHaveBeenCalled();
 
     rerender(
@@ -56,6 +57,32 @@ describe('SupplierQuoteLinesEditor', () => {
 
     expect(screen.getByText(/Total de la cotización:/i)).toBeInTheDocument();
     expect(sumQuoteLinesTotal({ 'line-1': '1000', 'line-2': '200' }, lines)).toBe(11000);
+  });
+
+  it('CA-25-02: el unitario se etiqueta como sin IVA', () => {
+    const lines = [buildLine({ id: 'line-1', freeTextDescription: 'Cable UTP' })];
+    render(<SupplierQuoteLinesEditor requestLines={lines} value={{}} onChange={jest.fn()} />);
+
+    expect(screen.getByLabelText('Costo unitario de Cable UTP (sin IVA)')).toBeInTheDocument();
+    expect(screen.getAllByText('Sin IVA').length).toBeGreaterThan(0);
+  });
+
+  it('CA-25-01: muestra subtotal y total con 2 decimales', () => {
+    const lines = [buildLine({ id: 'line-1', quantityRequested: '2' })];
+    render(
+      <SupplierQuoteLinesEditor
+        requestLines={lines}
+        value={{ 'line-1': '100.5' }}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(
+      screen.getAllByText((_, element) => {
+        const text = element?.textContent?.replace(/\u00a0/g, ' ') ?? '';
+        return text === formatInventoryMoney(201).replace(/\u00a0/g, ' ');
+      }).length,
+    ).toBeGreaterThan(0);
   });
 
   it('buildQuoteLinesPayload omite costos vacíos o inválidos', () => {

@@ -469,7 +469,7 @@ describe('SearchableMultiPicker', () => {
     });
   }
 
-  it('añadir opción no cierra el listbox y limpia el campo (CA-PICK-16)', async () => {
+  it('añadir opción cierra el listbox y limpia el campo; tipar reabre (CA-PICK-16)', async () => {
     const onChange = jest.fn();
     const onSearch = mockSearch({ items: ITEMS, total: 3 });
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -501,10 +501,39 @@ describe('SearchableMultiPicker', () => {
       />,
     );
 
+    // Sin S1 tapando las acciones del formulario padre tras añadir.
     expect(input).toHaveValue('');
-    expect(screen.getByRole('listbox')).toBeInTheDocument();
-    expect(screen.getByText('Escribe al menos 2 caracteres')).toBeInTheDocument();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Escribe al menos 2 caracteres')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Quitar Proveedor Alfa' })).toBeInTheDocument();
+
+    // La segunda búsqueda sigue siendo inmediata: al tipar se reabre.
+    await user.type(input, 'be');
+    await flushDebounce();
+
+    expect(onSearch).toHaveBeenLastCalledWith('be', expect.any(AbortSignal));
+    expect(await screen.findByRole('option', { name: /Proveedor Beta/i })).toBeInTheDocument();
+  });
+
+  it('enfocar el campo vacío no abre el listbox (sin S1 tapando acciones)', async () => {
+    const onSearch = mockSearch({ items: ITEMS, total: 3 });
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    render(
+      <SearchableMultiPicker
+        resource={RESOURCE}
+        value={[]}
+        onChange={jest.fn()}
+        onSearch={onSearch}
+        label="Proveedores"
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Escribe al menos 2 caracteres')).not.toBeInTheDocument();
+    expect(onSearch).not.toHaveBeenCalled();
   });
 
   it('Backspace con campo vacío quita el último chip', async () => {

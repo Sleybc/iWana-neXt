@@ -10,6 +10,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { TenantContext } from '@iwana/db';
@@ -385,18 +386,28 @@ export class AuthController {
    * RF-AUTH-09
    */
   @Post('change-password')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambia la contrasena del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Contrasena actualizada.' })
   @ApiResponse({ status: 401, description: 'Contrasena actual incorrecta.' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async changePassword(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePasswordDto,
+    @Response({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ data: { message: string } }> {
     // Se pasa el payload completo, no solo el sub: el servicio necesita `type`
     // para no resolver a un usuario de plataforma via TenantContext, y `jti`
-    // para revocar el token de alcance limitado al completar el cambio.
+    // para revocar el token en curso al completar el cambio.
     await this.authService.changePassword(user, dto);
+    // P-05: el `jti` en curso quedo en blacklist en el servicio; la cookie de
+    // access se limpia para que el navegador no siga presentando un token
+    // revocado. El cliente cierra sesion tras el cambio voluntario (C-3, FE).
+    res.clearCookie(
+      user.type === 'platform' ? platformAccessCookieName() : tenantAccessCookieName(),
+      { path: '/' },
+    );
     return { data: { message: 'Contrasena actualizada correctamente.' } };
   }
 

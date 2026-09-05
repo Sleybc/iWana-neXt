@@ -7,6 +7,16 @@ import { expect, test } from '@playwright/test';
 import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'tenant-inventory-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const NOC_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ADMIN_USER_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
@@ -41,6 +51,9 @@ async function mockInventoryApis(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/inventory/**', async (route) => {
     const url = route.request().url();
     if (url.includes('/inventory/items') && route.request().method() === 'GET') {
+      await assertTenantHeader(route);
+      expect(route.request().method()).toBe('GET');
+      expect(url).toContain('/inventory/items');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -85,6 +98,8 @@ async function mockInventoryApis(page: import('@playwright/test').Page) {
       return;
     }
     if (url.includes('/inventory/dashboard')) {
+      await assertTenantHeader(route);
+      expect(url).toContain('/inventory/dashboard');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   ExecutionOrderItemAction,
   GoodsReceiptStatus,
+  InventoryBarcodeType,
   InventoryDisposition,
   InventoryCategoryStatus,
   InventoryItemCategory,
@@ -12,6 +13,7 @@ import {
   InventoryItemStatus,
   InventoryTrackingMode,
   PurchaseOrderStatus,
+  PurchaseRequestFulfillmentStatus,
   PurchaseRequestLineSourceKind,
   PurchaseRequestStatus,
   PurchaseRequestPriority,
@@ -32,7 +34,16 @@ import {
   PartyContactType,
   SupplierProfileStatus,
   IncotermCode,
+  TaxQuoteEffect,
+  QuoteShippingArrangement,
+  INVENTORY_UNIT_OF_MEASURE_CODES,
+  INVENTORY_UNITS_OF_MEASURE,
+  areInventoryUnitsDimensionallyCompatible,
+  buildDimensionalMismatchMessage,
+  isInventoryUnitOfMeasureCode,
+  validateBarcodeValue,
 } from '@iwana/shared';
+import type { InventoryUnitOfMeasureCode } from '@iwana/shared';
 import {
   INVENTORY_LIST_DEFAULT_LIMIT,
   INVENTORY_LIST_MAX_LIMIT,
@@ -61,11 +72,69 @@ export class InventoryListMetaDto {
 
 const optionalTrimmedString = (maxLength: number) =>
   z.preprocess(emptyStringToNull, z.string().trim().max(maxLength).optional().nullable());
+
+/**
+ * Código de barras (MOD12 · F4 · PRD §11 regla 1): cadena vacía o compuesta
+ * solo por blancos equivale a ausencia (convención `emptyStringToNull` del
+ * módulo); si hay valor se recorta y se limita a 64 caracteres. La regla
+ * «van juntos» y la validación por formato viven en `refineInventoryItemMaster`.
+ */
+const optionalBarcodeSchema = z.preprocess((value: unknown) => {
+  if (value === '') {
+    return null;
+  }
+  if (typeof value === 'string' && value.trim() === '') {
+    return null;
+  }
+  return value;
+}, z.string().trim().max(64).optional().nullable());
 const optionalUuidLike = (maxLength = 160) =>
   z.preprocess(emptyStringToNull, z.string().trim().min(1).max(maxLength).optional().nullable());
 const optionalDateString = z.preprocess(emptyStringToNull, z.string().date().optional().nullable());
 const positiveNumber = z.coerce.number().positive();
 const nonNegativeNumber = z.coerce.number().min(0);
+
+/**
+ * Pertenencia al catálogo canónico de unidades (ADR-085 D1 · F5a).
+ * La validación dimensional entre unidad base y de compra (D2) es F5b:
+ * aquí solo se exige que cada valor exista en el catálogo.
+ */
+const INVENTORY_UOM_CATALOG_OPTIONS = INVENTORY_UNITS_OF_MEASURE.map(
+  (unit) => `${unit.code} (${unit.label})`,
+).join(', ');
+const INVALID_UNIT_OF_MEASURE_MESSAGE =
+  `La unidad de medida no pertenece al catálogo canónico. ` +
+  `Usa una de: ${INVENTORY_UOM_CATALOG_OPTIONS}.`;
+const INVALID_PURCHASE_UNIT_OF_MEASURE_MESSAGE =
+  `La unidad de compra no pertenece al catálogo canónico. ` +
+  `Usa una de: ${INVENTORY_UOM_CATALOG_OPTIONS}.`;
+
+const inventoryUnitOfMeasureSchema = z
+  .string()
+  .trim()
+  .max(32)
+  .refine((value): value is InventoryUnitOfMeasureCode => isInventoryUnitOfMeasureCode(value), {
+    message: INVALID_UNIT_OF_MEASURE_MESSAGE,
+  });
+
+/** Blanco o vacío equivale a ausencia, como antes; si hay valor debe ser del catálogo. */
+const optionalInventoryUnitOfMeasureSchema = z.preprocess(
+  (value: unknown) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  },
+  z
+    .string()
+    .max(32)
+    .refine((value): value is InventoryUnitOfMeasureCode => isInventoryUnitOfMeasureCode(value), {
+      message: INVALID_PURCHASE_UNIT_OF_MEASURE_MESSAGE,
+    })
+    .optional()
+    .nullable(),
+);
 
 const optionalQueryBoolean = z
   .union([z.boolean(), z.enum(['true', 'false'])])
@@ -204,7 +273,7 @@ const inventoryItemMasterFields = {
   categoryId: z.string().uuid().optional(),
   category: z.nativeEnum(InventoryItemCategory).optional(),
   trackingMode: z.nativeEnum(InventoryTrackingMode),
-  unitOfMeasure: z.string().trim().min(1).max(32),
+  unitOfMeasure: inventoryUnitOfMeasureSchema,
   baseCost: nonNegativeNumber.default(0),
   minimumStock: nonNegativeNumber.default(0),
   purchasable: z.boolean().optional().default(true),
@@ -212,7 +281,7 @@ const inventoryItemMasterFields = {
   assetControlled: z.boolean().optional(),
   preferredSupplierRefId: z.string().uuid().optional().nullable(),
   supplierSku: optionalTrimmedString(80),
-  purchaseUnitOfMeasure: optionalTrimmedString(32),
+  purchaseUnitOfMeasure: optionalInventoryUnitOfMeasureSchema,
   purchaseToBaseUomFactor: positiveNumber.optional().nullable(),
   standardCost: nonNegativeNumber.optional().default(0),
   lastPurchaseCost: nonNegativeNumber.optional().nullable(),
@@ -224,18 +293,88 @@ const inventoryItemMasterFields = {
   leadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
   usefulLifeMonths: z.coerce.number().int().positive().optional().nullable(),
   commercialReferenceId: optionalTrimmedString(160),
+  /**
+   * Código de barras del artículo (MOD12 · F4 · PRD §11). Opcional y editable.
+   * La validación por formato (dígito de control EAN13/UPCA) y la regla de
+   * consistencia «barcode y barcode_type van juntos» viven en
+   * `refineInventoryItemMaster`: la barrera es el backend.
+   */
+  barcode: optionalBarcodeSchema,
+  barcodeType: z.nativeEnum(InventoryBarcodeType).optional().nullable(),
   status: z.nativeEnum(InventoryItemStatus).optional().default(InventoryItemStatus.ACTIVE),
 };
 
 function refineInventoryItemMaster<T extends z.ZodTypeAny>(schema: T) {
   return schema.superRefine((value, ctx) => {
     const input = value as {
+      unitOfMeasure?: string | null;
       purchaseUnitOfMeasure?: string | null;
       purchaseToBaseUomFactor?: number | null;
       trackingMode: InventoryTrackingMode;
       assetControlled?: boolean;
       reorderPoint?: number;
+      /** MOD12 · F4: `barcode` y `barcodeType` van JUNTOS (PRD §11, CA-F4-08). */
+      barcode?: string | null;
+      barcodeType?: InventoryBarcodeType | null;
     };
+
+    /**
+     * Consistencia barcode/barcodeType: la regla se evalúa sobre lo que ENVÍA
+     * el cliente (`!== undefined`), no sobre el valor semántico, para que en
+     * `update` limpiar ambos campos (`null`/`null`) sea válido y enviar solo
+     * uno se rechace (CA-F4-08). Además la pareja debe ser consistente en
+     * valor: mitad en `null` con la otra mitad con valor también se rechaza
+     * (un formato sin código —o un código sin formato— no identifica nada).
+     */
+    const barcodeMentioned = input.barcode !== undefined;
+    const barcodeTypeMentioned = input.barcodeType !== undefined;
+    const hasBarcodeValue = typeof input.barcode === 'string' && input.barcode.length > 0;
+    const hasBarcodeTypeValue = input.barcodeType !== undefined && input.barcodeType !== null;
+
+    if (barcodeMentioned && !barcodeTypeMentioned) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Indica el formato del código de barras (EAN13, UPCA, CODE128 u OTHER): el formato va junto al código.',
+        path: ['barcodeType'],
+      });
+    }
+
+    if (!barcodeMentioned && barcodeTypeMentioned) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'El formato del código de barras va junto al código: indica el valor del código o limpia ambos campos.',
+        path: ['barcode'],
+      });
+    }
+
+    if (barcodeMentioned && barcodeTypeMentioned && hasBarcodeValue !== hasBarcodeTypeValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: hasBarcodeValue
+          ? 'Indica el formato del código de barras (EAN13, UPCA, CODE128 u OTHER): el formato va junto al código.'
+          : 'El formato del código de barras va junto al código: indica el valor del código o limpia ambos campos.',
+        path: [hasBarcodeValue ? 'barcodeType' : 'barcode'],
+      });
+    }
+
+    /**
+     * Validación por formato declarado (PRD §11 regla 4), autoritativa en
+     * backend: dígito de control módulo 10 GS1 para EAN13/UPCA; longitud y
+     * caracteres para CODE128/OTHER. El cliente puede replicarla para dar
+     * respuesta inmediata, pero no es la barrera.
+     */
+    if (hasBarcodeValue && hasBarcodeTypeValue && input.barcodeType) {
+      const barcodeCheck = validateBarcodeValue(input.barcodeType, input.barcode as string);
+      if (!barcodeCheck.ok) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: barcodeCheck.message,
+          path: ['barcode'],
+        });
+      }
+    }
 
     if (
       input.purchaseUnitOfMeasure &&
@@ -247,6 +386,39 @@ function refineInventoryItemMaster<T extends z.ZodTypeAny>(schema: T) {
           'El factor de conversion de compra debe ser mayor que cero cuando hay unidad de compra.',
         path: ['purchaseToBaseUomFactor'],
       });
+    }
+
+    /**
+     * Validación dimensional (ADR-085 D2 · F5b), autoritativa en backend.
+     * Solo se pronuncia cuando el payload trae ambas unidades: en `update`
+     * parcial la visión completa la revalida `InventoryItemService.update`
+     * contra el esquema de creación con los valores fusionados.
+     */
+    if (input.unitOfMeasure && input.purchaseUnitOfMeasure) {
+      const baseCode = input.unitOfMeasure;
+      const purchaseCode = input.purchaseUnitOfMeasure;
+
+      if (baseCode === purchaseCode) {
+        const factor = input.purchaseToBaseUomFactor;
+        if (factor !== undefined && factor !== null && Number(factor) !== 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'Cuando la unidad de compra coincide con la unidad base, el factor de conversion debe ser 1.',
+            path: ['purchaseToBaseUomFactor'],
+          });
+        }
+      } else if (
+        isInventoryUnitOfMeasureCode(baseCode) &&
+        isInventoryUnitOfMeasureCode(purchaseCode) &&
+        !areInventoryUnitsDimensionallyCompatible(baseCode, purchaseCode)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: buildDimensionalMismatchMessage(baseCode, purchaseCode),
+          path: ['purchaseUnitOfMeasure'],
+        });
+      }
     }
 
     if ((input.reorderPoint ?? 0) < 0) {
@@ -323,6 +495,8 @@ export const UpdateInventoryItemSchema = refineInventoryItemMaster(
       leadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
       usefulLifeMonths: z.coerce.number().int().positive().optional().nullable(),
       commercialReferenceId: inventoryItemMasterFields.commercialReferenceId,
+      barcode: inventoryItemMasterFields.barcode,
+      barcodeType: inventoryItemMasterFields.barcodeType,
       status: z.nativeEnum(InventoryItemStatus).optional(),
     })
     .refine((value) => Object.keys(value).length > 0, {
@@ -504,7 +678,7 @@ export class SuggestInventoryCategoryPrefixResponseDto {
 export class CreateInventoryItemDto {
   @ApiPropertyOptional({
     description:
-      'Codigo del producto. Si se omite o envia vacio, se autogenera como {prefijo-categoria}-NNNNNN.',
+      'Codigo del producto. Si se omite o envia vacio, se autogenera con el formato compuesto {CAT}-{TIPO}-{NOMBRE}-{MARCA}-{MODELO}; MARCA y MODELO se omiten si no estan disponibles. Ante colision se reintenta con sufijo -001 o -002; si persiste, la operacion devuelve 409. No se puede modificar despues de crear el producto.',
   })
   @Allow()
   sku?: string;
@@ -541,7 +715,10 @@ export class CreateInventoryItemDto {
   @Allow()
   trackingMode!: InventoryTrackingMode;
 
-  @ApiProperty()
+  @ApiProperty({
+    enum: [...INVENTORY_UNIT_OF_MEASURE_CODES],
+    description: 'Código del catálogo canónico de unidades (ADR-085 D1). Ej. UNIT, BOX, METER.',
+  })
   @Allow()
   unitOfMeasure!: string;
 
@@ -573,11 +750,20 @@ export class CreateInventoryItemDto {
   @Allow()
   supplierSku?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    enum: [...INVENTORY_UNIT_OF_MEASURE_CODES],
+    description:
+      'Código del catálogo canónico de unidades para la compra (opcional). ' +
+      'Debe compartir dimensión con la unidad base (ADR-085 D2); COUNT admite empaque (caja → unidad).',
+  })
   @Allow()
   purchaseUnitOfMeasure?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Cuántas unidades base contiene una unidad de compra (numeric(12,4)). ' +
+      'Se aplica en la recepción hacia adelante: el ledger opera siempre en unidad base (ADR-085 D3).',
+  })
   @Allow()
   purchaseToBaseUomFactor?: number | null;
 
@@ -624,6 +810,23 @@ export class CreateInventoryItemDto {
   @ApiPropertyOptional()
   @Allow()
   commercialReferenceId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Código de barras del artículo (opcional, editable tras la creación). Único por tenant; se envía SIEMPRE junto a barcodeType. No sustituye al SKU.',
+    maxLength: 64,
+    example: '8412345678905',
+  })
+  @Allow()
+  barcode?: string | null;
+
+  @ApiPropertyOptional({
+    enum: InventoryBarcodeType,
+    description:
+      'Formato declarado del código de barras; obligatorio junto a barcode (uno sin el otro se rechaza). EAN13 y UPCA validan dígito de control.',
+  })
+  @Allow()
+  barcodeType?: InventoryBarcodeType | null;
 
   @ApiPropertyOptional({ enum: InventoryItemStatus, default: InventoryItemStatus.ACTIVE })
   @Allow()
@@ -808,9 +1011,52 @@ export class UpdateStockLocationDto {
   maxCapacity?: number | null;
 }
 
+const SERIALIZED_ASSET_STATUS_LIST_ERROR =
+  'El estado del activo no es válido. Usa uno o varios valores separados por comas (p. ej. AVAILABLE,AVAILABLE_REFURBISHED).';
+
+/**
+ * MOD12 S1 · B2: `status` acepta un valor único (`?status=AVAILABLE`) o una
+ * lista separada por comas (`?status=AVAILABLE,AVAILABLE_REFURBISHED`).
+ * El preproceso normaliza ambas formas a `SerializedAssetStatus[]`; el valor
+ * único sigue vigente. Tokens inválidos → 400 en español vía ZodValidationPipe.
+ */
+function parseSerializedAssetStatusList(value: unknown): unknown {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  const rawValues = Array.isArray(value) ? value : [value];
+  const tokens: string[] = [];
+
+  for (const raw of rawValues) {
+    if (typeof raw !== 'string') {
+      return value;
+    }
+
+    for (const part of raw.split(',')) {
+      const token = part.trim();
+      if (token.length > 0) {
+        tokens.push(token);
+      }
+    }
+  }
+
+  return tokens;
+}
+
 export const ListSerializedAssetsQuerySchema = z.object({
   itemId: z.string().trim().min(1).max(160).optional(),
-  status: z.nativeEnum(SerializedAssetStatus).optional(),
+  status: z.preprocess(
+    parseSerializedAssetStatusList,
+    z
+      .array(
+        z.nativeEnum(SerializedAssetStatus, {
+          errorMap: () => ({ message: SERIALIZED_ASSET_STATUS_LIST_ERROR }),
+        }),
+      )
+      .min(1, 'Debe indicar al menos un estado de activo válido.')
+      .optional(),
+  ),
   locationId: z.string().trim().min(1).max(160).optional(),
   serialNumber: z.string().trim().min(1).max(160).optional(),
   ...inventoryHybridPaginationZod,
@@ -847,9 +1093,14 @@ export class ListSerializedAssetsQueryDto {
   @Allow()
   itemId?: string;
 
-  @ApiPropertyOptional({ enum: SerializedAssetStatus })
+  @ApiPropertyOptional({
+    enum: SerializedAssetStatus,
+    description:
+      'Estado o lista separada por comas (p. ej. AVAILABLE,AVAILABLE_REFURBISHED). El valor único sigue vigente.',
+    example: 'AVAILABLE,AVAILABLE_REFURBISHED',
+  })
   @Allow()
-  status?: SerializedAssetStatus;
+  status?: string;
 
   @ApiPropertyOptional()
   @Allow()
@@ -987,6 +1238,41 @@ export class ListStockBalancesQueryDto {
     minimum: 1,
     maximum: INVENTORY_LIST_MAX_LIMIT,
     description: `Tamaño de página (default ${INVENTORY_LIST_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
+}
+
+export const ListExecutorCustodyQuerySchema = z.object({
+  /** ID del responsable (usuario técnico o cuadrilla) cuya custodia se consulta. */
+  responsibleRefId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+});
+
+export type ListExecutorCustodyQueryInput = z.input<typeof ListExecutorCustodyQuerySchema>;
+
+export class ListExecutorCustodyQueryDto {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'ID del responsable (técnico o cuadrilla) cuya custodia activa se consulta.',
+  })
+  @Allow()
+  responsibleRefId!: string;
+
+  @ApiPropertyOptional({
+    default: 1,
+    minimum: 1,
+    description: 'Página 1-based compartida por ambas colecciones.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    default: 25,
+    minimum: 1,
+    maximum: 100,
+    description: 'Tamaño de página compartido por ambas colecciones (default 25, max 100).',
   })
   @Allow()
   limit?: number;
@@ -1339,6 +1625,92 @@ export class ListStockIssuesQueryDto {
   limit?: number;
 }
 
+/**
+ * Límite por defecto del listado de elegibles para salida (MOD12 S1 · B1).
+ * D1 exige precarga inmediata al elegir bodega: 25 filas por página.
+ */
+export const STOCK_ISSUE_PICKABLE_ITEMS_DEFAULT_LIMIT = 25;
+
+/**
+ * Query de `GET /inventory/issues/pickable-items` (MOD12 S1 · B1).
+ *
+ * Decisión de paginación (review G1): solo modo `page`. El orden canónico
+ * (`totalAvailable DESC, name ASC`) se calcula sobre el agregado por ítem y
+ * no admite cursor keyset; `cursor` se rechaza con 400 en español en el
+ * servicio. `q` vacía = sin filtro (precarga D1), a diferencia del picker
+ * genérico que retorna vacío sin `q`.
+ */
+export const ListStockIssuePickableItemsQuerySchema = z.object({
+  sourceLocationId: z.string().uuid(),
+  q: z.string().trim().max(200).optional(),
+  scope: z.enum(['with-stock', 'catalog']).optional().default('with-stock'),
+  ...inventoryHybridPaginationZod,
+  limit: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(INVENTORY_LIST_MAX_LIMIT)
+      .optional()
+      .default(STOCK_ISSUE_PICKABLE_ITEMS_DEFAULT_LIMIT),
+  ),
+});
+
+export type ListStockIssuePickableItemsQueryInput = z.input<
+  typeof ListStockIssuePickableItemsQuerySchema
+>;
+
+export class ListStockIssuePickableItemsQueryDto {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Bodega de origen desde la que se prepara la salida.',
+  })
+  @Allow()
+  sourceLocationId!: string;
+
+  @ApiPropertyOptional({
+    maxLength: 200,
+    description:
+      'Búsqueda por SKU, nombre, marca, modelo o código de barras. Vacía = sin filtro (precarga de la pestaña Con material).',
+  })
+  @Allow()
+  q?: string;
+
+  @ApiPropertyOptional({
+    enum: ['with-stock', 'catalog'],
+    default: 'with-stock',
+    description:
+      'with-stock: solo ítems con disponible > 0 en la bodega. catalog: catálogo completo (sin saldo = totalAvailable 0).',
+  })
+  @Allow()
+  scope?: 'with-stock' | 'catalog';
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Página 1-based. Excluyente con cursor. El orden por disponible calculado solo admite modo page.',
+  })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'No disponible en este listado: el orden por disponible calculado no admite cursor keyset. Enviarlo responde 400; usa page.',
+  })
+  @Allow()
+  cursor?: string;
+
+  @ApiPropertyOptional({
+    default: STOCK_ISSUE_PICKABLE_ITEMS_DEFAULT_LIMIT,
+    minimum: 1,
+    maximum: INVENTORY_LIST_MAX_LIMIT,
+    description: `Tamaño de página (default ${STOCK_ISSUE_PICKABLE_ITEMS_DEFAULT_LIMIT}, max ${INVENTORY_LIST_MAX_LIMIT})`,
+  })
+  @Allow()
+  limit?: number;
+}
+
 /** Presets KPI del workspace de compras (paridad con portal purchase-filters). */
 export const PurchaseRequestKpiPresetSchema = z.enum([
   'pendingQuotes',
@@ -1389,7 +1761,7 @@ export class ListPurchaseRequestsQueryDto {
   @ApiPropertyOptional({
     enum: ['pendingQuotes', 'pendingApproval', 'readyForPo', 'pendingReceipt', 'urgent', 'overdue'],
     description:
-      'Preset KPI operativo. `pendingQuotes` = DRAFT∪PENDING_QUOTES; `overdue` = neededByDate vencida y no terminal.',
+      'Preset KPI operativo. `pendingQuotes` = DRAFT∪PENDING_QUOTES; `pendingReceipt` = CONVERTED_TO_PO con órdenes en APPROVED/PARTIALLY_RECEIVED (excluye totalmente recibidas); `overdue` = neededByDate vencida y no terminal.',
   })
   @Allow()
   kpiPreset?: PurchaseRequestKpiPreset;
@@ -1498,6 +1870,7 @@ export const PurchaseRequestLineSchema = z
     inventoryItemId: optionalUuidLike(),
     freeTextDescription: optionalTrimmedString(500),
     quantityRequested: positiveNumber,
+    // TODO(F5b/D2): exigir catálogo canónico ADR-085; hoy texto libre mientras el ítem exige catálogo.
     unitOfMeasure: z.string().trim().min(1).max(32),
     suggestedPartyRefId: optionalUuidLike(),
     notes: optionalTrimmedString(4000),
@@ -1625,12 +1998,21 @@ export const AddSupplierQuoteLineSchema = z.object({
   unitCost: positiveNumber,
 });
 
+export const AddSupplierQuoteTaxSchema = z.object({
+  code: z.string().trim().min(2).max(40),
+  applies: z.boolean(),
+  rate: z.coerce.number().min(0).max(100).optional(),
+});
+
 export const AddSupplierQuoteSchema = z
   .object({
     partyRefId: z.string().trim().min(1).max(160),
     quoteNumber: z.string().trim().min(1).max(60),
     amount: positiveNumber.optional(),
     shippingCost: nonNegativeNumber.default(0),
+    shippingArrangement: z
+      .nativeEnum(QuoteShippingArrangement)
+      .default(QuoteShippingArrangement.ON_INVOICE),
     currency: z
       .string()
       .trim()
@@ -1640,6 +2022,7 @@ export const AddSupplierQuoteSchema = z
     notes: optionalTrimmedString(4000),
     rfqInvitationId: z.string().uuid().optional().nullable(),
     lines: z.array(AddSupplierQuoteLineSchema).min(1).optional(),
+    taxes: z.array(AddSupplierQuoteTaxSchema).optional(),
   })
   .superRefine((value, ctx) => {
     if ((!value.lines || value.lines.length === 0) && value.amount === undefined) {
@@ -1649,10 +2032,73 @@ export const AddSupplierQuoteSchema = z
         path: ['amount'],
       });
     }
+
+    if (!value.taxes?.length) {
+      return;
+    }
+
+    const seenCodes = new Set<string>();
+    value.taxes.forEach((tax, index) => {
+      if (seenCodes.has(tax.code)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Hay códigos de tributo duplicados en la cotización.',
+          path: ['taxes', index, 'code'],
+        });
+      }
+      seenCodes.add(tax.code);
+    });
   });
 
 export type AddSupplierQuoteInput = z.input<typeof AddSupplierQuoteSchema>;
 export type AddSupplierQuoteLineInput = z.infer<typeof AddSupplierQuoteLineSchema>;
+export type AddSupplierQuoteTaxInput = z.infer<typeof AddSupplierQuoteTaxSchema>;
+
+export const UpdateSupplierQuoteSchema = z
+  .object({
+    quoteNumber: z.string().trim().min(1).max(60),
+    amount: positiveNumber.optional(),
+    shippingCost: nonNegativeNumber.default(0),
+    shippingArrangement: z
+      .nativeEnum(QuoteShippingArrangement)
+      .default(QuoteShippingArrangement.ON_INVOICE),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase()),
+    validUntil: optionalDateString,
+    notes: optionalTrimmedString(4000),
+    lines: z.array(AddSupplierQuoteLineSchema).min(1).optional(),
+    taxes: z.array(AddSupplierQuoteTaxSchema).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if ((!value.lines || value.lines.length === 0) && value.amount === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Indica el monto total o al menos una línea de cotización.',
+        path: ['amount'],
+      });
+    }
+
+    if (!value.taxes?.length) {
+      return;
+    }
+
+    const seenCodes = new Set<string>();
+    value.taxes.forEach((tax, index) => {
+      if (seenCodes.has(tax.code)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Hay códigos de tributo duplicados en la cotización.',
+          path: ['taxes', index, 'code'],
+        });
+      }
+      seenCodes.add(tax.code);
+    });
+  });
+
+export type UpdateSupplierQuoteInput = z.input<typeof UpdateSupplierQuoteSchema>;
 
 export class AddSupplierQuoteLineDto {
   @ApiProperty()
@@ -1662,6 +2108,88 @@ export class AddSupplierQuoteLineDto {
   @ApiProperty()
   @Allow()
   unitCost!: number;
+}
+
+export class AddSupplierQuoteTaxDto {
+  @ApiProperty({ minLength: 2, maxLength: 40, example: 'IVA_19' })
+  @Allow()
+  code!: string;
+
+  @ApiProperty({ description: 'Solo se persisten filas con applies=true' })
+  @Allow()
+  applies!: boolean;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 100,
+    description: 'Tasa 0–100. Si se omite, el servidor usa la tasa del catálogo.',
+  })
+  @Allow()
+  rate?: number;
+}
+
+export class SupplierQuoteTaxSnapshotDto {
+  @ApiProperty()
+  code!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty()
+  category!: string;
+
+  @ApiProperty({ enum: TaxQuoteEffect })
+  effect!: TaxQuoteEffect;
+
+  @ApiProperty({ example: true })
+  applies!: true;
+
+  @ApiProperty({ description: 'Tasa persistida con hasta 4 decimales' })
+  rate!: string;
+
+  @ApiProperty()
+  baseAmount!: string;
+
+  @ApiProperty()
+  taxAmount!: string;
+}
+
+export class PurchaseTaxPresetDto {
+  @ApiProperty()
+  code!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty()
+  category!: string;
+
+  @ApiProperty({ nullable: true, type: Number })
+  baseRate!: number | null;
+
+  @ApiProperty()
+  treatment!: string;
+
+  @ApiProperty()
+  context!: string;
+}
+
+/**
+ * Eje derivado de abastecimiento de una solicitud de compra (no persistido).
+ * Se documenta como modelo aparte porque viaja embebido en cada fila del
+ * listado `GET /purchasing/requests` y en el `request` del detalle.
+ */
+export class PurchaseRequestFulfillmentDto {
+  @ApiProperty({
+    enum: PurchaseRequestFulfillmentStatus,
+    enumName: 'PurchaseRequestFulfillmentStatus',
+    description:
+      'Estado de abastecimiento derivado en servidor de las órdenes de compra vivas ' +
+      '(se ignoran las CANCELLED). Complementa a status, que se detiene en CONVERTED_TO_PO: ' +
+      'PARTIALLY_RECEIVED si alguna orden lo está; si no, PENDING_RECEIPT con alguna APPROVED; ' +
+      'si no, RECEIVED con alguna FULLY_RECEIVED o CLOSED; en cualquier otro caso NOT_ORDERED.',
+  })
+  fulfillmentStatus!: PurchaseRequestFulfillmentStatus;
 }
 
 export class AddSupplierQuoteDto {
@@ -1680,11 +2208,20 @@ export class AddSupplierQuoteDto {
   amount?: number;
 
   @ApiPropertyOptional({
-    description: 'Gastos de envío (0 = gratis). No forma parte del amount de productos.',
+    description: 'Monto del flete. Cero si es gratis. No forma parte del amount de productos.',
     default: 0,
   })
   @Allow()
   shippingCost?: number;
+
+  @ApiPropertyOptional({
+    enum: QuoteShippingArrangement,
+    default: QuoteShippingArrangement.ON_INVOICE,
+    description:
+      'Cómo se cubre el envío: FREE, ON_INVOICE (entra al neto) o PAY_CARRIER (no entra al neto).',
+  })
+  @Allow()
+  shippingArrangement?: QuoteShippingArrangement;
 
   @ApiProperty({ minLength: 3, maxLength: 3 })
   @Allow()
@@ -1707,6 +2244,66 @@ export class AddSupplierQuoteDto {
   @ValidateNested({ each: true })
   @Type(() => AddSupplierQuoteLineDto)
   lines?: AddSupplierQuoteLineDto[];
+
+  @ApiPropertyOptional({
+    type: [AddSupplierQuoteTaxDto],
+    description:
+      'Tributos opcionales (IVA, retención en la fuente, Rete ICA, Rete IVA). El servidor calcula montos.',
+  })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => AddSupplierQuoteTaxDto)
+  taxes?: AddSupplierQuoteTaxDto[];
+}
+
+export class UpdateSupplierQuoteDto {
+  @ApiProperty()
+  @Allow()
+  quoteNumber!: string;
+
+  @ApiPropertyOptional({
+    description: 'Monto total (legacy si la solicitud no tiene líneas; derivado si hay lines)',
+  })
+  @Allow()
+  amount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Monto del flete. Cero si es gratis. No forma parte del amount de productos.',
+    default: 0,
+  })
+  @Allow()
+  shippingCost?: number;
+
+  @ApiPropertyOptional({
+    enum: QuoteShippingArrangement,
+    default: QuoteShippingArrangement.ON_INVOICE,
+  })
+  @Allow()
+  shippingArrangement?: QuoteShippingArrangement;
+
+  @ApiProperty({ minLength: 3, maxLength: 3 })
+  @Allow()
+  currency!: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  validUntil?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  notes?: string | null;
+
+  @ApiPropertyOptional({ type: [AddSupplierQuoteLineDto] })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => AddSupplierQuoteLineDto)
+  lines?: AddSupplierQuoteLineDto[];
+
+  @ApiPropertyOptional({ type: [AddSupplierQuoteTaxDto] })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => AddSupplierQuoteTaxDto)
+  taxes?: AddSupplierQuoteTaxDto[];
 }
 
 export const CreateRfqSchema = z.object({

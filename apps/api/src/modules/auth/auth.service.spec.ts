@@ -1567,6 +1567,95 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow('La contraseña actual no coincide con la que usas para iniciar sesión.');
     });
+
+    it('P-05: pone el jti en curso en blacklist en la rama de tenant', async () => {
+      const user = buildUser();
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await service.changePassword(tenantActor(user.id), {
+        currentPassword: 'OldPass1!',
+        newPassword: 'NewPass1!',
+      });
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'jti:blacklist:jti-tenant-test',
+        '1',
+        'EX',
+        expect.any(Number),
+      );
+    });
+
+    it('P-05: limpia el contador de fallos al cambiar con exito', async () => {
+      const user = buildUser({ failedLoginAttempts: 3 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await service.changePassword(tenantActor(user.id), {
+        currentPassword: 'OldPass1!',
+        newPassword: 'NewPass1!',
+      });
+
+      expect(manager.update).toHaveBeenCalledWith(
+        User,
+        user.id,
+        expect.objectContaining({ failedLoginAttempts: 0, lockedUntil: null }),
+      );
+    });
+
+    it('P-09: cuenta el fallo de currentPassword en change-password', async () => {
+      const user = buildUser({ failedLoginAttempts: 0 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await expect(
+        service.changePassword(tenantActor(user.id), {
+          currentPassword: 'WrongPass1!',
+          newPassword: 'NewPass1!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(manager.update).toHaveBeenCalledWith(
+        User,
+        user.id,
+        expect.objectContaining({ failedLoginAttempts: 1 }),
+      );
+    });
+
+    it('P-09: rechaza change-password cuando la cuenta esta en lockout', async () => {
+      const user = buildUser({
+        failedLoginAttempts: 5,
+        lockedUntil: new Date(Date.now() + 10 * 60 * 1000),
+      });
+      (bcrypt.compare as jest.Mock).mockClear();
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await expect(
+        service.changePassword(tenantActor(user.id), {
+          currentPassword: 'OldPass1!',
+          newPassword: 'NewPass1!',
+        }),
+      ).rejects.toThrow('Cuenta bloqueada temporalmente');
+
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
   });
 
   // ---------------------------------------------------------------------------

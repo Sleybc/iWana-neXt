@@ -79,6 +79,18 @@ const TERMINAL_SCHEDULE_EVENT_STATUSES = new Set<ScheduleEventStatus>([
   ScheduleEventStatus.NO_SHOW,
 ]);
 
+/**
+ * Estados programables del ciclo de vida para scope=actionable
+ * (bandeja "Pendientes por programar"). Excluye SCHEDULED, IN_EXECUTION,
+ * CLOSED, CANCELLED, REJECTED y EXPIRED del listado server-side.
+ */
+const ACTIONABLE_VISIT_REQUEST_STATUSES: VisitRequestStatus[] = [
+  VisitRequestStatus.PENDING,
+  VisitRequestStatus.NEEDS_CONTEXT,
+  VisitRequestStatus.READY_TO_SCHEDULE,
+  VisitRequestStatus.REQUIRES_RESCHEDULE,
+];
+
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -217,6 +229,55 @@ export class VisitRequestsService {
       }
       if (validated.to) {
         qb.andWhere('vr.created_at <= :to', { to: validated.to });
+      }
+
+      // scope=actionable: exclusiones server-side para el panel
+      // "Pendientes por programar". Con scope=all (default) no se altera
+      // el comportamiento actual del listado.
+      if (validated.scope === 'actionable') {
+        // (1) Solo estados programables del ciclo de vida.
+        qb.andWhere('vr.status IN (:...actionableStatuses)', {
+          actionableStatuses: ACTIONABLE_VISIT_REQUEST_STATUSES,
+        });
+
+        // (2a) Sin evento de agenda activo ya vinculado a esta solicitud
+        // (drift: schedule_event_id apunta a un evento existente, no eliminado
+        // y con status no terminal). ADR-076 D2.
+        qb.andWhere(
+          `NOT EXISTS (
+            SELECT 1
+            FROM schedule_events se
+            WHERE se.id = vr.schedule_event_id
+              AND se.deleted_at IS NULL
+              AND se.status NOT IN (:...terminalLinkedEventStatuses)
+          )`,
+          {
+            terminalLinkedEventStatuses: Array.from(TERMINAL_SCHEDULE_EVENT_STATUSES),
+          },
+        );
+
+        // (2b) Origen CRM con expediente: excluir si existe un evento activo
+        // (no eliminado, status no terminal) con el mismo expediente_id y el
+        // mismo work_type (se.type). Solo vínculo estructural, sin heurísticas
+        // de título. Semántica de findActiveScheduleWorkByOrigin (ADR-076 D2).
+        qb.andWhere(
+          `NOT (
+            vr.origin_context = :crmOriginContext
+            AND vr.expediente_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM schedule_events se_exp
+              WHERE se_exp.expediente_id = vr.expediente_id
+                AND se_exp.type = vr.work_type
+                AND se_exp.deleted_at IS NULL
+                AND se_exp.status NOT IN (:...terminalExpedienteEventStatuses)
+            )
+          )`,
+          {
+            crmOriginContext: WorkOrderSourceContext.CRM,
+            terminalExpedienteEventStatuses: Array.from(TERMINAL_SCHEDULE_EVENT_STATUSES),
+          },
+        );
       }
 
       qb.orderBy('CASE WHEN vr.sla_due_at IS NULL THEN 1 ELSE 0 END', 'ASC')

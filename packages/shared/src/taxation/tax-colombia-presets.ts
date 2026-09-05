@@ -87,6 +87,20 @@ export const TAX_COLOMBIA_PRESETS: readonly TaxPresetDefinition[] = [
     notes: 'Retención ICA Bogotá D.C. — CIIU 6130 (telecomunicaciones inalámbricas)',
   },
   {
+    code: 'RETE_IVA',
+    name: 'Rete IVA',
+    category: TaxCategory.WITHHOLDING,
+    jurisdictionLevel: JurisdictionLevel.NATIONAL,
+    municipalityCode: null,
+    baseRate: 15,
+    treatment: TaxTreatment.STANDARD,
+    context: TaxContext.PURCHASE,
+    origin: TaxOrigin.SYSTEM,
+    isActive: true,
+    notes:
+      'Placeholder 15%; requiere verificación con fuente oficial. Base = IVA ADD; 0 si IVA no aplica.',
+  },
+  {
     code: 'ESTAMPILLA_DEPARTAMENTAL',
     name: 'Estampilla departamental',
     category: TaxCategory.STAMP,

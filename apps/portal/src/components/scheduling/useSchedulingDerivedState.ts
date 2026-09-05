@@ -1,3 +1,5 @@
+'use client';
+
 import { useMemo } from 'react';
 import type { InternalUser, WfmScheduleEvent } from '@/lib/api-client';
 import type { SchedulingFilters } from './scheduling-ui';

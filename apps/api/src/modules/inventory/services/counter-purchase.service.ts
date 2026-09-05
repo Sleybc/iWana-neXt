@@ -19,6 +19,7 @@ import {
   StockMovementOrigin,
 } from '@iwana/shared';
 import { CreateCounterPurchaseInput, CreateCounterPurchaseSchema } from '../dto';
+import { resolveReceiptUomConversion } from '../utils/uom-conversion';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { acquireIdempotencyTransactionLock } from './inventory-postgres.util';
 import { InventoryCostingService } from './inventory-costing.service';
@@ -136,6 +137,11 @@ export class CounterPurchaseService {
         const movementLines = [];
         const assetTransitions = [];
         const seenSerials = new Set<string>();
+        // Equivalencias UoM convertidas («2 cajas = 200 unidades») para
+        // trazabilidad en las notas del movimiento (CA-F5B-02 análogo: este
+        // ingreso no tiene líneas de recepción donde conservar la cantidad
+        // de compra, así que la equivalencia queda en el movimiento).
+        const uomEquivalences: string[] = [];
 
         for (const [index, line] of validated.lines.entries()) {
           const inventoryItem = await manager.findOne(InventoryItem, {
@@ -146,6 +152,21 @@ export class CounterPurchaseService {
             throw new NotFoundException('El item de inventario asociado al ingreso no existe.');
           }
 
+          /**
+           * Conversión compra → base (ADR-085 D3 · F5b): mismo resolutor único
+           * que la recepción formal. Este ingreso directo (ADR-050) es el
+           * segundo flujo de entrada de mercancía comprada y aplica la misma
+           * conversión exactamente una vez por línea antes del ledger.
+           */
+          const uomConversion = resolveReceiptUomConversion(
+            inventoryItem,
+            line.quantityReceived,
+            line.unitCost,
+          );
+          if (uomConversion.applies && uomConversion.equivalence) {
+            uomEquivalences.push(uomConversion.equivalence);
+          }
+
           const serialNumbers = line.serialNumbers ?? [];
 
           if (
@@ -153,9 +174,13 @@ export class CounterPurchaseService {
               inventoryItem.trackingMode,
             )
           ) {
-            if (serialNumbers.length !== line.quantityReceived) {
+            // Cada activo es 1 unidad base: con conversión se exige un serial
+            // por unidad base, no por unidad de compra.
+            if (serialNumbers.length !== uomConversion.baseQuantity) {
               throw new BadRequestException(
-                'Los items serializados deben incluir un serial por cada unidad recibida.',
+                uomConversion.applies && uomConversion.equivalence
+                  ? `Los items serializados deben incluir un serial por cada unidad base recibida (${uomConversion.equivalence}: se esperaban ${uomConversion.baseQuantity} seriales).`
+                  : 'Los items serializados deben incluir un serial por cada unidad recibida.',
               );
             }
 
@@ -213,7 +238,7 @@ export class CounterPurchaseService {
                 quantity: 1,
                 lotId: stockLot.id,
                 serializedAssetId: asset.id,
-                unitCost: line.unitCost,
+                unitCost: uomConversion.baseUnitCost ?? line.unitCost,
                 condition: line.condition,
               });
 
@@ -227,12 +252,13 @@ export class CounterPurchaseService {
               });
             }
           } else {
+            // El ledger opera siempre en unidad base (Regla 2).
             movementLines.push({
               itemId: line.itemId,
               locationId: validated.destinationLocationId,
-              quantity: line.quantityReceived,
+              quantity: uomConversion.baseQuantity,
               lotId: stockLot.id,
-              unitCost: line.unitCost,
+              unitCost: uomConversion.baseUnitCost ?? line.unitCost,
               condition: line.condition,
             });
           }
@@ -263,7 +289,10 @@ export class CounterPurchaseService {
             originContext: 'inventory.counter-purchase',
             originRefId: validated.partyRefId,
             idempotencyKey,
-            notes: movementNotes || null,
+            notes:
+              uomEquivalences.length > 0
+                ? `${movementNotes} · Equivalencias: ${uomEquivalences.join('; ')}`
+                : movementNotes || null,
             lines: movementLines,
             assetTransitions,
           },

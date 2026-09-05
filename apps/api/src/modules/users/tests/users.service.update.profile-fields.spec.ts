@@ -11,10 +11,13 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { TenantContext, User } from '@iwana/db';
 import { DocumentType, USERS_BULK_CREATE_QUEUE, UserRole, UserStatus } from '@iwana/shared';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { AuditService } from '../../audit/audit.service';
+import { MailerService } from '../../mailer/mailer.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { SearchQueueService } from '../../search/search-queue.service';
 import { TenantService } from '../../tenant/tenant.service';
@@ -108,6 +111,23 @@ describe('UsersService — campos de perfil en update() y updateMe()', () => {
           useValue: {
             enqueueUserUpsert: jest.fn().mockResolvedValue(undefined),
             enqueueUserDelete: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { invalidateUserPermissions: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: MailerService,
+          useValue: { sendMail: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key: string, def?: unknown) => {
+              if (key === 'FRONTEND_URL') return 'http://localhost:3001';
+              return def;
+            }),
           },
         },
         {

@@ -1,9 +1,10 @@
+import { formatFullName } from '@iwana/shared';
 import { usersApi, type InternalUser } from '@/lib/api-client';
 
 const USERS_PAGE_SIZE = 100;
 
 export function buildInternalUserLabel(user: InternalUser): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(user.firstName, user.lastName).trim();
   if (fullName) {
     return fullName;
   }

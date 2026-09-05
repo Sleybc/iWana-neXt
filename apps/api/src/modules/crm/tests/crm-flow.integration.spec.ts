@@ -3,6 +3,7 @@ import { ReviewsController } from '../reviews/reviews.controller';
 import { ActivationService } from '../reviews/activation.service';
 import { ReviewCoordinationService } from '../reviews/review-coordination.service';
 import { CustomerOverviewService } from '../reviews/customer-overview.service';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 
 describe('CRM Flow contracts', () => {
   let controller: ReviewsController;
@@ -52,6 +53,10 @@ describe('CRM Flow contracts', () => {
               conformityEvidenceRef: 'doc-1',
             }),
           },
+        },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
         },
       ],
     }).compile();

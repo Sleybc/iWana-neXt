@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { cn } from '@iwana/ui';
+import { getTenantInitials } from '@iwana/shared';
 
 interface TenantSealProps {
   sealLightUrl: string | null;
@@ -18,18 +19,12 @@ const SIZE_CLASSES = {
   lg: 'w-16 h-16 text-xl',
 } as const;
 
-/** Genera máximo 2 iniciales a partir del nombre comercial */
-function getInitials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  if (words.length === 1) {
-    return (words[0]?.slice(0, 2) ?? '?').toUpperCase();
-  }
-  return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase();
-}
-
 /**
  * Muestra el sello del tenant con fallback de iniciales.
+ *
+ * Identidad de tenant, no de persona: fuera de `Avatar` por contrato
+ * (docs/specs/2026-09-04-contrato-avatar.md §8). El cómputo de iniciales se
+ * comparte con `TenantCreateSummary` (web) vía `getTenantInitials`.
  *
  * - Si hay URL configurada → imagen con la variante correcta según dark mode.
  * - Si la imagen falla o no hay URL → cuadrado con iniciales en colores iWana
@@ -89,7 +84,7 @@ export function TenantSeal({
         className,
       )}
     >
-      <span className="text-iwana-primary font-bold leading-none">{getInitials(name)}</span>
+      <span className="text-iwana-primary font-bold leading-none">{getTenantInitials(name)}</span>
     </div>
   );
 }

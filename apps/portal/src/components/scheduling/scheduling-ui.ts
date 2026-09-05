@@ -1,5 +1,6 @@
 import type { BadgeProps } from '@iwana/ui';
 import {
+  formatFullName,
   PLATFORM_ONLY_ROLES,
   ScheduleEventStatus,
   TechnicianAvailabilityType,
@@ -506,7 +507,7 @@ export function filterRecommendationCandidateUsers(users: InternalUser[]): Inter
 export function getTechnicianDisplayName(
   user: Pick<InternalUser, 'firstName' | 'lastName' | 'email'>,
 ): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(user.firstName, user.lastName).trim();
   return fullName || user.email;
 }
 

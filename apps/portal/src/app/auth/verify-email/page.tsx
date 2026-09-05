@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, cn } from '@iwana/ui';
+import { Button, cn, FormStatus } from '@iwana/ui';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { ApiError, authApi } from '@/lib/api-client';
 
@@ -145,17 +145,10 @@ function VerifyEmailContent() {
                 )}
               </label>
 
-              {verifyMessage && (
-                <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                  {verifyMessage}
-                </div>
-              )}
-
-              {verifyError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {verifyError}
-                </div>
-              )}
+              <FormStatus
+                status={verifyError ? 'error' : verifyMessage ? 'success' : 'idle'}
+                message={verifyError ?? verifyMessage ?? undefined}
+              />
 
               <Button
                 type="submit"
@@ -219,17 +212,10 @@ function VerifyEmailContent() {
                 </label>
               </div>
 
-              {resendMessage && (
-                <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                  {resendMessage}
-                </div>
-              )}
-
-              {resendError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {resendError}
-                </div>
-              )}
+              <FormStatus
+                status={resendError ? 'error' : resendMessage ? 'success' : 'idle'}
+                message={resendError ?? resendMessage ?? undefined}
+              />
 
               <Button
                 type="submit"

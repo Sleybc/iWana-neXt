@@ -136,7 +136,7 @@ function isTemplateRequirement(value: unknown): value is ExecutionOrderTemplateR
   }
 }
 
-function readTemplateRequirementsSnapshot(
+export function readTemplateRequirementsSnapshot(
   value: unknown,
 ): ExecutionOrderTemplateRequirement[] | null {
   return Array.isArray(value) && value.every(isTemplateRequirement) ? value : null;
@@ -292,6 +292,12 @@ export class ExecutionOrdersService {
       // inferir comparando crewId con userId. Hasta disponer del port tipado,
       // una OT asignada a CREW queda fuera del alcance de ejecución.
       const assigned = order.assignedTechnicianId === actor.sub;
+      const isUnassigned = !order.assignedTechnicianId && !order.assignedCrewId;
+      const isTechnician = [UserRole.TECHNICIAN, UserRole.CONTRACTOR].includes(
+        actor.role as UserRole,
+      );
+      const isUnassignedPool =
+        isUnassigned && isTechnician && order.status !== ExecutionOrderStatus.CREATED;
       const supervisor = [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT].includes(
         actor.role as UserRole,
       );
@@ -302,7 +308,8 @@ export class ExecutionOrdersService {
       // Supervisores pueden leer y ejecutar operaciones de coordinación, pero
       // nunca escribir sobre la ejecución técnica, aunque estén asignados.
       if (requiresTechnicalExecution) {
-        if (supervisor || !assigned) {
+        const canExecuteTechnically = (assigned && !supervisor) || isUnassignedPool;
+        if (!canExecuteTechnically) {
           throw new NotFoundException('OT de ejecución no encontrada');
         }
         return;
@@ -310,8 +317,11 @@ export class ExecutionOrdersService {
 
       // Contractors/technicians only act when explicitly assigned. Supervisors
       // may read and coordinate without estar asignados a la OT.
+      // Permitir a técnicos leer el pool sin asignar (excepto CREATED) para poder reclamarla.
       if (!assigned && !supervisor) {
-        throw new NotFoundException('OT de ejecución no encontrada');
+        if (!isUnassignedPool) {
+          throw new NotFoundException('OT de ejecución no encontrada');
+        }
       }
     });
   }
@@ -716,14 +726,8 @@ export class ExecutionOrdersService {
       }
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+      this.assertRegistrationActive(order);
       const expectedVersion = order.version ?? 1;
-      if (
-        order.status === ExecutionOrderStatus.CREATED ||
-        order.status === ExecutionOrderStatus.ASSIGNED
-      ) {
-        order.status = ExecutionOrderStatus.IN_PROGRESS;
-        order.startedAt = order.startedAt ?? new Date();
-      }
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
       await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
@@ -753,6 +757,78 @@ export class ExecutionOrdersService {
     });
   }
 
+  async updateFieldWorkActivity(
+    id: string,
+    activityId: string,
+    input: import('../dto/execution-orders.dto').UpdateFieldWorkInput,
+    actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
+  ): Promise<ExecutionOrderActivity> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = (await import('../dto/execution-orders.dto')).UpdateFieldWorkSchema.parse(
+      input,
+    );
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, id);
+      this.assertVersion(order, context?.ifMatch);
+      this.assertMutable(order);
+
+      const activity = await qr.manager.findOne(ExecutionOrderActivity, {
+        where: { id: activityId, executionOrderId: id, tenantId },
+      });
+      if (!activity) {
+        throw new (await import('@nestjs/common')).NotFoundException(
+          'Actividad no encontrada para esta OT.',
+        );
+      }
+
+      if (validated.activityType !== undefined) {
+        activity.activityType = validated.activityType;
+      }
+      if (validated.description !== undefined) {
+        activity.description = validated.description;
+      }
+
+      const expectedVersion = order.version ?? 1;
+      order.version = expectedVersion + 1;
+      order.updatedByUserId = actor.sub;
+      await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+      return qr.manager.save(ExecutionOrderActivity, activity);
+    });
+  }
+
+  async deleteFieldWorkActivity(
+    id: string,
+    activityId: string,
+    actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
+  ): Promise<void> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, id);
+      this.assertVersion(order, context?.ifMatch);
+      this.assertMutable(order);
+
+      const activity = await qr.manager.findOne(ExecutionOrderActivity, {
+        where: { id: activityId, executionOrderId: id, tenantId },
+      });
+      if (!activity) {
+        throw new (await import('@nestjs/common')).NotFoundException(
+          'Actividad no encontrada para esta OT.',
+        );
+      }
+
+      await qr.manager.remove(ExecutionOrderActivity, activity);
+
+      const expectedVersion = order.version ?? 1;
+      order.version = expectedVersion + 1;
+      order.updatedByUserId = actor.sub;
+      await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+    });
+  }
+
   async registerItemUsage(
     id: string,
     input: RegisterExecutionOrderItemUsageInput,
@@ -779,18 +855,12 @@ export class ExecutionOrdersService {
       }
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+      this.assertRegistrationActive(order);
 
       // ── Custodia: validar que el actor está asignado a la OT ────────
       this.assertCustodyAssignment(order, actor.sub, validated.technicianCustodyId);
 
       const expectedVersion = order.version ?? 1;
-      if (
-        order.status === ExecutionOrderStatus.CREATED ||
-        order.status === ExecutionOrderStatus.ASSIGNED
-      ) {
-        order.status = ExecutionOrderStatus.IN_PROGRESS;
-        order.startedAt = order.startedAt ?? new Date();
-      }
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
       await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
@@ -1155,6 +1225,7 @@ export class ExecutionOrdersService {
       }
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
+      this.assertRegistrationActive(order);
 
       // El asset no puede ser reutilizado por otra OT del mismo tenant aunque
       // todavía esté AVAILABLE y no tenga claim. El upload-intent es la
@@ -1749,6 +1820,12 @@ export class ExecutionOrdersService {
    */
   computeAllowedActions(order: ExecutionOrder, actor: JwtPayload): ExecutionOrderAllowedAction[] {
     const isAssigned = order.assignedTechnicianId === actor.sub;
+    const isUnassigned = !order.assignedTechnicianId && !order.assignedCrewId;
+    const isTechnician = [UserRole.TECHNICIAN, UserRole.CONTRACTOR].includes(
+      actor.role as UserRole,
+    );
+    const isUnassignedPool =
+      isUnassigned && isTechnician && order.status !== ExecutionOrderStatus.CREATED;
     const isSupervisor = [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT].includes(
       actor.role as UserRole,
     );
@@ -1769,13 +1846,14 @@ export class ExecutionOrdersService {
       return actions;
     }
 
-    // ── Ejecución: solo técnico/contratista asignado (no supervisor) ────
-    if (isAssigned && !isSupervisor) {
+    // ── Ejecución: técnico/contratista asignado (no supervisor) o pool sin asignar (excepto CREATED) ────
+    if ((isAssigned && !isSupervisor) || isUnassignedPool) {
       switch (order.status) {
         case ExecutionOrderStatus.CREATED:
         case ExecutionOrderStatus.ASSIGNED:
         case ExecutionOrderStatus.EN_ROUTE:
-          actions.push('START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE');
+          // Pre-inicio: nada se registra en la OT hasta iniciar la ejecución.
+          actions.push('START');
           break;
         case ExecutionOrderStatus.IN_PROGRESS:
           actions.push(
@@ -2407,6 +2485,24 @@ export class ExecutionOrdersService {
       throw new ConflictException({
         code: 'TERMINAL_EXECUTION_ORDER',
         message: 'La OT está en un estado terminal.',
+      });
+    }
+  }
+
+  /**
+   * Precondición de los comandos de registro (trabajo realizado, consumo y
+   * evidencia): la ejecución debe estar iniciada. Pre-inicio (CREATED,
+   * ASSIGNED, EN_ROUTE) se rechaza con 409; la única transición a
+   * IN_PROGRESS es start(), que emite ExecutionOrderStartedV1.
+   */
+  private assertRegistrationActive(order: ExecutionOrder): void {
+    if (
+      order.status !== ExecutionOrderStatus.IN_PROGRESS &&
+      order.status !== ExecutionOrderStatus.BLOCKED
+    ) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_NOT_STARTED',
+        message: 'Inicia la ejecución antes de registrar información en esta orden de trabajo.',
       });
     }
   }

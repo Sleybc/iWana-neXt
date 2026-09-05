@@ -32,6 +32,8 @@ jest.mock('@iwana/db', () => ({
   PurchaseRequestLine: class PurchaseRequestLine {},
   PurchaseRequestLineAward: class PurchaseRequestLineAward {},
   SupplierQuote: class SupplierQuote {},
+  SupplierQuoteLine: class SupplierQuoteLine {},
+  SupplierQuoteTax: class SupplierQuoteTax {},
   PurchaseOrder: class PurchaseOrder {},
   PurchaseOrderLine: class PurchaseOrderLine {},
   PurchaseRfq: class PurchaseRfq {},
@@ -272,6 +274,12 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
       {
         assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined),
       } as unknown as SupplierProfileService,
+      {
+        listByContext: jest.fn().mockResolvedValue([]),
+        findActiveByCode: jest.fn(),
+        resolveSystemPreset: jest.fn(),
+        findById: jest.fn(),
+      } as never,
     );
     const stockLedgerServiceMock = {
       recordMovementWithManager: jest.fn().mockResolvedValue({

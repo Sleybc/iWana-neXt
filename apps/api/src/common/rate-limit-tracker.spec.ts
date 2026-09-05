@@ -57,4 +57,40 @@ describe('getGlobalRateLimitTracker', () => {
     expect(first).toBe('anonymous:ip:198.51.100.10');
     expect(second).toBe(first);
   });
+
+  it('P-09: usa bucket por sub verificado para sesiones de cookie', async () => {
+    await TenantContext.run(
+      { tenantId: 'tenant-a', schemaName: 'tenant_a', tenantSlug: 'tenant-a' },
+      async () => {
+        const first = getGlobalRateLimitTracker({
+          ip: '198.51.100.10',
+          iwanaTenantResolutionSource: 'jwt-verified',
+          iwanaVerifiedSub: 'user-uuid-1',
+        });
+        const second = getGlobalRateLimitTracker({
+          ip: '198.51.100.10',
+          iwanaTenantResolutionSource: 'jwt-verified',
+          iwanaVerifiedSub: 'user-uuid-2',
+        });
+
+        expect(first).toBe('tenant-a:sub:user-uuid-1');
+        // Dos sujetos distintos ya no comparten la cuota de la empresa.
+        expect(second).toBe('tenant-a:sub:user-uuid-2');
+      },
+    );
+  });
+
+  it('P-09: conserva el bucket anterior cuando no hay sub verificado', async () => {
+    await TenantContext.run(
+      { tenantId: 'tenant-a', schemaName: 'tenant_a', tenantSlug: 'tenant-a' },
+      async () => {
+        expect(
+          getGlobalRateLimitTracker({
+            ip: '198.51.100.10',
+            iwanaTenantResolutionSource: 'jwt-verified',
+          }),
+        ).toBe('tenant-a:tenant');
+      },
+    );
+  });
 });

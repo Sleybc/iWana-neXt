@@ -115,6 +115,7 @@ const baseProps = {
   closeOrderError: null,
   onCreateRequest: jest.fn().mockResolvedValue({ ok: true, requestId: 'req-1' }),
   onAddQuote: jest.fn(),
+  onUpdateQuote: jest.fn().mockResolvedValue(true),
   onApproveRequest: jest.fn(),
   onCreateAwards: jest.fn(),
   onRejectRequest: jest.fn(),

@@ -1,10 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import Link from 'next/link';
+import {
+  Controller,
+  useForm,
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+} from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ChevronLeft, ChevronRight, Plus, RefreshCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { Pencil, Plus, RefreshCcw, Save, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -46,8 +53,9 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
-  portalModuleTabTriggerClassName,
-  portalModuleTabsTrackClassName,
+  portalResourceTabIconClassName,
+  portalResourceTabListClassName,
+  portalResourceTabTriggerClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { getAccessProfileDisplayName, getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
@@ -71,10 +79,75 @@ type CreationDraftState = {
   initialPermissionKeys: AccessPermissionKey[];
 };
 
+type NextStepBannerState = {
+  origin: 'suggested' | 'scratch';
+  profileName: string;
+};
+
 const roleOptions = PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => ({
   value: role,
   label: getSystemBaseRoleLabel(role),
 }));
+
+function ProfileIdentityFields({
+  register,
+  control,
+  errors,
+  nameInputRef,
+}: {
+  register: UseFormRegister<ProfileFormValues>;
+  control: Control<ProfileFormValues>;
+  errors: FieldErrors<ProfileFormValues>;
+  nameInputRef: MutableRefObject<HTMLInputElement | null>;
+}) {
+  const nameRegister = register('name');
+
+  return (
+    <div className="space-y-4">
+      <Input
+        id="profile-name"
+        label="Nombre"
+        error={errors.name?.message}
+        className="h-11"
+        {...nameRegister}
+        ref={(element) => {
+          nameRegister.ref(element);
+          nameInputRef.current = element;
+        }}
+      />
+
+      <Input
+        id="profile-description"
+        label="Descripción"
+        error={errors.description?.message}
+        className="h-11"
+        {...register('description')}
+      />
+
+      <Controller
+        name="baseRoleConstraint"
+        control={control}
+        render={({ field }) => (
+          <Select
+            id="profile-role"
+            label={ACCESS_SETTINGS_COPY.roleFieldLabel}
+            helperText={ACCESS_SETTINGS_COPY.roleFieldHelp}
+            error={errors.baseRoleConstraint?.message ?? ''}
+            options={roleOptions}
+            className="min-h-11"
+            name={field.name}
+            value={field.value}
+            onChange={(event) => field.onChange(event.target.value)}
+            onBlur={field.onBlur}
+            ref={field.ref}
+          />
+        )}
+      />
+
+      <CheckboxCard label={ACCESS_SETTINGS_COPY.keepProfileActiveLabel} {...register('isActive')} />
+    </div>
+  );
+}
 
 function mapAccessControlError(
   error: unknown,
@@ -159,27 +232,24 @@ export function AccessControlSettingsClient() {
   const [isPolicySaving, setIsPolicySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [nextStepBanner, setNextStepBanner] = useState<NextStepBannerState | null>(null);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [creationSelectorOpen, setCreationSelectorOpen] = useState(false);
+  const [creationPeekOpen, setCreationPeekOpen] = useState(false);
+  const [creationPeekDetailId, setCreationPeekDetailId] = useState<string | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [creationDraft, setCreationDraft] = useState<CreationDraftState | null>(null);
-  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [profilePendingDeletion, setProfilePendingDeletion] = useState<AccessProfileView | null>(
     null,
   );
   const [activePermissionModule, setActivePermissionModule] = useState<string | null>(null);
   const [permissionSearch, setPermissionSearch] = useState('');
   const [draftMfaRequiredAll, setDraftMfaRequiredAll] = useState(false);
-  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const permissionTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const permissionTabsScrollRef = useRef<HTMLDivElement | null>(null);
+  const profileNameInputRef = useRef<HTMLInputElement | null>(null);
+  const peekMomentRef = useRef<HTMLDivElement | null>(null);
+  const peekWasOpenRef = useRef(false);
+  const shouldFocusNameRef = useRef(false);
   const creationDraftRef = useRef<CreationDraftState | null>(null);
-  const [permissionTabsOverflow, setPermissionTabsOverflow] = useState({
-    hasOverflow: false,
-    canScrollLeft: false,
-    canScrollRight: false,
-  });
 
   const isAdmin = user?.role === UserRole.ADMIN;
   const tenantMfaRequiredAll = tenantSettings?.features.mfa_required_all ?? false;
@@ -205,6 +275,65 @@ export function AccessControlSettingsClient() {
   useEffect(() => {
     creationDraftRef.current = creationDraft;
   }, [creationDraft]);
+
+  useEffect(() => {
+    if (!creationDraft || !shouldFocusNameRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    const tryFocus = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const field = document.getElementById('profile-name');
+      if (field instanceof HTMLElement) {
+        shouldFocusNameRef.current = false;
+        field.focus();
+        return;
+      }
+
+      window.requestAnimationFrame(tryFocus);
+    };
+
+    const frame = window.requestAnimationFrame(tryFocus);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [creationDraft]);
+
+  useEffect(() => {
+    const justOpened = creationPeekOpen && !peekWasOpenRef.current;
+    peekWasOpenRef.current = creationPeekOpen;
+
+    if (!creationPeekOpen || justOpened) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const root = peekMomentRef.current;
+      if (!root) {
+        return;
+      }
+
+      const firstInChildren = root.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (firstInChildren) {
+        firstInChildren.focus();
+        return;
+      }
+
+      const footerButton = root
+        .closest('[role="dialog"]')
+        ?.querySelector<HTMLElement>('footer button:not([disabled])');
+      footerButton?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [creationPeekDetailId, creationPeekOpen]);
 
   const loadAccessControl = useCallback(async () => {
     setIsLoading(true);
@@ -400,7 +529,27 @@ export function AccessControlSettingsClient() {
       bucket.push(entry);
     }
 
-    return groups;
+    // Ordenar para coincidir con el menú lateral (Sidebar.tsx navGroups)
+    const sidebarOrder: Record<string, number> = {
+      crm: 0, // Oportunidades / Suscriptores
+      wfm: 1, // Programación
+      assurance: 2, // Mesa de ayuda
+      operations: 3, // Operaciones
+      inventory: 4, // Inventario
+      settings: 5, // Configuración
+      users: 6, // Usuarios
+      commercial: 7, // Comercial
+      organization: 8,
+      access: 9,
+      'access-control': 10,
+      billing: 11,
+    };
+
+    return [...groups].sort((a, b) => {
+      const orderA = sidebarOrder[a.moduleKey] ?? 99;
+      const orderB = sidebarOrder[b.moduleKey] ?? 99;
+      return orderA - orderB;
+    });
   }, [selectablePermissionEntries]);
 
   const activePermissionModuleConfig = useMemo(
@@ -428,7 +577,7 @@ export function AccessControlSettingsClient() {
 
   // Orden congelado por tipo de usuario (spec MOD00 §3.3): lista fija en el
   // cliente, invariante ante reordenamientos del array de la API (CA-ACV2-03).
-  // SUBSCRIBER/PARTNER/INVESTOR no tienen plantilla; bases desconocidas van al
+  // SUBSCRIBER/PARTNER/INVESTOR no tienen perfil sugerido; bases desconocidas van al
   // final conservando su orden de llegada.
   const orderedSystemTemplates = useMemo(() => {
     const orderIndex = new Map<UserRole, number>(
@@ -445,12 +594,43 @@ export function AccessControlSettingsClient() {
       .map((entry) => entry.profile);
   }, [systemTemplates]);
 
-  const previewTemplate = useMemo(
-    () => systemTemplates.find((profile) => profile.id === previewTemplateId) ?? null,
-    [previewTemplateId, systemTemplates],
+  const creationPeekDetail = useMemo(
+    () => systemTemplates.find((profile) => profile.id === creationPeekDetailId) ?? null,
+    [creationPeekDetailId, systemTemplates],
   );
 
-  const templatesGridClassName = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+  const creationPeekDetailGroups = useMemo(() => {
+    if (!creationPeekDetail) {
+      return [] as Array<{
+        moduleKey: string;
+        items: Array<{ key: AccessPermissionKey; description: string }>;
+      }>;
+    }
+
+    const keys = getTemplatePermissionKeys(creationPeekDetail);
+    const groups: Array<{
+      moduleKey: string;
+      items: Array<{ key: AccessPermissionKey; description: string }>;
+    }> = [];
+    const byModule = new Map<string, Array<{ key: AccessPermissionKey; description: string }>>();
+
+    for (const key of keys) {
+      const entry = permissionEntries.find((permission) => permission.permissionKey === key);
+      const moduleKey = entry?.moduleKey ?? 'unknown';
+      let bucket = byModule.get(moduleKey);
+      if (!bucket) {
+        bucket = [];
+        byModule.set(moduleKey, bucket);
+        groups.push({ moduleKey, items: bucket });
+      }
+      bucket.push({
+        key,
+        description: entry?.description ?? ACCESS_SETTINGS_COPY.permissionFallback,
+      });
+    }
+
+    return groups;
+  }, [creationPeekDetail, getTemplatePermissionKeys, permissionEntries]);
 
   const customRoles = useMemo(() => profiles.filter((profile) => !profile.isSystem), [profiles]);
 
@@ -503,112 +683,6 @@ export function AccessControlSettingsClient() {
     );
   }, [canEnablePermission]);
 
-  const updatePermissionTabsOverflow = useCallback(() => {
-    const element = permissionTabsScrollRef.current;
-
-    if (!element) {
-      setPermissionTabsOverflow({
-        hasOverflow: false,
-        canScrollLeft: false,
-        canScrollRight: false,
-      });
-      return;
-    }
-
-    const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
-    const hasOverflow = maxScrollLeft > 1;
-    const canScrollLeft = element.scrollLeft > 1;
-    const canScrollRight = element.scrollLeft < maxScrollLeft - 1;
-
-    setPermissionTabsOverflow({
-      hasOverflow,
-      canScrollLeft: hasOverflow && canScrollLeft,
-      canScrollRight: hasOverflow && canScrollRight,
-    });
-  }, []);
-
-  useEffect(() => {
-    const element = permissionTabsScrollRef.current;
-
-    if (!element) {
-      return;
-    }
-
-    updatePermissionTabsOverflow();
-
-    const handleScroll = () => {
-      updatePermissionTabsOverflow();
-    };
-
-    element.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
-
-    return () => {
-      element.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
-    };
-  }, [permissionModules.length, updatePermissionTabsOverflow]);
-
-  useEffect(() => {
-    const moduleIndex = permissionModules.findIndex(
-      (module) => module.moduleKey === activePermissionModule,
-    );
-
-    if (moduleIndex < 0) {
-      return;
-    }
-
-    const activeTabElement = permissionTabRefs.current[moduleIndex];
-
-    if (!activeTabElement) {
-      return;
-    }
-
-    if (typeof activeTabElement.scrollIntoView === 'function') {
-      activeTabElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest',
-      });
-    }
-
-    requestAnimationFrame(updatePermissionTabsOverflow);
-  }, [activePermissionModule, permissionModules, updatePermissionTabsOverflow]);
-
-  const focusPermissionTabAt = useCallback(
-    (index: number) => {
-      if (permissionModules.length === 0) {
-        return;
-      }
-
-      const nextIndex = (index + permissionModules.length) % permissionModules.length;
-      const nextModule = permissionModules[nextIndex];
-
-      if (!nextModule) {
-        return;
-      }
-
-      setActivePermissionModule(nextModule.moduleKey);
-      permissionTabRefs.current[nextIndex]?.focus();
-    },
-    [permissionModules],
-  );
-
-  const scrollPermissionTabs = useCallback((direction: 'left' | 'right') => {
-    const element = permissionTabsScrollRef.current;
-
-    if (!element) {
-      return;
-    }
-
-    const delta = Math.max(120, Math.round(element.clientWidth * 0.65));
-
-    element.scrollBy({
-      left: direction === 'right' ? delta : -delta,
-      behavior: 'smooth',
-    });
-  }, []);
-
   const handleSaveAuthenticationPolicy = useCallback(async () => {
     if (!tenantSettings) {
       return;
@@ -652,6 +726,9 @@ export function AccessControlSettingsClient() {
     const visibleProfileName = getAccessProfileDisplayName(profile);
     const initialPermissionKeys = getTemplatePermissionKeys(profile);
 
+    setNextStepBanner(null);
+    setCreationPeekOpen(false);
+    setCreationPeekDetailId(null);
     setCreationDraft({
       sourceName: visibleProfileName,
       initialPermissionKeys,
@@ -665,43 +742,43 @@ export function AccessControlSettingsClient() {
       isActive: true,
     });
     setDraftPermissionKeys(initialPermissionKeys);
-    setCreationSelectorOpen(false);
-    setIsDialogOpen(true);
+    shouldFocusNameRef.current = true;
+    setIsDialogOpen(false);
     setFeedback(null);
     setError(null);
   }
 
-  function closePreviewTemplate() {
-    setPreviewTemplateId(null);
-
-    window.requestAnimationFrame(() => {
-      if (previewTriggerRef.current?.isConnected) {
-        previewTriggerRef.current.focus();
-      }
-    });
+  function closeCreationPeek() {
+    setCreationPeekOpen(false);
+    setCreationPeekDetailId(null);
   }
 
-  function openCreateDialog() {
-    setCreationSelectorOpen(true);
+  function openCreatePeek() {
+    setNextStepBanner(null);
+    setCreationPeekDetailId(null);
+    setCreationPeekOpen(true);
   }
 
   function startFromScratch() {
-    setCreationSelectorOpen(false);
-    setCreationDraft(null);
+    setNextStepBanner(null);
+    setCreationPeekOpen(false);
+    setCreationPeekDetailId(null);
+    setCreationDraft({
+      sourceName: null,
+      initialPermissionKeys: [],
+    });
+    setSelectedProfileId(null);
     setEditingProfileId(null);
     reset(createDefaultProfileFormValues());
     setDraftPermissionKeys([]);
-    setIsDialogOpen(true);
+    shouldFocusNameRef.current = true;
+    setIsDialogOpen(false);
+    setFeedback(null);
+    setError(null);
   }
 
-  function startFromTemplate() {
-    setCreationSelectorOpen(false);
-    setFeedback(ACCESS_SETTINGS_COPY.chooseSuggestedFeedback);
-    setTimeout(() => {
-      document
-        .getElementById('templates-section')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 80);
+  function returnToCreationPeekList() {
+    setCreationPeekDetailId(null);
   }
 
   function openEditDialog(profile: AccessProfileView) {
@@ -729,18 +806,27 @@ export function AccessControlSettingsClient() {
           ? { ...basePayload, permissionKeys: draftPermissionKeys }
           : basePayload;
 
+      const isCreating = !editingProfileId;
+      const createdFromSuggested = Boolean(creationDraft?.sourceName);
       const profile = editingProfileId
         ? await accessControlApi.updateProfile(editingProfileId, payload as UpdateAccessProfileDto)
         : await accessControlApi.createProfile(payload as CreateAccessProfileDto);
 
       setIsDialogOpen(false);
       setCreationDraft(null);
-      setFeedback(
-        editingProfileId ? 'Perfil actualizado correctamente.' : 'Perfil creado correctamente.',
-      );
+      if (isCreating) {
+        setNextStepBanner({
+          origin: createdFromSuggested ? 'suggested' : 'scratch',
+          profileName: profile.name,
+        });
+        setFeedback(null);
+      } else {
+        setFeedback('Perfil actualizado correctamente.');
+      }
       setSelectedProfileId(profile.id);
       await loadAccessControl();
     } catch (submitError) {
+      setNextStepBanner(null);
       setError(mapAccessControlError(submitError, 'save'));
     } finally {
       setIsSaving(false);
@@ -768,6 +854,7 @@ export function AccessControlSettingsClient() {
     try {
       await accessControlApi.deleteProfile(profileId);
       setProfilePendingDeletion(null);
+      setNextStepBanner(null);
       setFeedback('Perfil eliminado correctamente.');
       if (selectedProfileId === profileId) {
         setSelectedProfileId(null);
@@ -775,6 +862,7 @@ export function AccessControlSettingsClient() {
       }
       await loadAccessControl();
     } catch (deleteError) {
+      setNextStepBanner(null);
       setError(mapAccessControlError(deleteError, 'delete'));
     } finally {
       setIsSaving(false);
@@ -801,6 +889,7 @@ export function AccessControlSettingsClient() {
       setDraftPermissionKeys(updated.permissions);
       setFeedback('Accesos del perfil actualizados correctamente.');
     } catch (saveError) {
+      setNextStepBanner(null);
       setError(mapAccessControlError(saveError, 'save'));
     } finally {
       setIsSaving(false);
@@ -861,7 +950,31 @@ export function AccessControlSettingsClient() {
         subtitle={ACCESS_SETTINGS_COPY.pageSubtitle}
       />
 
-      {feedback ? (
+      {nextStepBanner ? (
+        <PortalAlert
+          variant="success"
+          live="polite"
+          title={ACCESS_SETTINGS_COPY.nextStepBannerTitle}
+          description={
+            nextStepBanner.origin === 'suggested'
+              ? ACCESS_SETTINGS_COPY.nextStepBannerFromSuggestedDescription(
+                  nextStepBanner.profileName,
+                )
+              : ACCESS_SETTINGS_COPY.nextStepBannerFromScratchDescription(
+                  nextStepBanner.profileName,
+                )
+          }
+          action={
+            <Button asChild={true} size="lg" className="min-h-11">
+              <Link href={ACCESS_SETTINGS_COPY.usersPath}>
+                {ACCESS_SETTINGS_COPY.nextStepBannerAction}
+              </Link>
+            </Button>
+          }
+        />
+      ) : null}
+
+      {feedback && !nextStepBanner ? (
         <PortalAlert variant="success" title="Operación completada" description={feedback} />
       ) : null}
 
@@ -891,192 +1004,106 @@ export function AccessControlSettingsClient() {
           title={ACCESS_SETTINGS_COPY.draftBannerTitle}
           description={ACCESS_SETTINGS_COPY.draftBannerDescription(creationDraft.sourceName)}
           action={
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="min-h-11"
-                onClick={() => setIsDialogOpen(true)}
-              >
-                Editar datos del nuevo perfil
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="min-h-11"
-                onClick={cancelCreationDraft}
-              >
-                Cancelar nuevo perfil
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="min-h-11"
+              onClick={cancelCreationDraft}
+            >
+              Cancelar nuevo perfil
+            </Button>
           }
         />
       ) : null}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <PortalPanel
-          compact={customRoles.length === 0}
-          title={ACCESS_SETTINGS_COPY.profilesTitle}
-          description={
-            customRoles.length === 0 ? undefined : ACCESS_SETTINGS_COPY.profilesDescription
-          }
-          actions={
-            customRoles.length > 0 ? (
-              <Button type="button" size="lg" onClick={openCreateDialog}>
-                <Plus className="h-4 w-4" aria-hidden={true} />
-                {ACCESS_SETTINGS_COPY.createProfileAction}
-              </Button>
-            ) : undefined
-          }
-        >
-          {customRoles.length === 0 ? (
-            <PortalEmptyState
-              embedded={true}
-              title={ACCESS_SETTINGS_COPY.profilesEmptyTitle}
-              description={ACCESS_SETTINGS_COPY.profilesEmptyDescription}
-              action={
-                <Button type="button" size="lg" onClick={openCreateDialog}>
+        <div className="space-y-4">
+          <PortalPanel
+            compact={customRoles.length === 0 && !creationDraft}
+            className={creationDraft ? 'shadow-iwana-active' : undefined}
+            title={ACCESS_SETTINGS_COPY.profilesTitle}
+            description={
+              customRoles.length === 0 ? undefined : ACCESS_SETTINGS_COPY.profilesDescription
+            }
+            actions={
+              customRoles.length > 0 && !creationDraft ? (
+                <Button type="button" size="lg" onClick={openCreatePeek}>
+                  <Plus className="h-4 w-4" aria-hidden={true} />
                   {ACCESS_SETTINGS_COPY.createProfileAction}
                 </Button>
-              }
-              icon={ShieldCheck}
-            />
-          ) : (
-            <>
-              <div className="grid gap-3 md:hidden">
-                {customRoles.map((profile) => {
-                  const isSelected = !creationDraft && profile.id === selectedProfileId;
-
-                  return (
-                    <div
-                      key={`${profile.id}-mobile`}
-                      className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 ${isSelected ? 'border-l-4 border-l-iwana-secondary bg-iwana-surface-soft pl-3' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {profile.name}
-                          </p>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            {profile.description || 'Sin descripción'}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <Badge variant={getPortalActiveBadgeVariant(profile.isActive)}>
-                            {profile.isActive ? 'Activo' : 'Inactivo'}
-                          </Badge>
-                          {isSelected ? (
-                            <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
-                              En edición
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                        <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-                          {getSystemBaseRoleLabel(profile.baseRoleConstraint)}
-                        </span>
-                        <span className="inline-flex items-center rounded-full border border-iwana-primary/10 bg-iwana-primary-50 px-3 py-1 font-medium text-iwana-primary dark:border-iwana-primary-400/20 dark:bg-iwana-primary/10 dark:text-iwana-primary-300">
-                          {profile.permissions.length} accesos
-                        </span>
-                      </div>
-
-                      <PortalActionToolbar compact={true} className="mt-4">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Editar accesos de ${profile.name}`}
-                          className="w-full justify-center rounded-2xl min-h-11"
-                          onClick={() => selectProfile(profile)}
-                        >
-                          Editar accesos
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Editar perfil ${profile.name}`}
-                          className="w-full justify-center rounded-2xl min-h-11"
-                          onClick={() => openEditDialog(profile)}
-                        >
-                          Editar
-                        </Button>
-                        {!profile.isSystem ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Eliminar perfil ${profile.name}`}
-                            className="w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 min-h-11 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-                            onClick={() => requestProfileDeletion(profile)}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden={true} />
-                          </Button>
-                        ) : null}
-                      </PortalActionToolbar>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className={`${portalDataTableShellClassName} hidden md:block`}>
-                <table className="min-w-full">
-                  <thead className={portalDataTableHeadRowClassName}>
-                    <tr>
-                      <PortalDataTableHead>Perfil</PortalDataTableHead>
-                      <PortalDataTableHead>
-                        {ACCESS_SETTINGS_COPY.roleColumnLabel}
-                      </PortalDataTableHead>
-                      <PortalDataTableHead>Accesos</PortalDataTableHead>
-                      <PortalDataTableHead>Estado</PortalDataTableHead>
-                      <PortalDataTableHead>Acciones</PortalDataTableHead>
-                    </tr>
-                  </thead>
-                  <tbody className={portalDataTableBodyClassName}>
+              ) : undefined
+            }
+          >
+            <div className="space-y-4">
+              {creationDraft ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2 border-l-4 border-iwana-secondary pl-3">
+                    <p className="portal-eyebrow">{ACCESS_SETTINGS_COPY.draftFieldsTitle}</p>
+                    <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
+                      En edición
+                    </span>
+                  </div>
+                  <ProfileIdentityFields
+                    register={register}
+                    control={control}
+                    errors={errors}
+                    nameInputRef={profileNameInputRef}
+                  />
+                </div>
+              ) : null}
+              {customRoles.length === 0 && !creationDraft ? (
+                <PortalEmptyState
+                  embedded={true}
+                  title={
+                    systemTemplates.length > 0
+                      ? ACCESS_SETTINGS_COPY.profilesEmptyPostCutTitle
+                      : ACCESS_SETTINGS_COPY.profilesEmptyTitle
+                  }
+                  description={
+                    systemTemplates.length > 0
+                      ? ACCESS_SETTINGS_COPY.profilesEmptyPostCutDescription
+                      : ACCESS_SETTINGS_COPY.profilesEmptyDescription
+                  }
+                  action={
+                    <Button type="button" size="lg" onClick={openCreatePeek}>
+                      {ACCESS_SETTINGS_COPY.createProfileAction}
+                    </Button>
+                  }
+                  icon={ShieldCheck}
+                />
+              ) : customRoles.length > 0 ? (
+                <>
+                  <div className="grid gap-3 md:hidden">
                     {customRoles.map((profile) => {
                       const isSelected = !creationDraft && profile.id === selectedProfileId;
 
                       return (
-                        <tr
-                          key={profile.id}
-                          className={cn(
-                            portalTableRowHoverClassName,
-                            isSelected && 'bg-iwana-surface-soft dark:bg-dark-surface-3/60',
-                          )}
+                        <div
+                          key={`${profile.id}-mobile`}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Gestionar accesos de ${profile.name}`}
+                          aria-selected={isSelected}
+                          onClick={() => selectProfile(profile)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              selectProfile(profile);
+                            }
+                          }}
+                          className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 ${isSelected ? 'border-l-4 border-l-iwana-secondary bg-iwana-surface-soft pl-3' : ''}`}
                         >
-                          <td
-                            className={cn(
-                              portalDataTableCellClassName,
-                              isSelected
-                                ? 'border-l-4 border-iwana-secondary bg-iwana-surface-soft pl-3 dark:bg-dark-surface-3/40'
-                                : 'border-l-4 border-transparent',
-                            )}
-                          >
-                            <div className="flex flex-col gap-0.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
                               <p className="font-medium text-gray-900 dark:text-white">
                                 {profile.name}
                               </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                 {profile.description || 'Sin descripción'}
                               </p>
                             </div>
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-                              {getSystemBaseRoleLabel(profile.baseRoleConstraint)}
-                            </span>
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            <span className="inline-flex items-center rounded-full border border-iwana-primary/10 bg-iwana-primary-50 px-3 py-1 text-xs font-medium text-iwana-primary dark:border-iwana-primary-400/20 dark:bg-iwana-primary/10 dark:text-iwana-primary-300">
-                              {profile.permissions.length} accesos
-                            </span>
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               <Badge variant={getPortalActiveBadgeVariant(profile.isActive)}>
                                 {profile.isActive ? 'Activo' : 'Inactivo'}
                               </Badge>
@@ -1086,56 +1113,218 @@ export function AccessControlSettingsClient() {
                                 </span>
                               ) : null}
                             </div>
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            <PortalActionToolbar
-                              compact={true}
-                              align="end"
-                              className="bg-gray-50/90 dark:bg-dark-surface-3"
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+                              {getSystemBaseRoleLabel(profile.baseRoleConstraint)}
+                            </span>
+                            <span className="inline-flex items-center rounded-full border border-iwana-primary/10 bg-iwana-primary-50 px-3 py-1 font-medium tabular-nums text-iwana-primary dark:border-iwana-primary-400/20 dark:bg-iwana-primary/10 dark:text-iwana-primary-300">
+                              {profile.permissions.length} accesos
+                            </span>
+                          </div>
+
+                          <PortalActionToolbar compact={true} className="mt-4">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Editar perfil ${profile.name}`}
+                              className="min-h-11 min-w-11 justify-center rounded-2xl"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditDialog(profile);
+                              }}
                             >
+                              <Pencil className="h-4 w-4" aria-hidden={true} />
+                            </Button>
+                            {!profile.isSystem ? (
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                aria-label={`Editar accesos de ${profile.name}`}
-                                className="min-h-11 w-full justify-center rounded-2xl sm:w-auto"
-                                onClick={() => selectProfile(profile)}
+                                aria-label={`Eliminar perfil ${profile.name}`}
+                                className="w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 min-h-11 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  requestProfileDeletion(profile);
+                                }}
                               >
-                                Editar accesos
+                                <Trash2 className="h-4 w-4" aria-hidden={true} />
                               </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                aria-label={`Editar perfil ${profile.name}`}
-                                className="min-h-11 w-full justify-center rounded-2xl sm:w-auto"
-                                onClick={() => openEditDialog(profile)}
-                              >
-                                Editar
-                              </Button>
-                              {!profile.isSystem ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  aria-label={`Eliminar perfil ${profile.name}`}
-                                  className="min-h-11 w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300 sm:w-auto"
-                                  onClick={() => requestProfileDeletion(profile)}
-                                >
-                                  <Trash2 className="h-4 w-4" aria-hidden={true} />
-                                </Button>
-                              ) : null}
-                            </PortalActionToolbar>
-                          </td>
-                        </tr>
+                            ) : null}
+                          </PortalActionToolbar>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+
+                  <div className={`${portalDataTableShellClassName} hidden md:block`}>
+                    <table className="min-w-full">
+                      <thead className={portalDataTableHeadRowClassName}>
+                        <tr>
+                          <PortalDataTableHead>Perfil</PortalDataTableHead>
+                          <PortalDataTableHead>
+                            {ACCESS_SETTINGS_COPY.roleColumnLabel}
+                          </PortalDataTableHead>
+                          <PortalDataTableHead>Accesos</PortalDataTableHead>
+                          <PortalDataTableHead>Estado</PortalDataTableHead>
+                          <PortalDataTableHead>Acciones</PortalDataTableHead>
+                        </tr>
+                      </thead>
+                      <tbody className={portalDataTableBodyClassName}>
+                        {customRoles.map((profile) => {
+                          const isSelected = !creationDraft && profile.id === selectedProfileId;
+
+                          return (
+                            <tr
+                              key={profile.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Gestionar accesos de ${profile.name}`}
+                              aria-selected={isSelected}
+                              onClick={() => selectProfile(profile)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  selectProfile(profile);
+                                }
+                              }}
+                              className={cn(
+                                portalTableRowHoverClassName,
+                                'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-inset',
+                                isSelected && 'bg-iwana-surface-soft dark:bg-dark-surface-3/60',
+                              )}
+                            >
+                              <td
+                                className={cn(
+                                  portalDataTableCellClassName,
+                                  isSelected
+                                    ? 'border-l-4 border-iwana-secondary bg-iwana-surface-soft pl-3 dark:bg-dark-surface-3/40'
+                                    : 'border-l-4 border-transparent',
+                                )}
+                              >
+                                <div className="flex flex-col gap-0.5">
+                                  <p className="font-medium text-gray-900 dark:text-white">
+                                    {profile.name}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {profile.description || 'Sin descripción'}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+                                  {getSystemBaseRoleLabel(profile.baseRoleConstraint)}
+                                </span>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <span className="inline-flex items-center rounded-full border border-iwana-primary/10 bg-iwana-primary-50 px-3 py-1 text-xs font-medium tabular-nums text-iwana-primary dark:border-iwana-primary-400/20 dark:bg-iwana-primary/10 dark:text-iwana-primary-300">
+                                  {profile.permissions.length} accesos
+                                </span>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant={getPortalActiveBadgeVariant(profile.isActive)}>
+                                    {profile.isActive ? 'Activo' : 'Inactivo'}
+                                  </Badge>
+                                  {isSelected ? (
+                                    <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
+                                      En edición
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <PortalActionToolbar compact={true} align="end">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label={`Editar perfil ${profile.name}`}
+                                    className="min-h-11 min-w-11 justify-center rounded-2xl"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openEditDialog(profile);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" aria-hidden={true} />
+                                  </Button>
+                                  {!profile.isSystem ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      aria-label={`Eliminar perfil ${profile.name}`}
+                                      className="min-h-11 w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300 sm:w-auto"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        requestProfileDeletion(profile);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" aria-hidden={true} />
+                                    </Button>
+                                  ) : null}
+                                </PortalActionToolbar>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </PortalPanel>
+          <div id="politicas-de-autenticacion">
+            <PortalPanel
+              compact={true}
+              eyebrow={ACCESS_SETTINGS_COPY.authPolicyEyebrow}
+              title={ACCESS_SETTINGS_COPY.authPolicyTitle}
+              description={ACCESS_SETTINGS_COPY.authPolicyDescription}
+            >
+              <div className="space-y-4">
+                <CheckboxCard
+                  label={ACCESS_SETTINGS_COPY.authPolicyToggleTitle}
+                  description={ACCESS_SETTINGS_COPY.authPolicyToggleDescription}
+                  aria-label={ACCESS_SETTINGS_COPY.authPolicyToggleLabel}
+                  checked={draftMfaRequiredAll}
+                  disabled={!tenantSettings || isPolicySaving}
+                  onChange={(event) => {
+                    setDraftMfaRequiredAll(event.target.checked);
+                    setPolicyError(null);
+                    setFeedback(null);
+                  }}
+                />
+
+                {policyError ? (
+                  <PortalAlert
+                    variant="error"
+                    title="No fue posible actualizar la política"
+                    description={policyError}
+                  />
+                ) : null}
+
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {ACCESS_SETTINGS_COPY.authPolicyAdminHint}
+                  </p>
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    onClick={() => void handleSaveAuthenticationPolicy()}
+                    disabled={!tenantSettings || !isPolicyDirty || isPolicySaving}
+                    loading={isPolicySaving}
+                  >
+                    {ACCESS_SETTINGS_COPY.authPolicySaveAction}
+                  </Button>
+                </div>
               </div>
-            </>
-          )}
-        </PortalPanel>
+            </PortalPanel>
+          </div>
+        </div>
 
         <div className="space-y-4">
           <PortalPanel
@@ -1150,175 +1339,126 @@ export function AccessControlSettingsClient() {
                 : ACCESS_SETTINGS_COPY.noProfileSelectedDescription
             }
             headerClassName="gap-4"
-            actions={
-              profileForPermissions ? (
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <PortalActionToolbar compact={true}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11 rounded-full px-3 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-                      onClick={() => setDraftPermissionKeys([])}
-                      disabled={isSaving}
-                    >
-                      Limpiar accesos
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11 rounded-full px-3"
-                      onClick={() =>
-                        setDraftPermissionKeys(
-                          creationDraft?.initialPermissionKeys ?? profileForPermissions.permissions,
-                        )
-                      }
-                      disabled={isSaving}
-                    >
-                      Restablecer cambios
-                    </Button>
-                    {creationDraft ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="min-h-11 rounded-full px-3"
-                        onClick={() => setIsDialogOpen(true)}
-                        disabled={isSaving}
-                      >
-                        Editar datos
-                      </Button>
-                    ) : null}
-                  </PortalActionToolbar>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    onClick={() => {
-                      if (creationDraft) {
-                        void handleSubmit(onSubmit, () => setIsDialogOpen(true))();
-                        return;
-                      }
-
-                      void handleSaveProfilePermissions();
-                    }}
-                    disabled={isSaving}
-                  >
-                    {creationDraft
-                      ? ACCESS_SETTINGS_COPY.saveDraftAction
-                      : ACCESS_SETTINGS_COPY.saveChangesAction}
-                  </Button>
-                </div>
-              ) : undefined
-            }
           >
             {profileForPermissions ? (
               permissionModules.length > 0 ? (
                 <div className="space-y-4">
-                  <div className="relative">
-                    <div
-                      ref={permissionTabsScrollRef}
-                      data-testid="permission-modules-scroll"
-                      className="no-scrollbar overflow-x-auto"
-                    >
-                      <nav
-                        role="tablist"
-                        aria-label="Secciones de acceso"
-                        className={cn(portalModuleTabsTrackClassName, 'min-w-max flex-nowrap')}
-                      >
-                        {permissionModules.map((module, index) => {
-                          const isActive = module.moduleKey === activePermissionModule;
-                          const selectedCount = module.permissions.filter((permission) =>
-                            draftPermissionKeys.includes(permission.permissionKey),
-                          ).length;
-
-                          return (
-                            <button
-                              key={module.moduleKey}
-                              id={`access-permission-tab-${module.moduleKey}`}
-                              ref={(element) => {
-                                permissionTabRefs.current[index] = element;
-                              }}
-                              type="button"
-                              role="tab"
-                              aria-selected={isActive}
-                              aria-controls={`access-permission-panel-${module.moduleKey}`}
-                              data-state={isActive ? 'active' : 'inactive'}
-                              tabIndex={isActive ? 0 : -1}
-                              className={cn(
-                                portalModuleTabTriggerClassName,
-                                'group min-h-11 whitespace-nowrap px-3',
-                              )}
-                              onClick={() => setActivePermissionModule(module.moduleKey)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                                  event.preventDefault();
-                                  focusPermissionTabAt(index + 1);
-                                }
-
-                                if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                                  event.preventDefault();
-                                  focusPermissionTabAt(index - 1);
-                                }
-
-                                if (event.key === 'Home') {
-                                  event.preventDefault();
-                                  focusPermissionTabAt(0);
-                                }
-
-                                if (event.key === 'End') {
-                                  event.preventDefault();
-                                  focusPermissionTabAt(permissionModules.length - 1);
-                                }
-                              }}
-                            >
-                              {getAccessModuleLabel(module.moduleKey)}
-                              <span className="ml-2 text-xs font-normal normal-case text-gray-600 group-data-[state=active]:text-white dark:text-gray-300 dark:group-data-[state=active]:text-white">
-                                {selectedCount}/{module.permissions.length}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </nav>
+                  <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-transparent py-2 dark:border-dark-border">
+                    <div className="min-w-[180px] flex-1 max-w-[260px]">
+                      <Select
+                        id="permission-section-select"
+                        label="Sección de accesos"
+                        value={activePermissionModule ?? ''}
+                        onChange={(event) => setActivePermissionModule(event.target.value)}
+                        options={permissionModules.map((module) => ({
+                          value: module.moduleKey,
+                          label: getAccessModuleLabel(module.moduleKey),
+                        }))}
+                        className="min-h-11"
+                      />
                     </div>
-
-                    {permissionTabsOverflow.hasOverflow ? (
-                      <>
-                        <div
+                    <span
+                      aria-hidden={true}
+                      className="hidden sm:block h-6 w-px bg-gray-200 dark:bg-dark-border"
+                    />
+                    <div
+                      role="toolbar"
+                      aria-label="Acciones de accesos"
+                      className="flex items-center gap-1 sm:gap-2 ml-auto"
+                    >
+                      <button
+                        type="button"
+                        aria-label="Limpiar accesos"
+                        title="Limpiar accesos de este perfil"
+                        className={cn(
+                          portalResourceTabTriggerClassName(false),
+                          'hover:text-red-600 dark:hover:text-red-300',
+                        )}
+                        onClick={() => setDraftPermissionKeys([])}
+                        disabled={isSaving}
+                      >
+                        <Trash2
+                          className={portalResourceTabIconClassName(false)}
                           aria-hidden={true}
-                          className={`pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-white via-white/94 to-iwana-primary-50/10 transition-opacity dark:from-dark-surface dark:via-dark-surface dark:to-transparent ${permissionTabsOverflow.canScrollLeft ? 'opacity-100' : 'opacity-0'}`}
                         />
-                        <div
+                        <span className="hidden sm:inline">Limpiar</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Restablecer cambios"
+                        title="Restablecer cambios sin guardar"
+                        className={portalResourceTabTriggerClassName(false)}
+                        onClick={() =>
+                          setDraftPermissionKeys(
+                            creationDraft?.initialPermissionKeys ??
+                              profileForPermissions.permissions,
+                          )
+                        }
+                        disabled={isSaving}
+                      >
+                        <RefreshCcw
+                          className={portalResourceTabIconClassName(false)}
                           aria-hidden={true}
-                          className={`pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-white via-white/94 to-iwana-surface-soft/60 transition-opacity dark:from-dark-surface dark:via-dark-surface dark:to-transparent ${permissionTabsOverflow.canScrollRight ? 'opacity-100' : 'opacity-0'}`}
                         />
+                        <span className="hidden sm:inline">Restablecer</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={
+                          creationDraft
+                            ? ACCESS_SETTINGS_COPY.saveDraftAction
+                            : ACCESS_SETTINGS_COPY.saveChangesAction
+                        }
+                        title={
+                          creationDraft
+                            ? ACCESS_SETTINGS_COPY.saveDraftAction
+                            : ACCESS_SETTINGS_COPY.saveChangesAction
+                        }
+                        className={portalResourceTabTriggerClassName(true)}
+                        onClick={() => {
+                          if (creationDraft) {
+                            void handleSubmit(onSubmit)();
+                            return;
+                          }
 
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-1">
-                          <button
-                            type="button"
-                            aria-label="Desplazar secciones a la izquierda"
-                            className="pointer-events-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-iwana-primary/10 bg-white/92 text-iwana-primary-700 backdrop-blur-sm transition hover:border-iwana-primary/20 hover:bg-iwana-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-0 dark:border-dark-border dark:bg-dark-surface-2/92 dark:text-gray-200 dark:hover:bg-dark-surface-3"
-                            disabled={!permissionTabsOverflow.canScrollLeft}
-                            onClick={() => scrollPermissionTabs('left')}
+                          void handleSaveProfilePermissions();
+                        }}
+                        disabled={isSaving}
+                        aria-busy={isSaving || undefined}
+                      >
+                        {isSaving ? (
+                          <svg
+                            className="h-4 w-4 animate-spin"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            aria-hidden={true}
                           >
-                            <ChevronLeft className="h-4 w-4" aria-hidden={true} />
-                          </button>
-                        </div>
-
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1">
-                          <button
-                            type="button"
-                            aria-label="Desplazar secciones a la derecha"
-                            className="pointer-events-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-iwana-primary/10 bg-white/92 text-iwana-primary-700 backdrop-blur-sm transition hover:border-iwana-primary/20 hover:bg-iwana-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-0 dark:border-dark-border dark:bg-dark-surface-2/92 dark:text-gray-200 dark:hover:bg-dark-surface-3"
-                            disabled={!permissionTabsOverflow.canScrollRight}
-                            onClick={() => scrollPermissionTabs('right')}
-                          >
-                            <ChevronRight className="h-4 w-4" aria-hidden={true} />
-                          </button>
-                        </div>
-                      </>
-                    ) : null}
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                            />
+                          </svg>
+                        ) : (
+                          <Save
+                            className={portalResourceTabIconClassName(true)}
+                            aria-hidden={true}
+                          />
+                        )}
+                        <span className="hidden sm:inline">
+                          {creationDraft ? 'Guardar' : 'Guardar'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   {activePermissionModuleConfig ? (
@@ -1345,13 +1485,13 @@ export function AccessControlSettingsClient() {
 
                         <div className="w-full md:max-w-xs">
                           <label htmlFor="permission-search" className="sr-only">
-                            Buscar acceso dentro de esta sección
+                            Buscar accesos en esta sección
                           </label>
                           <Input
                             id="permission-search"
                             value={permissionSearch}
                             onChange={(event) => setPermissionSearch(event.target.value)}
-                            placeholder="Buscar acceso dentro de esta sección"
+                            placeholder="Buscar accesos en esta sección"
                             className="portal-input-surface h-11"
                           />
                         </div>
@@ -1411,336 +1551,189 @@ export function AccessControlSettingsClient() {
         </div>
       </div>
 
-      {systemTemplates.length > 0 ? (
-        <div id="templates-section">
-          <PortalPanel
-            compact={true}
-            title={ACCESS_SETTINGS_COPY.templatesTitle}
-            description={ACCESS_SETTINGS_COPY.templatesDescription}
-          >
-            <div className={templatesGridClassName}>
-              {orderedSystemTemplates.map((profile) => {
-                const visibleProfileName = getAccessProfileDisplayName(profile);
-                const templatePermissionKeys = getTemplatePermissionKeys(profile);
-
-                return (
-                  <div
-                    key={profile.id}
-                    className="flex h-full flex-col gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-base font-semibold leading-6 text-pretty text-gray-900 dark:text-white">
-                        {visibleProfileName}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
-                        {profile.description || ACCESS_SETTINGS_COPY.templateFallbackDescription}
-                      </p>
-                    </div>
-
-                    <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                      <span>
-                        {getSystemBaseRoleLabel(profile.baseRoleConstraint)} ·{' '}
-                        {templatePermissionKeys.length} accesos
-                      </span>
-                    </div>
-
-                    <div className="mt-auto flex flex-col gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="min-h-11 w-full justify-center border border-gray-200/80 bg-iwana-surface-soft hover:bg-iwana-secondary-50 dark:border-dark-border dark:bg-dark-surface-3 dark:hover:bg-dark-surface-4"
-                        aria-label={`${ACCESS_SETTINGS_COPY.previewAction} ${visibleProfileName}`}
-                        onClick={(event) => {
-                          previewTriggerRef.current = event.currentTarget;
-                          setPreviewTemplateId(profile.id);
-                        }}
-                      >
-                        {ACCESS_SETTINGS_COPY.previewAction}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        className="min-h-11 w-full justify-center"
-                        aria-label={`${ACCESS_SETTINGS_COPY.createFromTemplateAction} ${visibleProfileName}`}
-                        onClick={() => beginCreationFromTemplate(profile)}
-                      >
-                        {ACCESS_SETTINGS_COPY.createFromTemplateAction}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </PortalPanel>
-        </div>
-      ) : null}
-
-      <div id="politicas-de-autenticacion">
-        <PortalPanel
-          compact={true}
-          eyebrow={ACCESS_SETTINGS_COPY.authPolicyEyebrow}
-          title={ACCESS_SETTINGS_COPY.authPolicyTitle}
-          description={ACCESS_SETTINGS_COPY.authPolicyDescription}
-          actions={
-            <span
-              className={
-                draftMfaRequiredAll
-                  ? 'inline-flex items-center rounded-full bg-iwana-secondary-100 px-3 py-1 text-xs font-semibold text-iwana-secondary-900'
-                  : 'inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200'
-              }
-            >
-              {draftMfaRequiredAll
-                ? ACCESS_SETTINGS_COPY.authPolicyStatusEnabled
-                : ACCESS_SETTINGS_COPY.authPolicyStatusDisabled}
-            </span>
-          }
-        >
-          <div className="space-y-4">
-            <CheckboxCard
-              label={ACCESS_SETTINGS_COPY.authPolicyToggleTitle}
-              description={ACCESS_SETTINGS_COPY.authPolicyToggleDescription}
-              aria-label={ACCESS_SETTINGS_COPY.authPolicyToggleLabel}
-              checked={draftMfaRequiredAll}
-              disabled={!tenantSettings || isPolicySaving}
-              onChange={(event) => {
-                setDraftMfaRequiredAll(event.target.checked);
-                setPolicyError(null);
-                setFeedback(null);
-              }}
-            />
-
-            {policyError ? (
-              <PortalAlert
-                variant="error"
-                title="No fue posible actualizar la política"
-                description={policyError}
-              />
-            ) : null}
-
-            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {ACCESS_SETTINGS_COPY.authPolicyAdminHint}
-              </p>
+      <PortalSidePeek
+        open={creationPeekOpen}
+        onClose={closeCreationPeek}
+        title={
+          creationPeekDetail
+            ? getAccessProfileDisplayName(creationPeekDetail)
+            : ACCESS_SETTINGS_COPY.templatesTitle
+        }
+        description={
+          creationPeekDetail
+            ? ACCESS_SETTINGS_COPY.suggestedMeta(
+                getSystemBaseRoleLabel(creationPeekDetail.baseRoleConstraint),
+                getTemplatePermissionKeys(creationPeekDetail).length,
+              )
+            : undefined
+        }
+        footer={
+          creationPeekDetail ? (
+            <div className="flex flex-col gap-2">
               <Button
                 type="button"
+                variant="primary"
                 size="lg"
-                className="w-full sm:w-auto"
-                onClick={() => void handleSaveAuthenticationPolicy()}
-                disabled={!tenantSettings || !isPolicyDirty || isPolicySaving}
-                loading={isPolicySaving}
+                className="min-h-11 w-full"
+                onClick={() => beginCreationFromTemplate(creationPeekDetail)}
               >
-                {ACCESS_SETTINGS_COPY.authPolicySaveAction}
+                {ACCESS_SETTINGS_COPY.useThisProfileAction}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="min-h-11 w-full"
+                onClick={returnToCreationPeekList}
+              >
+                {ACCESS_SETTINGS_COPY.backToListAction}
               </Button>
             </div>
-          </div>
-        </PortalPanel>
-      </div>
-
-      <PortalSidePeek
-        open={Boolean(previewTemplate)}
-        onClose={closePreviewTemplate}
-        title={previewTemplate ? getAccessProfileDisplayName(previewTemplate) : ''}
-        eyebrow={ACCESS_SETTINGS_COPY.peekEyebrow}
-        footer={
-          previewTemplate ? (
-            <Button
-              type="button"
-              size="lg"
-              className="w-full"
-              onClick={() => {
-                const template = previewTemplate;
-                closePreviewTemplate();
-                beginCreationFromTemplate(template);
-              }}
-            >
-              {ACCESS_SETTINGS_COPY.createFromTemplateAction}
-            </Button>
-          ) : null
+          ) : undefined
         }
       >
-        {previewTemplate ? (
-          <div className="space-y-4">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              <span>
-                {getSystemBaseRoleLabel(previewTemplate.baseRoleConstraint)} ·{' '}
-                {getTemplatePermissionKeys(previewTemplate).length} accesos
-              </span>
-            </div>
-            {getTemplatePermissionKeys(previewTemplate).length > 0 ? (
-              <ul className="space-y-2">
-                {getTemplatePermissionKeys(previewTemplate).map((permKey) => {
-                  const entry = permissionEntries.find(
-                    (permission) => permission.permissionKey === permKey,
-                  );
-                  return (
-                    <li
-                      key={permKey}
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
-                    >
-                      {entry?.description ?? ACCESS_SETTINGS_COPY.permissionFallback}
-                    </li>
-                  );
-                })}
-              </ul>
+        {creationPeekDetail ? (
+          <div ref={peekMomentRef} className="space-y-6">
+            <p className="portal-eyebrow">{ACCESS_SETTINGS_COPY.peekDetailHeading}</p>
+            {creationPeekDetailGroups.length > 0 ? (
+              <div className="space-y-6">
+                {creationPeekDetailGroups.map((group) => (
+                  <div key={group.moduleKey} className="space-y-2">
+                    <p className="portal-eyebrow-muted">{getAccessModuleLabel(group.moduleKey)}</p>
+                    <ul className="divide-y divide-gray-100 dark:divide-dark-border">
+                      {group.items.map((item) => (
+                        <li
+                          key={item.key}
+                          className="px-0 py-3 text-sm text-gray-700 dark:text-gray-200"
+                        >
+                          {item.description}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p className="text-sm text-gray-500">{ACCESS_SETTINGS_COPY.peekEmptyDescription}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {ACCESS_SETTINGS_COPY.peekEmptyDescription}
+              </p>
             )}
           </div>
-        ) : null}
+        ) : (
+          <div ref={peekMomentRef} className="space-y-6">
+            <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {ACCESS_SETTINGS_COPY.peekListIntro}
+            </p>
+            <div className={cn(portalDataTableShellClassName, 'overflow-hidden shadow-iwana-card')}>
+              <div className={portalDataTableBodyClassName}>
+                {orderedSystemTemplates.map((profile) => {
+                  const visibleProfileName = getAccessProfileDisplayName(profile);
+                  const accessCount = getTemplatePermissionKeys(profile).length;
+
+                  return (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      aria-label={ACCESS_SETTINGS_COPY.previewSuggestedAria(visibleProfileName)}
+                      className={cn(
+                        'group flex w-full min-h-11 items-center gap-3 px-4 py-3 text-left text-sm',
+                        portalTableRowHoverClassName,
+                        interactiveFocusClassName,
+                      )}
+                      onClick={() => setCreationPeekDetailId(profile.id)}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium text-gray-900 dark:text-white">
+                          {visibleProfileName}
+                        </span>
+                        <span className="block text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                          {ACCESS_SETTINGS_COPY.suggestedMeta(
+                            getSystemBaseRoleLabel(profile.baseRoleConstraint),
+                            accessCount,
+                          )}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-medium text-gray-500 transition-colors group-hover:text-iwana-secondary-700 group-focus-visible:text-iwana-secondary-700 dark:text-gray-400 dark:group-hover:text-iwana-secondary-300 dark:group-focus-visible:text-iwana-secondary-300">
+                        {ACCESS_SETTINGS_COPY.previewAction}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div
+              className={cn(
+                portalDataTableShellClassName,
+                'overflow-hidden bg-iwana-surface-soft shadow-iwana-card dark:bg-dark-surface-3',
+              )}
+            >
+              <button
+                type="button"
+                aria-label={ACCESS_SETTINGS_COPY.startFromScratchLabel}
+                className={cn(
+                  'flex w-full min-h-11 items-start gap-3 px-4 py-3 text-left text-sm hover:bg-white/70 dark:hover:bg-dark-surface-2/50',
+                  interactiveFocusClassName,
+                )}
+                onClick={startFromScratch}
+              >
+                <Plus
+                  className="mt-0.5 h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary-300"
+                  aria-hidden={true}
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium text-gray-900 dark:text-white">
+                    {ACCESS_SETTINGS_COPY.startFromScratchLabel}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                    {ACCESS_SETTINGS_COPY.startFromScratchHelp}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
       </PortalSidePeek>
 
-      <Dialog open={creationSelectorOpen} onOpenChange={setCreationSelectorOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Crear nuevo perfil</DialogTitle>
-            <DialogDescription>¿Cómo quieres crear este perfil?</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 pt-2">
-            <button
-              type="button"
-              onClick={startFromTemplate}
-              className={cn(
-                'flex w-full items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left hover:border-iwana-primary hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3',
-                interactiveFocusClassName,
-              )}
-            >
-              <ShieldCheck
-                className="mt-0.5 h-5 w-5 shrink-0 text-iwana-primary"
-                aria-hidden={true}
-              />
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {ACCESS_SETTINGS_COPY.useSuggestedSelector}
-                </p>
-                <p className="mt-0.5 text-sm text-gray-500">
-                  {ACCESS_SETTINGS_COPY.useSuggestedHelp}
-                </p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={startFromScratch}
-              className={cn(
-                'flex w-full items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left hover:border-iwana-primary hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3',
-                interactiveFocusClassName,
-              )}
-            >
-              <Plus className="mt-0.5 h-5 w-5 shrink-0 text-gray-500" aria-hidden={true} />
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {ACCESS_SETTINGS_COPY.startFromScratchLabel}
-                </p>
-                <p className="mt-0.5 text-sm text-gray-500">
-                  {ACCESS_SETTINGS_COPY.startFromScratchHelp}
-                </p>
-              </div>
-            </button>
-          </div>
-          <div className="flex justify-end pt-2">
-            <DialogClose asChild>
-              <Button type="button" variant="ghost" className="min-h-11">
-                {ACCESS_SETTINGS_COPY.cancelAction}
-              </Button>
-            </DialogClose>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {editingProfileId ? (
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) {
+              setEditingProfileId(null);
+            }
+          }}
+        >
+          <DialogContent
+            aria-labelledby="access-profile-dialog-title"
+            initialFocusRef={profileNameInputRef}
+          >
+            <DialogHeader>
+              <DialogTitle id="access-profile-dialog-title">Editar perfil</DialogTitle>
+              <DialogDescription>{ACCESS_SETTINGS_COPY.editProfileDescription}</DialogDescription>
+            </DialogHeader>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent aria-labelledby="access-profile-dialog-title">
-          <DialogHeader>
-            <DialogTitle id="access-profile-dialog-title">
-              {editingProfileId ? 'Editar perfil' : ACCESS_SETTINGS_COPY.createProfileAction}
-            </DialogTitle>
-            <DialogDescription>
-              {editingProfileId
-                ? ACCESS_SETTINGS_COPY.editProfileDescription
-                : ACCESS_SETTINGS_COPY.createProfileDescription}
-            </DialogDescription>
-          </DialogHeader>
-
-          <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
-            <div>
-              <label
-                htmlFor="profile-name"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-              >
-                Nombre
-              </label>
-              <Input id="profile-name" {...register('name')} className="h-11" />
-              {errors.name?.message ? (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-              ) : null}
-            </div>
-
-            <div>
-              <label
-                htmlFor="profile-description"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-              >
-                Descripción
-              </label>
-              <Input id="profile-description" {...register('description')} className="h-11" />
-              {errors.description?.message ? (
-                <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
-              ) : null}
-            </div>
-
-            <div>
-              <label
-                htmlFor="profile-role"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-              >
-                {ACCESS_SETTINGS_COPY.roleFieldLabel}
-              </label>
-              <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-                Solo las personas de este tipo podrán usar este perfil.
-              </p>
-              <Controller
-                name="baseRoleConstraint"
+            <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+              <ProfileIdentityFields
+                register={register}
                 control={control}
-                render={({ field }) => (
-                  <Select
-                    id="profile-role"
-                    options={roleOptions}
-                    name={field.name}
-                    value={field.value}
-                    onChange={(event) => field.onChange(event.target.value)}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                  />
-                )}
+                errors={errors}
+                nameInputRef={profileNameInputRef}
               />
-              {errors.baseRoleConstraint?.message ? (
-                <p className="mt-1 text-sm text-red-600">{errors.baseRoleConstraint.message}</p>
-              ) : null}
-            </div>
 
-            <CheckboxCard
-              label={ACCESS_SETTINGS_COPY.keepProfileActiveLabel}
-              {...register('isActive')}
-            />
-
-            <div className="flex justify-end gap-3">
-              <DialogClose asChild>
-                <Button type="button" variant="ghost" className="min-h-11">
-                  {ACCESS_SETTINGS_COPY.cancelAction}
+              <div className="flex justify-end gap-3">
+                <DialogClose asChild>
+                  <Button type="button" variant="ghost" className="min-h-11">
+                    {ACCESS_SETTINGS_COPY.cancelAction}
+                  </Button>
+                </DialogClose>
+                <Button type="submit" size="lg" loading={isSaving} disabled={isSaving}>
+                  {ACCESS_SETTINGS_COPY.saveChangesAction}
                 </Button>
-              </DialogClose>
-              <Button type="submit" size="lg" disabled={isSaving}>
-                {editingProfileId
-                  ? ACCESS_SETTINGS_COPY.saveChangesAction
-                  : ACCESS_SETTINGS_COPY.createProfileAction}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <Dialog
         open={profilePendingDeletion !== null}

@@ -10,7 +10,13 @@ import type {
 } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import { Input, Select } from '@iwana/ui';
-import { TaskExecutionMode, TaskPriority, TaskRecipientType, TaskType } from '@iwana/shared';
+import {
+  formatFullName,
+  TaskExecutionMode,
+  TaskPriority,
+  TaskRecipientType,
+  TaskType,
+} from '@iwana/shared';
 import type { ExpedienteRecord, SubscriberRecord } from '@/lib/api-client';
 import { crmApi, subscribersApi } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
@@ -72,7 +78,7 @@ function formatSubscriberOption(subscriber: SubscriberRecord): SearchablePickerI
   const label =
     subscriber.commercialName?.trim() ||
     subscriber.businessName?.trim() ||
-    [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim() ||
+    formatFullName(subscriber.firstName, subscriber.lastName).trim() ||
     subscriber.email?.trim() ||
     subscriber.documentNumber?.trim() ||
     `Suscriptor ${subscriber.id.slice(0, 8)}`;

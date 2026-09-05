@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader, Select } from '@iwana/ui';
+import { Button, Card, CardContent, CardHeader, FormStatus, Select } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
-import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { PortalSectionHeader } from '@/components/shared/portal-ui';
 import { ORGANIZATION_SETTINGS_COPY } from './mod00-settings-labels';
 
 const operationalSettingsSchema = z.object({
@@ -297,22 +296,22 @@ export function OperationalSettingsForm({
             </div>
 
             {/* Feedback de servidor */}
-            {serverError && (
-              <PortalAlert
-                variant="error"
-                title={ORGANIZATION_SETTINGS_COPY.operationalErrorTitle}
-                description={serverError}
-                icon={CircleAlert}
-              />
-            )}
-            {success && !serverError && (
-              <PortalAlert
-                variant="success"
-                title={ORGANIZATION_SETTINGS_COPY.operationalSuccessTitle}
-                description={success}
-                icon={CheckCircle2}
-              />
-            )}
+            <FormStatus
+              status={serverError ? 'error' : success ? 'success' : 'idle'}
+              message={
+                serverError ? (
+                  <>
+                    <span>{ORGANIZATION_SETTINGS_COPY.operationalErrorTitle}.</span>{' '}
+                    <span>{serverError}</span>
+                  </>
+                ) : success ? (
+                  <>
+                    <span>{ORGANIZATION_SETTINGS_COPY.operationalSuccessTitle}.</span>{' '}
+                    <span>{success}</span>
+                  </>
+                ) : undefined
+              }
+            />
 
             {/* Footer y CTA */}
             <div className="flex items-center justify-between gap-3">

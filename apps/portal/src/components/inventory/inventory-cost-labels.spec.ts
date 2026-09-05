@@ -1,6 +1,7 @@
 import {
   formatInventoryCostOrNone,
   formatInventoryCurrency,
+  formatInventoryMoney,
   INVENTORY_AVERAGE_COST_LABEL,
   INVENTORY_ESTIMATED_VALUE_LABEL,
   INVENTORY_LAST_PURCHASE_COST_LABEL,
@@ -67,5 +68,12 @@ describe('vocabulario de costeo F4 (system-vocabulary-review)', () => {
     expect(formatInventoryCostOrNone(null)).toBe(INVENTORY_NO_COST_LABEL);
     expect(formatInventoryCostOrNone('0')).toBe(INVENTORY_NO_COST_LABEL);
     expect(formatInventoryCostOrNone('')).toBe(INVENTORY_NO_COST_LABEL);
+  });
+
+  it('CA-25-01: formatInventoryMoney muestra 2 decimales y no altera el formato entero', () => {
+    const money = formatInventoryMoney(1234.5);
+    const currency = formatInventoryCurrency(1234.5);
+    expect(money.replace(/\u00a0/g, ' ')).toMatch(/1\.234,50/);
+    expect(currency.replace(/\u00a0/g, ' ')).not.toMatch(/,50/);
   });
 });

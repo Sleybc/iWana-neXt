@@ -26,7 +26,13 @@ import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   AddSupplierQuoteDto,
+  AddSupplierQuoteTaxDto,
   AddSupplierQuoteSchema,
+  UpdateSupplierQuoteDto,
+  UpdateSupplierQuoteSchema,
+  PurchaseRequestFulfillmentDto,
+  PurchaseTaxPresetDto,
+  SupplierQuoteTaxSnapshotDto,
   ApprovePurchaseRequestDto,
   ApprovePurchaseRequestSchema,
   CancelPurchaseOrderDto,
@@ -77,7 +83,14 @@ import { RfqService } from './services/rfq.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
 
 @ApiTags('purchasing')
-@ApiExtraModels(InventoryListMetaDto)
+@ApiExtraModels(
+  InventoryListMetaDto,
+  AddSupplierQuoteTaxDto,
+  UpdateSupplierQuoteDto,
+  SupplierQuoteTaxSnapshotDto,
+  PurchaseTaxPresetDto,
+  PurchaseRequestFulfillmentDto,
+)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('purchasing')
@@ -98,11 +111,16 @@ export class PurchasingController {
     summary: 'Listar solicitudes de compra',
     description:
       'ADR-064/065: limit default 20, max 100; cursor o page (excluyentes). ' +
-      'Filtros Ola 6: search, kpiPreset, status, requestType, priority. Orden: createdAt DESC, id DESC.',
+      'Filtros Ola 6: search, kpiPreset, status, requestType, priority. Orden: createdAt DESC, id DESC. ' +
+      'Cada fila incluye fulfillmentStatus: eje de abastecimiento derivado en servidor de las ' +
+      'órdenes de compra vivas, que distingue mercancía en tránsito de mercancía ya recibida ' +
+      'cuando status se queda en CONVERTED_TO_PO.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor)',
+    description:
+      'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor). ' +
+      'Cada elemento de `data` agrega `fulfillmentStatus` (PurchaseRequestFulfillmentStatus).',
   })
   listRequests(
     @Query(new ZodValidationPipe(ListPurchaseRequestsQuerySchema))
@@ -114,7 +132,12 @@ export class PurchasingController {
   @Get('requests/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
-  @ApiOperation({ summary: 'Obtener detalle completo de una solicitud de compra' })
+  @ApiOperation({
+    summary: 'Obtener detalle completo de una solicitud de compra',
+    description:
+      'Incluye cotizaciones con payableAmount y taxes, y purchaseTaxPresets del catálogo PURCHASE. ' +
+      'request.fulfillmentStatus expone el eje de abastecimiento derivado de las órdenes de compra.',
+  })
   getRequest(@Param('id', ParseUUIDPipe) id: string) {
     return this.purchasingQueryService.getRequestDetail(id);
   }
@@ -148,13 +171,47 @@ export class PurchasingController {
   @Post('requests/:id/quotes')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
-  @ApiOperation({ summary: 'Registrar cotización para una solicitud' })
+  @ApiOperation({
+    summary: 'Registrar cotización para una solicitud',
+    description:
+      'El servidor calcula tributos. taxes[] envía code, applies y rate opcional; ignora montos tributarios del cliente. shippingArrangement indica si el flete es gratis, va en esta cotización o se paga al transportador.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Cotización persistida con payableAmount y taxes calculados',
+  })
   addQuote(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(AddSupplierQuoteSchema)) body: AddSupplierQuoteDto,
     @CurrentUser() actor: JwtPayload,
   ) {
     return this.purchasingService.addSupplierQuote(id, AddSupplierQuoteSchema.parse(body), actor);
+  }
+
+  @Patch('requests/:id/quotes/:quoteId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
+  @ApiOperation({
+    summary: 'Corregir una cotización registrada',
+    description:
+      'Actualiza número, montos, envío y tributos de una cotización existente. El servidor recalcula el neto. No cambia el proveedor ni la invitación. Solo mientras la solicitud no esté aprobada y, si hay ronda, mientras reciba respuestas.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Cotización actualizada con payableAmount y taxes recalculados',
+  })
+  updateQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('quoteId', ParseUUIDPipe) quoteId: string,
+    @Body(new ZodValidationPipe(UpdateSupplierQuoteSchema)) body: UpdateSupplierQuoteDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.updateSupplierQuote(
+      id,
+      quoteId,
+      UpdateSupplierQuoteSchema.parse(body),
+      actor,
+    );
   }
 
   @Post('requests/:id/approve')

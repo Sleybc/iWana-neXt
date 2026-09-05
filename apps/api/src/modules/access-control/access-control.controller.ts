@@ -63,7 +63,7 @@ export class AccessControlController {
   @Get('permissions')
   @Roles(UserRole.ADMIN)
   @Permissions(AccessPermissionKey.ACCESS_PERMISSIONS_READ)
-  @ApiOperation({ summary: 'Obtener el catálogo tenant-aware de permisos MOD00_ACCESS_V1' })
+  @ApiOperation({ summary: 'Obtener el catálogo tenant-aware de permisos MOD00_ACCESS_V2' })
   @ApiResponse({ status: 200, description: 'Catálogo de permisos y matriz de compatibilidad.' })
   async listPermissions() {
     const data = await this.accessControlService.listPermissions();
@@ -75,8 +75,8 @@ export class AccessControlController {
   @Permissions(AccessPermissionKey.ACCESS_PROFILES_READ)
   @ApiOperation({ summary: 'Listar perfiles de acceso configurables del tenant' })
   @ApiResponse({ status: 200, description: 'Listado de perfiles configurables.' })
-  async listProfiles() {
-    const data = await this.accessControlService.listProfiles();
+  async listProfiles(@Request() req: AuthenticatedRequest) {
+    const data = await this.accessControlService.listProfiles(buildAuditContext(req));
     return { data };
   }
 

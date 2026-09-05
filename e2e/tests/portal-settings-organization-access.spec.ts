@@ -523,11 +523,10 @@ test.describe('Portal settings organization and access', () => {
     await expect(creationSelector).toBeVisible();
     await creationSelector.getByRole('button', { name: 'Empezar desde cero' }).click();
 
-    const accessDialog = page.getByRole('dialog').filter({ hasText: 'Nombre' });
-    await expect(accessDialog).toBeVisible();
-    await accessDialog.getByLabel('Nombre').fill('Perfil soporte nocturno');
-    await accessDialog.getByLabel('Descripción').fill('Perfil operativo de soporte');
-    await accessDialog.getByRole('button', { name: 'Crear perfil' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByLabel('Nombre').fill('Perfil soporte nocturno');
+    await page.getByLabel('Descripción').fill('Perfil operativo de soporte');
+    await page.getByRole('button', { name: 'Guardar perfil' }).click();
 
     await expect(
       page

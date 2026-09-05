@@ -23,6 +23,7 @@ import {
   StockMovementOrigin,
 } from '@iwana/shared';
 import { ReceivePurchaseOrderInput, ReceivePurchaseOrderSchema } from '../dto';
+import { resolveReceiptUomConversion } from '../utils/uom-conversion';
 import { generateSequentialNumber } from '../utils/sequential-number';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingService } from './purchasing.service';
@@ -153,6 +154,17 @@ export class GoodsReceiptService {
               );
             }
 
+            /**
+             * Conversión compra → base (ADR-085 D3 · F5b): único punto de
+             * conversión de este flujo. La línea conserva la cantidad en
+             * unidad de compra; el ledger recibe solo unidad base.
+             */
+            const uomConversion = resolveReceiptUomConversion(
+              inventoryItem,
+              line.quantityReceived,
+              line.unitCost ?? toNumeric(purchaseOrderLine.unitCost),
+            );
+
             const remainingQuantity =
               toNumeric(purchaseOrderLine.quantity) - toNumeric(purchaseOrderLine.receivedQuantity);
 
@@ -176,9 +188,13 @@ export class GoodsReceiptService {
                 inventoryItem.trackingMode,
               )
             ) {
-              if (line.serialNumbers.length !== line.quantityReceived) {
+              // Cada activo es 1 unidad base: con conversión se exige un serial
+              // por unidad base (2 cajas × 100 = 200 seriales), no por caja.
+              if (line.serialNumbers.length !== uomConversion.baseQuantity) {
                 throw new BadRequestException(
-                  'Los items serializados deben incluir un serial por cada unidad recibida.',
+                  uomConversion.applies && uomConversion.equivalence
+                    ? `Los items serializados deben incluir un serial por cada unidad base recibida (${uomConversion.equivalence}: se esperaban ${uomConversion.baseQuantity} seriales).`
+                    : 'Los items serializados deben incluir un serial por cada unidad recibida.',
                 );
               }
 
@@ -248,7 +264,7 @@ export class GoodsReceiptService {
                     quantity: 1,
                     lotId: stockLot.id,
                     serializedAssetId: asset.id,
-                    unitCost: line.unitCost ?? toNumeric(purchaseOrderLine.unitCost),
+                    unitCost: uomConversion.baseUnitCost ?? toNumeric(purchaseOrderLine.unitCost),
                     condition: line.condition,
                   });
 
@@ -262,12 +278,15 @@ export class GoodsReceiptService {
                   });
                 }
               } else {
+                // El ledger opera siempre en unidad base (Regla 2): con
+                // factor, `quantity` es la cantidad convertida, nunca la de
+                // compra. La línea de recepción conserva la de compra.
                 movementLines.push({
                   itemId: line.itemId,
                   locationId: validated.destinationLocationId,
-                  quantity: line.quantityReceived,
+                  quantity: uomConversion.baseQuantity,
                   lotId: stockLot.id,
-                  unitCost: line.unitCost ?? toNumeric(purchaseOrderLine.unitCost),
+                  unitCost: uomConversion.baseUnitCost ?? toNumeric(purchaseOrderLine.unitCost),
                   condition: line.condition,
                 });
               }

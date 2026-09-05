@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, FormStatus } from '@iwana/ui';
 import {
   CreateSubscriberSchema,
   type CreateSubscriberPayload,
@@ -212,7 +212,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
 
           <SharedPersonFields register={register} errors={errors} />
 
-          {submitError && <p className="text-sm text-rose-600">{submitError}</p>}
+          <FormStatus status={submitError ? 'error' : 'idle'} message={submitError ?? undefined} />
 
           {initialData && (
             <VatTreatmentBanner

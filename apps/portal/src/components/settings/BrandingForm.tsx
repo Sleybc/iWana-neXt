@@ -7,8 +7,6 @@ import { z } from 'zod';
 import {
   AlertTriangle,
   Camera,
-  CheckCircle2,
-  CircleAlert,
   ExternalLink,
   ImageOff,
   ImageUp,
@@ -24,6 +22,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  FormStatus,
   Input,
   SectionAccordion,
   cn,
@@ -571,23 +570,20 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
         {liveMessage}
       </div>
 
-      {serverError && (
-        <PortalAlert
-          variant="error"
-          title="No fue posible actualizar la marca"
-          description={serverError}
-          icon={CircleAlert}
-        />
-      )}
-
-      {success && !serverError && (
-        <PortalAlert
-          variant="success"
-          title="Marca actualizada"
-          description={success}
-          icon={CheckCircle2}
-        />
-      )}
+      <FormStatus
+        status={serverError ? 'error' : success ? 'success' : 'idle'}
+        message={
+          serverError ? (
+            <>
+              <span>No fue posible actualizar la marca.</span> <span>{serverError}</span>
+            </>
+          ) : success ? (
+            <>
+              <span>Marca actualizada.</span> <span>{success}</span>
+            </>
+          ) : undefined
+        }
+      />
 
       {!canEdit && (
         <PortalAlert
@@ -1067,14 +1063,16 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               {BRANDING_SETTINGS_COPY.restoreDialogConfirmMessage}
             </div>
 
-            {serverError && isResettingBase === false ? (
-              <PortalAlert
-                variant="error"
-                title="No fue posible restaurar la marca"
-                description={serverError}
-                icon={CircleAlert}
-              />
-            ) : null}
+            <FormStatus
+              status={serverError && isResettingBase === false ? 'error' : 'idle'}
+              message={
+                serverError && isResettingBase === false ? (
+                  <>
+                    <span>No fue posible restaurar la marca.</span> <span>{serverError}</span>
+                  </>
+                ) : undefined
+              }
+            />
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <DialogClose asChild>

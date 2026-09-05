@@ -5,22 +5,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import {
-  AlertTriangle,
-  ArrowRight,
-  Building2,
-  Eye,
-  EyeOff,
-  LockKeyhole,
-  Mail,
-  ShieldCheck,
-} from 'lucide-react';
+import { ArrowRight, Building2, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { loginSchema, type LoginFormValues } from '@iwana/shared';
 import { ApiError } from '@/lib/api-client';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
 import { useAuth } from './AuthProvider';
 import {
-  AUTH_FORM_ALERT_ERROR_CLASS,
   AUTH_FORM_ERROR_CLASS,
   AUTH_FORM_ICON_LEADING_CLASS,
   AUTH_FORM_ICON_TRAILING_BUTTON_CLASS,
@@ -32,6 +22,7 @@ import {
   AUTH_FORM_PRIMARY_BUTTON_CLASS,
   AUTH_FORM_SECURE_FOOTER_CLASS,
   cn,
+  FormStatus,
 } from '@iwana/ui';
 
 const errorMessages: Record<number, string> = {
@@ -200,12 +191,7 @@ export function LoginForm({
         )}
       </label>
 
-      {serverError && (
-        <div role="alert" className={AUTH_FORM_ALERT_ERROR_CLASS}>
-          <AlertTriangle className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
-          <span>{serverError}</span>
-        </div>
-      )}
+      <FormStatus status={serverError ? 'error' : 'idle'} message={serverError ?? undefined} />
 
       <button type="submit" disabled={isSubmitting} className={AUTH_FORM_PRIMARY_BUTTON_CLASS}>
         <span>{isSubmitting ? 'Ingresando...' : 'Ingresar'}</span>

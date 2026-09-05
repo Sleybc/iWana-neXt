@@ -1,6 +1,14 @@
 'use client';
 
-import { Badge, Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  FormStatus,
+} from '@iwana/ui';
 import { TaskStatus } from '@iwana/shared';
 import type {
   OperationalTaskAssignmentHistoryRecord,
@@ -90,11 +98,7 @@ export function TaskDetailDrawer({
             )}
           </dl>
 
-          {error && (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-              {error}
-            </p>
-          )}
+          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
 
           {isLoadingDetails && (
             <p className="text-sm text-gray-600 dark:text-gray-300">

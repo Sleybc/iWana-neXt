@@ -1197,3 +1197,19 @@ Lo demás de U-D3 (**KPI compacto vertical**, sin `max-w`, **sin KPI fantasma**,
 | **UX-B0BIS-03** | Primer viewport: identidad + indicadores (UX-03 actualizado). Recarga por `Reintentar` de bloque | Viewport / unit C-R2 |
 
 **Stop comprobado:** no exige campos nuevos de HLD §4.2. Sin `[BLOQUEO]`.
+
+---
+
+## Adenda centro de mando — retiro de Accesos rápidos (2026-09-04)
+
+Esta spec permanece congelada. El delta **no** reescribe §4.14: lo **supera** como superficie del home.
+
+| Pieza | §4.14 / B2b (congelado) | Vigente (centro de mando v1.1) |
+| --- | --- | --- |
+| Panel Accesos rápidos | Mapa estático por rol, máx. 5 + «Ver más» | **Retirado** de los 12 roles |
+| Destinos de módulo | Filas del panel | B1b (chips) + menú lateral |
+| Mi perfil | Fila del panel | Enlace de texto «Ver mi perfil» en B3 |
+| CA-V2-01 | Identidad + al menos un acceso rápido | Identidad B3 + B1b, bloque de trabajo, historial, o enlace de perfil en B3 |
+| «Panel en preparación» | Fuera del producto | Sin cambio |
+
+Fuente: [`2026-09-04-portal-dashboard-centro-mando-ux-spec.md`](2026-09-04-portal-dashboard-centro-mando-ux-spec.md) §11 · HLD v2.0.3.

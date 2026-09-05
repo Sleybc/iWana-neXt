@@ -354,14 +354,17 @@ test.describe('Portal access governance', () => {
   }) => {
     await bootstrapAccessGovernancePage(page, baseURL);
 
-    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
-    await expect(page.getByText('Administrador general', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Perfiles sugeridos' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Crear a partir de este perfil/ })).toHaveCount(
+      0,
+    );
 
-    // Las tarjetas de perfil sugerido tienen botones de acción
-    const createFromProfileButtons = page.getByRole('button', {
-      name: /Crear a partir de este perfil/,
-    });
-    await expect(createFromProfileButtons.first()).toBeVisible();
+    await page.getByRole('button', { name: 'Crear perfil' }).click();
+    const peek = page.getByRole('dialog');
+    await expect(peek.getByRole('heading', { name: 'Perfiles sugeridos' })).toBeVisible();
+    await expect(
+      peek.getByRole('button', { name: /Ver lo que permite Administrador general/ }),
+    ).toBeVisible();
 
     // No hay selector de usuario en esta pantalla (exact para no colisionar con "Menú de usuario" del header)
     await expect(page.getByLabel('Usuario', { exact: true })).not.toBeVisible();

@@ -3,12 +3,14 @@ import {
   IsEmail,
   IsEnum,
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
   ApiProperty,
@@ -25,6 +27,13 @@ import {
   USER_PASSWORD_MIN,
   USER_PHONE_E164_PATTERN,
 } from './user-field-constraints';
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_DIGIT_PATTERN,
+  PASSWORD_LOWERCASE_PATTERN,
+  PASSWORD_SPECIAL_PATTERN,
+  PASSWORD_UPPERCASE_PATTERN,
+} from '../../../common/password-policy';
 
 /**
  * DTO para crear un usuario dentro del tenant.
@@ -64,6 +73,10 @@ export class CreateUserDto {
   @IsString()
   @MinLength(USER_PASSWORD_MIN)
   @MaxLength(USER_FIELD_MAX.password)
+  @Matches(PASSWORD_UPPERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_LOWERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_DIGIT_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_SPECIAL_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password?: string;
 
   // ── Perfil personal (todos opcionales) ──────────────────────────────────────
@@ -181,18 +194,18 @@ export class ChangeUserLoginEmailDto {
   email: string;
 
   @ApiProperty({
-    minLength: USER_PASSWORD_MIN,
-    description: 'Contraseña actual para confirmar el cambio',
+    description:
+      'Contraseña actual para confirmar el cambio. Solo se verifica contra el hash, sin politica de longitud (Paso 7).',
   })
   @IsString()
-  @MinLength(USER_PASSWORD_MIN)
-  @MaxLength(USER_FIELD_MAX.password)
+  @IsNotEmpty()
   currentPassword: string;
 
   @ApiPropertyOptional({
     description:
-      'Si el usuario es el administrador principal, sincroniza también el email de contacto del tenant.',
+      'Deprecado (Ola 2, P-02): el servidor lo ignora y decide segun si el actor es el admin principal. Se conserva para no romper el contrato.',
     default: true,
+    deprecated: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -225,14 +238,51 @@ export class ResetPasswordDto {
   @IsString()
   @MinLength(USER_PASSWORD_MIN)
   @MaxLength(USER_FIELD_MAX.password)
+  @Matches(PASSWORD_UPPERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_LOWERCASE_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_DIGIT_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
+  @Matches(PASSWORD_SPECIAL_PATTERN, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password?: string;
 }
+
+/**
+ * `phone` de perfil propio (PATCH /users/me).
+ *
+ * C-1 (Ola 2): admite `null` explicito (semantica de borrado del informe
+ * §3.3: `undefined` = no tocar, `null` = borrar). Con `@IsOptional()` a secas,
+ * `phone: null` no atraviesa `@Matches`, asi que se valida formato solo
+ * cuando hay valor. Vive fuera de `CreateUserDto` porque el tipado de la
+ * subclase debe admitir `null` sin ampliar el contrato de creacion.
+ */
+class UpdateProfilePhoneDto {
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(USER_FIELD_MAX.phone)
+  @Matches(USER_PHONE_E164_PATTERN, {
+    message: 'phone debe estar en formato E.164 (ej: +573001234567).',
+  })
+  phone?: string | null;
+}
+
+const USER_PROFILE_FIELDS_WITHOUT_PHONE = [
+  'firstName',
+  'lastName',
+  'jobTitle',
+  'documentType',
+  'documentNumber',
+  'avatarUrl',
+] as const;
 
 /**
  * Subconjunto de perfil propio (PATCH /users/me).
  * Derivado del contrato canónico CreateUserDto — sin role/status/mfa.
  */
-export class UpdateProfileDto extends PartialType(PickType(CreateUserDto, USER_PROFILE_FIELDS)) {}
+export class UpdateProfileDto extends IntersectionType(
+  PartialType(PickType(CreateUserDto, USER_PROFILE_FIELDS_WITHOUT_PHONE)),
+  UpdateProfilePhoneDto,
+) {}
 
 /**
  * Representacion publica de un usuario.

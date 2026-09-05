@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  AccessPermissionKey,
   GoodsReceiptStatus,
   InventoryResponsibleType,
   InventoryItemCategory,
@@ -10,6 +11,7 @@ import {
   InventoryTrackingMode,
   PartyStatus,
   PurchaseOrderStatus,
+  PurchaseRequestFulfillmentStatus,
   PurchaseRequestPriority,
   PurchaseRequestStatus,
   PurchaseRequestType,
@@ -33,6 +35,7 @@ import {
 } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { InventoryClient } from './InventoryClient';
+import { INVENTORY_NAV_GROUPS } from './inventory-nav';
 import {
   CUSTOMER_SITE_TRANSFER_BLOCKED_MESSAGE,
   formatInventoryCurrency,
@@ -54,6 +57,8 @@ const routerMock = {
 };
 
 const useAuthMock = jest.fn();
+const usePermissionsMock = jest.fn();
+const permissionsRetryMock = jest.fn();
 
 function buildAuthUser(overrides: { id?: string; role?: UserRole } = {}) {
   return {
@@ -77,6 +82,10 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
+}));
+
+jest.mock('@/components/access-control/permissions-context', () => ({
+  usePermissions: () => usePermissionsMock(),
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -162,6 +171,7 @@ jest.mock('@/lib/api-client', () => ({
     getRequestDetail: jest.fn(),
     createRequest: jest.fn(),
     addQuote: jest.fn(),
+    updateQuote: jest.fn(),
     approveRequest: jest.fn(),
     rejectRequest: jest.fn(),
     cancelRequest: jest.fn(),
@@ -271,7 +281,7 @@ function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): Invento
     categoryName: 'CPE',
     categoryCode: 'CPE',
     trackingMode: InventoryTrackingMode.SERIALIZED,
-    unitOfMeasure: 'unidad',
+    unitOfMeasure: 'UNIT',
     baseCost: '120000',
     minimumStock: '2',
     purchasable: true,
@@ -279,7 +289,7 @@ function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): Invento
     assetControlled: true,
     preferredSupplierRefId: 'supplier-1',
     supplierSku: 'FC-ONT-6',
-    purchaseUnitOfMeasure: 'caja',
+    purchaseUnitOfMeasure: 'BOX',
     purchaseToBaseUomFactor: '10',
     standardCost: '118000',
     lastPurchaseCost: '115000',
@@ -292,6 +302,8 @@ function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): Invento
     usefulLifeMonths: 36,
     commercialReferenceId: '11111111-1111-4111-8111-111111111111',
     status: InventoryItemStatus.ACTIVE,
+    barcode: null,
+    barcodeType: null,
     createdAt: '2026-06-25T12:00:00.000Z',
     updatedAt: '2026-06-25T12:00:00.000Z',
     ...overrides,
@@ -312,6 +324,28 @@ function mockMatchMedia(matchesLg: boolean) {
       removeListener: jest.fn(),
       dispatchEvent: jest.fn(),
     })),
+  });
+}
+
+/** Equivalente al fallback estático del contexto de permisos sin proveedor (degradado, fail-open). */
+function mockDegradedPermissions() {
+  usePermissionsMock.mockReturnValue({
+    status: 'degraded' as const,
+    effectivePermissions: new Set<AccessPermissionKey>(),
+    hasPermission: () => false,
+    hasAnyPermission: () => false,
+    retry: permissionsRetryMock,
+  });
+}
+
+function mockResolvedPermissions(permissions: AccessPermissionKey[]) {
+  usePermissionsMock.mockReturnValue({
+    status: 'ready' as const,
+    effectivePermissions: new Set<AccessPermissionKey>(permissions),
+    hasPermission: (permission: AccessPermissionKey) => permissions.includes(permission),
+    hasAnyPermission: (required: readonly AccessPermissionKey[]) =>
+      required.some((permission) => permissions.includes(permission)),
+    retry: permissionsRetryMock,
   });
 }
 
@@ -342,6 +376,7 @@ describe('InventoryClient', () => {
       logout: jest.fn(),
       refreshProfile: jest.fn(),
     });
+    mockDegradedPermissions();
     inventoryApiMock.createItem.mockClear();
     inventoryApiMock.dashboard.mockResolvedValue({
       itemsCount: 3,
@@ -412,8 +447,8 @@ describe('InventoryClient', () => {
         categoryCode: 'CPE',
         category: InventoryItemCategory.CPE,
         itemKind: InventoryItemKind.SERIALIZED,
-        unitOfMeasure: 'unidad',
-        purchaseUnitOfMeasure: 'caja',
+        unitOfMeasure: 'UNIT',
+        purchaseUnitOfMeasure: 'BOX',
         standardCost: '118000',
         preferredSupplierRefId: 'supplier-1',
         preferredSupplierName: 'Proveedor Alfa',
@@ -993,6 +1028,58 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Por cotizar')).toBeInTheDocument();
     });
     expect(screen.queryByText('Productos catalogados')).not.toBeInTheDocument();
+  });
+
+  it('lee una solicitud ya recibida como cerrada y no la cuenta en «Por recibir»', async () => {
+    purchasingApiMock.listRequests.mockResolvedValue({
+      data: [
+        {
+          id: 'pr-recibida',
+          tenantId: 'tenant-1',
+          requestNumber: 'PR-000009',
+          title: 'Reposición de ONT recibida',
+          status: PurchaseRequestStatus.CONVERTED_TO_PO,
+          fulfillmentStatus: PurchaseRequestFulfillmentStatus.RECEIVED,
+          requestType: PurchaseRequestType.REPLENISHMENT,
+          priority: PurchaseRequestPriority.NORMAL,
+          requestedByUserId: 'user-1',
+          requestingArea: 'Operaciones',
+          justification: 'Reposición por consumo de campo',
+          operationalRefType: null,
+          operationalRefId: null,
+          exceptionReason: null,
+          approvedByUserId: 'user-admin',
+          neededByDate: '2026-06-30',
+          notes: null,
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-28T12:00:00.000Z',
+        },
+      ],
+      meta: { ...EMPTY_LIST_META, nextCursor: null, total: 1 },
+    });
+
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('PR-000009')).toBeInTheDocument();
+    });
+
+    // La celda Estado de la fila, no el selector de filtros (que sí lista el enum administrativo).
+    const row = screen.getByText('PR-000009').closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText('Recibida y cerrada')).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).queryByText('Convertida en orden de compra'),
+    ).not.toBeInTheDocument();
+
+    const pendingReceiptCard = screen.getByRole('button', { name: /Por recibir/i });
+    expect(within(pendingReceiptCard).getByText('0')).toBeInTheDocument();
   });
 
   it('renderiza la pestaña Salidas', async () => {
@@ -1629,6 +1716,50 @@ describe('InventoryClient', () => {
     }
   });
 
+  it('F4 CA-F4-04: buscar por código de barras usa el buscador genérico (el search del backend ya lo resuelve)', async () => {
+    jest.useFakeTimers();
+
+    try {
+      render(<InventoryClient />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+      });
+
+      openCatalogProductsTab();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Buscar producto')).toBeInTheDocument();
+      });
+
+      // Sin buscador duplicado: el mismo search que filtra por SKU/nombre
+      // resuelve barcode en el backend (list → OR sobre item.barcode).
+      // fireEvent.change: fija el valor completo de una vez (debounce 300ms).
+      fireEvent.change(screen.getByLabelText('Buscar producto'), {
+        target: { value: '4006381333931' },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(350);
+      });
+
+      await waitFor(() => {
+        expect(
+          inventoryApiMock.listItems.mock.calls.some(
+            ([params]) => params && 'search' in params && params.search === '4006381333931',
+          ),
+        ).toBe(true);
+      });
+    } finally {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    }
+  });
+
   it('abre el alta mínima desde catálogo y crea un producto con datos base', async () => {
     render(<InventoryClient />);
 
@@ -1663,7 +1794,7 @@ describe('InventoryClient', () => {
           categoryId: 'cat-cpe',
           itemKind: InventoryItemKind.STOCK,
           trackingMode: InventoryTrackingMode.CONSUMABLE,
-          unitOfMeasure: 'unidad',
+          unitOfMeasure: 'UNIT',
           purchasable: true,
           inventoryControlled: true,
           status: InventoryItemStatus.ACTIVE,
@@ -1826,7 +1957,7 @@ describe('InventoryClient', () => {
     expect(await screen.findByText('No fue posible crear la categoría')).toBeInTheDocument();
   });
 
-  it('abre la edición mínima del producto y envía solo datos base del catálogo', async () => {
+  it('abre la edición del producto con las cinco secciones y envía el payload completo del catálogo', async () => {
     render(<InventoryClient />);
 
     await waitFor(() => {
@@ -1857,11 +1988,17 @@ describe('InventoryClient', () => {
     expect(within(dialog).getByLabelText('Categoría')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Control de material')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Estado')).toBeInTheDocument();
+    // F1 CA-F1-01/CA-F1-07: el drawer abre con las cinco secciones y sin el párrafo retirado.
+    expect(within(dialog).getByText('Datos del producto')).toBeInTheDocument();
+    expect(within(dialog).getByText('Compras')).toBeInTheDocument();
+    expect(within(dialog).getByText('Inventario')).toBeInTheDocument();
+    expect(within(dialog).getByText('Activos')).toBeInTheDocument();
+    expect(within(dialog).getByText('Relación comercial')).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
+      within(dialog).queryByText(
         'Compras, inventario y activos se administran desde sus secciones correspondientes.',
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText('Nombre'), {
       target: { value: 'ONT WiFi 6 catálogo' },
@@ -1874,20 +2011,46 @@ describe('InventoryClient', () => {
         description: 'Terminal óptica de campo',
         brand: 'FiberCo',
         model: 'XGS-6',
+        barcode: null,
+        barcodeType: null,
         itemKind: InventoryItemKind.SERIALIZED,
         categoryId: 'cat-cpe',
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
         status: InventoryItemStatus.ACTIVE,
         commercialReferenceId: '11111111-1111-4111-8111-111111111111',
+        purchasable: true,
+        preferredSupplierRefId: 'supplier-1',
+        supplierSku: 'FC-ONT-6',
+        purchaseUnitOfMeasure: 'BOX',
+        purchaseToBaseUomFactor: 10,
+        baseCost: 120000,
+        standardCost: 118000,
+        minimumOrderQty: 10,
+        orderMultiple: 5,
+        leadTimeDays: 7,
+        inventoryControlled: true,
+        minimumStock: 2,
+        reorderPoint: 5,
+        targetStock: 20,
+        assetControlled: true,
+        usefulLifeMonths: 36,
       });
     });
 
-    const updatePayload = inventoryApiMock.updateItem.mock.calls.at(-1)?.[1];
-    expect(updatePayload).not.toHaveProperty('purchasable');
-    expect(updatePayload).not.toHaveProperty('preferredSupplierRefId');
-    expect(updatePayload).not.toHaveProperty('inventoryControlled');
-    expect(updatePayload).not.toHaveProperty('assetControlled');
+    const updatePayload = inventoryApiMock.updateItem.mock.calls.at(-1)?.[1] as Record<
+      string,
+      unknown
+    >;
+    // F1 + UoM + F4: payload completo de 28 claves (10 base + 14 de Compras/Inventario/Activos + 2 de UoM + 2 de código de barras).
+    expect(Object.keys(updatePayload)).toHaveLength(28);
+    expect(updatePayload).toHaveProperty('purchasable', true);
+    expect(updatePayload).toHaveProperty('preferredSupplierRefId', 'supplier-1');
+    expect(updatePayload).toHaveProperty('inventoryControlled', true);
+    expect(updatePayload).toHaveProperty('assetControlled', true);
+    // Campos de UoM incorporados tras F5a/F5b (ADR-085): viajan hidratados del detalle.
+    expect(updatePayload).toHaveProperty('purchaseUnitOfMeasure', 'BOX');
+    expect(updatePayload).toHaveProperty('purchaseToBaseUomFactor', 10);
   });
 
   it('renderiza la pestaña Bajas con solicitud y bandeja de aprobación', async () => {
@@ -2123,5 +2286,290 @@ describe('InventoryClient', () => {
       );
       expect(screen.getByRole('tab', { name: 'Reposición', selected: true })).toBeInTheDocument();
     });
+  });
+});
+
+describe('InventoryClient CA-2Ab — estado restringido inline (grupo Abastecimiento)', () => {
+  const EMPTY_PAGE = { data: [], meta: { ...EMPTY_LIST_META, nextCursor: null, total: 0 } };
+
+  function mockUserWithRole(role: UserRole = UserRole.TECHNICIAN) {
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser({ id: 'user-solo-stock', role }),
+      isAuthenticated: true,
+      isLoading: false,
+      login: jest.fn(),
+      completeMfaLogin: jest.fn(),
+      logout: jest.fn(),
+      refreshProfile: jest.fn(),
+    });
+  }
+
+  beforeEach(() => {
+    mockMatchMedia(true);
+    replaceMock.mockReset();
+    pushMock.mockReset();
+    replaceMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    pushMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    pathnameMock = '/dashboard/inventory';
+    searchParamsMock = new URLSearchParams();
+    mockUserWithRole();
+    mockDegradedPermissions();
+    permissionsRetryMock.mockReset();
+    inventoryApiMock.dashboard.mockResolvedValue({
+      itemsCount: 0,
+      locationsCount: 0,
+      serializedAssetsCount: 0,
+      balancesCount: 0,
+      totalOnHand: 0,
+      estimatedTotalValue: 0,
+      balancesByLocation: [],
+      balancesByCategory: [],
+      serializedAssetsByStatus: [],
+      serializedAssetsByResponsibleType: [],
+    });
+    inventoryApiMock.listItems.mockResolvedValue(EMPTY_PAGE);
+    inventoryApiMock.listAssets.mockResolvedValue(EMPTY_PAGE);
+    inventoryApiMock.listReplenishmentSuggestions.mockResolvedValue([]);
+    purchasingApiMock.listSuppliers.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
+    usersApiMock.list.mockResolvedValue(EMPTY_PAGE);
+  });
+
+  it('CA-2A-03: rol solo-stock con contexto resuelto no ve Compras ni Proveedores en el subnav', () => {
+    mockResolvedPermissions([AccessPermissionKey.INVENTORY_STOCK_READ]);
+
+    render(<InventoryClient />);
+
+    expect(screen.queryByRole('button', { name: 'Compras' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Proveedores' })).not.toBeInTheDocument();
+    for (const name of [
+      'Vista general',
+      'Catálogo',
+      'Bodegas',
+      'Existencias',
+      'Salidas',
+      'Conteos',
+      'Activos',
+      'Movimientos',
+      'Bajas',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+    // Los eyebrows de los grupos restantes están presentes.
+    expect(screen.getByText('Maestros')).toBeInTheDocument();
+    expect(screen.getByText('Operación')).toBeInTheDocument();
+    expect(screen.getByText('Seguimiento')).toBeInTheDocument();
+  });
+
+  it('CA-2Ab-05: deep-link ?tab=suppliers muestra el estado restringido inline y conserva la URL', () => {
+    mockResolvedPermissions([AccessPermissionKey.INVENTORY_STOCK_READ]);
+    searchParamsMock = new URLSearchParams('tab=suppliers');
+
+    render(<InventoryClient />);
+
+    expect(screen.getByText('Acceso restringido')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'No tienes acceso a esta sección' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Tu tipo de usuario y sus perfiles asignados no incluyen el acceso necesario para usar esta sección.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Volver a Vista general' })).toBeInTheDocument();
+
+    // El workspace de la pestaña no se monta (ni siquiera en el DOM).
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+
+    // El subnav no marca ningún aria-current: el destino no existe para este usuario.
+    const nav = screen.getByRole('navigation', { name: 'Secciones de inventario' });
+    const navButtons = within(nav).getAllByRole('button');
+    expect(navButtons.some((button) => button.getAttribute('aria-current') === 'page')).toBe(false);
+
+    // No redirige: la URL se conserva para que el usuario comparta el enlace exacto.
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(searchParamsMock.get('tab')).toBe('suppliers');
+  });
+
+  it('CA-2Ab-05: Volver a Vista general retira solo tab del query y conserva el resto', async () => {
+    const user = userEvent.setup();
+    mockResolvedPermissions([AccessPermissionKey.INVENTORY_STOCK_READ]);
+    searchParamsMock = new URLSearchParams('tab=suppliers&commercialRefId=ref-123');
+
+    render(<InventoryClient />);
+
+    await user.click(screen.getByRole('button', { name: 'Volver a Vista general' }));
+
+    const lastCall = replaceMock.mock.calls.at(-1)?.[0] as string;
+    expect(lastCall).not.toContain('tab=');
+    expect(lastCall).toContain('commercialRefId=ref-123');
+    expect(await screen.findByRole('heading', { name: 'Inventario' })).toBeInTheDocument();
+    expect(screen.queryByText('Acceso restringido')).not.toBeInTheDocument();
+  });
+
+  it.each(['purchasing/nueva-ot', 'suppliers/x'])(
+    'CA-2Ab-05: deep-link con sufijo ?tab=%s muestra el estado restringido inline',
+    (tabParam) => {
+      mockResolvedPermissions([AccessPermissionKey.INVENTORY_STOCK_READ]);
+      searchParamsMock = new URLSearchParams(`tab=${tabParam}`);
+
+      render(<InventoryClient />);
+
+      // La resolución se hace sobre la base del tab: el estado inline aparece.
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'No tienes acceso a esta sección' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+
+      // No redirige: el deep-link con sufijo se conserva íntegro en la URL.
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(searchParamsMock.get('tab')).toBe(tabParam);
+    },
+  );
+
+  it('CA-2A-03: deep-link ?tab=suppliers con permisos en loading mantiene el workspace visible (fail-open)', async () => {
+    usePermissionsMock.mockReturnValue({
+      status: 'loading' as const,
+      effectivePermissions: new Set<AccessPermissionKey>(),
+      hasPermission: () => false,
+      hasAnyPermission: () => false,
+      retry: permissionsRetryMock,
+    });
+    searchParamsMock = new URLSearchParams('tab=suppliers');
+
+    render(<InventoryClient />);
+
+    // El estado restringido NO aparece mientras el contexto no está resuelto.
+    expect(screen.queryByText('Acceso restringido')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'No tienes acceso a esta sección' }),
+    ).not.toBeInTheDocument();
+
+    // El grupo Abastecimiento sigue expuesto en el nav (fail-open).
+    expect(screen.getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
+
+    // El workspace de la pestaña se monta (el panel carga su listado).
+    expect(
+      await screen.findByText(
+        'Administra la ficha comercial de los proveedores vinculados a compras.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('rol con inventory.purchasing.read ve Compras y Proveedores', () => {
+    mockResolvedPermissions([
+      AccessPermissionKey.INVENTORY_STOCK_READ,
+      AccessPermissionKey.INVENTORY_PURCHASING_READ,
+    ]);
+
+    render(<InventoryClient />);
+
+    expect(screen.getByRole('button', { name: 'Compras' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
+    expect(screen.queryByText('Acceso restringido')).not.toBeInTheDocument();
+  });
+
+  it('ADMIN ve el grupo Abastecimiento aunque el set resuelto no incluya la llave', () => {
+    mockUserWithRole(UserRole.ADMIN);
+    mockResolvedPermissions([]);
+
+    render(<InventoryClient />);
+
+    expect(screen.getByRole('button', { name: 'Compras' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
+  });
+
+  it.each(['loading', 'degraded'] as const)(
+    'en %s el grupo Abastecimiento permanece visible (fail-open)',
+    (status) => {
+      usePermissionsMock.mockReturnValue({
+        status,
+        effectivePermissions: new Set<AccessPermissionKey>(),
+        hasPermission: () => false,
+        hasAnyPermission: () => false,
+        retry: permissionsRetryMock,
+      });
+
+      render(<InventoryClient />);
+
+      expect(screen.getByRole('button', { name: 'Compras' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
+      expect(screen.queryByText('Acceso restringido')).not.toBeInTheDocument();
+    },
+  );
+
+  it('en tripwire (ready + set vacío, no-ADMIN) el grupo permanece visible (fail-open)', () => {
+    mockResolvedPermissions([]);
+
+    render(<InventoryClient />);
+
+    expect(screen.getByRole('button', { name: 'Compras' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
+    expect(screen.queryByText('Acceso restringido')).not.toBeInTheDocument();
+  });
+});
+
+describe('InventoryClient — nombres accesibles de tabpanels exteriores (a11y)', () => {
+  const EXPECTED_LABELS: Record<string, string> = Object.fromEntries(
+    INVENTORY_NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.id, item.label])),
+  );
+
+  beforeEach(() => {
+    mockMatchMedia(true);
+    replaceMock.mockReset();
+    pushMock.mockReset();
+    replaceMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    pushMock.mockImplementation((href: string) => {
+      searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
+    });
+    pathnameMock = '/dashboard/inventory';
+    searchParamsMock = new URLSearchParams();
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser(),
+      isAuthenticated: true,
+      isLoading: false,
+      login: jest.fn(),
+      completeMfaLogin: jest.fn(),
+      logout: jest.fn(),
+      refreshProfile: jest.fn(),
+    });
+    mockDegradedPermissions();
+  });
+
+  it('el panel activo de Salidas expone su nombre accesible', async () => {
+    expect(EXPECTED_LABELS.issues).toBe('Salidas');
+
+    render(<InventoryClient initialTab="issues" />);
+
+    expect(await screen.findByRole('tabpanel', { name: 'Salidas' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['catalog', 'Catálogo'],
+    ['purchasing', 'Compras'],
+    ['suppliers', 'Proveedores'],
+    ['stock', 'Existencias'],
+    ['locations', 'Bodegas'],
+    ['issues', 'Salidas'],
+    ['counts', 'Conteos'],
+    ['assets', 'Activos'],
+    ['movements', 'Movimientos'],
+    ['writeoffs', 'Bajas'],
+  ] as const)('el panel %s expone el nombre accesible %s', async (tabId, label) => {
+    expect(EXPECTED_LABELS[tabId]).toBe(label);
+
+    render(<InventoryClient initialTab={tabId} />);
+
+    expect(await screen.findByRole('tabpanel', { name: label })).toBeInTheDocument();
   });
 });

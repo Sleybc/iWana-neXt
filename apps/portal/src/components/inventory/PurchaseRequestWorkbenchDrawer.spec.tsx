@@ -161,6 +161,7 @@ function buildProps(detail: PurchaseRequestDetailRecord) {
     closeOrderError: null,
     onClose: jest.fn(),
     onAddQuote: jest.fn(),
+    onUpdateQuote: jest.fn().mockResolvedValue(true),
     onApprove: jest.fn(),
     onCreateAwards: jest.fn(),
     onReject: jest.fn(),
@@ -282,6 +283,25 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
     expect(screen.getByRole('button', { name: 'Registrar cotización' })).toBeInTheDocument();
   });
 
+  it('CA-25-14: nueva cotización muestra tributos apagados y copy de no-factura', () => {
+    const props = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
+      activeTab: 'cotizar' as const,
+    };
+
+    render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    expect(screen.getByRole('region', { name: 'Nueva cotización' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'IVA' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Retención en la fuente' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Rete ICA' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Rete IVA' })).not.toBeChecked();
+    expect(screen.getByText(/No son una factura electrónica/i)).toBeInTheDocument();
+    expect(screen.getByText(/No se guarda como perfil del proveedor/i)).toBeInTheDocument();
+    expect(screen.queryByText('IVA_19')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Sin IVA').length).toBeGreaterThan(0);
+  });
+
   it('oculta el bloque Ronda cuando no hay ronda ni se puede crear (PENDING_QUOTES)', () => {
     const props = {
       ...buildProps(buildDetail({ status: PurchaseRequestStatus.PENDING_QUOTES })),
@@ -347,5 +367,68 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
     expect(nextActionButtons.length).toBeGreaterThanOrEqual(1);
     await user.click(nextActionButtons[nextActionButtons.length - 1]!);
     expect(onActiveTabChange).toHaveBeenCalledWith('cotizar');
+  });
+
+  it('permite modificar una cotización manual en PENDING_APPROVAL', async () => {
+    const user = userEvent.setup();
+    const onUpdateQuote = jest.fn().mockResolvedValue(true);
+    const quote: SupplierQuoteRecord = {
+      id: 'quote-1',
+      tenantId: 'tenant-1',
+      purchaseRequestId: 'req-1',
+      partyRefId: 'party-1',
+      quoteNumber: 'COT-100',
+      amount: '15000',
+      shippingCost: '0',
+      shippingArrangement: 'ON_INVOICE',
+      currency: 'COP',
+      validUntil: null,
+      notes: null,
+      rfqId: null,
+      rfqInvitationId: null,
+      lines: [
+        {
+          id: 'ql-1',
+          tenantId: 'tenant-1',
+          supplierQuoteId: 'quote-1',
+          purchaseRequestLineId: 'line-1',
+          quantity: '10',
+          unitCost: '1500',
+          lineAmount: '15000',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+      createdAt: '2026-06-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    };
+
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(
+          buildDetail({ status: PurchaseRequestStatus.PENDING_APPROVAL }, { quotes: [quote] }),
+        )}
+        supplierLabels={{ 'party-1': 'Proveedor Alfa' }}
+        onUpdateQuote={onUpdateQuote}
+        activeTab="cotizar"
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Registrar cotización' })).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    );
+
+    expect(screen.getByRole('region', { name: 'Modificar cotización' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('COT-100')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(onUpdateQuote).toHaveBeenCalledWith(
+      'quote-1',
+      expect.objectContaining({
+        quoteNumber: 'COT-100',
+        lines: [{ purchaseRequestLineId: 'line-1', unitCost: 1500 }],
+      }),
+    );
   });
 });

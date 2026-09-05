@@ -129,7 +129,7 @@
         }
       },
       "Conflict": {
-        "description": "Versión, transición, idempotencia o inventario en conflicto.",
+        "description": "Versión, transición, idempotencia, inventario o precondición de ejecución iniciada (registro antes de iniciar la OT) en conflicto.",
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/ExecutionOrderError" }
@@ -175,6 +175,7 @@
               "FORBIDDEN",
               "NOT_FOUND",
               "VERSION_CONFLICT",
+              "EXECUTION_ORDER_NOT_STARTED",
               "IDEMPOTENCY_CONFLICT",
               "IDEMPOTENCY_EXPIRED",
               "TRANSITION_CONFLICT",
@@ -217,7 +218,12 @@
           "id": { "type": "string", "format": "uuid" },
           "key": { "type": "string" },
           "version": { "type": "integer", "minimum": 1 },
-          "label": { "type": "string" }
+          "label": { "type": "string" },
+          "requirements": {
+            "type": "array",
+            "description": "Requisitos congelados al crear la OT (snapshot inmutable); se omite si el snapshot no está disponible.",
+            "items": { "$ref": "#/components/schemas/ExecutionOrderTemplateRequirement" }
+          }
         }
       },
       "ExecutionOrderScheduleView": {

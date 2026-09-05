@@ -10,9 +10,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  FormStatus,
 } from '@iwana/ui';
+import { formatFullName } from '@iwana/shared';
 import type { InternalUser } from '@/lib/api-client';
-import { PortalAlert } from '@/components/shared/portal-ui';
 
 interface ResetPasswordDialogProps {
   isOpen: boolean;
@@ -50,7 +51,7 @@ export function ResetPasswordDialog({
 
   if (!isOpen) return null;
 
-  const userDisplayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+  const userDisplayName = formatFullName(user.firstName, user.lastName) || user.email;
 
   return (
     <Dialog
@@ -112,14 +113,17 @@ export function ResetPasswordDialog({
           actual quedará invalidada inmediatamente.
         </p>
 
-        {serverError && (
-          <PortalAlert
-            className="mb-4"
-            variant="error"
-            title="No fue posible reiniciar"
-            description={serverError}
-          />
-        )}
+        <FormStatus
+          className="mb-4"
+          status={serverError ? 'error' : 'idle'}
+          message={
+            serverError ? (
+              <>
+                <span>No fue posible reiniciar.</span> <span>{serverError}</span>
+              </>
+            ) : undefined
+          }
+        />
 
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>

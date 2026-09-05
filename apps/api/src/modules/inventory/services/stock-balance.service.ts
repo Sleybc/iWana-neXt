@@ -38,7 +38,11 @@ export interface StockAvailabilityQuery {
   condition?: StockBalanceCondition;
 }
 
-function toNumeric(value: string | number | null | undefined): number {
+/**
+ * Parsea una cantidad `numeric` (la entidad la guarda como string) a number.
+ * Canónico para todo cálculo de disponible (MOD12 S1 · B1 lo reutiliza).
+ */
+export function toNumeric(value: string | number | null | undefined): number {
   if (typeof value === 'number') {
     return value;
   }
@@ -50,7 +54,8 @@ function toNumeric(value: string | number | null | undefined): number {
   return Number.parseFloat(value);
 }
 
-function toQuantity(value: number): string {
+/** Formatea una cantidad a decimal string con 2 posiciones (`numeric(12,2)`). */
+export function toQuantity(value: number): string {
   return value.toFixed(2);
 }
 

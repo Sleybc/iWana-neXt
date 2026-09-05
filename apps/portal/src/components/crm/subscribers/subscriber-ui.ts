@@ -1,6 +1,7 @@
 import {
   CustomerSegment,
   DocumentType,
+  formatFullName,
   PersonType,
   SubscriberStatus,
   TaxRegime,
@@ -186,7 +187,7 @@ export function formatSubscriberName(
     return subscriber.businessName?.trim() || 'Sin razón social';
   }
 
-  const fullName = [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(subscriber.firstName, subscriber.lastName).trim();
   return fullName || 'Sin nombre';
 }
 

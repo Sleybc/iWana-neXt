@@ -3,6 +3,7 @@ import { ContractsController } from '../contracts.controller';
 import { ContractsService } from '../contracts.service';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Contract } from '../entities/contract.entity';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 
 /** Factory de contrato mínimo para tests */
 function buildContract(overrides: Partial<Contract> = {}): Contract {
@@ -59,7 +60,13 @@ describe('ContractsController', () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ContractsController],
-      providers: [{ provide: ContractsService, useValue: serviceMock }],
+      providers: [
+        { provide: ContractsService, useValue: serviceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+      ],
     }).compile();
 
     controller = module.get<ContractsController>(ContractsController);

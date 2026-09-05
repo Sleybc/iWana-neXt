@@ -241,6 +241,13 @@ body {
     @apply text-[10px] font-semibold uppercase tracking-widest text-iwana-secondary-700 dark:text-iwana-secondary-400;
   }
 
+  /* Compensación de grupo de subnav sin eyebrow — acoplada a .portal-eyebrow
+     (reevaluar si esa utilidad cambia): 19 px = eyebrow 15 px (10 px × line-height
+     1.5 heredado) + gap space-y-1 4 px. Spec subnav Inventario v1.3 §2.2. */
+  .portal-subnav-group-sans-label {
+    padding-top: 19px;
+  }
+
   /* Eyebrow operativo iWana — variante muted para fondos coloreados */
   .portal-eyebrow-muted {
     @apply text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400;

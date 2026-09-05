@@ -12,6 +12,16 @@ import { expect, test } from '@playwright/test';
 import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'tenant-field-flow-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const SUPPORT_USER_ID = '11111111-1111-4111-8111-111111111111';
 const TICKET_ID = 'ticket-field-001';
 const VISIT_REQUEST_ID = 'vr-field-001';
@@ -50,6 +60,7 @@ type FlowState = {
   requestFieldServiceCalls: number;
   visitRequestCreateCalls: number;
   closeAttempts: number;
+  templateVersionRequests: number;
   inventoryApplied: boolean;
   ticket: JsonRecord | null;
   visitRequest: JsonRecord | null;
@@ -68,6 +79,7 @@ function createFlowState(): FlowState {
     requestFieldServiceCalls: 0,
     visitRequestCreateCalls: 0,
     closeAttempts: 0,
+    templateVersionRequests: 0,
     inventoryApplied: false,
     ticket: null,
     visitRequest: null,
@@ -111,6 +123,15 @@ function createFlowState(): FlowState {
         key: 'SOPORTE_CABLEADO',
         version: 1,
         label: 'Soporte de cableado',
+        requirements: [
+          {
+            key: 'CUSTOMER_SIGNATURE',
+            label: 'Firma del cliente',
+            required: true,
+            kind: 'EVIDENCE',
+            evidenceType: 'SIGNATURE',
+          },
+        ],
       },
       schedule: {
         eventId: SCHEDULE_EVENT_ID,
@@ -130,13 +151,8 @@ function createFlowState(): FlowState {
       completion: { progress: 0 },
       syncState: 'IN_SYNC',
       inventoryReconciliation: 'NOT_REQUIRED',
-      allowedActions: [
-        'START',
-        'REGISTER_ACTIVITY',
-        'REGISTER_ITEM_USAGE',
-        'REGISTER_EVIDENCE',
-        'CLOSE',
-      ],
+      // PROMPT-MOD11 §4.1 (remediación): pre-inicio solo oferta START.
+      allowedActions: ['START'],
       createdAt: nowIso(-10),
       updatedAt: nowIso(-10),
     },
@@ -402,6 +418,8 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
     }
 
     if (pathname.endsWith('/assurance/tickets') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
       const tickets = state.ticket ? [state.ticket] : [];
       await fulfillJson(route, {
         data: tickets,
@@ -413,7 +431,12 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
     }
 
     if (pathname.endsWith('/assurance/tickets') && method === 'POST') {
+      await assertTenantHeader(route);
+      expect(method).toBe('POST');
+      expect(route.request().url()).toContain('/assurance/tickets');
       const payload = JSON.parse(request.postData() ?? '{}') as JsonRecord;
+      expect(payload).toHaveProperty('type');
+      expect(payload).toHaveProperty('subject');
       state.ticket = {
         id: TICKET_ID,
         tenantId: 'tenant-field-flow-001',
@@ -611,6 +634,9 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       pathname.endsWith('/tasks/execution-order-templates/template-field-001/versions') &&
       method === 'GET'
     ) {
+      // El portal opera la OT con el snapshot del detalle; este catálogo queda
+      // reservado a la gestión. Se cuenta para asertar que no se consume.
+      state.templateVersionRequests += 1;
       await fulfillJson(route, {
         data: [
           {
@@ -652,6 +678,14 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       state.executionOrder.status = 'IN_PROGRESS';
       state.executionOrder.startedAt = nowIso();
       state.executionOrder.updatedAt = nowIso();
+      // PROMPT-MOD11 §4.1 (remediación): distribución IN_PROGRESS del técnico.
+      state.executionOrder.allowedActions = [
+        'REGISTER_ACTIVITY',
+        'REGISTER_ITEM_USAGE',
+        'REGISTER_EVIDENCE',
+        'BLOCK',
+        'CLOSE',
+      ];
       await fulfillJson(route, state.executionOrder, 201);
       return;
     }
@@ -739,10 +773,76 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       return;
     }
 
-    if (pathname.endsWith('/inventory/locations') && method === 'GET') {
+    // Custodia del ejecutor (MOD12): contrato congelado v1 de
+    // GET /inventory/custody (PROMPT-MOD12-MOD11-CUSTODIA-EJECUTOR §1).
+    if (pathname.endsWith('/inventory/custody') && method === 'GET') {
       await fulfillJson(route, {
-        data: state.locations,
-        meta: { page: 1, limit: 100, total: state.locations.length, totalPages: 1, hasMore: false },
+        location: {
+          id: TECH_LOCATION_ID,
+          name: 'Custodia técnico soporte',
+          type: 'MOBILE_TECHNICIAN',
+          responsibleType: 'TECHNICIAN',
+          responsibleRefId: SUPPORT_USER_ID,
+        },
+        assets: {
+          items: [
+            {
+              id: 'asset-field-001',
+              tenantId: 'tenant-field-flow-001',
+              inventoryItemId: ITEM_ID,
+              serialNumber: 'ONT-FIELD-001',
+              normalizedSerialNumber: 'ont-field-001',
+              macAddress: null,
+              normalizedMacAddress: null,
+              assetTag: null,
+              currentStatus: 'ASSIGNED_TO_TECHNICIAN',
+              currentLocationId: TECH_LOCATION_ID,
+              currentResponsibleType: 'TECHNICIAN',
+              currentResponsibleRefId: SUPPORT_USER_ID,
+              subscriberRefId: null,
+              contractRefId: null,
+              purchaseOrderRef: null,
+              purchaseDate: null,
+              usefulLifeMonths: null,
+              warrantyUntil: null,
+              createdAt: nowIso(-20),
+              updatedAt: nowIso(-20),
+            },
+          ],
+          meta: { page: 1, limit: 25, total: 1, totalPages: 1, hasMore: false },
+        },
+        balances: {
+          items: [
+            {
+              id: 'bal-custody-001',
+              tenantId: 'tenant-field-flow-001',
+              itemId: ITEM_ID,
+              locationId: TECH_LOCATION_ID,
+              lotId: null,
+              condition: 'NEW',
+              quantityOnHand: '1',
+              quantityReserved: '0',
+              createdAt: nowIso(-20),
+              updatedAt: nowIso(-20),
+            },
+          ],
+          meta: { page: 1, limit: 25, total: 1, totalPages: 1, hasMore: false },
+        },
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/locations') && method === 'GET') {
+      const custody = new URL(route.request().url()).searchParams.get('custody');
+      const rows =
+        custody === 'mobile'
+          ? state.locations.filter((location) =>
+              ['MOBILE_TECHNICIAN', 'MOBILE_CREW'].includes(String(location.type)),
+            )
+          : state.locations;
+      await fulfillJson(route, {
+        data: rows,
+        meta: { page: 1, limit: 100, total: rows.length, totalPages: 1, hasMore: false },
       });
       return;
     }
@@ -807,6 +907,9 @@ async function runOperationsCloseFlow(page: import('@playwright/test').Page, sta
     page.getByRole('region', { name: 'Cierre' }).getByText('Ejecutada', { exact: true }),
   ).toBeVisible();
   expect(state.closeAttempts).toBe(1);
+  // El checklist y el cierre se sirven desde el snapshot del detalle; el
+  // catálogo vivo de versiones de plantilla no debe consumirse.
+  expect(state.templateVersionRequests).toBe(0);
   expect(state.executionOrder.customerAcceptance).toBe('media-signature-001');
   expect(
     state.balances.find(
@@ -851,10 +954,51 @@ test('agenda abre el resumen de la OT y conserva una sola CTA hacia ejecución',
     has: page.getByRole('heading', { name: 'Soporte en sitio - cableado' }),
   });
   await expect(eventDialog).toBeVisible();
-  await expect(eventDialog.getByText('Resumen de la orden de trabajo')).toBeVisible();
+  await expect(eventDialog.getByText('Orden vinculada — qué aporta')).toBeVisible();
+  await expect(eventDialog.getByLabelText('Resumen de la orden de trabajo')).toBeVisible();
   await expect(eventDialog.getByRole('button', { name: 'Abrir orden de trabajo' })).toHaveCount(1);
 
   await eventDialog.getByRole('button', { name: 'Abrir orden de trabajo' }).click();
   await expect(page).toHaveURL(/\/dashboard\/operations\?executionOrderId=eo-field-001/);
   await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
+});
+
+test('operaciones pre-inicio — bloques 3/4/5 en solo lectura con hints y única CTA de inicio', async ({
+  page,
+}) => {
+  const state = createFlowState();
+  await setupTask8Mocks(page, state);
+  await seedPortalSession(page);
+
+  // Caso original de la remediación MOD11 (PROMPT §7.2): OT ASSIGNED abierta
+  // por query param → nada registrable hasta "Iniciar ejecución".
+  await gotoAuthedDashboard(page, `/dashboard/operations?executionOrderId=${EXECUTION_ORDER_ID}`);
+  await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
+
+  // Custodia del ejecutor (MOD12, CA-3): lectura pura visible pre-inicio.
+  await expect(page.getByText('En custodia del ejecutor')).toBeVisible();
+  await expect(page.getByText('Custodia técnico soporte', { exact: true })).toBeVisible();
+  await expect(page.getByText('ONT-FIELD-001', { exact: true })).toBeVisible();
+  await expect(page.getByText(/ONT-HG8245 · ONT Huawei HG8245 · Asignado a técnico/)).toBeVisible();
+  await expect(page.getByText('Cantidad disponible: 1')).toBeVisible();
+
+  // Hint informativo por bloque (patrón del checklist).
+  await expect(
+    page.getByText('Inicia la ejecución para registrar el trabajo realizado'),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Inicia la ejecución para registrar equipos y materiales'),
+  ).toBeVisible();
+  await expect(page.getByText('Inicia la ejecución para registrar evidencia')).toBeVisible();
+
+  // Sin controles de registro ni de envío en bloques 3/4/5.
+  await expect(page.getByRole('button', { name: 'Registrar actividad' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Registrar material' })).toHaveCount(0);
+  await expect(page.getByText('Adjuntar evidencia')).toHaveCount(0);
+
+  // Checklist atenuado con hint en ASSIGNED.
+  await expect(page.getByText('Inicia la ejecución para habilitar el checklist')).toBeVisible();
+
+  // Única CTA hacia la ejecución.
+  await expect(page.getByRole('button', { name: 'Iniciar ejecución' })).toBeVisible();
 });

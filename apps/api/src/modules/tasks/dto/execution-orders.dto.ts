@@ -8,7 +8,7 @@ import {
   InventoryDisposition,
   WfmWorkType,
 } from '@iwana/shared';
-import type { ExecutionOrderAllowedAction } from '@iwana/shared';
+import type { ExecutionOrderAllowedAction, ExecutionOrderTemplateRequirement } from '@iwana/shared';
 import { ListMetaDto, MAX_LIMIT } from '../../../common/pagination';
 
 /**
@@ -85,6 +85,28 @@ export class RegisterFieldWorkDto {
   @ApiProperty()
   @Allow()
   description!: string;
+}
+
+export const UpdateFieldWorkSchema = z
+  .object({
+    activityType: z.string().trim().min(1).max(64).optional(),
+    description: safeTextField(4000).optional(),
+  })
+  .strict()
+  .refine((value) => value.activityType !== undefined || value.description !== undefined, {
+    message: 'Debe proporcionar al menos activityType o description.',
+  });
+
+export type UpdateFieldWorkInput = z.infer<typeof UpdateFieldWorkSchema>;
+
+export class UpdateFieldWorkDto {
+  @ApiPropertyOptional()
+  @Allow()
+  activityType?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  description?: string;
 }
 
 export const RegisterExecutionOrderItemUsageSchema = z
@@ -420,6 +442,13 @@ export class ExecutionOrderTemplateReferenceResponseDto {
 
   @ApiProperty()
   label!: string;
+
+  /**
+   * Requisitos congelados al crear la OT (snapshot inmutable). Se omite cuando
+   * el snapshot no está disponible (OT legacy o snapshot no parseable).
+   */
+  @ApiPropertyOptional({ type: [Object] })
+  requirements?: ExecutionOrderTemplateRequirement[];
 }
 
 export class ExecutionOrderScheduleResponseDto {

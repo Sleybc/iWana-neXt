@@ -17,4 +17,8 @@ module.exports = {
       },
     ],
   },
+  moduleNameMapper: {
+    '^@iwana/shared$': '<rootDir>/../shared/src/index.ts',
+    '^@iwana/shared/(.*)$': '<rootDir>/../shared/src/$1',
+  },
 };

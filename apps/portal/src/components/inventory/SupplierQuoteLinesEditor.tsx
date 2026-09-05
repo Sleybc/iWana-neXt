@@ -8,7 +8,7 @@ import {
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
-import { formatInventoryCurrency, formatInventoryQuantity } from './inventory-labels';
+import { formatInventoryMoney, formatInventoryQuantity } from './inventory-labels';
 
 export type QuoteLineUnitCostMap = Record<string, string>;
 
@@ -115,7 +115,7 @@ export function SupplierQuoteLinesEditor({
                     </td>
                     <td className={portalDataTableCellClassName}>
                       <Input
-                        aria-label={`Costo unitario de ${label}`}
+                        aria-label={`Costo unitario de ${label} (sin IVA)`}
                         type="number"
                         inputMode="decimal"
                         min="0.01"
@@ -123,11 +123,14 @@ export function SupplierQuoteLinesEditor({
                         value={unitCostRaw}
                         disabled={disabled}
                         onChange={(event) => onChange({ ...value, [line.id]: event.target.value })}
+                        helperText="Sin IVA"
                         containerClassName="min-w-[8rem]"
                       />
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      {subtotal !== null ? formatInventoryCurrency(subtotal) : '—'}
+                      <span className="tabular-nums">
+                        {subtotal !== null ? formatInventoryMoney(subtotal) : '—'}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -137,8 +140,7 @@ export function SupplierQuoteLinesEditor({
         </div>
       </div>
       <p className="text-sm font-medium text-gray-900 dark:text-white">
-        Total de la cotización:{' '}
-        <span className="tabular-nums">{formatInventoryCurrency(total)}</span>
+        Total de la cotización: <span className="tabular-nums">{formatInventoryMoney(total)}</span>
       </p>
       <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
         Deja vacío el costo unitario en las líneas que el proveedor no cotiza.

@@ -68,7 +68,16 @@ export const TopHeader = ({
   };
 
   return (
-    <header className="sticky top-0 z-(--z-sticky) flex w-full border-b border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2">
+    <header
+      className={cn(
+        'sticky top-0 flex w-full border-b border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2',
+        // La búsqueda global abierta eleva el header un escalón (sticky 100 → overlay 200)
+        // para que su panel pinte sobre el subnav del módulo, que vive en sticky 100
+        // y va después en el DOM. Al cerrar vuelve a sticky. Misma intención que
+        // el max-lg:z-(--z-overlay) del contenedor móvil (ADR-075, sin literales).
+        searchOpen ? 'z-(--z-overlay)' : 'z-(--z-sticky)',
+      )}
+    >
       <div className="flex flex-grow items-center justify-between px-4 py-3 md:px-6">
         {/* IZQUIERDA: botón hamburger + logo mobile */}
         <div className="flex items-center gap-3">

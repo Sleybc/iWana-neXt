@@ -63,5 +63,15 @@ module.exports = {
       functions: 49,
       lines: 57,
     },
+    // P-04 (Ola 0): umbral por superficie para el perfil propio. El trinquete
+    // global se diluye en 24.402 statements: un modulo nuevo al 0% no mueve la
+    // aguja. Clave con trailing slash = coincidencia por prefijo de ruta
+    // (CoverageReporter la resuelve contra el cwd del paquete).
+    './src/components/profile/': {
+      statements: 80,
+      branches: 80,
+      functions: 80,
+      lines: 80,
+    },
   },
 };

@@ -15,6 +15,8 @@ type SummaryOrder = ExecutionOrderDetailResponse | ExecutionOrderRecord;
 export type ExecutionOrderAvailability = 'linked' | 'unlinked' | 'unavailable';
 export type ExecutionOrderSyncState = 'synced' | 'pending' | 'error' | 'stale' | 'conflict';
 
+export type ExecutionOrderSummaryVariant = 'full' | 'agenda-compact';
+
 export interface ExecutionOrderSummaryProps {
   order: SummaryOrder | null;
   loading?: boolean;
@@ -24,6 +26,8 @@ export interface ExecutionOrderSummaryProps {
   syncState?: ExecutionOrderSyncState | undefined;
   readonly?: boolean;
   canOpen?: boolean;
+  variant?: ExecutionOrderSummaryVariant;
+  hideProgress?: boolean;
   onOpen?: () => void;
   onRefreshDetail?: () => void | Promise<void>;
   onRetry?: () => void;
@@ -73,6 +77,8 @@ export function ExecutionOrderSummary({
   syncState,
   readonly = true,
   canOpen = true,
+  variant = 'full',
+  hideProgress = false,
   onOpen,
   onRefreshDetail,
   loading = false,
@@ -117,6 +123,7 @@ export function ExecutionOrderSummary({
             {...(syncState !== undefined ? { syncState } : {})}
             readonly={readonly}
             canOpen={canOpen}
+            variant={variant}
             {...(onOpen ? { onOpen } : {})}
           />
         ) : null}
@@ -212,6 +219,8 @@ export function ExecutionOrderSummary({
   });
   const resolvedSyncState = syncState ?? detailSyncState(order);
 
+  const isAgendaCompact = variant === 'agenda-compact';
+
   return (
     <section aria-label="Resumen de la orden de trabajo" className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -228,39 +237,53 @@ export function ExecutionOrderSummary({
           </Badge>
         ) : null}
       </div>
-      <div className="grid gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
-        <div>
-          <p className="portal-eyebrow-muted">Sitio</p>
-          <p className="mt-1 font-medium text-gray-900 dark:text-white">
-            {site ?? 'Sitio autorizado'}
-          </p>
-        </div>
-        <div>
-          <p className="portal-eyebrow-muted">Ventana</p>
-          <p className="mt-1 text-gray-700 dark:text-gray-200">
-            {dateFormatter.format(new Date(window.startAt))} –{' '}
-            {dateFormatter.format(new Date(window.endAt))}
-          </p>
-        </div>
-        <div>
-          <p className="portal-eyebrow-muted">Responsable</p>
-          <p className="mt-1 text-gray-700 dark:text-gray-200">
-            {assignee ?? 'Sin responsable asignado'}
-          </p>
-        </div>
-        <div>
+      {isAgendaCompact ? (
+        <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
           <p className="portal-eyebrow-muted">Plantilla</p>
           <p className="mt-1 text-gray-700 dark:text-gray-200">{template}</p>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Ventana, sitio y responsable se coordinan en Contexto operativo arriba.
+          </p>
         </div>
-      </div>
-      <ProgressMeter
-        value={completion.value}
-        label="Requisitos de instalación"
-        ariaLabel="Avance de requisitos de instalación"
-      />
-      <p className="text-sm text-gray-700 dark:text-gray-200">
-        {completion.label} requisitos completados
-      </p>
+      ) : (
+        <div className="grid gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2">
+          <div>
+            <p className="portal-eyebrow-muted">Sitio</p>
+            <p className="mt-1 font-medium text-gray-900 dark:text-white">
+              {site ?? 'Sitio autorizado'}
+            </p>
+          </div>
+          <div>
+            <p className="portal-eyebrow-muted">Ventana</p>
+            <p className="mt-1 text-gray-700 dark:text-gray-200">
+              {dateFormatter.format(new Date(window.startAt))} –{' '}
+              {dateFormatter.format(new Date(window.endAt))}
+            </p>
+          </div>
+          <div>
+            <p className="portal-eyebrow-muted">Responsable</p>
+            <p className="mt-1 text-gray-700 dark:text-gray-200">
+              {assignee ?? 'Sin responsable asignado'}
+            </p>
+          </div>
+          <div>
+            <p className="portal-eyebrow-muted">Plantilla</p>
+            <p className="mt-1 text-gray-700 dark:text-gray-200">{template}</p>
+          </div>
+        </div>
+      )}
+      {!hideProgress && (
+        <>
+          <ProgressMeter
+            value={completion.value}
+            label="Requisitos de instalación"
+            ariaLabel="Avance de requisitos de instalación"
+          />
+          <p className="text-sm text-gray-700 dark:text-gray-200">
+            {completion.label} requisitos completados
+          </p>
+        </>
+      )}
       <p role="status" className="text-xs text-gray-500 dark:text-gray-400">
         {syncCopy(resolvedSyncState)}
       </p>

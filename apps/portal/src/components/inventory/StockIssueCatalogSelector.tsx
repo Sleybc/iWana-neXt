@@ -1,7 +1,20 @@
 'use client';
 
+import { StockBalanceCondition } from '@iwana/shared';
+import { Badge, SkeletonBlock } from '@iwana/ui';
 import { PortalEmptyState, interactiveFocusClassName } from '@/components/shared/portal-ui';
-import { STOCK_AVAILABLE_AT_SOURCE_LABEL, STOCK_RESERVED_HELP_TEXT } from './inventory-labels';
+import {
+  STOCK_AVAILABLE_AT_SOURCE_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
+  formatInventoryQuantity,
+  getStockBalanceConditionLabel,
+} from './inventory-labels';
+
+export interface StockIssueCatalogConditionBreakdown {
+  condition: StockBalanceCondition;
+  /** Disponible formateado en esa condición (nunca el enum crudo). */
+  available: string;
+}
 
 interface StockIssueCatalogSelectorProps {
   rows: Array<{
@@ -10,30 +23,53 @@ interface StockIssueCatalogSelectorProps {
     categoryName: string;
     unitLabel: string;
     availableLabel?: string | null;
+    /** Desglose por condición con disponible > 0 (D3: REFURBISHED/DAMAGED visibles). */
+    conditions?: StockIssueCatalogConditionBreakdown[];
     selected: boolean;
   }>;
   isLoading?: boolean;
   showAvailableColumn?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
   onToggle: (itemId: string) => void;
+}
+
+function badgeVariantForCondition(
+  condition: StockBalanceCondition,
+): 'success' | 'warning' | 'error' {
+  switch (condition) {
+    case StockBalanceCondition.NEW:
+      return 'success';
+    case StockBalanceCondition.REFURBISHED:
+      return 'warning';
+    case StockBalanceCondition.DAMAGED:
+      return 'error';
+    default:
+      return 'success';
+  }
 }
 
 export function StockIssueCatalogSelector({
   rows,
   isLoading = false,
   showAvailableColumn = false,
+  emptyTitle = 'No hay ítems que coincidan',
+  emptyDescription = 'Ajusta la búsqueda o cambia a la pestaña Con material.',
   onToggle,
 }: StockIssueCatalogSelectorProps) {
   if (isLoading) {
-    return <p className="text-sm text-gray-500 dark:text-gray-400">Cargando catálogo...</p>;
+    return (
+      <div className="space-y-2" aria-label="Cargando catálogo" role="status">
+        <SkeletonBlock className="h-16 w-full" />
+        <SkeletonBlock className="h-16 w-full" />
+        <SkeletonBlock className="h-16 w-full" />
+      </div>
+    );
   }
 
   if (rows.length === 0) {
     return (
-      <PortalEmptyState
-        className="w-full"
-        title="No hay ítems que coincidan"
-        description="Ajusta la búsqueda o cambia a la pestaña Con material."
-      />
+      <PortalEmptyState className="w-full" title={emptyTitle} description={emptyDescription} />
     );
   }
 
@@ -73,8 +109,21 @@ export function StockIssueCatalogSelector({
                   onChange={() => onToggle(row.id)}
                 />
               </td>
-              <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                {row.productLabel}
+              <td className="px-4 py-3">
+                <p className="font-medium text-gray-900 dark:text-white">{row.productLabel}</p>
+                {showAvailableColumn && row.conditions && row.conditions.length > 0 ? (
+                  <p className="mt-1 flex flex-wrap gap-1">
+                    {row.conditions.map((entry) => (
+                      <Badge
+                        key={entry.condition}
+                        variant={badgeVariantForCondition(entry.condition)}
+                      >
+                        {getStockBalanceConditionLabel(entry.condition)} ·{' '}
+                        {formatInventoryQuantity(entry.available)}
+                      </Badge>
+                    ))}
+                  </p>
+                ) : null}
               </td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.categoryName}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.unitLabel}</td>

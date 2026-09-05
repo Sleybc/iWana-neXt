@@ -11,6 +11,7 @@ import {
 import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
 import { AuditService } from '../../../audit/audit.service';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { Subscriber } from '../entities/subscriber.entity';
 
 /**
@@ -101,6 +102,10 @@ describe('SubscribersController', () => {
       providers: [
         { provide: SubscribersService, useValue: subscribersServiceMock },
         { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 

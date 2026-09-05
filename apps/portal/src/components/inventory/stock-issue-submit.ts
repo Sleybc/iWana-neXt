@@ -1,13 +1,15 @@
-import { StockBalanceCondition, StockIssueType } from '@iwana/shared';
+import { InventoryTrackingMode, StockBalanceCondition, StockIssueType } from '@iwana/shared';
 import type {
   CreateStockIssueDto,
   InventoryItemRecord,
   UpdateStockIssueDto,
 } from '@/lib/api-client';
 import { showDestinationForIssueType } from './stock-issue-form-utils';
-import { isSerializedInventoryItem } from './stock-issue-line-utils';
+import { isSerializedInventoryItem, isSerializedTrackingMode } from './stock-issue-line-utils';
 
 export interface StockIssueSubmitLineInput {
+  /** Id de la línea del borrador; alimenta el foco al primer inválido y el error inline. */
+  lineId?: string;
   itemId: string;
   productLabel: string;
   requestedQty: string;
@@ -15,6 +17,11 @@ export interface StockIssueSubmitLineInput {
   condition: StockBalanceCondition;
   lotId: string;
   serializedAssetId: string;
+  /**
+   * Modo de seguimiento hidratado en la línea (S1). Cuando viene, decide la
+   * exigencia de serial; `itemsById` queda como respaldo para líneas legacy.
+   */
+  trackingMode?: InventoryTrackingMode;
 }
 
 export interface StockIssueSubmitValidationResult<T> {
@@ -77,6 +84,105 @@ function validateHeaderFields(input: {
   return null;
 }
 
+function isLineSerialized(
+  line: StockIssueSubmitLineInput,
+  itemsById: Map<string, InventoryItemRecord>,
+): boolean {
+  // S1: el flag sale de la línea (corrige C3 también en el bloqueo de envío).
+  if (line.trackingMode) {
+    return isSerializedTrackingMode(line.trackingMode);
+  }
+  const item = itemsById.get(line.itemId.trim());
+  return item ? isSerializedInventoryItem(item) : false;
+}
+
+export interface StockIssueDraftLineError {
+  /** Índice de la línea en el arreglo validado. */
+  lineIndex: number;
+  /** Id del control a enfocar (`issue-draft-serial-<lineId>`, `...-qty-...`, `...-item-...`). */
+  controlId: string;
+  message: string;
+}
+
+function controlIdForLine(line: StockIssueSubmitLineInput, index: number, kind: string): string {
+  const lineId = line.lineId?.trim() ? line.lineId.trim() : `index-${index}`;
+  return `issue-draft-${kind}-${lineId}`;
+}
+
+/**
+ * Valida las líneas y devuelve **un error por línea inválida** (primera causa por
+ * línea, en orden) para pintar el inline por línea y enfocar el primer inválido.
+ * El error global del formulario es `errors[0].message` (mismo copy que antes).
+ */
+export function validateStockIssueDraftLines(
+  lines: StockIssueSubmitLineInput[],
+  itemsById: Map<string, InventoryItemRecord>,
+): StockIssueDraftLineError[] {
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const errors: StockIssueDraftLineError[] = [];
+  const seenKeys = new Set<string>();
+
+  lines.forEach((line, index) => {
+    const itemId = line.itemId.trim();
+    if (!itemId) {
+      errors.push({
+        lineIndex: index,
+        controlId: controlIdForLine(line, index, 'item'),
+        message: line.isManual
+          ? 'Completa el ítem de las líneas manuales.'
+          : 'Cada línea debe tener un ítem seleccionado.',
+      });
+      return;
+    }
+
+    const duplicateKey = getLineDuplicateKey(line);
+    if (seenKeys.has(duplicateKey)) {
+      errors.push({
+        lineIndex: index,
+        controlId: controlIdForLine(line, index, 'qty'),
+        message: 'Hay líneas duplicadas en el borrador. Ajusta cantidad, lote o serial.',
+      });
+      return;
+    }
+    seenKeys.add(duplicateKey);
+
+    const serialized = isLineSerialized(line, itemsById);
+    const serializedAssetId = line.serializedAssetId.trim();
+
+    if (serialized && !serializedAssetId) {
+      errors.push({
+        lineIndex: index,
+        controlId: controlIdForLine(line, index, 'serial'),
+        message: `Selecciona el serial del activo para ${line.productLabel || 'esta línea'}.`,
+      });
+      return;
+    }
+
+    const requestedQty = Number.parseFloat(line.requestedQty);
+    if (!Number.isFinite(requestedQty) || requestedQty <= 0) {
+      errors.push({
+        lineIndex: index,
+        controlId: controlIdForLine(line, index, 'qty'),
+        message: 'Cada línea debe tener una cantidad mayor a cero.',
+      });
+      return;
+    }
+
+    if (serializedAssetId && requestedQty !== 1) {
+      errors.push({
+        lineIndex: index,
+        controlId: controlIdForLine(line, index, 'qty'),
+        message: 'Las líneas con equipo con serial deben tener cantidad 1.',
+      });
+    }
+  });
+
+  return errors;
+}
+
 function mapValidatedLines(
   lines: StockIssueSubmitLineInput[],
   itemsById: Map<string, InventoryItemRecord>,
@@ -108,8 +214,7 @@ function mapValidatedLines(
     }
     seenKeys.add(duplicateKey);
 
-    const item = itemsById.get(itemId);
-    const serialized = item ? isSerializedInventoryItem(item) : false;
+    const serialized = isLineSerialized(line, itemsById);
     const serializedAssetId = line.serializedAssetId.trim();
     const lotId = line.lotId.trim();
 

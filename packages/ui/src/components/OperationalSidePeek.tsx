@@ -112,10 +112,10 @@ export function OperationalSidePeek({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
+    <div className="fixed inset-0 z-(--z-modal) flex justify-end" role="presentation">
       <button
         type="button"
-        className="absolute inset-0 h-full w-full cursor-default border-0 bg-black/40 p-0 dark:bg-black/60"
+        className="absolute inset-0 h-full w-full cursor-default border-0 bg-black/40 backdrop-blur-[2px] p-0 dark:bg-black/60"
         aria-label="Cerrar detalle operativo"
         onClick={() => void requestClose()}
       />

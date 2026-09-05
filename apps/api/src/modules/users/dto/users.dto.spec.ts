@@ -3,6 +3,7 @@ import { validate } from 'class-validator';
 import { DocumentType, UserRole } from '@iwana/shared';
 import {
   AdminChangeUserLoginEmailDto,
+  ChangeUserLoginEmailDto,
   CreateUserDto,
   ResetPasswordDto,
   UpdateProfileDto,
@@ -114,6 +115,61 @@ describe('Users DTO validation', () => {
       });
       const errors = await validate(dto);
       expect(errors.some((error) => error.property === 'phone')).toBe(true);
+    });
+  });
+
+  describe('UpdateProfileDto phone nullable (C-1, Ola 2)', () => {
+    it('admite phone:null como borrado', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { phone: null });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('admite phone valido en E.164', async () => {
+      const dto = plainToInstance(UpdateProfileDto, { phone: '+573001234567' });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rechaza phone con formato invalido y prefijo desnudo', async () => {
+      for (const phone of ['no-es-telefono', '+57', '3001234567']) {
+        const dto = plainToInstance(UpdateProfileDto, { phone });
+        const errors = await validate(dto);
+        expect(errors.some((error) => error.property === 'phone')).toBe(true);
+      }
+    });
+  });
+
+  describe('Politica de contrasenas en servidor (Paso 7, Ola 2)', () => {
+    it('CreateUserDto rechaza password sin complejidad', async () => {
+      for (const password of ['minusculas1!', 'MAYUSCULAS1!', 'SinDigito!x', 'SinEspecial1x']) {
+        const dto = plainToInstance(CreateUserDto, {
+          email: 'usuario@empresa.com',
+          role: UserRole.NOC,
+          password,
+        });
+        const errors = await validate(dto);
+        expect(errors.some((error) => error.property === 'password')).toBe(true);
+      }
+    });
+
+    it('CreateUserDto acepta password con min 10 + complejidad', async () => {
+      const dto = plainToInstance(CreateUserDto, {
+        email: 'usuario@empresa.com',
+        role: UserRole.NOC,
+        password: 'Segura1!xY',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('ChangeUserLoginEmailDto acepta currentPassword corta (solo se verifica)', async () => {
+      const dto = plainToInstance(ChangeUserLoginEmailDto, {
+        email: 'nuevo@empresa.com',
+        currentPassword: 'corta',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
     });
   });
 });

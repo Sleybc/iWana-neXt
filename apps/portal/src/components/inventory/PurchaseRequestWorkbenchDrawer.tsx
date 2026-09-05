@@ -40,7 +40,9 @@ import type {
   ReceivePurchaseOrderDto,
   RejectPurchaseRequestDto,
   StockLocationRecord,
+  SupplierQuoteRecord,
   SupplierSummaryRecord,
+  UpdateSupplierQuoteDto,
 } from '@/lib/api-client';
 import {
   PortalAlert,
@@ -57,8 +59,7 @@ import {
   getPurchaseRequestLineStatusLabel,
   getPurchaseRequestPriorityBadgeVariant,
   getPurchaseRequestPriorityLabel,
-  getPurchaseRequestStatusBadgeVariant,
-  getPurchaseRequestStatusLabel,
+  getPurchaseRequestDisplayStatus,
   getPurchaseRequestTypeLabel,
   getSupplierDisplayLabel,
   PURCHASE_CURRENCY_OPTIONS,
@@ -88,14 +89,29 @@ import { QuoteComparisonPanel } from './QuoteComparisonPanel';
 import { RfqInvitationsPanel } from './RfqInvitationsPanel';
 import {
   buildQuoteLinesPayload,
+  sumQuoteLinesTotal,
   type QuoteLineUnitCostMap,
   SupplierQuoteLinesEditor,
 } from './SupplierQuoteLinesEditor';
+import { QuoteEconomicsFields } from './QuoteEconomicsFields';
 import {
-  QuoteShippingFields,
+  INITIAL_QUOTE_SHIPPING,
+  isQuoteShippingValid,
   resolveShippingCost,
   type QuoteShippingValue,
 } from './QuoteShippingFields';
+import { getQuoteSaveBlockers } from './quote-form-validity';
+import {
+  hydrateQuoteShipping,
+  hydrateQuoteTaxes,
+  hydrateQuoteUnitCosts,
+} from './quote-form-hydrate';
+import {
+  areQuoteTaxesValid,
+  buildQuoteTaxesPayload,
+  createInitialQuoteTaxState,
+  type QuoteTaxState,
+} from './quote-tax-calc';
 import { SupplierPicker } from './SupplierPicker';
 import { SupplierSummaryCard } from './SupplierSummaryCard';
 
@@ -141,6 +157,7 @@ interface PurchaseRequestWorkbenchDrawerProps {
   closeOrderError: string | null;
   onClose: () => void;
   onAddQuote: (payload: AddSupplierQuoteDto) => Promise<void>;
+  onUpdateQuote: (quoteId: string, payload: UpdateSupplierQuoteDto) => Promise<boolean>;
   onApprove: (payload?: { exceptionReason?: string; notes?: string }) => Promise<void>;
   onCreateAwards: (payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
   onReject: (payload: RejectPurchaseRequestDto) => Promise<void>;
@@ -307,6 +324,7 @@ export function PurchaseRequestWorkbenchDrawer({
   closeOrderError,
   onClose,
   onAddQuote,
+  onUpdateQuote,
   onApprove,
   onCreateAwards,
   onReject,
@@ -326,10 +344,10 @@ export function PurchaseRequestWorkbenchDrawer({
   const [quoteNumber, setQuoteNumber] = useState('');
   const [quoteAmount, setQuoteAmount] = useState('');
   const [quoteUnitCosts, setQuoteUnitCosts] = useState<QuoteLineUnitCostMap>({});
-  const [quoteShipping, setQuoteShipping] = useState<QuoteShippingValue>({
-    isFree: false,
-    amount: '',
-  });
+  const [quoteShipping, setQuoteShipping] = useState<QuoteShippingValue>(INITIAL_QUOTE_SHIPPING);
+  const [quoteTaxes, setQuoteTaxes] = useState<QuoteTaxState>(() =>
+    createInitialQuoteTaxState(detail?.purchaseTaxPresets),
+  );
   const [quoteCurrency, setQuoteCurrency] = useState<PurchaseCurrencyOption>('COP');
   const [exceptionReason, setExceptionReason] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
@@ -342,6 +360,7 @@ export function PurchaseRequestWorkbenchDrawer({
   const [linesDraft, setLinesDraft] = useState<PurchaseDraftState | null>(null);
   const [linesValidationError, setLinesValidationError] = useState<string | null>(null);
   const [discardLinesConfirmOpen, setDiscardLinesConfirmOpen] = useState(false);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -350,7 +369,8 @@ export function PurchaseRequestWorkbenchDrawer({
       setQuoteNumber('');
       setQuoteAmount('');
       setQuoteUnitCosts({});
-      setQuoteShipping({ isFree: false, amount: '' });
+      setQuoteShipping(INITIAL_QUOTE_SHIPPING);
+      setQuoteTaxes(createInitialQuoteTaxState(detail?.purchaseTaxPresets));
       setQuoteCurrency('COP');
       setExceptionReason('');
       setApprovalNotes('');
@@ -363,6 +383,7 @@ export function PurchaseRequestWorkbenchDrawer({
       setLinesDraft(null);
       setLinesValidationError(null);
       setDiscardLinesConfirmOpen(false);
+      setEditingQuoteId(null);
     }
   }, [open]);
 
@@ -370,9 +391,12 @@ export function PurchaseRequestWorkbenchDrawer({
     setIsEditingLines(false);
     setLinesDraft(null);
     setLinesValidationError(null);
+    setEditingQuoteId(null);
   }, [detail?.request.id]);
 
   const request = detail?.request;
+  // Estado visible combinando ciclo administrativo y abastecimiento.
+  const requestDisplayStatus = request ? getPurchaseRequestDisplayStatus(request) : null;
   const nextAction = getPurchaseNextAction(detail);
   const activePhase = getPurchaseWorkbenchPhase(activeTab);
   const phaseTabs = PURCHASE_WORKBENCH_PHASE_TABS[activePhase];
@@ -386,6 +410,20 @@ export function PurchaseRequestWorkbenchDrawer({
     request &&
     [PurchaseRequestStatus.PENDING_QUOTES, PurchaseRequestStatus.DRAFT].includes(request.status) &&
     !hasActiveRfq;
+  const awardedQuoteIds = (detail?.awards ?? [])
+    .map((award) => award.supplierQuoteId)
+    .filter((id): id is string => Boolean(id));
+  const awardedQuoteIdSet = new Set(awardedQuoteIds);
+  const canModifyManualQuotes = Boolean(
+    request &&
+    [
+      PurchaseRequestStatus.DRAFT,
+      PurchaseRequestStatus.PENDING_QUOTES,
+      PurchaseRequestStatus.PENDING_APPROVAL,
+    ].includes(request.status) &&
+    !hasActiveRfq,
+  );
+  const showManualQuoteForm = Boolean(canAddQuote || editingQuoteId);
   const blockedByActiveRfq = Boolean(
     request &&
     [PurchaseRequestStatus.PENDING_QUOTES, PurchaseRequestStatus.DRAFT].includes(request.status) &&
@@ -415,9 +453,29 @@ export function PurchaseRequestWorkbenchDrawer({
   const parsedQuoteAmount = quoteAmountTouched ? Number(quoteAmount) : NaN;
   const quoteAmountValid = Number.isFinite(parsedQuoteAmount) && parsedQuoteAmount > 0;
   const resolvedShippingCost = resolveShippingCost(quoteShipping);
+  const quoteTaxesValid = areQuoteTaxesValid(quoteTaxes);
   const quoteFormValid =
     (usesQuoteLines ? quoteLinesPayload.length > 0 : quoteAmountValid) &&
-    resolvedShippingCost !== null;
+    isQuoteShippingValid(quoteShipping) &&
+    quoteTaxesValid;
+  const quoteBaseAmount = usesQuoteLines
+    ? sumQuoteLinesTotal(quoteUnitCosts, requestLines)
+    : quoteAmountValid
+      ? parsedQuoteAmount
+      : 0;
+  const quoteTaxesPayload = buildQuoteTaxesPayload(quoteTaxes);
+  const quoteSaveBlockers = getQuoteSaveBlockers({
+    quoteNumber,
+    usesQuoteLines,
+    hasQuotedLines: quoteLinesPayload.length > 0,
+    quoteAmountValid,
+    shippingValid: isQuoteShippingValid(quoteShipping),
+    taxesValid: quoteTaxesValid,
+  });
+  const quoteNumberError =
+    quoteNumber.trim().length === 0 && quoteFormValid
+      ? 'Indica el número de cotización para guardar.'
+      : undefined;
   const itemLabelsById = Object.fromEntries(
     items.map((item) => [item.id, item.name?.trim() || item.sku]),
   );
@@ -477,6 +535,66 @@ export function PurchaseRequestWorkbenchDrawer({
       return;
     }
     onActiveTabChange(resolveTabForPurchaseWorkbenchPhase(phase, detail, activeTab));
+  }
+
+  function resetManualQuoteForm() {
+    setEditingQuoteId(null);
+    setSelectedSupplierId(null);
+    setSelectedSupplierName(null);
+    setQuoteNumber('');
+    setQuoteAmount('');
+    setQuoteUnitCosts({});
+    setQuoteShipping(INITIAL_QUOTE_SHIPPING);
+    setQuoteTaxes(createInitialQuoteTaxState(detail?.purchaseTaxPresets));
+    setQuoteCurrency('COP');
+  }
+
+  function openEditQuote(quote: SupplierQuoteRecord) {
+    setEditingQuoteId(quote.id);
+    setSelectedSupplierId(quote.partyRefId);
+    setSelectedSupplierName(getSupplierDisplayLabel(quote.partyRefId, supplierLabels));
+    setQuoteNumber(quote.quoteNumber);
+    setQuoteAmount(quote.amount);
+    setQuoteUnitCosts(hydrateQuoteUnitCosts(quote));
+    setQuoteShipping(hydrateQuoteShipping(quote));
+    setQuoteTaxes(hydrateQuoteTaxes(quote, detail?.purchaseTaxPresets));
+    setQuoteCurrency(
+      quote.currency === 'USD' || quote.currency === 'EUR' || quote.currency === 'COP'
+        ? quote.currency
+        : 'COP',
+    );
+  }
+
+  async function handleSaveManualQuote() {
+    if (!quoteFormValid || quoteNumber.trim().length === 0) {
+      return;
+    }
+
+    const economicPayload = {
+      quoteNumber,
+      currency: quoteCurrency,
+      shippingCost: resolvedShippingCost,
+      shippingArrangement: quoteShipping.arrangement,
+      ...(usesQuoteLines ? { lines: quoteLinesPayload } : { amount: parsedQuoteAmount }),
+      ...(quoteTaxesPayload.length > 0 ? { taxes: quoteTaxesPayload } : {}),
+    };
+
+    if (editingQuoteId) {
+      const updated = await onUpdateQuote(editingQuoteId, economicPayload);
+      if (updated) {
+        resetManualQuoteForm();
+      }
+      return;
+    }
+
+    if (!selectedSupplierId) {
+      return;
+    }
+
+    await onAddQuote({
+      partyRefId: selectedSupplierId,
+      ...economicPayload,
+    });
   }
 
   const cotizarPrimary = getCotizarPrimarySection({
@@ -621,9 +739,11 @@ export function PurchaseRequestWorkbenchDrawer({
                           Estado
                         </dt>
                         <dd className="mt-1">
-                          <Badge variant={getPurchaseRequestStatusBadgeVariant(request.status)}>
-                            {getPurchaseRequestStatusLabel(request.status)}
-                          </Badge>
+                          {requestDisplayStatus ? (
+                            <Badge variant={requestDisplayStatus.variant}>
+                              {requestDisplayStatus.label}
+                            </Badge>
+                          ) : null}
                         </dd>
                       </div>
                       <div>
@@ -751,6 +871,8 @@ export function PurchaseRequestWorkbenchDrawer({
                             rfqDetail={detail?.rfq ?? null}
                             quotes={detail?.quotes ?? []}
                             requestLines={detail?.lines ?? []}
+                            purchaseTaxPresets={detail?.purchaseTaxPresets}
+                            awardedQuoteIds={awardedQuoteIds}
                             onRefresh={onRefreshDetail}
                           />
                         ) : null}
@@ -759,13 +881,24 @@ export function PurchaseRequestWorkbenchDrawer({
 
                     <CotizarDisclosureSection
                       title="Comparación de cotizaciones"
-                      description="Compara montos y totales con envío."
+                      description="Compara ofertas por neto a pagar."
                       expanded={cotizarPrimary === 'comparison'}
                       ariaLabel="Cotizaciones"
                     >
                       <QuoteComparisonPanel
                         quotes={detail?.quotes ?? []}
                         supplierLabels={supplierLabels}
+                        {...(canModifyManualQuotes
+                          ? {
+                              onEditQuote: (quoteId: string) => {
+                                const quote = detail?.quotes.find((entry) => entry.id === quoteId);
+                                if (quote) {
+                                  openEditQuote(quote);
+                                }
+                              },
+                              canEditQuote: (quoteId: string) => !awardedQuoteIdSet.has(quoteId),
+                            }
+                          : {})}
                       />
                     </CotizarDisclosureSection>
 
@@ -777,12 +910,16 @@ export function PurchaseRequestWorkbenchDrawer({
                       />
                     ) : null}
 
-                    {canAddQuote ? (
+                    {showManualQuoteForm ? (
                       <CotizarDisclosureSection
-                        title="Nueva cotización"
-                        description="Registra una cotización sin ronda formal."
-                        expanded={cotizarPrimary === 'manual'}
-                        ariaLabel="Nueva cotización"
+                        title={editingQuoteId ? 'Modificar cotización' : 'Nueva cotización'}
+                        description={
+                          editingQuoteId
+                            ? 'Corrige la oferta registrada. El proveedor no cambia.'
+                            : 'Registra una cotización sin ronda formal.'
+                        }
+                        expanded={cotizarPrimary === 'manual' || Boolean(editingQuoteId)}
+                        ariaLabel={editingQuoteId ? 'Modificar cotización' : 'Nueva cotización'}
                       >
                         <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
                           {quoteError ? (
@@ -797,6 +934,7 @@ export function PurchaseRequestWorkbenchDrawer({
                               label="Proveedor de la cotización"
                               value={selectedSupplierId}
                               selectedLabel={selectedSupplierName}
+                              disabled={Boolean(editingQuoteId)}
                               onChange={(partyRefId, displayName) => {
                                 setSelectedSupplierId(partyRefId);
                                 setSelectedSupplierName(displayName);
@@ -807,7 +945,9 @@ export function PurchaseRequestWorkbenchDrawer({
                               id="quote-number"
                               label="Número de cotización"
                               value={quoteNumber}
+                              requiredIndicator
                               onChange={(e) => setQuoteNumber(e.target.value)}
+                              error={quoteNumberError}
                             />
                             <Select
                               label="Moneda"
@@ -849,10 +989,15 @@ export function PurchaseRequestWorkbenchDrawer({
                               itemLabelsById={itemLabelsById}
                             />
                           ) : null}
-                          <QuoteShippingFields
-                            value={quoteShipping}
-                            onChange={setQuoteShipping}
+                          <QuoteEconomicsFields
+                            shipping={quoteShipping}
+                            onShippingChange={setQuoteShipping}
+                            taxes={quoteTaxes}
+                            onTaxesChange={setQuoteTaxes}
+                            amount={quoteBaseAmount}
+                            presets={detail?.purchaseTaxPresets}
                             disabled={isSubmittingQuote}
+                            saveHint={quoteSaveBlockers[0] ?? null}
                           />
                         </div>
                         {supplierSummary || supplierLoading || supplierError ? (
@@ -865,7 +1010,7 @@ export function PurchaseRequestWorkbenchDrawer({
                       </CotizarDisclosureSection>
                     ) : null}
 
-                    {!canAddQuote &&
+                    {!showManualQuoteForm &&
                     !blockedByActiveRfq &&
                     (supplierSummary || supplierLoading || supplierError) ? (
                       <SupplierSummaryCard
@@ -1165,32 +1310,45 @@ export function PurchaseRequestWorkbenchDrawer({
                           : getPurchaseNextActionCtaLabel(nextAction)}
                       </Button>
                     ) : null}
-                    {activeTab === 'cotizar' && canAddQuote ? (
-                      <Button
-                        type="button"
-                        disabled={
-                          isSubmittingQuote ||
-                          !selectedSupplierId ||
-                          !quoteFormValid ||
-                          quoteNumber.trim().length === 0
-                        }
-                        onClick={() => {
-                          if (resolvedShippingCost === null) {
-                            return;
-                          }
-                          void onAddQuote({
-                            partyRefId: selectedSupplierId ?? '',
-                            quoteNumber,
-                            currency: quoteCurrency,
-                            shippingCost: resolvedShippingCost,
-                            ...(usesQuoteLines
-                              ? { lines: quoteLinesPayload }
-                              : { amount: parsedQuoteAmount }),
-                          });
-                        }}
-                      >
-                        Registrar cotización
-                      </Button>
+                    {activeTab === 'cotizar' && showManualQuoteForm ? (
+                      <div className="flex min-w-0 flex-col items-stretch gap-2 sm:items-end">
+                        {quoteSaveBlockers[0] || (!editingQuoteId && !selectedSupplierId) ? (
+                          <p
+                            className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                            role="status"
+                          >
+                            {!editingQuoteId && !selectedSupplierId
+                              ? 'Selecciona el proveedor de la cotización.'
+                              : quoteSaveBlockers[0]}
+                          </p>
+                        ) : null}
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {editingQuoteId ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              disabled={isSubmittingQuote}
+                              onClick={resetManualQuoteForm}
+                            >
+                              Cancelar
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            disabled={
+                              isSubmittingQuote ||
+                              (!editingQuoteId && !selectedSupplierId) ||
+                              !quoteFormValid ||
+                              quoteNumber.trim().length === 0
+                            }
+                            onClick={() => {
+                              void handleSaveManualQuote();
+                            }}
+                          >
+                            {editingQuoteId ? 'Guardar cambios' : 'Registrar cotización'}
+                          </Button>
+                        </div>
+                      </div>
                     ) : null}
                     {activeTab === 'approval' && canApprove ? (
                       <Button

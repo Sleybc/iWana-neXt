@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Button, DatePicker, Input, Select } from '@iwana/ui';
-import { GoodsReceiptStatus } from '@iwana/shared';
+import {
+  GoodsReceiptStatus,
+  areInventoryUnitsDimensionallyCompatible,
+  convertPurchaseQuantityToBase,
+  formatUomEquivalence,
+} from '@iwana/shared';
 import type {
   GoodsReceiptResultRecord,
   InventoryItemRecord,
@@ -29,6 +34,7 @@ import {
   getSupplierDisplayLabel,
 } from './inventory-labels';
 import { InventoryLocationPicker } from './InventoryLocationPicker';
+import { resolveBarcodeToCatalogItem } from './inventory-barcode-capture';
 
 interface GoodsReceiptPanelProps {
   order: PurchaseOrderRecord | null;
@@ -82,6 +88,45 @@ function resolveItemLabel(items: InventoryItemRecord[], itemId: string): string 
   return item ? `${item.sku} · ${item.name}` : 'Producto no disponible en el catálogo';
 }
 
+/**
+ * Equivalencia compra → base para mostrar ANTES de confirmar (ADR-085 D3 ·
+ * F5b, CA-F5B-10). Guía visual: la conversión autoritativa ocurre en el
+ * backend; si el backend rechaza (dimensión o factor), su mensaje en español
+ * llega por `error` y se muestra en la alerta existente.
+ */
+function resolveLineEquivalence(
+  items: InventoryItemRecord[],
+  itemId: string,
+  purchaseQuantity: number,
+): string | null {
+  if (!(purchaseQuantity > 0)) {
+    return null;
+  }
+
+  const item = items.find((entry) => entry.id === itemId);
+  const purchaseCode = item?.purchaseUnitOfMeasure?.trim() || null;
+  const baseCode = item?.unitOfMeasure?.trim() || null;
+  const factor = item?.purchaseToBaseUomFactor == null ? NaN : Number(item.purchaseToBaseUomFactor);
+
+  if (!purchaseCode || !baseCode || purchaseCode === baseCode) {
+    return null;
+  }
+
+  // Misma guarda dimensional que el resolutor del backend: ante un maestro
+  // legacy dimensionalmente inválido (p. ej. litro → metro con factor) no se
+  // muestra una equivalencia que la recepción rechazará (regresión M-4).
+  if (!areInventoryUnitsDimensionallyCompatible(baseCode, purchaseCode)) {
+    return null;
+  }
+
+  if (!Number.isFinite(factor) || factor <= 0) {
+    return null;
+  }
+
+  const baseQuantity = convertPurchaseQuantityToBase(purchaseQuantity, factor);
+  return formatUomEquivalence(purchaseQuantity, purchaseCode, baseQuantity, baseCode);
+}
+
 const RECEIPT_STATUS_OPTIONS = Object.values(GoodsReceiptStatus).map((value) => ({
   value,
   label: getGoodsReceiptStatusLabel(value),
@@ -108,6 +153,11 @@ export function GoodsReceiptPanel({
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<GoodsReceiptStatus>(GoodsReceiptStatus.COMPLETED);
   const [lines, setLines] = useState<ReceiptLineDraft[]>([]);
+  // F4 (RF-CAT-16): captura por código — ubica la línea de la orden sin búsqueda manual.
+  const [barcodeQuery, setBarcodeQuery] = useState('');
+  const [isLocatingBarcode, setIsLocatingBarcode] = useState(false);
+  const [barcodeNotice, setBarcodeNotice] = useState<string | null>(null);
+  const [locatedLineId, setLocatedLineId] = useState<string | null>(null);
 
   const hasPendingLines = useMemo(
     () => orderLines.some((line) => pendingQuantity(line) > 0),
@@ -120,8 +170,12 @@ export function GoodsReceiptPanel({
   const summaryLabel = useMemo(() => {
     const activeLines = lines.filter((line) => Number(line.quantityReceived) > 0).length;
     const destinationLabel = destinationLocationLabel?.trim() || 'sin ubicación destino';
-    return `${order?.orderNumber ?? 'Orden'} · ${destinationLabel} · ${activeLines} línea${activeLines === 1 ? '' : 's'}`;
-  }, [lines, destinationLocationLabel, order?.orderNumber]);
+    const base = `${order?.orderNumber ?? 'Orden'} · ${destinationLabel} · ${activeLines} línea${activeLines === 1 ? '' : 's'}`;
+    const equivalences = lines
+      .map((line) => resolveLineEquivalence(items, line.itemId, Number(line.quantityReceived) || 0))
+      .filter((equivalence): equivalence is string => equivalence !== null);
+    return equivalences.length > 0 ? `${base} · ${equivalences.join(' · ')}` : base;
+  }, [lines, destinationLocationLabel, order?.orderNumber, items]);
 
   const orderOptions = useMemo(
     () =>
@@ -139,10 +193,16 @@ export function GoodsReceiptPanel({
       setNotes('');
       setStatus(GoodsReceiptStatus.COMPLETED);
       setLines([]);
+      setBarcodeQuery('');
+      setBarcodeNotice(null);
+      setLocatedLineId(null);
       return;
     }
 
     setLines(buildLinesFromOrder(orderLines));
+    setBarcodeQuery('');
+    setBarcodeNotice(null);
+    setLocatedLineId(null);
   }, [order, orderLines]);
 
   useEffect(() => {
@@ -151,6 +211,55 @@ export function GoodsReceiptPanel({
     }
     setReceivedAt(toLocalDateValue(new Date()));
   }, [order?.id]);
+
+  /**
+   * F4 (RF-CAT-16, CA-F4-05): el código entra como `q` al lookup E-4 existente
+   * (el backend ya resuelve `barcode`) y la línea queda ubicada y enfocada sin
+   * búsqueda manual. La etiqueta del hallazgo se muestra para verificación.
+   */
+  async function handleBarcodeLocate() {
+    setIsLocatingBarcode(true);
+    try {
+      const result = await resolveBarcodeToCatalogItem(barcodeQuery);
+      if (result.status === 'empty') {
+        setLocatedLineId(null);
+        setBarcodeNotice('Escribe o escanea un código para ubicar su línea.');
+        return;
+      }
+      if (result.status === 'not-found') {
+        setLocatedLineId(null);
+        setBarcodeNotice('Ningún producto del catálogo usa ese código.');
+        return;
+      }
+      const hitLabel = result.hit.sublabel
+        ? `${result.hit.sublabel} · ${result.hit.label}`
+        : result.hit.label;
+      const line = lines.find((entry) => entry.itemId === result.hit.itemId);
+      if (!line) {
+        setLocatedLineId(null);
+        setBarcodeNotice(`Ese código es de ${hitLabel}, que no tiene línea en esta orden.`);
+        return;
+      }
+      setLocatedLineId(line.purchaseOrderLineId);
+      setBarcodeNotice(`Ubicado: ${hitLabel}.`);
+      const quantityInput = document.getElementById(
+        `goods-receipt-qty-${line.purchaseOrderLineId}`,
+      );
+      quantityInput?.focus();
+      try {
+        quantityInput?.scrollIntoView({ block: 'center' });
+      } catch {
+        // jsdom
+      }
+    } catch (locateError) {
+      setLocatedLineId(null);
+      setBarcodeNotice(
+        locateError instanceof Error ? locateError.message : 'No fue posible ubicar el código.',
+      );
+    } finally {
+      setIsLocatingBarcode(false);
+    }
+  }
 
   async function handleSubmit() {
     const receivedAtDate = toDateFromLocalDateValue(receivedAt);
@@ -315,64 +424,116 @@ export function GoodsReceiptPanel({
           </label>
 
           <div className="space-y-3">
-            {lines.map((line, index) => (
-              <div
-                key={line.purchaseOrderLineId}
-                className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2 xl:grid-cols-4"
-              >
-                <div className="space-y-1 text-sm xl:col-span-2">
-                  <p className="portal-eyebrow-muted">Línea de orden</p>
-                  <p className="font-medium text-gray-900 dark:text-white">
-                    {resolveItemLabel(items, line.itemId)}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Pendiente: {formatInventoryQuantity(line.quantityReceived)}
-                  </p>
-                </div>
+            <div className="rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                 <Input
-                  label="Cantidad a recibir"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={line.quantityReceived}
-                  onChange={(event) =>
-                    setLines((current) =>
-                      current.map((entry, entryIndex) =>
-                        entryIndex === index
-                          ? { ...entry, quantityReceived: event.target.value }
-                          : entry,
-                      ),
-                    )
-                  }
+                  label="Código de barras"
+                  value={barcodeQuery}
+                  onChange={(event) => setBarcodeQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void handleBarcodeLocate();
+                    }
+                  }}
+                  helperText="Escanea o escribe el código para ubicar su línea sin buscar a mano."
+                  disabled={isSubmitting}
                 />
-                <Input
-                  label="Lote"
-                  value={line.lotNumber}
-                  onChange={(event) =>
-                    setLines((current) =>
-                      current.map((entry, entryIndex) =>
-                        entryIndex === index ? { ...entry, lotNumber: event.target.value } : entry,
-                      ),
-                    )
-                  }
-                />
-                <Input
-                  label="Seriales"
-                  value={line.serialNumbers}
-                  onChange={(event) =>
-                    setLines((current) =>
-                      current.map((entry, entryIndex) =>
-                        entryIndex === index
-                          ? { ...entry, serialNumbers: event.target.value }
-                          : entry,
-                      ),
-                    )
-                  }
-                  helperText="Separa varios seriales por coma."
-                  className="xl:col-span-2"
-                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={isLocatingBarcode}
+                  disabled={isSubmitting}
+                  onClick={() => void handleBarcodeLocate()}
+                >
+                  Ubicar línea
+                </Button>
               </div>
-            ))}
+              {barcodeNotice ? (
+                <p role="status" className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                  {barcodeNotice}
+                </p>
+              ) : null}
+            </div>
+            {lines.map((line, index) => {
+              const equivalence = resolveLineEquivalence(
+                items,
+                line.itemId,
+                Number(line.quantityReceived) || 0,
+              );
+              const isLocated = locatedLineId === line.purchaseOrderLineId;
+
+              return (
+                <div
+                  key={line.purchaseOrderLineId}
+                  className={`grid gap-3 rounded-2xl border p-4 md:grid-cols-2 xl:grid-cols-4 ${
+                    isLocated
+                      ? 'border-iwana-primary/20 bg-iwana-primary/5 dark:border-iwana-primary-400/30 dark:bg-dark-surface-2'
+                      : 'border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3'
+                  }`}
+                >
+                  <div className="space-y-1 text-sm xl:col-span-2">
+                    <p className="portal-eyebrow-muted">Línea de orden</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {resolveItemLabel(items, line.itemId)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Pendiente: {formatInventoryQuantity(line.quantityReceived)}
+                    </p>
+                    {equivalence ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Equivalencia: {equivalence} en unidad base.
+                      </p>
+                    ) : null}
+                  </div>
+                  <Input
+                    label="Cantidad a recibir"
+                    id={`goods-receipt-qty-${line.purchaseOrderLineId}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={line.quantityReceived}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((entry, entryIndex) =>
+                          entryIndex === index
+                            ? { ...entry, quantityReceived: event.target.value }
+                            : entry,
+                        ),
+                      )
+                    }
+                  />
+                  <Input
+                    label="Lote"
+                    value={line.lotNumber}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((entry, entryIndex) =>
+                          entryIndex === index
+                            ? { ...entry, lotNumber: event.target.value }
+                            : entry,
+                        ),
+                      )
+                    }
+                  />
+                  <Input
+                    label="Seriales"
+                    value={line.serialNumbers}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((entry, entryIndex) =>
+                          entryIndex === index
+                            ? { ...entry, serialNumbers: event.target.value }
+                            : entry,
+                        ),
+                      )
+                    }
+                    helperText="Separa varios seriales por coma."
+                    className="xl:col-span-2"
+                  />
+                </div>
+              );
+            })}
           </div>
 
           {error ? (

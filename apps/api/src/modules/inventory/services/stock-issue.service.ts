@@ -1,13 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
+  InventoryTrackingMode,
+  SerializedAssetStatus,
   StockBalanceCondition,
   StockIssueStatus,
   StockIssueType,
   StockLocationType,
 } from '@iwana/shared';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import {
+  InventoryItem,
+  SerializedAsset,
   StockIssue,
   StockIssueLine,
   StockLocation,
@@ -41,6 +45,31 @@ import { clampPage } from '../../../common/pagination/clamp-page';
 import type { ListResponse } from '@iwana/shared';
 
 export type StockIssueDetail = StockIssue & { lines: StockIssueLine[] };
+
+/** Modos de seguimiento que exigen activo serializado concreto en la salida (D2). */
+const SERIALIZED_TRACKING_MODES: ReadonlySet<InventoryTrackingMode> = new Set([
+  InventoryTrackingMode.SERIALIZED,
+  InventoryTrackingMode.FIXED_ASSET,
+]);
+
+/** Estados del activo que permiten su salida (coherente con el conteo de picking B1). */
+const SERIAL_DISPATCHABLE_STATUSES: SerializedAssetStatus[] = [
+  SerializedAssetStatus.AVAILABLE,
+  SerializedAssetStatus.AVAILABLE_REFURBISHED,
+];
+
+/** Estados terminales: una salida en ellos ya no compromete seriales (coherente con update/dispatch). */
+const SERIAL_COMMIT_TERMINAL_STATUSES: StockIssueStatus[] = [
+  StockIssueStatus.CANCELLED,
+  StockIssueStatus.DISPATCHED,
+  StockIssueStatus.RECEIVED,
+];
+
+interface SerialIntegrityLineInput {
+  itemId: string;
+  requestedQty: string | number;
+  serializedAssetId?: string | null;
+}
 
 @Injectable()
 export class StockIssueService {
@@ -200,6 +229,130 @@ export class StockIssueService {
     });
   }
 
+  /**
+   * Integridad de serial en la salida (MOD12 S1 · B3, D2 bloqueante).
+   *
+   * Capa de servicio, no zod: necesita ítems y activos del tenant. Carga en
+   * batch (`find` + `In`) dentro de la transacción del llamador, nunca un
+   * query por línea. `excludeIssueId` evita que el `update` colisione con sus
+   * propias líneas al reemplazarlas o al cambiar de bodega.
+   */
+  private async assertSerializedLineIntegrity(
+    manager: EntityManager,
+    tenantId: string,
+    lines: SerialIntegrityLineInput[],
+    sourceLocationId: string,
+    excludeIssueId?: string,
+  ): Promise<void> {
+    const itemIds = [...new Set(lines.map((line) => line.itemId))];
+    if (itemIds.length === 0) {
+      return;
+    }
+
+    const foundItems =
+      (await manager.find(InventoryItem, {
+        where: { tenantId, id: In(itemIds) },
+      })) ?? [];
+    const itemById = new Map(foundItems.map((item) => [item.id, item]));
+
+    // Ítems inexistentes se omiten: la existencia del artículo no es parte de
+    // esta validación y los specs históricos crean líneas sin maestro.
+    const serializedLines = lines.filter((line) => {
+      const trackingMode = itemById.get(line.itemId)?.trackingMode;
+      return trackingMode !== undefined && SERIALIZED_TRACKING_MODES.has(trackingMode);
+    });
+    if (serializedLines.length === 0) {
+      return;
+    }
+
+    for (const line of serializedLines) {
+      if (!line.serializedAssetId) {
+        const sku = itemById.get(line.itemId)?.sku ?? line.itemId;
+        throw new BadRequestException(
+          `El ítem ${sku} exige seleccionar el activo serializado que sale.`,
+        );
+      }
+      if (Number(line.requestedQty) !== 1) {
+        throw new BadRequestException(
+          'Las líneas con activo serializado deben solicitar cantidad 1.',
+        );
+      }
+    }
+
+    const assetIds = [...new Set(serializedLines.map((line) => line.serializedAssetId as string))];
+    const foundAssets =
+      (await manager.find(SerializedAsset, {
+        where: { tenantId, id: In(assetIds) },
+      })) ?? [];
+    const assetById = new Map(foundAssets.map((asset) => [asset.id, asset]));
+    const assetLabel = (assetId: string): string => {
+      const serial = assetById.get(assetId)?.serialNumber?.trim();
+      return serial ? `El activo ${serial}` : 'El activo serializado seleccionado';
+    };
+
+    const seenAssetIds = new Set<string>();
+    for (const line of serializedLines) {
+      const assetId = line.serializedAssetId as string;
+      if (seenAssetIds.has(assetId)) {
+        throw new BadRequestException(`${assetLabel(assetId)} está repetido en la salida.`);
+      }
+      seenAssetIds.add(assetId);
+    }
+
+    for (const line of serializedLines) {
+      const assetId = line.serializedAssetId as string;
+      const asset = assetById.get(assetId);
+      if (!asset) {
+        throw new BadRequestException(
+          'El activo serializado seleccionado no existe en la bodega de origen.',
+        );
+      }
+      if (asset.inventoryItemId !== line.itemId) {
+        throw new BadRequestException(
+          `${assetLabel(assetId)} pertenece a otro artículo y no puede salir en esta línea.`,
+        );
+      }
+      if (asset.currentLocationId !== sourceLocationId) {
+        throw new BadRequestException(
+          `${assetLabel(assetId)} no está en la bodega de origen de la salida.`,
+        );
+      }
+      if (!SERIAL_DISPATCHABLE_STATUSES.includes(asset.currentStatus)) {
+        throw new BadRequestException(
+          `${assetLabel(assetId)} no está disponible para salida (estado ${asset.currentStatus}).`,
+        );
+      }
+    }
+
+    const committedQb = manager
+      .createQueryBuilder(StockIssueLine, 'line')
+      .innerJoin(
+        StockIssue,
+        'issue',
+        'issue.id = line.issue_id AND issue.tenant_id = line.tenant_id',
+      )
+      .select('line.serialized_asset_id', 'serializedAssetId')
+      .where('line.tenant_id = :tenantId', { tenantId })
+      .andWhere('line.serialized_asset_id IN (:...serialAssetIds)', {
+        serialAssetIds: assetIds,
+      })
+      .andWhere('issue.status NOT IN (:...serialTerminalStatuses)', {
+        serialTerminalStatuses: SERIAL_COMMIT_TERMINAL_STATUSES,
+      });
+    if (excludeIssueId) {
+      committedQb.andWhere('issue.id != :excludeSerialIssueId', {
+        excludeSerialIssueId: excludeIssueId,
+      });
+    }
+    const committed = await committedQb.getRawMany<{ serializedAssetId: string }>();
+    const firstCommitted = committed[0];
+    if (firstCommitted) {
+      throw new BadRequestException(
+        `${assetLabel(firstCommitted.serializedAssetId)} ya está comprometido en otra salida.`,
+      );
+    }
+  }
+
   private async resolveLocation(
     manager: EntityManager,
     tenantId: string,
@@ -328,6 +481,18 @@ export class StockIssueService {
           : null;
         this.assertDistinctLocations(sourceLocation, destinationLocation);
         this.assertDestinationTypeForDispatch(validated.type, destinationLocation);
+
+        // MOD12 S1 · B3: el serial de un ítem serializado es bloqueante desde la creación.
+        await this.assertSerializedLineIntegrity(
+          manager,
+          tenantId,
+          validated.lines.map((line) => ({
+            itemId: line.itemId,
+            requestedQty: line.requestedQty,
+            serializedAssetId: line.serializedAssetId ?? null,
+          })),
+          validated.sourceLocationId,
+        );
 
         const issue = await manager.save(
           StockIssue,
@@ -802,6 +967,20 @@ export class StockIssueService {
         const saved = await manager.save(StockIssue, issue);
 
         if (validated.lines) {
+          // MOD12 S1 · B3: al reemplazar líneas se revalida contra la bodega NUEVA,
+          // excluyendo la propia salida del chequeo de comprometidos.
+          await this.assertSerializedLineIntegrity(
+            manager,
+            tenantId,
+            validated.lines.map((line) => ({
+              itemId: line.itemId,
+              requestedQty: line.requestedQty,
+              serializedAssetId: line.serializedAssetId ?? null,
+            })),
+            saved.sourceLocationId,
+            id,
+          );
+
           for (const line of previousLines) {
             await this.releaseLineQuantity(manager, tenantId, previousSourceLocationId, line);
           }
@@ -830,6 +1009,20 @@ export class StockIssueService {
           validated.sourceLocationId &&
           validated.sourceLocationId !== previousSourceLocationId
         ) {
+          // MOD12 S1 · B3: al cambiar de bodega las líneas vigentes deben seguir
+          // cumpliendo contra la bodega NUEVA (el serial pudo quedar en el origen anterior).
+          await this.assertSerializedLineIntegrity(
+            manager,
+            tenantId,
+            previousLines.map((line) => ({
+              itemId: line.itemId,
+              requestedQty: line.requestedQty,
+              serializedAssetId: line.serializedAssetId,
+            })),
+            saved.sourceLocationId,
+            id,
+          );
+
           for (const line of previousLines) {
             await this.releaseLineQuantity(manager, tenantId, previousSourceLocationId, line);
             await this.reserveLineQuantity(manager, tenantId, saved.sourceLocationId, line);

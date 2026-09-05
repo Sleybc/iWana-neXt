@@ -478,7 +478,7 @@ describe('ExecutionOrdersService', () => {
       findOne: jest.fn().mockResolvedValue({
         id: 'eo-001',
         tenantId: 'tenant-001',
-        status: ExecutionOrderStatus.ASSIGNED,
+        status: ExecutionOrderStatus.IN_PROGRESS,
         version: 1,
         assignedTechnicianId: techSub, // custody must match assignment
         assignedCrewId: null,

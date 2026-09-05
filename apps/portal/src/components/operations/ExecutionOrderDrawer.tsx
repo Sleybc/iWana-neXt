@@ -15,6 +15,7 @@ import {
   ExecutionOrderStatus,
   ExecutionOrderItemAction,
   InventoryDisposition,
+  SerializedAssetStatus,
 } from '@iwana/shared';
 import type {
   ExecutionOrderAllowedAction,
@@ -31,6 +32,8 @@ import type {
   ExecutionOrderDetailResponse,
   RegisterExecutionOrderItemUsageDto,
   NonRealizationCause,
+  SerializedAssetRecord,
+  StockBalanceRecord,
 } from '@/lib/api-client';
 import type { ExecutionOrderMissingRequirement } from './OperationsClient';
 import {
@@ -38,6 +41,7 @@ import {
   PortalEmptyState,
   PortalTablePagination,
 } from '@/components/shared/portal-ui';
+import { getSerializedAssetStatusLabel } from '@/components/inventory/inventory-labels';
 import { ExecutionOrderSummary, type ExecutionOrderSyncState } from './ExecutionOrderSummary';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 import {
@@ -61,6 +65,20 @@ interface ExecutionOrderDrawerProps {
   evidence?: ExecutionOrderEvidence[] | null;
   evidenceMeta?: ListMeta;
   evidenceState?: 'loading' | 'available' | 'unavailable';
+  /** Estado de carga del inventario autorizado (ítems y custodias). */
+  itemsState?: 'loading' | 'available' | 'unavailable';
+  /** Estado de la custodia del ejecutor (sub-sección de solo lectura del bloque 4). */
+  executorCustodyState?: 'loading' | 'available' | 'unavailable';
+  /** Nombre de la ubicación móvil en custodia; null si no hay custodia activa. */
+  executorCustodyName?: string | null;
+  /** Equipos serializados en custodia (páginas acumuladas). */
+  executorCustodyAssets?: SerializedAssetRecord[];
+  executorCustodyAssetsMeta?: ListMeta;
+  /** Materiales con stock en custodia (páginas acumuladas). */
+  executorCustodyBalances?: StockBalanceRecord[];
+  executorCustodyBalancesMeta?: ListMeta;
+  isLoadingMoreExecutorCustody: boolean;
+  onLoadMoreExecutorCustody: () => void | Promise<void>;
   template: ExecutionOrderTemplateVersion | null;
   missingRequirements?: ExecutionOrderMissingRequirement[];
   isLoading: boolean;
@@ -78,6 +96,11 @@ interface ExecutionOrderDrawerProps {
   onLoadMoreEvidence: () => void | Promise<void>;
   onStart: (notes?: string | null) => Promise<void>;
   onRegisterActivity: (payload: RegisterActivityCommand) => Promise<void | boolean>;
+  onUpdateActivity?: (
+    activityId: string,
+    payload: Partial<RegisterActivityCommand>,
+  ) => Promise<void | boolean>;
+  onDeleteActivity?: (activityId: string) => Promise<void | boolean>;
   onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void | boolean>;
   onUploadEvidence: (file: File, requirementKey: string) => Promise<void | boolean>;
   onBlock?: (payload: { reasonCode: string; note?: string }) => Promise<void>;
@@ -144,6 +167,10 @@ const TERMINAL_STATUSES = new Set<ExecutionOrderStatus>([
 ]);
 
 const EMPTY_EVIDENCE: ExecutionOrderEvidence[] = [];
+
+// Hint pre-inicio compartido por los bloques 3/4/5; mismo vocabulario que el del checklist.
+const PRE_START_HINT_DESCRIPTION =
+  'El registro queda bloqueado hasta iniciar la ejecución. Pulsa Iniciar ejecución en Compromiso para comenzar.';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -280,6 +307,12 @@ function collectionCountLabel(visible: number, total: number, noun: string): str
   return visible < total ? `Mostrando ${visible} de ${total} ${noun}` : `${total} ${noun}`;
 }
 
+/** Normaliza el string numérico de stock a una cifra legible sin ceros forzados. */
+function custodyQuantityLabel(quantityOnHand: string): string {
+  const value = Number(quantityOnHand);
+  return Number.isFinite(value) ? String(value) : quantityOnHand;
+}
+
 // ─── Componente principal ───────────────────────────────────────────────────
 
 export function ExecutionOrderDrawer({
@@ -292,6 +325,15 @@ export function ExecutionOrderDrawer({
   evidence,
   evidenceMeta,
   evidenceState = 'available',
+  itemsState = 'available',
+  executorCustodyState = 'available',
+  executorCustodyName = null,
+  executorCustodyAssets = [],
+  executorCustodyAssetsMeta,
+  executorCustodyBalances = [],
+  executorCustodyBalancesMeta,
+  isLoadingMoreExecutorCustody,
+  onLoadMoreExecutorCustody,
   template = null,
   missingRequirements = [],
   isLoading,
@@ -309,6 +351,8 @@ export function ExecutionOrderDrawer({
   onLoadMoreEvidence,
   onStart,
   onRegisterActivity,
+  onUpdateActivity,
+  onDeleteActivity,
   onRegisterItemUsage,
   onUploadEvidence,
   onBlock,
@@ -332,6 +376,15 @@ export function ExecutionOrderDrawer({
   const canClose = order ? template !== null && actionAllowed(order, 'CLOSE') : false;
   const canBlock = order ? actionAllowed(order, 'BLOCK') : false;
   const canUnblock = order ? actionAllowed(order, 'UNBLOCK') : false;
+  // Pre-inicio = CREATED | ASSIGNED | EN_ROUTE (PROMPT-MOD11 §4.4): única fuente
+  // de verdad para el gate del checklist y los hints de los bloques 3/4/5.
+  const hasStarted =
+    order != null &&
+    order.status !== ExecutionOrderStatus.CREATED &&
+    order.status !== ExecutionOrderStatus.ASSIGNED &&
+    order.status !== ExecutionOrderStatus.EN_ROUTE;
+  const isChecklistActive = hasStarted || terminal;
+  const isPreStart = order != null && !hasStarted && !terminal;
   const completion = getExecutionOrderCompletionDisplay(order?.completion);
   const evidenceRequirementKey =
     template?.requirements
@@ -345,6 +398,16 @@ export function ExecutionOrderDrawer({
   const [activityType, setActivityType] = useState('INSTALLATION');
   const [activityDescription, setActivityDescription] = useState('');
   const [activityNovelty, setActivityNovelty] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editActivityType, setEditActivityType] = useState('INSTALLATION');
+  const [editActivityDescription, setEditActivityDescription] = useState('');
+  const [editActivityNovelty, setEditActivityNovelty] = useState(false);
+  const [deletingActivityId, setDeletingActivityId] = useState<string | null>(null);
+  // Pliegue manual del formulario de actividad; solo aplica cuando ya hay actividades.
+  const [isActivityFormExpanded, setActivityFormExpanded] = useState(false);
+  // Derivado sin efectos: sin actividades el formulario nace expandido; evita parpadeos
+  // con carga async y, si se eliminan todas las actividades, vuelve a expandido por derivación.
+  const activityFormExpanded = activities.length === 0 || isActivityFormExpanded;
 
   // Block 4 — Equipos y materiales
   const [itemId, setItemId] = useState('');
@@ -431,19 +494,29 @@ export function ExecutionOrderDrawer({
     [],
   );
 
-  const resolvedCustodyOptions = useMemo<ExecutionOrderCustodyOption[]>(
-    () =>
-      custodyOptions ??
-      (order?.assignee?.id && order.assignee.type
-        ? [
-            {
-              type: order.assignee.type,
-              id: order.assignee.id,
-              label: order.assignee.displayLabel ?? 'Custodia asignada',
-            },
-          ]
-        : []),
-    [custodyOptions, order?.assignee],
+  const resolvedCustodyOptions = useMemo<ExecutionOrderCustodyOption[]>(() => {
+    if (custodyOptions && custodyOptions.length > 0) {
+      return custodyOptions;
+    }
+    // Red de seguridad: si el boundary no aporta opciones, la custodia elegible
+    // por contrato es el técnico/cuadrilla asignados a la OT.
+    if (order?.assignee?.id && order.assignee.type) {
+      return [
+        {
+          type: order.assignee.type,
+          id: order.assignee.id,
+          label: order.assignee.displayLabel ?? 'Custodia asignada',
+        },
+      ];
+    }
+    return [];
+  }, [custodyOptions, order?.assignee]);
+
+  // Nombres de ítem para la custodia del ejecutor: se resuelven contra las
+  // opciones de inventario ya cargadas para la orden (sin llamadas extra).
+  const custodyItemLabelById = useMemo(
+    () => new Map(itemOptions.map((option) => [option.value, option.label])),
+    [itemOptions],
   );
 
   const custodySelectOptions = useMemo(
@@ -479,8 +552,60 @@ export function ExecutionOrderDrawer({
       if (result === false) return;
       setActivityDescription('');
       setActivityNovelty(false);
+      setActivityFormExpanded(false);
     },
     [activityType, activityDescription, activityNovelty, onRegisterActivity],
+  );
+
+  const handleStartEditActivity = useCallback((act: ExecutionOrderActivity) => {
+    setEditingActivityId(act.id);
+    setEditActivityType(act.activityType);
+    setEditActivityDescription(act.description);
+    const isNovelty = act.measurements?.some((m) => m.key === 'novedad' && m.value === true);
+    setEditActivityNovelty(Boolean(isNovelty));
+    setDeletingActivityId(null);
+  }, []);
+
+  const handleCancelEditActivity = useCallback(() => {
+    setEditingActivityId(null);
+    setEditActivityDescription('');
+    setEditActivityNovelty(false);
+  }, []);
+
+  const handleSaveEditActivity = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!editingActivityId || !editActivityDescription.trim() || !onUpdateActivity) return;
+      const payload: Partial<RegisterActivityCommand> = {
+        activityType: editActivityType,
+        description: editActivityDescription.trim(),
+      };
+      // measurements manejo simplificado: si marca novedad, enviarla; si no, omitir
+      if (editActivityNovelty) {
+        (payload as RegisterActivityCommand).measurements = [{ key: 'novedad', value: true }];
+      }
+      const result = await onUpdateActivity(editingActivityId, payload);
+      if (result === false) return;
+      setEditingActivityId(null);
+    },
+    [
+      editingActivityId,
+      editActivityType,
+      editActivityDescription,
+      editActivityNovelty,
+      onUpdateActivity,
+    ],
+  );
+
+  const handleConfirmDeleteActivity = useCallback(
+    async (activityId: string) => {
+      if (!onDeleteActivity) return;
+      const result = await onDeleteActivity(activityId);
+      if (result === false) return;
+      setDeletingActivityId(null);
+      if (editingActivityId === activityId) setEditingActivityId(null);
+    },
+    [onDeleteActivity, editingActivityId],
   );
 
   const handleRegisterItem = useCallback(
@@ -729,9 +854,10 @@ export function ExecutionOrderDrawer({
             syncState={toSummarySyncState(order.syncState)}
             readonly={terminal || offline || order.syncState !== 'IN_SYNC'}
             canOpen={false}
+            hideProgress
           />
 
-          {/* ── 1. Compromiso ── */}
+          {/* ── 1. Compromiso — sin duplicar resumen superior ── */}
           <section
             aria-labelledby="eo-commitment-heading"
             className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
@@ -742,26 +868,11 @@ export function ExecutionOrderDrawer({
             >
               Compromiso
             </h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Sitio, ventana, responsable y plantilla se resumen arriba. Aquí solo el estado
+              operativo y la acción.
+            </p>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="portal-eyebrow-muted">Sitio</p>
-                <p className="mt-1 text-sm text-gray-900 dark:text-white">
-                  {order.site.label || order.site.address || 'Sitio autorizado'}
-                </p>
-              </div>
-              <div>
-                <p className="portal-eyebrow-muted">Ventana</p>
-                <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {dateFormatter(order.schedule.window.startAt)} –{' '}
-                  {dateFormatter(order.schedule.window.endAt)}
-                </p>
-              </div>
-              <div>
-                <p className="portal-eyebrow-muted">Responsable</p>
-                <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {order.assignee?.displayLabel ?? 'Sin responsable asignado'}
-                </p>
-              </div>
               <div>
                 <p className="portal-eyebrow-muted">Tipo de trabajo</p>
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
@@ -782,21 +893,9 @@ export function ExecutionOrderDrawer({
                   </Badge>
                 </div>
               )}
-              <div>
-                <p className="portal-eyebrow-muted">Plantilla</p>
-                <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {template
-                    ? `${template.label} · v${template.version}`
-                    : 'Plantilla no disponible'}
-                </p>
-              </div>
-              <div>
-                <p className="portal-eyebrow-muted">Requisitos completados</p>
-                <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">{completion.label}</p>
-              </div>
             </div>
             {/* Start button */}
-            {canInteract && canStart && (
+            {canInteract && canStart ? (
               <Button
                 type="button"
                 className="mt-4"
@@ -806,7 +905,21 @@ export function ExecutionOrderDrawer({
               >
                 Iniciar ejecución
               </Button>
-            )}
+            ) : canInteract &&
+              !terminal &&
+              !canStart &&
+              order.status !== ExecutionOrderStatus.BLOCKED ? (
+              <PortalAlert
+                variant="info"
+                className="mt-4"
+                title="No puedes iniciar esta orden"
+                description={
+                  !order.assignee
+                    ? 'La orden no tiene técnico asignado. Un supervisor debe asignarla o cualquier técnico del pool puede reclamarla al iniciar.'
+                    : 'Solo el técnico asignado puede iniciar la ejecución cuando la orden está sincronizada.'
+                }
+              />
+            ) : null}
             {/* Block/Unblock */}
             {canInteract && canUnblock && onUnblock && (
               <div className="mt-4 space-y-3">
@@ -839,7 +952,18 @@ export function ExecutionOrderDrawer({
             >
               Checklist de instalación
             </h3>
-            <div className="mt-3">
+            {!isChecklistActive && (
+              <PortalAlert
+                variant="info"
+                title="Inicia la ejecución para habilitar el checklist"
+                description="Aquí consultarás los requisitos; el registro queda bloqueado hasta el inicio. Pulsa Iniciar ejecución en Compromiso para comenzar."
+                className="mt-3"
+              />
+            )}
+            <div
+              className={isChecklistActive ? 'mt-3' : 'mt-3 opacity-60 pointer-events-none'}
+              {...(!isChecklistActive ? { 'aria-disabled': 'true' } : {})}
+            >
               <ProgressMeter
                 value={completion.value}
                 label="Avance de requisitos"
@@ -848,28 +972,35 @@ export function ExecutionOrderDrawer({
               <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
                 Completados: {completion.label}
               </p>
+              {template && template.requirements.length > 0 && (
+                <ul className="mt-4 space-y-1.5" role="list">
+                  {template.requirements.map((req) => (
+                    <li
+                      key={req.key}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
+                    >
+                      {requirementIcon(req.kind)}
+                      <span className="text-gray-700 dark:text-gray-200">
+                        {requirementLabel(req)}
+                      </span>
+                      {req.required && (
+                        <Badge variant="warning" className="ml-auto shrink-0 text-xs">
+                          Requerido
+                        </Badge>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!template && (
+                <PortalEmptyState
+                  className="mt-3"
+                  title="Requisitos no disponibles"
+                  description="Revisa la plantilla aplicada antes de cerrar la orden."
+                />
+              )}
             </div>
-            {template && template.requirements.length > 0 && (
-              <ul className="mt-4 space-y-1.5" role="list">
-                {template.requirements.map((req) => (
-                  <li
-                    key={req.key}
-                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
-                  >
-                    {requirementIcon(req.kind)}
-                    <span className="text-gray-700 dark:text-gray-200">
-                      {requirementLabel(req)}
-                    </span>
-                    {req.required && (
-                      <Badge variant="warning" className="ml-auto shrink-0 text-xs">
-                        Requerido
-                      </Badge>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {missingRequirements.length > 0 && (
+            {isChecklistActive && missingRequirements.length > 0 && (
               <div className="mt-4 space-y-2" role="alert" aria-label="Requisitos pendientes">
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">
                   Para cerrar la OT, completa lo siguiente:
@@ -892,13 +1023,6 @@ export function ExecutionOrderDrawer({
                 </ul>
               </div>
             )}
-            {!template && (
-              <PortalEmptyState
-                className="mt-3"
-                title="Requisitos no disponibles"
-                description="Revisa la plantilla aplicada antes de cerrar la orden."
-              />
-            )}
           </section>
 
           {/* ── 3. Trabajo realizado ── */}
@@ -912,6 +1036,14 @@ export function ExecutionOrderDrawer({
             >
               Trabajo realizado
             </h3>
+            {isPreStart && (
+              <PortalAlert
+                variant="info"
+                title="Inicia la ejecución para registrar el trabajo realizado"
+                description={PRE_START_HINT_DESCRIPTION}
+                className="mt-3"
+              />
+            )}
             {/* Activity list */}
             <div className="mt-3 space-y-2">
               {activitiesMeta && activitiesMeta.total > 0 ? (
@@ -925,46 +1057,155 @@ export function ExecutionOrderDrawer({
                   description="Registra el trabajo realizado para conservar la trazabilidad de la ejecución."
                 />
               ) : (
-                activities.map((act) => (
-                  <article
-                    key={act.id}
-                    className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {act.activityType === 'INSTALLATION'
-                          ? 'Instalación'
-                          : act.activityType === 'FIELD_NOTE'
-                            ? 'Nota de campo'
-                            : act.activityType === 'CONFIGURATION'
-                              ? 'Configuración'
-                              : act.activityType === 'TESTING'
-                                ? 'Prueba'
-                                : act.activityType === 'NOVELTY'
-                                  ? 'Novedad'
-                                  : 'Actividad de campo'}
-                      </p>
-                      <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {dateFormatter(act.occurredAt ?? act.createdAt)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                      {act.description}
-                    </p>
-                    {act.measurements && act.measurements.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {act.measurements.map((m, i) => (
-                          <span
-                            key={i}
-                            className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400"
-                          >
-                            {measurementLabel(m.value, m.unit)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </article>
-                ))
+                activities.map((act) => {
+                  const isEditing = editingActivityId === act.id;
+                  const isDeleting = deletingActivityId === act.id;
+                  return (
+                    <article
+                      key={act.id}
+                      className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
+                    >
+                      {isEditing ? (
+                        <form onSubmit={handleSaveEditActivity} className="space-y-3">
+                          <Select
+                            id={`eo-edit-activity-type-${act.id}`}
+                            label="Tipo de actividad"
+                            value={editActivityType}
+                            options={activityTypeOptions}
+                            disabled={isSubmitting}
+                            onChange={(e) => setEditActivityType(e.target.value)}
+                          />
+                          <Input
+                            id={`eo-edit-activity-description-${act.id}`}
+                            label="Descripción"
+                            value={editActivityDescription}
+                            disabled={isSubmitting}
+                            onChange={(e) => setEditActivityDescription(e.target.value)}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant={editActivityNovelty ? 'secondary' : 'ghost'}
+                              aria-pressed={editActivityNovelty}
+                              disabled={isSubmitting}
+                              onClick={() => setEditActivityNovelty((c) => !c)}
+                            >
+                              Marcar como novedad
+                            </Button>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="submit"
+                              variant="primary"
+                              disabled={isSubmitting || editActivityDescription.trim().length === 0}
+                            >
+                              Guardar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              disabled={isSubmitting}
+                              onClick={handleCancelEditActivity}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                              {act.activityType === 'INSTALLATION'
+                                ? 'Instalación'
+                                : act.activityType === 'FIELD_NOTE'
+                                  ? 'Nota de campo'
+                                  : act.activityType === 'CONFIGURATION'
+                                    ? 'Configuración'
+                                    : act.activityType === 'TESTING'
+                                      ? 'Prueba'
+                                      : act.activityType === 'NOVELTY'
+                                        ? 'Novedad'
+                                        : 'Actividad de campo'}
+                            </p>
+                            <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
+                              {dateFormatter(act.occurredAt ?? act.createdAt)}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+                            {act.description}
+                          </p>
+                          {act.measurements && act.measurements.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              {act.measurements.map((m, i) => (
+                                <span
+                                  key={i}
+                                  className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400"
+                                >
+                                  {measurementLabel(m.value, m.unit)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {canInteract &&
+                            canRegisterActivity &&
+                            (onUpdateActivity || onDeleteActivity) && (
+                              <div className="mt-2 flex gap-2">
+                                {onUpdateActivity && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={isSubmitting}
+                                    onClick={() => handleStartEditActivity(act)}
+                                  >
+                                    Modificar
+                                  </Button>
+                                )}
+                                {onDeleteActivity && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={isSubmitting}
+                                    onClick={() => setDeletingActivityId(act.id)}
+                                  >
+                                    Eliminar
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          {isDeleting && (
+                            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+                              <p className="text-sm text-red-800 dark:text-red-200">
+                                ¿Eliminar este trabajo realizado? Esta acción no se puede deshacer.
+                              </p>
+                              <div className="mt-2 flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="softDestructive"
+                                  size="sm"
+                                  disabled={isSubmitting}
+                                  onClick={() => void handleConfirmDeleteActivity(act.id)}
+                                >
+                                  Confirmar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isSubmitting}
+                                  onClick={() => setDeletingActivityId(null)}
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </article>
+                  );
+                })
               )}
               <PortalTablePagination
                 hasMore={activitiesMeta?.hasMore === true}
@@ -976,8 +1217,19 @@ export function ExecutionOrderDrawer({
               />
             </div>
 
-            {/* Registration form */}
-            {canInteract && canRegisterActivity && (
+            {/* Registration form — replegado tras el toggle cuando ya hay actividades */}
+            {canInteract && canRegisterActivity && activities.length > 0 && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-4"
+                aria-expanded={activityFormExpanded}
+                onClick={() => setActivityFormExpanded(true)}
+              >
+                Registrar nueva actividad
+              </Button>
+            )}
+            {canInteract && canRegisterActivity && activityFormExpanded && (
               <form
                 onSubmit={handleRegisterActivity}
                 className="mt-4 space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border"
@@ -1010,13 +1262,25 @@ export function ExecutionOrderDrawer({
                 >
                   Marcar como novedad
                 </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  disabled={isSubmitting || activityDescription.trim().length === 0}
-                >
-                  Registrar actividad
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={isSubmitting || activityDescription.trim().length === 0}
+                  >
+                    Registrar actividad
+                  </Button>
+                  {activities.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={isSubmitting}
+                      onClick={() => setActivityFormExpanded(false)}
+                    >
+                      Ocultar
+                    </Button>
+                  )}
+                </div>
               </form>
             )}
           </section>
@@ -1032,6 +1296,135 @@ export function ExecutionOrderDrawer({
             >
               Equipos y materiales
             </h3>
+            {/* Custodia del ejecutor: lectura pura, visible también en pre-inicio
+                y oculta en estados terminales junto al resto de acciones. */}
+            {!terminal && (
+              <div className="mt-3">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  En custodia del ejecutor
+                </p>
+                {executorCustodyState === 'unavailable' ? (
+                  <PortalAlert
+                    variant="warning"
+                    title="Custodia no disponible"
+                    description="No pudimos consultar la custodia del ejecutor. El resto de la orden sigue disponible."
+                    action={
+                      onRefreshDetail ? (
+                        <Button type="button" onClick={() => void onRefreshDetail()}>
+                          Actualizar detalle
+                        </Button>
+                      ) : undefined
+                    }
+                    className="mt-2"
+                  />
+                ) : executorCustodyState === 'loading' ? (
+                  <div
+                    aria-busy="true"
+                    aria-label="Cargando custodia del ejecutor"
+                    className="mt-2"
+                  >
+                    <SkeletonBlock className="h-20" />
+                  </div>
+                ) : executorCustodyAssets.length === 0 && executorCustodyBalances.length === 0 ? (
+                  <PortalEmptyState
+                    className="mt-2"
+                    title="El ejecutor no tiene equipos ni materiales en custodia"
+                    description="Lo asignado desde inventario aparecerá aquí."
+                  />
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {executorCustodyName && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {executorCustodyName}
+                      </p>
+                    )}
+                    {executorCustodyAssets.length > 0 && (
+                      <>
+                        {executorCustodyAssetsMeta && executorCustodyAssetsMeta.total > 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
+                            {collectionCountLabel(
+                              executorCustodyAssets.length,
+                              executorCustodyAssetsMeta.total,
+                              'equipos',
+                            )}
+                          </p>
+                        ) : null}
+                        {executorCustodyAssets.map((asset) => (
+                          <article
+                            key={asset.id}
+                            className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                {asset.serialNumber ?? 'Equipo en custodia'}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {[
+                                  custodyItemLabelById.get(asset.inventoryItemId),
+                                  getSerializedAssetStatusLabel(asset.currentStatus),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            </div>
+                          </article>
+                        ))}
+                      </>
+                    )}
+                    {executorCustodyBalances.length > 0 && (
+                      <>
+                        {executorCustodyBalancesMeta && executorCustodyBalancesMeta.total > 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
+                            {collectionCountLabel(
+                              executorCustodyBalances.length,
+                              executorCustodyBalancesMeta.total,
+                              'materiales',
+                            )}
+                          </p>
+                        ) : null}
+                        {executorCustodyBalances.map((balance) => (
+                          <article
+                            key={balance.id}
+                            className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                {custodyItemLabelById.get(balance.itemId) ?? 'Material en custodia'}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Cantidad disponible: {custodyQuantityLabel(balance.quantityOnHand)}
+                              </p>
+                            </div>
+                          </article>
+                        ))}
+                      </>
+                    )}
+                    <PortalTablePagination
+                      hasMore={
+                        executorCustodyAssetsMeta?.hasMore === true ||
+                        executorCustodyBalancesMeta?.hasMore === true
+                      }
+                      onLoadMore={() => void onLoadMoreExecutorCustody()}
+                      loading={isLoadingMoreExecutorCustody}
+                      resourceLabel="elementos en custodia"
+                      shown={executorCustodyAssets.length + executorCustodyBalances.length}
+                      total={
+                        (executorCustodyAssetsMeta?.total ?? 0) +
+                        (executorCustodyBalancesMeta?.total ?? 0)
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {isPreStart && (
+              <PortalAlert
+                variant="info"
+                title="Inicia la ejecución para registrar equipos y materiales"
+                description={PRE_START_HINT_DESCRIPTION}
+                className="mt-3"
+              />
+            )}
             {/* Item usage list */}
             <div className="mt-3 space-y-2">
               {itemUsageMeta && itemUsageMeta.total > 0 ? (
@@ -1109,14 +1502,33 @@ export function ExecutionOrderDrawer({
                     value={itemId}
                     options={itemOptions}
                     placeholder={
-                      itemOptions.length ? 'Selecciona un ítem' : 'No hay ítems disponibles'
+                      itemsState === 'loading'
+                        ? 'Cargando inventario…'
+                        : itemsState === 'unavailable'
+                          ? 'Inventario no disponible'
+                          : 'No hay ítems activos disponibles'
                     }
-                    {...(itemOptions.length === 0
+                    {...(itemsState === 'unavailable'
                       ? {
-                          helperText: 'Selecciona un ítem autorizado para registrar el movimiento.',
+                          helperText:
+                            'No fue posible cargar el inventario autorizado; actualiza el detalle para reintentar.',
                         }
-                      : {})}
-                    disabled={isSubmitting || itemOptions.length === 0}
+                      : itemsState === 'loading'
+                        ? {
+                            helperText: 'Cargando los ítems autorizados para esta orden.',
+                          }
+                        : itemOptions.length === 0
+                          ? {
+                              helperText:
+                                'La organización no tiene ítems activos autorizados para movimientos.',
+                            }
+                          : {
+                              helperText:
+                                'Selecciona un ítem autorizado para registrar el movimiento.',
+                            })}
+                    disabled={
+                      isSubmitting || itemsState !== 'available' || itemOptions.length === 0
+                    }
                     onChange={(e) => setItemId(e.target.value)}
                   />
                   <Input
@@ -1204,6 +1616,14 @@ export function ExecutionOrderDrawer({
             >
               Evidencia y conformidad
             </h3>
+            {isPreStart && (
+              <PortalAlert
+                variant="info"
+                title="Inicia la ejecución para registrar evidencia"
+                description={PRE_START_HINT_DESCRIPTION}
+                className="mt-3"
+              />
+            )}
 
             {/* Evidence list */}
             <div className="mt-3 space-y-2">

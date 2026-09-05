@@ -79,7 +79,8 @@ describe('ApprovalDecisionPanel', () => {
     expect(screen.getByText(/Jefe de compras/i)).toBeInTheDocument();
     expect(screen.getByText(/Q-100/)).toBeInTheDocument();
     expect(screen.getByText('Proveedor no identificado')).toBeInTheDocument();
-    expect(screen.getByText(/Total con envío/i)).toBeInTheDocument();
+    expect(screen.getByText(/Neto a pagar/i)).toBeInTheDocument();
+    expect(screen.getByText(/Monto estimado \(con envío\)/i)).toBeInTheDocument();
   });
 
   it('permite editar notas de aprobación (CA-21-02)', async () => {

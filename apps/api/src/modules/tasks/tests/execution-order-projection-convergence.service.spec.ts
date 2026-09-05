@@ -250,6 +250,25 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
       expect(result.hasDiscrepancy).toBe(false);
     });
 
+    it('OT pre-inicio (ASSIGNED) sin iniciar mantiene proyecciones SCHEDULED sin divergencia', async () => {
+      // Sin auto-promoción por registro (remediación MOD11), la OT canónica
+      // permanece en ASSIGNED mientras no ocurra start(); el reconciliador
+      // espera SCHEDULED y no hay divergencia inducible por registro.
+      queryRunner.query
+        .mockResolvedValueOnce([{ id: 'eo-001', status: 'ASSIGNED', result: null }])
+        .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
+        .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
+        .mockResolvedValueOnce([{ task_id: 'task-001' }])
+        .mockResolvedValueOnce([{ status: 'SCHEDULED' }]);
+
+      const result = await service.reconcileOrder('eo-001');
+
+      expect(result.hasDiscrepancy).toBe(false);
+      expect(result.expectedScheduleStatus).toBe('SCHEDULED');
+      expect(result.expectedVisitStatus).toBe('SCHEDULED');
+      expect(result.expectedTaskStatus).toBe('SCHEDULED');
+    });
+
     it('maneja OT sin task_id sin error', async () => {
       queryRunner.query
         .mockResolvedValueOnce([{ id: 'eo-001', status: 'CANCELLED', result: 'CANCELLED' }])

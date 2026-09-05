@@ -1,7 +1,7 @@
 import { StockBalanceCondition } from '@iwana/shared';
 import type { StockBalanceRecord } from '@/lib/api-client';
 import {
-  buildAvailableQuantityByItemAtLocation,
+  buildTotalAvailableQuantityByItemAtLocation,
   getAvailableQtyFromBalance,
   getBalanceForItemAtLocation,
   isRequestedQtyExceedingAvailable,
@@ -63,13 +63,19 @@ describe('stock-issue-balance-utils', () => {
     },
   ];
 
-  it('sums available quantity for item and location', () => {
+  it('sums available quantity for item and location across conditions (D3)', () => {
     expect(getBalanceForItemAtLocation(balances, 'item-1', 'loc-1')).toBe(5.5);
     expect(getBalanceForItemAtLocation(balances, 'item-2', 'loc-1')).toBe(0);
+    // El filtro por condición sigue disponible cuando se pide explícito.
+    expect(
+      getBalanceForItemAtLocation(balances, 'item-1', 'loc-1', {
+        condition: StockBalanceCondition.NEW,
+      }),
+    ).toBe(5.5);
   });
 
-  it('builds a quantity map for a source location', () => {
-    const map = buildAvailableQuantityByItemAtLocation(balances, 'loc-1');
+  it('builds a quantity map for a source location across conditions (D3)', () => {
+    const map = buildTotalAvailableQuantityByItemAtLocation(balances, 'loc-1');
     expect(map.get('item-1')).toBe(5.5);
     expect(map.has('item-2')).toBe(false);
   });
@@ -104,7 +110,7 @@ describe('stock-issue-balance-utils', () => {
     });
 
     it('construye el mapa de disponible descontando lo reservado', () => {
-      const map = buildAvailableQuantityByItemAtLocation(reservedBalances, 'loc-1');
+      const map = buildTotalAvailableQuantityByItemAtLocation(reservedBalances, 'loc-1');
       expect(map.get('item-1')).toBe(9.5);
     });
 
@@ -112,6 +118,45 @@ describe('stock-issue-balance-utils', () => {
       const available = getBalanceForItemAtLocation(reservedBalances, 'item-1', 'loc-1');
       // Existencia total 15, pero solo 9.5 disponible: pedir 12 debe advertirse.
       expect(isRequestedQtyExceedingAvailable('12', available)).toBe(true);
+    });
+  });
+
+  describe('stock recibido por compra (todo en lote)', () => {
+    // La recepción de compra crea siempre un StockLot, así que estas 50 unidades no
+    // tienen contraparte sin lote: es el escenario que dejaba el ítem en "Disponible: 0".
+    const lotOnlyBalances: StockBalanceRecord[] = [
+      buildBalance({ id: 'lot-1', lotId: 'lote-a', quantityOnHand: '50', quantityReserved: '0' }),
+    ];
+
+    it('el total agregado del ítem incluye el stock que vive en lotes', () => {
+      const map = buildTotalAvailableQuantityByItemAtLocation(lotOnlyBalances, 'loc-1');
+      expect(map.get('item-1')).toBe(50);
+    });
+
+    it('la disponibilidad por línea sin lote elegido sigue siendo 0', () => {
+      expect(getBalanceForItemAtLocation(lotOnlyBalances, 'item-1', 'loc-1')).toBe(0);
+      expect(
+        getBalanceForItemAtLocation(lotOnlyBalances, 'item-1', 'loc-1', { lotId: 'lote-a' }),
+      ).toBe(50);
+    });
+
+    it('suma lotes y saldo sin lote de todas las condiciones (D3)', () => {
+      const mixed = [
+        ...lotOnlyBalances,
+        buildBalance({ id: 'lot-2', lotId: 'lote-b', quantityOnHand: '10', quantityReserved: '4' }),
+        buildBalance({ id: 'free-1', lotId: null, quantityOnHand: '5', quantityReserved: '0' }),
+        buildBalance({
+          id: 'refurb-1',
+          lotId: 'lote-c',
+          condition: StockBalanceCondition.REFURBISHED,
+          quantityOnHand: '99',
+          quantityReserved: '0',
+        }),
+      ];
+
+      const map = buildTotalAvailableQuantityByItemAtLocation(mixed, 'loc-1');
+      // 50 + (10 - 4) + 5 + 99: REFURBISHED también suma (D3, fin del filtro NEW).
+      expect(map.get('item-1')).toBe(160);
     });
   });
 });

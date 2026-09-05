@@ -14,6 +14,16 @@ import { expect, test } from '@playwright/test';
 import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'tenant-wfm-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const TECHNICIAN_ID = '11111111-1111-4111-8111-111111111111';
 const CRM_EXPEDIENTE_ID = 'fcda817a-6340-4b83-bdd3-8bb4caa6cae9';
 const CRM_INSTALLATION_TICKET_ID = 'ticket-install-001';
@@ -682,6 +692,9 @@ async function setupSchedulingMocks(
     }
 
     if (pathname.endsWith('/wfm/eligible-assignees') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
+      expect(route.request().url()).toContain('/wfm/eligible-assignees');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -721,6 +734,9 @@ async function setupSchedulingMocks(
     }
 
     if (pathname.endsWith('/wfm/visit-requests') && method === 'POST') {
+      await assertTenantHeader(route);
+      expect(method).toBe('POST');
+      expect(route.request().url()).toContain('/wfm/visit-requests');
       const payload = request.postDataJSON() as {
         originContext: string;
         originRef: string;
@@ -734,6 +750,8 @@ async function setupSchedulingMocks(
         expedienteId: string;
         ticketId: string;
       };
+      expect(payload).toHaveProperty('title');
+      expect(payload).toHaveProperty('workType');
 
       const createdVisitRequest = {
         id: `vr-${String(visitRequests.length + 1).padStart(3, '0')}`,

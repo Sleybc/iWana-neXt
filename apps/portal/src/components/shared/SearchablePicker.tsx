@@ -762,6 +762,8 @@ export function SearchableMultiPicker({
   const retryRef = useRef<HTMLButtonElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const failedRetryCountRef = useRef(0);
+  /** Evita reabrir el listbox cuando addItem devuelve el foco al campo. */
+  const suppressOpenOnFocusRef = useRef(false);
   const labelsRef = useRef(labels);
   labelsRef.current = labels;
   const resourceRef = useRef(resource);
@@ -936,10 +938,19 @@ export function SearchableMultiPicker({
       onChange([...value, item]);
     }
     setQuery('');
-    // Multi: permanece abierto (CA-PICK-16); tras limpiar query → S1.
-    setOpen(true);
+    // Tras añadir se cierra: con la query vacía el listbox solo mostraría S1
+    // («Escribe al menos 2 caracteres») tapando las acciones del formulario
+    // padre. La segunda búsqueda sigue siendo inmediata: al tipar se reabre
+    // (CA-PICK-16 exige no impedirla, no mantener S1 abierto).
+    setOpen(false);
     setError(false);
+    abortPending();
+    resetLookupUi();
+    suppressOpenOnFocusRef.current = true;
     inputRef.current?.focus();
+    queueMicrotask(() => {
+      suppressOpenOnFocusRef.current = false;
+    });
   }
 
   function removeItem(itemId: string) {
@@ -1067,7 +1078,12 @@ export function SearchableMultiPicker({
         disabled={disabled}
         startIcon={<Search className="h-4 w-4" aria-hidden />}
         onFocus={() => {
-          if (!disabled) setOpen(true);
+          if (disabled) return;
+          if (suppressOpenOnFocusRef.current) return;
+          // UX §5.2: al enfocar solo se abre si ya hay ≥ minChars; con el
+          // campo vacío no hay nada que mostrar salvo S1, que taparía las
+          // acciones del formulario padre.
+          if (query.trim().length >= minChars) setOpen(true);
         }}
         onChange={(event) => {
           setQuery(event.target.value);

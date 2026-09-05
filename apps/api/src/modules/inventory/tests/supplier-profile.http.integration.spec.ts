@@ -7,6 +7,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { PartyReadAdapter } from '../../parties/adapters/party-read.adapter';
 import { PartyWriteAdapter } from '../../parties/adapters/party-write.adapter';
 import { PurchasingController } from '../purchasing.controller';
@@ -138,7 +139,10 @@ describe('Supplier profile HTTP integration (service + adapter + DB en memoria)'
         JwtAuthGuard,
         RolesGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');

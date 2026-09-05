@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, cn } from '@iwana/ui';
+import { Button, cn, FormStatus } from '@iwana/ui';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { ApiError, authApi } from '@/lib/api-client';
 
@@ -195,17 +195,10 @@ function ResetPasswordContent() {
               </label>
             </div>
 
-            {serverMessage && (
-              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                {serverMessage}
-              </div>
-            )}
-
-            {serverError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {serverError}
-              </div>
-            )}
+            <FormStatus
+              status={serverError ? 'error' : serverMessage ? 'success' : 'idle'}
+              message={serverError ?? serverMessage ?? undefined}
+            />
 
             <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>
               {isSubmitting ? 'Actualizando...' : 'Restablecer contraseña'}

@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader, Input } from '@iwana/ui';
+import { Button, Card, CardContent, CardHeader, FormStatus, Input } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
-import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { PortalSectionHeader } from '@/components/shared/portal-ui';
 import { ORGANIZATION_SETTINGS_COPY } from './mod00-settings-labels';
 
 const profileSchema = z.object({
@@ -243,22 +242,22 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
             </section>
           </div>
 
-          {serverError && (
-            <PortalAlert
-              variant="error"
-              title={ORGANIZATION_SETTINGS_COPY.companyProfileErrorTitle}
-              description={serverError}
-              icon={CircleAlert}
-            />
-          )}
-          {success && !serverError && (
-            <PortalAlert
-              variant="success"
-              title={ORGANIZATION_SETTINGS_COPY.companyProfileSuccessTitle}
-              description={success}
-              icon={CheckCircle2}
-            />
-          )}
+          <FormStatus
+            status={serverError ? 'error' : success ? 'success' : 'idle'}
+            message={
+              serverError ? (
+                <>
+                  <span>{ORGANIZATION_SETTINGS_COPY.companyProfileErrorTitle}.</span>{' '}
+                  <span>{serverError}</span>
+                </>
+              ) : success ? (
+                <>
+                  <span>{ORGANIZATION_SETTINGS_COPY.companyProfileSuccessTitle}.</span>{' '}
+                  <span>{success}</span>
+                </>
+              ) : undefined
+            }
+          />
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">

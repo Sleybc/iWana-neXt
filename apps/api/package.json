@@ -8,7 +8,7 @@
     "start": "node dist/main",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:integration": "jest --config jest.integration.config.js --passWithNoTests",
     "test:coverage:tenant-service": "jest --runInBand --runTestsByPath src/modules/tenant/tenant.service.spec.ts --coverage --collectCoverageFrom=modules/tenant/tenant.service.ts --coverageReporters=text-summary --coverageReporters=json-summary",
     "test:coverage:tenant-controller": "jest --runInBand --runTestsByPath src/modules/tenant/tenant.controller.spec.ts src/modules/tenant/tenant.controller.http.spec.ts src/modules/tenant/tenant.swagger.spec.ts --coverage --collectCoverageFrom=modules/tenant/tenant.controller.ts --coverageReporters=text-summary --coverageReporters=json-summary",

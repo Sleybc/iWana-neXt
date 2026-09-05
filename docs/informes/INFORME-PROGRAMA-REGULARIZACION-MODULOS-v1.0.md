@@ -26,8 +26,11 @@ Este informe es ese acto. **No cierra ningún módulo**: constata el estado de c
 | Estado | Módulos | Cuenta |
 | --- | --- | --- |
 | **Cerrados** | MOD01, MOD04, MOD11, MOD12 | 4 |
-| **`Suspendido`** | MOD00, MOD02, MOD05, MOD06, MOD09, MOD10 | **6** |
+| **`En curso`** | MOD02 (Ola 1) · **MOD05 (Ola 2, retornado el 2026-09-04)** | 2 |
+| **`Suspendido`** | MOD00, MOD06, MOD09, MOD10 | **4** |
 | **No iniciados** | NMS, Billing, Provisioning, IPAM, Portal Cliente, ETL | 6 |
+
+> **Actualización 2026-09-04.** MOD05 pasa de `Suspendido` a `En curso` tras cerrarse su deriva documental: los dos PRDs en `Propuesto` quedaron marcados `Superado` y se emitió `PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md`. Con MOD02 y MOD05 abiertos, el programa vuelve a la **cota de dos módulos** de ADR-080 §Decisión 4 por primera vez desde que la cota entró en vigor. No se abre un tercero hasta cerrar uno.
 
 **La cota de dos de ADR-080 §Decisión 4 se excede en cuatro.** Es el resultado esperado: la cota entra en vigor hacia adelante y el estado heredado no la cumplía. **Ninguno de los seis pudo declararse cerrado**, porque ninguno tiene la evidencia que ADR-080 exige.
 
@@ -61,16 +64,20 @@ El exceso se escala al CTO en §5.
 
 > **Nota de gobernanza.** El HLD que MOD02 implementa está fechado el 2026-03-17 y describe un portal de dos rutas; el portal real tiene hoy 25 páginas. **El artefacto de definición quedó superado por la implementación** — un caso claro de deriva documental que la sucesión del HLD debe cerrar antes de emitir el prompt de la fase.
 
-### MOD05 — CRM / Expedientes / Subscribers · `Suspendido`
+### MOD05 — CRM / Expedientes / Subscribers · `En curso` (Ola 2)
+
+**Retornado el 2026-09-04.** La condición de retorno quedó satisfecha en su mitad de definición; falta la de evidencia.
 
 | Campo | Valor |
 | --- | --- |
-| **Construido** | Sí. Fase 03 completada el 2026-05-14 |
-| **Qué falta** | Informe de cierre de módulo. Gates no registrados |
-| **Causa de la suspensión** | No declarada. Coincide con el giro del programa hacia el back-office |
-| **Deriva documental** | **Dos PRDs del módulo siguen en `Propuesto`** —`PRD-MOD05-CRM-SUBSCRIBERS-v1.0` y su fase 02— pese a que el PRD maestro lo declaraba implementado. Un módulo no puede cerrarse con su propia definición sin aprobar |
-| **Condición de retorno** | Resolver los dos PRDs en `Propuesto` —aprobarlos o marcarlos superados— y emitir informe de cierre con evidencia de gates |
-| **Dueño** | AI-EM-ARCH (definición) + AI-SR-QA (evidencia) |
+| **Construido** | Sí. Fase 03 completada el 2026-05-14. **Fase 04 abierta el 2026-09-04** |
+| **Qué falta** | Ejecución de la Fase 04 (dos olas), checklist de salida e informe de cierre con G6 y G6.5 |
+| **Causa de la suspensión** | ~~No declarada~~ — **resuelta**. El módulo retorna como contenido de la Ola 2 |
+| **Deriva documental** | ~~Dos PRDs en `Propuesto`~~ — **cerrada el 2026-09-04**: `PRD-MOD05-CRM-SUBSCRIBERS-v1.0` y su fase 02 quedaron **marcados `Superado`** por `PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md` (D1 del CTO). Se corrigió además `HLD-MOD05-ARQUITECTURA-v2.0.md` (v2.2), que contradecía a ADR-027 sobre el ciclo de vida del subscriber |
+| **Hallazgo nuevo** | La auditoría de la ficha 360° del 2026-09-04 encontró que **el PRD Fase 03 ordenaba dejar equipos y tickets como stub** (RF-S360-14, §3.2). La instrucción fue correcta al emitirse; dejó de estarlo cuando MOD12 cerró y MOD10 se construyó. La Fase 04 la levanta y marca esos requisitos como superados |
+| **Deuda de seguridad abierta** | H-1 (datos personales en la cadena de consulta, con registro de acceso del proxy activo) y H-2 (listado abierto a 7 roles contra los 5 de ADR-067 §9). **Ambas bloquean el cierre.** D3 del CTO: estrechar, sin enmienda del ADR |
+| **Condición de retorno restante** | Ejecutar Fase 04, ejecutar `CHECKLIST-MOD05-SUBSCRIBERS-FASE-02-v1.0.md` (hoy 0 de 50 ítems) y emitir informe de cierre con evidencia de gates |
+| **Dueño** | AI-EM-ARCH (definición, **entregada**) + AI-SR-FULL / AI-FE-PLATFORM (ejecución) + AI-SR-QA (evidencia) |
 
 ### MOD06 — Comercial / Catálogo · `Suspendido`
 

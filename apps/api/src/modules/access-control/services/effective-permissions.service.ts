@@ -225,7 +225,7 @@ export class EffectivePermissionsService {
       await this.invalidateUsersPermissions(tenantId, userIds);
     } catch (error) {
       this.logger.warn(
-        `Fan-out por perfiles fallo: ${error instanceof Error ? error.message : String(error)}`,
+        `ACCESS_CACHE_FANOUT_FAILED fan-out por perfiles: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

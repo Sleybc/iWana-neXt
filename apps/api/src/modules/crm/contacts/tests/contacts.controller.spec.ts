@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ContactsController } from '../contacts.controller';
 import { ContactsService } from '../contacts.service';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 
 describe('ContactsController', () => {
   let controller: ContactsController;
@@ -15,7 +16,13 @@ describe('ContactsController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ContactsController],
-      providers: [{ provide: ContactsService, useValue: serviceMock }],
+      providers: [
+        { provide: ContactsService, useValue: serviceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+      ],
     }).compile();
 
     controller = module.get<ContactsController>(ContactsController);

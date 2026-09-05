@@ -204,7 +204,7 @@ describe('CreateUserModal', () => {
     });
   });
 
-  it('muestra PortalAlert de error cuando falla la creación', async () => {
+  it('muestra FormStatus de error cuando falla la creación', async () => {
     render(
       <CreateUserModal
         isOpen={true}
@@ -218,8 +218,27 @@ describe('CreateUserModal', () => {
     );
 
     await screen.findByRole('dialog', { name: 'Crear usuario interno' });
-    expect(screen.getByText('No se pudo crear el usuario')).toBeInTheDocument();
+    expect(screen.getByText('No se pudo crear el usuario.')).toBeInTheDocument();
     expect(screen.getByText('El correo ya está registrado.')).toBeInTheDocument();
+  });
+
+  it('mantiene la región de estado montada en reposo (contrato FormStatus)', async () => {
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+    const region = screen.getByRole('status');
+    expect(region).toBeInTheDocument();
+    expect(region).toHaveTextContent('');
   });
 
   it('should return selected company roles with the create payload', async () => {
@@ -274,6 +293,10 @@ describe('CreateUserModal', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Técnico de campo' }));
     expect(await screen.findByText('Perfiles de acceso')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Técnico de campo' }));
+    expect(screen.getByRole('link', { name: 'Perfiles de acceso' })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/access',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Crear usuario' }));
 
     await waitFor(() => {

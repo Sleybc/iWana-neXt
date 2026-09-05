@@ -1,11 +1,11 @@
 # Plan — Ubicación de maestros Catálogo / Proveedores / Bodegas: ¿Inventario o Settings?
 
 > **Modo AI-EM-ARCH:** Architect + Product Architect + Orchestrator (decisión de boundaries y roadmap, no código ni mockups)
-> **Fecha:** 2026-09-01
-> **Versión:** 1.1 — enmienda de auditoría multiagente 2026-09-01 (correcciones de citas, regularización de gates y estado real de implementación)
+> **Fecha:** 2026-09-02
+> **Versión:** 1.2 — enmienda por auditoría del gate de activación 2026-09-02 (ADR-084 v1.1): gate de Fase 1 sustituido, Fase 2A desbloqueada, reagrupación de IA incorporada y defecto RBAC de Proveedores registrado. *(v1.1, 2026-09-01: auditoría multiagente — correcciones de citas, regularización de gates y estado real de implementación.)*
 > **Módulos afectados:** MOD12 Inventario/SCM (`/dashboard/inventory`) y MOD00 Configuración (`/dashboard/settings`)
-> **Estado:** Aprobado — C híbrida federada autorizada 2026-09-01 (ADR-084 Aprobado) — Fase 0 COMPLETADA; Fase R1 (regularización de gates) COMPLETADA; Fase 1 parcial (telemetría viva, baseline 7 días pendiente); Fase 2B implementación **dormant en main** (registry en `COMING_SOON` hasta baseline)
-> **Aprobación:** CTO Humano 2026-09-01 (ADR-084 D1-D7 compliance verificado)
+> **Estado:** Aprobado — C híbrida federada autorizada 2026-09-01 (ADR-084 Aprobado) — Fase 0 COMPLETADA; Fase R1 COMPLETADA; **Fase 1 replanteada** (el baseline de telemetría era inalcanzable; el gate pasa a validación UX moderada — ADR-084 v1.1 D5); **Fase 2A COMPLETADA 2026-09-02** (spec v1.3 + gate por grupo + estado restringido inline; 2A-bis absorbida — informe `INFORME-INVENTORY-MODULE-SUBNAV-v1.1.md` GO); Fase 2B implementación **dormant en main** (registry en `COMING_SOON`) a la espera de la validación UX de la Fase 3
+> **Aprobación:** CTO Humano 2026-09-01 (ADR-084 D1-D7 compliance verificado) · CTO Humano 2026-09-02 (enmienda v1.2 sobre ADR-084 v1.1)
 > **Specs/HLDs base:** `PRD-MOD12-INVENTARIO-SCM-v1.0.md` (interna v1.1, ADR-068), `PRD-MOD12-CATALOGO-MAESTRO-ARTICULOS-v1.0.md`, `HLD-MOD12-INVENTARIO-SCM-v1.0.md` (interna v1.1, ADR-068), `PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` (v1.7 — principio de federación en §1 Objetivo), `HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` (v1.7 — control plane federado en L18-20), `docs/specs/2026-08-19-inventario-module-subnav-ux.md` v1.2 (congelada — árbol de 11 destinos en §1 L27-42, contrato visual en §2 L50-52), `ADR-040` Configuración Control Plane (Aprobado — prohibición de acceso a tablas de dominio en §Reglas 4), `ADR-064/065` Paginación (064 parcialmente superado por 065), `ADR-069` G6.5, `ADR-082` (Propuesto), `ADR-083` (Aprobado 2026-08-28)
 > **Briefing multiagente:** workflow `c292fe2e` (4 investigadores + síntesis) — ver resumen en Contexto
 > **Auditoría v1.1:** 3 agentes exploradores (FE, BE, docs) verificaron citas contra código y artefactos; hallazgos y regularización en `docs/informes/INFORME-MOD12-FASE-R1-REGULARIZACION-GATES-FEDERACION-v1.0.md`
@@ -32,7 +32,7 @@ Decidir dónde deben vivir los tres maestros operativos **Catálogo** (`inventor
 - **Proveedores:** maestro SCM. `SupplierProfile` + Party+Rol atómico — la creación atómica vive en el backend (`apps/api/src/modules/inventory/services/supplier-profile.service.ts:74-107`, `ensurePartyWithRole` en transacción; endpoint `purchasing.controller.ts:319-328`), ADR-052 Puerto Comando/Parties. UI: `SuppliersPanel` + `SupplierFormDrawer`. Uso ligado a RFQ/Compra (flujo proveedor→cotización→orden→recepción).
 - **Bodegas:** `stock_locations` con `responsibleRefId` UUID y matriz `StockLocationsMatrix` + `StockLocationsPanel`. Filtro `custody=mobile|all` resuelto en `InventoryClient.tsx:866-869` (normalizador `:175-177`). Uso diario junto a saldos/Kardex (`StockWorkspace.tsx:136` 4 tabs: Por producto / Por bodega / Kardex / Reposición).
 - **Settings (MOD00 Control Plane):** `HLD-MOD00 v1.7 L18-20` + `PRD-MOD00 v1.7 §1` + `ADR-040 D1 y §Reglas 4`: MOD00 centraliza **experiencia** (orquestación UX, registry metadata), no ownership de datos operativos. Owners permanecen en WFM/Inventory/Billing/Commercial. Evidencia código: `apps/api/src/modules/configuration/services/settings-registry.service.ts` (94 líneas, sin DI de repositorios) solo publica metadata; `configuration.controller.ts:33-50` expone `GET /configuration/settings-sections` sin `TypeOrmModule`; `configuration.module.ts:11` importa `AccessControl/Tenant/Users/Organization`, no `InventoryModule`. El wrapper federado `apps/portal/src/app/dashboard/settings/inventory/page.tsx` **existe en main (dormant)**: monta `InventoryClient federatedMode` filtrado a `catalog|suppliers|locations` y redirige con 308 (`permanentRedirect`) los tabs no-maestros a `/dashboard/inventory?tab=X` preservando query.
-- **Telemetría (Fase 1 FE ya implementada):** `apps/portal/src/lib/analytics.ts` exporta `trackEvent` (no-op hasta inyectar provider); `InventoryClient.tsx:1006` emite `inventory.tab.view` en `handleTabChange` y `Sidebar.tsx:305-312` en clicks de nav. Spec dedicada `InventoryClient.telemetry.spec.tsx`. Pendiente: contrato en `@iwana/shared` (hoy 0 hits) y baseline de 7 días. El campo `ownerModule` ya existe en la respuesta de settings-sections (`settings-section.schema.ts:8`); `telemetry` no se implementa (decisión: no-op local hasta elegir provider).
+- **Telemetría (Fase 1 FE ya implementada):** `apps/portal/src/lib/analytics.ts` exporta `trackEvent` (no-op hasta inyectar provider); `InventoryClient.tsx:1006` emite `inventory.tab.view` en `handleTabChange` y `Sidebar.tsx:305-312` en clicks de nav. Spec dedicada `InventoryClient.telemetry.spec.tsx`. **Verificado 2026-09-02: `trackEvent` solo reenvía si existe `window.__IWANA_TRACK__`, y el `grep` de ese símbolo devuelve un único hit — su propia definición. Nadie inyecta el provider, así que los eventos se emiten a la nada** (defecto D-1: por eso el baseline de 7 días dejó de ser gate, ADR-084 v1.1 D5). Pendiente no bloqueante: contrato en `@iwana/shared` (hoy 0 hits) y elección de provider. El campo `ownerModule` ya existe en la respuesta de settings-sections (`settings-section.schema.ts:8`); `telemetry` no se implementa (decisión: no-op local hasta elegir provider).
 - **RBAC actual (MOD12 coherente):** `packages/shared/src/enums/access-control/access-permission-key.enum.ts:47-50` define `INVENTORY_STOCK_READ/MANAGE` + `INVENTORY_PURCHASING_READ/MANAGE` (mapeo por rol en `apps/api/src/modules/access-control/access-control.constants.ts`). Gate de pestaña Compras: `filterInventoryNavGroups` (`inventory-nav.ts:78-87`), **cableado en `InventoryClient.tsx` desde la regularización R1** con la misma semántica del Sidebar (visible en loading/degradado/tripwire; oculto solo con permisos efectivos resueltos). `Sidebar.tsx:80-159`: Inventario en grupo **Menú** (gate `INVENTORY_STOCK_READ` en :132), Configuración en **Administración**. No existen `INVENTORY_CATALOG_READ`/`SUPPLIERS_READ`/`LOCATIONS_READ` granulares (ADR-083 Aprobado los deja fuera hasta telemetría).
 - **Deep-links:** `handleTabChange` (`InventoryClient.tsx:996-1019`, `router.replace ?tab=` en 1008-1016), handler de custody `:975-994`, legacy `?tab=summary`→`overview` (`inventory-tab-params.ts:28-38`). `useSearchParams` está **centralizado en `InventoryClient`** — los drawers no leen URL, reciben props. E2E `portal-inventory-scm.spec.ts` cubre estos links; `portal-inventory-scm-federated.spec.ts` (nuevo, en main) cubre el alias federado.
 - **Boundaries verificados (grep):** `apps/api/src/modules/configuration/**` 0 imports de `inventory_*`; `apps/api/src/modules/inventory/**` 0 imports de `configuration`. `settings-registry.service.ts` no inyecta repositorios de inventario. Conclusión workflow: mover maestros a MOD00 rompería ADR-040 D1 y §Reglas 4 (patrón “MOD00 no lee tablas de dominio”).
@@ -78,7 +78,7 @@ Decidir dónde deben vivir los tres maestros operativos **Catálogo** (`inventor
 - Dual-routing estable para siempre: canónico `/dashboard/inventory?tab=catalog` + alias `/dashboard/settings/inventory?tab=catalog` (308 para no-maestros). Cero migración de datos, rollback trivial a `COMING_SOON`.
 - Coste 3-5 días bien invertidos hoy evita el refactor más caro (mover tablas + RBAC + deep-links) mañana.
 
-**Qué NO hacer:** mover maestros a Settings como owner (B), dejar solo en Inventario esperando refactor (A-parche), crear permisos nuevos sin evidencia, duplicar UI con copia, **activar el alias en producción antes del baseline** (ADR-084 D5 / Regla 7).
+**Qué NO hacer:** mover maestros a Settings como owner (B), dejar solo en Inventario esperando refactor (A-parche), crear permisos nuevos sin evidencia, duplicar UI con copia, **activar el alias en producción antes de la validación UX** (ADR-084 v1.1 D5 / Regla 7), y **activarlo con gate uniforme** ignorando que Proveedores exige `INVENTORY_PURCHASING_READ` (D-3).
 
 ## Work Plan
 
@@ -93,29 +93,87 @@ La auditoría multiagente detectó que la implementación Fase 2B adelantó al g
 - **Wiring CA-GATE-06:** `filterInventoryNavGroups` conectado en `InventoryClient.tsx` (no-federado) — Compras se oculta solo con permisos efectivos resueltos (`ready` + set no vacío + no-ADMIN + sin `inventory.purchasing.read`); en loading/degradado queda visible, mismo criterio del Sidebar.
 - **Docs corregidos:** plan v1.1 (esta enmienda), erratas de ADR-084 (estado del plan, refs de línea), comentario de `inventory-nav.ts`.
 - **Código Fase 2B en main como dormant:** wrapper `settings/inventory/page.tsx`, nav federada (`INVENTORY_FEDERATED_TABS`/`INVENTORY_FEDERATED_NAV_GROUPS`), e2e `portal-inventory-scm-federated.spec.ts`, telemetría (`analytics.ts` + `InventoryClient.tsx` + `Sidebar.tsx`). Reactivación = revertir el bloque INVENTORY del registry a `AVAILABLE` (2 líneas) tras completar Fase 1.
-- **Gate:** cumplimento ADR-084 D5/Regla 7 — la activación en producción queda condicionada a baseline + validación UX.
+- **Gate:** cumplimiento ADR-084 D5/Regla 7 — la activación en producción queda condicionada a evidencia previa. *(El contenido de ese gate cambió después: la Fase R2 del 2026-09-02 lo sustituyó por la validación UX moderada, al verificarse que el baseline de telemetría era inalcanzable. Este registro conserva lo que R1 decidió en su momento.)*
 
-### Fase 1 — Instrumentación y baseline (AI-SR-FULL + AI-FE-PLATFORM + SR-QA, baseline 7 días de calendario) — 🔶 PARCIAL
+### Fase R2 — Enmienda del gate de activación (AI-EM-ARCH, 1 sesión) — ✅ COMPLETADA 2026-09-02
+La auditoría del 2026-09-02 detectó que **el gate de la Fase 1 era inalcanzable** y que el plan v1.1
+era más restrictivo que su propio ADR. Cuatro defectos, resueltos en **ADR-084 v1.1**:
+
+| # | Defecto | Resolución |
+|---|---|---|
+| **D-1** | El baseline de 7 días de telemetría **no podía completarse**: `apps/portal/src/lib/analytics.ts:6-16` solo reenvía el evento si existe `window.__IWANA_TRACK__`, y el `grep` de ese símbolo en el repo devuelve **un único hit — su propia definición**. Sin provider, los eventos se emiten a la nada y la Fase 2B quedaba congelada indefinidamente | ADR-084 v1.1 D5: el gate pasa a **validación UX moderada**; la telemetría queda como deseable no bloqueante |
+| **D-2** | El plan v1.1 marcaba la Fase 2A «⏸ condicionada a datos Fase 1», cuando ADR-084 D5 la autoriza expresamente sin datos | Fase 2A **desbloqueada** y priorizada (abajo) |
+| **D-3** | Proveedores no comparte eje con Catálogo y Bodegas: sus endpoints viven en `purchasing.controller.ts` bajo `INVENTORY_PURCHASING_*`, pero su pestaña se ofrece con `inventory.stock.read` → **403 vivo** | ADR-084 v1.1 D3 + Regla 3: gate **por grupo**. Corrección como defecto propio (Fase 2A-bis) |
+| **D-4** | Descripción del registry prescrita en Fase 2B: «catálogo, categorías y **existencias**» — Existencias redirige con 308 | ADR-084 v1.1 Regla 9: catálogo, **proveedores** y **bodegas** |
+
+### Fase 1 — Instrumentación (AI-SR-FULL + AI-FE-PLATFORM) — ✅ CERRADA con alcance replanteado
 - **FE (✅ hecha):** `trackEvent('inventory.tab.view')` vivo en `InventoryClient.tsx:1006` (`handleTabChange`) y `Sidebar.tsx:305-312` (clicks Inventario/Settings); no-op local en `analytics.ts` hasta elegir provider. Spec `InventoryClient.telemetry.spec.tsx` en verde.
 - **BE (✅ hecha):** `GET /configuration/settings-sections` ya expone `ownerModule` (`settings-section.schema.ts:8`); el campo `telemetry` **no se implementa** (decisión: no-op local, no bloquea C).
-- **QA (⏳ pendiente):** baseline manual de 7 días: 5 operadores completan “crear categoría → crear producto → ver en Existencias” y “crear proveedor → crear solicitud” midiendo tiempo y clics. Guardar en `docs/informes/`.
-- **Salida:** dashboard temporal de frecuencia por tab (7 días) → habilita decisión de reactivación del alias.
+- **Baseline de 7 días: retirado como gate** (D-1). La instrumentación se conserva; cuando exista provider, su serie informará la decisión sin condicionarla. Elegir provider es decisión de tooling del CTO, fuera del camino crítico de esta decisión de navegación.
+- **La validación UX moderada pasa a la Fase 3** como gate habilitante de la Fase 2B.
 
-### Fase 2A — Ordenar dentro de Inventario (DS-OWNER + FE-PLATFORM, 1 día) — ⏸ condicionada a datos Fase 1
-- **DS-OWNER:** evaluar sub-agrupar “Maestros” dentro del mismo `PortalModuleSubnav` (ej. divider + eyebrow “Maestros” dentro de `Operación`) o colapsar en `<lg` sin cambiar módulo. Decisión en carril rápido UI; si toca spec v1.2, versionar a v1.3.
-- **FE:** aplicar ajuste mínimo en `portal-ui.tsx`/`inventory-nav.ts` (solo presentación, no ruta). Mantener `?tab` canónico.
-- **Docs:** `INFORME-INVENTORY-MODULE-SUBNAV-v1.1.md` con antes/después y métrica de encontrabilidad (hoy no existe — sin colisión).
+### Fase 2A — Reagrupar dentro de Inventario (PROD-UX + DS-OWNER + FE-PLATFORM, ~1-2 días) — ✅ COMPLETADA 2026-09-02
+Autorizada por ADR-084 D5 **sin evidencia previa** (corrige D-2). Ataca la saturación real de 11
+destinos sin mover nada de módulo. **Ejecutada por protocolo multiagente** (spec v1.3 de PROD-UX
+con validación DS-OWNER; implementación FE-PLATFORM; reviews SEC-ENG APROBADO y SR-QA COMPLIANT).
 
-### Fase 2B — C completa (SR-FULL + FE-PLATFORM + DS-OWNER, 3-5 días) — 🔶 IMPLEMENTACIÓN DORMANT EN MAIN; activación pendiente de Fase 1
-1. **Registry (BE):** al reactivar (post-baseline + validación UX), reemplazar el bloque `SettingsSectionKey.INVENTORY` de `settings-registry.service.ts` por: `status:AVAILABLE route:'/dashboard/settings/inventory?tab=catalog' ownerModule:'Inventory' description:'Maestros SCM del inventario: catálogo, categorías y existencias.' requiredPermissions:['inventory.stock.read']` (clave existente, **no** `INVENTORY_MAESTROS`).
+- **Árbol propuesto (definición funcional AI-EM-ARCH),** agrupado por **eje de responsabilidad** en
+  vez de por momento:
+
+```text
+Vista general                    ← aterrizaje (?tab omitido)
+Maestros          Catálogo · Bodegas
+Operación         Existencias · Salidas · Conteos
+Abastecimiento    Compras · Proveedores      ← gate INVENTORY_PURCHASING_READ (grupo completo)
+Seguimiento       Activos · Movimientos · Bajas
+```
+
+- **Beneficio arquitectónico, no solo estético:** la agrupación queda **alineada con la frontera de
+  permisos**. Hoy `filterInventoryNavGroups` oculta `purchasing` y deja `suppliers` visible — que es
+  exactamente D-3. Con «Abastecimiento» como grupo, el gate se aplica al grupo completo y la
+  incoherencia desaparece por construcción.
+- **PROD-UX + DS-OWNER:** spec v1.2 → **v1.3** con el árbol de cinco grupos. Diseño detallado
+  (divider, eyebrow, comportamiento `<lg`, tokens) es suyo; carril rápido de UI.
+- **FE:** aplicar sobre `inventory-nav.ts` y, solo si la spec lo exige, `portal-ui.tsx`
+  (`PortalModuleSubnav` es **compartida con Comercial y Reglas**: toda extensión es aditiva).
+  Extender `filterInventoryNavGroups` al gate por grupo. Solo presentación: sin cambios de ruta ni
+  de `?tab`.
+- **Docs:** `INFORME-INVENTORY-MODULE-SUBNAV-v1.1.md` con antes/después. — **Entregado:** spec
+  v1.3 congelada (extensión aditiva `hideLabel?`, gate por grupo, estado restringido inline para
+  deep-links gated), utility `.portal-subnav-group-sans-label` en fuente de tokens, informe v1.1
+  con evidencia de gates (57 tests portal en verde, 171 de Comercial/Reglas, typecheck/lint
+  limpios, audit-ui P0/P1 = 0, backend intacto). Pendiente residual: re-validar la suite E2E
+  completa cuando aterrice el trabajo paralelo en vuelo (11 fallos ajenos a esta fase — ver §7 del
+  informe v1.1).
+
+### Fase 2A-bis — Corregir el defecto RBAC de Proveedores (SR-FULL + SEC-ENG) — ✅ RESUELTA 2026-09-02 (absorbida por 2A)
+Defecto vivo hoy, **no depende de la federación**: un rol con solo `inventory.stock.read` ve la
+pestaña Proveedores y recibe 403 al usarla. Alinear la visibilidad de UI con el permiso que el
+backend exige. El backend ya es correcto y **no se toca**: `PermissionsGuard` sigue siendo la
+barrera real. Si la Fase 2A entrega el gate por grupo, esta corrección queda absorbida ahí — pero
+se registra por separado para que no se pierda si 2A se difiere. **Cierre:** el gate por grupo de
+la Fase 2A la absorbió (grupo Abastecimiento completo con `inventory.purchasing.read`); SEC-ENG
+verificó backend intacto y sin permisos nuevos (CA-2Ab-01..05/07 cubiertos; CA-2Ab-06 verificado
+por código — `purchasing.controller.ts` sin diff).
+
+### Fase 2B — C completa (SR-FULL + FE-PLATFORM + DS-OWNER, 3-5 días) — 🔶 IMPLEMENTACIÓN DORMANT EN MAIN; activación pendiente de la validación UX (Fase 3)
+1. **Registry (BE):** al reactivar (post-validación UX), reemplazar el bloque `SettingsSectionKey.INVENTORY` de `settings-registry.service.ts` por: `status:AVAILABLE route:'/dashboard/settings/inventory?tab=catalog' ownerModule:'Inventory' requiredPermissions:['inventory.stock.read']` (clave existente, **no** `INVENTORY_MAESTROS`).
+   **Copy corregido (D-4):** `description:'Maestros SCM del inventario: catálogo, proveedores y bodegas.'` — nunca «existencias», que redirige con 308.
+   **Gate por grupo (D-3):** dentro del wrapper, Proveedores exige `INVENTORY_PURCHASING_READ`. Activar con gate uniforme trasladaría el 403 al interior de Configuración.
 2. **Wrapper (FE): ✅ hecho** — `apps/portal/src/app/dashboard/settings/inventory/page.tsx` monta `InventoryClient` con `initialTab` filtrado a `catalog|suppliers|locations` y `federatedMode=true` (oculta grupos no-maestros, muestra eyebrow “Maestros” + CTA “Ir a Inventario completo”). Reusa `PortalModuleSubnav` sin duplicar UI.
 3. **Dual-routing: ✅ hecho** — `permanentRedirect` (308) en `page.tsx` si `?tab` no es maestro → `/dashboard/inventory?tab=X` preservando `custody`/`commercialRef`/`serializedAssetId`. Sin `middleware` ni `next.config`.
 4. **RBAC: ✅ hecho** — `settings-priority.ts:20-27` + `SettingsSectionGrid.tsx:98-215` verifican `hasAllSettingsSectionPermissions` con `INVENTORY_STOCK_READ` para mostrar tarjeta; `Sidebar.tsx` no duplica lógica; gate de `purchasing` cableado (R1).
 5. **Docs (⏳ al activar):** HLD-MOD12 delta en sitio (v1.0 → interna 1.2); `INFORME-MOD12-SETTINGS-FEDERACION-MAESTROS-v1.0.md` con G6/G6.5/G7 registrados por separado (ADR-069).
 - **Contratos congelados (declarar en prompt de fase):** `docs/specs/2026-08-19-inventario-module-subnav-ux.md v1.2`, `apps/portal/src/components/shared/portal-ui.tsx` (`PortalModuleSubnav` API), `packages/shared/src/enums/access-control/*`, `apps/api/src/modules/configuration/services/settings-registry.service.ts` metadata contract.
 
-### Fase 3 — Validación y rollout (SR-QA + PLAT-OPS, 1-2 días) — ⏳ al activar
-- Ver Validation Plan. Gate G6/G6.5/G7 por fase (ADR-069).
+### Fase 3 — Validación UX y rollout (SR-QA + PLAT-OPS, 1-2 días) — ⏳ gate habilitante de la Fase 2B
+- **Validación UX moderada (el gate, ADR-084 v1.1 D5):** 5 operadores y 3 admins; tareas «crear
+  categoría → crear producto → verlo en Existencias» y «crear proveedor → crear solicitud»; medir
+  tiempo y clics contra el baseline actual. Informe en `docs/informes/`.
+- **Se ejecuta después de la Fase 2A**, para medir contra el subnav reagrupado: si la reagrupación
+  ya resuelve la saturación, el alias federado deja de justificarse como *alivio* y pasa a
+  justificarse solo como *descubrimiento del ADMIN*. La validación debe informar esa distinción.
+- Resto del Validation Plan y gates G6/G6.5/G7 por fase (ADR-069).
 
 ## Validation Plan
 
@@ -123,7 +181,10 @@ La auditoría multiagente detectó que la implementación Fase 2B adelantó al g
 |------|-------------|-----------------|-------------------|
 | 0/R1 | Citas ADR/PRD/HLD abiertas y en estado Aprobado | `pnpm audit:adr-citations` | `BLOQUEANTE: 0`; ADR-040, ADR-084, PRD-MOD12, HLD-MOD00 citados con ruta y estado |
 | 0/R1 | Boundaries sin cross-import | `grep -R "from.*inventory" apps/api/src/modules/configuration --include="*.ts" ; grep -R "from.*configuration" apps/api/src/modules/inventory --include="*.ts"` | 0 hits |
-| 1 | Telemetría por tab | `pnpm --filter @iwana/portal test src/components/inventory/InventoryClient.telemetry.spec.tsx` + manual 7 días | Spec verde; eventos por `?tab` (catalog/suppliers/locations/stock/purchasing/issues/counts/assets) con tendencia tras baseline |
+| 1 | Telemetría por tab (no bloqueante desde v1.2) | `pnpm --filter @iwana/portal test src/components/inventory/InventoryClient.telemetry.spec.tsx` | Spec verde; los eventos se emiten por `?tab`. **Sin provider no hay serie histórica** — verificado: `grep __IWANA_TRACK__` = 1 hit (su definición) |
+| 2A | Subnav reagrupado y gate por grupo | `pnpm --filter @iwana/portal test src/components/inventory/inventory-nav.spec.ts src/components/inventory/InventoryClient.spec.tsx src/components/shared/portal-module-subnav.spec.tsx` | Cinco grupos; los 11 destinos conservan su `?tab`; «Abastecimiento» se oculta completo sin `inventory.purchasing.read` efectivo (fail-open en loading/degradado) |
+| 2A | Primitive compartida no rompe | Suites de Comercial y de Reglas que consumen `PortalModuleSubnav` | Verde — la extensión debe ser aditiva |
+| 2A-bis | RBAC de Proveedores (D-3) | Rol solo-stock en portal + `curl` a `GET /purchasing/suppliers` | La pestaña no se ofrece si el endpoint devolverá 403; el backend sigue rechazando |
 | 1 | Tenancy no regresa | `pnpm --filter @iwana/api exec jest src/modules/inventory/tests/inventory-item.service.spec.ts src/modules/inventory/tests/supplier-profile.service.spec.ts` | Pass; sin `schema` hardcodeado (specs de inventory viven en `src/modules/inventory/tests/`) |
 | 2A/2B | UX encontrabilidad | Test moderado 5 op + 3 admin (tarea: crear categoría/proveedor/bodega y usarlo) | Tiempo-a-tarea no degrada vs baseline; SUS no baja |
 | 2A/2B | Typecheck & lint | `pnpm --filter @iwana/portal typecheck && pnpm lint` | Verde |
@@ -145,8 +206,10 @@ Riesgo mayor a validar: **Fase 2B dual-routing + RBAC** (dos entrypoints, dos pe
 | Mover a Settings sin ADR rompe Modulith (MOD00 lee tablas SCM) | Alta si se elige B | Alto (acoplamiento transversal, blob oculto) | Bloquear B sin ADR-CTO; validar grep 0 cross-imports en G6 |
 | RBAC sobre-permiso: rol bodega necesita `settings.manage` para ver maestros | Alta si se exige `SETTINGS_*` | Medio (PoLP) | Tarjeta Settings exige `inventory.stock.read`, no `settings.*` |
 | Breaking deep-links/bookmarks/QR | Alta si se cambia `?tab` | Alto (operación diaria) | Dual-routing + redirect 308 + E2E de deep-links |
-| Activar alias antes de evidencia (violación ADR-084 D5/R7) | ~~Ocurrió en working tree~~ → **regularizado en R1** (registry `COMING_SOON` en main) | Alto (decisión sin datos) | Activación solo tras baseline 7 días + validación UX; revert a `COMING_SOON` como estado por defecto |
-| Saturación percibida persiste (11 tabs siguen en Inventario) | Media | Medio (carga cognitiva) | Fase 2A: sub-agrupar “Maestros” dentro del mismo subnav + medir Fase 1 antes de federar |
+| Activar alias antes de evidencia (violación ADR-084 D5/R7) | ~~Ocurrió en working tree~~ → **regularizado en R1** (registry `COMING_SOON` en main) | Alto (decisión sin datos) | **v1.2:** activación solo tras la **validación UX moderada** (ADR-084 v1.1 D5); revert a `COMING_SOON` como estado por defecto |
+| Saturación percibida persiste (11 tabs siguen en Inventario) | Media | Medio (carga cognitiva) | **v1.2:** Fase 2A desbloqueada y priorizada — reagrupar por eje de responsabilidad en el mismo subnav, sin esperar datos (ADR-084 D5) |
+| **Gate de activación inalcanzable** (baseline sin provider de telemetría) | ~~Materializado~~ → **resuelto en R2** | Alto (Fase 2B construida y congelada indefinidamente) | ADR-084 v1.1 D5: gate sustituido por validación UX moderada; telemetría degradada a no bloqueante |
+| **403 de Proveedores por gate desalineado** (rol solo-stock ve la pestaña) | ~~Materializado (defecto vivo)~~ → **Resuelto 2026-09-02 (Fase 2A: gate por grupo; 2A-bis absorbida)** | Medio (UX rota; sin fuga de datos — el backend rechaza) | Gate por grupo de ADR-084 v1.1 D3 implementado; SEC-ENG verificó backend intacto. Nunca activar el alias con gate uniforme |
 | Duplicación UI si se copia en vez de federar | Media | Medio (deuda) | Wrapper monta `InventoryClient` filtrado, no copia componentes |
 | Alias directo por URL sin tarjeta (residual post-R1) | Baja | Bajo | Documentado como aceptado: no descubrible desde grid; RBAC y backend intactos |
 | Telemetría sin provider (no-op local) | Alta | Bajo | No-op local + contrato `@iwana/shared` futuro hasta elegir provider; decisión C no bloqueada por esto |
@@ -157,11 +220,19 @@ Riesgo mayor a validar: **Fase 2B dual-routing + RBAC** (dos entrypoints, dos pe
 
 ## Open Questions
 
-1. **¿Cuándo se completa el baseline?** La telemetría ya está viva; el baseline de 7 días + test UX (5 op / 3 admin) es la condición de reactivación del alias. La “saturación” sigue siendo percepción hasta entonces.
-2. **¿RBAC granular futuro?** ADR-083 (Aprobado 2026-08-28) prevé convergencia RBAC granular por módulos operativos. Si Inventario migra a permisos finos, ¿se crean `INVENTORY_CATALOG_READ`/`SUPPLIERS_READ`/`LOCATIONS_READ` y se re-mapean Sidebar + registry? Este plan los deja fuera hasta evidencia.
-3. **¿Settings debe mostrar tarjeta “Inventario — Maestros” a rol ADMIN solo o también a bodega/compras?** Propuesta: misma llave que Sidebar (`inventory.stock.read`) para ambos; confirmar con Product.
-4. **¿Se desea sub-agrupar “Maestros” dentro de Inventario ya (Fase 2A) aunque se federe luego?** DS-OWNER propone; no bloquea C. Decisión UX pendiente.
+1. ~~**¿Cuándo se completa el baseline?**~~ **Cerrada 2026-09-02 (D-1):** el baseline era inalcanzable sin provider. El gate pasó a validación UX moderada (ADR-084 v1.1 D5), que se ejecuta en Fase 3 tras la reagrupación.
+2. **¿RBAC granular futuro?** ADR-083 (Aprobado 2026-08-28) prevé convergencia RBAC granular por módulos operativos. Si Inventario migra a permisos finos, ¿se crean `INVENTORY_CATALOG_READ`/`SUPPLIERS_READ`/`LOCATIONS_READ` y se re-mapean Sidebar + registry? Este plan los deja fuera hasta evidencia. **Nota v1.2:** el gate por grupo de D-3 se resuelve con las llaves existentes; no requiere permisos nuevos.
+3. ~~**¿Settings muestra la tarjeta a ADMIN solo o también a bodega/compras?**~~ **Cerrada 2026-09-02 (D-3):** la tarjeta usa `inventory.stock.read` (misma llave que Sidebar), pero **dentro** del alias el gate es por grupo: Proveedores exige `inventory.purchasing.read`.
+4. ~~**¿Se desea sub-agrupar “Maestros” ya (Fase 2A)?**~~ **Cerrada 2026-09-02 (D-2):** sí, y es prioridad 1. ADR-084 D5 la autoriza sin evidencia previa. Pendiente solo el diseño detallado (spec v1.3, PROD-UX + DS-OWNER).
+5. **¿Provider de telemetría?** Sigue abierta como decisión de tooling del CTO (posible coste o licencia). Ya **no bloquea** nada de este plan.
 
 ---
 
-**Próximo paso:** completar baseline Fase 1 (7 días) + validación UX → decisión de reactivación del alias (registry `AVAILABLE`) → `INFORME-MOD12-SETTINGS-FEDERACION-MAESTROS-v1.0.md` con G6/G6.5/G7. La deuda de duplicación detectada se gobierna en `docs/plans/2026-09-01-inventario-dedup-refactors.md` (Propuesto).
+**Próximo paso (v1.3):** ejecutar **Fase 3** — validación UX moderada (5 operadores + 3 admins,
+SR-QA + PLAT-OPS) contra el subnav reagrupado ya en producción de código: es el gate habilitante
+de la activación del alias federado (registry `AVAILABLE`, Fase 2B) y del
+`INFORME-MOD12-SETTINGS-FEDERACION-MAESTROS-v1.0.md` con G6/G6.5/G7 por separado. Residual
+previo: re-validar `portal-inventory-scm.spec.ts` completo cuando el trabajo paralelo del tree
+(dialog de nuevo producto, custodia ejecutor, reservas 03B) aterrice.
+
+La deuda de duplicación detectada se gobierna en `docs/plans/2026-09-01-inventario-dedup-refactors.md` (Propuesto).

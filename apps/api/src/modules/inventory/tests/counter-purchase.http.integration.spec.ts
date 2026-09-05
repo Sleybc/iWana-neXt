@@ -7,6 +7,7 @@ import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { InventoryController } from '../inventory.controller';
+import { StockIssuePickingService } from '../services/stock-issue-picking.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { InventoryCategoryService } from '../services/inventory-category.service';
 import { InventoryDashboardService } from '../services/inventory-dashboard.service';
@@ -21,6 +22,15 @@ import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { WriteOffService } from '../services/write-off.service';
+import { ExecutorCustodyService } from '../services/executor-custody.service';
+
+jest.mock('../../access-control/guards/permissions.guard', () => ({
+  PermissionsGuard: class PermissionsGuard {
+    canActivate() {
+      return true;
+    }
+  },
+}));
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -87,9 +97,11 @@ describe('Counter purchase HTTP integration', () => {
         { provide: StockLocationService, useValue: {} },
         { provide: SerializedAssetService, useValue: {} },
         { provide: StockBalanceService, useValue: {} },
+        { provide: ExecutorCustodyService, useValue: {} },
         { provide: StockLedgerService, useValue: {} },
         { provide: StockMovementQueryService, useValue: {} },
         { provide: StockIssueService, useValue: {} },
+        { provide: StockIssuePickingService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
         { provide: ReplenishmentService, useValue: {} },
         { provide: CycleCountService, useValue: {} },

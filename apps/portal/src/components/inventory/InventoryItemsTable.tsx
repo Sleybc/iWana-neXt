@@ -3,6 +3,7 @@
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Badge, Button } from '@iwana/ui';
+import { getInventoryUnitOfMeasureLabel } from '@iwana/shared';
 import type { InventoryItemRecord } from '@/lib/api-client';
 import {
   PortalActionToolbar,
@@ -240,7 +241,9 @@ export function InventoryItemsTable({
               <td className={`${cellClass} font-mono text-xs`}>{item.sku}</td>
               <td className={cellClass}>
                 <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{item.unitOfMeasure}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {getInventoryUnitOfMeasureLabel(item.unitOfMeasure)}
+                </p>
               </td>
               {showCatalogColumns ? (
                 <td className={cellClass}>{getInventoryItemKindLabel(item.itemKind)}</td>

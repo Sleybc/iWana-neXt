@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@iwana/ui';
 import {
   ExecutionOrderResult,
+  formatFullName,
   InventoryItemStatus,
   StockLocationStatus,
   type RegisterActivityCommand,
@@ -24,6 +25,9 @@ import type {
   RegisterExecutionOrderItemUsageDto,
   CloseExecutionOrderDto,
   ExecutionOrderDetailResponse,
+  ExecutorCustodyResponse,
+  SerializedAssetRecord,
+  StockBalanceRecord,
 } from '@/lib/api-client';
 import type {
   ExecutionOrderActivity,
@@ -127,6 +131,8 @@ export async function collectExecutionOrderCollectionPages<T>(
 
 const USERS_PAGE_SIZE = 100;
 const TASKS_PAGE_SIZE = 20;
+/** Tamaño de página por defecto del contrato de custodia del ejecutor (§1). */
+const EXECUTOR_CUSTODY_PAGE_SIZE = 25;
 const INTERNAL_AREA_OPTIONS = [
   { value: 'operations-area', label: 'Operaciones' },
   { value: 'noc-area', label: 'NOC' },
@@ -292,11 +298,30 @@ export async function loadMoreExecutionOrderCollection<T>(
   };
 }
 
-export function resolveAssignedTemplateVersion(
-  versions: ExecutionOrderTemplateVersion[],
-  assignedVersion: number,
+/**
+ * Deriva la plantilla aplicada desde el snapshot congelado que viaja en el
+ * detalle de la OT (DATA-P1-3). Devuelve null cuando la OT no tiene plantilla
+ * vinculada o cuando el snapshot no está disponible; en ambos casos el cierre
+ * queda bloqueado en coherencia con el gate de cierre del backend.
+ */
+export function deriveTemplateFromDetail(
+  detail: ExecutionOrderDetailResponse | null,
 ): ExecutionOrderTemplateVersion | null {
-  return versions.find((version) => version.version === assignedVersion) ?? null;
+  const reference = detail?.template;
+  if (!detail || !reference?.requirements) {
+    return null;
+  }
+  return {
+    id: reference.id,
+    templateId: reference.id,
+    key: reference.key,
+    version: reference.version,
+    label: reference.label,
+    workType: detail.workType,
+    status: 'PUBLISHED',
+    requirements: reference.requirements,
+    reasonCatalogs: [],
+  };
 }
 
 export function isValidFutureEvidenceExpiry(
@@ -327,7 +352,7 @@ async function loadOperationalUsers(): Promise<InternalUser[]> {
 }
 
 function buildUserLabel(user: InternalUser): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(user.firstName, user.lastName).trim();
   return fullName || 'Usuario del equipo';
 }
 
@@ -385,14 +410,28 @@ export function OperationsClient() {
   const [executionOrderEvidenceState, setExecutionOrderEvidenceState] = useState<
     'loading' | 'available' | 'unavailable'
   >('available');
+  const [executionOrderInventoryState, setExecutionOrderInventoryState] = useState<
+    'loading' | 'available' | 'unavailable'
+  >('loading');
+  // Custodia del ejecutor: misma gramática de estados que el inventario del
+  // formulario; alimenta la sub-sección de solo lectura del bloque 4.
+  const [executorCustodyState, setExecutorCustodyState] = useState<
+    'loading' | 'available' | 'unavailable'
+  >('loading');
+  const [executorCustodyName, setExecutorCustodyName] = useState<string | null>(null);
+  const [executorCustodyAssets, setExecutorCustodyAssets] = useState<SerializedAssetRecord[]>([]);
+  const [executorCustodyAssetsMeta, setExecutorCustodyAssetsMeta] =
+    useState<ListMeta>(EMPTY_LIST_META);
+  const [executorCustodyBalances, setExecutorCustodyBalances] = useState<StockBalanceRecord[]>([]);
+  const [executorCustodyBalancesMeta, setExecutorCustodyBalancesMeta] =
+    useState<ListMeta>(EMPTY_LIST_META);
   const [isLoadingMoreExecutionOrderActivities, setIsLoadingMoreExecutionOrderActivities] =
     useState(false);
   const [isLoadingMoreExecutionOrderItemUsage, setIsLoadingMoreExecutionOrderItemUsage] =
     useState(false);
   const [isLoadingMoreExecutionOrderEvidence, setIsLoadingMoreExecutionOrderEvidence] =
     useState(false);
-  const [executionOrderTemplate, setExecutionOrderTemplate] =
-    useState<ExecutionOrderTemplateVersion | null>(null);
+  const [isLoadingMoreExecutorCustody, setIsLoadingMoreExecutorCustody] = useState(false);
   const [executionOrderItemOptions, setExecutionOrderItemOptions] = useState<
     Array<{ value: string; label: string }>
   >([]);
@@ -408,7 +447,9 @@ export function OperationsClient() {
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
   const [offline, setOffline] = useState(false);
   const detailRequestRef = useRef(0);
-  const executionOrderRequestIdRef = useRef<string | null>(null);
+  // Contador secuencial: descarta respuestas tardías de aperturas/refresh previos
+  // para que no reabran el drawer ni pisen el estado de la OT vigente.
+  const executionOrderRequestSeqRef = useRef(0);
 
   useEffect(() => {
     const updateConnectionState = () => setOffline(!navigator.onLine);
@@ -434,6 +475,11 @@ export function OperationsClient() {
   const userLabelMap = useMemo(
     () => new Map(users.map((user) => [user.id, buildUserLabel(user)])),
     [users],
+  );
+
+  const executionOrderTemplate = useMemo(
+    () => deriveTemplateFromDetail(selectedExecutionOrder),
+    [selectedExecutionOrder],
   );
 
   const lastCreatedTaskNeedsScheduling = useMemo(
@@ -505,7 +551,8 @@ export function OperationsClient() {
   }, []);
 
   const openExecutionOrder = useCallback(async (executionOrderId: string) => {
-    executionOrderRequestIdRef.current = executionOrderId;
+    const requestSeq = executionOrderRequestSeqRef.current + 1;
+    executionOrderRequestSeqRef.current = requestSeq;
     setIsLoadingMoreExecutionOrderActivities(false);
     setIsLoadingMoreExecutionOrderItemUsage(false);
     setIsLoadingMoreExecutionOrderEvidence(false);
@@ -513,88 +560,157 @@ export function OperationsClient() {
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     setExecutionOrderEvidenceState('loading');
-    try {
-      const [order, activities, itemUsage] = await Promise.all([
-        tasksApi.executionOrders.get(executionOrderId),
-        collectExecutionOrderCollectionPages((page, limit) =>
-          tasksApi.executionOrders.listActivities(executionOrderId, { page, limit }),
-        ),
-        collectExecutionOrderCollectionPages((page, limit) =>
-          tasksApi.executionOrders.listItemUsage(executionOrderId, { page, limit }),
-        ),
-      ]);
-      const detail = order;
-      setSelectedExecutionOrder(detail);
-      setExecutionOrderActivities(activities.data);
-      setExecutionOrderActivitiesMeta(activities.meta);
-      setExecutionOrderItemUsage(itemUsage.data);
-      setExecutionOrderItemUsageMeta(itemUsage.meta);
+    setExecutionOrderInventoryState('loading');
+    setExecutorCustodyState('loading');
 
-      try {
-        const [items, locations] = await Promise.all([
-          inventoryApi.listItems({ status: InventoryItemStatus.ACTIVE, limit: 100 }),
-          inventoryApi.listLocations({
-            custody: 'mobile',
-            status: StockLocationStatus.ACTIVE,
-            withStock: true,
-            limit: 100,
-          }),
-        ]);
-        setExecutionOrderItemOptions(
-          items.data.map((item) => ({ value: item.id, label: `${item.sku} · ${item.name}` })),
-        );
-        setExecutionOrderCustodyOptions(
-          locations.data.map((location) => ({
-            type: location.type === 'MOBILE_CREW' ? 'CREW' : 'TECHNICIAN',
-            id: location.id,
-            label: location.name,
-          })),
-        );
-      } catch {
-        setExecutionOrderError(
-          'No fue posible cargar el inventario autorizado. El formulario conserva lo que ingresaste; actualiza el detalle para reintentar.',
-        );
+    // El detalle es la única llamada crítica; actividades, consumos, evidencias
+    // e inventario son concerns independientes y se cargan en paralelo para que
+    // el fallo de uno no degrade ni retrase a los demás. La custodia del
+    // ejecutor depende del detalle (order.assignee.id) pero viaja en el mismo
+    // allSettled reutilizando su promesa, así el guard secuencial la cubre igual.
+    const detailPromise = tasksApi.executionOrders.get(executionOrderId);
+    const executorCustodyPromise = detailPromise.then((detail) => {
+      const assigneeId = detail.assignee?.id;
+      if (!assigneeId) {
+        return null;
       }
+      return inventoryApi.getExecutorCustody(assigneeId, {
+        page: 1,
+        limit: EXECUTOR_CUSTODY_PAGE_SIZE,
+      });
+    });
+    const [
+      orderResult,
+      activitiesResult,
+      itemUsageResult,
+      evidenceResult,
+      inventoryResult,
+      custodyResult,
+    ] = await Promise.allSettled([
+      detailPromise,
+      collectExecutionOrderCollectionPages((page, limit) =>
+        tasksApi.executionOrders.listActivities(executionOrderId, { page, limit }),
+      ),
+      collectExecutionOrderCollectionPages((page, limit) =>
+        tasksApi.executionOrders.listItemUsage(executionOrderId, { page, limit }),
+      ),
+      collectExecutionOrderCollectionPages((page, limit) =>
+        tasksApi.executionOrders.listEvidence(executionOrderId, { page, limit }),
+      ),
+      Promise.all([
+        inventoryApi.listItems({ status: InventoryItemStatus.ACTIVE, limit: 100 }),
+        inventoryApi.listLocations({
+          custody: 'mobile',
+          status: StockLocationStatus.ACTIVE,
+          withStock: true,
+          limit: 100,
+        }),
+      ]),
+      executorCustodyPromise,
+    ]);
 
-      try {
-        const evidence = await collectExecutionOrderCollectionPages((page, limit) =>
-          tasksApi.executionOrders.listEvidence(executionOrderId, { page, limit }),
-        );
-        setExecutionOrderEvidence(evidence.data);
-        setExecutionOrderEvidenceMeta(evidence.meta);
-        setExecutionOrderEvidenceState('available');
-      } catch {
-        setExecutionOrderEvidenceState('unavailable');
-        setExecutionOrderError(
-          'No fue posible cargar las evidencias. La OT se conserva abierta; actualiza el detalle para reintentar.',
-        );
-      }
-
-      const templateReference = detail.template;
-      if (templateReference?.id) {
-        try {
-          const versions = await tasksApi.executionOrders.listTemplateVersions(
-            templateReference.id,
-          );
-          const templateVersions = normalizeExecutionOrderCollection(versions);
-          setExecutionOrderTemplate(
-            resolveAssignedTemplateVersion(templateVersions, templateReference.version),
-          );
-        } catch {
-          setExecutionOrderTemplate(null);
-          setExecutionOrderError(
-            'No fue posible cargar la plantilla aplicada. La orden se conserva abierta y el cierre permanece bloqueado.',
-          );
-        }
-      } else {
-        setExecutionOrderTemplate(null);
-      }
-      setExecutionOrderMissingRequirements([]);
-    } catch (loadError) {
-      setExecutionOrderError(mapOperationsError(loadError));
-    } finally {
-      setIsLoadingExecutionOrder(false);
+    // Respuesta tardía de una apertura/refresh anterior: descartar completa.
+    if (executionOrderRequestSeqRef.current !== requestSeq) {
+      return;
     }
+
+    if (orderResult.status === 'rejected') {
+      setExecutionOrderError(mapOperationsError(orderResult.reason));
+      setExecutionOrderEvidenceState('unavailable');
+      setExecutionOrderInventoryState('unavailable');
+      setExecutorCustodyState('unavailable');
+      setIsLoadingExecutionOrder(false);
+      return;
+    }
+
+    const detail = orderResult.value;
+    setSelectedExecutionOrder(detail);
+
+    if (activitiesResult.status === 'fulfilled') {
+      setExecutionOrderActivities(activitiesResult.value.data);
+      setExecutionOrderActivitiesMeta(activitiesResult.value.meta);
+    } else {
+      setExecutionOrderActivities([]);
+      setExecutionOrderActivitiesMeta(EMPTY_LIST_META);
+    }
+
+    if (itemUsageResult.status === 'fulfilled') {
+      setExecutionOrderItemUsage(itemUsageResult.value.data);
+      setExecutionOrderItemUsageMeta(itemUsageResult.value.meta);
+    } else {
+      setExecutionOrderItemUsage([]);
+      setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
+    }
+
+    if (evidenceResult.status === 'fulfilled') {
+      setExecutionOrderEvidence(evidenceResult.value.data);
+      setExecutionOrderEvidenceMeta(evidenceResult.value.meta);
+      setExecutionOrderEvidenceState('available');
+    } else {
+      setExecutionOrderEvidence([]);
+      setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
+      setExecutionOrderEvidenceState('unavailable');
+    }
+
+    if (inventoryResult.status === 'fulfilled') {
+      const [items, locations] = inventoryResult.value;
+      setExecutionOrderItemOptions(
+        items.data.map((item) => ({ value: item.id, label: `${item.sku} · ${item.name}` })),
+      );
+      // El backend exige que technicianCustodyId sea el ID del técnico/cuadrilla
+      // asignados (assertCustodyAssignment), no el ID de la ubicación; la
+      // ubicación móvil aporta el responsable (responsibleRefId).
+      setExecutionOrderCustodyOptions(
+        locations.data.flatMap((location) =>
+          location.responsibleRefId
+            ? [
+                {
+                  type: location.type === 'MOBILE_CREW' ? 'CREW' : 'TECHNICIAN',
+                  id: location.responsibleRefId,
+                  label: location.name,
+                },
+              ]
+            : [],
+        ),
+      );
+      setExecutionOrderInventoryState('available');
+    } else {
+      setExecutionOrderItemOptions([]);
+      setExecutionOrderCustodyOptions([]);
+      setExecutionOrderInventoryState('unavailable');
+    }
+
+    // Custodia del ejecutor: disponible, vacía informativa (sin assignee o sin
+    // custodia activa) o no disponible con fallback silencioso; un fallo aquí
+    // nunca degrada el resto del drawer.
+    if (custodyResult.status === 'fulfilled' && custodyResult.value) {
+      const custody: ExecutorCustodyResponse = custodyResult.value;
+      setExecutorCustodyName(custody.location?.name ?? null);
+      setExecutorCustodyAssets(custody.assets.items);
+      setExecutorCustodyAssetsMeta(custody.assets.meta);
+      setExecutorCustodyBalances(custody.balances.items);
+      setExecutorCustodyBalancesMeta(custody.balances.meta);
+      setExecutorCustodyState('available');
+    } else if (custodyResult.status === 'fulfilled') {
+      setExecutorCustodyName(null);
+      setExecutorCustodyAssets([]);
+      setExecutorCustodyAssetsMeta(EMPTY_LIST_META);
+      setExecutorCustodyBalances([]);
+      setExecutorCustodyBalancesMeta(EMPTY_LIST_META);
+      setExecutorCustodyState('available');
+    } else {
+      setExecutorCustodyName(null);
+      setExecutorCustodyAssets([]);
+      setExecutorCustodyAssetsMeta(EMPTY_LIST_META);
+      setExecutorCustodyBalances([]);
+      setExecutorCustodyBalancesMeta(EMPTY_LIST_META);
+      setExecutorCustodyState('unavailable');
+    }
+
+    // La plantilla aplicada se deriva del snapshot congelado que viaja en el
+    // detalle (DATA-P1-3); no se consulta el catálogo vivo de plantillas.
+    setExecutionOrderMissingRequirements([]);
+    setIsLoadingExecutionOrder(false);
   }, []);
 
   useEffect(() => {
@@ -690,7 +806,7 @@ export function OperationsClient() {
   }
 
   const loadMoreExecutionOrderActivities = useCallback(async () => {
-    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    const executionOrderId = selectedExecutionOrder?.id;
     if (
       !executionOrderId ||
       !executionOrderActivitiesMeta.hasMore ||
@@ -721,7 +837,7 @@ export function OperationsClient() {
   ]);
 
   const loadMoreExecutionOrderItemUsage = useCallback(async () => {
-    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    const executionOrderId = selectedExecutionOrder?.id;
     if (
       !executionOrderId ||
       !executionOrderItemUsageMeta.hasMore ||
@@ -752,7 +868,7 @@ export function OperationsClient() {
   ]);
 
   const loadMoreExecutionOrderEvidence = useCallback(async () => {
-    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    const executionOrderId = selectedExecutionOrder?.id;
     if (
       !executionOrderId ||
       !executionOrderEvidenceMeta.hasMore ||
@@ -783,11 +899,46 @@ export function OperationsClient() {
   ]);
 
   const retryExecutionOrder = useCallback(async () => {
-    const executionOrderId = selectedExecutionOrder?.id ?? executionOrderRequestIdRef.current;
+    const executionOrderId = selectedExecutionOrder?.id;
     if (executionOrderId) {
       await openExecutionOrder(executionOrderId);
     }
   }, [selectedExecutionOrder?.id, openExecutionOrder]);
+
+  // Paginación compartida del contrato de custodia: page/limit aplican a ambas
+  // colecciones, así que un solo onLoadMore avanza equipos y materiales.
+  const loadMoreExecutorCustody = useCallback(async () => {
+    const assigneeId = selectedExecutionOrder?.assignee?.id;
+    if (
+      !assigneeId ||
+      isLoadingMoreExecutorCustody ||
+      (!executorCustodyAssetsMeta.hasMore && !executorCustodyBalancesMeta.hasMore)
+    ) {
+      return;
+    }
+
+    setIsLoadingMoreExecutorCustody(true);
+    try {
+      const currentPage = executorCustodyAssetsMeta.page ?? executorCustodyBalancesMeta.page ?? 1;
+      const nextPage = await inventoryApi.getExecutorCustody(assigneeId, {
+        page: currentPage + 1,
+        limit: executorCustodyAssetsMeta.limit || EXECUTOR_CUSTODY_PAGE_SIZE,
+      });
+      setExecutorCustodyAssets((current) => [...current, ...nextPage.assets.items]);
+      setExecutorCustodyAssetsMeta(nextPage.assets.meta);
+      setExecutorCustodyBalances((current) => [...current, ...nextPage.balances.items]);
+      setExecutorCustodyBalancesMeta(nextPage.balances.meta);
+    } catch (loadError) {
+      setExecutionOrderError(mapOperationsError(loadError));
+    } finally {
+      setIsLoadingMoreExecutorCustody(false);
+    }
+  }, [
+    executorCustodyAssetsMeta,
+    executorCustodyBalancesMeta,
+    isLoadingMoreExecutorCustody,
+    selectedExecutionOrder?.assignee?.id,
+  ]);
 
   async function handleStartExecutionOrder(note?: string | null) {
     if (!selectedExecutionOrder) return;
@@ -822,6 +973,54 @@ export function OperationsClient() {
       );
       await refreshExecutionOrder(selectedExecutionOrder.id);
       setExecutionOrderSuccess('El trabajo realizado fue registrado.');
+      return true;
+    } catch (error) {
+      setExecutionOrderError(mapOperationsError(error));
+      return false;
+    } finally {
+      setIsSubmittingExecutionOrder(false);
+    }
+  }
+
+  async function handleUpdateExecutionOrderFieldWork(
+    activityId: string,
+    payload: Partial<RegisterActivityCommand>,
+  ) {
+    if (!selectedExecutionOrder) return false;
+    setIsSubmittingExecutionOrder(true);
+    setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
+    try {
+      await tasksApi.executionOrders.updateFieldWork(
+        selectedExecutionOrder.id,
+        activityId,
+        payload,
+        selectedExecutionOrder.version,
+      );
+      await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('El trabajo realizado fue actualizado.');
+      return true;
+    } catch (error) {
+      setExecutionOrderError(mapOperationsError(error));
+      return false;
+    } finally {
+      setIsSubmittingExecutionOrder(false);
+    }
+  }
+
+  async function handleDeleteExecutionOrderFieldWork(activityId: string) {
+    if (!selectedExecutionOrder) return false;
+    setIsSubmittingExecutionOrder(true);
+    setExecutionOrderError(null);
+    setExecutionOrderSuccess(null);
+    try {
+      await tasksApi.executionOrders.deleteFieldWork(
+        selectedExecutionOrder.id,
+        activityId,
+        selectedExecutionOrder.version,
+      );
+      await refreshExecutionOrder(selectedExecutionOrder.id);
+      setExecutionOrderSuccess('El trabajo realizado fue eliminado.');
       return true;
     } catch (error) {
       setExecutionOrderError(mapOperationsError(error));
@@ -1054,6 +1253,15 @@ export function OperationsClient() {
         onLoadMoreItemUsage={loadMoreExecutionOrderItemUsage}
         onLoadMoreEvidence={loadMoreExecutionOrderEvidence}
         evidenceState={executionOrderEvidenceState}
+        itemsState={executionOrderInventoryState}
+        executorCustodyState={executorCustodyState}
+        executorCustodyName={executorCustodyName}
+        executorCustodyAssets={executorCustodyAssets}
+        executorCustodyAssetsMeta={executorCustodyAssetsMeta}
+        executorCustodyBalances={executorCustodyBalances}
+        executorCustodyBalancesMeta={executorCustodyBalancesMeta}
+        isLoadingMoreExecutorCustody={isLoadingMoreExecutorCustody}
+        onLoadMoreExecutorCustody={loadMoreExecutorCustody}
         template={executionOrderTemplate}
         itemOptions={executionOrderItemOptions}
         custodyOptions={executionOrderCustodyOptions}
@@ -1065,6 +1273,9 @@ export function OperationsClient() {
         offline={offline}
         onRefreshDetail={retryExecutionOrder}
         onClose={() => {
+          // Invalida cualquier apertura/refresh en vuelo para que una respuesta
+          // tardía no reabra el drawer con estado stale.
+          executionOrderRequestSeqRef.current += 1;
           setSelectedExecutionOrder(null);
           setExecutionOrderActivities([]);
           setExecutionOrderActivitiesMeta(EMPTY_LIST_META);
@@ -1075,18 +1286,26 @@ export function OperationsClient() {
           setIsLoadingMoreExecutionOrderActivities(false);
           setIsLoadingMoreExecutionOrderItemUsage(false);
           setIsLoadingMoreExecutionOrderEvidence(false);
+          setIsLoadingMoreExecutorCustody(false);
           setExecutionOrderEvidenceState('available');
+          setExecutionOrderInventoryState('loading');
+          setExecutorCustodyState('loading');
+          setExecutorCustodyName(null);
+          setExecutorCustodyAssets([]);
+          setExecutorCustodyAssetsMeta(EMPTY_LIST_META);
+          setExecutorCustodyBalances([]);
+          setExecutorCustodyBalancesMeta(EMPTY_LIST_META);
           setExecutionOrderError(null);
           setExecutionOrderSuccess(null);
-          setExecutionOrderTemplate(null);
           setExecutionOrderItemOptions([]);
           setExecutionOrderCustodyOptions([]);
           setExecutionOrderMissingRequirements([]);
-          executionOrderRequestIdRef.current = null;
           router.replace('/dashboard/operations');
         }}
         onStart={handleStartExecutionOrder}
         onRegisterActivity={handleRegisterExecutionOrderFieldWork}
+        onUpdateActivity={handleUpdateExecutionOrderFieldWork}
+        onDeleteActivity={handleDeleteExecutionOrderFieldWork}
         onRegisterItemUsage={handleRegisterExecutionOrderItemUsage}
         onUploadEvidence={handleUploadEvidence}
         onCloseOrder={handleCloseExecutionOrder}

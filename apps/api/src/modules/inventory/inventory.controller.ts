@@ -81,8 +81,12 @@ import {
   ListUsefulLifeAlertsQuerySchema,
   ListStockBalancesQueryDto,
   ListStockBalancesQuerySchema,
+  ListExecutorCustodyQueryDto,
+  ListExecutorCustodyQuerySchema,
   ListStockIssuesQueryDto,
   ListStockIssuesQuerySchema,
+  ListStockIssuePickableItemsQueryDto,
+  ListStockIssuePickableItemsQuerySchema,
   ListStockLocationsQueryDto,
   ListStockLocationsQuerySchema,
   StockLocationPickerSearchQueryDto,
@@ -114,7 +118,9 @@ import {
   RejectWriteOffSchema,
 } from './dto';
 import { SerializedAssetDetailResponseDto } from './dto/serialized-asset-detail-response.dto';
+import { ExecutorCustodyResponseDto } from './dto/executor-custody-response.dto';
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
+import { ExecutorCustodyService } from './services/executor-custody.service';
 import { AssetLoanService } from './services/asset-loan.service';
 import { InventoryCategoryService } from './services/inventory-category.service';
 import { InventoryItemService } from './services/inventory-item.service';
@@ -125,6 +131,7 @@ import { StockLedgerService } from './services/stock-ledger.service';
 import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockLocationService } from './services/stock-location.service';
 import { StockIssueService } from './services/stock-issue.service';
+import { StockIssuePickingService } from './services/stock-issue-picking.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
 import { CycleCountService } from './services/cycle-count.service';
 import { WriteOffService } from './services/write-off.service';
@@ -141,9 +148,11 @@ export class InventoryController {
     private readonly stockLocationService: StockLocationService,
     private readonly serializedAssetService: SerializedAssetService,
     private readonly stockBalanceService: StockBalanceService,
+    private readonly executorCustodyService: ExecutorCustodyService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly stockMovementQueryService: StockMovementQueryService,
     private readonly stockIssueService: StockIssueService,
+    private readonly stockIssuePickingService: StockIssuePickingService,
     private readonly counterPurchaseService: CounterPurchaseService,
     private readonly inventoryDashboardService: InventoryDashboardService,
     private readonly replenishmentService: ReplenishmentService,
@@ -472,6 +481,34 @@ export class InventoryController {
     return this.stockBalanceService.list(ListStockBalancesQuerySchema.parse(query));
   }
 
+  @Get('custody')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
+  @ApiOperation({
+    summary: 'Consultar la custodia activa del ejecutor',
+    description:
+      'Agregado de solo lectura (MOD12): resuelve la bodega móvil ACTIVE del responsable ' +
+      '(índice único parcial por tenant + responsibleRefId) y devuelve en paralelo sus equipos ' +
+      'serializados (por currentLocationId) y materiales con stock disponible ' +
+      '(por locationId, disponible = on_hand − reserved > 0). ' +
+      'Paginación compartida por ambas colecciones (page 1-based, limit default 25, max 100). ' +
+      'Sin custodia activa responde 200 con location null y colecciones vacías (estado normal). ' +
+      'El portal resuelve responsibleRefId desde order.assignee.id; MOD12 no lee tablas de otros módulos.',
+  })
+  @ApiOkResponse({
+    type: ExecutorCustodyResponseDto,
+    description: 'Custodia activa del responsable; location null sin custodia activa.',
+  })
+  @ApiResponse({ status: 400, description: 'Parámetros inválidos (UUID requerido, paginación).' })
+  @ApiResponse({ status: 401, description: 'No autenticado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos de lectura de inventario.' })
+  getCustody(
+    @Query(new ZodValidationPipe(ListExecutorCustodyQuerySchema))
+    query: ListExecutorCustodyQueryDto,
+  ) {
+    return this.executorCustodyService.getCustody(ListExecutorCustodyQuerySchema.parse(query));
+  }
+
   @Get('movements')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
@@ -534,6 +571,38 @@ export class InventoryController {
     @CurrentUser() actor: JwtPayload,
   ) {
     return this.stockIssueService.create(CreateStockIssueSchema.parse(body), actor);
+  }
+
+  @Get('issues/pickable-items')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_STOCK_READ)
+  @ApiOperation({
+    summary: 'Listar ítems elegibles para salida con existencias',
+    description:
+      'MOD12 S1 · picking de salidas (D1/D3): precarga paginada del material con ' +
+      'disponible por condición en la bodega de origen, lotes con saldo y conteo de ' +
+      'seriales despachables. `scope=with-stock` (default) solo trae disponible > 0; ' +
+      '`scope=catalog` trae el catálogo completo. `q` vacía = sin filtro. ' +
+      'Paginación solo por `page` (default 25, max 100): el orden por disponible ' +
+      'calculado no admite cursor. Orden: totalAvailable DESC, name ASC.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada `{ data, meta }` (ListMeta modo page)',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bodega inválida, paginación inválida o cursor no soportado.',
+  })
+  @ApiResponse({ status: 401, description: 'No autenticado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos de lectura de inventario.' })
+  listPickableIssueItems(
+    @Query(new ZodValidationPipe(ListStockIssuePickableItemsQuerySchema))
+    query: ListStockIssuePickableItemsQueryDto,
+  ) {
+    return this.stockIssuePickingService.listPickableItems(
+      ListStockIssuePickableItemsQuerySchema.parse(query),
+    );
   }
 
   @Get('issues/:id')

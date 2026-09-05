@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { SupplierQuoteRecord } from '@/lib/api-client';
-import { formatInventoryCurrency } from './inventory-labels';
+import { formatInventoryMoney } from './inventory-labels';
 import { QuoteComparisonPanel } from './QuoteComparisonPanel';
+import { QUOTE_TAX_NO_INVOICE_COPY } from './quote-tax-calc';
 
 function buildQuote(overrides: Partial<SupplierQuoteRecord> = {}): SupplierQuoteRecord {
   return {
@@ -62,7 +64,7 @@ describe('QuoteComparisonPanel', () => {
         return (
           element?.tagName === 'SPAN' &&
           element.classList.contains('tabular-nums') &&
-          text === formatInventoryCurrency('1500').replace(/\u00a0/g, ' ')
+          text === formatInventoryMoney('1500').replace(/\u00a0/g, ' ')
         );
       }),
     ).toBeInTheDocument();
@@ -87,7 +89,7 @@ describe('QuoteComparisonPanel', () => {
     expect(screen.queryByText('party-unknown')).not.toBeInTheDocument();
   });
 
-  it('CA-19-03: muestra productos, envío y total con envío', () => {
+  it('CA-25-10: ordena por neto, hero Neto a pagar y copy de no-factura', () => {
     render(
       <QuoteComparisonPanel
         quotes={[
@@ -111,12 +113,141 @@ describe('QuoteComparisonPanel', () => {
     );
 
     expect(screen.getByText('Gratis')).toBeInTheDocument();
-    expect(screen.getAllByText('Total con envío')).toHaveLength(2);
+    expect(screen.getAllByText('Neto a pagar')).toHaveLength(2);
+    expect(screen.getAllByText('Base').length).toBeGreaterThan(0);
+    expect(screen.getByText(QUOTE_TAX_NO_INVOICE_COPY)).toBeInTheDocument();
     expect(screen.queryByText(/landed/i)).not.toBeInTheDocument();
-    // COT-B (total con envío 10000) aparece antes que COT-A (15000)
+    expect(screen.queryByText('Total con envío')).not.toBeInTheDocument();
     const numbers = screen.getAllByText(/COT-/).map((node) => node.textContent ?? '');
     expect(numbers.findIndex((text) => text.includes('COT-B'))).toBeLessThan(
       numbers.findIndex((text) => text.includes('COT-A')),
     );
+  });
+
+  it('CA-25-10: desglosa tributos activos y ordena por neto persistido', () => {
+    render(
+      <QuoteComparisonPanel
+        quotes={[
+          buildQuote({
+            id: 'q-high',
+            quoteNumber: 'COT-ALTA',
+            amount: '100',
+            shippingCost: '0',
+            payableAmount: '119',
+            partyRefId: 'party-a',
+            taxes: [
+              {
+                code: 'IVA_19',
+                name: 'IVA 19%',
+                category: 'VAT',
+                effect: 'ADD',
+                applies: true,
+                rate: 19,
+                baseAmount: '100',
+                taxAmount: '19',
+              },
+            ],
+          }),
+          buildQuote({
+            id: 'q-low',
+            quoteNumber: 'COT-BAJA',
+            amount: '100',
+            shippingCost: '0',
+            payableAmount: '96',
+            partyRefId: 'party-b',
+            taxes: [
+              {
+                code: 'RETE_FUENTE_SERVICIOS',
+                name: 'Retención en la fuente — Servicios',
+                category: 'WITHHOLDING',
+                effect: 'WITHHOLD',
+                applies: true,
+                rate: 4,
+                baseAmount: '100',
+                taxAmount: '4',
+              },
+            ],
+          }),
+        ]}
+        supplierLabels={{ 'party-a': 'Proveedor A', 'party-b': 'Proveedor B' }}
+      />,
+    );
+
+    expect(screen.getByText('IVA')).toBeInTheDocument();
+    expect(screen.getByText('Retención en la fuente')).toBeInTheDocument();
+    expect(screen.queryByText('IVA_19')).not.toBeInTheDocument();
+    expect(screen.queryByText('WITHHOLDING')).not.toBeInTheDocument();
+    const numbers = screen.getAllByText(/COT-/).map((node) => node.textContent ?? '');
+    expect(numbers.findIndex((text) => text.includes('COT-BAJA'))).toBeLessThan(
+      numbers.findIndex((text) => text.includes('COT-ALTA')),
+    );
+  });
+
+  it('ordena por costo total de la oferta cuando el flete se paga al transportador', () => {
+    render(
+      <QuoteComparisonPanel
+        quotes={[
+          buildQuote({
+            id: 'q-carrier',
+            quoteNumber: 'COT-FLETE',
+            amount: '100',
+            shippingCost: '50',
+            payableAmount: '100',
+            shippingArrangement: 'PAY_CARRIER',
+            partyRefId: 'party-a',
+          }),
+          buildQuote({
+            id: 'q-free',
+            quoteNumber: 'COT-BARATA',
+            amount: '120',
+            shippingCost: '0',
+            payableAmount: '120',
+            shippingArrangement: 'FREE',
+            partyRefId: 'party-b',
+          }),
+        ]}
+        supplierLabels={{ 'party-a': 'Proveedor A', 'party-b': 'Proveedor B' }}
+      />,
+    );
+
+    expect(screen.getByText(/al transportador/)).toBeInTheDocument();
+    expect(screen.getByText('Total de la oferta')).toBeInTheDocument();
+    const numbers = screen.getAllByText(/COT-/).map((node) => node.textContent ?? '');
+    expect(numbers.findIndex((text) => text.includes('COT-BARATA'))).toBeLessThan(
+      numbers.findIndex((text) => text.includes('COT-FLETE')),
+    );
+  });
+
+  it('muestra modificar cotización cuando el padre lo habilita', async () => {
+    const user = userEvent.setup();
+    const onEditQuote = jest.fn();
+
+    render(
+      <QuoteComparisonPanel
+        quotes={[buildQuote()]}
+        supplierLabels={{ 'party-1': 'Proveedor Alfa' }}
+        onEditQuote={onEditQuote}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    );
+    expect(onEditQuote).toHaveBeenCalledWith('quote-1');
+  });
+
+  it('oculta modificar cotización si esa oferta ya está adjudicada', () => {
+    render(
+      <QuoteComparisonPanel
+        quotes={[buildQuote()]}
+        supplierLabels={{ 'party-1': 'Proveedor Alfa' }}
+        onEditQuote={jest.fn()}
+        canEditQuote={() => false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    ).not.toBeInTheDocument();
   });
 });

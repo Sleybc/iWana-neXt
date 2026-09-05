@@ -838,6 +838,11 @@ describe('SchedulingClient', () => {
     expect(
       await screen.findByRole('heading', { name: 'Pendientes por programar' }),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(wfmApiMock.visitRequests.list).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'actionable' }),
+      );
+    });
     expect(screen.getByText('María Gómez')).toBeInTheDocument();
 
     const dropTarget = await screen.findByRole('button', {
@@ -889,6 +894,11 @@ describe('SchedulingClient', () => {
     render(<SchedulingClient surface="dashboard" />);
 
     expect(await screen.findByText('Programación')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(wfmApiMock.visitRequests.list).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'actionable' }),
+      );
+    });
     expect(
       screen.getByText(
         'Dashboard inicial del módulo para ubicar prioridades, revisar presión operativa y decidir dónde entrar a trabajar.',
@@ -954,5 +964,31 @@ describe('SchedulingClient', () => {
     expect(listArgs.to).toBeTruthy();
     // Mismo día local hidratado: el rango API cae en 2026-08-10 (ISO con offset).
     expect(`${listArgs.from} ${listArgs.to}`).toMatch(/2026-08-10/);
+  });
+
+  it('oculta el rail de pendientes para roles sin permiso de despacho', async () => {
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser(UserRole.TECHNICIAN),
+      isLoading: false,
+    });
+
+    render(<SchedulingClient surface="agenda" />);
+
+    expect(await screen.findByText('Despacho diario')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Pendientes por programar' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('muestra el rail de pendientes para roles con permiso de despacho', async () => {
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser(UserRole.ADMIN),
+      isLoading: false,
+    });
+
+    render(<SchedulingClient surface="agenda" />);
+
+    expect(await screen.findByText('Despacho diario')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
   });
 });

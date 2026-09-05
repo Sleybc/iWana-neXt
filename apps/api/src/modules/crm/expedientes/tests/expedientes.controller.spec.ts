@@ -15,6 +15,7 @@ import { ExpedienteService } from '../expediente.service';
 import { PipelineRecommendationService } from '../pipeline-recommendation.service';
 import { StatusTransitionService } from '../status-transition.service';
 import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 
 describe('ExpedientesController', () => {
   let controller: ExpedientesController;
@@ -67,6 +68,10 @@ describe('ExpedientesController', () => {
           useValue: pipelineRecommendationServiceMock,
         },
         { provide: ExpedienteDetailBootstrapService, useValue: detailBootstrapServiceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 

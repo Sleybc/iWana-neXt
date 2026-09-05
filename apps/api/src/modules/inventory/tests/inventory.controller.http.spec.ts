@@ -33,10 +33,12 @@ import { PurchasingService } from '../services/purchasing.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
+import { ExecutorCustodyService } from '../services/executor-custody.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { StockIssueService } from '../services/stock-issue.service';
+import { StockIssuePickingService } from '../services/stock-issue-picking.service';
 import { AssetLoanService } from '../services/asset-loan.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
@@ -205,6 +207,41 @@ describe('InventoryController HTTP', () => {
   const stockBalanceServiceMock = {
     list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
   };
+  const executorCustodyServiceMock = {
+    getCustody: jest.fn().mockResolvedValue({
+      location: null,
+      assets: {
+        items: [],
+        meta: {
+          nextCursor: null,
+          total: 0,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 25,
+          totalPages: 0,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      },
+      balances: {
+        items: [],
+        meta: {
+          nextCursor: null,
+          total: 0,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 25,
+          totalPages: 0,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      },
+    }),
+  };
   const stockLedgerServiceMock = {
     transfer: jest.fn().mockResolvedValue({ movement: { id: 'mov-001' } }),
     recordExecutionOrderMovement: jest.fn().mockResolvedValue({ movement: { id: 'mov-002' } }),
@@ -353,9 +390,11 @@ describe('InventoryController HTTP', () => {
         { provide: StockLocationService, useValue: stockLocationServiceMock },
         { provide: SerializedAssetService, useValue: serializedAssetServiceMock },
         { provide: StockBalanceService, useValue: stockBalanceServiceMock },
+        { provide: ExecutorCustodyService, useValue: executorCustodyServiceMock },
         { provide: StockLedgerService, useValue: stockLedgerServiceMock },
         { provide: StockMovementQueryService, useValue: stockMovementQueryServiceMock },
         { provide: StockIssueService, useValue: stockIssueServiceMock },
+        { provide: StockIssuePickingService, useValue: { listPickableItems: jest.fn() } },
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
         { provide: ReplenishmentService, useValue: replenishmentServiceMock },
         { provide: CycleCountService, useValue: cycleCountServiceMock },
@@ -400,11 +439,97 @@ describe('InventoryController HTTP', () => {
         name: 'ONU Huawei',
         categoryId: '11111111-1111-4111-8111-111111111111',
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
       })
       .expect(201);
 
     expect(inventoryItemServiceMock.create).toHaveBeenCalled();
+  });
+
+  describe('código de barras del artículo (MOD12 · F4)', () => {
+    const basePayload = {
+      sku: 'ONU-HG8145',
+      name: 'ONU Huawei',
+      categoryId: '11111111-1111-4111-8111-111111111111',
+      trackingMode: InventoryTrackingMode.SERIALIZED,
+      unitOfMeasure: 'UNIT',
+    };
+
+    it('acepta el par barcode/barcodeType con EAN-13 válido y lo propaga al servicio', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({ ...basePayload, barcode: '8412345678905', barcodeType: 'EAN13' })
+        .expect(201);
+
+      expect(inventoryItemServiceMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({ barcode: '8412345678905', barcodeType: 'EAN13' }),
+        expect.objectContaining({ sub: 'support-001' }),
+      );
+    });
+
+    it('rechaza un EAN-13 con dígito de control inválido con 400 (CA-F4-03)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({ ...basePayload, barcode: '8412345678904', barcodeType: 'EAN13' })
+        .expect(400);
+
+      expect(JSON.stringify(response.body)).toContain('dígito de control');
+      expect(inventoryItemServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza barcode sin barcodeType con 400 (CA-F4-08)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({ ...basePayload, barcode: '8412345678905' })
+        .expect(400);
+
+      expect(inventoryItemServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza barcodeType sin barcode con 400 (CA-F4-08)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({ ...basePayload, barcodeType: 'EAN13' })
+        .expect(400);
+
+      expect(inventoryItemServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza la pareja a medias en null con 400 (CA-F4-08)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({ ...basePayload, barcode: '8412345678905', barcodeType: null })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/items')
+        .set('Authorization', 'Bearer support-token')
+        .send({ ...basePayload, barcode: null, barcodeType: 'EAN13' })
+        .expect(400);
+
+      expect(inventoryItemServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('acepta actualizar el par barcode/barcodeType (editable tras crear)', async () => {
+      const itemId = '11111111-1111-4111-8111-111111111111';
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/inventory/items/${itemId}`)
+        .set('Authorization', 'Bearer support-token')
+        .send({ barcode: '036000291452', barcodeType: 'UPCA' })
+        .expect(200);
+
+      expect(inventoryItemServiceMock.update).toHaveBeenCalledWith(
+        itemId,
+        expect.objectContaining({ barcode: '036000291452', barcodeType: 'UPCA' }),
+        expect.objectContaining({ sub: 'support-001' }),
+      );
+    });
   });
 
   it('creates inventory category for support role', async () => {
@@ -520,7 +645,7 @@ describe('InventoryController HTTP', () => {
         name: 'ONU Huawei',
         category: InventoryItemCategory.CPE,
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
       })
       .expect(403);
   });

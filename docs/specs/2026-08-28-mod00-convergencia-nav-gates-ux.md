@@ -1,11 +1,15 @@
 # Spec UX — MOD00 Convergencia RBAC: navegación por permisos, gates de página, Access y Users
 
-**Version:** 1.0
-**Estado:** Aprobado para ejecucion (congelado por AI-EM-ARCH el 2026-08-28; decisiones del orquestador sobre §8 registradas en INFORME-MOD00 v1.77)
-**Fecha:** 2026-08-28
+**Version:** 1.2
+**Estado:** Aprobado para ejecucion (congelado por AI-EM-ARCH el 2026-08-28; v1.1 nota de prevalencia empty/IA post-corte el 2026-08-29; v1.2 catálogo de 9 en peek; puntero Access **v1.11** el 2026-08-29)
+**Fecha:** 2026-08-29
 **Autor:** AI-PROD-UX
 **Implementa para:** AI-FE-PLATFORM (Fase 3 del plan) · Verifica AI-SR-QA (Fase 4)
-**Contrato AI-DS-OWNER:** consumo de tokens y primitivas existentes; sin tokens ni primitivas nuevas
+**Contrato AI-DS-OWNER:** consumo de tokens y primitivas existentes; sin tokens ni primitivas nuevas. Peek de creación: veredicto aparte sobre `PortalSidePeek` (spec prevalente §10.1).
+
+**v1.2.** El empty y la IA post-corte de `/dashboard/settings/access` los gobierna la spec prevalente **v1.13**. Esta spec **ya no exige** 9 cards en la ruta. Las 9 entradas, el orden canónico `UserRole` y los nombres humanos viven en el `PortalSidePeek` de creación. CA-ACV2-01 y CA-ACV2-04 se reescriben contra el peek. Snapshots contra el primer viewport **sin** grid.
+
+**v1.1.** Nota de prevalencia empty/IA post-corte (entonces v1.9). Superada en lo que exigía galería en página.
 
 ---
 
@@ -16,12 +20,12 @@
 | `docs/adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md` (Aprobado) | D3 (matriz V2), D4 (plantillas estándar y corte), D6 (frontend derivado de permisos efectivos) |
 | `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` §6.6 (addendum) y §6.6.1 (firmas G1) | Condiciones G1 AI-PROD-UX 1–6; contexto `usePermissions()` en layout; cache `access:perms:{tenantId}:{userId}` TTL ≤ 60 s |
 | `docs/plans/2026-08-28-mod00-convergencia-rbac-granular.md` §1–§3 | Contratos congelados; mapeo menú → permiso (congelado); alcance de Fase 3 |
-| `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.8, **prevalente** para `/dashboard/settings/access`) | Vocabulario de la ruta access, CA-ACC-UX-01…20, contrato visual §10, matriz de estados §5 |
+| `docs/specs/2026-08-15-mod00-acceso-ui-remediation.md` (v1.13, **prevalente** para `/dashboard/settings/access`) | Vocabulario de la ruta access, CA-ACC-UX (14 sustituido; 15/16/18 superados; 21…33 peek), CA-ACC-POST-01…06, contrato visual §10.1 (`PortalSidePeek`), matriz de estados §5 (empty/IA post-corte + peek de creación). Esta spec de Fase 3 **no** redefine ese empty. |
 | `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md` | Dirección visual iWana (lima = avance/selección, foco, sombras) |
 | UI real: `apps/portal/src/components/layout/Sidebar.tsx`, `settings/SettingsSectionGrid.tsx`, `settings/SettingsClient.tsx`, `settings/AccessControlSettingsClient.tsx`, `access-control/EffectivePermissionsPanel.tsx`, `users/EditUserModal.tsx`, `users/CreateUserModal.tsx`, `users/CompanyRolesAssignmentSection.tsx`, `users/company-role-preview.ts`, `lib/system-vocabulary.ts`, `app/dashboard/layout.tsx`, `components/shared/portal-ui.tsx` | Estado de partida verificado el 2026-08-28 |
-| E2E: `e2e/tests/portal-settings-access-ui.spec.ts` + 6 snapshots en `portal-settings-access-ui.spec.ts-snapshots/` | Regeneración de capturas y CA-ACC-UX-14/20 |
+| E2E: `e2e/tests/portal-settings-access-ui.spec.ts` + 6 snapshots en `portal-settings-access-ui.spec.ts-snapshots/` | Regeneración de capturas contra el **primer viewport sin grid**; CA-ACC-UX-14 (empty + CTA) y CA-ACC-UX-20 |
 
-**Qué es este documento.** Contrato UX de Fase 3 de la convergencia RBAC: gramática de navegación por permisos efectivos, gates de página con 3 estados, reordenamiento de la sección de sugeridos en `/dashboard/settings/access` (9 cards), montaje del panel de accesos efectivos en el side peek de edición de usuarios y advertencia por cambio de tipo de usuario. Congela modelo de interacción, copy, estados y criterios de aceptación para desbloquear AI-FE-PLATFORM y AI-SR-QA.
+**Qué es este documento.** Contrato UX de Fase 3 de la convergencia RBAC: gramática de navegación por permisos efectivos, gates de página con 3 estados, **9 entradas de perfiles sugeridos en el peek de creación** de `/dashboard/settings/access` (orden y nombres humanos; **sin** galería en la ruta), montaje del panel de accesos efectivos en el side peek de edición de usuarios y advertencia por cambio de tipo de usuario. Congela modelo de interacción, copy, estados y criterios de aceptación para desbloquear AI-FE-PLATFORM y AI-SR-QA. El empty, el workspace de borrador y el flujo de dos momentos del peek los gobierna la prevalente v1.10.
 
 **Qué no es.** No define backend, contratos de API nuevos, tokens, ni componentes globales de `@iwana/ui`. No escribe código. No cambia alcance funcional. No contiene PII: los ejemplos de perfiles y usuarios son ilustrativos.
 
@@ -171,11 +175,11 @@ Copy congelado (sentence case, vocabulario aprobado; sin "permiso", "rol", "RBAC
 
 ---
 
-## 3. Access — una sección de 9 sugeridos
+## 3. Access — 9 sugeridos en el peek de creación
 
 ### 3.1 Modelo
 
-`/dashboard/settings/access` mantiene la arquitectura de la spec prevalente v1.8 (§4): la sección **`Perfiles sugeridos`** pasa de 6 a **9 cards, una por tipo de usuario con plantilla**, en **una sola sección** (sin agrupaciones ni pestañas nuevas). Se suman SALES, ACCOUNTANT y HR, que Fase 1 siembra como plantillas estándar con `baseRoleConstraint` de su categoría (ADR-083 D4).
+`/dashboard/settings/access` mantiene la arquitectura de bandas de la spec prevalente **v1.10** (§4): encabezado → alertas → workspace personalizados|accesos → MFA. **No hay sección de 9 cards en la ruta.** El catálogo de perfiles sugeridos (uno por tipo de usuario, incluidos SALES, ACCOUNTANT y HR de Fase 1) vive **solo** en el `PortalSidePeek` de creación: 9 entradas + orden + nombres humanos. El empty, el subtítulo y el copy post-corte los gobierna la prevalente v1.10 (§3.1, §5, §6.1, §6.8); no se redefinen aquí.
 
 ### 3.2 Extensión de `SYSTEM_TEMPLATE_PROFILE_NAMES` (`apps/portal/src/lib/system-vocabulary.ts`)
 
@@ -188,11 +192,11 @@ Se agregan las 3 entradas faltantes con los nombres humanos del vocabulario vige
 | `UserRole.HR` | `Talento humano` |
 
 - `getAccessProfileDisplayName` no cambia de lógica: para `isSystem = true` resuelve por `baseRoleConstraint` contra el mapa extendido y cae a `profile.name` si no hay entrada (fallback intacto).
-- Los nombres DB de las plantillas pueden diferir; el display UI lo gobierna este mapa (patrón actual de las 6 existentes).
+- Los nombres DB de las plantillas pueden diferir; el display UI lo gobierna este mapa (patrón actual de las 6 existentes). En copy visible nunca se dice «plantilla» ni «sistema».
 
 ### 3.3 Orden congelado por tipo de usuario
 
-Las 9 cards se ordenan por el **orden canónico de `UserRole`** (excluyendo SUBSCRIBER/PARTNER/INVESTOR, que no tienen plantilla). Orden exacto:
+Las **9 entradas del peek** (momento lista) se ordenan por el **orden canónico de `UserRole`** (excluyendo SUBSCRIBER/PARTNER/INVESTOR, que no tienen perfil sugerido). Orden exacto:
 
 1. Administrador (ADMIN)
 2. Monitoreo operativo (NOC)
@@ -204,25 +208,25 @@ Las 9 cards se ordenan por el **orden canónico de `UserRole`** (excluyendo SUBS
 8. Contratista (CONTRACTOR)
 9. Auditor (AUDITOR)
 
-Se implementa como lista de orden fija en el cliente (no orden alfabético ni orden de API): estable ante reordenes del backend y localización. El grid no cambia (spec prevalente §10): `grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` → filas 4/4/1 en xl, 3/3/3 en lg, 2 columnas en md, apilado en mobile.
+Se implementa como lista de orden fija en el cliente (no orden alfabético ni orden de API): estable ante reordenes del backend y localización. Tras las 9, la fila `Empezar desde cero` (prevalente §6.8 / CA-ACC-UX-23). **No hay grid de cards en la página.**
 
-### 3.4 Copy de las 3 cards nuevas
+### 3.4 Copy de las 3 entradas nuevas
 
-- Título: el display de §3.2.
-- Descripción: la que Fase 1 siembre en el backend (`profile.description`). **Restricción de vocabulario:** las descripciones visibles no contienen los prohibidos de la spec prevalente §6.3 (`plantilla`, `sistema`, `categoría base`, `módulo`, `matriz`, claves crudas) ni «en fase futura». QA verifica contra este gate (CA-ACV2-06).
-- Meta de card: `{tipo de usuario} · {n} accesos` (patrón actual).
-- CTAs por card sin cambios: `Ver lo que permite` (ghost, superficie suave compuesta) y `Crear a partir de este perfil` (primary, `size="sm"` + `min-h-11`), apilados a ancho de card.
+- Título de fila: el display de §3.2.
+- Descripción (momento detalle, si el seed la expone): la que Fase 1 siembre en el backend (`profile.description`). **Restricción de vocabulario:** las descripciones visibles no contienen los prohibidos de la spec prevalente §6.3 (`plantilla`, `sistema`, `categoría base`, `módulo`, `matriz`, claves crudas) ni «en fase futura». QA verifica contra este gate (CA-ACV2-06).
+- Meta de fila: `{tipo de usuario} · {n} accesos` (prevalente §6.8).
+- CTAs: los del peek de dos momentos (prevalente §6.8 / §8). **Sin** `Editar` ni `Editar accesos` en filas sugeridas (prevalente CA-ACC-POST-03 / CA-ACC-UX-30). No hay CTAs de card en la página.
 
 ### 3.5 Estados
 
-Sin cambios de matriz (prevalente §5): carga → skeleton `Cargando perfiles de acceso y sus accesos`; sección oculta solo si `systemTemplates.length === 0` (comportamiento actual conservado); errores de API sanitizados por §6.4 de la spec prevalente.
+La matriz de empty/IA post-corte y del peek de creación la gobierna la spec prevalente v1.10 §5. Esta spec no la redefine. Conservado aquí: carga → skeleton `Cargando perfiles de acceso y sus accesos`; si `systemTemplates.length === 0`, el peek lista solo `Empezar desde cero` (sin las 9 filas); errores de API sanitizados por §6.4 de la spec prevalente.
 
 ### 3.6 Regeneración de E2E y verificación de CA-ACC-UX-14/20
 
-- Los **6 snapshots** `access-{desktop|tablet|mobile}-{light|dark}.png` de `e2e/tests/portal-settings-access-ui.spec.ts-snapshots/` se **regeneran** tras el cambio (la pantalla crece de 6 a 9 cards y el catálogo mock sube a `MOD00_ACCESS_V2`).
-- Actualización de mocks del spec E2E: +3 plantillas system (SALES, ACCOUNTANT, HR) con `baseRoleConstraint` correspondiente; `catalogVersion: 'MOD00_ACCESS_V2'`; el test «…con 6 sugeridos…» pasa a esperar **9** cards (la aserción de las 4 primeras en la misma fila sigue válida: fila xl de 4).
-- **CA-ACC-UX-14** (heading `Perfiles sugeridos` visible sin scroll en 1440×900 con 0 perfiles personalizados): se re-verifica con 9 cards; el heading no depende del alto del grid.
-- **CA-ACC-UX-20** (pie MFA en 390×844: ayuda encima del CTA, sin solape, `Guardar política` a ancho): se re-verifica; la sección MFA queda debajo de sugeridos (prevalente §4) y no cambia su layout.
+- Los **6 snapshots** `access-{desktop|tablet|mobile}-{light|dark}.png` de `e2e/tests/portal-settings-access-ui.spec.ts-snapshots/` se **regeneran** contra el **primer viewport sin grid** (empty o workspace + MFA; sin banda de 9 cards).
+- Actualización de mocks del spec E2E: +3 perfiles system (SALES, ACCOUNTANT, HR) con `baseRoleConstraint` correspondiente; `catalogVersion: 'MOD00_ACCESS_V2'`; el test que esperaba 9 cards en página pasa a: abrir `Crear perfil` → **9 filas** en el peek (CA-ACV2-01).
+- **CA-ACC-UX-14** (prevalente v1.10): empty post-corte + CTA `Crear perfil` visibles sin scroll en 1440×900 con 0 personalizados. El heading `Perfiles sugeridos` se verifica **dentro del peek**, no en la página.
+- **CA-ACC-UX-20** (pie MFA en 390×844): se re-verifica; la sección MFA queda debajo del workspace (prevalente §4) y sube de viewport al desaparecer el grid.
 - Axe `wcag2a+wcag2aa`: 0 violaciones en los 6 combos (condición de Fase 3 del plan).
 
 ---
@@ -243,6 +247,7 @@ Sin cambios de matriz (prevalente §5): carga → skeleton `Cargando perfiles de
   - **Fallback (fuente desaparecida):** si el `profileId` no existe en `availableProfiles` (perfil eliminado, inactivo o filtrado), la etiqueta cae a `Perfil de acceso` y el nombre mostrado es `profileName` del summary. Nunca se muestra el id interno ni un hueco vacío.
 - El fallback aplica también si `availableProfiles` aún no cargó: el panel muestra la etiqueta genérica y no bloquea.
 - Vocabulario del panel: la ruta `/dashboard/users` **conserva «categoría base»** (la prohibición de ese término es exclusiva de la ruta access, spec prevalente §2.2/§6). El eyebrow de la banda sigue siendo `Categoría base`.
+- Ayuda post-corte junto a la lista de perfiles: copy y visibilidad los gobierna la spec prevalente v1.10 §6.7 (CA-ACC-POST-06). Esta spec no los redefine.
 
 ### 4.3 Frescura del dato
 
@@ -309,7 +314,7 @@ Copy congelado:
 1. **Contraste:** texto sobre tokens vigentes (`text-gray-900/600/500`, `dark:text-gray-300/400`, ámbar del patrón restringido del hub `text-amber-900 dark:text-amber-200` sobre `amber-50/80`); verificar AA en claro y oscuro en los nuevos estados (restricted, error, skeletons no portan texto salvo sr-only).
 2. **Foco:** todo control nuevo usa `interactiveFocusClassName` (enlaces del nav, `Reintentar`, `Volver a inicio`, summary del panel colapsable). Foco visible en claro y oscuro.
 3. **Teclado:** navegación completa por teclado de nav (links nativos), gate (enlaces/botones), panel del peek (details/summary nativo) y alerta (no focoable, anunciada por live region).
-4. **Targets ≥ 44 px:** `min-h-11` en items del nav (ya vigente), `Reintentar`, `Volver a inicio`; CTAs de las 9 cards conservan `min-h-11`.
+4. **Targets ≥ 44 px:** `min-h-11` en items del nav (ya vigente), `Reintentar`, `Volver a inicio`; filas y CTAs del peek de creación conservan `min-h-11` (prevalente CA-ACC-UX-10 / 29).
 5. **Live regions:** anuncio sr-only de carga del nav (`aria-live="polite"`); `PortalAlert live="polite"` en la advertencia de descarte de perfiles (§4.5); sin `aria-live` en skeletons decorativos (`aria-hidden`).
 6. **Semántica:** `aria-current="page"` intacto; badge restringido con texto (no solo color/icono); el estado restringido usa `h1`-visible propio de la página o encabezado de sección, nunca solo un ícono.
 7. **Sin contenido sensible montado:** en estado restringido el contenido de la página no existe en el DOM.
@@ -362,17 +367,17 @@ Mecanismo congelado para esta spec (variante **sin cambio de contrato backend**)
 | CA-GATE-06 | La pestaña `Compras` de `/dashboard/inventory` solo es visible/navegable con `inventory.purchasing.read` efectivo; el resto de pestañas de Inventario obedecen al gate de página (`inventory.stock.read`). |
 | CA-GATE-07 | Ningún estado del gate pinta `error.message`, códigos HTTP ni claves de permiso crudas. |
 
-### 6.3 Access — 9 sugeridos (CA-ACV2)
+### 6.3 Access — 9 sugeridos en el peek (CA-ACV2)
 
 | ID | Criterio |
 | --- | --- |
-| CA-ACV2-01 | La ruta muestra una única sección `Perfiles sugeridos` con exactamente 9 cards cuando el backend expone 9 perfiles system, en el orden §3.3 (verificable por título de card). |
+| CA-ACV2-01 | Al abrir `Crear perfil`, el peek (momento lista) muestra exactamente 9 filas de sugeridos cuando el backend expone 9 perfiles system, en el orden §3.3 (verificable por título de fila). **No** hay una sección `Perfiles sugeridos` con 9 cards en la ruta. |
 | CA-ACV2-02 | `SYSTEM_TEMPLATE_PROFILE_NAMES` resuelve `Ventas`, `Contabilidad` y `Talento humano` para SALES/ACCOUNTANT/HR; un perfil system sin entrada en el mapa cae a `profile.name`. |
-| CA-ACV2-03 | El orden de cards es invariante ante reordenamiento del array de la API (test con fixtures en orden aleatorio). |
-| CA-ACV2-04 | En 1440×900 con 9 sugeridos, las cards forman filas de 4 (grid xl), cada CTA cabe apilado dentro de su card (CA-ACC-UX-16 vigente) y el heading `Perfiles sugeridos` es visible sin scroll con 0 perfiles personalizados (CA-ACC-UX-14 re-verificada). |
-| CA-ACV2-05 | Los 6 snapshots `access-{desktop,tablet,mobile}-{light,dark}.png` se regeneran y el suite E2E de access pasa completo, con mocks actualizados a `MOD00_ACCESS_V2` y 3 plantillas nuevas; axe 0 violaciones en los 6 combos. |
-| CA-ACV2-06 | Las descripciones visibles de las 3 cards nuevas no contienen `plantilla`, `sistema`, `categoría base`, `módulo`, `matriz` ni claves crudas (barrido de copy en E2E/unit). |
-| CA-ACV2-07 | En 390×844, CA-ACC-UX-20 sigue cumpliéndose con la página crecida (ayuda MFA encima del CTA, sin solape, botón a ancho). |
+| CA-ACV2-03 | El orden de las 9 filas del peek es invariante ante reordenamiento del array de la API (test con fixtures en orden aleatorio). |
+| CA-ACV2-04 | En 1440×900 con 0 personalizados, el primer viewport **no** muestra grid de cards; empty post-corte + CTA `Crear perfil` cumplen CA-ACC-UX-14 (v1.10). El heading `Perfiles sugeridos` aparece como `title` del peek, no en la página. |
+| CA-ACV2-05 | Los 6 snapshots `access-{desktop,tablet,mobile}-{light,dark}.png` se regeneran contra el primer viewport **sin grid** y el suite E2E de access pasa completo, con mocks actualizados a `MOD00_ACCESS_V2` y 3 perfiles sugeridos nuevos; axe 0 violaciones en los 6 combos. Asertos de peek: abrir create → 9 filas → detalle → borrador en página. |
+| CA-ACV2-06 | Las descripciones visibles de las 3 entradas nuevas (fila/detalle del peek) no contienen `plantilla`, `sistema`, `categoría base`, `módulo`, `matriz` ni claves crudas (barrido de copy en E2E/unit). |
+| CA-ACV2-07 | En 390×844, CA-ACC-UX-20 sigue cumpliéndose con la página **sin** galería (ayuda MFA encima del CTA, sin solape, botón a ancho). CA-ACC-UX-29 cubre el peek en el mismo viewport. |
 
 ### 6.4 Users (CA-USR)
 
@@ -405,7 +410,7 @@ Mecanismo congelado para esta spec (variante **sin cambio de contrato backend**)
 | # | Hallazgo | Impacto | Resolución propuesta en esta spec (a confirmar) |
 | --- | --- | --- | --- |
 | 1 | HLD §6.6 enuncia gates en «Suscriptores, Oportunidades, Assurance, Inventario, **Compras** y Comercial»; el encargo de Fase 3 habla de «…Inventario, Comercial, **Programación** si aplica». En la UI real no existe página de Compras: es pestaña dentro de Inventario (`inventory-nav.ts`); Programación sí existe (`/dashboard/scheduling`) y su permiso `wfm.schedule.read` está en el mapeo congelado del plan §2. | Define la 6.ª superficie gateada. | Congelado aquí: gates de página = Suscriptores, Oportunidades, Mesa de ayuda, Inventario, Comercial y **Programación**; **Compras** queda como gate de pestaña interna de Inventario (`inventory.purchasing.read`). Confirmar o ajustar antes del congelado. |
-| 2 | D4 nombra las plantillas estándar «Acceso estándar {Categoría}» (9), pero hoy existen 6 perfiles system «sugeridos» con nombres humanos. La UI debe mostrar **exactamente 9 cards (una por tipo de usuario)**; si la migración de Fase 1 **coexiste** con los 6 actuales en lugar de absorberlos 1:1 por categoría, la sección mostraría duplicados por tipo de usuario. | Conteo y unicidad de cards en Access. | Entender que Fase 1 deja **un único perfil system por categoría** (9 en total). Confirmar con AI-SR-FULL/orquestador; si no, esta spec requerirá v1.1 con regla de deduplicación por `baseRoleConstraint`. |
+| 2 | D4 nombra las plantillas estándar «Acceso estándar {Categoría}» (9), pero hoy existen 6 perfiles system «sugeridos» con nombres humanos. La UI debe mostrar **exactamente 9 entradas en el peek** (una por tipo de usuario); si la migración de Fase 1 **coexiste** con los 6 actuales en lugar de absorberlos 1:1 por categoría, el peek mostraría duplicados por tipo de usuario. | Conteo y unicidad de filas en el peek de Access. | Entender que Fase 1 deja **un único perfil system por categoría** (9 en total). Confirmar con AI-SR-FULL/orquestador; si no, esta spec requerirá v1.3 con regla de deduplicación por `baseRoleConstraint`. |
 | 3 | La condición dura §5.4 se congela sin señal runtime por tenant (orden de despliegue + tripwire), porque un flag por tenant o exponer la versión de catálogo al frontend exige cambio de contrato backend (fuera de alcance G1-5). | Precisión del gating por tenant. | Si el orquestador prefiere flag/versión como mecanismo primario, asignarlo a AI-SR-FULL como micro-cambio de contrato y esta spec lo adoptaría en v1.1; el tripwire (§1.5) se mantiene en ambos escenarios. |
 | 4 | La nav gatea Operaciones por OR de permisos (plan §2), pero `/dashboard/operations` no recibe page-gate en este ciclo (no está en las 6 superficies) y sus endpoints siguen `@Roles`-only. Un deep-link sin permisos de nav dependerá del 403 actual del backend. | Gap transitorio de deep-link a Operaciones. | Aceptado como estado transitorio del plan (cableado de operations fuera del ciclo). Si el orquestador quiere simetría total, añadir 7.ª superficie en v1.1. |
 
@@ -415,9 +420,10 @@ Mecanismo congelado para esta spec (variante **sin cambio de contrato backend**)
 
 | Artefacto | Efecto |
 | --- | --- |
-| Spec prevalente access v1.8 | Sin conflicto: esta spec **añade** la 3.ª–9.ª card y el orden; todo lo demás de esa ruta sigue gobernado por v1.8 (copy, §10 visual, CA-ACC-UX-01…20). |
+| Spec prevalente access v1.10 | **Gobierna** empty, subtítulo, peek de creación (§6.8 / §8 / §10.1), banner de siguiente paso y CA-ACC-POST-01…06. Esta spec **ya no añade** cards en página: añade las 3 entradas (SALES/ACCOUNTANT/HR), el orden canónico y los nombres humanos **en el peek**. CA-ACC-UX-15/16/18 superados; CA-ACC-UX-14 sustituido. |
 | ADR-083 / HLD §6.6 / plan Fase 3 | Implementación frontend de D6 con las condiciones G1 AI-PROD-UX 1–6 incorporadas. |
+| Plan catálogo en peek v1.1 | Opción B: 9 cards fuera de la página; catálogo solo en `PortalSidePeek`. |
 | Firma iWana | Lima reservada a indicador de item activo; estados nuevos usan ámbar del patrón hub y tokens existentes. |
-| Snapshot E2E access | Los 6 PNG quedan obsoletos con esta spec; se regeneran en Fase 3 (CA-ACV2-05). |
+| Snapshot E2E access | Los 6 PNG quedan obsoletos con esta spec; se regeneran contra el primer viewport **sin grid** (CA-ACV2-05). |
 
-Cambios posteriores a esta spec se versionan (v1.1+) y se notifican vía orquestador a AI-FE-PLATFORM y AI-SR-QA; nunca se parchean solo en código.
+Cambios posteriores a esta spec se versionan (v1.3+) y se notifican vía orquestador a AI-FE-PLATFORM y AI-SR-QA; nunca se parchean solo en código.

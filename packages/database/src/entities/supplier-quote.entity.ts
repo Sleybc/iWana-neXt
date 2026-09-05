@@ -10,6 +10,11 @@ import {
 @Index('idx_supplier_quotes_request', ['purchaseRequestId', 'validUntil'])
 @Index('idx_supplier_quotes_tenant_request_party', ['tenantId', 'purchaseRequestId', 'partyRefId'])
 @Index('idx_supplier_quotes_tenant_valid_until', ['tenantId', 'validUntil'])
+@Index('idx_supplier_quotes_tenant_request_payable', [
+  'tenantId',
+  'purchaseRequestId',
+  'payableAmount',
+])
 @Entity({ name: 'supplier_quotes' })
 export class SupplierQuote {
   @PrimaryGeneratedColumn('uuid')
@@ -38,6 +43,12 @@ export class SupplierQuote {
 
   @Column({ name: 'shipping_cost', type: 'numeric', precision: 14, scale: 2, default: 0 })
   shippingCost: string;
+
+  @Column({ name: 'shipping_arrangement', type: 'varchar', length: 16, default: 'ON_INVOICE' })
+  shippingArrangement: string;
+
+  @Column({ name: 'payable_amount', type: 'numeric', precision: 14, scale: 2 })
+  payableAmount: string;
 
   @Column({ type: 'varchar', length: 3 })
   currency: string;

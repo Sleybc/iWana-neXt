@@ -120,7 +120,7 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
         itemKind: InventoryItemKind.SERIALIZED,
         categoryId: CATEGORY_ID,
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
       },
       actor,
     );
@@ -158,7 +158,7 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
         name: 'Switch 24p',
         categoryId: CATEGORY_ID,
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
       },
       actor,
     );
@@ -189,7 +189,7 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
         name: 'ONT GPON',
         categoryId: CATEGORY_ID,
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
       },
       actor,
     );
@@ -217,7 +217,7 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
           name: 'ONT GPON',
           categoryId: CATEGORY_ID,
           trackingMode: InventoryTrackingMode.SERIALIZED,
-          unitOfMeasure: 'unidad',
+          unitOfMeasure: 'UNIT',
         },
         actor,
       ),
@@ -250,7 +250,7 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
         name: 'Producto custom',
         categoryId: CATEGORY_ID,
         trackingMode: InventoryTrackingMode.CONSUMABLE,
-        unitOfMeasure: 'metro',
+        unitOfMeasure: 'METER',
       },
       actor,
     );

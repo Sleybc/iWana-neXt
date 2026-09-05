@@ -123,6 +123,14 @@ jest.mock('../auth/guards/roles.guard', () => ({
   },
 }));
 
+jest.mock('../access-control/guards/permissions.guard', () => ({
+  PermissionsGuard: class PermissionsGuard {
+    canActivate() {
+      return true;
+    }
+  },
+}));
+
 const sharedId = '11111111-1111-4111-8111-111111111111';
 const exclusiveBId = '22222222-2222-4222-8222-222222222222';
 

@@ -28,10 +28,12 @@ import {
   SupplierProfile,
   SupplierQuote,
   SupplierQuoteLine,
+  SupplierQuoteTax,
 } from '@iwana/db';
 import { PartiesModule } from '../parties/parties.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { TaxationModule } from '../taxation/taxation.module';
 import {
   INVENTORY_MOVEMENT_PORT,
   InventoryMovementPortAdapter,
@@ -58,6 +60,8 @@ import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
+import { StockIssuePickingService } from './services/stock-issue-picking.service';
+import { ExecutorCustodyService } from './services/executor-custody.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockIssueService } from './services/stock-issue.service';
@@ -79,6 +83,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     CommercialModule,
     TenantModule,
     AccessControlModule,
+    TaxationModule,
     TypeOrmModule.forFeature([
       InventoryItem,
       InventoryCategory,
@@ -97,6 +102,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
       PurchaseRequestLineAward,
       SupplierQuote,
       SupplierQuoteLine,
+      SupplierQuoteTax,
       PurchaseRfq,
       PurchaseRfqInvitation,
       PurchaseOrder,
@@ -122,6 +128,8 @@ import { AccessControlModule } from '../access-control/access-control.module';
     CycleCountService,
     StockBalanceService,
     SerializedAssetService,
+    StockIssuePickingService,
+    ExecutorCustodyService,
     PurchasingPolicyService,
     PurchasingQueryService,
     PurchasingService,

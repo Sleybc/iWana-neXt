@@ -8,7 +8,7 @@
     "start": "node dist/main",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:integration": "jest --config jest.integration.config.js --runInBand",
     "clean": "node ../../scripts/clean-paths.mjs dist"
   },

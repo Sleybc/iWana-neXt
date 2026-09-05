@@ -1,5 +1,5 @@
 /**
- * Tests de DropdownUser (consola plataforma) + UserAvatar / platformRoleToLabel.
+ * Tests de DropdownUser (consola plataforma) + platformRoleToLabel.
  *
  * CA-S1-12-R / CA-S1-13-R / asChild: ejercen el SUT real (sin mock de DropdownUser
  * ni de @iwana/ui). Solo se mockean dependencias externas (auth, navigation, Link).
@@ -10,7 +10,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DropdownUser, platformRoleToLabel, UserAvatar } from './DropdownUser';
+import { DropdownUser, platformRoleToLabel } from './DropdownUser';
 
 const logoutMock = jest.fn().mockResolvedValue(undefined);
 const pushMock = jest.fn();
@@ -51,15 +51,20 @@ async function openUserMenu(user: ReturnType<typeof userEvent.setup>) {
   return trigger;
 }
 
-describe('UserAvatar', () => {
-  it('muestra la inicial en mayúsculas del displayName', () => {
-    render(<UserAvatar displayName="Juan Pérez" />);
-    expect(screen.getByText('J')).toBeInTheDocument();
+describe('Avatar del trigger (contrato Avatar v1.0)', () => {
+  it('muestra las iniciales canónicas del displayName ("Operador Prueba" → "OP")', () => {
+    render(<DropdownUser />);
+    const trigger = screen.getByRole('button', { name: 'Menú de usuario' });
+    expect(trigger).toHaveTextContent('OP');
   });
 
-  it('muestra "U" como fallback cuando displayName está vacío', () => {
-    render(<UserAvatar displayName="" />);
-    expect(screen.getByText('U')).toBeInTheDocument();
+  it('es decorativo porque el nombre visible está adyacente', () => {
+    render(<DropdownUser />);
+    const trigger = screen.getByRole('button', { name: 'Menú de usuario' });
+    const avatar = trigger.querySelector('div[aria-hidden="true"]');
+    expect(avatar).not.toBeNull();
+    expect(avatar).toHaveTextContent('OP');
+    expect(trigger.querySelector('[role="img"]')).toBeNull();
   });
 });
 

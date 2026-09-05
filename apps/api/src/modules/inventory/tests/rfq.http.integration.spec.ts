@@ -6,6 +6,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { PurchasingController } from '../purchasing.controller';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
@@ -101,7 +102,10 @@ describe('RFQ HTTP integration', () => {
         JwtAuthGuard,
         RolesGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -109,7 +113,9 @@ describe('RFQ HTTP integration', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   it('expone flujo HTTP RFQ y descarga PDF', async () => {

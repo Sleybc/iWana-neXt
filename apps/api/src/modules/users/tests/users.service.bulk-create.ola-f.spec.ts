@@ -22,6 +22,7 @@
 
 import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { TenantContext, User } from '@iwana/db';
 import {
@@ -30,7 +31,9 @@ import {
   UserRole,
   type UsersBulkCreateJobPayload,
 } from '@iwana/shared';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { AuditService } from '../../audit/audit.service';
+import { MailerService } from '../../mailer/mailer.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { SearchQueueService } from '../../search/search-queue.service';
 import { TenantService } from '../../tenant/tenant.service';
@@ -253,6 +256,23 @@ describe('UsersService — regresiones de la Ola F (bulkCreate async)', () => {
           useValue: {
             enqueueUserUpsert: jest.fn().mockResolvedValue(undefined),
             enqueueUserDelete: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { invalidateUserPermissions: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: MailerService,
+          useValue: { sendMail: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key: string, def?: unknown) => {
+              if (key === 'FRONTEND_URL') return 'http://localhost:3001';
+              return def;
+            }),
           },
         },
         { provide: REDIS_CLIENT, useValue: redis },

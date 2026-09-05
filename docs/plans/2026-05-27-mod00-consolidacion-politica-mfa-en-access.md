@@ -195,7 +195,7 @@ Expected: FAIL porque `MfaRequiredToggle` sigue renderizando en `ProfileClient`.
 
 - [ ] **Step 5: Reejecutar pruebas focalizadas del perfil y users**
 
-Run: `pnpm --filter @iwana/portal test -- ProfileClient.spec.tsx && pnpm exec playwright test e2e/tests/portal-users.spec.ts --config e2e/playwright.portal.local.config.ts`
+Run: `pnpm --filter @iwana/portal exec jest --ci --runInBand -- ProfileClient.spec.tsx && pnpm exec playwright test e2e/tests/portal-users.spec.ts --config e2e/playwright.portal.local.config.ts`
 
 Expected: PASS.
 
@@ -226,7 +226,7 @@ expect(body).not.toContainEqual(
 
 - [ ] **Step 2: Ejecutar test backend y confirmar fallo inicial**
 
-Run: `pnpm --filter @iwana/api test -- configuration.controller.http.spec.ts`
+Run: `pnpm --filter @iwana/api exec jest --ci --runInBand -- configuration.controller.http.spec.ts`
 
 Expected: FAIL porque el registry aun publica SECURITY disponible.
 
@@ -257,7 +257,7 @@ await page.getByLabel('Activar MFA obligatorio').check({ force: true });
 
 - [ ] **Step 6: Ejecutar validacion del slice settings**
 
-Run: `pnpm --filter @iwana/api test -- configuration.controller.http.spec.ts && pnpm exec playwright test e2e/tests/portal-settings-empresa.spec.ts e2e/tests/portal-settings-federated-shell.spec.ts --config e2e/playwright.portal.local.config.ts`
+Run: `pnpm --filter @iwana/api exec jest --ci --runInBand -- configuration.controller.http.spec.ts && pnpm exec playwright test e2e/tests/portal-settings-empresa.spec.ts e2e/tests/portal-settings-federated-shell.spec.ts --config e2e/playwright.portal.local.config.ts`
 
 Expected: PASS.
 
@@ -289,7 +289,7 @@ git commit -m "refactor: deprecar ruta security independiente"
 
 - [ ] **Step 2: Ejecutar la regresion focalizada completa**
 
-Run: `pnpm --filter @iwana/portal test -- AccessControlSettingsClient.spec.tsx ProfileClient.spec.tsx SettingsClient.spec.tsx && pnpm --filter @iwana/api test -- configuration.controller.http.spec.ts && pnpm exec playwright test e2e/tests/portal-users.spec.ts e2e/tests/portal-settings-empresa.spec.ts e2e/tests/portal-settings-federated-shell.spec.ts --config e2e/playwright.portal.local.config.ts`
+Run: `pnpm --filter @iwana/portal exec jest --ci --runInBand -- AccessControlSettingsClient.spec.tsx ProfileClient.spec.tsx SettingsClient.spec.tsx && pnpm --filter @iwana/api exec jest --ci --runInBand -- configuration.controller.http.spec.ts && pnpm exec playwright test e2e/tests/portal-users.spec.ts e2e/tests/portal-settings-empresa.spec.ts e2e/tests/portal-settings-federated-shell.spec.ts --config e2e/playwright.portal.local.config.ts`
 
 Expected: PASS.
 

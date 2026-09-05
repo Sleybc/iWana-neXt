@@ -14,6 +14,8 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockBalanceService } from '../services/stock-balance.service';
 
 jest.mock('@iwana/db', () => ({
+  InventoryItem: class InventoryItem {},
+  SerializedAsset: class SerializedAsset {},
   StockBalance: class StockBalance {},
   StockIssue: class StockIssue {},
   StockIssueLine: class StockIssueLine {},
@@ -88,6 +90,8 @@ describe('StockIssueService', () => {
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save,
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
@@ -249,6 +253,8 @@ describe('StockIssueService', () => {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save: jest.fn(),
       create: jest.fn((_entity, payload) => payload),
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
@@ -292,6 +298,8 @@ describe('StockIssueService', () => {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save: jest.fn(),
       create: jest.fn((_entity, payload) => payload),
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
@@ -334,6 +342,8 @@ describe('StockIssueService', () => {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save: jest.fn(),
       create: jest.fn((_entity, payload) => payload),
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
@@ -432,6 +442,8 @@ describe('StockIssueService', () => {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save: jest.fn(),
       create: jest.fn((_entity, payload) => payload),
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           return { id: options.where.id, tenantId: options.where.tenantId, type: 'OFFICE_STOCK' };
@@ -878,6 +890,8 @@ describe('StockIssueService', () => {
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save,
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
@@ -939,6 +953,8 @@ describe('StockIssueService', () => {
         .fn()
         .mockImplementationOnce(async (_entity, payload) => ({ id: 'issue-res-002', ...payload }))
         .mockImplementationOnce(async (_entity, payload) => payload),
+      // MOD12 S1 · B3: la carga batch de ítems usa `find`; sin maestro no hay serial que validar.
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, options) => {
         if (entity === StockLocation) {
           const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';

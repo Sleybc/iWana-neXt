@@ -49,6 +49,8 @@ function makeItem(overrides: Partial<InventoryItemRecord> = {}): InventoryItemRe
     usefulLifeMonths: null,
     commercialReferenceId: null,
     status: InventoryItemStatus.ACTIVE,
+    barcode: null,
+    barcodeType: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,

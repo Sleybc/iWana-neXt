@@ -41,15 +41,23 @@ describe('pending-visits-ui territory formatting', () => {
 });
 
 describe('filterActionablePendingVisitRequests', () => {
-  it('excluye solicitudes ya agendadas o cerradas del rail operativo', () => {
+  it('incluye solo estados programables: excluye agendadas, en ejecución y cerradas', () => {
     const visitRequests = [
+      { id: 'pending', status: VisitRequestStatus.PENDING },
       { id: 'ready', status: VisitRequestStatus.READY_TO_SCHEDULE },
+      { id: 'reschedule', status: VisitRequestStatus.REQUIRES_RESCHEDULE },
       { id: 'scheduled', status: VisitRequestStatus.SCHEDULED },
+      { id: 'in-execution', status: VisitRequestStatus.IN_EXECUTION },
+      { id: 'closed', status: VisitRequestStatus.CLOSED },
       { id: 'cancelled', status: VisitRequestStatus.CANCELLED },
+      { id: 'rejected', status: VisitRequestStatus.REJECTED },
+      { id: 'expired', status: VisitRequestStatus.EXPIRED },
     ] as const;
 
     expect(filterActionablePendingVisitRequests([...visitRequests] as WfmVisitRequest[])).toEqual([
+      expect.objectContaining({ id: 'pending' }),
       expect.objectContaining({ id: 'ready' }),
+      expect.objectContaining({ id: 'reschedule' }),
     ]);
   });
 });

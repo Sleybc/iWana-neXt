@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { InventoryCategory } from './inventory-category.entity';
 import {
+  InventoryBarcodeType,
   InventoryItemCategory,
   InventoryItemKind,
   InventoryItemStatus,
@@ -17,6 +18,10 @@ import {
 } from '@iwana/shared';
 
 @Index('uq_inventory_items_tenant_sku', ['tenantId', 'sku'], { unique: true })
+@Index('uq_inventory_items_tenant_barcode', ['tenantId', 'barcode'], {
+  unique: true,
+  where: 'barcode IS NOT NULL',
+})
 @Index('idx_inventory_items_tenant_category_status', ['tenantId', 'category', 'status'])
 @Index('idx_inventory_items_tenant_category_id_status', ['tenantId', 'categoryId', 'status'])
 @Index('idx_inventory_items_tenant_status_purchasable', ['tenantId', 'status', 'purchasable'])
@@ -76,6 +81,16 @@ export class InventoryItem {
   })
   trackingMode: InventoryTrackingMode;
 
+  /**
+   * Unidad base en la que se cuentan las existencias.
+   *
+   * Código del catálogo canónico de ADR-085 D1 (`INVENTORY_UNITS_OF_MEASURE` en
+   * `@iwana/shared`; p. ej. UNIT, BOX, METER). La migración 122 normaliza los
+   * literales legacy a estos códigos y el backend rechaza cualquier valor fuera
+   * del catálogo. Se conserva varchar(32) NOT NULL: el código más largo
+   * (KILOMETER, 9 caracteres) cabe con holgura y la reversibilidad con la
+   * migración queda intacta.
+   */
   @Column({ name: 'unit_of_measure', type: 'varchar', length: 32 })
   unitOfMeasure: string;
 
@@ -100,6 +115,14 @@ export class InventoryItem {
   @Column({ name: 'supplier_sku', type: 'varchar', length: 80, nullable: true })
   supplierSku: string | null;
 
+  /**
+   * Unidad en la que se compra. Mismo catálogo canónico que la unidad base.
+   *
+   * Se conserva varchar(32) nullable: en F5a la unidad de compra sigue sin ser
+   * establecible desde el portal (recorte ADR-085) y el factor de conversión no
+   * se aplica (es F5b). La validación dimensional entre ambas unidades también
+   * es F5b; aquí solo se exige pertenencia al catálogo cuando hay valor.
+   */
   @Column({ name: 'purchase_unit_of_measure', type: 'varchar', length: 32, nullable: true })
   purchaseUnitOfMeasure: string | null;
 
@@ -141,6 +164,30 @@ export class InventoryItem {
 
   @Column({ name: 'commercial_reference_id', type: 'varchar', length: 160, nullable: true })
   commercialReferenceId: string | null;
+
+  /**
+   * Código de barras del artículo (MOD12 · F4 · PRD §11 delta v1.1).
+   *
+   * Opcional (regla 1), único por tenant cuando existe mediante el índice único
+   * PARCIAL `uq_inventory_items_tenant_barcode (tenant_id, barcode)
+   * WHERE barcode IS NOT NULL` (regla 2 — el DDL vive en la migración 123, con
+   * el mismo patrón del índice parcial de preferred_supplier). Va SIEMPRE
+   * acompañado de `barcode_type` (regla 3): uno sin el otro se rechaza en el
+   * schema Zod. NO sustituye al SKU (regla 5, ADR-INV-SKU-COMPUESTO) y es
+   * editable tras la creación (regla 6).
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  barcode: string | null;
+
+  /** Formato declarado del código; ver `InventoryBarcodeType` (PRD §11 regla 3). */
+  @Column({
+    name: 'barcode_type',
+    type: 'enum',
+    enum: InventoryBarcodeType,
+    enumName: 'inventory_barcode_type',
+    nullable: true,
+  })
+  barcodeType: InventoryBarcodeType | null;
 
   @Column({
     type: 'enum',

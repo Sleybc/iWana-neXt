@@ -9,7 +9,7 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "clean": "node ../../scripts/clean-paths.mjs dist"
   },
   "devDependencies": {

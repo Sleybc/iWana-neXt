@@ -379,4 +379,66 @@ describe('TenantMiddleware', () => {
     expect(tenantService.findBySlug).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  it('fija iwanaVerifiedSub desde los claims verificados (P-09, bucket por sujeto)', async () => {
+    const tenant = buildTenant();
+    jwtService.verify.mockReturnValue({
+      sub: 'user-uuid-sub-9',
+      email: 'hash-email-123',
+      role: 'tenant_admin',
+      tenantId: tenant.id,
+      schemaName: tenant.schemaName,
+      jti: 'jwt-jti-9',
+      type: 'tenant',
+    });
+    tenantService.findById.mockResolvedValue(tenant);
+
+    const request = buildRequest({
+      cookies: { [tenantAccessCookieName()]: 'cookie.jwt.token' },
+    });
+
+    const next = jest.fn(() => {
+      expect((request as Request & { iwanaVerifiedSub?: string }).iwanaVerifiedSub).toBe(
+        'user-uuid-sub-9',
+      );
+    });
+
+    await middleware.use(request, {} as Response, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('P-17: el 404 de ruta publica no devuelve el slug pedido', async () => {
+    tenantService.findBySlug.mockResolvedValue(null);
+
+    const request = buildRequest({
+      method: 'POST',
+      originalUrl: '/api/v1/auth/login',
+      url: '/api/v1/auth/login',
+      headers: { 'x-tenant-slug': 'empresa-inexistente' },
+    });
+
+    await expect(middleware.use(request, {} as Response, jest.fn())).rejects.toThrow(
+      'Empresa no encontrada.',
+    );
+
+    await expect(middleware.use(request, {} as Response, jest.fn())).rejects.not.toThrow(
+      'empresa-inexistente',
+    );
+  });
+
+  it('P-17: el 403 de ruta publica no revela el estado comercial', async () => {
+    tenantService.findBySlug.mockResolvedValue(buildTenant({ status: TenantStatus.SUSPENDED }));
+
+    const request = buildRequest({
+      method: 'POST',
+      originalUrl: '/api/v1/auth/login',
+      url: '/api/v1/auth/login',
+      headers: { 'x-tenant-slug': 'isp-test' },
+    });
+
+    await expect(middleware.use(request, {} as Response, jest.fn())).rejects.toThrow(
+      'La empresa no esta disponible. Contactar soporte iWana.',
+    );
+  });
 });

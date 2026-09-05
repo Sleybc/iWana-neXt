@@ -1,7 +1,8 @@
 # PRD - MOD05 CRM Módulo Subscriber — Fase 03 (Conversión Two-Stage + Vista 360°)
 
 **Version:** 1.0  
-**Estado:** Aprobado  
+**Estado:** Aprobado — **vigencia parcial**  
+**Superado parcialmente por:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md (2026-09-04, D1 del CTO). Quedan SUPERADOS: RF-S360-11, RF-S360-14, §3.2 (exclusion de tickets y dispositivos), CA-S360-05 y CA-S360-08. El resto del documento permanece vigente.  
 **Fecha:** 2026-04-17  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
@@ -58,6 +59,8 @@ El resultado esperado es:
 
 ### 3.2 Fuera de scope
 
+> **SUPERADO PARCIALMENTE — Fase 04 (2026-09-04).** La exclusion de *tickets* y *dispositivos* queda levantada por `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md` §5.4 y §5.5: MOD12 cerro con comodatos reales y MOD10 quedo construido, de modo que el stub dejo de estar justificado por inexistencia. El resto de esta seccion sigue vigente.
+
 - Implementación real de facturación, pagos, tickets, dispositivos, provisioning o consumo.
 - Reutilización estructural de componentes entre expediente y subscriber en esta fase.
 - Integraciones nuevas entre CRM y módulos externos fuera de los puertos ya definidos.
@@ -91,10 +94,10 @@ El resultado esperado es:
 | ID         | Requerimiento                                                                                                            | Prioridad |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ | --------- |
 | RF-S360-10 | La página `/dashboard/crm/subscribers/[id]` debe ofrecer una vista 360° espejo del expediente detail.                    | MVP       |
-| RF-S360-11 | La vista debe incluir 6 tabs: Vista general, Datos, Servicios, Financiero, Cumplimiento y Seguimiento.                   | MVP       |
+| RF-S360-11 | **(SUPERADO por RF-S404-01, Fase 04: son 7 tabs)** La vista debe incluir 6 tabs: Vista general, Datos, Servicios, Financiero, Cumplimiento y Seguimiento.                   | MVP       |
 | RF-S360-12 | La tab Vista general debe resumir identidad, origen, servicio activo y trazabilidad del expediente.                      | MVP       |
 | RF-S360-13 | La tab Datos debe permitir edición por secciones con guardado individual.                                                | MVP       |
-| RF-S360-14 | La tab Servicios debe mostrar contratos, cotizaciones y plan activo, dejando equipos y provisioning como stub explícito. | MVP       |
+| RF-S360-14 | **(SUPERADO por RF-S404-03 y §5.4, Fase 04: equipos dejan de ser stub)** La tab Servicios debe mostrar contratos, cotizaciones y plan activo, dejando equipos y provisioning como stub explícito. | MVP       |
 | RF-S360-15 | La tab Financiero debe mostrar datos fiscales editables y placeholders claros para facturación y pagos.                  | MVP       |
 | RF-S360-16 | La tab Cumplimiento debe mostrar consentimientos, solicitudes ARCO y consentimientos heredados del expediente origen.    | MVP       |
 | RF-S360-17 | La tab Seguimiento debe consolidar timeline de conversión, cambios de estado y eventos relevantes.                       | MVP       |
@@ -191,10 +194,10 @@ No se comparte implementación interna de componentes con expediente en esta fas
 | CA-S360-02 | La transición a `CLIENTE_ACTIVO` activa el subscriber vinculado y registra `activatedAt`.         |
 | CA-S360-03 | La transición a `DESCARTADO` cancela el subscriber `PROSPECT` vinculado.                          |
 | CA-S360-04 | El pipeline abierto ya no muestra por defecto expedientes `CLIENTE_ACTIVO` ni `DESCARTADO`.       |
-| CA-S360-05 | La vista Subscriber 360° muestra las 6 tabs aprobadas y respeta el patrón visual de expediente.   |
+| CA-S360-05 | **(SUPERADO, Fase 04)** La vista Subscriber 360° muestra las 6 tabs aprobadas y respeta el patrón visual de expediente.   |
 | CA-S360-06 | El guardado por sección funciona con validación parcial y feedback de carga.                      |
 | CA-S360-07 | El enlace inverso entre subscriber y expediente funciona cuando existe trazabilidad.              |
-| CA-S360-08 | Los módulos no implementados aparecen como placeholders explícitos, sin datos ficticios.          |
+| CA-S360-08 | **(REFORMULADO por RF-S404-22 y RF-S404-36, Fase 04: la honestidad se conserva, pero equipos y tickets ya llevan datos reales)** Los módulos no implementados aparecen como placeholders explícitos, sin datos ficticios.          |
 | CA-S360-09 | `pnpm --filter @iwana/api typecheck` y `pnpm --filter @iwana/portal typecheck` pasan sin errores. |
 | CA-S360-10 | Existen pruebas para conversión, activación, cancelación y guardado por sección.                  |
 

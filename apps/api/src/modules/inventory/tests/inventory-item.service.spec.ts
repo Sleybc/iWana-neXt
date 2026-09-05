@@ -167,7 +167,7 @@ describe('InventoryItemService', () => {
         itemKind: InventoryItemKind.STOCK,
         category: InventoryItemCategory.CPE,
         trackingMode: InventoryTrackingMode.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
         baseCost: '0',
         minimumStock: '0',
         purchasable: true,
@@ -246,7 +246,7 @@ describe('InventoryItemService', () => {
       itemKind: InventoryItemKind.STOCK,
       category: InventoryItemCategory.CPE,
       trackingMode: InventoryTrackingMode.SERIALIZED,
-      unitOfMeasure: 'unidad',
+      unitOfMeasure: 'UNIT',
       baseCost: '0',
       minimumStock: '0',
       purchasable: true,
@@ -314,6 +314,31 @@ describe('InventoryItemService', () => {
     expect(queryBuilder.take).toHaveBeenCalledWith(3);
   });
 
+  it('rejects create when unitOfMeasure is outside the canonical catalog (F5a)', async () => {
+    runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn(),
+        create: jest.fn((_entity, payload) => payload),
+      };
+
+      return work({ manager } as never);
+    });
+
+    await expect(
+      service.create(
+        {
+          sku: 'CABLE-01',
+          name: 'Cable drop',
+          category: InventoryItemCategory.MATERIALS,
+          trackingMode: InventoryTrackingMode.CONSUMABLE,
+          unitOfMeasure: 'unidad',
+        },
+        actor,
+      ),
+    ).rejects.toThrow('La unidad de medida no pertenece al catálogo canónico.');
+  });
+
   it('rejects create when purchase unit lacks conversion factor', async () => {
     runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
       const manager = {
@@ -332,8 +357,8 @@ describe('InventoryItemService', () => {
           name: 'Cable drop',
           category: InventoryItemCategory.MATERIALS,
           trackingMode: InventoryTrackingMode.CONSUMABLE,
-          unitOfMeasure: 'metro',
-          purchaseUnitOfMeasure: 'rollo',
+          unitOfMeasure: 'METER',
+          purchaseUnitOfMeasure: 'ROLL',
           purchaseToBaseUomFactor: 0,
         },
         actor,
@@ -364,9 +389,10 @@ describe('InventoryItemService', () => {
         name: 'Cable drop',
         categoryId: '11111111-1111-4111-8111-111111111111',
         trackingMode: InventoryTrackingMode.CONSUMABLE,
-        unitOfMeasure: 'metro',
+        // F5b (ADR-085 D2): par dimensionalmente válido (empaque COUNT).
+        unitOfMeasure: 'UNIT',
         purchasable: true,
-        purchaseUnitOfMeasure: 'rollo',
+        purchaseUnitOfMeasure: 'BOX',
         purchaseToBaseUomFactor: 100,
         standardCost: 1500,
       },
@@ -379,7 +405,7 @@ describe('InventoryItemService', () => {
         sku: 'CABLE-01',
         categoryId: '11111111-1111-4111-8111-111111111111',
         purchasable: true,
-        purchaseUnitOfMeasure: 'rollo',
+        purchaseUnitOfMeasure: 'BOX',
       }),
     );
     expect(eventEmitter.emit).toHaveBeenCalledWith(
@@ -412,7 +438,7 @@ describe('InventoryItemService', () => {
       categoryId: '11111111-1111-4111-8111-111111111111',
       category: InventoryItemCategory.CPE,
       trackingMode: InventoryTrackingMode.SERIALIZED,
-      unitOfMeasure: 'unidad',
+      unitOfMeasure: 'UNIT',
       assetControlled: true,
       purchaseUnitOfMeasure: null,
       purchaseToBaseUomFactor: null,
@@ -458,7 +484,7 @@ describe('InventoryItemService', () => {
         categoryId: '11111111-1111-4111-8111-111111111111',
         category: InventoryItemCategory.CPE,
         itemKind: InventoryItemKind.SERIALIZED,
-        unitOfMeasure: 'unidad',
+        unitOfMeasure: 'UNIT',
         purchaseUnitOfMeasure: null,
         standardCost: '120000.00',
         preferredSupplierRefId: 'supplier-1',
@@ -562,5 +588,308 @@ describe('InventoryItemService', () => {
     await expect(service.delete('item-delete', actor)).rejects.toThrow(
       'No se puede eliminar el producto porque tiene stock, activos o movimientos asociados.',
     );
+  });
+
+  describe('código de barras (MOD12 · F4)', () => {
+    const baseInput = {
+      sku: 'CABLE-01',
+      name: 'Cable drop',
+      categoryId: '11111111-1111-4111-8111-111111111111',
+      trackingMode: InventoryTrackingMode.CONSUMABLE,
+      unitOfMeasure: 'UNIT',
+    };
+
+    function barcodeManager() {
+      const findOne = jest.fn().mockResolvedValue(null);
+      const save = jest.fn().mockResolvedValue({ id: 'item-001', sku: 'CABLE-01' });
+      const create = jest.fn((_entity: unknown, payload: unknown) => payload);
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+        const manager = { findOne, save, create };
+        return work({ manager } as never);
+      });
+      return { findOne, save, create };
+    }
+
+    it('crea el artículo con barcode y barcodeType cuando el EAN-13 tiene dígito válido', async () => {
+      const { save } = barcodeManager();
+
+      await service.create(
+        { ...baseInput, barcode: '8412345678905', barcodeType: 'EAN13' } as Parameters<
+          InventoryItemService['create']
+        >[0],
+        actor,
+      );
+
+      expect(save).toHaveBeenCalledWith(
+        InventoryItem,
+        expect.objectContaining({ barcode: '8412345678905', barcodeType: 'EAN13' }),
+      );
+    });
+
+    it('crea el artículo con UPCA válido y sin código (CA-F4-01)', async () => {
+      const { save } = barcodeManager();
+
+      await service.create(
+        { ...baseInput, barcode: '036000291452', barcodeType: 'UPCA' } as Parameters<
+          InventoryItemService['create']
+        >[0],
+        actor,
+      );
+      expect(save).toHaveBeenCalledWith(
+        InventoryItem,
+        expect.objectContaining({ barcode: '036000291452', barcodeType: 'UPCA' }),
+      );
+
+      await service.create({ ...baseInput }, actor);
+      expect(save).toHaveBeenLastCalledWith(
+        InventoryItem,
+        expect.objectContaining({ barcode: null, barcodeType: null }),
+      );
+    });
+
+    it('rechaza un EAN-13 con dígito de control inválido explicando el motivo (CA-F4-03)', async () => {
+      barcodeManager();
+
+      // Check real del payload 841234567890 es 5: 03 y 04 son inválidos.
+      await expect(
+        service.create(
+          { ...baseInput, barcode: '8412345678904', barcodeType: 'EAN13' } as Parameters<
+            InventoryItemService['create']
+          >[0],
+          actor,
+        ),
+      ).rejects.toThrow('dígito de control');
+
+      await expect(
+        service.create(
+          { ...baseInput, barcode: '8412345678903', barcodeType: 'EAN13' } as Parameters<
+            InventoryItemService['create']
+          >[0],
+          actor,
+        ),
+      ).rejects.toThrow('dígito de control');
+    });
+
+    it('rechaza un UPCA con dígito de control inválido (CA-F4-03)', async () => {
+      barcodeManager();
+
+      await expect(
+        service.create(
+          { ...baseInput, barcode: '036000291453', barcodeType: 'UPCA' } as Parameters<
+            InventoryItemService['create']
+          >[0],
+          actor,
+        ),
+      ).rejects.toThrow('dígito de control');
+    });
+
+    it('rechaza barcode sin barcodeType y viceversa (CA-F4-08)', async () => {
+      barcodeManager();
+
+      await expect(
+        service.create(
+          { ...baseInput, barcode: 'ABC-123' } as Parameters<InventoryItemService['create']>[0],
+          actor,
+        ),
+      ).rejects.toThrow('el formato va junto al código');
+
+      await expect(
+        service.create(
+          { ...baseInput, barcodeType: 'CODE128' } as Parameters<InventoryItemService['create']>[0],
+          actor,
+        ),
+      ).rejects.toThrow('va junto al código');
+    });
+
+    it('rechaza la pareja a medias en null (código sin formato o formato sin código)', async () => {
+      barcodeManager();
+
+      await expect(
+        service.create(
+          { ...baseInput, barcode: '8412345678905', barcodeType: null } as Parameters<
+            InventoryItemService['create']
+          >[0],
+          actor,
+        ),
+      ).rejects.toThrow('el formato va junto al código');
+
+      await expect(
+        service.create(
+          { ...baseInput, barcode: null, barcodeType: 'EAN13' } as Parameters<
+            InventoryItemService['create']
+          >[0],
+          actor,
+        ),
+      ).rejects.toThrow('limpia ambos campos');
+    });
+
+    it('permite el mismo código en dos tenants distintos (CA-F4-09: unicidad por tenant)', async () => {
+      const { findOne, save } = barcodeManager();
+      (TenantContext.getOrThrow as unknown as jest.Mock).mockReturnValueOnce({
+        tenantId: 'tenant-002',
+        schemaName: 'tenant_002',
+      });
+
+      await service.create(
+        { ...baseInput, barcode: '8412345678905', barcodeType: 'EAN13' } as Parameters<
+          InventoryItemService['create']
+        >[0],
+        actor,
+      );
+
+      // El pre-check de colisión pregunta POR TENANT: el dueño de otro tenant
+      // no bloquea y el alta procede.
+      expect(findOne).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          where: { tenantId: 'tenant-002', barcode: '8412345678905' },
+        }),
+      );
+      expect(save).toHaveBeenCalled();
+    });
+
+    it('rechaza la colisión identificando el artículo que ya usa el código (CA-F4-02)', async () => {
+      const { findOne, save } = barcodeManager();
+      findOne.mockResolvedValue({
+        id: 'item-owner',
+        tenantId: 'tenant-001',
+        sku: 'ONT-001',
+        name: 'ONT WiFi 6',
+        barcode: '8412345678905',
+      });
+
+      await expect(
+        service.create(
+          { ...baseInput, barcode: '8412345678905', barcodeType: 'EAN13' } as Parameters<
+            InventoryItemService['create']
+          >[0],
+          actor,
+        ),
+      ).rejects.toThrow(
+        'El código de barras 8412345678905 ya está asignado al artículo ONT-001 (ONT WiFi 6).',
+      );
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza en update fijar el código que ya usa otro artículo (CA-F4-02)', async () => {
+      const existing = {
+        id: 'item-001',
+        tenantId: 'tenant-001',
+        sku: 'CABLE-01',
+        name: 'Cable drop',
+        categoryId: '11111111-1111-4111-8111-111111111111',
+        category: InventoryItemCategory.MATERIALS,
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+        unitOfMeasure: 'UNIT',
+        assetControlled: false,
+        purchaseUnitOfMeasure: null,
+        purchaseToBaseUomFactor: null,
+        reorderPoint: '0',
+        status: InventoryItemStatus.ACTIVE,
+        purchasable: true,
+      };
+      const owner = {
+        id: 'item-otro',
+        tenantId: 'tenant-001',
+        sku: 'ONT-001',
+        name: 'ONT WiFi 6',
+        barcode: '8412345678905',
+      };
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce(owner)
+        .mockResolvedValue(null);
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+        const manager = {
+          findOne,
+          save: jest.fn().mockResolvedValue(existing),
+          create: jest.fn((_entity: unknown, payload: unknown) => payload),
+        };
+        return work({ manager } as never);
+      });
+
+      await expect(
+        service.update(
+          'item-001',
+          { barcode: '8412345678905', barcodeType: 'EAN13' } as Parameters<
+            InventoryItemService['update']
+          >[1],
+          actor,
+        ),
+      ).rejects.toThrow('ya está asignado al artículo ONT-001');
+    });
+
+    it('limpia el par barcode/barcodeType cuando ambos llegan en null (regla 6: editable)', async () => {
+      barcodeManager();
+      const existing = {
+        id: 'item-001',
+        tenantId: 'tenant-001',
+        sku: 'CABLE-01',
+        name: 'Cable drop',
+        categoryId: '11111111-1111-4111-8111-111111111111',
+        category: InventoryItemCategory.MATERIALS,
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+        unitOfMeasure: 'UNIT',
+        assetControlled: false,
+        purchaseUnitOfMeasure: null,
+        purchaseToBaseUomFactor: null,
+        reorderPoint: '0',
+        status: InventoryItemStatus.ACTIVE,
+        purchasable: true,
+        barcode: '8412345678905',
+        barcodeType: 'EAN13',
+      };
+      const findOne = jest.fn().mockResolvedValueOnce(existing).mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+        tenantId: 'tenant-001',
+        code: 'MATERIALS',
+        codePrefix: 'MAT',
+        name: 'Materiales',
+        status: 'ACTIVE',
+      });
+      const updateSave = jest.fn().mockResolvedValue(existing);
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+        const manager = {
+          findOne,
+          save: updateSave,
+          create: jest.fn((_entity: unknown, payload: unknown) => payload),
+        };
+        return work({ manager } as never);
+      });
+
+      await service.update(
+        'item-001',
+        { barcode: null, barcodeType: null } as unknown as Parameters<
+          InventoryItemService['update']
+        >[1],
+        actor,
+      );
+
+      expect(updateSave).toHaveBeenCalledWith(
+        InventoryItem,
+        expect.objectContaining({ barcode: null, barcodeType: null }),
+      );
+    });
+
+    it('la búsqueda del listado y del picker incluyen el código de barras (CA-F4-04)', async () => {
+      await service.list({ search: '8412345678905' });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('item.barcode'),
+        expect.objectContaining({ term: '%8412345678905%' }),
+      );
+
+      await service.searchForPicker({ q: '8412345678905' });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('item.barcode'),
+        expect.objectContaining({ like: '%8412345678905%' }),
+      );
+
+      await service.listCatalogOptions({ search: '8412345678905' }, actor);
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('item.barcode'),
+        expect.objectContaining({ term: '%8412345678905%' }),
+      );
+    });
   });
 });

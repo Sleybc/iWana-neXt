@@ -12,17 +12,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  FormStatus,
 } from '@iwana/ui';
-import {
-  AlertTriangle,
-  Check,
-  Loader2,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  Pencil,
-  X,
-} from 'lucide-react';
+import { Check, Loader2, Plus, RefreshCw, ShieldCheck, Pencil, X } from 'lucide-react';
 import {
   ApiError,
   COMMERCIAL_PICKER_LIMIT,
@@ -187,12 +179,7 @@ function AddTributosModal({
           </div>
         )}
 
-        {!loadingCatalog && errorMsg && (
-          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            {errorMsg}
-          </div>
-        )}
+        <FormStatus status={errorMsg ? 'error' : 'idle'} message={errorMsg ?? undefined} />
 
         {!loadingCatalog && !errorMsg && catalog.length === 0 && (
           <p className="py-4 text-center text-sm text-gray-400">
@@ -584,12 +571,7 @@ export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
             </div>
           )}
 
-          {!loading && !recalculating && error && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          )}
+          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
 
           {!loading && !recalculating && !error && profile && profile.assignments.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-6 text-center">

@@ -51,6 +51,7 @@ import {
   ExecutionOrderResult,
   ExecutionOrderStatus,
   GoodsReceiptStatus,
+  InventoryBarcodeType,
   InventoryDisposition,
   InventoryItemCategory,
   InventoryCategoryStatus,
@@ -60,6 +61,7 @@ import {
   InventoryTrackingMode,
   PartyStatus,
   PurchaseOrderStatus,
+  PurchaseRequestFulfillmentStatus,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestPriority,
@@ -98,6 +100,8 @@ import {
   UserRole,
   type ListMeta,
   type ListResponse,
+  type StockIssuePickableItem,
+  type ExecutorCustodyResponse as ExecutorCustodyResponseContract,
   type UsersBulkCreateAcceptedResponse,
   type UsersBulkJobResultResponse,
   type UsersBulkJobStatusResponse,
@@ -116,6 +120,7 @@ import {
   type ExecutionOrderEvidence,
   type Page,
 } from '@iwana/shared';
+import { formatFullName } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 import { PICKER_SOFT_CAP } from './picker-soft-cap';
 import {
@@ -3163,6 +3168,11 @@ export interface ListWfmVisitRequestsParams {
   to?: string | undefined;
   page?: number | undefined;
   limit?: number | undefined;
+  /**
+   * Scope del listado (contrato congelado): `actionable` devuelve solo estados
+   * programables y excluye VRs con trabajo ya agendado activo. Default `all`.
+   */
+  scope?: 'all' | 'actionable' | undefined;
 }
 
 export interface ListWfmVisitRequestsResponse {
@@ -3672,6 +3682,7 @@ export const wfmApi = {
       if (params?.to) searchParams.set('to', params.to);
       if (params?.page !== undefined) searchParams.set('page', String(params.page));
       if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+      if (params?.scope) searchParams.set('scope', params.scope);
 
       const query = searchParams.toString();
       return request<ListWfmVisitRequestsResponse>(
@@ -4126,14 +4137,14 @@ function compactHighlights(values: Array<string | null | undefined>): string[] {
 }
 
 function formatPortalUserTitle(user: InternalUser): string {
-  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email;
+  return formatFullName(user.firstName, user.lastName).trim() || user.email;
 }
 
 function formatPortalSubscriberTitle(subscriber: SubscriberRecord): string {
   return (
     subscriber.commercialName?.trim() ||
     subscriber.businessName?.trim() ||
-    [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim() ||
+    formatFullName(subscriber.firstName, subscriber.lastName).trim() ||
     subscriber.email?.trim() ||
     subscriber.documentNumber?.trim() ||
     'Suscriptor'
@@ -4993,19 +5004,34 @@ export interface UserProfile {
   lastName: string | null;
   phone: string | null;
   jobTitle: string | null;
+  documentType?: DocumentType | null;
+  documentNumber?: string | null;
   avatarUrl: string | null;
   mfaEnabled: boolean;
   emailVerified: boolean;
   createdAt: string;
 }
 
-/** Campos actualizables por el usuario autenticado */
+/**
+ * Campos actualizables por el usuario autenticado.
+ * Semántica (informe §3.3): `undefined` = no tocar · `null` = borrar.
+ * `''` no es un valor válido y el cliente nunca lo envía.
+ */
 export interface UpdateProfileDto {
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-  jobTitle?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  jobTitle?: string | null;
+  documentType?: DocumentType | null;
+  documentNumber?: string | null;
 }
+
+/**
+ * Marca de tipo para el slug de tenant (P-01).
+ * Alcance acotado a `userApi` por decisión T2: el resto de firmas conserva
+ * `string` para no propagar el cambio a las ~20 funciones del api-client.
+ */
+export type TenantSlug = string & { readonly __brand: 'TenantSlug' };
 
 export interface ChangeLoginEmailDto {
   email: string;
@@ -5021,10 +5047,10 @@ export interface ChangeLoginEmailDto {
  */
 export const userApi = {
   /** Obtiene el perfil del usuario autenticado (JWT sub) — sin param userId */
-  getMe: (tenantSlug?: string) => request<UserProfile>('/users/me', undefined, tenantSlug),
+  getMe: (tenantSlug?: TenantSlug) => request<UserProfile>('/users/me', undefined, tenantSlug),
 
   /** Actualiza los datos personales del usuario autenticado */
-  updateMe: (dto: UpdateProfileDto, tenantSlug?: string) =>
+  updateMe: (dto: UpdateProfileDto, tenantSlug?: TenantSlug) =>
     request<UserProfile>(
       '/users/me',
       {
@@ -5036,7 +5062,7 @@ export const userApi = {
     ),
 
   /** Actualiza el email de acceso del usuario autenticado */
-  changeLoginEmail: (userId: string, dto: ChangeLoginEmailDto, tenantSlug?: string) =>
+  changeLoginEmail: (userId: string, dto: ChangeLoginEmailDto, tenantSlug?: TenantSlug) =>
     request<UserProfile>(
       `/users/${userId}/login-email`,
       {
@@ -6577,6 +6603,8 @@ export interface RegisterExecutionOrderFieldWorkDto {
   description: string;
 }
 
+export type UpdateExecutionOrderFieldWorkDto = Partial<RegisterExecutionOrderFieldWorkDto>;
+
 /**
  * DTO de transporte derivado del comando canonico de @iwana/shared.
  */
@@ -6759,6 +6787,40 @@ export const tasksApi = {
           body: JSON.stringify(dto),
           returnFullResponse: true,
         },
+        tenantSlug,
+      ),
+
+    updateFieldWork: (
+      id: string,
+      activityId: string,
+      dto: UpdateExecutionOrderFieldWorkDto,
+      currentVersion: number,
+      tenantSlug?: string,
+    ) =>
+      request<ExecutionOrderActivityRecord>(
+        `/tasks/execution-orders/${id}/activities/${activityId}`,
+        {
+          method: 'PATCH',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
+        tenantSlug,
+      ),
+
+    deleteFieldWork: (
+      id: string,
+      activityId: string,
+      currentVersion: number,
+      tenantSlug?: string,
+    ) =>
+      request<void>(
+        `/tasks/execution-orders/${id}/activities/${activityId}`,
+        {
+          method: 'DELETE',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          returnFullResponse: true,
+        } as never,
         tenantSlug,
       ),
 
@@ -7002,6 +7064,10 @@ export interface InventoryItemRecord {
   usefulLifeMonths: number | null;
   commercialReferenceId: string | null;
   status: InventoryItemStatus;
+  /** Código de barras del fabricante (MOD12 · F4). Opcional, editable, único por tenant. */
+  barcode: string | null;
+  /** Formato declarado junto al código; ambos van juntos o ninguno (CA-F4-08). */
+  barcodeType: InventoryBarcodeType | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -7225,6 +7291,17 @@ export interface StockBalanceRecord {
   updatedAt: string;
 }
 
+/**
+ * Respuesta del endpoint de custodia del ejecutor (`GET /inventory/custody`).
+ * Instancia el contrato congelado v1 de `@iwana/shared` con los registros
+ * canónicos vigentes del portal; cuando se promuevan a `@iwana/shared`
+ * este alias se reduce al import directo.
+ */
+export type ExecutorCustodyResponse = ExecutorCustodyResponseContract<
+  SerializedAssetRecord,
+  StockBalanceRecord
+>;
+
 export interface StockMovementRecord {
   id: string;
   tenantId: string;
@@ -7324,6 +7401,16 @@ export interface PurchaseRequestRecord {
   requestNumber: string;
   title: string;
   status: PurchaseRequestStatus;
+  /**
+   * Eje de abastecimiento derivado en servidor: responde «¿la mercancía ya
+   * entró a inventario?», que `status` no puede responder porque el ciclo
+   * administrativo se detiene en `CONVERTED_TO_PO`.
+   *
+   * Opcional a propósito: un API aún sin desplegar no lo emite. La ausencia se
+   * resuelve con `resolvePurchaseRequestFulfillmentStatus`, que degrada al
+   * comportamiento previo (CONVERTED_TO_PO se asume PENDING_RECEIPT).
+   */
+  fulfillmentStatus?: PurchaseRequestFulfillmentStatus;
   requestType: PurchaseRequestType;
   priority: PurchaseRequestPriority;
   requestedByUserId: string;
@@ -7376,6 +7463,15 @@ export interface PurchaseApprovalPolicyRecord {
   approvalLevel: string;
 }
 
+export interface PurchaseTaxPresetRecord {
+  code: string;
+  name: string;
+  category: string;
+  baseRate: number | null;
+  treatment: string;
+  context: string;
+}
+
 export interface PurchaseRequestDetailRecord {
   request: PurchaseRequestRecord;
   lines: PurchaseRequestLineRecord[];
@@ -7385,6 +7481,8 @@ export interface PurchaseRequestDetailRecord {
   estimatedAmount: number;
   approvalPolicy: PurchaseApprovalPolicyRecord;
   rfq: PurchaseRfqDetailRecord | null;
+  /** Presets PURCHASE para el formulario de cotización. Ausente si el GET aún no los emite. */
+  purchaseTaxPresets?: PurchaseTaxPresetRecord[];
 }
 
 export interface PurchaseRfqRecord {
@@ -7571,6 +7669,19 @@ export interface SupplierQuoteLineRecord {
   updatedAt: string;
 }
 
+export type SupplierQuoteTaxEffect = 'ADD' | 'WITHHOLD';
+
+export interface SupplierQuoteTaxRecord {
+  code: string;
+  name: string;
+  category: string;
+  effect?: SupplierQuoteTaxEffect;
+  applies: boolean;
+  rate: string | number;
+  baseAmount: string;
+  taxAmount: string;
+}
+
 export interface SupplierQuoteRecord {
   id: string;
   tenantId: string;
@@ -7579,12 +7690,17 @@ export interface SupplierQuoteRecord {
   quoteNumber: string;
   amount: string;
   shippingCost: string;
+  /** Cómo se cubre el envío. Ausente en GET previo a la columna shipping_arrangement. */
+  shippingArrangement?: 'FREE' | 'ON_INVOICE' | 'PAY_CARRIER';
   currency: string;
   validUntil: string | null;
   notes: string | null;
   rfqId?: string | null;
   rfqInvitationId?: string | null;
   lines?: SupplierQuoteLineRecord[];
+  /** Neto a pagar. Ausente en cotizaciones legacy o GET previo a Fase 25. */
+  payableAmount?: string;
+  taxes?: SupplierQuoteTaxRecord[];
   createdAt: string;
   updatedAt: string;
 }
@@ -7722,6 +7838,16 @@ export interface CreateInventoryItemDto {
   usefulLifeMonths?: number | null;
   commercialReferenceId?: string | null;
   status?: InventoryItemStatus;
+  /**
+   * Código de barras (MOD12 · F4). Opcional; blancos equivalen a ausencia.
+   * Se envía SIEMPRE junto a `barcodeType` (uno sin el otro se rechaza).
+   */
+  barcode?: string | null;
+  /**
+   * Formato declarado del código; obligatorio junto a `barcode`.
+   * EAN13 y UPCA validan dígito de control (backend autoritativo).
+   */
+  barcodeType?: InventoryBarcodeType | null;
 }
 
 export type UpdateInventoryItemDto = Partial<CreateInventoryItemDto>;
@@ -7794,7 +7920,11 @@ export interface UpdateStockLocationDto {
 
 export interface ListSerializedAssetsParams {
   itemId?: string;
-  status?: SerializedAssetStatus;
+  /**
+   * Estado o lista separada por comas (B2 S1: `AVAILABLE,AVAILABLE_REFURBISHED`).
+   * Se tipa abierto para no romper el valor único vigente mientras el BE despliega B2.
+   */
+  status?: SerializedAssetStatus | string;
   locationId?: string;
   serialNumber?: string;
   /** Offset numerado (excluyente con `cursor`). */
@@ -7807,6 +7937,20 @@ export interface ListStockBalancesParams {
   itemId?: string;
   locationId?: string;
   condition?: StockBalanceCondition;
+  cursor?: string;
+  limit?: number;
+}
+
+/**
+ * Query de B1 (`GET /inventory/issues/pickable-items`, SPEC §5.2):
+ * `sourceLocationId` requerido; `scope` decide el universo (`with-stock` =
+ * solo con disponible > 0, `catalog` = catálogo completo con `totalAvailable`
+ * en cero cuando no hay saldo). Orden canónico en servidor.
+ */
+export interface ListPickableItemsParams {
+  sourceLocationId: string;
+  q?: string;
+  scope?: 'with-stock' | 'catalog';
   cursor?: string;
   limit?: number;
 }
@@ -8167,16 +8311,36 @@ export interface AddSupplierQuoteLineDto {
   unitCost: number;
 }
 
+export interface AddSupplierQuoteTaxDto {
+  code: string;
+  applies: boolean;
+  rate?: number;
+}
+
 export interface AddSupplierQuoteDto {
   partyRefId: string;
   quoteNumber: string;
   amount?: number;
   shippingCost?: number;
+  shippingArrangement?: 'FREE' | 'ON_INVOICE' | 'PAY_CARRIER';
   currency: string;
   validUntil?: string | null;
   notes?: string | null;
   rfqInvitationId?: string | null;
   lines?: AddSupplierQuoteLineDto[];
+  taxes?: AddSupplierQuoteTaxDto[];
+}
+
+export interface UpdateSupplierQuoteDto {
+  quoteNumber: string;
+  amount?: number;
+  shippingCost?: number;
+  shippingArrangement?: 'FREE' | 'ON_INVOICE' | 'PAY_CARRIER';
+  currency: string;
+  validUntil?: string | null;
+  notes?: string | null;
+  lines?: AddSupplierQuoteLineDto[];
+  taxes?: AddSupplierQuoteTaxDto[];
 }
 
 export interface CreateRfqDto {
@@ -8446,6 +8610,26 @@ export const inventoryApi = {
     ),
 
   /**
+   * Custodia activa del ejecutor: equipos serializados y materiales con stock.
+   * Contrato congelado v1; `page`/`limit` aplican a ambas colecciones y sin
+   * custodia activa responde 200 con `location` null y colecciones vacías.
+   */
+  getExecutorCustody: (
+    responsibleRefId: string,
+    params?: { page?: number; limit?: number },
+    tenantSlug?: string,
+  ) =>
+    request<ExecutorCustodyResponse>(
+      `/inventory/custody${buildInventoryQuery({
+        responsibleRefId,
+        page: params?.page !== undefined ? String(params.page) : undefined,
+        limit: params?.limit !== undefined ? String(params.limit) : undefined,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  /**
    * Lookup typeahead E-4 — ubicaciones / bodegas.
    * Label = nombre; sublabel = código.
    */
@@ -8568,6 +8752,32 @@ export const inventoryApi = {
         limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
       { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  /**
+   * Ítems elegibles para salida desde una bodega (B1 S1, SPEC §5.2).
+   * Contrato congelado `StockIssuePickableItem` (`@iwana/shared`): el FE consume
+   * este endpoint vía mocks tipados del contrato mientras el BE lo despliega; el
+   * binding final es solo esta función (capa de fetch sustituible).
+   */
+  listPickableItems: (
+    params: ListPickableItemsParams,
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ) =>
+    request<InventoryPaginatedList<StockIssuePickableItem>>(
+      `/inventory/issues/pickable-items${buildInventoryQuery({
+        sourceLocationId: params.sourceLocationId,
+        q: params.q?.trim() ? params.q.trim() : undefined,
+        scope: params.scope,
+        cursor: params.cursor,
+        limit: params.limit != null ? String(params.limit) : undefined,
+      })}`,
+      {
+        returnFullResponse: true,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      },
       tenantSlug,
     ),
 
@@ -8847,6 +9057,13 @@ export const purchasingApi = {
     request<SupplierQuoteRecord>(
       `/purchasing/requests/${id}/quotes`,
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateQuote: (id: string, quoteId: string, dto: UpdateSupplierQuoteDto, tenantSlug?: string) =>
+    request<SupplierQuoteRecord>(
+      `/purchasing/requests/${id}/quotes/${quoteId}`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
 

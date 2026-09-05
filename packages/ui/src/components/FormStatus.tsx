@@ -1,4 +1,6 @@
 // packages/ui/src/components/FormStatus.tsx
+'use client';
+
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2 } from 'lucide-react';
@@ -29,6 +31,10 @@ export interface FormStatusProps {
 
 /**
  * Banner de resultado de formulario con region viva preexistente.
+ *
+ * Client Component: el auto-dismiss usa `useEffect`/`useRef`. El barrel
+ * `@iwana/ui` se importa desde layouts RSC (portal y web); sin `'use client'`
+ * Next.js trata este modulo como Server Component y el compile falla.
  *
  * El contenedor (con `role`, `aria-live` y `aria-atomic`) se monta desde el
  * primer render tambien en `idle`: montar region y contenido en el mismo tick

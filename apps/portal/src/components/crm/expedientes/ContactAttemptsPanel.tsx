@@ -1,8 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
-import { CircleAlert, Loader2, Phone, PhoneOutgoing } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  FormStatus,
+  Input,
+  Select,
+} from '@iwana/ui';
+import { Loader2, Phone, PhoneOutgoing } from 'lucide-react';
 import { crmApi, type ContactAttemptRecord, type CreateContactAttemptDto } from '@/lib/api-client';
 import { getContactResultBadgeVariant, getContactChannelBadgeVariant } from './expediente-ui';
 import { getSafeCrmErrorMessage } from './crm-error-message';
@@ -102,18 +112,10 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
         </Button>
       </div>
 
-      {successMessage && (
-        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-sm dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
-          {successMessage}
-        </div>
-      )}
-
-      {error && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{error}</p>
-        </div>
-      )}
+      <FormStatus
+        status={error ? 'error' : successMessage ? 'success' : 'idle'}
+        message={error ?? successMessage ?? undefined}
+      />
 
       {showForm && (
         <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">

@@ -171,4 +171,12 @@ describe('CompanyProfileForm', () => {
     expect(await screen.findByText('Ingresa un correo válido.')).toBeInTheDocument();
     expect(updateMeProfileMock).not.toHaveBeenCalled();
   });
+
+  it('mantiene la región de estado montada en reposo (contrato FormStatus)', () => {
+    render(<CompanyProfileForm profile={buildProfile()} canEdit={true} onUpdated={jest.fn()} />);
+
+    const region = screen.getByRole('status');
+    expect(region).toBeInTheDocument();
+    expect(region).toHaveTextContent('');
+  });
 });

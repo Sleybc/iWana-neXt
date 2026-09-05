@@ -2,10 +2,13 @@
 
 ## Arquitectura de alto nivel — el home del portal como resumen operativo del tenant
 
-**Versión:** 2.0.1
-**Fecha:** 2026-08-04
+**Versión:** 2.0.4
+**Fecha:** 2026-08-04 · adenda B1b 2026-09-04 · adenda Accesos rápidos 2026-09-04 · adenda elevación visual 2026-09-04
 **Estado:** **G1 firmado** — AI-SR-FULL (factibilidad backend) y AI-PROD-UX (viabilidad UX) firmaron *viable con ajustes*; los ajustes bloqueantes están incorporados en esta 2.0.1. Ver §12
 **Cambio 2.0 → 2.0.1:** resuelve el `[BLOQUEO]` B-1 de AI-SR-FULL — §5.2 afirmaba derivar de los guards y no lo hacía: ocho de doce roles recibían 403 en el bloque «Resumen de la empresa», con lo que CA-V2-01 y CA-V2-02 eran insatisfacibles. El bloque se parte en identidad (contrato público, doce roles) y ficha operativa (cuatro roles). Además: se resuelve la casilla «Parcial» de alertas, se corrige la vista base §5.3, se retira la cifra falsa del límite de tasa en §4.4 y RNF-V2-01, se ajustan CA-V2-01/02/03/04/07 y se añade §11 (escalación) y §12 (firmas)
+**Cambio 2.0.1 → 2.0.2:** el home admite la banda **B1b · salud de módulos** (centro de mando) como composición de lectura sobre los contratos de §4.2. **No** crea endpoints. Spec: [`2026-09-04-portal-dashboard-centro-mando-ux-spec.md`](../specs/2026-09-04-portal-dashboard-centro-mando-ux-spec.md).
+**Cambio 2.0.2 → 2.0.3:** se retira el panel **Accesos rápidos**. CA-V2-01 se versiona: el mínimo es identidad B3 + al menos un destino útil (B1b, bloque de trabajo, historial, o enlace «Ver mi perfil» en B3). Spec centro de mando v1.1 §11.
+**Cambio 2.0.3 → 2.0.4:** elevación visual del inicio (anatomía KPI, bloque **Foco de hoy** con ratio de §4.2, avisos de campo como tabla-en-card). **No** crea endpoints ni series. Spec: [`2026-09-04-portal-dashboard-elevacion-visual-design.md`](../specs/2026-09-04-portal-dashboard-elevacion-visual-design.md).
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Sucede a:** [`HLD-MOD02-DASHBOARD-EMPRESA-v1.0.md`](HLD-MOD02-DASHBOARD-EMPRESA-v1.0.md) **(superado)** — el CTO autorizó la reapertura en etapa 1 el 2026-08-04
@@ -34,6 +37,8 @@ Declaración explícita, condición de entrada de la etapa 2 (protocolo §3.1).
 ### 2.1 Dentro del alcance
 
 - El home `/dashboard` de `apps/portal`: composición, jerarquía, KPIs, estados y visibilidad por rol.
+- Banda **B1b** (salud de módulos): chips derivados de los contratos de §4.2 y de destinos de navegación ya autorizados en el menú. Un módulo sin contrato se muestra como «Sin dato» o se omite; **no** se inventa la cifra.
+- Bloque **Foco de hoy**: un ratio leído de los mismos contratos de §4.2 (visitas del día / carga, casos al día / abiertos, o catálogo vendible / activo). Sin serie temporal. Sin gauge.
 - El shell que lo sostiene (`Sidebar`, `TopHeader`, `PageHeader`) **solo** en lo que la auditoría marcó como bloqueante o como deuda de firma: foco, tabulación del drawer mobile, barra lima del activo, buscador en mobile.
 - La lectura agregada de los contratos de resumen **ya existentes**, sin crear ninguno nuevo.
 
@@ -154,7 +159,7 @@ Derivada de los guards de §4.2, no de una preferencia de diseño. **La matriz e
 | Alertas de configuración del tenant | Sí | No | No | No | No | No | No | No |
 | Señales de calidad comercial (catálogo incompleto, precios faltantes) | Sí | Sí | Sí | Sí | Sí | No | No | No |
 | Actividad reciente | Sí | No | No | No | No | No | **Sí** | No |
-| Accesos rápidos | Filtrados por autorización — nunca se ofrece un destino que devolverá un error de permisos |
+| Enlace a mi perfil (B3) | Sí — texto «Ver mi perfil», no un panel de directorio. Los destinos de módulo viven en B1b y en los bloques de trabajo |
 
 \* `TECHNICIAN` no está en el guard de trabajo de campo. Ve **su propia agenda** por la vía que ya usa la pantalla de programación (`GET /wfm/events` y `GET /assurance/tickets`, donde sí está autorizado), no el resumen agregado. Si el resumen debiera abrirse a ese rol, es decisión de seguridad y **no se asume aquí**.
 
@@ -166,9 +171,9 @@ Derivada de los guards de §4.2, no de una preferencia de diseño. **La matriz e
 
 ### 5.3 Vista base
 
-Un rol sin ningún bloque operativo autorizado ve: **identidad de la empresa** (contrato público) + **accesos rápidos filtrados**. **La leyenda «Panel en preparación» se retira del producto.**
+Un rol sin ningún bloque operativo autorizado ve: **identidad de la empresa** (contrato público) y el enlace **«Ver mi perfil»** en B3. **La leyenda «Panel en preparación» se retira del producto.** No hay panel de accesos rápidos: duplicaba el menú y B1b.
 
-Los accesos rápidos **no** se filtran por el contrato de permisos efectivos: ese contrato no autoriza a suscriptor, aliado ni inversionista — tres de los cinco roles de la vista base. Se filtran por un mapa explícito derivado de los guards de §4.2, como especifica AI-PROD-UX en su spec de experiencia.
+Los destinos del inicio **no** se filtran por el contrato de permisos efectivos: ese contrato no autoriza a suscriptor, aliado ni inversionista — tres de los cinco roles de la vista base. Se filtran por un mapa explícito derivado de los guards de §4.2, como especifica AI-PROD-UX en su spec de experiencia.
 
 ---
 
@@ -178,8 +183,8 @@ Condición de entrada de la etapa 2 (protocolo §3.1): medibles, no «la pantall
 
 | ID | Criterio | Cómo se verifica |
 | --- | --- | --- |
-| CA-V2-01 | Ningún rol del enum recibe una pantalla de inicio vacía | Prueba por rol: los 12 valores del enum renderizan **identidad de la empresa** y al menos un acceso rápido. La leyenda «Panel en preparación» no aparece para ningún rol |
-| CA-V2-02 | Ningún destino ofrecido conduce a un error de permisos | Por cada rol, cada bloque renderizado y cada acceso rápido visible responde distinto de 403 |
+| CA-V2-01 | Ningún rol del enum recibe una pantalla de inicio vacía | Prueba por rol: los 12 valores del enum renderizan **identidad de la empresa (B3)** y al menos un destino útil (B1b, bloque de trabajo, historial, o enlace «Ver mi perfil» en B3). La leyenda «Panel en preparación» no aparece para ningún rol. **Versionado 2.0.3:** el mínimo ya no es un acceso rápido |
+| CA-V2-02 | Ningún destino ofrecido conduce a un error de permisos | Por cada rol, cada bloque, chip B1b y enlace visible responde distinto de 403 |
 | CA-V2-03 | El primer viewport ofrece al menos una acción operativa iniciable, en los tres puntos de corte | Presencia de control de acción **sin desplazamiento vertical** a 375, 768 y 1280 px — definición operativa de «primer viewport» fijada por AI-PROD-UX |
 | CA-V2-04 | **Techo** de 9 indicadores núcleo; ninguno es métrica de administración de la cuenta salvo en el bloque de empresa | Conteo y clasificación en la revisión de G6. **No es un piso**: una vez compuesto por rol, un rol con una sola fuente autorizada tiene un solo indicador, y eso es correcto |
 | CA-V2-05 | Todo indicador numérico enlaza a su lista filtrada, con el filtro en la URL | El destino conserva el filtro al recargar y el botón Atrás vuelve al home |

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -10,6 +11,7 @@ import {
   Optional,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Redirect,
@@ -35,6 +37,7 @@ import {
   ExecutionOrderDetailResponseDto,
   RegisterExecutionOrderItemUsageDto,
   RegisterFieldWorkDto,
+  UpdateFieldWorkDto,
   StartExecutionOrderDto,
   AssignExecutionOrderDto,
   AssignExecutionOrderSchema,
@@ -57,11 +60,15 @@ import {
   FollowUpSchema,
   StartExecutionOrderSchema,
   RegisterFieldWorkSchema,
+  UpdateFieldWorkSchema,
   RegisterExecutionOrderItemUsageSchema,
   CloseExecutionOrderSchema,
 } from './dto/execution-orders.dto';
 import type { ExecutionOrderCommandContext } from './services/execution-order-reliability.service';
-import { ExecutionOrdersService } from './services/execution-orders.service';
+import {
+  ExecutionOrdersService,
+  readTemplateRequirementsSnapshot,
+} from './services/execution-orders.service';
 import { ExecutionOrderInventoryReconciliationService } from './services/execution-order-inventory-reconciliation.service';
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
@@ -115,6 +122,9 @@ export class ExecutionOrdersController {
     @CurrentUser() actor: JwtPayload,
   ): Promise<ExecutionOrderDetailResponseDto> {
     const order = await this.executionOrdersService.getById(id);
+    const snapshotRequirements = readTemplateRequirementsSnapshot(
+      order.templateRequirementsSnapshot,
+    );
     const template =
       order.templateId !== null &&
       order.templateKey !== null &&
@@ -125,6 +135,9 @@ export class ExecutionOrdersController {
             key: order.templateKey,
             version: order.templateVersionNumber,
             label: order.templateLabel,
+            // Snapshot inmutable (DATA-P1-3): el checklist de la OT se sirve
+            // congelado, sin depender del catálogo vivo de plantillas.
+            ...(snapshotRequirements !== null ? { requirements: snapshotRequirements } : {}),
           }
         : null;
     const completion = await this.executionOrdersService.getCompletion(order.id);
@@ -214,6 +227,45 @@ export class ExecutionOrdersController {
       dto,
       actor,
       this.commandContext(ifMatch, idempotencyKey, correlationId),
+    );
+  }
+
+  @Patch(':id/activities/:activityId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
+  @ApiOperation({ summary: 'Modificar trabajo realizado registrado' })
+  async updateFieldWork(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('activityId', ParseUUIDPipe) activityId: string,
+    @Body(new ZodValidationPipe(UpdateFieldWorkSchema)) dto: UpdateFieldWorkDto,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('if-match') ifMatch?: string,
+  ) {
+    return this.executionOrdersService.updateFieldWorkActivity(
+      id,
+      activityId,
+      dto,
+      actor,
+      this.commandContext(ifMatch, undefined, undefined),
+    );
+  }
+
+  @Delete(':id/activities/:activityId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar trabajo realizado registrado' })
+  async deleteFieldWork(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('activityId', ParseUUIDPipe) activityId: string,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('if-match') ifMatch?: string,
+  ) {
+    await this.executionOrdersService.deleteFieldWorkActivity(
+      id,
+      activityId,
+      actor,
+      this.commandContext(ifMatch, undefined, undefined),
     );
   }
 

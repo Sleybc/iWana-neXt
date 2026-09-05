@@ -9,7 +9,7 @@ import { TaxDefinition } from '../entities/tax-definition.entity';
  * Servicio de siembra de presets de impuestos Colombia.
  *
  * Responsabilidad: poblar el catálogo de tax_definitions por schema tenant
- * con 6 presets estándar de Colombia (IVA, RteFte, ReteICA, etc.).
+ * con 7 presets estándar de Colombia (IVA, RteFte, ReteICA, Rete IVA, etc.).
  *
  * Invocación: desde el worker de provisioning BullMQ tras crear el schema tenant.
  * Idempotencia: verifica existencia por code antes de insertar.
@@ -23,7 +23,7 @@ export class TaxPresetsSeeder {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   /**
-   * Siembra los 6 presets Colombia en el schema del tenant.
+   * Siembra los 7 presets Colombia en el schema del tenant.
    * Idempotente: omite presets ya existentes.
    */
   async seedForTenant(schemaName: string): Promise<void> {

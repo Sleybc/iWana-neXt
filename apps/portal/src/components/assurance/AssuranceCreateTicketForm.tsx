@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, Input, Select } from '@iwana/ui';
+import { Button, FormStatus, Input, Select } from '@iwana/ui';
 import {
   TicketFieldDecision,
   TicketPriority,
@@ -13,7 +13,6 @@ import {
   TicketType,
 } from '@iwana/shared';
 import type { AssuranceSlaPolicy, CreateAssuranceTicketDto, InternalUser } from '@/lib/api-client';
-import { PortalAlert } from '@/components/shared/portal-ui';
 import {
   ASSURANCE_FIELD_DECISION_OPTIONS,
   ASSURANCE_QUEUE_OPTIONS,
@@ -144,9 +143,16 @@ export function AssuranceCreateTicketForm({
         });
       })}
     >
-      {error && (
-        <PortalAlert variant="error" title="No fue posible crear el ticket" description={error} />
-      )}
+      <FormStatus
+        status={error ? 'error' : 'idle'}
+        message={
+          error ? (
+            <>
+              <span>No fue posible crear el ticket.</span> <span>{error}</span>
+            </>
+          ) : undefined
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Controller

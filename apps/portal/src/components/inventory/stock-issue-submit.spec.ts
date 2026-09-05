@@ -5,7 +5,11 @@ import {
   StockIssueType,
 } from '@iwana/shared';
 import type { InventoryItemRecord } from '@/lib/api-client';
-import { buildCreateStockIssuePayload, buildUpdateStockIssuePayload } from './stock-issue-submit';
+import {
+  buildCreateStockIssuePayload,
+  buildUpdateStockIssuePayload,
+  validateStockIssueDraftLines,
+} from './stock-issue-submit';
 
 const itemsById = new Map<string, InventoryItemRecord>([
   [
@@ -157,6 +161,110 @@ describe('stock-issue-submit', () => {
         lotId: 'lot-abc',
       },
     ]);
+  });
+
+  it('bloquea la línea serializada desde el trackingMode de la línea (S1/C3)', () => {
+    // Sin itemsById: el flag sale de la línea, como ocurre con ítems agregados
+    // desde Catálogo tras eliminar knownItems.
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.TECHNICIAN_CUSTODY,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: 'loc-2',
+      commercialRefId: '',
+      originRefId: '',
+      costCenter: '',
+      reason: '',
+      itemsById: new Map(),
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-serial',
+          productLabel: 'SER-9 · Router',
+          requestedQty: '1',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toMatch(/serial/i);
+  });
+
+  it('exige serial también para FIXED_ASSET (D2/B3)', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.TECHNICIAN_CUSTODY,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: 'loc-2',
+      commercialRefId: '',
+      originRefId: '',
+      costCenter: '',
+      reason: '',
+      itemsById: new Map(),
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-fixed',
+          requestedQty: '1',
+          trackingMode: InventoryTrackingMode.FIXED_ASSET,
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toMatch(/serial/i);
+  });
+
+  it('validateStockIssueDraftLines devuelve un error por línea con control a enfocar', () => {
+    const errors = validateStockIssueDraftLines(
+      [
+        {
+          lineId: 'line-ok',
+          itemId: 'item-1',
+          productLabel: 'CAB-010 · Cable',
+          requestedQty: '2',
+          isManual: false,
+          condition: StockBalanceCondition.NEW,
+          lotId: '',
+          serializedAssetId: '',
+          trackingMode: InventoryTrackingMode.CONSUMABLE,
+        },
+        {
+          lineId: 'line-serial',
+          itemId: 'item-serial',
+          productLabel: 'SER-9 · Router',
+          requestedQty: '1',
+          isManual: false,
+          condition: StockBalanceCondition.NEW,
+          lotId: '',
+          serializedAssetId: '',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+        },
+        {
+          lineId: 'line-qty',
+          itemId: 'item-serial',
+          productLabel: 'SER-9 · Router',
+          requestedQty: '3',
+          isManual: false,
+          condition: StockBalanceCondition.NEW,
+          lotId: '',
+          serializedAssetId: 'asset-1',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+        },
+      ],
+      new Map(),
+    );
+
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatchObject({
+      lineIndex: 1,
+      controlId: 'issue-draft-serial-line-serial',
+    });
+    expect(errors[0]?.message).toMatch(/serial/i);
+    expect(errors[1]).toMatchObject({
+      lineIndex: 2,
+      controlId: 'issue-draft-qty-line-qty',
+    });
+    expect(errors[1]?.message).toMatch(/cantidad 1/);
   });
 
   it('requires commercial or origin reference for sale dispatch', () => {

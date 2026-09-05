@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePathname } from 'next/navigation';
+import { formatFullName } from '@iwana/shared';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import {
   authApi,
@@ -67,7 +68,7 @@ function toAuthUser(
   firstName: string | null = null,
   lastName: string | null = null,
 ): AuthUser {
-  const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
+  const fullName = formatFullName(firstName, lastName) || null;
   const roleLabel = getPortalUserRoleLabel(profile.role);
   return {
     id: profile.sub,
@@ -83,11 +84,10 @@ function toAuthUser(
 }
 
 /** Carga el perfil del usuario y retorna nombre/apellido si están disponibles */
-async function fetchUserName(
-  userId: string,
-): Promise<{ firstName: string | null; lastName: string | null }> {
+async function fetchUserName(): Promise<{ firstName: string | null; lastName: string | null }> {
   try {
-    const profile = await userApi.getMe(userId);
+    // /users/me se resuelve por el sub del JWT: no transporta identidad (P-01).
+    const profile = await userApi.getMe();
     return { firstName: profile.firstName, lastName: profile.lastName };
   } catch {
     return { firstName: null, lastName: null };
@@ -112,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { firstName, lastName } = await fetchUserName(profile.sub);
+      const { firstName, lastName } = await fetchUserName();
       setUser(toAuthUser(profile, firstName, lastName));
     } catch {
       setUser(null);
@@ -142,13 +142,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // No bloquear el bootstrap por /users/:id (mocks E2E incompletos
             // o latencia): la sesión queda usable y el nombre se completa async.
             setUser(toAuthUser(profile));
-            void fetchUserName(profile.sub).then(({ firstName, lastName }) => {
+            void fetchUserName().then(({ firstName, lastName }) => {
               if (!mounted || (!firstName && !lastName)) {
                 return;
               }
+              // Recomputar el usuario completo: displayName y subtitle derivan
+              // de los nombres; parchear solo nombres dejaba el rol como nombre.
               setUser((current) =>
                 current && current.id === profile.sub
-                  ? { ...current, firstName, lastName }
+                  ? toAuthUser(profile, firstName, lastName)
                   : current,
               );
             });
@@ -223,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return 'password_reset_required';
       }
 
-      const { firstName, lastName } = await fetchUserName(profile.sub).catch(() => ({
+      const { firstName, lastName } = await fetchUserName().catch(() => ({
         firstName: null as string | null,
         lastName: null as string | null,
       }));
@@ -263,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return 'password_reset_required';
     }
 
-    const { firstName, lastName } = await fetchUserName(profile.sub);
+    const { firstName, lastName } = await fetchUserName();
     setUser(toAuthUser(profile, firstName, lastName));
     clearPendingTenantMfaLogin();
     return 'authenticated';

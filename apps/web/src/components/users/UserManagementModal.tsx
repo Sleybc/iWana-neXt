@@ -14,6 +14,7 @@ import {
   DialogTitle,
   Select,
 } from '@iwana/ui';
+import { formatFullName } from '@iwana/shared';
 import { ApiError, usersApi, type UpdateUserPayload, type UserListItem } from '@/lib/api-client';
 import {
   getWebUserRoleLabel,
@@ -218,7 +219,7 @@ export function UserManagementModal({
 
   const firstName = watch('firstName');
   const lastName = watch('lastName');
-  const fullName = firstName || lastName ? [firstName, lastName].filter(Boolean).join(' ') : null;
+  const fullName = formatFullName(firstName, lastName) || null;
   const currentRole = detail?.role ?? user.role;
   const currentStatus = detail?.status ?? user.status;
   const isPrincipalAdmin = detail?.isPrincipalAdmin === true;

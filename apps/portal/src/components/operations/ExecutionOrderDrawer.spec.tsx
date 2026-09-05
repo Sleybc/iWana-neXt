@@ -5,6 +5,9 @@ import {
   ExecutionOrderResult,
   ExecutionOrderStatus,
   InventoryDisposition,
+  InventoryResponsibleType,
+  SerializedAssetStatus,
+  StockBalanceCondition,
   WfmWorkType,
 } from '@iwana/shared';
 import type {
@@ -13,8 +16,13 @@ import type {
   ExecutionOrderActivity,
   ExecutionOrderItemUsage,
   ExecutionOrderEvidence,
+  ListMeta,
 } from '@iwana/shared';
-import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
+import type {
+  ExecutionOrderDetailResponse,
+  SerializedAssetRecord,
+  StockBalanceRecord,
+} from '@/lib/api-client';
 import { ExecutionOrderDrawer } from './ExecutionOrderDrawer';
 import {
   EXECUTION_ORDER_RESULT_VARIANTS,
@@ -25,14 +33,32 @@ import {
 // Mock factories
 // ---------------------------------------------------------------------------
 
+// PROMPT-MOD11 §4.1: distribución de allowedActions por estado (contrato nuevo).
+const preStartStatuses = [
+  ExecutionOrderStatus.CREATED,
+  ExecutionOrderStatus.ASSIGNED,
+  ExecutionOrderStatus.EN_ROUTE,
+];
+
+function defaultActionsFor(status: ExecutionOrderStatus): ExecutionOrderAllowedAction[] {
+  if (status === ExecutionOrderStatus.IN_PROGRESS) {
+    return ['REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE', 'BLOCK', 'CLOSE'];
+  }
+  if (preStartStatuses.includes(status)) {
+    return ['START'];
+  }
+  return [];
+}
+
 function detailFactory(
   overrides: Partial<ExecutionOrderDetailResponse> = {},
 ): ExecutionOrderDetailResponse {
+  const status = overrides.status ?? ExecutionOrderStatus.ASSIGNED;
   return {
     id: 'eo-001',
     number: 'OTE-20260727-001',
     version: 1,
-    status: ExecutionOrderStatus.ASSIGNED,
+    status,
     workType: WfmWorkType.INSTALLATION,
     template: {
       id: 'tpl-001',
@@ -53,13 +79,7 @@ function detailFactory(
     completion: { progress: 0 },
     syncState: 'IN_SYNC',
     inventoryReconciliation: 'NOT_REQUIRED',
-    allowedActions: [
-      'START',
-      'REGISTER_ACTIVITY',
-      'REGISTER_ITEM_USAGE',
-      'REGISTER_EVIDENCE',
-      'CLOSE',
-    ],
+    allowedActions: defaultActionsFor(status),
     createdAt: '2026-07-27T12:00:00.000Z',
     updatedAt: '2026-07-27T12:00:00.000Z',
     ...overrides,
@@ -210,6 +230,67 @@ const terminalStatuses = [
   ExecutionOrderStatus.CANCELLED,
 ];
 
+// Contrato congelado v1 de custodia del ejecutor (registros canónicos del portal).
+function custodyAssetFactory(
+  overrides: Partial<SerializedAssetRecord> = {},
+): SerializedAssetRecord {
+  return {
+    id: 'custody-asset-001',
+    tenantId: 'tenant-001',
+    inventoryItemId: 'item-001',
+    serialNumber: 'ONT-2026-001',
+    normalizedSerialNumber: 'ONT2026001',
+    macAddress: null,
+    normalizedMacAddress: null,
+    assetTag: null,
+    currentStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+    currentLocationId: 'loc-mobile-001',
+    currentResponsibleType: InventoryResponsibleType.TECHNICIAN,
+    currentResponsibleRefId: 'tech-001',
+    subscriberRefId: null,
+    contractRefId: null,
+    purchaseOrderRef: null,
+    purchaseDate: null,
+    usefulLifeMonths: null,
+    warrantyUntil: null,
+    createdAt: '2026-08-31T12:00:00.000Z',
+    updatedAt: '2026-08-31T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function custodyBalanceFactory(overrides: Partial<StockBalanceRecord> = {}): StockBalanceRecord {
+  return {
+    id: 'custody-balance-001',
+    tenantId: 'tenant-001',
+    itemId: 'item-001',
+    locationId: 'loc-mobile-001',
+    lotId: null,
+    condition: StockBalanceCondition.NEW,
+    quantityOnHand: '4',
+    quantityReserved: '0',
+    createdAt: '2026-08-31T12:00:00.000Z',
+    updatedAt: '2026-08-31T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function custodyMetaFactory(overrides: Partial<ListMeta> = {}): ListMeta {
+  return {
+    nextCursor: null,
+    total: 1,
+    totalIsEstimate: false,
+    page: 1,
+    limit: 25,
+    totalPages: 1,
+    hasMore: false,
+    mode: 'page',
+    capabilities: { randomAccess: true, sortableFields: [] },
+    sort: null,
+    ...overrides,
+  };
+}
+
 const editableStatuses = [
   ExecutionOrderStatus.CREATED,
   ExecutionOrderStatus.ASSIGNED,
@@ -264,9 +345,11 @@ describe('ExecutionOrderDrawer', () => {
         isLoadingMoreActivities={false}
         isLoadingMoreItemUsage={false}
         isLoadingMoreEvidence={false}
+        isLoadingMoreExecutorCustody={false}
         onLoadMoreActivities={jest.fn()}
         onLoadMoreItemUsage={jest.fn()}
         onLoadMoreEvidence={jest.fn()}
+        onLoadMoreExecutorCustody={jest.fn()}
         onStart={jest.fn().mockResolvedValue(undefined)}
         onRegisterActivity={jest.fn().mockResolvedValue(undefined)}
         onRegisterItemUsage={jest.fn().mockResolvedValue(undefined)}
@@ -383,38 +466,66 @@ describe('ExecutionOrderDrawer', () => {
       });
     } else {
       it('shows editable controls matching allowedActions', () => {
+        const isPreStartStatus = preStartStatuses.includes(status);
         const actions: ExecutionOrderAllowedAction[] =
           status === ExecutionOrderStatus.BLOCKED
             ? ['UNBLOCK']
-            : ['START', 'REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE', 'CLOSE'];
+            : isPreStartStatus
+              ? ['START']
+              : ['REGISTER_ACTIVITY', 'REGISTER_ITEM_USAGE', 'REGISTER_EVIDENCE', 'CLOSE'];
         renderDrawer({ order: detailFactory({ status, allowedActions: actions }) });
+
+        if (status === ExecutionOrderStatus.BLOCKED) {
+          expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
+          expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
+          return;
+        }
 
         if (actions.includes('START')) {
           expect(screen.getByRole('button', { name: 'Iniciar ejecución' })).toBeInTheDocument();
         }
-        if (actions.includes('REGISTER_ACTIVITY')) {
+        if (isPreStartStatus) {
+          expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
+          expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
+          expect(
+            screen.getByText('Inicia la ejecución para registrar el trabajo realizado'),
+          ).toBeInTheDocument();
+          expect(
+            screen.getByText('Inicia la ejecución para registrar equipos y materiales'),
+          ).toBeInTheDocument();
+          expect(
+            screen.getByText('Inicia la ejecución para registrar evidencia'),
+          ).toBeInTheDocument();
+        } else {
           expect(screen.getByRole('button', { name: 'Registrar actividad' })).toBeInTheDocument();
-        }
-        if (actions.includes('REGISTER_ITEM_USAGE')) {
           expect(screen.getByRole('button', { name: 'Registrar material' })).toBeInTheDocument();
-        }
-        if (actions.includes('CLOSE')) {
-          expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeInTheDocument();
+          expect(
+            screen.queryByText('Inicia la ejecución para registrar el trabajo realizado'),
+          ).not.toBeInTheDocument();
+          expect(
+            screen.queryByText('Inicia la ejecución para registrar equipos y materiales'),
+          ).not.toBeInTheDocument();
+          expect(
+            screen.queryByText('Inicia la ejecución para registrar evidencia'),
+          ).not.toBeInTheDocument();
         }
       });
     }
   });
 
   // ----------------------------------------------------
-  // Block 1 — Compromiso
+  // Block 1 — Compromiso (deduplicado: sitio/ventana/responsable viven en Resumen)
   // ----------------------------------------------------
   describe('Block 1 — Compromiso', () => {
-    it('shows site, window, responsible, template, and priority', () => {
+    it('shows site, window, responsible in Resumen and tipo/estado in Compromiso', () => {
       renderDrawer();
+      // Sitio/responsable/plantilla están en el Resumen superior (no duplicados en Compromiso)
+      expect(screen.getAllByText('Torre Norte').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Carlos López').length).toBeGreaterThanOrEqual(1);
       const section = screen.getByRole('region', { name: 'Compromiso' });
-      expect(within(section).getByText('Torre Norte')).toBeInTheDocument();
-      expect(within(section).getByText('Carlos López')).toBeInTheDocument();
-      expect(within(section).getByText(/Instalación fibra/)).toBeInTheDocument();
+      expect(within(section).getByText(/Instalación/)).toBeInTheDocument();
+      // Compromiso ya no duplica sitio/ventana
+      expect(within(section).queryByText('Torre Norte')).not.toBeInTheDocument();
     });
 
     it('shows the OT number (title is also the OT number)', () => {
@@ -464,6 +575,7 @@ describe('ExecutionOrderDrawer', () => {
 
     it('shows actionable closure gaps without exposing internal identifiers', () => {
       renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         missingRequirements: [
           {
             requirementId: 'req-photo-install',
@@ -511,6 +623,73 @@ describe('ExecutionOrderDrawer', () => {
       expect(onRegisterActivity).toHaveBeenCalledWith(
         expect.objectContaining({ description: 'Cable tendido hasta el poste' }),
       );
+    });
+
+    it('muestra el toggle replegado cuando ya hay actividades registradas', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        activities: activitiesFactory(),
+      });
+
+      const toggle = screen.getByRole('button', { name: 'Registrar nueva actividad' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
+      expect(screen.queryByRole('textbox', { name: 'Descripción de la actividad' })).toBeNull();
+    });
+
+    it('despliega el formulario al pulsar Registrar nueva actividad', async () => {
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        activities: activitiesFactory(),
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Registrar nueva actividad' }));
+
+      expect(screen.getByRole('button', { name: 'Registrar nueva actividad' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+      expect(
+        screen.getByRole('textbox', { name: 'Descripción de la actividad' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Ocultar' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Registrar actividad' })).toBeInTheDocument();
+    });
+
+    it('repliega el formulario tras registrar una actividad con éxito', async () => {
+      const onRegisterActivity = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        activities: activitiesFactory(),
+        onRegisterActivity,
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Registrar nueva actividad' }));
+      await user.type(
+        screen.getByRole('textbox', { name: 'Descripción de la actividad' }),
+        'Prueba de velocidad completada',
+      );
+      await user.click(screen.getByRole('button', { name: 'Registrar actividad' }));
+
+      expect(onRegisterActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'Prueba de velocidad completada' }),
+      );
+      expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Registrar nueva actividad' })).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: 'Descripción de la actividad' })).toBeNull();
+    });
+
+    it('muestra el formulario expandido sin toggle cuando no hay actividades', () => {
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      expect(screen.getByText('Registrar nueva actividad')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Registrar nueva actividad' })).toBeNull();
+      expect(
+        screen.getByRole('textbox', { name: 'Descripción de la actividad' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Ocultar' })).toBeNull();
     });
 
     it('does not show registration form on terminal OT', () => {
@@ -894,6 +1073,109 @@ describe('ExecutionOrderDrawer', () => {
   });
 
   // ----------------------------------------------------
+  // En custodia del ejecutor (sub-sección de solo lectura del bloque 4)
+  // ----------------------------------------------------
+  describe('En custodia del ejecutor', () => {
+    const custodyProps = {
+      executorCustodyState: 'available' as const,
+      executorCustodyName: 'Bodega móvil de Carlos López',
+      executorCustodyAssets: [custodyAssetFactory()],
+      executorCustodyAssetsMeta: custodyMetaFactory(),
+      executorCustodyBalances: [custodyBalanceFactory()],
+      executorCustodyBalancesMeta: custodyMetaFactory(),
+    };
+
+    function materialsSection() {
+      return screen.getByRole('region', { name: 'Equipos y materiales' });
+    }
+
+    it('muestra custodia, equipos y materiales con datos del contrato', () => {
+      renderDrawer({ ...custodyProps });
+
+      expect(screen.getByText('En custodia del ejecutor')).toBeInTheDocument();
+      expect(screen.getByText('Bodega móvil de Carlos López')).toBeInTheDocument();
+      expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+      expect(screen.getByText('ONT de instalación · Asignado a técnico')).toBeInTheDocument();
+      expect(screen.getByText('ONT de instalación')).toBeInTheDocument();
+      expect(screen.getByText('Cantidad disponible: 4')).toBeInTheDocument();
+      expect(screen.queryByText('Custodia no disponible')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('El ejecutor no tiene equipos ni materiales en custodia'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('muestra el vacío informativo cuando el ejecutor no tiene custodia', () => {
+      renderDrawer({
+        executorCustodyState: 'available',
+        executorCustodyAssets: [],
+        executorCustodyBalances: [],
+      });
+
+      expect(
+        screen.getByText('El ejecutor no tiene equipos ni materiales en custodia'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Lo asignado desde inventario aparecerá aquí.')).toBeInTheDocument();
+    });
+
+    it('muestra la alerta de no disponible con la acción de actualizar detalle', () => {
+      const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
+      renderDrawer({
+        executorCustodyState: 'unavailable',
+        onRefreshDetail,
+      });
+
+      const section = materialsSection();
+      expect(within(section).getByText('Custodia no disponible')).toBeInTheDocument();
+      within(section).getByRole('button', { name: 'Actualizar detalle' }).click();
+      expect(onRefreshDetail).toHaveBeenCalledTimes(1);
+    });
+
+    it('muestra skeleton mientras carga la custodia', () => {
+      renderDrawer({ executorCustodyState: 'loading' });
+
+      const section = materialsSection();
+      expect(within(section).getByLabelText('Cargando custodia del ejecutor')).toBeInTheDocument();
+      expect(within(section).getByText('En custodia del ejecutor')).toBeInTheDocument();
+    });
+
+    it('expone la paginación compartida vía onLoadMoreExecutorCustody', async () => {
+      const onLoadMoreExecutorCustody = jest.fn().mockResolvedValue(undefined);
+      renderDrawer({
+        ...custodyProps,
+        executorCustodyAssetsMeta: custodyMetaFactory({ hasMore: true, total: 3 }),
+        executorCustodyBalancesMeta: custodyMetaFactory(),
+        isLoadingMoreExecutorCustody: false,
+        onLoadMoreExecutorCustody,
+      });
+
+      const section = materialsSection();
+      const loadMore = within(section).getByRole('button', { name: 'Cargar más' });
+      await userEvent.click(loadMore);
+      expect(onLoadMoreExecutorCustody).toHaveBeenCalledTimes(1);
+    });
+
+    it('es visible en pre-inicio porque es información de lectura', () => {
+      renderDrawer({
+        ...custodyProps,
+        order: detailFactory({ status: ExecutionOrderStatus.CREATED }),
+      });
+
+      expect(screen.getByText('En custodia del ejecutor')).toBeInTheDocument();
+      expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+    });
+
+    it.each(terminalStatuses)('queda oculta en estado terminal %s', (status) => {
+      renderDrawer({
+        ...custodyProps,
+        order: detailFactory({ status, result: ExecutionOrderResult.EXECUTED }),
+      });
+
+      expect(screen.queryByText('En custodia del ejecutor')).not.toBeInTheDocument();
+      expect(screen.queryByText('ONT-2026-001')).not.toBeInTheDocument();
+    });
+  });
+
+  // ----------------------------------------------------
   // Block 5 — Evidencia y conformidad
   // ----------------------------------------------------
   describe('Block 5 — Evidencia y conformidad', () => {
@@ -1046,6 +1328,7 @@ describe('ExecutionOrderDrawer', () => {
         label: '',
       } as (typeof template.requirements)[number];
       renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         template,
         missingRequirements: [
           {
@@ -1228,6 +1511,138 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByText('Estado de sincronización no disponible')).toBeInTheDocument();
       expect(screen.queryByText('Sincronizada')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).not.toBeInTheDocument();
+    });
+  });
+
+  // ----------------------------------------------------
+  // Checklist gate — no iniciar => solo consulta
+  // ----------------------------------------------------
+  describe('Checklist gate', () => {
+    it.each(preStartStatuses)('deshabilita el checklist antes de iniciar (%s)', (status) => {
+      renderDrawer({ order: detailFactory({ status }) });
+
+      expect(
+        screen.getByText('Inicia la ejecución para habilitar el checklist'),
+      ).toBeInTheDocument();
+      const checklistSection = screen.getByRole('region', { name: 'Checklist de instalación' });
+      expect(within(checklistSection).getByText('Avance de requisitos')).toBeInTheDocument();
+      // contenido atenuado y marcado como deshabilitado
+      const disabledContainer = checklistSection.querySelector('[aria-disabled="true"]');
+      expect(disabledContainer).not.toBeNull();
+      expect(disabledContainer?.className).toContain('opacity-60');
+      // requisitos pendientes suprimidos antes de iniciar
+      expect(
+        screen.queryByRole('alert', { name: 'Requisitos pendientes' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('activa el checklist cuando la ejecución ya inició', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        missingRequirements: [
+          {
+            requirementId: 'req-x',
+            label: 'Foto faltante',
+            kind: 'EVIDENCE',
+            reason: 'Falta foto',
+          },
+        ],
+      });
+
+      expect(
+        screen.queryByText('Inicia la ejecución para habilitar el checklist'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('alert', { name: 'Requisitos pendientes' })).toBeInTheDocument();
+      const checklistSection = screen.getByRole('region', { name: 'Checklist de instalación' });
+      expect(checklistSection.querySelector('[aria-disabled="true"]')).toBeNull();
+    });
+
+    it('permite ver el checklist en estado terminal sin el gate de inicio', () => {
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.COMPLETED,
+          result: ExecutionOrderResult.EXECUTED,
+        }),
+      });
+
+      expect(
+        screen.queryByText('Inicia la ejecución para habilitar el checklist'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  // ----------------------------------------------------
+  // Pre-inicio — bloques 3/4/5 en solo lectura con hint
+  // ----------------------------------------------------
+  describe('Pre-inicio — bloques 3/4/5 en solo lectura con hint', () => {
+    it.each(preStartStatuses)(
+      'muestra hint por bloque y oculta los formularios de registro (%s)',
+      (status) => {
+        renderDrawer({
+          order: detailFactory({ status }),
+          activities: activitiesFactory(),
+          itemUsage: itemUsageFactory(),
+          evidence: evidenceFactory(),
+        });
+
+        const workSection = screen.getByRole('region', { name: 'Trabajo realizado' });
+        expect(
+          within(workSection).getByText('Inicia la ejecución para registrar el trabajo realizado'),
+        ).toBeInTheDocument();
+        expect(
+          within(workSection).queryByRole('button', { name: 'Registrar actividad' }),
+        ).toBeNull();
+
+        const materialsSection = screen.getByRole('region', { name: 'Equipos y materiales' });
+        expect(
+          within(materialsSection).getByText(
+            'Inicia la ejecución para registrar equipos y materiales',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          within(materialsSection).queryByRole('button', { name: 'Registrar material' }),
+        ).toBeNull();
+
+        const evidenceSection = screen.getByRole('region', { name: 'Evidencia y conformidad' });
+        expect(
+          within(evidenceSection).getByText('Inicia la ejecución para registrar evidencia'),
+        ).toBeInTheDocument();
+        expect(within(evidenceSection).queryByText('Adjuntar evidencia')).toBeNull();
+
+        // La lista (lectura) permanece visible junto al hint.
+        expect(
+          within(workSection).getByText('Se instaló ONU en sala principal'),
+        ).toBeInTheDocument();
+        expect(within(materialsSection).getByText('ONT-2026-001')).toBeInTheDocument();
+        expect(
+          within(evidenceSection).getAllByText(/Foto de instalación/).length,
+        ).toBeGreaterThanOrEqual(1);
+      },
+    );
+
+    it.each(preStartStatuses)(
+      'mantiene los estados vacíos visibles junto al hint pre-inicio (%s)',
+      (status) => {
+        renderDrawer({ order: detailFactory({ status }) });
+
+        expect(screen.getByText('Aún no hay actividades registradas')).toBeInTheDocument();
+        expect(screen.getByText('Aún no hay consumos registrados')).toBeInTheDocument();
+        expect(screen.getByText('Sin evidencias registradas')).toBeInTheDocument();
+      },
+    );
+
+    it('no muestra los hints pre-inicio cuando la ejecución ya inició', () => {
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+
+      expect(
+        screen.queryByText('Inicia la ejecución para registrar el trabajo realizado'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Inicia la ejecución para registrar equipos y materiales'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Inicia la ejecución para registrar evidencia'),
+      ).not.toBeInTheDocument();
     });
   });
 

@@ -8,6 +8,13 @@ interface RateLimitRequestLike {
   };
   ip?: string | undefined;
   iwanaTenantResolutionSource?: 'jwt-verified' | 'public-header' | 'none' | undefined;
+  /**
+   * `sub` del JWT verificado, fijado por `TenantMiddleware` en la rama
+   * `jwt-verified` (P-09, Ola 2). El throttler global corre despues del
+   * middleware y antes de los guards JWT de cada ruta, asi que en este punto
+   * ya esta disponible sin re-verificar el token.
+   */
+  iwanaVerifiedSub?: string | undefined;
 }
 
 /**
@@ -23,8 +30,16 @@ export function getGlobalRateLimitTracker(request: RateLimitRequestLike): string
 
   if (request.iwanaTenantResolutionSource !== 'jwt-verified' || !tenantId) {
     // El guard global corre antes del JwtAuthGuard: sin marker de JWT verificado,
-    // incluso un bearer acompañado de X-Tenant-Slug comparte el bucket IP.
+    // incluso un acceso presentado solo con X-Tenant-Slug comparte el bucket IP.
     return `anonymous:ip:${request.ip ?? 'unknown'}`;
+  }
+
+  // P-09: bucket por `sub` del token verificado — una empresa ya no comparte
+  // una cuota de 100 req/min entre todos sus usuarios de cookie. El `sub` lo
+  // fija el middleware al verificar el JWT de la peticion;
+  // input del cliente. Sin `sub` (defensivo) se conserva el bucket anterior.
+  if (typeof request.iwanaVerifiedSub === 'string' && request.iwanaVerifiedSub.length > 0) {
+    return `${tenantId}:sub:${request.iwanaVerifiedSub}`;
   }
 
   if (bearerToken) {

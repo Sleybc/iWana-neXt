@@ -7,6 +7,7 @@ import { CommentsService } from './services/comments.service';
 import { SlaService } from './services/sla.service';
 import { TicketsService } from './services/tickets.service';
 import { TimelineService } from './services/timeline.service';
+import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 
 function getResponseSchema(
   operation: Record<string, unknown> | undefined,
@@ -43,6 +44,10 @@ describe('AssuranceController Swagger', () => {
         { provide: TimelineService, useValue: {} },
         { provide: SlaService, useValue: {} },
         { provide: AssuranceDashboardService, useValue: {} },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
+import { FormStatus } from '@iwana/ui';
 import type { Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
 import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
@@ -167,11 +168,7 @@ export function ConvertExpedienteToContractDialog({
           </div>
 
           {/* Error */}
-          {error && (
-            <p className="mt-4 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-              {error}
-            </p>
-          )}
+          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
 
           {/* Acciones */}
           <div className="mt-6 flex justify-end gap-3">

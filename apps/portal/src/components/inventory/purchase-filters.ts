@@ -1,6 +1,11 @@
 'use client';
 
-import { PurchaseRequestPriority, PurchaseRequestStatus, PurchaseRequestType } from '@iwana/shared';
+import {
+  PurchaseRequestFulfillmentStatus,
+  PurchaseRequestPriority,
+  PurchaseRequestStatus,
+  PurchaseRequestType,
+} from '@iwana/shared';
 import type { PurchaseRequestRecord } from '@/lib/api-client';
 
 export type PurchaseKpiPreset =
@@ -17,6 +22,54 @@ export interface PurchaseRequestFilters {
   priority?: PurchaseRequestPriority;
   search?: string;
   kpiPreset?: PurchaseKpiPreset;
+}
+
+/** Campos mínimos para razonar sobre el abastecimiento de una solicitud. */
+export type PurchaseRequestFulfillmentSource = Pick<
+  PurchaseRequestRecord,
+  'status' | 'fulfillmentStatus'
+>;
+
+/**
+ * Estado de abastecimiento efectivo de una solicitud.
+ *
+ * El API lo emite calculado a partir de las órdenes de compra vivas. Mientras
+ * una versión del API todavía no lo envíe, se degrada al único indicio
+ * disponible en el listado: el estado administrativo. `CONVERTED_TO_PO` se
+ * asume `PENDING_RECEIPT` —que es exactamente el comportamiento previo— y
+ * cualquier otro estado se asume `NOT_ORDERED`.
+ */
+export function resolvePurchaseRequestFulfillmentStatus(
+  request: PurchaseRequestFulfillmentSource,
+): PurchaseRequestFulfillmentStatus {
+  if (request.fulfillmentStatus) {
+    return request.fulfillmentStatus;
+  }
+
+  return request.status === PurchaseRequestStatus.CONVERTED_TO_PO
+    ? PurchaseRequestFulfillmentStatus.PENDING_RECEIPT
+    : PurchaseRequestFulfillmentStatus.NOT_ORDERED;
+}
+
+const PENDING_RECEIPT_FULFILLMENT_STATUSES: PurchaseRequestFulfillmentStatus[] = [
+  PurchaseRequestFulfillmentStatus.PENDING_RECEIPT,
+  PurchaseRequestFulfillmentStatus.PARTIALLY_RECEIVED,
+];
+
+/** Hay mercancía en tránsito: la solicitud sigue esperando recepción. */
+export function isPurchaseRequestPendingReceipt(
+  request: PurchaseRequestFulfillmentSource,
+): boolean {
+  return PENDING_RECEIPT_FULFILLMENT_STATUSES.includes(
+    resolvePurchaseRequestFulfillmentStatus(request),
+  );
+}
+
+/** La mercancía ya entró a bodega: la solicitud está cerrada por recepción. */
+export function isPurchaseRequestFullyReceived(request: PurchaseRequestFulfillmentSource): boolean {
+  return (
+    resolvePurchaseRequestFulfillmentStatus(request) === PurchaseRequestFulfillmentStatus.RECEIVED
+  );
 }
 
 export function isPurchaseRequestOverdue(request: PurchaseRequestRecord): boolean {
@@ -51,7 +104,10 @@ export function kpiPresetToFilters(preset: PurchaseKpiPreset): PurchaseRequestFi
     case 'readyForPo':
       return { kpiPreset: preset, status: PurchaseRequestStatus.APPROVED };
     case 'pendingReceipt':
-      return { kpiPreset: preset, status: PurchaseRequestStatus.CONVERTED_TO_PO };
+      // Por recibir se resuelve en servidor (EXISTS órdenes APPROVED/PARTIALLY_RECEIVED).
+      // No fijar status=CONVERTED_TO_PO aquí: ese estado incluye solicitudes ya
+      // recibidas, que el listado muestra como «Recibida y cerrada».
+      return { kpiPreset: preset };
     case 'urgent':
       return { kpiPreset: preset, priority: PurchaseRequestPriority.URGENT };
     case 'overdue':
@@ -61,7 +117,13 @@ export function kpiPresetToFilters(preset: PurchaseKpiPreset): PurchaseRequestFi
   }
 }
 
-/** Primera solicitud candidata para abrir el workbench al activar un KPI operativo. */
+/**
+ * Primera solicitud candidata para abrir el workbench al activar un KPI operativo.
+ *
+ * Se elige por abastecimiento, no por estado administrativo: una solicitud
+ * `CONVERTED_TO_PO` cuya mercancía ya se recibió no debe abrirse desde el KPI
+ * «Por recibir».
+ */
 export function findFirstRequestForKpiWorkbench(
   preset: PurchaseKpiPreset,
   requests: PurchaseRequestRecord[],
@@ -70,9 +132,7 @@ export function findFirstRequestForKpiWorkbench(
     return null;
   }
 
-  return (
-    requests.find((request) => request.status === PurchaseRequestStatus.CONVERTED_TO_PO) ?? null
-  );
+  return requests.find(isPurchaseRequestPendingReceipt) ?? null;
 }
 
 export function resolveActiveKpiPreset(filters: PurchaseRequestFilters): PurchaseKpiPreset | null {
@@ -83,7 +143,10 @@ export function resolveActiveKpiPreset(filters: PurchaseRequestFilters): Purchas
   if (filters.status && isPendingQuoteStatus(filters.status)) return 'pendingQuotes';
   if (filters.status === PurchaseRequestStatus.PENDING_APPROVAL) return 'pendingApproval';
   if (filters.status === PurchaseRequestStatus.APPROVED) return 'readyForPo';
-  if (filters.status === PurchaseRequestStatus.CONVERTED_TO_PO) return 'pendingReceipt';
+  // El estado CONVERTED_TO_PO no distingue mercancía en tránsito de mercancía ya
+  // recibida: esa distinción vive en fulfillmentStatus, que es un eje por
+  // solicitud y no un filtro de listado. Por eso el KPI «Por recibir» exige
+  // kpiPreset explícito y se resuelve en servidor.
   if (filters.priority === PurchaseRequestPriority.URGENT) return 'urgent';
 
   return null;

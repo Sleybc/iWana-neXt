@@ -5,6 +5,16 @@ import { expect, test, type Page } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -81,6 +91,8 @@ async function setupCommercialEvidenceMocks(page: Page) {
     }
 
     if (pathname.match(/\/users\/[^/]+$/) && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
       await json({
         data: {
           id: 'user-uuid-admin-test',
@@ -136,6 +148,9 @@ async function setupCommercialEvidenceMocks(page: Page) {
     }
 
     if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
+      expect(route.request().url()).toContain('/commercial/catalog');
       const type = url.searchParams.get('type');
       if (type === 'PLAN') {
         await json({

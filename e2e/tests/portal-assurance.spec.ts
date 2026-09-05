@@ -12,6 +12,16 @@ import { expect, test } from '@playwright/test';
 import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'tenant-assurance-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const SUPPORT_USER_ID = '11111111-1111-4111-8111-111111111111';
 const ASSIGNEE_ID = '22222222-2222-4222-8222-222222222222';
 const WORK_ORDER_ID = '33333333-3333-4333-8333-333333333333';
@@ -325,6 +335,9 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
     }
 
     if (pathname.endsWith('/assurance/sla-policies') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
+      expect(route.request().url()).toContain('/assurance/sla-policies');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -357,7 +370,12 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
     }
 
     if (pathname.endsWith('/assurance/tickets') && method === 'POST') {
+      await assertTenantHeader(route);
+      expect(method).toBe('POST');
+      expect(route.request().url()).toContain('/assurance/tickets');
       const payload = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      expect(payload).toHaveProperty('type');
+      expect(payload).toHaveProperty('subject');
       const ticketId = `ticket-${tickets.length + 1}`;
       const ticket: MockTicket = {
         id: ticketId,

@@ -2,6 +2,16 @@ import { expect, test, type Page } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
+
+/**
+ * Aserción de cabecera de tenant, portada de
+ * portal-settings-federated-shell.spec.ts:105-114: el cliente siempre
+ * transporta el slug resuelto en X-Tenant-Slug.
+ */
+async function assertTenantHeader(route: import('@playwright/test').Route) {
+  const headers = await route.request().allHeaders();
+  expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+}
 const SETTINGS_SECTIONS = [
   {
     key: 'organization',
@@ -289,6 +299,8 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     }
 
     if (pathname.endsWith('/users/user-uuid-admin-test') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -326,6 +338,9 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     }
 
     if (url.includes('/access-control/me/effective-permissions') && method === 'GET') {
+      await assertTenantHeader(route);
+      expect(method).toBe('GET');
+      expect(route.request().url()).toContain('/access-control/me/effective-permissions');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

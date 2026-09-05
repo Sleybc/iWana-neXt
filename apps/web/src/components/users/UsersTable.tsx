@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Avatar,
   Badge,
   Button,
   Card,
@@ -10,7 +11,7 @@ import {
   cn,
   type BadgeProps,
 } from '@iwana/ui';
-import { UserRole } from '@iwana/shared';
+import { formatFullName, UserRole } from '@iwana/shared';
 import { ChevronLeft, ChevronRight, KeyRound, Shield, ShieldOff, UserCog } from 'lucide-react';
 import type { UserListItem } from '@/lib/api-client';
 import { getWebUserRoleLabel, getWebUserStatusLabel } from '@/lib/user-labels';
@@ -69,14 +70,8 @@ function statusBadgeVariant(status: string): BadgeVariant {
 }
 
 function userDisplayName(user: UserListItem): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const fullName = formatFullName(user.firstName, user.lastName).trim();
   return fullName || user.email;
-}
-
-/** Devuelve la primera letra del nombre del usuario, con fallback 'U' */
-function userInitial(user: UserListItem): string {
-  const source = user.firstName || user.lastName || user.email;
-  return source.charAt(0).toUpperCase();
 }
 
 function formatLastLogin(value: string | null): string {
@@ -268,14 +263,16 @@ export function UsersTable({
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div
-                              aria-hidden="true"
-                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-iwana-primary-50 text-sm font-semibold text-iwana-primary-700 ring-1 ring-inset ring-iwana-primary-100 dark:bg-iwana-primary-500/15 dark:text-iwana-primary-300 dark:ring-iwana-primary-500/20"
-                            >
-                              {userInitial(user)}
-                            </div>
+                            <Avatar
+                              size="sm"
+                              name={formatFullName(user.firstName, user.lastName)}
+                              labelledById={`usuario-nombre-${user.id}`}
+                            />
                             <div className="min-w-0">
-                              <p className="truncate font-medium text-iwana-primary dark:text-white">
+                              <p
+                                id={`usuario-nombre-${user.id}`}
+                                className="truncate font-medium text-iwana-primary dark:text-white"
+                              >
                                 {userDisplayName(user)}
                               </p>
                               <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">

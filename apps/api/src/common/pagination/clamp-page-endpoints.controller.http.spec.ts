@@ -40,6 +40,8 @@ import { RfqService } from '../../modules/inventory/services/rfq.service';
 import { RfqPdfService } from '../../modules/inventory/services/rfq-pdf.service';
 import { SupplierProfileService } from '../../modules/inventory/services/supplier-profile.service';
 import { SupplierPartyPort } from '../../modules/inventory/ports/supplier-party.port';
+import { TaxCatalogReadPort } from '../../modules/taxation/ports/tax-catalog-read.port';
+import { PermissionsGuard } from '../../modules/access-control/guards/permissions.guard';
 // —— wfm ——
 import { WfmController } from '../../modules/wfm/wfm.controller';
 import { NonRealizationCausesService } from '../../modules/wfm/services/non-realization-causes.service';
@@ -306,6 +308,7 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
         { provide: RfqPdfService, useValue: stubProvider() },
         { provide: SupplierProfileService, useValue: stubProvider() },
         { provide: SupplierPartyPort, useValue: stubProvider() },
+        { provide: TaxCatalogReadPort, useValue: stubProvider() },
 
         // —— wfm: resto del controller ——
         { provide: NonRealizationCausesService, useValue: stubProvider() },
@@ -323,7 +326,10 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
         JwtAuthGuard,
         RolesGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');

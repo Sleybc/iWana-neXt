@@ -10,7 +10,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  FormStatus,
 } from '@iwana/ui';
+import { formatFullName } from '@iwana/shared';
 import type { InternalUser } from '@/lib/api-client';
 import { PortalAlert, portalFieldClassName } from '@/components/shared/portal-ui';
 
@@ -49,7 +51,7 @@ export function DeleteUserDialog({
 
   if (!isOpen) return null;
 
-  const userDisplayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+  const userDisplayName = formatFullName(user.firstName, user.lastName) || user.email;
   const isConfirmed = confirmText.toLowerCase() === user.email.toLowerCase();
 
   const handleConfirm = async () => {
@@ -136,14 +138,17 @@ export function DeleteUserDialog({
           />
         </div>
 
-        {serverError && (
-          <PortalAlert
-            className="mb-4"
-            variant="error"
-            title="No fue posible eliminar"
-            description={serverError}
-          />
-        )}
+        <FormStatus
+          className="mb-4"
+          status={serverError ? 'error' : 'idle'}
+          message={
+            serverError ? (
+              <>
+                <span>No fue posible eliminar.</span> <span>{serverError}</span>
+              </>
+            ) : undefined
+          }
+        />
 
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>

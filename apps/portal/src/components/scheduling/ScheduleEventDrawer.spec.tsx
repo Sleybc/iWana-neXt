@@ -112,7 +112,10 @@ describe('ScheduleEventDrawer — coordinación', () => {
   // ─── Positive: resumen de OT ───
   it('muestra la sección de resumen de OT', () => {
     render(<ScheduleEventDrawer {...baseProps} />);
-    expect(screen.getByText('Resumen de la orden de trabajo')).toBeInTheDocument();
+    expect(screen.getByText('Orden vinculada — qué aporta')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Solo lo que la orden añade o cambia respecto a la visita/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Visita sin orden vinculada/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
   });

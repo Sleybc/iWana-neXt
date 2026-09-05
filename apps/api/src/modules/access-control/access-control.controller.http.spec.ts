@@ -208,7 +208,7 @@ describe('AccessControlController HTTP', () => {
 
   it('GET /api/v1/access-control/permissions retorna catálogo seeded', async () => {
     accessControlServiceMock.listPermissions.mockResolvedValue({
-      version: 'MOD00_ACCESS_V1',
+      version: 'MOD00_ACCESS_V2',
       permissions: [],
       compatibilityMatrix: {},
     });
@@ -218,7 +218,7 @@ describe('AccessControlController HTTP', () => {
       .set('Authorization', 'Bearer admin-token')
       .expect(200)
       .expect(({ body }) => {
-        expect(body.data.version).toBe('MOD00_ACCESS_V1');
+        expect(body.data.version).toBe('MOD00_ACCESS_V2');
       });
   });
 

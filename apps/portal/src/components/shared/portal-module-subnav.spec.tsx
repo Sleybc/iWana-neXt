@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { Layers } from 'lucide-react';
 import { PortalModuleSubnav, type PortalModuleSubnavGroup } from './portal-ui';
 
@@ -134,5 +134,74 @@ describe('PortalModuleSubnav', () => {
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Catálogo' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Reglas' })).toBeInTheDocument();
+  });
+});
+
+describe('PortalModuleSubnav — hideLabel (v1.3, spec subnav Inventario §2.2)', () => {
+  const anchoredGroups: PortalModuleSubnavGroup[] = [
+    {
+      id: 'overview',
+      label: 'Vista general',
+      hideLabel: true,
+      items: [{ id: 'overview', label: 'Vista general', icon: Layers }],
+    },
+    ...groups,
+  ];
+
+  it('en lg+ oculta el eyebrow, nombra la lista con aria-label y no deja aria-labelledby colgante', () => {
+    mockMatchMediaLg(true);
+
+    render(
+      <PortalModuleSubnav
+        groups={anchoredGroups}
+        value="overview"
+        onValueChange={jest.fn()}
+        ariaLabel="Secciones de inventario"
+      />,
+    );
+
+    // Ningún eyebrow "Vista general": el texto visible es solo el ítem (button).
+    const eyebrows = Array.from(document.querySelectorAll('p.portal-eyebrow')).map(
+      (node) => node.textContent,
+    );
+    expect(eyebrows).toEqual(['Catálogo', 'Reglas']);
+
+    const hiddenList = screen.getByRole('list', { name: 'Vista general' });
+    expect(hiddenList).toHaveAttribute('aria-label', 'Vista general');
+    expect(hiddenList).not.toHaveAttribute('aria-labelledby');
+
+    // El wrapper del grupo recibe la compensación documentada en tokens.
+    expect(hiddenList.parentElement).toHaveClass('portal-subnav-group-sans-label');
+    expect(hiddenList.parentElement).toHaveClass('space-y-1');
+
+    // El divisor solo precede a grupos con index > 0: el grupo anclado no lleva.
+    // Los separators llevan aria-hidden y no salen en queries por rol: query DOM.
+    expect(document.querySelectorAll('[role="separator"]')).toHaveLength(2);
+  });
+
+  it('en el dialog <lg aplica igual: grupo sin eyebrow y lista con aria-label', () => {
+    mockMatchMediaLg(false);
+
+    render(
+      <PortalModuleSubnav
+        groups={anchoredGroups}
+        value="overview"
+        onValueChange={jest.fn()}
+        ariaLabel="Secciones de inventario"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sección: Vista general' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Elegir sección' });
+    const eyebrows = Array.from(dialog.querySelectorAll('p.portal-eyebrow')).map(
+      (node) => node.textContent,
+    );
+    expect(eyebrows).toEqual(['Catálogo', 'Reglas']);
+
+    const hiddenList = within(dialog).getByRole('list', { name: 'Vista general' });
+    expect(hiddenList).toHaveAttribute('aria-label', 'Vista general');
+    expect(hiddenList).not.toHaveAttribute('aria-labelledby');
+    expect(hiddenList.parentElement).toHaveClass('portal-subnav-group-sans-label');
   });
 });

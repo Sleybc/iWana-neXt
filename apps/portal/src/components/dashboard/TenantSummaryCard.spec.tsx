@@ -57,6 +57,10 @@ describe('TenantSummaryCard', () => {
       'href',
       '/dashboard/settings',
     );
+    expect(screen.getByRole('link', { name: /Ver mi perfil/i })).toHaveAttribute(
+      'href',
+      '/dashboard/profile',
+    );
   });
 
   it('traduce estados sin enums crudos y resuelve ubicación sin ciudad', () => {

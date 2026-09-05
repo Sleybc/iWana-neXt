@@ -13,7 +13,7 @@ import type {
   SupplierQuoteRecord,
 } from '@/lib/api-client';
 import { purchasingApi } from '@/lib/api-client';
-import { formatInventoryCurrency } from './inventory-labels';
+import { formatInventoryMoney } from './inventory-labels';
 import { RfqInvitationsPanel } from './RfqInvitationsPanel';
 
 jest.mock('@/lib/api-client', () => ({
@@ -26,6 +26,7 @@ jest.mock('@/lib/api-client', () => ({
     closeRfq: jest.fn(),
     declineInvitation: jest.fn(),
     addQuote: jest.fn(),
+    updateQuote: jest.fn(),
   },
 }));
 
@@ -129,6 +130,7 @@ describe('RfqInvitationsPanel', () => {
       filename: 'RFQ-000001-cotizaciones.zip',
     });
     purchasingApiMock.addQuote.mockResolvedValue(buildQuote());
+    purchasingApiMock.updateQuote.mockResolvedValue(buildQuote({ quoteNumber: 'COT-101' }));
   });
 
   function buildRfqDetailWithoutInvitations(): PurchaseRfqDetailRecord {
@@ -195,6 +197,54 @@ describe('RfqInvitationsPanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('DRAFT sin invitaciones: Enviar deshabilitado con guía de 2 pasos', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={buildRfqDetail({
+          rfq: { status: PurchaseRfqStatus.DRAFT },
+          invitations: [],
+        })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    const sendButton = screen.getByRole('button', { name: 'Enviar solicitud' });
+    expect(sendButton).toBeDisabled();
+    expect(
+      screen.getByText('Invita al menos un proveedor antes de enviar la solicitud.'),
+    ).toBeInTheDocument();
+
+    await user.click(sendButton);
+    expect(purchasingApiMock.sendRfq).not.toHaveBeenCalled();
+  });
+
+  it('DRAFT con invitación: Enviar habilitado y envía la ronda', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT } })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    const sendButton = screen.getByRole('button', { name: 'Enviar solicitud' });
+    expect(sendButton).toBeEnabled();
+
+    await user.click(sendButton);
+
+    await waitFor(() => {
+      expect(purchasingApiMock.sendRfq).toHaveBeenCalledWith('rfq-1');
+    });
+    expect(screen.getByText('Solicitud de cotización enviada.')).toBeInTheDocument();
+  });
+
   it('muestra error si falla la descarga de la fila', async () => {
     const user = userEvent.setup();
     purchasingApiMock.downloadRfqInvitationPdf.mockRejectedValueOnce(new Error('fallo'));
@@ -233,12 +283,10 @@ describe('RfqInvitationsPanel', () => {
       screen.getByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
     );
 
-    const quoteNumberInput = screen.getByLabelText('Número de cotización');
+    const quoteNumberInput = screen.getByLabelText(/Número de cotización/i);
     const amountInput = screen.getByLabelText('Monto');
     await user.type(quoteNumberInput, 'COT-ALFA-01');
     await user.type(amountInput, '250000');
-    await user.click(screen.getByRole('checkbox', { name: /Envío gratis/i }));
-
     await user.click(screen.getByRole('button', { name: 'Guardar cotización' }));
 
     await waitFor(() => {
@@ -249,6 +297,7 @@ describe('RfqInvitationsPanel', () => {
         amount: 250000,
         currency: 'COP',
         shippingCost: 0,
+        shippingArrangement: 'ON_INVOICE',
       });
     });
     expect(onRefresh).toHaveBeenCalled();
@@ -290,15 +339,135 @@ describe('RfqInvitationsPanel', () => {
       screen.queryByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
     ).not.toBeInTheDocument();
     expect(
+      screen.getByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByText((_content, element) => {
         const text = element?.textContent?.replace(/\u00a0/g, ' ') ?? '';
-        const expected = `Cotización: ${formatInventoryCurrency(quote.amount)}`.replace(
+        const expected = `Cotización: ${formatInventoryMoney(quote.amount)}`.replace(
           /\u00a0/g,
           ' ',
         );
         return element?.tagName === 'P' && text === expected;
       }),
     ).toBeInTheDocument();
+  });
+
+  function buildRespondedInvitation(): PurchaseRfqDetailRecord['invitations'][number] {
+    return {
+      id: 'inv-1',
+      tenantId: 'tenant-1',
+      rfqId: 'rfq-1',
+      partyRefId: 'party-1',
+      displayName: 'Proveedor Alfa',
+      status: PurchaseRfqInvitationStatus.RESPONDED,
+      invitedAt: '2026-07-01T00:00:00.000Z',
+      respondedAt: '2026-07-02T00:00:00.000Z',
+      declinedAt: null,
+      declineReason: null,
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-02T00:00:00.000Z',
+    };
+  }
+
+  it('prellena la cotización respondida y guarda cambios con PATCH', async () => {
+    const user = userEvent.setup();
+    const quote = buildQuote({
+      amount: '1500000',
+      shippingCost: '250',
+      shippingArrangement: 'ON_INVOICE',
+      taxes: [
+        {
+          code: 'IVA_19',
+          name: 'IVA',
+          category: 'VAT',
+          effect: 'ADD',
+          applies: true,
+          rate: '19',
+          baseAmount: '1500000',
+          taxAmount: '285000',
+        },
+      ],
+    });
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_APPROVAL}
+        rfqDetail={buildRfqDetail({
+          rfq: { status: PurchaseRfqStatus.RECEIVING },
+          invitations: [buildRespondedInvitation()],
+        })}
+        quotes={[quote]}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    );
+
+    expect(screen.getByDisplayValue('COT-100')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('1500000')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'IVA' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.updateQuote).toHaveBeenCalledWith(
+        'req-1',
+        'quote-1',
+        expect.objectContaining({
+          quoteNumber: 'COT-100',
+          amount: 1500000,
+          shippingCost: 250,
+          shippingArrangement: 'ON_INVOICE',
+          taxes: [{ code: 'IVA_19', applies: true, rate: 19 }],
+        }),
+      );
+    });
+    expect(purchasingApiMock.addQuote).not.toHaveBeenCalled();
+    expect(onRefresh).toHaveBeenCalled();
+    expect(screen.getByText('Cotización actualizada.')).toBeInTheDocument();
+  });
+
+  it('no muestra modificar si la ronda ya cerró o la cotización está adjudicada', () => {
+    const quote = buildQuote();
+    const { rerender } = render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_APPROVAL}
+        rfqDetail={buildRfqDetail({
+          rfq: { status: PurchaseRfqStatus.CLOSED },
+          invitations: [buildRespondedInvitation()],
+        })}
+        quotes={[quote]}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_APPROVAL}
+        rfqDetail={buildRfqDetail({
+          rfq: { status: PurchaseRfqStatus.SENT },
+          invitations: [buildRespondedInvitation()],
+        })}
+        quotes={[quote]}
+        awardedQuoteIds={['quote-1']}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Modificar cotización de Proveedor Alfa' }),
+    ).not.toBeInTheDocument();
   });
 
   it('CA-17-01: con RFQ RECEIVING e invitación INVITED muestra registrar oferta', () => {
@@ -402,11 +571,12 @@ describe('RfqInvitationsPanel', () => {
 
     const saveButton = screen.getByRole('button', { name: 'Guardar cotización' });
     expect(saveButton).toBeDisabled();
+    expect(screen.getByText('Indica el número de cotización para guardar.')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Número de cotización'), 'COT-X');
+    await user.type(screen.getByLabelText(/Número de cotización/i), 'COT-X');
     expect(saveButton).toBeDisabled();
 
-    await user.clear(screen.getByLabelText('Número de cotización'));
+    await user.clear(screen.getByLabelText(/Número de cotización/i));
     await user.type(screen.getByLabelText('Monto'), '0');
     expect(saveButton).toBeDisabled();
     expect(screen.getByText('Ingresa un monto válido mayor a cero.')).toBeInTheDocument();
@@ -445,9 +615,8 @@ describe('RfqInvitationsPanel', () => {
     await user.click(
       screen.getByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
     );
-    await user.type(screen.getByLabelText('Número de cotización'), 'COT-LINES');
-    await user.type(screen.getByLabelText('Costo unitario de Cable UTP'), '1500');
-    await user.click(screen.getByRole('checkbox', { name: /Envío gratis/i }));
+    await user.type(screen.getByLabelText(/Número de cotización/i), 'COT-LINES');
+    await user.type(screen.getByLabelText('Costo unitario de Cable UTP (sin IVA)'), '1500');
     await user.click(screen.getByRole('button', { name: 'Guardar cotización' }));
 
     await waitFor(() => {
@@ -457,6 +626,7 @@ describe('RfqInvitationsPanel', () => {
         quoteNumber: 'COT-LINES',
         currency: 'COP',
         shippingCost: 0,
+        shippingArrangement: 'ON_INVOICE',
         lines: [
           {
             purchaseRequestLineId: '11111111-1111-1111-1111-111111111111',
@@ -485,9 +655,8 @@ describe('RfqInvitationsPanel', () => {
     await user.click(
       screen.getByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
     );
-    await user.type(screen.getByLabelText('Número de cotización'), 'COT-DUP');
+    await user.type(screen.getByLabelText(/Número de cotización/i), 'COT-DUP');
     await user.type(screen.getByLabelText('Monto'), '1000');
-    await user.click(screen.getByRole('checkbox', { name: /Envío gratis/i }));
     await user.click(screen.getByRole('button', { name: 'Guardar cotización' }));
 
     await waitFor(() => {
@@ -500,5 +669,75 @@ describe('RfqInvitationsPanel', () => {
     expect(
       screen.getByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
     ).toBeInTheDocument();
+  });
+
+  it('CA-25-14: muestra tributos en el registro inline y omite el payload si están apagados', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_QUOTES}
+        rfqDetail={buildRfqDetail()}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
+    );
+
+    expect(screen.getByRole('checkbox', { name: 'IVA' })).not.toBeChecked();
+    expect(screen.getByText(/No son una factura electrónica/i)).toBeInTheDocument();
+    expect(screen.queryByText('IVA_19')).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Número de cotización/i), 'COT-ALFA-01');
+    await user.type(screen.getByLabelText('Monto'), '250000');
+    await user.click(screen.getByRole('button', { name: 'Guardar cotización' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.addQuote).toHaveBeenCalledWith(
+        'req-1',
+        expect.not.objectContaining({ taxes: expect.anything() }),
+      );
+    });
+  });
+
+  it('CA-25-03: envía solo el tributo encendido y deshabilita guardar con tasa inválida', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_QUOTES}
+        rfqDetail={buildRfqDetail()}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Registrar cotización de Proveedor Alfa' }),
+    );
+    await user.type(screen.getByLabelText(/Número de cotización/i), 'COT-IVA');
+    await user.type(screen.getByLabelText('Monto'), '100');
+    await user.click(screen.getByRole('checkbox', { name: 'IVA' }));
+
+    const rateInput = screen.getByLabelText('Tasa de IVA (%)');
+    await user.clear(rateInput);
+    await user.type(rateInput, '101');
+    expect(screen.getByRole('button', { name: 'Guardar cotización' })).toBeDisabled();
+
+    await user.clear(rateInput);
+    await user.type(rateInput, '19');
+    await user.click(screen.getByRole('button', { name: 'Guardar cotización' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.addQuote).toHaveBeenCalledWith(
+        'req-1',
+        expect.objectContaining({
+          taxes: [{ code: 'IVA_19', applies: true, rate: 19 }],
+        }),
+      );
+    });
   });
 });
