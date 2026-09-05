@@ -38,6 +38,7 @@ export class StockIssueLineSerial {
   issueId: string;
 
   @Column({
+    name: 'issue_status',
     type: 'enum',
     enum: StockIssueStatus,
     enumName: 'stock_issue_status',

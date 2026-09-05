@@ -8174,8 +8174,8 @@ export interface StockIssueLineRecord {
   lotId: string | null;
   serializedAssetId: string | null;
   /**
-   * Grupo de seriales de la línea (MOD12 S2 §5.5, enmienda de lectura del
-   * contrato `StockIssueLineRecord` en `@iwana/shared`): id + número de serie
+   * Grupo de seriales de la línea (lectura v2.1, MOD12 S2 §5.5, contrato
+   * `StockIssueLineRecord` en `@iwana/shared`): id + número de serie
    * por elemento. Opcional en el transporte durante el despliegue del track B;
    * el cliente cae al singular de transición cuando aún no viaja.
    */

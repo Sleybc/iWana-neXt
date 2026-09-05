@@ -100,6 +100,7 @@ function buildManager(options: ManagerOptions = {}) {
     update: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
     execute: jest.fn().mockResolvedValue(undefined),
   };
 
@@ -271,6 +272,10 @@ describe('StockIssueService grupo de seriales (MOD12 S2 · B2/B4/B5)', () => {
         updatedAt: expect.any(Date),
       });
       expect(mirrorQb.where).toHaveBeenCalledWith('issue_id = :issueId', { issueId: 'issue-001' });
+      // M1: el UPDATE espejo filtra por tenant (defensa en profundidad).
+      expect(mirrorQb.andWhere).toHaveBeenCalledWith('tenant_id = :tenantId', {
+        tenantId: TENANT_ID,
+      });
 
       // El detalle conserva el grupo legible.
       expect(dispatched.lines[0]?.serializedAssets).toEqual([
@@ -409,6 +414,10 @@ describe('StockIssueService grupo de seriales (MOD12 S2 · B2/B4/B5)', () => {
         updatedAt: expect.any(Date),
       });
       expect(mirrorQb.where).toHaveBeenCalledWith('issue_id = :issueId', { issueId: 'issue-001' });
+      // M1: el UPDATE espejo filtra por tenant (defensa en profundidad).
+      expect(mirrorQb.andWhere).toHaveBeenCalledWith('tenant_id = :tenantId', {
+        tenantId: TENANT_ID,
+      });
     });
   });
 

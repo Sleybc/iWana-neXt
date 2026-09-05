@@ -49,7 +49,7 @@ export function buildDraftFromIssueDetail(
       lines: issue.lines.map((line) => {
         const item = itemsById.get(line.itemId);
         const pickable = pickableById?.get(line.itemId);
-        // Grupo v2 del detalle (§5.5): id + número de serie por elemento; en
+        // Grupo v2.1 del detalle (§5.5): id + número de serie por elemento; en
         // transición cae al singular S1 cuando el detalle aún no lo trae.
         const serialRefs = line.serializedAssets ?? [];
         const serialIds =

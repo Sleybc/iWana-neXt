@@ -1,9 +1,9 @@
-import { InventoryItemKind, InventoryTrackingMode } from '@iwana/shared';
 import {
-  CreateInventoryItemSchema,
+  InventoryItemKind,
+  InventoryTrackingMode,
   INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
-  UpdateInventoryItemSchema,
-} from '../dto';
+} from '@iwana/shared';
+import { CreateInventoryItemSchema, UpdateInventoryItemSchema } from '../dto';
 
 const CATEGORY_ID = '11111111-1111-4111-8111-111111111111';
 

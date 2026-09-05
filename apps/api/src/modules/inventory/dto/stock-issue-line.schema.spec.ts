@@ -58,6 +58,43 @@ describe('StockIssueLineSchema seriales múltiples (MOD12 S2 · B1)', () => {
     }
   });
 
+  it('rechaza ambos campos serial a la vez con 400 en español (A2)', () => {
+    const result = CreateStockIssueSchema.safeParse(
+      buildCreatePayload([
+        {
+          itemId: ITEM_ID,
+          requestedQty: 1,
+          serializedAssetId: ASSET_A,
+          serializedAssetIds: [ASSET_A],
+        },
+      ]),
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((issue) =>
+          issue.message.includes('envíe solo uno de los dos campos'),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('acepta singular nulo junto al arreglo (nulo equivale a ausente)', () => {
+    const parsed = CreateStockIssueSchema.parse(
+      buildCreatePayload([
+        {
+          itemId: ITEM_ID,
+          requestedQty: 1,
+          serializedAssetId: null,
+          serializedAssetIds: [ASSET_A],
+        },
+      ]),
+    );
+
+    expect(parsed.lines[0]?.serializedAssetIds).toEqual([ASSET_A]);
+  });
+
   it('mantiene la línea no serializada sin serializedAssetIds', () => {
     const parsed = CreateStockIssueSchema.parse(
       buildCreatePayload([{ itemId: ITEM_ID, requestedQty: 3 }]),

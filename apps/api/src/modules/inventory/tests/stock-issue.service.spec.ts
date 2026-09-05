@@ -36,6 +36,7 @@ function buildMirrorUpdateQb() {
     update: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
     execute: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -571,6 +572,10 @@ describe('StockIssueService', () => {
       updatedAt: expect.any(Date),
     });
     expect(mirrorQb.where).toHaveBeenCalledWith('issue_id = :issueId', { issueId: 'issue-001' });
+    // M1: el UPDATE espejo filtra por tenant (defensa en profundidad).
+    expect(mirrorQb.andWhere).toHaveBeenCalledWith('tenant_id = :tenantId', {
+      tenantId: 'tenant-001',
+    });
     expect(balanceService.applyDeltaWithManager).toHaveBeenCalledWith(
       manager,
       expect.objectContaining({
@@ -687,6 +692,10 @@ describe('StockIssueService', () => {
       updatedAt: expect.any(Date),
     });
     expect(mirrorQb.where).toHaveBeenCalledWith('issue_id = :issueId', { issueId: 'issue-001' });
+    // M1: el UPDATE espejo filtra por tenant (defensa en profundidad).
+    expect(mirrorQb.andWhere).toHaveBeenCalledWith('tenant_id = :tenantId', {
+      tenantId: 'tenant-001',
+    });
   });
 
   it('rejects dispatch when source and destination locations are the same', async () => {

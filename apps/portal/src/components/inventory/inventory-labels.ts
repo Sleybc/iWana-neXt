@@ -1081,13 +1081,14 @@ export const INVENTORY_CATALOG_USEFUL_LIFE_ERROR = 'Debe ser un número entero m
 
 /* ————————————————————————————————————————————————————————————————
  * Fase S2 · Coherencia del maestro (spec 2026-09-05 §4, copy aprobado G1 §A5).
- * Error espejo del backend (`refineInventoryItemMaster`, dto/index.ts) y guía
- * proactiva en ambas direcciones del drawer de catálogo.
+ * El mensaje de error vive en `@iwana/shared`
+ * (`inventory/inventory-item-kind-tracking.ts`, única fuente del copy); aquí
+ * solo se re-exporta para los consumidores del portal y la guía proactiva en
+ * ambas direcciones del drawer de catálogo.
  * ———————————————————————————————————————————————————————————————— */
 
-/** Error S2 · CA-S2-01: espejo del mensaje de la API (copy G1 §A5.1). */
-export const INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE =
-  'Tipo de producto y Control de material no coinciden: un producto "Con serial" debe tener Control de material "Con serial" o "Activo fijo". Ajusta Control de material para guardar.';
+/** Error S2 · CA-S2-01: re-export de la única fuente en `@iwana/shared` (copy G1 §A5.1). */
+export { INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE } from '@iwana/shared';
 
 /** helperText del Select «Tipo de producto» (copy G1 §A5.2). */
 export const INVENTORY_CATALOG_ITEM_KIND_HELP_TEXT =

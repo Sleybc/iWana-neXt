@@ -42,6 +42,7 @@ import {
   buildDimensionalMismatchMessage,
   isInventoryUnitOfMeasureCode,
   validateBarcodeValue,
+  INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
 } from '@iwana/shared';
 import type { InventoryUnitOfMeasureCode } from '@iwana/shared';
 import {
@@ -306,11 +307,10 @@ const inventoryItemMasterFields = {
 
 /**
  * Fase S2 · CA-S2-01 (copy aprobado G1, spec §A5.1): nombra los campos como los
- * ve el operador — nunca los enums crudos. Espejo en portal:
- * `INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE` (inventory-labels.ts).
+ * ve el operador — nunca los enums crudos. Fuente única en `@iwana/shared`
+ * (`inventory/inventory-item-kind-tracking.ts`); el portal la re-exporta desde
+ * `inventory-labels.ts`.
  */
-export const INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE =
-  'Tipo de producto y Control de material no coinciden: un producto "Con serial" debe tener Control de material "Con serial" o "Activo fijo". Ajusta Control de material para guardar.';
 
 function refineInventoryItemMaster<T extends z.ZodTypeAny>(schema: T) {
   return schema.superRefine((value, ctx) => {
@@ -1334,6 +1334,18 @@ const StockIssueLineSchema = z
     serializedAssetIds: serializedAssetIdsSchema.optional(),
     condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
   })
+  .superRefine((line, ctx) => {
+    // Ambos campos serial a la vez: el singular se ignoraba en silencio y el
+    // cliente nunca sabía cuál ganó. Se rechaza en el borde con 400.
+    if (line.serializedAssetId != null && line.serializedAssetIds !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Si envía seriales, envíe solo uno de los dos campos: serializedAssetId o serializedAssetIds, no ambos.',
+        path: ['serializedAssetId'],
+      });
+    }
+  })
   .transform((line) =>
     line.serializedAssetIds === undefined && line.serializedAssetId
       ? { ...line, serializedAssetIds: [line.serializedAssetId] }
@@ -1449,7 +1461,10 @@ export class StockIssueLineDto {
   @Allow()
   itemId!: string;
 
-  @ApiProperty({ description: 'Cantidad solicitada.' })
+  @ApiProperty({
+    description:
+      'Cantidad solicitada. Acepta número o cadena decimal (el API la normaliza a número con z.coerce.number()).',
+  })
   @Allow()
   requestedQty!: number;
 

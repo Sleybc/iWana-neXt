@@ -252,6 +252,10 @@ describe('InventoryController Swagger', () => {
 
     expect(lineDto?.properties?.serializedAssetIds).toBeDefined();
     expect(lineDto?.properties?.serializedAssetId).toBeDefined();
+
+    // M2: requestedQty acepta cadena o número (z.coerce.number()); el Swagger lo declara.
+    const requestedQty = lineDto?.properties?.requestedQty as { description?: string } | undefined;
+    expect(requestedQty?.description).toContain('cadena');
   });
 
   it('documenta status múltiple en el listado de activos (MOD12 S1 · B2)', () => {

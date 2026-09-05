@@ -455,9 +455,14 @@ export class StockIssueService {
    * UPDATE) dentro de la transacción del llamador. PostgreSQL no admite
    * predicados inter-tabla en índices parciales: la columna espejo de la propia
    * tabla es la que habilita `uq_stock_issue_line_serials_active_asset`.
+   *
+   * Todo flujo futuro que ponga un estado terminal en `stock_issues` (hoy nadie
+   * pone RECEIVED) DEBE sincronizar esta espejo o el índice parcial bloqueará
+   * esos seriales para siempre.
    */
   private async syncSerialMirrorStatus(
     manager: EntityManager,
+    tenantId: string,
     issueId: string,
     status: StockIssueStatus,
   ): Promise<void> {
@@ -466,6 +471,7 @@ export class StockIssueService {
       .update(StockIssueLineSerial)
       .set({ issueStatus: status, updatedAt: new Date() })
       .where('issue_id = :issueId', { issueId })
+      .andWhere('tenant_id = :tenantId', { tenantId })
       .execute();
   }
 
@@ -1068,7 +1074,12 @@ export class StockIssueService {
 
           // MOD12 S2: la espejo issue_status se sincroniza en la misma transacción
           // (un solo UPDATE set-based); habilita el reciclaje del índice parcial.
-          await this.syncSerialMirrorStatus(manager, savedIssue.id, StockIssueStatus.DISPATCHED);
+          await this.syncSerialMirrorStatus(
+            manager,
+            tenantId,
+            savedIssue.id,
+            StockIssueStatus.DISPATCHED,
+          );
 
           await manager.save(
             StockIssueLine,
@@ -1373,7 +1384,7 @@ export class StockIssueService {
 
         // MOD12 S2: espejo sincronizada en la misma transacción; libera el
         // compromiso de los seriales (reciclaje del índice parcial).
-        await this.syncSerialMirrorStatus(manager, id, StockIssueStatus.CANCELLED);
+        await this.syncSerialMirrorStatus(manager, tenantId, id, StockIssueStatus.CANCELLED);
 
         return savedIssue;
       }),
