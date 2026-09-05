@@ -6,7 +6,7 @@
 **Módulo:** MOD12 Inventario / SCM — Compras / RFQ
 **Autor:** AI-EM-ARCH (modos Product Architect + Architect + Orchestrator)
 **Superficie:** `/dashboard/inventory?tab=purchasing` → Trabajar solicitud → Registrar cotización
-**ADRs:** [ADR-053](../adrs/ADR-053-Supplier-Quote-Lines.md) (addendum) · [ADR-029](../adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md) (Aprobado) · [ADR-082](../adrs/ADR-082-Reglas-Federadas-Taxation-Settings.md) *(propuesto, no se ejecuta)*
+**ADRs:** [ADR-053](../adrs/ADR-053-Supplier-Quote-Lines.md) (addendum) · [ADR-029](../adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md) (Aprobado) · [ADR-082](../adrs/ADR-082-Reglas-Federadas-Taxation-Settings.md) (propuesto), no se ejecuta
 **Prompt:** [PROMPT Fase 25](../prompts/PROMPT-MOD12-COMPRAS-COTIZACION-IMPUESTOS-FASE-25-v1.0.md)
 **Plan:** [plan](../plans/2026-09-04-mod12-compras-cotizacion-decimales-e-impuestos.md)
 

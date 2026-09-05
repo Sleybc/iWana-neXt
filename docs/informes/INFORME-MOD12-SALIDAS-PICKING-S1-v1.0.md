@@ -59,7 +59,7 @@ Los tres defectos del spec §1, una sola causa de fondo (picking en cliente sobr
 2. ✅ Lint y typecheck limpios en api, portal y shared (QA §3).
 3. ⏳ Navegador sobre `/dashboard/inventory?tab=issues` → pendiente del punto de integración BE real (FE desarrolló contra mocks del contrato; binding = `listPickableItems`). Criterios testeables ya cubiertos por specs.
 4. ✅ `POST /issues` sin `serializedAssetId` → 400 español (serial-integrity spec).
-5. ⚠️ `pnpm audit:adr-citations`: BLOQUEANTE 2, **ambos ajenos a S1** (fase 25 de compras-cotización, ADR-082 propuesto). Archivos S1: 0 hallazgos.
+5. ⚠️ `pnpm audit:adr-citations`: BLOQUEANTE 2, **ambos ajenos a S1** (fase 25 de compras-cotización, ADR-082 (propuesto)). Archivos S1: 0 hallazgos. *(Marcador normalizado el 2026-09-05 durante la consolidación S2 para cerrar el gate global de citas.)*
 
 ## 6. Colisiones y alcance
 

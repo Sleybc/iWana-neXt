@@ -39,7 +39,7 @@
 - Spec: `docs/specs/2026-09-04-mod12-compras-cotizacion-decimales-e-impuestos-design.md`
 - Plan: `docs/plans/2026-09-04-mod12-compras-cotizacion-decimales-e-impuestos.md`
 - ADR-053 (Aprobado) + ADR-029 (Aprobado, D4)
-- ADR-082 *(propuesto — no ejecutar)*
+- ADR-082 (propuesto) — no ejecutar
 - PRD-MOD12-COMPRAS-CIERRE-FLUJO §2 (valorización DIAN sigue fuera)
 - Superficie: `apps/portal/src/components/inventory/RfqInvitationsPanel.tsx`, `PurchaseRequestWorkbenchDrawer.tsx`, `SupplierQuoteLinesEditor.tsx`, `QuoteComparisonPanel.tsx`
 - API: `apps/api/src/modules/inventory/services/purchasing.service.ts`, `dto/index.ts`
