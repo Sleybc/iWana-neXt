@@ -1311,13 +1311,34 @@ export class ListExecutorCustodyQueryDto {
   limit?: number;
 }
 
-const StockIssueLineSchema = z.object({
-  itemId: z.string().uuid(),
-  requestedQty: positiveNumber,
-  lotId: z.string().uuid().optional().nullable(),
-  serializedAssetId: z.string().uuid().optional().nullable(),
-  condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
-});
+/** Grupo de seriales de una línea (MOD12 S2 · D2): uuids, no vacío y sin repetidos. */
+const serializedAssetIdsSchema = z
+  .array(z.string().uuid())
+  .min(1, 'Si se envía serializedAssetIds debe incluir al menos un serial.')
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: 'Los seriales no deben repetirse dentro de la línea.',
+  });
+
+/**
+ * Línea de salida (MOD12 S2 · D2): acepta `serializedAssetIds` como grupo de
+ * seriales y mantiene `serializedAssetId` singular por compatibilidad S1; el
+ * borde del schema normaliza el singular a un arreglo de un elemento. La
+ * coherencia cantidad ↔ número de seriales se valida en el servicio (B3).
+ */
+const StockIssueLineSchema = z
+  .object({
+    itemId: z.string().uuid(),
+    requestedQty: positiveNumber,
+    lotId: z.string().uuid().optional().nullable(),
+    serializedAssetId: z.string().uuid().optional().nullable(),
+    serializedAssetIds: serializedAssetIdsSchema.optional(),
+    condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
+  })
+  .transform((line) =>
+    line.serializedAssetIds === undefined && line.serializedAssetId
+      ? { ...line, serializedAssetIds: [line.serializedAssetId] }
+      : line,
+  );
 
 const STOCK_ISSUE_TYPES_WITHOUT_DESTINATION = new Set<StockIssueType>([
   StockIssueType.SALE_DISPATCH,
@@ -1432,13 +1453,26 @@ export class StockIssueLineDto {
   @Allow()
   requestedQty!: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Lote de la línea.' })
   @Allow()
   lotId?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Serial único de la línea (compatibilidad MOD12 S1). El API lo normaliza a serializedAssetIds de un elemento; no enviar junto al arreglo.',
+  })
   @Allow()
   serializedAssetId?: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    description:
+      'Grupo de seriales de la línea (MOD12 S2 · D2): uuids únicos, arreglo no vacío. Para ítems con seguimiento serializado la cantidad debe coincidir con el número de seriales.',
+    items: { type: 'string', format: 'uuid' },
+  })
+  @Allow()
+  serializedAssetIds?: string[];
 
   @ApiPropertyOptional({ enum: StockBalanceCondition, default: StockBalanceCondition.NEW })
   @Allow()

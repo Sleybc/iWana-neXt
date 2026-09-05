@@ -1,7 +1,4 @@
-import type {
-  InventoryTrackingMode,
-  StockBalanceCondition,
-} from '../../enums/inventory';
+import type { InventoryTrackingMode, StockBalanceCondition } from '../../enums/inventory';
 
 /**
  * Disponibilidad de un ítem elegible para salida, desglosada por condición.
@@ -48,4 +45,67 @@ export interface StockIssuePickableItem {
   totalAvailable: string;
   lots: StockIssuePickableLot[];
   availableSerialCount: number;
+}
+
+/**
+ * Línea de salida en el payload de entrada de `POST /api/v1/inventory/issues`
+ * y `PATCH /api/v1/inventory/issues/:id`.
+ *
+ * Contrato congelado v2 (SPEC MOD12 Salidas Fase S2 §5.1 · decisión D2): la
+ * línea puede llevar un grupo de seriales (`serializedAssetIds`) con cantidad
+ * igual al tamaño del grupo. `serializedAssetId` singular se mantiene como
+ * campo de transición de S1 y el API lo normaliza a un arreglo de un elemento
+ * en el borde del schema.
+ */
+export interface StockIssueLineInput {
+  itemId: string;
+  /**
+   * Cantidad solicitada. El API acepta número o cadena decimal y la normaliza;
+   * las lecturas del contrato la exponen como cadena decimal (`numeric(12,2)`).
+   */
+  requestedQty: string | number;
+  lotId?: string | null;
+  /**
+   * @deprecated Campo de transición S1: se normaliza a `serializedAssetIds` de
+   * un elemento. Su retiro está declarado como fase de limpieza posterior.
+   */
+  serializedAssetId?: string | null;
+  /**
+   * Grupo de seriales de la línea: uuids únicos, arreglo no vacío. Para ítems
+   * con seguimiento serializado (`SERIALIZED`, `FIXED_ASSET`) su longitud debe
+   * coincidir con `requestedQty`; las validaciones de pertenencia, bodega y
+   * estado de cada serial aplican uno a uno.
+   */
+  serializedAssetIds?: string[];
+  condition?: StockBalanceCondition;
+}
+
+/**
+ * Línea de salida en la lectura del detalle de una salida
+ * (`GET /api/v1/inventory/issues/:id`).
+ *
+ * Cantidades como cadena decimal, coherente con `numeric(12,2)` de
+ * `stock_issue_lines` y con el contrato v1 de picking.
+ */
+export interface StockIssueLineRecord {
+  id: string;
+  tenantId: string;
+  issueId: string;
+  itemId: string;
+  requestedQty: string;
+  dispatchedQty: string | null;
+  lotId: string | null;
+  /**
+   * Serial de transición S1: la persistencia lo alimenta con el primer serial
+   * del grupo para no romper lecturas ni reportes existentes.
+   */
+  serializedAssetId: string | null;
+  /**
+   * Grupo de seriales de la línea (MOD12 S2 §5.1 · punto 5 de lectura); vacío
+   * para ítems no serializados.
+   */
+  serializedAssetIds: string[];
+  condition: StockBalanceCondition;
+  createdAt: string;
+  updatedAt: string;
 }

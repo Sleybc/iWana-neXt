@@ -225,6 +225,31 @@ describe('InventoryController Swagger', () => {
     expect(pickableItems?.parameters?.some((p) => 'name' in p && p.name === 'limit')).toBe(true);
   });
 
+  it('documenta seriales múltiples por línea en la creación de salidas (MOD12 S2 · B1)', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const createIssue = document.paths['/inventory/issues']?.post;
+    expect(createIssue).toBeDefined();
+
+    const schemas = (document.components?.schemas ?? {}) as Record<
+      string,
+      { properties?: Record<string, unknown> }
+    >;
+    const bodyRef = getRequestSchema(
+      createIssue as unknown as Record<string, unknown>,
+      'application/json',
+    ) as { $ref?: string } | undefined;
+    const createDto = schemas[bodyRef?.$ref?.split('/').pop() ?? ''];
+    const linesProperty = createDto?.properties?.lines as { items?: { $ref?: string } } | undefined;
+    const lineDto = schemas[linesProperty?.items?.$ref?.split('/').pop() ?? ''];
+
+    expect(lineDto?.properties?.serializedAssetIds).toBeDefined();
+    expect(lineDto?.properties?.serializedAssetId).toBeDefined();
+  });
+
   it('documenta status múltiple en el listado de activos (MOD12 S1 · B2)', () => {
     const document = SwaggerModule.createDocument(
       app,
