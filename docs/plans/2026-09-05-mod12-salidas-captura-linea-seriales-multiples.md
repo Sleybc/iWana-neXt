@@ -6,7 +6,7 @@
 **Spec:** [Fase S2 v1.0](../specs/2026-09-05-mod12-salidas-captura-linea-seriales-multiples-design.md)
 **Prompts:** [Maestro](../prompts/PROMPT-MOD12-SALIDAS-S2-MAESTRO-v1.0.md) · [BE](../prompts/PROMPT-MOD12-SALIDAS-S2-BE-v1.0.md) · [FE](../prompts/PROMPT-MOD12-SALIDAS-S2-FE-v1.0.md)
 **Sucede a:** [Fase S1](2026-09-05-mod12-salidas-picking-existencias-seriales.md) — entregada en `50afe28c` y `827d9407`
-**Estado:** En ejecución — G1 GO con ajustes incorporados (review cruzado AI-SR-FULL + AI-PROD-UX, 2026-09-05; registro completo en spec §11)
+**Estado:** Consolidada (2026-09-05) — G6 **GO con pendientes** · G6.5 **pendiente** (2 bloqueantes de plataforma preexistentes, ajenos a S2; ver [informe de fase](../informes/INFORME-MOD12-SALIDAS-S2-v1.0.md) §2 y §7)
 
 ---
 
