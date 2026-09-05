@@ -613,8 +613,10 @@ describe('InventoryCatalogDrawer · F1 reglas cruzadas y validación', () => {
     await user.type(reorderPoint, '-2');
     fireEvent.blur(reorderPoint);
 
+    // CI Linux satura el event loop: esperas explícitas generosas en vez del
+    // timeout implícito de 1000ms (fallo crónico de findByText bajo carga).
     expect(
-      await screen.findByText('El punto de reorden no puede ser negativo.'),
+      await screen.findByText('El punto de reorden no puede ser negativo.', {}, { timeout: 5000 }),
     ).toBeInTheDocument();
     expect(
       screen.queryByText('Nivel de referencia para sugerir reposición.'),
@@ -627,15 +629,17 @@ describe('InventoryCatalogDrawer · F1 reglas cruzadas y validación', () => {
     await user.type(reorderPoint, '4');
     fireEvent.blur(reorderPoint);
 
-    await waitFor(() =>
-      expect(
-        screen.queryByText('El punto de reorden no puede ser negativo.'),
-      ).not.toBeInTheDocument(),
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByText('El punto de reorden no puede ser negativo.'),
+        ).not.toBeInTheDocument(),
+      { timeout: 5000 },
     );
     expect(screen.getByText('Nivel de referencia para sugerir reposición.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1), { timeout: 5000 });
     expect(onUpdate.mock.calls[0]![1].reorderPoint).toBe(4);
   });
 
