@@ -437,13 +437,13 @@ test.describe('Bootstrap operativo admin', () => {
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByRole('heading', { name: 'Plataforma' })).toBeVisible();
     await page.getByRole('tab', { name: 'Seguridad' }).click();
-    await page.getByRole('button', { name: 'Configurar MFA' }).click();
-    await expect(page.getByText(/Escanea el QR en tu app Authenticator/i)).toBeVisible();
+    await page.getByRole('button', { name: 'Activar verificación en dos pasos' }).click();
+    await expect(page.getByText(/Escanea el código QR con tu app de autenticación/i)).toBeVisible();
     for (let digit = 1; digit <= 6; digit += 1) {
       await page.getByRole('textbox', { name: `Dígito ${digit} de 6` }).fill(String(digit));
     }
-    await page.getByRole('button', { name: 'Verificar MFA' }).click();
-    await expect(page.getByText('MFA habilitado correctamente.')).toBeVisible();
+    await page.getByRole('button', { name: 'Confirmar código' }).click();
+    await expect(page.getByText('Verificación en dos pasos activada.')).toBeVisible();
 
     await page.getByRole('link', { name: 'Empresas' }).click();
     await page.getByRole('link', { name: 'Nueva empresa' }).click();

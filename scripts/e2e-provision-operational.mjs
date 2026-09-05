@@ -1135,13 +1135,15 @@ async function assignProfiles(token, userRoles) {
     }
   }
 
+  // Canon MOD00_ACCESS_V2 (migración 119 + ensureSystemRoleTemplatesSeeded):
+  // los nombres V1 ('Monitoreo operativo', …) son legacy desactivados.
   const profileNameByRole = {
     ADMIN: 'Administrador general',
-    NOC: 'Monitoreo operativo',
-    TECHNICIAN: 'Técnico de campo',
-    SUPPORT: 'Soporte inicial',
-    CONTRACTOR: 'Contratista',
-    AUDITOR: 'Auditor',
+    NOC: 'Acceso estándar NOC',
+    TECHNICIAN: 'Acceso estándar Técnico',
+    SUPPORT: 'Acceso estándar Soporte',
+    CONTRACTOR: 'Acceso estándar Contratista',
+    AUDITOR: 'Acceso estándar Auditoría',
   };
 
   for (const { userId, role } of userRoles) {
