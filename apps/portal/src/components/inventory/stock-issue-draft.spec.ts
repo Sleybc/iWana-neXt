@@ -2,6 +2,7 @@ import { InventoryTrackingMode, StockBalanceCondition } from '@iwana/shared';
 import {
   addCatalogSelectionToDraft,
   applyBulkQuantityToDraftLines,
+  buildDraftProductLabel,
   createEmptyStockIssueDraft,
   removeDraftLine,
   updateDraftLineItem,
@@ -205,6 +206,47 @@ describe('stock-issue-draft', () => {
       lotId: '',
       serializedAssetId: '',
       requestedQty: '1',
+    });
+  });
+
+  describe('buildDraftProductLabel', () => {
+    it('muestra nombre y modelo sin el código', () => {
+      expect(buildDraftProductLabel('Router Onu Gpon', 'XC220')).toBe('Router Onu Gpon · XC220');
+    });
+
+    it('muestra solo el nombre cuando no hay modelo', () => {
+      expect(buildDraftProductLabel('Router Onu Gpon')).toBe('Router Onu Gpon');
+      expect(buildDraftProductLabel('Router Onu Gpon', null)).toBe('Router Onu Gpon');
+      expect(buildDraftProductLabel('Router Onu Gpon', '  ')).toBe('Router Onu Gpon');
+    });
+
+    it('usa el modelo de la selección al agregar al borrador', () => {
+      const result = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+        {
+          id: 'item-9',
+          sku: 'SER-9',
+          name: 'Router Onu Gpon',
+          model: 'XC220',
+          unitOfMeasure: 'unidad',
+        },
+      ]);
+
+      expect(result.draft.lines[0]).toMatchObject({
+        productLabel: 'Router Onu Gpon · XC220',
+      });
+    });
+
+    it('usa solo el nombre cuando la selección no trae modelo (B1)', () => {
+      const result = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+        {
+          id: 'item-1',
+          sku: 'ONT-001',
+          name: 'ONT WiFi 6',
+          unitOfMeasure: 'unidad',
+        },
+      ]);
+
+      expect(result.draft.lines[0]).toMatchObject({ productLabel: 'ONT WiFi 6' });
     });
   });
 });

@@ -5,6 +5,7 @@ import {
 } from '@iwana/shared';
 import type { InventoryItemRecord, StockIssueDetailRecord } from '@/lib/api-client';
 import type { StockIssueDraftState } from './stock-issue-draft';
+import { buildDraftProductLabel, resolveLineSerializedAssetIds } from './stock-issue-draft';
 
 export interface StockIssueHeaderFromDetail {
   type: StockIssueDetailRecord['type'];
@@ -27,7 +28,13 @@ export function buildDraftFromIssueDetail(
   issue: StockIssueDetailRecord,
   itemsById: Map<string, InventoryItemRecord>,
   pickableById?: Map<string, StockIssuePickableItem>,
-): { header: StockIssueHeaderFromDetail; draft: StockIssueDraftState } {
+): {
+  header: StockIssueHeaderFromDetail;
+  draft: StockIssueDraftState;
+  /** Etiquetas legibles del contrato §5.5, para sembrar `serialLabelsById`. */
+  serialLabelsById: Record<string, string>;
+} {
+  const serialLabelsById: Record<string, string> = {};
   return {
     header: {
       type: issue.type,
@@ -42,22 +49,36 @@ export function buildDraftFromIssueDetail(
       lines: issue.lines.map((line) => {
         const item = itemsById.get(line.itemId);
         const pickable = pickableById?.get(line.itemId);
+        // Grupo v2 del detalle (§5.5): id + número de serie por elemento; en
+        // transición cae al singular S1 cuando el detalle aún no lo trae.
+        const serialRefs = line.serializedAssets ?? [];
+        const serialIds =
+          serialRefs.length > 0
+            ? serialRefs.map((entry) => entry.id)
+            : resolveLineSerializedAssetIds(line);
+        for (const entry of serialRefs) {
+          if (entry.serialNumber?.trim()) {
+            serialLabelsById[entry.id] = entry.serialNumber.trim();
+          }
+        }
         return {
           id: line.id,
           itemId: line.itemId,
+          sku: pickable?.sku ?? item?.sku ?? '',
           productLabel:
             pickable != null
-              ? `${pickable.sku} · ${pickable.name}`
+              ? buildDraftProductLabel(pickable.name)
               : item
-                ? `${item.sku} · ${item.name}`
+                ? buildDraftProductLabel(item.name, item.model)
                 : line.itemId,
           requestedQty: line.requestedQty,
           unitOfMeasure: pickable?.unitOfMeasure ?? item?.unitOfMeasure ?? '',
           isManual: false,
           condition: line.condition ?? StockBalanceCondition.NEW,
           lotId: line.lotId ?? '',
-          serializedAssetId: line.serializedAssetId ?? '',
-          serializedAssetLabel: '',
+          serializedAssetId: serialIds[0] ?? '',
+          serializedAssetLabel: serialIds.length === 1 ? (serialRefs[0]?.serialNumber ?? '') : '',
+          serializedAssetIds: serialIds,
           trackingMode:
             pickable?.trackingMode ?? item?.trackingMode ?? InventoryTrackingMode.CONSUMABLE,
           lots: pickable?.lots ?? [],
@@ -66,5 +87,6 @@ export function buildDraftFromIssueDetail(
         };
       }),
     },
+    serialLabelsById,
   };
 }

@@ -1,8 +1,19 @@
-import { InventoryItemKind, InventoryTrackingMode, StockBalanceCondition } from '@iwana/shared';
+import {
+  InventoryItemKind,
+  InventoryTrackingMode,
+  SerializedAssetStatus,
+  StockBalanceCondition,
+} from '@iwana/shared';
 import type { StockIssuePickableAvailability, StockIssuePickableLot } from '@iwana/shared';
 import type { InventoryItemRecord, SerializedAssetRecord } from '@/lib/api-client';
-import { formatInventoryQuantity } from './inventory-labels';
+import { inventoryApi, mapPickerSearchResponse } from '@/lib/api-client';
+import type {
+  SearchablePickerItem,
+  SearchablePickerSearchResult,
+} from '@/components/shared/SearchablePicker';
+import { formatInventoryQuantity, getSerializedAssetStatusLabel } from './inventory-labels';
 import type { StockIssueDraftLine } from './stock-issue-draft';
+import { resolveLineSerializedAssetIds } from './stock-issue-draft';
 
 export function isSerializedInventoryItem(
   item: Pick<InventoryItemRecord, 'trackingMode' | 'itemKind'>,
@@ -107,7 +118,7 @@ export function applySingleLotPreselectionToDraftLines(
     if (
       !line.itemId.trim() ||
       line.lotId.trim() ||
-      line.serializedAssetId.trim() ||
+      resolveLineSerializedAssetIds(line).length > 0 ||
       isSerializedTrackingMode(line.trackingMode)
     ) {
       return line;
@@ -129,8 +140,9 @@ export function applySingleLotPreselectionToDraftLines(
 /**
  * Disponible de la línea por tupla exacta (ítem, lote, condición) desde los
  * datos B1 de la propia línea (la bodega ya viene acotada en el contrato).
- * Con serial elegido el disponible es 1; con lote, el del lote; sin lote, el
- * de la condición en `availability[]`.
+ * Con grupo de seriales el disponible es el conteo de la bodega
+ * (`availableSerialCount`); con serial singular de transición, 1; con lote, el
+ * del lote; sin lote, el de la condición en `availability[]`.
  */
 export function getAvailableQtyForDraftLine(input: {
   availability: StockIssuePickableAvailability[] | null | undefined;
@@ -138,9 +150,15 @@ export function getAvailableQtyForDraftLine(input: {
   condition: StockBalanceCondition;
   lotId: string;
   serializedAssetId: string;
+  /** Grupo v2 (MOD12 S2); cuando trae seriales manda sobre el singular. */
+  serializedAssetIds?: string[];
+  /** Seriales disponibles del ítem en la bodega (contrato B1). */
+  availableSerialCount?: number;
 }): number {
-  if (input.serializedAssetId.trim()) {
-    return 1;
+  if (resolveLineSerializedAssetIds(input).length > 0) {
+    const groupSize = resolveLineSerializedAssetIds(input).length;
+    const serialCount = input.availableSerialCount ?? 1;
+    return Math.max(serialCount, groupSize);
   }
 
   const lotId = input.lotId.trim();
@@ -220,6 +238,98 @@ export function formatSerializedAssetLabel(asset: SerializedAssetRecord): string
     return asset.assetTag.trim();
   }
   return asset.id.slice(0, 8).toUpperCase();
+}
+
+/** Etiqueta corta del serial elegido cuando aún no se resolvió su rótulo. */
+export function fallbackSerializedAssetLabel(assetId: string): string {
+  return assetId.slice(0, 8).toUpperCase();
+}
+
+/**
+ * Variante tonal del `Badge` de `@iwana/ui` para la condición de saldo.
+ * Fuente única para catálogo y tabla del borrador; el texto visible siempre
+ * viene de `getStockBalanceConditionLabel` (nunca el enum crudo).
+ */
+export function stockConditionBadgeVariant(
+  condition: StockBalanceCondition,
+): 'success' | 'warning' | 'error' {
+  switch (condition) {
+    case StockBalanceCondition.NEW:
+      return 'success';
+    case StockBalanceCondition.REFURBISHED:
+      return 'warning';
+    case StockBalanceCondition.DAMAGED:
+      return 'error';
+    default:
+      return 'success';
+  }
+}
+
+/** Estados que un serial debe tener para salir (B2 S1: lista separada por comas). */
+export const PICKABLE_SERIAL_STATUSES = [
+  SerializedAssetStatus.AVAILABLE,
+  SerializedAssetStatus.AVAILABLE_REFURBISHED,
+].join(',');
+
+export const SERIAL_PICKER_PAGE_SIZE = 50;
+
+/**
+ * Lookup de seriales elegibles acotado a ítem + bodega (S1/S2), compartido por
+ * el picker singular (`InventoryAssetPicker`) y el multiselector del panel de
+ * línea (MOD12 S2): mismos filtros `status`, mismo filtro cliente de
+ * `excludeIds` y misma etiqueta canónica por serial.
+ */
+export async function searchPickableSerializedAssets(input: {
+  itemId: string | null | undefined;
+  locationId: string | null | undefined;
+  excludeIds?: readonly string[] | undefined;
+  query: string;
+  signal: AbortSignal;
+}): Promise<SearchablePickerSearchResult> {
+  const scopedItemId = input.itemId?.trim() ?? '';
+  const scopedLocationId = input.locationId?.trim() ?? '';
+
+  if (scopedItemId && scopedLocationId) {
+    // La página por ítem + bodega es pequeña (seriales de un producto en una
+    // bodega): se filtra en cliente para no depender de la semántica exacta
+    // de `serialNumber` en el servidor (exacta vs parcial).
+    const response = await inventoryApi.listAssets(
+      {
+        itemId: scopedItemId,
+        locationId: scopedLocationId,
+        status: PICKABLE_SERIAL_STATUSES,
+        limit: SERIAL_PICKER_PAGE_SIZE,
+      },
+      undefined,
+    );
+    if (input.signal.aborted) {
+      return { items: [], total: 0 };
+    }
+    const excluded = new Set(input.excludeIds ?? []);
+    const needle = input.query.trim().toLowerCase();
+    const items = response.data
+      .filter((asset) => !excluded.has(asset.id))
+      .filter((asset) => {
+        if (!needle) {
+          return true;
+        }
+        const haystack =
+          `${asset.serialNumber ?? ''} ${asset.assetTag ?? ''} ${asset.id}`.toLowerCase();
+        return haystack.includes(needle);
+      })
+      .map((asset) => ({
+        id: asset.id,
+        label: formatSerializedAssetLabel(asset),
+        sublabel: getSerializedAssetStatusLabel(asset.currentStatus),
+      }));
+    return { items, total: response.meta.total };
+  }
+
+  const response = await inventoryApi.searchAssetsForPicker(
+    { q: input.query },
+    { signal: input.signal },
+  );
+  return mapPickerSearchResponse(response);
 }
 
 export function formatLotOptionLabel(option: {

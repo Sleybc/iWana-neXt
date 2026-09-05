@@ -1,29 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { StockBalanceCondition, getInventoryUnitOfMeasureLabel } from '@iwana/shared';
+import { getInventoryUnitOfMeasureLabel } from '@iwana/shared';
 import type { StockIssuePickableItem } from '@iwana/shared';
-import { Button, Input, Select } from '@iwana/ui';
+import { Badge, Button, Input } from '@iwana/ui';
 import { inventoryApi } from '@/lib/api-client';
-import { interactiveFocusClassName } from '@/components/shared/portal-ui';
+import {
+  interactiveFocusClassName,
+  portalDataTableCellClassName,
+  portalDataTableBodyClassName,
+  portalDataTableHeadClassName,
+  portalDataTableHeadRowClassName,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
+} from '@/components/shared/portal-ui';
+import { getStockBalanceConditionLabel } from './inventory-labels';
 import type { StockIssueDraftItemHydration, StockIssueDraftLine } from './stock-issue-draft';
-import {
-  STOCK_AVAILABLE_AT_SOURCE_LABEL,
-  STOCK_RESERVED_HELP_TEXT,
-  formatInventoryQuantity,
-  getStockBalanceConditionLabel,
-} from './inventory-labels';
+import { buildDraftProductLabel, resolveLineSerializedAssetIds } from './stock-issue-draft';
 import { isRequestedQtyExceedingAvailable } from './stock-issue-balance-utils';
-import { StockIssueBulkEditBar } from './StockIssueBulkEditBar';
 import {
+  fallbackSerializedAssetLabel,
   formatLotOptionLabel,
-  getAvailableQtyByCondition,
   getAvailableQtyForDraftLine,
   isSerializedTrackingMode,
-  listAvailableConditionsForDraftLine,
-  listLotOptionsFromPickableLots,
+  stockConditionBadgeVariant,
 } from './stock-issue-line-utils';
-import { InventoryAssetPicker } from './InventoryAssetPicker';
+import { StockIssueBulkEditBar } from './StockIssueBulkEditBar';
 import { InventoryItemPicker } from './InventoryItemPicker';
 
 export interface StockIssueDraftLineError {
@@ -33,22 +34,19 @@ export interface StockIssueDraftLineError {
 
 interface StockIssueDraftLinesTableProps {
   lines: StockIssueDraftLine[];
-  sourceLocationId: string;
   selectedLineIds: string[];
-  showAvailableColumn?: boolean;
-  /** Caché de elegibles B1 de la bodega de origen (hidratación manual y etiquetas). */
-  pickableById?: Map<string, StockIssuePickableItem>;
+  /** Etiquetas resueltas de seriales (hidratación de edición y selecciones del panel). */
+  serialLabelsById: Record<string, string>;
   /** Errores por línea tras un envío bloqueado (además del PortalAlert global). */
   lineErrors?: Record<string, StockIssueDraftLineError>;
+  /** Anuncios para la región viva de la tabla (regla dura P1: visible + anunciado). */
+  liveNotice?: string;
+  /** Caché de elegibles B1 de la bodega de origen (hidratación de la vía manual). */
+  pickableById?: Map<string, StockIssuePickableItem>;
   onItemChange: (lineId: string, hydration: StockIssueDraftItemHydration | null) => void;
   onQuantityChange: (lineId: string, value: string) => void;
-  onConditionChange: (lineId: string, condition: StockBalanceCondition) => void;
-  onLotChange: (lineId: string, lotId: string) => void;
-  onSerializedAssetChange: (
-    lineId: string,
-    serializedAssetId: string,
-    serializedAssetLabel: string,
-  ) => void;
+  /** Reabre el panel de línea con los valores actuales de la fila (CA-S2-08). */
+  onModifyLine: (lineId: string) => void;
   onToggleLine: (lineId: string) => void;
   onToggleAll: (checked: boolean) => void;
   onRemove: (lineId: string) => void;
@@ -56,23 +54,37 @@ interface StockIssueDraftLinesTableProps {
   onApplyBulkQuantity: (quantity: string) => void;
 }
 
-/** Etiqueta corta del serial elegido cuando aún no se resolvió su rótulo. */
-function fallbackAssetLabel(assetId: string): string {
-  return assetId.slice(0, 8).toUpperCase();
+/** Texto del detalle de lote: número real + vencimiento + disponible. */
+function lotDetailText(line: StockIssueDraftLine): string | null {
+  if (!line.lotId.trim()) {
+    return null;
+  }
+  const lot = line.lots.find((entry) => entry.lotId === line.lotId);
+  if (!lot) {
+    return null;
+  }
+  return formatLotOptionLabel({
+    lotNumber: lot.lotNumber,
+    expiryDate: lot.expiryDate,
+    availableQty: Number.parseFloat(lot.available) || 0,
+  });
 }
 
+/**
+ * Lista revisable del borrador (MOD12 S2 §6.3): sin controles inline de
+ * condición, lote ni serial — la configuración vive en el panel y la fila
+ * muestra el detalle como dato, con Modificar y Quitar siempre visibles.
+ */
 export function StockIssueDraftLinesTable({
   lines,
-  sourceLocationId,
   selectedLineIds,
-  showAvailableColumn = false,
-  pickableById,
+  serialLabelsById,
   lineErrors = {},
+  liveNotice = '',
+  pickableById,
   onItemChange,
   onQuantityChange,
-  onConditionChange,
-  onLotChange,
-  onSerializedAssetChange,
+  onModifyLine,
   onToggleLine,
   onToggleAll,
   onRemove,
@@ -80,62 +92,7 @@ export function StockIssueDraftLinesTable({
   onApplyBulkQuantity,
 }: StockIssueDraftLinesTableProps) {
   const allSelected = lines.length > 0 && selectedLineIds.length === lines.length;
-  const [conditionNotice, setConditionNotice] = useState('');
-  const [resolvedAssetLabels, setResolvedAssetLabels] = useState<Record<string, string>>({});
-
-  // Etiquetas de seriales preexistentes (modo edición): se resuelven una vez por
-  // activo y se cachean; un fallo degrada al id corto, nunca bloquea la línea.
-  useEffect(() => {
-    const pending = lines.filter(
-      (line) =>
-        line.serializedAssetId.trim() &&
-        !line.serializedAssetLabel.trim() &&
-        resolvedAssetLabels[line.serializedAssetId] == null,
-    );
-    if (pending.length === 0) {
-      return;
-    }
-
-    let cancelled = false;
-    void Promise.all(
-      [...new Set(pending.map((line) => line.serializedAssetId.trim()))].map((assetId) =>
-        inventoryApi
-          .getAsset(assetId)
-          .then((asset) => ({
-            assetId,
-            label:
-              asset.serialNumber?.trim() || asset.assetTag?.trim() || fallbackAssetLabel(assetId),
-          }))
-          .catch(() => ({ assetId, label: fallbackAssetLabel(assetId) })),
-      ),
-    ).then((resolved) => {
-      if (cancelled) {
-        return;
-      }
-      setResolvedAssetLabels((current) => {
-        const next = { ...current };
-        for (const entry of resolved) {
-          next[entry.assetId] = entry.label;
-        }
-        return next;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [lines, resolvedAssetLabels]);
-
-  function handleConditionChange(line: StockIssueDraftLine, condition: StockBalanceCondition) {
-    onConditionChange(line.id, condition);
-    // Cambiar la condición limpia el lote (updateDraftLineCondition): se anuncia
-    // para que el operador entienda por qué el disponible cambió.
-    if (line.lotId.trim()) {
-      setConditionNotice(
-        `Se limpió el lote de ${line.productLabel || 'la línea'} al cambiar la condición.`,
-      );
-    }
-  }
+  const needsAssetLabels = lines.some((line) => resolveLineSerializedAssetIds(line).length > 0);
 
   return (
     <div className="space-y-3">
@@ -152,11 +109,11 @@ export function StockIssueDraftLinesTable({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
+      <div className={portalDataTableShellClassName}>
         <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-          <thead className="bg-gray-50 dark:bg-dark-surface-3">
+          <thead className={portalDataTableHeadRowClassName}>
             <tr>
-              <th scope="col" className="px-4 py-3 text-left">
+              <th scope="col" className={portalDataTableHeadClassName}>
                 <input
                   type="checkbox"
                   className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
@@ -165,74 +122,52 @@ export function StockIssueDraftLinesTable({
                   onChange={(event) => onToggleAll(event.target.checked)}
                 />
               </th>
-              <th scope="col" className="px-4 py-3 text-left">
+              <th scope="col" className={portalDataTableHeadClassName}>
                 Producto
               </th>
-              <th scope="col" className="px-4 py-3 text-left">
-                Condición
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Detalle
               </th>
-              <th scope="col" className="px-4 py-3 text-left">
-                Lote / serial
-              </th>
-              {showAvailableColumn ? (
-                <th scope="col" className="px-4 py-3 text-left">
-                  {STOCK_AVAILABLE_AT_SOURCE_LABEL}
-                </th>
-              ) : null}
-              <th scope="col" className="px-4 py-3 text-left">
+              <th scope="col" className={portalDataTableHeadClassName}>
                 Cantidad
               </th>
-              <th scope="col" className="px-4 py-3 text-left">
+              <th scope="col" className={portalDataTableHeadClassName}>
                 Unidad
               </th>
-              <th scope="col" className="px-4 py-3 text-left">
-                Acción
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Acciones
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-dark-border">
+          <tbody className={portalDataTableBodyClassName}>
             {lines.map((line) => {
               const serialized = isSerializedTrackingMode(line.trackingMode);
-              const lotOptions = serialized
-                ? []
-                : listLotOptionsFromPickableLots(line.lots, line.condition);
-              const conditionOptions = listAvailableConditionsForDraftLine(line.availability);
-              const hasAvailabilityData = line.availability.length > 0;
-              const usedSerializedAssetIds = new Set(
-                lines
-                  .filter((other) => other.id !== line.id)
-                  .map((other) => other.serializedAssetId.trim())
-                  .filter(Boolean),
+              const serializedIds = resolveLineSerializedAssetIds(line);
+              const lineError = lineErrors[line.id];
+              const qtyControlId = `issue-draft-qty-${line.id}`;
+              const modifyControlId = `issue-draft-modify-${line.id}`;
+              const lotText = lotDetailText(line);
+              const serialLabels = serializedIds.map(
+                (id) => serialLabelsById[id] ?? fallbackSerializedAssetLabel(id),
               );
-              const availableQty = line.itemId
-                ? getAvailableQtyForDraftLine({
-                    availability: line.availability,
-                    lots: line.lots,
-                    condition: line.condition,
-                    lotId: line.lotId,
-                    serializedAssetId: line.serializedAssetId,
-                  })
-                : null;
+              const missingSerials = serialized && serializedIds.length === 0;
+              const availableQty =
+                line.itemId && !serialized
+                  ? getAvailableQtyForDraftLine({
+                      availability: line.availability,
+                      lots: line.lots,
+                      condition: line.condition,
+                      lotId: line.lotId,
+                      serializedAssetId: '',
+                    })
+                  : null;
               const exceedsAvailable =
                 availableQty != null &&
-                line.itemId &&
-                !serialized &&
                 isRequestedQtyExceedingAvailable(line.requestedQty, availableQty);
-              const lineError = lineErrors[line.id];
-              const selectedAssetLabel =
-                line.serializedAssetLabel.trim() ||
-                (line.serializedAssetId.trim()
-                  ? (resolvedAssetLabels[line.serializedAssetId.trim()] ??
-                    fallbackAssetLabel(line.serializedAssetId.trim()))
-                  : null);
-              const serialControlId = `issue-draft-serial-${line.id}`;
-              const qtyControlId = `issue-draft-qty-${line.id}`;
-              const noSerialsInSource =
-                serialized && !line.serializedAssetId.trim() && line.availableSerialCount === 0;
 
               return (
-                <tr key={line.id}>
-                  <td className="px-4 py-3">
+                <tr key={line.id} className={portalTableRowHoverClassName}>
+                  <td className={portalDataTableCellClassName}>
                     <input
                       type="checkbox"
                       className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
@@ -241,7 +176,7 @@ export function StockIssueDraftLinesTable({
                       onChange={() => onToggleLine(line.id)}
                     />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className={portalDataTableCellClassName}>
                     {line.isManual ? (
                       <div className="space-y-1">
                         <InventoryItemPicker
@@ -262,7 +197,8 @@ export function StockIssueDraftLinesTable({
                             if (pickable) {
                               onItemChange(line.id, {
                                 itemId: pickable.itemId,
-                                productLabel: `${pickable.sku} · ${pickable.name}`,
+                                // B1 aún no expone el modelo: la línea muestra el nombre.
+                                productLabel: buildDraftProductLabel(pickable.name),
                                 unitOfMeasure: pickable.unitOfMeasure,
                                 trackingMode: pickable.trackingMode,
                                 lots: pickable.lots,
@@ -276,7 +212,7 @@ export function StockIssueDraftLinesTable({
                               .then((item) => {
                                 onItemChange(line.id, {
                                   itemId: item.id,
-                                  productLabel: `${item.sku} · ${item.name}`,
+                                  productLabel: buildDraftProductLabel(item.name, item.model),
                                   unitOfMeasure: item.unitOfMeasure ?? '',
                                   trackingMode: item.trackingMode,
                                   lots: [],
@@ -287,9 +223,7 @@ export function StockIssueDraftLinesTable({
                               .catch(() => {
                                 onItemChange(line.id, {
                                   itemId,
-                                  productLabel: picked.sublabel
-                                    ? `${picked.label} · ${picked.sublabel}`
-                                    : picked.label,
+                                  productLabel: picked.label,
                                   unitOfMeasure: '',
                                   trackingMode: line.trackingMode,
                                   lots: [],
@@ -311,127 +245,86 @@ export function StockIssueDraftLinesTable({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <Select
-                      id={`issue-draft-condition-${line.id}`}
-                      aria-label={`Condición ${line.productLabel || 'manual'}`}
-                      value={line.condition}
-                      onChange={(event) =>
-                        handleConditionChange(line, event.target.value as StockBalanceCondition)
-                      }
-                      options={conditionOptions.map((condition) => ({
-                        value: condition,
-                        label: hasAvailabilityData
-                          ? `${getStockBalanceConditionLabel(condition)} · ${formatInventoryQuantity(getAvailableQtyByCondition(line.availability, condition))}`
-                          : getStockBalanceConditionLabel(condition),
-                      }))}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    {serialized ? (
-                      <div className="min-w-52 space-y-1">
-                        {noSerialsInSource ? (
-                          <p className="text-xs text-amber-700 dark:text-amber-300">
-                            Este producto serializado no tiene seriales disponibles en esta bodega.
-                          </p>
-                        ) : null}
-                        <InventoryAssetPicker
-                          id={serialControlId}
-                          label={
-                            <span className="sr-only">Serial {line.productLabel || 'manual'}</span>
-                          }
-                          value={line.serializedAssetId || null}
-                          selectedLabel={selectedAssetLabel}
-                          placeholder="Buscar serial disponible"
-                          disabled={noSerialsInSource}
-                          minChars={0}
-                          itemId={line.itemId || null}
-                          locationId={sourceLocationId || null}
-                          excludeIds={[...usedSerializedAssetIds]}
-                          onChange={(assetId, item) => {
-                            onSerializedAssetChange(line.id, assetId ?? '', item?.label ?? '');
-                          }}
-                        />
-                        {lineError?.controlId.includes('-serial-') ? (
-                          <p role="alert" className="text-xs text-error-700 dark:text-error-400">
-                            {lineError.message}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : lotOptions.length > 0 ? (
-                      <div className="space-y-1">
-                        <Select
-                          id={`issue-draft-lot-${line.id}`}
-                          aria-label={`Lote ${line.productLabel || 'manual'}`}
-                          value={line.lotId}
-                          onChange={(event) => onLotChange(line.id, event.target.value)}
-                          options={[
-                            { value: '', label: 'Sin lote específico' },
-                            ...lotOptions.map((option) => ({
-                              value: option.lotId,
-                              label: formatLotOptionLabel(option),
-                            })),
-                          ]}
-                        />
-                        <p className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                          {(() => {
-                            if (!line.lotId) {
-                              return null;
-                            }
-                            const selected = lotOptions.find(
-                              (option) => option.lotId === line.lotId,
-                            );
-                            return selected ? `N.º ${selected.lotNumber}` : null;
-                          })()}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-gray-500 dark:text-gray-400">—</span>
-                    )}
-                  </td>
-                  {showAvailableColumn ? (
-                    <td className="px-4 py-3 tabular-nums text-gray-600 dark:text-gray-300">
-                      {line.itemId
-                        ? formatInventoryQuantity(availableQty ?? 0)
-                        : 'Selecciona un producto'}
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-3">
-                    <div className="space-y-1">
-                      <Input
-                        id={qtyControlId}
-                        aria-label={`Cantidad ${line.productLabel || 'manual'}`}
-                        value={line.requestedQty}
-                        disabled={serialized || Boolean(line.serializedAssetId.trim())}
-                        onChange={(event) => onQuantityChange(line.id, event.target.value)}
-                      />
-                      {exceedsAvailable ? (
-                        <p className="text-xs text-amber-700 dark:text-amber-300">
-                          Supera el material disponible en origen. No podrás crear la salida hasta
-                          ajustar la cantidad.
-                        </p>
+                  <td className={portalDataTableCellClassName}>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant={stockConditionBadgeVariant(line.condition)}>
+                        {getStockBalanceConditionLabel(line.condition)}
+                      </Badge>
+                      {lotText ? (
+                        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                          Lote {lotText}
+                        </span>
                       ) : null}
-                      {lineError &&
-                      !lineError.controlId.includes('-serial-') &&
-                      !lineError.controlId.includes('-item-') ? (
-                        <p role="alert" className="text-xs text-error-700 dark:text-error-400">
-                          {lineError.message}
-                        </p>
+                      {missingSerials ? (
+                        <Badge variant="warning">Falta configurar seriales</Badge>
+                      ) : null}
+                      {!missingSerials && serializedIds.length === 1 ? (
+                        <span className="font-mono text-xs text-gray-700 dark:text-gray-200">
+                          {serialLabels[0]}
+                        </span>
+                      ) : null}
+                      {!missingSerials && serializedIds.length > 1 ? (
+                        <Badge variant="neutral">
+                          {serializedIds.length} seriales: {serialLabels.join(', ')}
+                        </Badge>
                       ) : null}
                     </div>
+                    {lineError && !lineError.controlId.includes('-item-') ? (
+                      <p role="alert" className="mt-1 text-xs text-error-700 dark:text-error-400">
+                        {lineError.message}
+                      </p>
+                    ) : null}
                   </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                  <td className={portalDataTableCellClassName}>
+                    {serialized ? (
+                      <span className="tabular-nums text-gray-900 dark:text-white">
+                        {line.requestedQty}
+                      </span>
+                    ) : (
+                      <div className="max-w-24 space-y-1">
+                        <Input
+                          id={qtyControlId}
+                          aria-label={`Cantidad ${line.productLabel || 'manual'}`}
+                          value={line.requestedQty}
+                          onChange={(event) => onQuantityChange(line.id, event.target.value)}
+                        />
+                        {exceedsAvailable ? (
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Supera el material disponible en origen. No podrás crear la salida hasta
+                            ajustar la cantidad.
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                  </td>
+                  <td
+                    className={`${portalDataTableCellClassName} text-gray-600 dark:text-gray-300`}
+                  >
                     {line.unitOfMeasure ? getInventoryUnitOfMeasureLabel(line.unitOfMeasure) : '—'}
                   </td>
-                  <td className="px-4 py-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onRemove(line.id)}
-                    >
-                      Quitar
-                    </Button>
+                  <td className={portalDataTableCellClassName}>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        id={modifyControlId}
+                        variant="secondary"
+                        size="sm"
+                        className="min-h-11"
+                        disabled={!line.itemId.trim()}
+                        onClick={() => onModifyLine(line.id)}
+                      >
+                        Modificar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-11"
+                        onClick={() => onRemove(line.id)}
+                      >
+                        Quitar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -441,12 +334,13 @@ export function StockIssueDraftLinesTable({
       </div>
 
       <p className="sr-only" role="status">
-        {conditionNotice}
+        {liveNotice}
       </p>
 
-      {showAvailableColumn ? (
-        <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
-          {STOCK_RESERVED_HELP_TEXT}
+      {needsAssetLabels ? (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          La cantidad de una línea con seriales es el número de seriales seleccionados; ajústala con
+          Modificar.
         </p>
       ) : null}
     </div>

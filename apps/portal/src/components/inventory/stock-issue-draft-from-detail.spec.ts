@@ -62,7 +62,7 @@ describe('buildDraftFromIssueDetail', () => {
     );
 
     expect(draft.lines[0]).toMatchObject({
-      productLabel: 'SER-9 · Router Onu Gpon',
+      productLabel: 'Router Onu Gpon',
       unitOfMeasure: 'UNIT',
       trackingMode: InventoryTrackingMode.SERIALIZED,
       availableSerialCount: 1,
@@ -80,6 +80,7 @@ describe('buildDraftFromIssueDetail', () => {
             id: 'item-1',
             sku: 'ONT-001',
             name: 'ONT WiFi 6',
+            model: 'HG6245D',
             unitOfMeasure: 'BOX',
             trackingMode: InventoryTrackingMode.SERIALIZED,
           } as never,
@@ -89,7 +90,7 @@ describe('buildDraftFromIssueDetail', () => {
     );
 
     expect(draft.lines[0]).toMatchObject({
-      productLabel: 'ONT-001 · ONT WiFi 6',
+      productLabel: 'ONT WiFi 6 · HG6245D',
       trackingMode: InventoryTrackingMode.SERIALIZED,
       lots: [],
     });

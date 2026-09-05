@@ -101,6 +101,7 @@ import {
   type ListMeta,
   type ListResponse,
   type StockIssuePickableItem,
+  type StockIssueLineSerialRef,
   type ExecutorCustodyResponse as ExecutorCustodyResponseContract,
   type UsersBulkCreateAcceptedResponse,
   type UsersBulkJobResultResponse,
@@ -7951,6 +7952,8 @@ export interface ListPickableItemsParams {
   sourceLocationId: string;
   q?: string;
   scope?: 'with-stock' | 'catalog';
+  /** Página numerada (ADR-065): el endpoint pagina por `page` y rechaza `cursor`. */
+  page?: number;
   cursor?: string;
   limit?: number;
 }
@@ -8114,6 +8117,12 @@ export interface StockIssueLineInputDto {
   requestedQty: number;
   lotId?: string | null;
   serializedAssetId?: string | null;
+  /**
+   * Grupo de seriales de la línea (contrato congelado v2, MOD12 S2 §5.1 en
+   * `@iwana/shared`): uuids únicos; para ítems serializados su longitud debe
+   * coincidir con `requestedQty`.
+   */
+  serializedAssetIds?: string[];
   condition?: StockBalanceCondition;
 }
 
@@ -8164,6 +8173,13 @@ export interface StockIssueLineRecord {
   dispatchedQty: string | null;
   lotId: string | null;
   serializedAssetId: string | null;
+  /**
+   * Grupo de seriales de la línea (MOD12 S2 §5.5, enmienda de lectura del
+   * contrato `StockIssueLineRecord` en `@iwana/shared`): id + número de serie
+   * por elemento. Opcional en el transporte durante el despliegue del track B;
+   * el cliente cae al singular de transición cuando aún no viaja.
+   */
+  serializedAssets?: StockIssueLineSerialRef[];
   condition: StockBalanceCondition;
   createdAt: string;
   updatedAt: string;

@@ -48,6 +48,7 @@ function buildDraftLine(overrides: Partial<StockIssueDraftLine> = {}): StockIssu
   return {
     id: 'line-1',
     itemId: 'item-1',
+    sku: 'ONT-001',
     productLabel: 'ONT-001 · ONT WiFi 6',
     requestedQty: '1',
     unitOfMeasure: 'UNIT',
@@ -56,6 +57,7 @@ function buildDraftLine(overrides: Partial<StockIssueDraftLine> = {}): StockIssu
     lotId: '',
     serializedAssetId: '',
     serializedAssetLabel: '',
+    serializedAssetIds: [],
     trackingMode: InventoryTrackingMode.CONSUMABLE,
     lots: [],
     availability: [],

@@ -9,6 +9,8 @@ export interface StockIssueDraftCatalogSelection {
   id: string;
   sku: string;
   name: string;
+  /** Modelo cuando la fuente lo conoce (maestro); B1 aún no lo expone. */
+  model?: string | null;
   unitOfMeasure: string;
   /** Hidratación S1 desde `StockIssuePickableItem`: corrige C3 (el flag serial sale de la línea). */
   trackingMode?: InventoryTrackingMode;
@@ -20,6 +22,7 @@ export interface StockIssueDraftCatalogSelection {
 export interface StockIssueDraftLine {
   id: string;
   itemId: string;
+  sku: string;
   productLabel: string;
   requestedQty: string;
   unitOfMeasure: string;
@@ -29,6 +32,12 @@ export interface StockIssueDraftLine {
   serializedAssetId: string;
   /** Etiqueta del serial elegido para el picker (se resuelve al elegir; en edición se hidrata). */
   serializedAssetLabel: string;
+  /**
+   * Grupo de seriales de la línea (MOD12 S2, contrato v2): para ítems
+   * serializados su longitud ES la cantidad; vacío mientras la línea de vía
+   * rápida espera configuración.
+   */
+  serializedAssetIds: string[];
   /**
    * Modo de seguimiento del ítem (S1). `serialized` se deriva de aquí con
    * `isSerializedTrackingMode`, nunca de `knownItems` (corrección directa de C3).
@@ -51,6 +60,22 @@ export interface AddCatalogToDraftResult {
   skippedItemIds: string[];
 }
 
+/**
+ * Normaliza el grupo de seriales de una línea: el arreglo v2 cuando existe y,
+ * en transición, el singular S1 como arreglo de un elemento (contrato
+ * `StockIssueLineInput`/`StockIssueLineRecord` de `@iwana/shared`).
+ */
+export function resolveLineSerializedAssetIds(line: {
+  serializedAssetIds?: string[] | null;
+  serializedAssetId?: string | null;
+}): string[] {
+  if (line.serializedAssetIds && line.serializedAssetIds.length > 0) {
+    return line.serializedAssetIds;
+  }
+  const singular = line.serializedAssetId?.trim() ?? '';
+  return singular ? [singular] : [];
+}
+
 let draftLineSequence = 0;
 
 function createDraftLineId(): string {
@@ -71,10 +96,12 @@ function createBaseDraftLine(
 ): StockIssueDraftLine {
   return {
     id: createDraftLineId(),
+    sku: '',
     condition: StockBalanceCondition.NEW,
     lotId: '',
     serializedAssetId: '',
     serializedAssetLabel: '',
+    serializedAssetIds: [],
     trackingMode: InventoryTrackingMode.CONSUMABLE,
     lots: [],
     availability: [],
@@ -129,11 +156,24 @@ export function createManualStockIssueDraftLine(): StockIssueDraftLine {
   });
 }
 
+/**
+ * Etiqueta de producto para las líneas del borrador: nombre + modelo, sin
+ * código. El modelo solo se muestra cuando la fuente lo conoce (maestro vía
+ * `getItem` o caché de edición); B1 aún no lo expone y esas líneas muestran
+ * solo el nombre.
+ */
+export function buildDraftProductLabel(name: string, model?: string | null): string {
+  const baseName = name.trim();
+  const baseModel = model?.trim() ? model.trim() : '';
+  return baseModel ? `${baseName} · ${baseModel}` : baseName;
+}
+
 function getLineIdentityKey(
-  line: Pick<StockIssueDraftLine, 'itemId' | 'lotId' | 'serializedAssetId'>,
+  line: Pick<StockIssueDraftLine, 'itemId' | 'lotId' | 'serializedAssetId' | 'serializedAssetIds'>,
 ) {
-  if (line.serializedAssetId.trim()) {
-    return `serial:${line.serializedAssetId.trim()}`;
+  const serializedIds = resolveLineSerializedAssetIds(line);
+  if (serializedIds.length > 0) {
+    return `serial:${[...serializedIds].sort().join(',')}`;
   }
 
   return `item:${line.itemId.trim()}:${line.lotId.trim()}`;
@@ -161,7 +201,8 @@ export function addCatalogSelectionToDraft(
     newLines.push(
       createBaseDraftLine({
         itemId: selection.id,
-        productLabel: `${selection.sku} · ${selection.name}`,
+        sku: selection.sku,
+        productLabel: buildDraftProductLabel(selection.name, selection.model),
         requestedQty: '1',
         unitOfMeasure: selection.unitOfMeasure,
         isManual: false,
@@ -210,7 +251,9 @@ export function applyBulkQuantityToDraftLines(
   const ids = new Set(lineIds);
   return {
     lines: draft.lines.map((line) =>
-      ids.has(line.id) && !line.serializedAssetId.trim() ? { ...line, requestedQty } : line,
+      ids.has(line.id) && resolveLineSerializedAssetIds(line).length === 0
+        ? { ...line, requestedQty }
+        : line,
     ),
   };
 }
@@ -262,38 +305,43 @@ export function updateDraftLineQuantity(
   };
 }
 
-export function updateDraftLineCondition(
-  draft: StockIssueDraftState,
-  lineId: string,
-  condition: StockBalanceCondition,
-): StockIssueDraftState {
-  return {
-    lines: draft.lines.map((line) =>
-      line.id === lineId ? { ...line, condition, lotId: '' } : line,
-    ),
-  };
+/** Configuración confirmada desde el panel lateral de línea (MOD12 S2). */
+export interface StockIssueDraftLineConfiguration {
+  condition: StockBalanceCondition;
+  lotId: string;
+  /** Grupo de seriales elegido; para serializados su longitud es la cantidad. */
+  serializedAssetIds: string[];
+  /** Etiquetas conocidas de los seriales (panel y búsqueda del picker). */
+  serializedAssetLabels: Record<string, string>;
+  requestedQty: string;
 }
 
-export function updateDraftLineLot(
+/**
+ * Aplica la configuración del panel a una línea del borrador: condición, lote y
+ * grupo de seriales. El singular de transición se alimenta con el primer serial
+ * del grupo para no romper lecturas existentes (contrato v2 §5.1).
+ */
+export function updateDraftLineConfiguration(
   draft: StockIssueDraftState,
   lineId: string,
-  lotId: string,
+  configuration: StockIssueDraftLineConfiguration,
 ): StockIssueDraftState {
-  return {
-    lines: draft.lines.map((line) => (line.id === lineId ? { ...line, lotId } : line)),
-  };
-}
-
-export function updateDraftLineSerializedAsset(
-  draft: StockIssueDraftState,
-  lineId: string,
-  serializedAssetId: string,
-  serializedAssetLabel = '',
-): StockIssueDraftState {
+  const ids = [...new Set(configuration.serializedAssetIds.map((id) => id.trim()))].filter(Boolean);
+  const firstId = ids[0] ?? '';
   return {
     lines: draft.lines.map((line) =>
       line.id === lineId
-        ? { ...line, serializedAssetId, serializedAssetLabel, requestedQty: '1', lotId: '' }
+        ? {
+            ...line,
+            condition: configuration.condition,
+            lotId: configuration.lotId,
+            serializedAssetIds: ids,
+            serializedAssetId: firstId,
+            serializedAssetLabel: firstId
+              ? (configuration.serializedAssetLabels[firstId] ?? '')
+              : '',
+            requestedQty: configuration.requestedQty,
+          }
         : line,
     ),
   };

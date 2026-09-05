@@ -248,6 +248,7 @@ describe('stock-issue-submit', () => {
           condition: StockBalanceCondition.NEW,
           lotId: '',
           serializedAssetId: 'asset-1',
+          serializedAssetIds: ['asset-1'],
           trackingMode: InventoryTrackingMode.SERIALIZED,
         },
       ],
@@ -257,14 +258,81 @@ describe('stock-issue-submit', () => {
     expect(errors).toHaveLength(2);
     expect(errors[0]).toMatchObject({
       lineIndex: 1,
-      controlId: 'issue-draft-serial-line-serial',
+      controlId: 'issue-draft-modify-line-serial',
     });
-    expect(errors[0]?.message).toMatch(/serial/i);
+    expect(errors[0]?.message).toMatch(/seriales/i);
     expect(errors[1]).toMatchObject({
       lineIndex: 2,
-      controlId: 'issue-draft-qty-line-qty',
+      controlId: 'issue-draft-modify-line-qty',
     });
-    expect(errors[1]?.message).toMatch(/cantidad 1/);
+    expect(errors[1]?.message).toMatch(/coincidir con el número de seriales/);
+  });
+
+  it('una línea con N seriales se envía como una línea de cantidad N (D2/S2)', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.TECHNICIAN_CUSTODY,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: 'loc-2',
+      commercialRefId: '',
+      originRefId: '',
+      costCenter: '',
+      reason: '',
+      itemsById: new Map(),
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-serial',
+          productLabel: 'SER-9 · Router',
+          requestedQty: '3',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          serializedAssetIds: ['asset-3', 'asset-1', 'asset-2'],
+        },
+      ],
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.payload?.lines).toEqual([
+      {
+        itemId: 'item-serial',
+        requestedQty: 3,
+        condition: StockBalanceCondition.NEW,
+        serializedAssetIds: ['asset-3', 'asset-1', 'asset-2'],
+      },
+    ]);
+  });
+
+  it('un serial repetido entre líneas bloquea el envío con mensaje en español', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.TECHNICIAN_CUSTODY,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: 'loc-2',
+      commercialRefId: '',
+      originRefId: '',
+      costCenter: '',
+      reason: '',
+      itemsById: new Map(),
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-serial',
+          productLabel: 'SER-9 · Router',
+          requestedQty: '1',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          serializedAssetIds: ['asset-1'],
+        },
+        {
+          ...baseLine,
+          itemId: 'item-serial',
+          productLabel: 'SER-9 · Router',
+          requestedQty: '1',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          serializedAssetIds: ['asset-1'],
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toMatch(/seriales repetidos entre líneas/i);
   });
 
   it('requires commercial or origin reference for sale dispatch', () => {

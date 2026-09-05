@@ -6,6 +6,7 @@ import type {
 } from '@/lib/api-client';
 import { showDestinationForIssueType } from './stock-issue-form-utils';
 import { isSerializedInventoryItem, isSerializedTrackingMode } from './stock-issue-line-utils';
+import { resolveLineSerializedAssetIds } from './stock-issue-draft';
 
 export interface StockIssueSubmitLineInput {
   /** Id de la línea del borrador; alimenta el foco al primer inválido y el error inline. */
@@ -17,6 +18,11 @@ export interface StockIssueSubmitLineInput {
   condition: StockBalanceCondition;
   lotId: string;
   serializedAssetId: string;
+  /**
+   * Grupo de seriales v2 (MOD12 S2): para ítems serializados su longitud es la
+   * cantidad de la línea. El singular queda como respaldo de transición.
+   */
+  serializedAssetIds?: string[];
   /**
    * Modo de seguimiento hidratado en la línea (S1). Cuando viene, decide la
    * exigencia de serial; `itemsById` queda como respaldo para líneas legacy.
@@ -30,10 +36,14 @@ export interface StockIssueSubmitValidationResult<T> {
 }
 
 function getLineDuplicateKey(
-  line: Pick<StockIssueSubmitLineInput, 'itemId' | 'lotId' | 'serializedAssetId'>,
+  line: Pick<
+    StockIssueSubmitLineInput,
+    'itemId' | 'lotId' | 'serializedAssetId' | 'serializedAssetIds'
+  >,
 ) {
-  if (line.serializedAssetId.trim()) {
-    return `serial:${line.serializedAssetId.trim()}`;
+  const serializedIds = resolveLineSerializedAssetIds(line);
+  if (serializedIds.length > 0) {
+    return `serial:${[...serializedIds].sort().join(',')}`;
   }
 
   return `item:${line.itemId.trim()}:${line.lotId.trim()}`;
@@ -99,7 +109,11 @@ function isLineSerialized(
 export interface StockIssueDraftLineError {
   /** Índice de la línea en el arreglo validado. */
   lineIndex: number;
-  /** Id del control a enfocar (`issue-draft-serial-<lineId>`, `...-qty-...`, `...-item-...`). */
+  /**
+   * Control a enfocar: `issue-draft-item-<id>`, `issue-draft-qty-<id>` o
+   * `issue-draft-modify-<id>` cuando la corrección vive en el panel de línea
+   * (MOD12 S2: condición, lote y grupo de seriales ya no son controles inline).
+   */
   controlId: string;
   message: string;
 }
@@ -113,6 +127,8 @@ function controlIdForLine(line: StockIssueSubmitLineInput, index: number, kind: 
  * Valida las líneas y devuelve **un error por línea inválida** (primera causa por
  * línea, en orden) para pintar el inline por línea y enfocar el primer inválido.
  * El error global del formulario es `errors[0].message` (mismo copy que antes).
+ * Los seriales del grupo no pueden repetirse entre líneas: la segunda línea que
+ * los use recibe el error (el API también lo rechaza uno a uno).
  */
 export function validateStockIssueDraftLines(
   lines: StockIssueSubmitLineInput[],
@@ -124,6 +140,7 @@ export function validateStockIssueDraftLines(
 
   const errors: StockIssueDraftLineError[] = [];
   const seenKeys = new Set<string>();
+  const serialOwner = new Map<string, number>();
 
   lines.forEach((line, index) => {
     const itemId = line.itemId.trim();
@@ -138,6 +155,21 @@ export function validateStockIssueDraftLines(
       return;
     }
 
+    const serializedIds = resolveLineSerializedAssetIds(line);
+    const duplicatedSerial = serializedIds.find((id) => serialOwner.has(id));
+    if (duplicatedSerial) {
+      errors.push({
+        lineIndex: index,
+        controlId: controlIdForLine(line, index, 'modify'),
+        message:
+          'Hay seriales repetidos entre líneas. Deja cada serial en una sola línea del borrador.',
+      });
+      return;
+    }
+    for (const id of serializedIds) {
+      serialOwner.set(id, index);
+    }
+
     const duplicateKey = getLineDuplicateKey(line);
     if (seenKeys.has(duplicateKey)) {
       errors.push({
@@ -150,13 +182,12 @@ export function validateStockIssueDraftLines(
     seenKeys.add(duplicateKey);
 
     const serialized = isLineSerialized(line, itemsById);
-    const serializedAssetId = line.serializedAssetId.trim();
 
-    if (serialized && !serializedAssetId) {
+    if (serialized && serializedIds.length === 0) {
       errors.push({
         lineIndex: index,
-        controlId: controlIdForLine(line, index, 'serial'),
-        message: `Selecciona el serial del activo para ${line.productLabel || 'esta línea'}.`,
+        controlId: controlIdForLine(line, index, 'modify'),
+        message: `Selecciona los seriales de ${line.productLabel || 'esta línea'}.`,
       });
       return;
     }
@@ -171,11 +202,11 @@ export function validateStockIssueDraftLines(
       return;
     }
 
-    if (serializedAssetId && requestedQty !== 1) {
+    if (serialized && requestedQty !== serializedIds.length) {
       errors.push({
         lineIndex: index,
-        controlId: controlIdForLine(line, index, 'qty'),
-        message: 'Las líneas con equipo con serial deben tener cantidad 1.',
+        controlId: controlIdForLine(line, index, 'modify'),
+        message: 'La cantidad debe coincidir con el número de seriales seleccionados.',
       });
     }
   });
@@ -192,6 +223,7 @@ function mapValidatedLines(
   }
 
   const seenKeys = new Set<string>();
+  const serialOwner = new Set<string>();
   const mappedLines: CreateStockIssueDto['lines'] = [];
 
   for (const line of lines) {
@@ -205,6 +237,18 @@ function mapValidatedLines(
       };
     }
 
+    const serializedIds = resolveLineSerializedAssetIds(line);
+    if (serializedIds.some((id) => serialOwner.has(id))) {
+      return {
+        mappedLines: [],
+        error:
+          'Hay seriales repetidos entre líneas. Deja cada serial en una sola línea del borrador.',
+      };
+    }
+    for (const id of serializedIds) {
+      serialOwner.add(id);
+    }
+
     const duplicateKey = getLineDuplicateKey(line);
     if (seenKeys.has(duplicateKey)) {
       return {
@@ -215,13 +259,12 @@ function mapValidatedLines(
     seenKeys.add(duplicateKey);
 
     const serialized = isLineSerialized(line, itemsById);
-    const serializedAssetId = line.serializedAssetId.trim();
     const lotId = line.lotId.trim();
 
-    if (serialized && !serializedAssetId) {
+    if (serialized && serializedIds.length === 0) {
       return {
         mappedLines: [],
-        error: `Selecciona el serial del activo para ${line.productLabel || 'esta línea'}.`,
+        error: `Selecciona los seriales de ${line.productLabel || 'esta línea'}.`,
       };
     }
 
@@ -233,10 +276,10 @@ function mapValidatedLines(
       };
     }
 
-    if (serializedAssetId && requestedQty !== 1) {
+    if (serialized && requestedQty !== serializedIds.length) {
       return {
         mappedLines: [],
-        error: 'Las líneas con equipo con serial deben tener cantidad 1.',
+        error: 'La cantidad debe coincidir con el número de seriales seleccionados.',
       };
     }
 
@@ -245,7 +288,8 @@ function mapValidatedLines(
       requestedQty,
       condition: line.condition,
       ...(lotId ? { lotId } : {}),
-      ...(serializedAssetId ? { serializedAssetId } : {}),
+      // Grupo v2 del contrato; el singular de transición deja de enviarse.
+      ...(serializedIds.length > 0 ? { serializedAssetIds: serializedIds } : {}),
     });
   }
 

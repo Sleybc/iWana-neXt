@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InventoryTrackingMode, StockBalanceCondition } from '@iwana/shared';
 import { StockIssueDraftLinesTable } from './StockIssueDraftLinesTable';
@@ -11,31 +11,6 @@ jest.mock('@/lib/api-client', () => {
     inventoryApi: {
       ...actual.inventoryApi,
       getItem: jest.fn().mockRejectedValue(new Error('no usado')),
-      listAssets: jest.fn().mockResolvedValue({
-        data: [
-          {
-            id: 'asset-1',
-            tenantId: 'tenant-1',
-            inventoryItemId: 'item-serial',
-            serialNumber: 'SN-001',
-            assetTag: null,
-            currentStatus: 'AVAILABLE',
-            currentLocationId: 'loc-1',
-          },
-        ],
-        meta: {
-          nextCursor: null,
-          total: 1,
-          totalIsEstimate: false,
-          page: null,
-          limit: 50,
-          totalPages: null,
-          hasMore: false,
-          mode: 'cursor',
-          capabilities: { randomAccess: false, sortableFields: [] },
-          sort: null,
-        },
-      }),
     },
   };
 });
@@ -44,7 +19,8 @@ function buildLine(overrides: Partial<StockIssueDraftLine> = {}): StockIssueDraf
   return {
     id: 'line-1',
     itemId: 'item-1',
-    productLabel: 'CAB-010 · Cable drop',
+    sku: 'CAB-010',
+    productLabel: 'Cable drop',
     requestedQty: '2',
     unitOfMeasure: 'METER',
     isManual: false,
@@ -52,6 +28,7 @@ function buildLine(overrides: Partial<StockIssueDraftLine> = {}): StockIssueDraf
     lotId: '',
     serializedAssetId: '',
     serializedAssetLabel: '',
+    serializedAssetIds: [],
     trackingMode: InventoryTrackingMode.CONSUMABLE,
     lots: [],
     availability: [
@@ -68,14 +45,11 @@ function buildLine(overrides: Partial<StockIssueDraftLine> = {}): StockIssueDraf
 }
 
 const baseProps = {
-  sourceLocationId: 'loc-1',
   selectedLineIds: [] as string[],
-  showAvailableColumn: true,
+  serialLabelsById: {} as Record<string, string>,
   onItemChange: jest.fn(),
   onQuantityChange: jest.fn(),
-  onConditionChange: jest.fn(),
-  onLotChange: jest.fn(),
-  onSerializedAssetChange: jest.fn(),
+  onModifyLine: jest.fn(),
   onToggleLine: jest.fn(),
   onToggleAll: jest.fn(),
   onRemove: jest.fn(),
@@ -88,55 +62,22 @@ describe('StockIssueDraftLinesTable', () => {
     jest.clearAllMocks();
   });
 
-  it('CA-S1-04: la línea serializada ofrece el picker con id único, aunque venga de catálogo', async () => {
+  it('CA-S2-09: no hay columna Condición editable; la condición se lee en el detalle', () => {
     render(
       <StockIssueDraftLinesTable
         {...baseProps}
-        lines={[
-          buildLine({
-            id: 'line-serial',
-            itemId: 'item-serial',
-            productLabel: 'SER-9 · Router Onu Gpon',
-            requestedQty: '1',
-            unitOfMeasure: 'UNIT',
-            trackingMode: InventoryTrackingMode.SERIALIZED,
-            availableSerialCount: 1,
-          }),
-        ]}
+        lines={[buildLine({ condition: StockBalanceCondition.REFURBISHED })]}
       />,
     );
 
-    const serialInput = await screen.findByRole('combobox', {
-      name: 'Serial SER-9 · Router Onu Gpon',
-    });
-    expect(serialInput).toHaveAttribute('id', 'issue-draft-serial-line-serial');
+    // La condición es dato (badge tonal), no control; no queda ningún Select.
+    expect(screen.getByText('Reacondicionado')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Condición/ })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.queryByRole('columnheader', { name: 'Condición' })).not.toBeInTheDocument();
   });
 
-  it('avisa sin seriales en bodega y deshabilita el picker', async () => {
-    render(
-      <StockIssueDraftLinesTable
-        {...baseProps}
-        lines={[
-          buildLine({
-            id: 'line-serial',
-            itemId: 'item-serial',
-            productLabel: 'SER-9 · Router Onu Gpon',
-            trackingMode: InventoryTrackingMode.SERIALIZED,
-            availableSerialCount: 0,
-          }),
-        ]}
-      />,
-    );
-
-    expect(
-      await screen.findByText(
-        'Este producto serializado no tiene seriales disponibles en esta bodega.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Serial SER-9 · Router Onu Gpon' })).toBeDisabled();
-  });
-
-  it('CA-S1-07: el lote muestra número real y vencimiento, y la unidad usa la etiqueta ADR-085', () => {
+  it('el detalle muestra lote como dato y la unidad usa la etiqueta ADR-085', () => {
     render(
       <StockIssueDraftLinesTable
         {...baseProps}
@@ -157,51 +98,146 @@ describe('StockIssueDraftLinesTable', () => {
       />,
     );
 
-    expect(screen.getByRole('combobox', { name: /Lote CAB-010/ })).toHaveTextContent(
-      'LOTE-A · vence 20/05/2026 · 8',
-    );
+    expect(screen.getByText(/Lote LOTE-A/)).toBeInTheDocument();
     expect(screen.getByText('Metro')).toBeInTheDocument();
   });
 
-  it('limita la condición a las que tienen disponible y muestra el inline por línea', async () => {
-    const user = userEvent.setup();
+  it('la línea serializada configurada muestra su serial y la cantidad fija', () => {
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        serialLabelsById={{ 'asset-1': 'SN-001' }}
+        lines={[
+          buildLine({
+            id: 'line-serial',
+            itemId: 'item-serial',
+            sku: 'SER-9',
+            productLabel: 'Router Onu Gpon',
+            unitOfMeasure: 'UNIT',
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+            serializedAssetId: 'asset-1',
+            serializedAssetIds: ['asset-1'],
+            requestedQty: '1',
+            availableSerialCount: 3,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('SN-001')).toBeInTheDocument();
+    // La cantidad del serializado es dato, no entrada.
+    expect(screen.queryByLabelText(/Cantidad Router Onu Gpon/)).not.toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('la vía rápida sin seriales deja el badge de falta configurar (mitigación G1)', () => {
     render(
       <StockIssueDraftLinesTable
         {...baseProps}
         lines={[
           buildLine({
-            condition: StockBalanceCondition.REFURBISHED,
-            availability: [
-              {
-                condition: StockBalanceCondition.NEW,
-                quantityOnHand: '0',
-                quantityReserved: '0',
-                available: '0',
-              },
-              {
-                condition: StockBalanceCondition.REFURBISHED,
-                quantityOnHand: '3',
-                quantityReserved: '0',
-                available: '3',
-              },
-            ],
+            id: 'line-serial',
+            itemId: 'item-serial',
+            sku: 'SER-9',
+            productLabel: 'Router Onu Gpon',
+            unitOfMeasure: 'UNIT',
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+            availableSerialCount: 2,
           }),
         ]}
+      />,
+    );
+
+    expect(screen.getByText('Falta configurar seriales')).toBeInTheDocument();
+  });
+
+  it('varios seriales se muestran como badge de conteo con sus etiquetas', () => {
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        serialLabelsById={{ 'asset-1': 'SN-001', 'asset-2': 'SN-002' }}
+        lines={[
+          buildLine({
+            id: 'line-serial',
+            itemId: 'item-serial',
+            productLabel: 'Router Onu Gpon',
+            unitOfMeasure: 'UNIT',
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+            serializedAssetId: 'asset-1',
+            serializedAssetIds: ['asset-1', 'asset-2'],
+            requestedQty: '2',
+            availableSerialCount: 5,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/2 seriales: SN-001, SN-002/)).toBeInTheDocument();
+  });
+
+  it('cada fila tiene Modificar y Quitar visibles con sus callbacks', async () => {
+    const user = userEvent.setup();
+    const onModifyLine = jest.fn();
+    const onRemove = jest.fn();
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        onModifyLine={onModifyLine}
+        onRemove={onRemove}
+        lines={[buildLine()]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Modificar' }));
+    expect(onModifyLine).toHaveBeenCalledWith('line-1');
+
+    await user.click(screen.getByRole('button', { name: 'Quitar' }));
+    expect(onRemove).toHaveBeenCalledWith('line-1');
+  });
+
+  it('Modificar queda inoperante solo mientras la línea manual no tenga producto', () => {
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        lines={[buildLine({ id: 'line-manual', isManual: true, itemId: '', productLabel: '' })]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Modificar' })).toBeDisabled();
+  });
+
+  it('el error de envío se pinta inline en la fila con role alert', () => {
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        lines={[buildLine()]}
         lineErrors={{
           'line-1': {
-            message: 'Selecciona el serial del activo para CAB-010 · Cable drop.',
-            controlId: 'issue-draft-qty-line-1',
+            message: 'Selecciona los seriales de Cable drop.',
+            controlId: 'issue-draft-modify-line-1',
           },
         }}
       />,
     );
 
-    const conditionTrigger = screen.getByRole('combobox', { name: /Condición CAB-010/ });
-    expect(conditionTrigger).toHaveTextContent('Reacondicionado · 3');
+    expect(screen.getByRole('alert')).toHaveTextContent('Selecciona los seriales de Cable drop.');
+  });
 
-    await user.click(conditionTrigger);
-    expect(await screen.findByRole('option', { name: 'Reacondicionado · 3' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /Nuevo/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(/serial/i);
+  it('la cantidad del consumible sigue siendo editable en la fila', () => {
+    const onQuantityChange = jest.fn();
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        onQuantityChange={onQuantityChange}
+        lines={[buildLine()]}
+      />,
+    );
+
+    // La línea es controlada por el borrador: un cambio del operador notifica
+    // el valor completo tecleado.
+    fireEvent.change(screen.getByLabelText('Cantidad Cable drop'), {
+      target: { value: '5' },
+    });
+    expect(onQuantityChange).toHaveBeenCalledWith('line-1', '5');
   });
 });
