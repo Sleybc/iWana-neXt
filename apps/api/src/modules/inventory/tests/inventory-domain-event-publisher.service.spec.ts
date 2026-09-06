@@ -219,4 +219,19 @@ describe('InventoryDomainEventPublisher', () => {
       expect.objectContaining({ stockMovementId: 'mov-sale', quantity: 1 }),
     );
   });
+
+  it.each([
+    ['emitIssueCreated', INVENTORY_EVENTS.ISSUE_CREATED, 'create'],
+    ['emitIssueUpdated', INVENTORY_EVENTS.ISSUE_UPDATED, 'update'],
+    ['emitIssueCancelled', INVENTORY_EVENTS.ISSUE_CANCELLED, 'cancel'],
+  ] as const)('%s emite el ciclo de vida con autoría (S2.1 · B2)', (method, event, operation) => {
+    publisher[method]({ tenantId: 'tenant-1', issueId: 'issue-1', actorUserId: 'user-1' });
+
+    expect(eventEmitter.emit).toHaveBeenCalledWith(event, {
+      tenantId: 'tenant-1',
+      issueId: 'issue-1',
+      actorUserId: 'user-1',
+      operation,
+    });
+  });
 });

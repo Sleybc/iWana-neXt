@@ -38,6 +38,26 @@ export interface StockAvailabilityQuery {
   condition?: StockBalanceCondition;
 }
 
+/** Clave de reserva por tupla (ítem × lote × condición) para el batch de disponible. */
+export interface ReservationAvailabilityKey {
+  itemId: string;
+  lotId: string | null;
+  condition: StockBalanceCondition;
+}
+
+/** Clave determinística de la tupla de reserva (lote ausente = cadena vacía). */
+export function buildReservationAvailabilityKey(key: ReservationAvailabilityKey): string {
+  return `${key.itemId}|${key.lotId ?? ''}|${key.condition}`;
+}
+
+interface ReservationAggregateRaw {
+  itemId: string;
+  lotId: string | null;
+  condition: StockBalanceCondition;
+  sumOnHand: string;
+  sumReserved: string;
+}
+
 /**
  * Parsea una cantidad `numeric` (la entidad la guarda como string) a number.
  * Canónico para todo cálculo de disponible (MOD12 S1 · B1 lo reutiliza).
@@ -181,6 +201,61 @@ export class StockBalanceService {
   ): Promise<number> {
     const availability = await this.getAvailabilityWithManager(manager, tenantId, input);
     return availability.available;
+  }
+
+  /**
+   * Disponible batch por tuplas de reserva (MOD12 S2.1 · B2): UNA sola
+   * consulta `GROUP BY` (ítem, lote, condición) para todas las claves, en vez
+   * de un `getAvailabilityWithManager` por línea. Las tuplas sin filas suman
+   * cero. Claves indexadas por `buildReservationAvailabilityKey`.
+   */
+  async getAvailabilitiesWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    locationId: string,
+    keys: ReservationAvailabilityKey[],
+  ): Promise<Map<string, StockAvailability>> {
+    const result = new Map<string, StockAvailability>();
+    for (const key of keys) {
+      result.set(buildReservationAvailabilityKey(key), { onHand: 0, reserved: 0, available: 0 });
+    }
+
+    const itemIds = [...new Set(keys.map((key) => key.itemId))];
+    if (itemIds.length === 0) {
+      return result;
+    }
+
+    const rows = await manager
+      .createQueryBuilder(StockBalance, 'balance')
+      .select('balance.item_id', 'itemId')
+      .addSelect('balance.lot_id', 'lotId')
+      .addSelect('balance.condition', 'condition')
+      .addSelect('SUM(balance.quantity_on_hand::numeric)', 'sumOnHand')
+      .addSelect('SUM(balance.quantity_reserved::numeric)', 'sumReserved')
+      .where('balance.tenant_id = :tenantId', { tenantId })
+      .andWhere('balance.location_id = :locationId', { locationId })
+      .andWhere('balance.item_id IN (:...availabilityItemIds)', {
+        availabilityItemIds: itemIds,
+      })
+      .groupBy('balance.item_id')
+      .addGroupBy('balance.lot_id')
+      .addGroupBy('balance.condition')
+      .getRawMany<ReservationAggregateRaw>();
+
+    for (const row of rows ?? []) {
+      const onHand = roundQty(toNumeric(row.sumOnHand));
+      const reserved = roundQty(toNumeric(row.sumReserved));
+      result.set(
+        buildReservationAvailabilityKey({
+          itemId: row.itemId,
+          lotId: row.lotId ?? null,
+          condition: row.condition,
+        }),
+        { onHand, reserved, available: computeAvailable(onHand, reserved) },
+      );
+    }
+
+    return result;
   }
 
   async applyDeltaWithManager(

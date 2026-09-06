@@ -1,5 +1,7 @@
+import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
-import { getDataSourceToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
+import { StockIssue, StockIssueLine, StockIssueLineSerial } from '@iwana/db';
 import { IPartyReadPort } from '../../parties/ports/party-read.port';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
 import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-catalog-read.port';
@@ -48,6 +50,7 @@ import { StockBalanceService } from '../services/stock-balance.service';
 import { ExecutorCustodyService } from '../services/executor-custody.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { StockIssuePickingService } from '../services/stock-issue-picking.service';
+import { SerializedGroupValidator } from '../services/serialized-group.validator';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { InventoryCostingService } from '../services/inventory-costing.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
@@ -77,6 +80,7 @@ describe('InventoryModule', () => {
         StockMovementQueryService,
         StockIssueService,
         StockIssuePickingService,
+        SerializedGroupValidator,
         StockBalanceService,
         ExecutorCustodyService,
         SerializedAssetService,
@@ -165,5 +169,29 @@ describe('InventoryModule', () => {
 
     expect(moduleRef).toBeDefined();
     expect(moduleRef.get(InventoryModule)).toBeInstanceOf(InventoryModule);
+  });
+
+  describe('registro de repositorios de salidas (MOD12 S2.1 · B0)', () => {
+    /**
+     * Sin `StockIssueLineSerial` en el `forFeature`, cualquier flujo que toque
+     * la tabla hija muere con `RepositoryNotFoundError` aunque la entidad y la
+     * migración existan. Este test lo deja comprometido a nivel del módulo
+     * real, sin levantar conexión: inspecciona los providers que
+     * `TypeOrmModule.forFeature` registra en los metadatos del módulo.
+     */
+    it('expone el repositorio de la hija StockIssueLineSerial en el forFeature', () => {
+      const imports = Reflect.getMetadata('imports', InventoryModule) as unknown;
+
+      expect(Array.isArray(imports)).toBe(true);
+      const providers = (imports as Array<{ providers?: Array<{ provide?: unknown }> }>).flatMap(
+        (entry) => entry?.providers ?? [],
+      );
+      const provides = providers.map((provider) => provider?.provide);
+
+      expect(provides).toContain(getRepositoryToken(StockIssueLineSerial));
+      // La cabecera y la línea siguen registradas (red de seguridad del cambio).
+      expect(provides).toContain(getRepositoryToken(StockIssue));
+      expect(provides).toContain(getRepositoryToken(StockIssueLine));
+    });
   });
 });

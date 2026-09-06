@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { InventoryDomainEventsListener } from '../listeners/inventory-domain-events.listener';
-import { INVENTORY_EVENTS } from '../events/inventory.events';
+import { INVENTORY_EVENTS, type StockIssueLifecycleEvent } from '../events/inventory.events';
 
 describe('InventoryDomainEventsListener', () => {
   let listener: InventoryDomainEventsListener;
@@ -54,6 +54,26 @@ describe('InventoryDomainEventsListener', () => {
       itemId: 'item-1',
       serializedAssetId: 'asset-1',
       stockMovementId: 'mov-sale',
+    });
+  });
+
+  it.each([
+    ['creada', 'handleIssueCreated', INVENTORY_EVENTS.ISSUE_CREATED],
+    ['actualizada', 'handleIssueUpdated', INVENTORY_EVENTS.ISSUE_UPDATED],
+    ['cancelada', 'handleIssueCancelled', INVENTORY_EVENTS.ISSUE_CANCELLED],
+  ] as const)('loguea salida %s sin PII (S2.1 · B2)', (_label, handler, event) => {
+    const payload: StockIssueLifecycleEvent = {
+      tenantId: 'tenant-1',
+      issueId: 'issue-1',
+      actorUserId: 'user-1',
+      operation: 'create',
+    };
+    listener[handler](payload);
+
+    expect(logSpy).toHaveBeenCalledWith({
+      event,
+      tenantId: 'tenant-1',
+      issueId: 'issue-1',
     });
   });
 });

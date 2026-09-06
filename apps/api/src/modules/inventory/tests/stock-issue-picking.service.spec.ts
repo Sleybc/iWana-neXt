@@ -133,6 +133,7 @@ function buildManager(seed: PickingSeed) {
   const whereCalls: RecordedWhere[] = [];
   const joinCalls: string[] = [];
   const findWheres: Array<{ entity: string; where: unknown }> = [];
+  const createdQbs: Array<Record<string, jest.Mock>> = [];
 
   const manager: any = {
     find: jest
@@ -154,6 +155,10 @@ function buildManager(seed: PickingSeed) {
       ),
     createQueryBuilder: jest.fn().mockImplementation(() => {
       const selects: string[] = [];
+      // S2.1 · B2: el fake emula el HAVING y la paginación SQL (filtra,
+      // ordena por disponible y aplica offset/limit) como lo haría PostgreSQL.
+      let offsetVal = 0;
+      let limitVal = Number.MAX_SAFE_INTEGER;
       const qb: any = {};
       qb.select = jest.fn().mockImplementation((...args: unknown[]) => {
         selects.push(String(args[1] ?? args[0]));
@@ -179,16 +184,57 @@ function buildManager(seed: PickingSeed) {
         });
       qb.groupBy = jest.fn().mockReturnValue(qb);
       qb.addGroupBy = jest.fn().mockReturnValue(qb);
+      qb.having = jest.fn().mockReturnValue(qb);
       qb.orderBy = jest.fn().mockReturnValue(qb);
       qb.addOrderBy = jest.fn().mockReturnValue(qb);
+      qb.offset = jest.fn().mockImplementation((value: number) => {
+        offsetVal = value;
+        return qb;
+      });
+      qb.limit = jest.fn().mockImplementation((value: number) => {
+        limitVal = value;
+        return qb;
+      });
+      qb.from = jest.fn().mockImplementation((target: unknown) => {
+        if (typeof target === 'function') {
+          (target as (inner: unknown) => void)(qb);
+        }
+        return qb;
+      });
+      qb.setParameters = jest.fn().mockReturnValue(qb);
       qb.skip = jest.fn().mockReturnValue(qb);
       qb.take = jest.fn().mockReturnValue(qb);
       qb.clone = jest.fn().mockReturnValue(qb);
       qb.getCount = jest.fn().mockResolvedValue(seed.catalogTotal ?? seed.items.length);
       qb.getMany = jest.fn().mockResolvedValue(seed.catalogPage ?? []);
+      qb.getRawOne = jest.fn().mockImplementation(async () => {
+        if (selects.includes('total')) {
+          const positives = seed.aggregates.filter(
+            (row) => Number(row.sumOnHand) - Number(row.sumReserved) > 0,
+          );
+          return { total: String(positives.length) };
+        }
+        return null;
+      });
       qb.getRawMany = jest.fn().mockImplementation(async () => {
         if (selects.includes('itemName')) {
-          return seed.aggregates;
+          return seed.aggregates
+            .filter((row) => Number(row.sumOnHand) - Number(row.sumReserved) > 0)
+            .sort((a, b) => {
+              const totalA = Number(a.sumOnHand) - Number(a.sumReserved);
+              const totalB = Number(b.sumOnHand) - Number(b.sumReserved);
+              if (totalB !== totalA) {
+                return totalB - totalA;
+              }
+              if (a.itemName !== b.itemName) {
+                return a.itemName < b.itemName ? -1 : 1;
+              }
+              if (a.itemId !== b.itemId) {
+                return a.itemId < b.itemId ? -1 : 1;
+              }
+              return 0;
+            })
+            .slice(offsetVal, offsetVal + limitVal);
         }
         if (selects.includes('lotId')) {
           return seed.lotRows;
@@ -201,11 +247,12 @@ function buildManager(seed: PickingSeed) {
         }
         return [];
       });
+      createdQbs.push(qb);
       return qb;
     }),
   };
 
-  return { manager, whereCalls, joinCalls, findWheres };
+  return { manager, whereCalls, joinCalls, findWheres, createdQbs };
 }
 
 describe('StockIssuePickingService', () => {
@@ -221,7 +268,7 @@ describe('StockIssuePickingService', () => {
   });
 
   function createServiceWithSeed(seed: PickingSeed) {
-    const { manager, whereCalls, joinCalls, findWheres } = buildManager(seed);
+    const { manager, whereCalls, joinCalls, findWheres, createdQbs } = buildManager(seed);
     iwanaDb.runInTenantSchema.mockImplementation(
       async (_ds: unknown, _schema: string, cb: (qr: { manager: unknown }) => unknown) =>
         cb({ manager }),
@@ -231,6 +278,7 @@ describe('StockIssuePickingService', () => {
       whereCalls,
       joinCalls,
       findWheres,
+      createdQbs,
     };
   }
 
@@ -368,6 +416,36 @@ describe('StockIssuePickingService', () => {
     expect(first.data[0]?.totalAvailable).toBe('8.00');
     expect(second.data).toHaveLength(1);
     expect(second.data[0]?.itemId).toBe(ITEM_SERIALIZED);
+  });
+
+  it('S2.1 · B2: with-stock filtra con HAVING y pagina en SQL (total + ventana)', async () => {
+    const { service, createdQbs } = createServiceWithSeed(buildSeed());
+
+    const result = await service.listPickableItems({
+      sourceLocationId: LOCATION_ID,
+      page: 1,
+      limit: 1,
+    });
+
+    // El filtro disponible > 0 viaja en el HAVING, no en TS.
+    const havingCalls = createdQbs.flatMap((qb) =>
+      (qb['having'] as jest.Mock).mock.calls.map((call) => String(call[0])),
+    );
+    expect(havingCalls.some((sql) => sql.includes('quantity_on_hand') && sql.includes('> 0'))).toBe(
+      true,
+    );
+    // La ventana de la página viaja en OFFSET/LIMIT con orden por disponible.
+    const pageQb = createdQbs.find((qb) =>
+      (qb['offset'] as jest.Mock).mock.calls.some((call) => call[0] === 0),
+    );
+    expect(pageQb).toBeDefined();
+    expect((pageQb?.['limit'] as jest.Mock).mock.calls).toContainEqual([1]);
+    expect((pageQb?.['orderBy'] as jest.Mock).mock.calls).toContainEqual([
+      'totalAvailable',
+      'DESC',
+    ]);
+    // El total cuenta en SQL los grupos que pasan el HAVING (sin el ítem en cero).
+    expect(result.meta.total).toBe(2);
   });
 
   it('scope=catalog devuelve el catálogo con totalAvailable 0 cuando no hay saldo', async () => {

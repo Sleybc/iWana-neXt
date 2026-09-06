@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { StockIssueStatus, StockIssueType, StockBalanceCondition, UserRole } from '@iwana/shared';
 import { StockIssueService } from '../services/stock-issue.service';
@@ -11,7 +11,11 @@ import {
   StockLocation,
 } from '@iwana/db';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { StockBalanceService } from '../services/stock-balance.service';
+import {
+  StockBalanceService,
+  buildReservationAvailabilityKey,
+} from '../services/stock-balance.service';
+import { SerializedGroupValidator } from '../services/serialized-group.validator';
 
 jest.mock('@iwana/db', () => ({
   InventoryItem: class InventoryItem {},
@@ -54,6 +58,7 @@ const actor: JwtPayload = {
 function createStockBalanceServiceMock(
   overrides?: Partial<{
     getAvailabilityWithManager: jest.Mock;
+    getAvailabilitiesWithManager: jest.Mock;
     applyDeltaWithManager: jest.Mock;
   }>,
 ): StockBalanceService {
@@ -63,6 +68,28 @@ function createStockBalanceServiceMock(
       reserved: 0,
       available: 100,
     }),
+    // S2.1 · B2: el servicio agrega reservas por tupla y resuelve el
+    // disponible con UNA consulta batch; el mock indexa por la misma clave.
+    getAvailabilitiesWithManager: jest
+      .fn()
+      .mockImplementation(
+        async (
+          _manager: unknown,
+          _tenantId: string,
+          _locationId: string,
+          keys: Array<{ itemId: string; lotId: string | null; condition: StockBalanceCondition }>,
+        ) => {
+          const availability = new Map();
+          for (const key of keys) {
+            availability.set(buildReservationAvailabilityKey(key), {
+              onHand: 100,
+              reserved: 0,
+              available: 100,
+            });
+          }
+          return availability;
+        },
+      ),
     applyDeltaWithManager: jest.fn().mockResolvedValue({}),
     ...overrides,
   } as unknown as StockBalanceService;
@@ -72,16 +99,28 @@ function createService(
   ledger: unknown = {},
   balanceService: StockBalanceService = createStockBalanceServiceMock(),
 ) {
+  return createServiceWithPublisher(ledger, balanceService).service;
+}
+
+function createServiceWithPublisher(
+  ledger: unknown = {},
+  balanceService: StockBalanceService = createStockBalanceServiceMock(),
+) {
   const domainEventPublisher = {
     captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
     publishAfterCommittedMovement: jest.fn(),
+    emitIssueCreated: jest.fn(),
+    emitIssueUpdated: jest.fn(),
+    emitIssueCancelled: jest.fn(),
   };
-  return new StockIssueService(
+  const service = new StockIssueService(
     {} as DataSource,
     ledger as never,
     balanceService,
     domainEventPublisher as never,
+    new SerializedGroupValidator(),
   );
+  return { service, domainEventPublisher };
 }
 
 describe('StockIssueService', () => {
@@ -156,6 +195,272 @@ describe('StockIssueService', () => {
         }),
       ]),
     );
+  });
+
+  describe('S2.1 · B2/B3 (reserva agregada, eventos CUD, autoría)', () => {
+    const SOURCE_ID = '11111111-1111-4111-8111-111111111111';
+    const DEST_ID = '22222222-2222-4222-8222-222222222222';
+    const ITEM_ID = '33333333-3333-4333-8333-333333333333';
+
+    function mirrorQb() {
+      return {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    function baseManager(overrides: Record<string, unknown> = {}) {
+      const manager = {
+        transaction: jest
+          .fn()
+          .mockImplementation(async (work: (m: unknown) => unknown) => work(manager)),
+        save: jest.fn().mockImplementation(async (entity: { name?: string }, payload: unknown) => {
+          if (entity?.name === 'StockIssue') {
+            return { id: 'issue-001', ...(payload as Record<string, unknown>) };
+          }
+          if (Array.isArray(payload)) {
+            return payload.map((row, index) => ({
+              id: `row-${index}`,
+              ...(row as Record<string, unknown>),
+            }));
+          }
+          return { id: 'row-0', ...(payload as Record<string, unknown>) };
+        }),
+        find: jest.fn().mockResolvedValue([]),
+        findOne: jest
+          .fn()
+          .mockImplementation(
+            async (entity: { name?: string }, options?: { where?: { id?: string } }) => {
+              if (entity?.name === 'StockLocation') {
+                return {
+                  id: options?.where?.id,
+                  tenantId: 'tenant-001',
+                  type: options?.where?.id === DEST_ID ? 'MOBILE_TECHNICIAN' : 'MAIN_WAREHOUSE',
+                };
+              }
+              return null;
+            },
+          ),
+        create: jest.fn((_entity: unknown, payload: unknown) => payload),
+        delete: jest.fn().mockResolvedValue({ affected: 0 }),
+        createQueryBuilder: jest.fn().mockReturnValue(mirrorQb()),
+        ...overrides,
+      };
+      (runInTenantSchema as jest.Mock).mockImplementation(
+        async (_ds, _schema, work: (qr: unknown) => unknown) => work({ manager }),
+      );
+      return manager;
+    }
+
+    function createInput(
+      lines: Array<{
+        itemId: string;
+        requestedQty: number;
+        condition: StockBalanceCondition;
+        lotId?: string;
+      }>,
+    ) {
+      return {
+        type: StockIssueType.TECHNICIAN_CUSTODY,
+        sourceLocationId: SOURCE_ID,
+        destinationLocationId: DEST_ID,
+        lines,
+      };
+    }
+
+    it('CA-S2.1-BE03: dos líneas con la misma tupla reservan con 1 applyDelta sumado', async () => {
+      baseManager();
+      const balanceService = createStockBalanceServiceMock();
+      const service = createService({}, balanceService);
+
+      await service.create(
+        createInput([
+          { itemId: ITEM_ID, requestedQty: 2, condition: StockBalanceCondition.NEW },
+          { itemId: ITEM_ID, requestedQty: 3, condition: StockBalanceCondition.NEW },
+        ]),
+        actor,
+      );
+
+      expect(balanceService.applyDeltaWithManager).toHaveBeenCalledTimes(1);
+      expect(balanceService.applyDeltaWithManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ reservedDelta: 5, delta: 0, lotId: null }),
+      );
+    });
+
+    it('tuplas distintas (lote) aplican 1 applyDelta por clave', async () => {
+      baseManager();
+      const balanceService = createStockBalanceServiceMock();
+      const service = createService({}, balanceService);
+
+      await service.create(
+        createInput([
+          {
+            itemId: ITEM_ID,
+            requestedQty: 2,
+            lotId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            condition: StockBalanceCondition.NEW,
+          },
+          { itemId: ITEM_ID, requestedQty: 3, condition: StockBalanceCondition.NEW },
+        ]),
+        actor,
+      );
+
+      expect(balanceService.applyDeltaWithManager).toHaveBeenCalledTimes(2);
+    });
+
+    it('no fabrica createdByUserId con actor.sub (la autoría viaja en el evento)', async () => {
+      const manager = baseManager();
+      const { service, domainEventPublisher } = createServiceWithPublisher();
+
+      const created = await service.create(
+        createInput([{ itemId: ITEM_ID, requestedQty: 1, condition: StockBalanceCondition.NEW }]),
+        actor,
+      );
+
+      const issueCreate = (manager.create as jest.Mock).mock.calls.find(
+        (call: unknown[]) => (call[0] as { name?: string })?.name === 'StockIssue',
+      );
+      expect(issueCreate?.[1]).not.toHaveProperty('createdByUserId');
+      expect(created.createdByUserId).toBeUndefined();
+      expect(domainEventPublisher.emitIssueCreated).toHaveBeenCalledWith({
+        tenantId: 'tenant-001',
+        issueId: 'issue-001',
+        actorUserId: 'support-001',
+      });
+    });
+
+    it('update emite ISSUE_UPDATED post-commit sin fabricar autoría', async () => {
+      const issue = {
+        id: 'issue-001',
+        tenantId: 'tenant-001',
+        type: StockIssueType.TECHNICIAN_CUSTODY,
+        status: StockIssueStatus.REQUESTED,
+        sourceLocationId: SOURCE_ID,
+        destinationLocationId: DEST_ID,
+        createdByUserId: null,
+      };
+      baseManager({
+        findOne: jest
+          .fn()
+          .mockImplementation(
+            async (entity: { name?: string }, options?: { where?: { id?: string } }) => {
+              if (entity?.name === 'StockIssue') {
+                return { ...issue };
+              }
+              if (entity?.name === 'StockLocation') {
+                return {
+                  id: options?.where?.id,
+                  tenantId: 'tenant-001',
+                  type: options?.where?.id === DEST_ID ? 'MOBILE_TECHNICIAN' : 'MAIN_WAREHOUSE',
+                };
+              }
+              return null;
+            },
+          ),
+        save: jest.fn().mockImplementation(async (_entity: unknown, payload: unknown) => payload),
+      });
+      const { service, domainEventPublisher } = createServiceWithPublisher();
+
+      const updated = await service.update('issue-001', { destinationRefId: 'PUERTA-3' }, actor);
+
+      expect(updated.createdByUserId).toBeNull();
+      expect(domainEventPublisher.emitIssueUpdated).toHaveBeenCalledWith({
+        tenantId: 'tenant-001',
+        issueId: 'issue-001',
+        actorUserId: 'support-001',
+      });
+    });
+
+    it('cancel emite ISSUE_CANCELLED post-commit', async () => {
+      baseManager({
+        findOne: jest.fn().mockResolvedValue({
+          id: 'issue-001',
+          tenantId: 'tenant-001',
+          type: StockIssueType.TECHNICIAN_CUSTODY,
+          status: StockIssueStatus.REQUESTED,
+          sourceLocationId: SOURCE_ID,
+        }),
+        save: jest.fn().mockImplementation(async (_entity: unknown, payload: unknown) => payload),
+      });
+      const { service, domainEventPublisher } = createServiceWithPublisher();
+
+      await service.cancel('issue-001', actor);
+
+      expect(domainEventPublisher.emitIssueCancelled).toHaveBeenCalledWith({
+        tenantId: 'tenant-001',
+        issueId: 'issue-001',
+        actorUserId: 'support-001',
+      });
+    });
+
+    it('dispatch captura el snapshot previo con las líneas de la transacción', async () => {
+      baseManager({
+        find: jest.fn().mockImplementation(async (entity: { name?: string }) => {
+          if (entity?.name === 'StockIssueLine') {
+            return [
+              {
+                id: 'line-001',
+                tenantId: 'tenant-001',
+                issueId: 'issue-001',
+                itemId: ITEM_ID,
+                requestedQty: '2.00',
+                dispatchedQty: null,
+                lotId: null,
+                serializedAssetId: null,
+                condition: StockBalanceCondition.NEW,
+              },
+            ];
+          }
+          return [];
+        }),
+        findOne: jest
+          .fn()
+          .mockImplementation(
+            async (entity: { name?: string }, options?: { where?: { id?: string } }) => {
+              if (entity?.name === 'StockIssue') {
+                return {
+                  id: 'issue-001',
+                  tenantId: 'tenant-001',
+                  type: StockIssueType.TECHNICIAN_CUSTODY,
+                  status: StockIssueStatus.APPROVED,
+                  sourceLocationId: SOURCE_ID,
+                  destinationLocationId: DEST_ID,
+                  stockMovementId: null,
+                };
+              }
+              if (entity?.name === 'StockLocation') {
+                return {
+                  id: options?.where?.id,
+                  tenantId: 'tenant-001',
+                  type: options?.where?.id === DEST_ID ? 'MOBILE_TECHNICIAN' : 'MAIN_WAREHOUSE',
+                };
+              }
+              return null;
+            },
+          ),
+      });
+      const ledger = {
+        recordStockIssueTransferWithManager: jest
+          .fn()
+          .mockResolvedValue({ movement: { id: 'mov-001' }, lines: [], created: true }),
+      };
+      const { service, domainEventPublisher } = createServiceWithPublisher(ledger);
+
+      await service.dispatch('issue-001', { handoffMethod: 'ACTA', handoffAttachments: [] }, actor);
+
+      expect(domainEventPublisher.captureItemSnapshots).toHaveBeenCalledWith(
+        expect.anything(),
+        'tenant-001',
+        [ITEM_ID],
+      );
+      expect(domainEventPublisher.publishAfterCommittedMovement).toHaveBeenCalledWith(
+        expect.objectContaining({ beforeByItem: expect.any(Map) }),
+      );
+    });
   });
 
   it('rejects issue without lines', async () => {
@@ -402,6 +707,9 @@ describe('StockIssueService', () => {
       sourceLocationId: '11111111-1111-4111-8111-111111111111',
       destinationLocationId: '22222222-2222-4222-8222-222222222222',
       stockMovementId: 'movement-001',
+      handoffMethod: 'acta',
+      handoffNotes: null,
+      handoffAttachments: [],
     };
     const existingLines = [
       {
@@ -450,6 +758,38 @@ describe('StockIssueService', () => {
     expect(ledger.recordStockIssueTransferWithManager).not.toHaveBeenCalled();
     expect(ledger.recordStockIssueSaleWithManager).not.toHaveBeenCalled();
     expect(ledger.recordStockIssueInternalConsumptionWithManager).not.toHaveBeenCalled();
+  });
+
+  it('replay del dispatch con distinto handoff responde 409 (S2.1 · B3)', async () => {
+    const existingIssue = {
+      id: 'issue-901',
+      tenantId: 'tenant-001',
+      type: StockIssueType.TECHNICIAN_CUSTODY,
+      status: StockIssueStatus.DISPATCHED,
+      sourceLocationId: '11111111-1111-4111-8111-111111111111',
+      destinationLocationId: '22222222-2222-4222-8222-222222222222',
+      stockMovementId: 'movement-002',
+      handoffMethod: 'acta',
+      handoffNotes: null,
+      handoffAttachments: [],
+    };
+
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(existingIssue),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = createService();
+    const error = await service
+      .dispatch('issue-901', { handoffMethod: 'OTRO', handoffAttachments: [] }, actor)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
   });
 
   it('rejects create when source is not MAIN_WAREHOUSE', async () => {
@@ -984,11 +1324,28 @@ describe('StockIssueService', () => {
 
   it('rechaza crear salida por encima del disponible', async () => {
     const balanceService = createStockBalanceServiceMock({
-      getAvailabilityWithManager: jest.fn().mockResolvedValue({
-        onHand: 5,
-        reserved: 4,
-        available: 1,
-      }),
+      getAvailabilitiesWithManager: jest.fn().mockImplementation(
+        async (
+          _manager: unknown,
+          _tenantId: string,
+          _locationId: string,
+          keys: Array<{
+            itemId: string;
+            lotId: string | null;
+            condition: StockBalanceCondition;
+          }>,
+        ) => {
+          const availability = new Map();
+          for (const key of keys) {
+            availability.set(buildReservationAvailabilityKey(key), {
+              onHand: 5,
+              reserved: 4,
+              available: 1,
+            });
+          }
+          return availability;
+        },
+      ),
     });
 
     const manager = {
@@ -1066,9 +1423,28 @@ describe('StockIssueService', () => {
       },
     ];
     const balanceService = createStockBalanceServiceMock({
-      getAvailabilityWithManager: jest
-        .fn()
-        .mockResolvedValueOnce({ onHand: 5, reserved: 0, available: 5 }),
+      getAvailabilitiesWithManager: jest.fn().mockImplementation(
+        async (
+          _manager: unknown,
+          _tenantId: string,
+          _locationId: string,
+          keys: Array<{
+            itemId: string;
+            lotId: string | null;
+            condition: StockBalanceCondition;
+          }>,
+        ) => {
+          const availability = new Map();
+          for (const key of keys) {
+            availability.set(buildReservationAvailabilityKey(key), {
+              onHand: 5,
+              reserved: 0,
+              available: 5,
+            });
+          }
+          return availability;
+        },
+      ),
     });
     const stockLedgerServiceMock = {
       recordStockIssueTransferWithManager: jest.fn(),

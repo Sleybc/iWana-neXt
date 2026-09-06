@@ -23,6 +23,9 @@ import { StockIssueStatus } from '@iwana/shared';
  * cabecera no debe liberar seriales comprometidos en silencio.
  */
 @Index('idx_stock_issue_line_serials_line', ['lineId', 'createdAt'])
+// S2.1 · B1: lectura por salida (`loadIssueSerials`) y espejo por salida
+// (`syncSerialMirrorStatus`) — paridad con el DDL de la migración 126.
+@Index('idx_stock_issue_line_serials_issue', ['tenantId', 'issueId'])
 @Entity({ name: 'stock_issue_line_serials' })
 export class StockIssueLineSerial {
   @PrimaryGeneratedColumn('uuid')

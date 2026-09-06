@@ -16,6 +16,7 @@ import {
   InventoryItemStatus,
   InventoryCategoryStatus,
   InventoryTrackingMode,
+  SerializedAssetStatus,
   buildCompositeSku,
   type ListResponse,
 } from '@iwana/shared';
@@ -42,6 +43,7 @@ import {
 } from '../events/inventory.events';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { InventoryCategoryService } from './inventory-category.service';
+import { SERIAL_COMMIT_TERMINAL_STATUSES } from './stock-issue-serial.constants';
 import {
   assertExclusivePageCursor,
   buildCursorMeta,
@@ -107,6 +109,19 @@ function buildBarcodeConflictMessage(barcode: string, owner: InventoryItem): str
  */
 const TRACKING_MODE_CHANGE_BLOCKED_MESSAGE =
   'Este producto tiene saldo en bodega o activos registrados, así que no permite cambiar su Control de material. Regulariza con salidas o ajustes y vuelve a intentarlo.';
+
+/**
+ * Estados finales del activo (S2.1 · B3): un activo vendido, consumido, dado
+ * de baja o perdido ya no condiciona el Control de material del producto. Los
+ * demás estados (incluidos custodia, tránsito, reparación o instalado en
+ * comodato) siguen bloqueando el cambio.
+ */
+const SERIAL_ASSET_TERMINAL_STATUSES: SerializedAssetStatus[] = [
+  SerializedAssetStatus.SOLD,
+  SerializedAssetStatus.INTERNAL_CONSUMED,
+  SerializedAssetStatus.WRITTEN_OFF,
+  SerializedAssetStatus.LOST,
+];
 
 export interface InventoryItemResponse {
   id: string;
@@ -969,6 +984,12 @@ export class InventoryItemService {
           validated.reorderPoint !== undefined
             ? validated.reorderPoint
             : Number(existing.reorderPoint),
+        // S2.1 · B3: la pareja barcode/barcodeType participa en la visión
+        // fusionada; sin ella la regla F4 (uno sin el otro se rechaza) nunca
+        // dispararía en edición aunque el update la deje inconsistente.
+        barcode: validated.barcode !== undefined ? validated.barcode : existing.barcode,
+        barcodeType:
+          validated.barcodeType !== undefined ? validated.barcodeType : existing.barcodeType,
       };
 
       const validation = CreateInventoryItemSchema.safeParse({
@@ -983,12 +1004,15 @@ export class InventoryItemService {
         purchaseUnitOfMeasure: mergedForValidation.purchaseUnitOfMeasure,
         purchaseToBaseUomFactor: mergedForValidation.purchaseToBaseUomFactor,
         reorderPoint: mergedForValidation.reorderPoint,
+        barcode: mergedForValidation.barcode,
+        barcodeType: mergedForValidation.barcodeType,
       });
 
       if (!validation.success) {
-        throw new BadRequestException(
-          validation.error.issues[0]?.message ?? 'Datos de articulo invalidos.',
-        );
+        // S2.1 · B3: se agregan TODOS los mensajes (antes solo el primero):
+        // un update con cruce inválido + pareja barcode rota debe contar ambas.
+        const message = validation.error.issues.map((issue) => issue.message).join(' ');
+        throw new BadRequestException(message || 'Datos de articulo invalidos.');
       }
 
       const previousCategoryId = existing.categoryId;
@@ -1082,10 +1106,11 @@ export class InventoryItemService {
   }
 
   /**
-   * Fase S2 (CA-S2-03): bloquea el cambio de Control de material cuando el
-   * ítem tiene saldo (> 0) en `stock_balances` o filas en `serialized_assets`.
-   * Consulta parametrizada bajo `runInTenantSchema` — mismo patrón de flags
-   * que `assertItemCanBeDeleted`.
+   * Fase S2 (CA-S2-03), S2.1 · B3: bloquea el cambio de Control de material
+   * cuando el ítem tiene saldo (> 0) en `stock_balances`, reserva comprometida
+   * (> 0), activos NO terminales en `serialized_assets` o salidas abiertas que
+   * lo referencian. Consulta parametrizada bajo `runInTenantSchema` — mismo
+   * patrón de flags que `assertItemCanBeDeleted`.
    */
   private async assertTrackingModeChangeAllowed(
     manager: EntityManager,
@@ -1102,12 +1127,26 @@ export class InventoryItemService {
           EXISTS(
             SELECT 1 FROM serialized_assets
             WHERE tenant_id = $1 AND inventory_item_id = $2
-          ) AS has_assets
+              AND current_status NOT IN ($3, $4, $5, $6)
+          ) AS has_assets,
+          EXISTS(
+            SELECT 1 FROM stock_balances
+            WHERE tenant_id = $1 AND item_id = $2 AND quantity_reserved > 0
+          ) AS has_reserved,
+          EXISTS(
+            SELECT 1 FROM stock_issue_lines l
+            JOIN stock_issues i ON i.id = l.issue_id AND i.tenant_id = l.tenant_id
+            WHERE l.tenant_id = $1 AND l.item_id = $2
+              AND i.status NOT IN ($7, $8, $9)
+          ) AS has_open_issues
       `,
-      [tenantId, itemId],
+      [tenantId, itemId, ...SERIAL_ASSET_TERMINAL_STATUSES, ...SERIAL_COMMIT_TERMINAL_STATUSES],
     )) as Array<Record<string, boolean>>;
 
-    if (flags && (flags.has_stock || flags.has_assets)) {
+    if (
+      flags &&
+      (flags.has_stock || flags.has_assets || flags.has_reserved || flags.has_open_issues)
+    ) {
       throw new BadRequestException(TRACKING_MODE_CHANGE_BLOCKED_MESSAGE);
     }
   }

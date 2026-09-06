@@ -11,13 +11,13 @@ import {
   runInTenantSchema,
 } from '@iwana/db';
 import {
-  SerializedAssetStatus,
   StockBalanceCondition,
   type ListResponse,
   type StockIssuePickableAvailability,
   type StockIssuePickableItem,
   type StockIssuePickableLot,
 } from '@iwana/shared';
+import { SERIAL_DISPATCHABLE_STATUSES } from './stock-issue-serial.constants';
 import {
   ListStockIssuePickableItemsQueryInput,
   ListStockIssuePickableItemsQuerySchema,
@@ -31,12 +31,6 @@ import {
 } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { computeAvailable, toNumeric, toQuantity } from './stock-balance.service';
-
-/** Estados de serial contados como disponibles para salida (D3: NEW y REFURBISHED despachables). */
-const PICKABLE_SERIAL_STATUSES: SerializedAssetStatus[] = [
-  SerializedAssetStatus.AVAILABLE,
-  SerializedAssetStatus.AVAILABLE_REFURBISHED,
-];
 
 /** Orden canónico de condiciones en `availability[]` (CA-S1-03). */
 const CONDITION_ORDER: StockBalanceCondition[] = [
@@ -119,9 +113,45 @@ export class StockIssuePickingService {
   }
 
   /**
+   * Filtro base del alcance `with-stock`: ítems con filas de saldo en la
+   * bodega, agrupados por ítem. El `HAVING` vive en el constructor para que
+   * el conteo del total y la página compartan el mismo conjunto filtrado.
+   */
+  private withStockGroups<T extends SelectQueryBuilder<StockBalance>>(
+    qb: T,
+    tenantId: string,
+    locationId: string,
+    searchText: string,
+  ): T {
+    qb.select('item.id', 'itemId')
+      .addSelect('item.name', 'itemName')
+      .innerJoin(
+        InventoryItem,
+        'item',
+        'item.id = balance.item_id AND item.tenant_id = balance.tenant_id',
+      )
+      .where('balance.tenant_id = :tenantId', { tenantId })
+      .andWhere('balance.location_id = :locationId', { locationId })
+      .groupBy('item.id')
+      .addGroupBy('item.name')
+      // S2.1 · B2: el filtro disponible > 0 se evalúa en SQL (no en TS): los
+      // ítems sin disponible nunca salen del motor. `ROUND(...,2)` replica el
+      // redondeo de `computeAvailable` para que el total y la página coincidan.
+      .having(
+        'ROUND(SUM(balance.quantity_on_hand::numeric) - SUM(balance.quantity_reserved::numeric), 2) > 0',
+      );
+
+    this.applyItemSearch(qb, searchText);
+    return qb;
+  }
+
+  /**
    * Alcance `with-stock`: solo ítems con disponible total > 0 en la bodega.
-   * Agrega con `SUM()` SQL por ítem y aplica `computeAvailable` en TS (la
-   * entidad guarda `numeric` como string).
+   * Total y página salen de SQL: el total cuenta los grupos que pasan el
+   * `HAVING` y la página trae solo su ventana (`OFFSET`/`LIMIT`) ordenada por
+   * disponible calculado. La entidad guarda `numeric` como string, así que el
+   * mapeo final sigue usando `computeAvailable` en TS (red de seguridad ante
+   * redondeo: el filtro `total > 0` se conserva).
    */
   private async listWithStockPage(
     manager: EntityManager,
@@ -131,25 +161,47 @@ export class StockIssuePickingService {
     page: number,
     limit: number,
   ): Promise<ListResponse<StockIssuePickableItem>> {
-    const aggregateQb = manager
-      .createQueryBuilder(StockBalance, 'balance')
-      .innerJoin(
-        InventoryItem,
-        'item',
-        'item.id = balance.item_id AND item.tenant_id = balance.tenant_id',
+    const totalRow = await manager
+      .createQueryBuilder()
+      .select('COUNT(*)', 'total')
+      .from(
+        (sub) =>
+          this.withStockGroups(
+            sub.select('item.id', 'groupItemId'),
+            tenantId,
+            locationId,
+            searchText,
+          ),
+        'with_stock_groups',
       )
-      .select('item.id', 'itemId')
-      .addSelect('item.name', 'itemName')
+      .getRawOne<{ total: string }>();
+    const total = Number.parseInt(totalRow?.total ?? '0', 10);
+
+    if (total === 0) {
+      return {
+        data: [],
+        meta: buildPageMeta({ total, page, limit, randomAccess: true, sortableFields: [] }),
+      };
+    }
+
+    const rawGroups = await this.withStockGroups(
+      manager.createQueryBuilder(StockBalance, 'balance'),
+      tenantId,
+      locationId,
+      searchText,
+    )
       .addSelect('SUM(balance.quantity_on_hand::numeric)', 'sumOnHand')
       .addSelect('SUM(balance.quantity_reserved::numeric)', 'sumReserved')
-      .where('balance.tenant_id = :tenantId', { tenantId })
-      .andWhere('balance.location_id = :locationId', { locationId })
-      .groupBy('item.id')
-      .addGroupBy('item.name');
-
-    this.applyItemSearch(aggregateQb, searchText);
-
-    const rawGroups = await aggregateQb.getRawMany<ItemAggregateRaw>();
+      .addSelect(
+        'SUM(balance.quantity_on_hand::numeric) - SUM(balance.quantity_reserved::numeric)',
+        'totalAvailable',
+      )
+      .orderBy('totalAvailable', 'DESC')
+      .addOrderBy('item.name', 'ASC')
+      .addOrderBy('item.id', 'ASC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<ItemAggregateRaw>();
 
     const ranked = rawGroups
       .map((row) => {
@@ -161,22 +213,9 @@ export class StockIssuePickingService {
           total: computeAvailable(onHand, reserved),
         };
       })
-      .filter((group) => group.total > 0)
-      .sort((a, b) => {
-        if (b.total !== a.total) {
-          return b.total - a.total;
-        }
-        if (a.itemName !== b.itemName) {
-          return a.itemName < b.itemName ? -1 : 1;
-        }
-        if (a.itemId !== b.itemId) {
-          return a.itemId < b.itemId ? -1 : 1;
-        }
-        return 0;
-      });
+      .filter((group) => group.total > 0);
 
-    const total = ranked.length;
-    const pageIds = ranked.slice((page - 1) * limit, page * limit).map((group) => group.itemId);
+    const pageIds = ranked.map((group) => group.itemId);
 
     if (pageIds.length === 0) {
       return {
@@ -308,7 +347,7 @@ export class StockIssuePickingService {
         .andWhere('asset.inventory_item_id IN (:...pickingItemIds)', { pickingItemIds: itemIds })
         .andWhere('asset.current_location_id = :locationId', { locationId })
         .andWhere('asset.current_status IN (:...pickingSerialStatuses)', {
-          pickingSerialStatuses: PICKABLE_SERIAL_STATUSES,
+          pickingSerialStatuses: SERIAL_DISPATCHABLE_STATUSES,
         })
         .groupBy('asset.inventory_item_id')
         .getRawMany<SerialCountRaw>(),

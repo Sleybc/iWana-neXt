@@ -76,19 +76,22 @@ describeWithDb(
 
       // Padres mínimos para las FKs de la 126 y el enum de la 057 (la 126 lo
       // reutiliza, no lo crea). Solo las columnas que tocan la 126: PKs para las
-      // FKs y las columnas del SELECT del backfill.
+      // FKs, tenant_id para el pre-vuelo 0b y las columnas del SELECT del
+      // backfill (incluidas created_at/updated_at, que la hija hereda).
       await runner.query(
         `CREATE TYPE stock_issue_status AS ENUM ('DRAFT','REQUESTED','APPROVED','PICKING','READY_TO_DISPATCH','DISPATCHED','RECEIVED','CANCELLED')`,
       );
       await runner.query(
-        `CREATE TABLE stock_issues (id UUID PRIMARY KEY, status stock_issue_status NOT NULL DEFAULT 'DRAFT')`,
+        `CREATE TABLE stock_issues (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, status stock_issue_status NOT NULL DEFAULT 'DRAFT')`,
       );
       await runner.query(
-        `CREATE TABLE stock_issue_lines (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, issue_id UUID NOT NULL REFERENCES stock_issues (id), serialized_asset_id UUID)`,
+        `CREATE TABLE stock_issue_lines (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, issue_id UUID NOT NULL REFERENCES stock_issues (id), serialized_asset_id UUID, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
       );
       await new CreateStockIssueLineSerials1260000000000().up(runner);
 
-      await runner.query(`INSERT INTO stock_issues (id, status) VALUES ('${ISSUE_ID}', 'DRAFT')`);
+      await runner.query(
+        `INSERT INTO stock_issues (id, tenant_id, status) VALUES ('${ISSUE_ID}', '${TENANT_ID}', 'DRAFT')`,
+      );
       await runner.query(
         `INSERT INTO stock_issue_lines (id, tenant_id, issue_id) VALUES ('${LINE_ID}', '${TENANT_ID}', '${ISSUE_ID}')`,
       );
@@ -146,6 +149,35 @@ describeWithDb(
 
       expect(rows).toHaveLength(1);
       expect(rows[0]?.serializedAssetId).toBe(ASSET_ID);
+    });
+
+    it('el re-run de up hace backfill del singular nuevo sin duplicar (S2.1 · B1)', async () => {
+      const lineCreatedAt = new Date('2026-01-02T03:04:05.000Z');
+      const secondIssueId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+      const secondLineId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+      await runner.query(
+        `INSERT INTO stock_issues (id, tenant_id, status) VALUES ('${secondIssueId}', '${TENANT_ID}', 'REQUESTED')`,
+      );
+      await runner.query(
+        `INSERT INTO stock_issue_lines (id, tenant_id, issue_id, serialized_asset_id, created_at, updated_at) VALUES ('${secondLineId}', '${TENANT_ID}', '${secondIssueId}', '${ASSET_ID}', '${lineCreatedAt.toISOString()}', '${lineCreatedAt.toISOString()}')`,
+      );
+
+      // Pre-vuelo en verde (padre existe, mismo tenant, sin colisiones) y el
+      // backfill idempotente inserta solo la línea nueva.
+      await new CreateStockIssueLineSerials1260000000000().up(runner);
+
+      const repository = runner.manager.getRepository(StockIssueLineSerial);
+      const rows = await repository.find({ where: { tenantId: TENANT_ID } });
+      expect(rows).toHaveLength(2);
+      const backfilled = rows.find((row) => row.lineId === secondLineId);
+      expect(backfilled?.issueStatus).toBe(StockIssueStatus.REQUESTED);
+      // La hija hereda las marcas de la línea, no NOW().
+      expect(backfilled?.createdAt?.getTime()).toBe(lineCreatedAt.getTime());
+
+      // Tercer run: nada nuevo que copiar, cero duplicados, post-vuelo en verde.
+      await new CreateStockIssueLineSerials1260000000000().up(runner);
+      const rerun = await repository.find({ where: { tenantId: TENANT_ID } });
+      expect(rerun).toHaveLength(2);
     });
   },
 );

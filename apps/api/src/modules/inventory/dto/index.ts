@@ -1345,6 +1345,31 @@ const StockIssueLineSchema = z
         path: ['serializedAssetId'],
       });
     }
+    // S2.1 · B2 (CA-S2.1-BE04): con grupo de seriales la cantidad se rechaza
+    // en el borde si es fraccionaria o distinta del tamaño del grupo. Sin
+    // grupo no hay nada que exigir (línea no serializada). El servicio
+    // revalida con SKU (defensa en profundidad).
+    const group =
+      line.serializedAssetIds ?? (line.serializedAssetId ? [line.serializedAssetId] : []);
+    if (group.length > 0) {
+      const quantity =
+        typeof line.requestedQty === 'number' ? line.requestedQty : Number(line.requestedQty);
+      if (!Number.isInteger(quantity)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'La cantidad solicitada de una línea con seriales debe ser un número entero.',
+          path: ['requestedQty'],
+        });
+      } else if (quantity !== group.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            `La cantidad solicitada debe coincidir con el número de seriales ` +
+            `seleccionados (${group.length} seriales).`,
+          path: ['requestedQty'],
+        });
+      }
+    }
   })
   .transform((line) =>
     line.serializedAssetIds === undefined && line.serializedAssetId
@@ -1613,13 +1638,46 @@ export class UpdateStockIssueDto extends CreateStockIssueDto {
   status?: StockIssueStatus;
 }
 
+/**
+ * Adjunto de entrega del despacho (MOD12 S2.1 · B3): schema cerrado — antes
+ * `z.unknown()` aceptaba cualquier forma y la columna `jsonb` la guardaba sin
+ * validar. Solo metadatos (nombre + ubicación opcional); el binario vive en
+ * el storage del módulo, no en este payload.
+ */
+const HandoffAttachmentSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    url: z.string().trim().max(500).optional(),
+    mimeType: z.string().trim().max(100).optional(),
+    sizeBytes: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 export const DispatchStockIssueSchema = z.object({
   handoffMethod: z.string().trim().min(1).max(32),
   handoffNotes: optionalTrimmedString(1000),
-  handoffAttachments: z.array(z.unknown()).optional().default([]),
+  handoffAttachments: z.array(HandoffAttachmentSchema).optional().default([]),
 });
 
 export type DispatchStockIssueInput = z.infer<typeof DispatchStockIssueSchema>;
+
+export class HandoffAttachmentDto {
+  @ApiProperty({ description: 'Nombre del adjunto de entrega.' })
+  @Allow()
+  name!: string;
+
+  @ApiPropertyOptional({ description: 'Ubicación del adjunto (ruta o URL).' })
+  @Allow()
+  url?: string;
+
+  @ApiPropertyOptional({ description: 'Tipo de contenido del adjunto.' })
+  @Allow()
+  mimeType?: string;
+
+  @ApiPropertyOptional({ description: 'Tamaño del adjunto en bytes.' })
+  @Allow()
+  sizeBytes?: number;
+}
 
 export class DispatchStockIssueDto {
   @ApiProperty()
@@ -1630,9 +1688,9 @@ export class DispatchStockIssueDto {
   @Allow()
   handoffNotes?: string | null;
 
-  @ApiPropertyOptional({ type: [Object], default: [] })
+  @ApiPropertyOptional({ type: [HandoffAttachmentDto], default: [] })
   @Allow()
-  handoffAttachments?: unknown[];
+  handoffAttachments?: HandoffAttachmentDto[];
 }
 
 export const CancelStockIssueSchema = z.object({

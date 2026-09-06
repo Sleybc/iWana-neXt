@@ -4,6 +4,7 @@ import { StockBalance } from '@iwana/db';
 import { StockBalanceCondition } from '@iwana/shared';
 import {
   StockBalanceService,
+  buildReservationAvailabilityKey,
   buildStockBalanceLockKey,
   computeAvailable,
   formatInsufficientAvailableMessage,
@@ -198,6 +199,115 @@ describe('StockBalanceService', () => {
         available: 4,
       });
       expect(formatInsufficientAvailableMessage(12, 8)).toContain('comprometidos');
+    });
+  });
+
+  describe('getAvailabilitiesWithManager (S2.1 · B2)', () => {
+    function buildBatchManager(
+      rows: Array<{
+        itemId: string;
+        lotId: string | null;
+        condition: StockBalanceCondition;
+        sumOnHand: string;
+        sumReserved: string;
+      }>,
+    ) {
+      const calls: Array<{ sql: string; params: Record<string, unknown> }> = [];
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockImplementation((sql: string, params: Record<string, unknown>) => {
+          calls.push({ sql, params });
+          return qb;
+        }),
+        andWhere: jest.fn().mockImplementation((sql: string, params: Record<string, unknown>) => {
+          calls.push({ sql, params });
+          return qb;
+        }),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(rows),
+      };
+      const manager = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      } as unknown as EntityManager;
+      return { manager, qb, calls };
+    }
+
+    it('resuelve UNA consulta agrupada para varias tuplas y ceros para las ausentes', async () => {
+      const { manager, qb, calls } = buildBatchManager([
+        {
+          itemId: 'item-1',
+          lotId: null,
+          condition: StockBalanceCondition.NEW,
+          sumOnHand: '10.00',
+          sumReserved: '3.00',
+        },
+      ]);
+      const service = new StockBalanceService({} as DataSource);
+
+      const result = await service.getAvailabilitiesWithManager(manager, 'tenant-001', 'loc-001', [
+        { itemId: 'item-1', lotId: null, condition: StockBalanceCondition.NEW },
+        { itemId: 'item-2', lotId: 'lot-9', condition: StockBalanceCondition.REFURBISHED },
+      ]);
+
+      expect(qb.getRawMany).toHaveBeenCalledTimes(1);
+      expect(
+        calls.some(
+          (call) =>
+            call.sql.includes('balance.item_id IN') &&
+            (call.params['availabilityItemIds'] as string[]).sort().join() ===
+              ['item-1', 'item-2'].sort().join(),
+        ),
+      ).toBe(true);
+      expect(
+        result.get(
+          buildReservationAvailabilityKey({
+            itemId: 'item-1',
+            lotId: null,
+            condition: StockBalanceCondition.NEW,
+          }),
+        ),
+      ).toEqual({ onHand: 10, reserved: 3, available: 7 });
+      // Tupla sin filas: ceros, no undefined.
+      expect(
+        result.get(
+          buildReservationAvailabilityKey({
+            itemId: 'item-2',
+            lotId: 'lot-9',
+            condition: StockBalanceCondition.REFURBISHED,
+          }),
+        ),
+      ).toEqual({ onHand: 0, reserved: 0, available: 0 });
+    });
+
+    it('sin claves no consulta y devuelve mapa vacío', async () => {
+      const { manager, qb } = buildBatchManager([]);
+      const service = new StockBalanceService({} as DataSource);
+
+      const result = await service.getAvailabilitiesWithManager(
+        manager,
+        'tenant-001',
+        'loc-001',
+        [],
+      );
+
+      expect(qb.getRawMany).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
+    });
+
+    it('la clave distingue lote y condición', () => {
+      const base = { itemId: 'i', lotId: null, condition: StockBalanceCondition.NEW };
+
+      expect(buildReservationAvailabilityKey(base)).toBe(
+        buildReservationAvailabilityKey({ ...base, lotId: null }),
+      );
+      expect(buildReservationAvailabilityKey(base)).not.toBe(
+        buildReservationAvailabilityKey({ ...base, lotId: 'lot-1' }),
+      );
+      expect(buildReservationAvailabilityKey(base)).not.toBe(
+        buildReservationAvailabilityKey({ ...base, condition: StockBalanceCondition.DAMAGED }),
+      );
     });
   });
 });

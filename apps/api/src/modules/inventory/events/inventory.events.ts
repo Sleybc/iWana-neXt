@@ -9,6 +9,10 @@ export const INVENTORY_EVENTS = {
   CATEGORY_UPDATED: 'inventory.category-updated',
   CATEGORY_STATUS_CHANGED: 'inventory.category-status-changed',
   ITEM_CATEGORY_CHANGED: 'inventory.item-category-changed',
+  /** Salida creada/actualizada/cancelada post-commit (MOD12 S2.1 · B2, auditoría CUD). */
+  ISSUE_CREATED: 'inventory.issue-created',
+  ISSUE_UPDATED: 'inventory.issue-updated',
+  ISSUE_CANCELLED: 'inventory.issue-cancelled',
   /** Stock bajo al cruzar umbral (RF-INV-22 / H4). */
   STOCK_LOW: 'inventory.stock-low',
   /** Venta registrada post-commit (RF-INV-14 / H4). */
@@ -91,4 +95,11 @@ export interface InventoryItemCategoryChangedEvent {
   categoryId: string;
   actorUserId: string;
   operation: 'item-category-changed';
+}
+
+export interface StockIssueLifecycleEvent {
+  tenantId: string;
+  issueId: string;
+  actorUserId: string;
+  operation: 'create' | 'update' | 'cancel';
 }

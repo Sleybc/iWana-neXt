@@ -1,8 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
-  InventoryTrackingMode,
-  SerializedAssetStatus,
   StockBalanceCondition,
   StockIssueStatus,
   StockIssueType,
@@ -10,7 +13,6 @@ import {
 } from '@iwana/shared';
 import { DataSource, EntityManager, In } from 'typeorm';
 import {
-  InventoryItem,
   SerializedAsset,
   StockIssue,
   StockIssueLine,
@@ -31,8 +33,14 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
-import { InventoryDomainEventPublisher } from './inventory-domain-event-publisher.service';
+import {
+  InventoryDomainEventPublisher,
+  ItemStockThresholdSnapshot,
+} from './inventory-domain-event-publisher.service';
 import { StockLedgerService } from './stock-ledger.service';
+import { SerializedGroupValidator } from './serialized-group.validator';
+import { normalizeSerialGroup } from './serial-group.utils';
+import { buildReservationAvailabilityKey } from './stock-balance.service';
 import {
   assertExclusivePageCursor,
   buildCursorMeta,
@@ -58,38 +66,26 @@ export type StockIssueDetailLine = StockIssueLine & {
 
 export type StockIssueDetail = StockIssue & { lines: StockIssueDetailLine[] };
 
-/** Modos de seguimiento que exigen activo serializado concreto en la salida (D2). */
-const SERIALIZED_TRACKING_MODES: ReadonlySet<InventoryTrackingMode> = new Set([
-  InventoryTrackingMode.SERIALIZED,
-  InventoryTrackingMode.FIXED_ASSET,
-]);
-
-/** Estados del activo que permiten su salida (coherente con el conteo de picking B1). */
-const SERIAL_DISPATCHABLE_STATUSES: SerializedAssetStatus[] = [
-  SerializedAssetStatus.AVAILABLE,
-  SerializedAssetStatus.AVAILABLE_REFURBISHED,
-];
-
-/** Estados terminales: una salida en ellos ya no compromete seriales (coherente con update/dispatch). */
-const SERIAL_COMMIT_TERMINAL_STATUSES: StockIssueStatus[] = [
-  StockIssueStatus.CANCELLED,
-  StockIssueStatus.DISPATCHED,
-  StockIssueStatus.RECEIVED,
-];
-
-interface SerializedGroupLineInput {
-  itemId: string;
-  requestedQty: string | number;
-  serializedAssetIds: string[];
-}
-
 interface DispatchLedgerLine {
   itemId: string;
   quantity: number;
   lotId: string | null;
   serializedAssetId: string | null;
-  serialNumber: null;
+  /** Número de serie legible para el kardex (S2.1 · B2: se puebla desde el activo). */
+  serialNumber: string | null;
   condition: StockBalanceCondition;
+}
+
+/**
+ * Ajuste de reserva por tupla (ítem × lote × condición): +N reserva,
+ * −N libera. `adjustReservations` los agrega por clave y aplica 1
+ * `applyDelta` por clave (CA-S2.1-BE03).
+ */
+interface ReservationAdjustment {
+  itemId: string;
+  lotId: string | null;
+  condition: StockBalanceCondition;
+  delta: number;
 }
 
 @Injectable()
@@ -99,6 +95,7 @@ export class StockIssueService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly stockBalanceService: StockBalanceService,
     private readonly domainEventPublisher: InventoryDomainEventPublisher,
+    private readonly serialGroupsValidator: SerializedGroupValidator,
   ) {}
 
   private toNumeric(value: string | number | null | undefined): number {
@@ -172,19 +169,6 @@ export class StockIssueService {
     }
   }
 
-  private async getAvailability(
-    manager: EntityManager,
-    tenantId: string,
-    input: {
-      itemId: string;
-      locationId: string;
-      lotId?: string | null;
-      condition?: StockBalanceCondition;
-    },
-  ) {
-    return this.stockBalanceService.getAvailabilityWithManager(manager, tenantId, input);
-  }
-
   /**
    * MOD12 S2 · ajuste G1: la aritmética de cantidades la decide el tamaño del
    * grupo de seriales. El singular de transición (`serializedAssetId`) queda
@@ -199,199 +183,146 @@ export class StockIssueService {
     return serializedAssetCount > 0 ? serializedAssetCount : requestedQty;
   }
 
-  private async reserveLineQuantity(
-    manager: EntityManager,
-    tenantId: string,
-    sourceLocationId: string,
+  private toReservationAdjustment(
     line: {
       itemId: string;
       lotId?: string | null | undefined;
       condition?: StockBalanceCondition | null | undefined;
     },
     quantity: number,
-  ): Promise<void> {
-    const condition = line.condition ?? StockBalanceCondition.NEW;
-    const availability = await this.getAvailability(manager, tenantId, {
+    sign: 1 | -1,
+  ): ReservationAdjustment {
+    return {
       itemId: line.itemId,
-      locationId: sourceLocationId,
-      lotId: line.lotId ?? null,
-      condition,
-    });
-
-    if (availability.available < quantity) {
-      throw new BadRequestException(
-        formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
-      );
-    }
-
-    await this.stockBalanceService.applyDeltaWithManager(manager, {
-      tenantId,
-      itemId: line.itemId,
-      locationId: sourceLocationId,
-      lotId: line.lotId ?? null,
-      condition,
-      delta: 0,
-      reservedDelta: quantity,
-    });
-  }
-
-  private async releaseLineQuantity(
-    manager: EntityManager,
-    tenantId: string,
-    sourceLocationId: string,
-    line: {
-      itemId: string;
-      lotId?: string | null | undefined;
-      condition?: StockBalanceCondition | null | undefined;
-    },
-    quantity: number,
-  ): Promise<void> {
-    await this.stockBalanceService.applyDeltaWithManager(manager, {
-      tenantId,
-      itemId: line.itemId,
-      locationId: sourceLocationId,
       lotId: line.lotId ?? null,
       condition: line.condition ?? StockBalanceCondition.NEW,
-      delta: 0,
-      reservedDelta: -quantity,
-    });
+      delta: sign * quantity,
+    };
   }
 
   /**
-   * Integridad del grupo de seriales en la salida (MOD12 S2 · B3, extiende B3 de S1).
+   * Ajuste único de reservas (MOD12 S2.1 · B2, CA-S2.1-BE03): agrega los
+   * deltas por tupla (ítem, lote, condición), resuelve el disponible de todas
+   * las claves con UNA sola consulta agrupada y aplica 1 `applyDelta` por
+   * clave. Solo los deltas positivos verifican disponible; liberar nunca
+   * bloquea. Sin reserva parcial: si una clave no alcanza, no se aplica nada.
+   */
+  private async adjustReservations(
+    manager: EntityManager,
+    tenantId: string,
+    locationId: string,
+    adjustments: ReservationAdjustment[],
+  ): Promise<void> {
+    const byKey = new Map<string, ReservationAdjustment>();
+    for (const adjustment of adjustments) {
+      const key = buildReservationAvailabilityKey(adjustment);
+      const aggregated = byKey.get(key);
+      if (aggregated) {
+        aggregated.delta += adjustment.delta;
+      } else {
+        byKey.set(key, { ...adjustment });
+      }
+    }
+    const aggregated = [...byKey.values()].filter((entry) => entry.delta !== 0);
+    if (aggregated.length === 0) {
+      return;
+    }
+
+    const availabilityByKey = await this.stockBalanceService.getAvailabilitiesWithManager(
+      manager,
+      tenantId,
+      locationId,
+      aggregated,
+    );
+
+    for (const entry of aggregated) {
+      if (entry.delta > 0) {
+        const availability = availabilityByKey.get(buildReservationAvailabilityKey(entry)) ?? {
+          onHand: 0,
+          reserved: 0,
+          available: 0,
+        };
+        if (availability.available < entry.delta) {
+          throw new BadRequestException(
+            formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
+          );
+        }
+      }
+    }
+
+    for (const entry of aggregated) {
+      await this.stockBalanceService.applyDeltaWithManager(manager, {
+        tenantId,
+        itemId: entry.itemId,
+        locationId,
+        lotId: entry.lotId,
+        condition: entry.condition,
+        delta: 0,
+        reservedDelta: entry.delta,
+      });
+    }
+  }
+
+  /**
+   * Verificación de disponible sin mover reserva (despacho pre-ledger):
+   * el ledger descuenta existencia en la misma transacción, así que aquí
+   * solo se comprueba que cada tupla alcanza, con la misma consulta única.
+   */
+  private async verifyReservationAvailability(
+    manager: EntityManager,
+    tenantId: string,
+    locationId: string,
+    requirements: ReservationAdjustment[],
+  ): Promise<void> {
+    if (requirements.length === 0) {
+      return;
+    }
+
+    const availabilityByKey = await this.stockBalanceService.getAvailabilitiesWithManager(
+      manager,
+      tenantId,
+      locationId,
+      requirements,
+    );
+
+    for (const requirement of requirements) {
+      const availability = availabilityByKey.get(buildReservationAvailabilityKey(requirement)) ?? {
+        onHand: 0,
+        reserved: 0,
+        available: 0,
+      };
+      if (availability.available < requirement.delta) {
+        throw new BadRequestException(
+          formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
+        );
+      }
+    }
+  }
+
+  /**
+   * Integridad del grupo de seriales en la salida (MOD12 S2 · B3, S2.1 · B2).
    *
-   * Capa de servicio, no zod: necesita ítems y activos del tenant. Carga ítems
-   * y activos en batch (`find` + `In`) dentro de la transacción del llamador,
-   * nunca un query por serial. Las reglas por serial (pertenencia al ítem,
-   * bodega origen, estado disponible) aplican uno a uno; los repetidos se
-   * controlan dentro de la línea (ya en el schema) y entre líneas de la misma
-   * salida. `excludeIssueId` evita que el `update` colisione con su propia
-   * salida al reemplazar líneas o al cambiar de bodega.
+   * Delegación fina al validador inyectable por pasos testeables; el servicio
+   * conserva la firma para no remover los puntos de llamada de create/update.
    */
   private async assertSerializedGroupsIntegrity(
     manager: EntityManager,
     tenantId: string,
-    lines: SerializedGroupLineInput[],
+    lines: Array<{
+      itemId: string;
+      requestedQty: string | number;
+      serializedAssetIds: string[];
+    }>,
     sourceLocationId: string,
     excludeIssueId?: string,
   ): Promise<void> {
-    const itemIds = [...new Set(lines.map((line) => line.itemId))];
-    if (itemIds.length === 0) {
-      return;
-    }
-
-    const foundItems =
-      (await manager.find(InventoryItem, {
-        where: { tenantId, id: In(itemIds) },
-      })) ?? [];
-    const itemById = new Map(foundItems.map((item) => [item.id, item]));
-
-    // Ítems inexistentes se omiten: la existencia del artículo no es parte de
-    // esta validación y los specs históricos crean líneas sin maestro.
-    const serializedLines = lines.filter((line) => {
-      const trackingMode = itemById.get(line.itemId)?.trackingMode;
-      return trackingMode !== undefined && SERIALIZED_TRACKING_MODES.has(trackingMode);
-    });
-    if (serializedLines.length === 0) {
-      return;
-    }
-
-    // Regla B3.1: grupo no vacío y cantidad coherente con el número de seriales.
-    for (const line of serializedLines) {
-      const sku = itemById.get(line.itemId)?.sku ?? line.itemId;
-      if (line.serializedAssetIds.length === 0) {
-        throw new BadRequestException(
-          `El ítem ${sku} exige seleccionar los activos serializados que salen.`,
-        );
-      }
-      if (Number(line.requestedQty) !== line.serializedAssetIds.length) {
-        throw new BadRequestException(
-          `La cantidad solicitada del ítem ${sku} debe coincidir con el número de ` +
-            `seriales seleccionados (${line.serializedAssetIds.length} seriales, ` +
-            `cantidad ${Number(line.requestedQty)}).`,
-        );
-      }
-    }
-
-    const allAssetIds = serializedLines.flatMap((line) => line.serializedAssetIds);
-    const foundAssets =
-      (await manager.find(SerializedAsset, {
-        where: { tenantId, id: In([...new Set(allAssetIds)]) },
-      })) ?? [];
-    const assetById = new Map(foundAssets.map((asset) => [asset.id, asset]));
-    const assetLabel = (assetId: string): string => {
-      const serial = assetById.get(assetId)?.serialNumber?.trim();
-      return serial ? `El activo ${serial}` : 'El activo serializado seleccionado';
-    };
-
-    // Un serial no puede repetirse entre líneas de la misma salida
-    // (el schema ya rechaza los repetidos dentro de una línea).
-    const seenAssetIds = new Set<string>();
-    let repeatedAssetId: string | null = null;
-    for (const assetId of allAssetIds) {
-      if (seenAssetIds.has(assetId)) {
-        repeatedAssetId = assetId;
-        break;
-      }
-      seenAssetIds.add(assetId);
-    }
-    if (repeatedAssetId) {
-      throw new BadRequestException(`${assetLabel(repeatedAssetId)} está repetido en la salida.`);
-    }
-
-    // Regla B3.2: cada serial del grupo mantiene las validaciones de S1.
-    for (const line of serializedLines) {
-      for (const assetId of line.serializedAssetIds) {
-        const asset = assetById.get(assetId);
-        if (!asset) {
-          throw new BadRequestException(
-            'El activo serializado seleccionado no existe en la bodega de origen.',
-          );
-        }
-        if (asset.inventoryItemId !== line.itemId) {
-          throw new BadRequestException(
-            `${assetLabel(assetId)} pertenece a otro artículo y no puede salir en esta línea.`,
-          );
-        }
-        if (asset.currentLocationId !== sourceLocationId) {
-          throw new BadRequestException(
-            `${assetLabel(assetId)} no está en la bodega de origen de la salida.`,
-          );
-        }
-        if (!SERIAL_DISPATCHABLE_STATUSES.includes(asset.currentStatus)) {
-          throw new BadRequestException(
-            `${assetLabel(assetId)} no está disponible para salida (estado ${asset.currentStatus}).`,
-          );
-        }
-      }
-    }
-
-    // Regla B3.3: sin seriales comprometidos por otra salida no terminal.
-    // Pre-chequeo amable sobre la tabla hija (autoritativa desde el backfill
-    // de la migración 126); el 23505 del índice único parcial es el respaldo
-    // de carrera y se traduce a 400 en español en `insertIssueLineSerials`.
-    const committedQb = manager
-      .createQueryBuilder(StockIssueLineSerial, 'serial')
-      .select('serial.serialized_asset_id', 'serializedAssetId')
-      .where('serial.tenant_id = :tenantId', { tenantId })
-      .andWhere('serial.serialized_asset_id IN (:...serialAssetIds)', {
-        serialAssetIds: [...seenAssetIds],
-      })
-      .andWhere('serial.issue_status NOT IN (:...serialTerminalStatuses)', {
-        serialTerminalStatuses: SERIAL_COMMIT_TERMINAL_STATUSES,
-      });
-    if (excludeIssueId) {
-      committedQb.andWhere('serial.issue_id != :excludeSerialIssueId', {
-        excludeSerialIssueId: excludeIssueId,
-      });
-    }
-    const committed = await committedQb.getRawMany<{ serializedAssetId: string }>();
-    const firstCommitted = committed[0];
-    if (firstCommitted) {
-      throw new BadRequestException(
-        `${assetLabel(firstCommitted.serializedAssetId)} ya está comprometido en otra salida.`,
-      );
-    }
+    await this.serialGroupsValidator.assertGroupsIntegrity(
+      manager,
+      tenantId,
+      lines,
+      sourceLocationId,
+      excludeIssueId,
+    );
   }
 
   /** Grupo de seriales de la salida: una consulta para todas sus líneas. */
@@ -416,6 +347,33 @@ export class StockIssueService {
       groupsByLine.set(row.lineId, group);
     }
     return groupsByLine;
+  }
+
+  /**
+   * Números de serie legibles por id de activo (una sola consulta batch,
+   * acotada al tenant). Alimenta el `serialNumber` del kardex en el despacho.
+   */
+  private async loadSerialNumbersById(
+    manager: EntityManager,
+    tenantId: string,
+    assetIds: string[],
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    const uniqueIds = [...new Set(assetIds)];
+    if (uniqueIds.length === 0) {
+      return result;
+    }
+
+    const assets =
+      (await manager.find(SerializedAsset, {
+        where: { tenantId, id: In(uniqueIds) },
+      })) ?? [];
+    for (const asset of assets) {
+      if (asset.serialNumber) {
+        result.set(asset.id, asset.serialNumber);
+      }
+    }
+    return result;
   }
 
   private isUniqueViolationError(error: unknown): boolean {
@@ -515,14 +473,16 @@ export class StockIssueService {
   }
 
   /**
-   * MOD12 S2 · B4 (ajuste G1): el grupo de seriales explota en N inputs de
-   * kardex (uno por serial, cantidad 1) y una línea por cada salida no
-   * serializada. Preserva la granularidad del kardex y del `serializedAssetId`
-   * en los eventos de dominio, sin tocar el ledger.
+   * MOD12 S2 · B4 (ajuste G1), S2.1 · B2: el grupo de seriales explota en N
+   * inputs de kardex (uno por serial, cantidad 1, con su número de serie
+   * legible) y una línea por cada salida no serializada. Preserva la
+   * granularidad del kardex y del `serializedAssetId` en los eventos de
+   * dominio, sin tocar el ledger.
    */
   private buildDispatchLedgerLines(
     issueLines: StockIssueLine[],
     serialsByLineId: Map<string, string[]>,
+    serialNumberById: Map<string, string>,
   ): DispatchLedgerLine[] {
     const ledgerLines: DispatchLedgerLine[] = [];
     for (const line of issueLines) {
@@ -535,7 +495,7 @@ export class StockIssueService {
             quantity: 1,
             lotId: line.lotId ?? null,
             serializedAssetId,
-            serialNumber: null,
+            serialNumber: serialNumberById.get(serializedAssetId) ?? null,
             condition,
           });
         }
@@ -667,7 +627,7 @@ export class StockIssueService {
     );
     this.assertDestinationCompatibility(validated.type, validated.destinationLocationId ?? null);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+    const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.transaction(async (manager) => {
         const sourceLocation = await this.resolveLocation(
           manager,
@@ -689,11 +649,13 @@ export class StockIssueService {
           validated.lines.map((line) => ({
             itemId: line.itemId,
             requestedQty: line.requestedQty,
-            serializedAssetIds: line.serializedAssetIds ?? [],
+            serializedAssetIds: normalizeSerialGroup(line) ?? [],
           })),
           validated.sourceLocationId,
         );
 
+        // S2.1 · B2: la autoría viaja en el evento post-commit, no fabricada
+        // en la columna (actor.sub no es el id de usuario del tenant).
         const issue = await manager.save(
           StockIssue,
           manager.create(StockIssue, {
@@ -707,7 +669,6 @@ export class StockIssueService {
             commercialRefId: validated.commercialRefId ?? null,
             reason: validated.reason ?? null,
             costCenter: validated.costCenter ?? null,
-            createdByUserId: actor.sub,
           }),
         );
 
@@ -747,21 +708,32 @@ export class StockIssueService {
         });
         await this.insertIssueLineSerials(manager, serialRows);
 
-        for (const line of validated.lines) {
-          // MOD12 S2 · ajuste G1: la reserva la decide el tamaño del grupo;
-          // una línea sin seriales reserva su cantidad solicitada.
-          await this.reserveLineQuantity(
-            manager,
-            tenantId,
-            validated.sourceLocationId,
-            line,
-            this.resolveLineQuantity(line, line.serializedAssetIds?.length ?? 0),
-          );
-        }
+        // S2.1 · B2: reserva única agregada por (ítem, lote, condición).
+        // MOD12 S2 · ajuste G1: la reserva la decide el tamaño del grupo;
+        // una línea sin seriales reserva su cantidad solicitada.
+        await this.adjustReservations(
+          manager,
+          tenantId,
+          validated.sourceLocationId,
+          validated.lines.map((line) =>
+            this.toReservationAdjustment(
+              line,
+              this.resolveLineQuantity(line, line.serializedAssetIds?.length ?? 0),
+              1,
+            ),
+          ),
+        );
 
         return { ...issue, lines: this.withSerialAssets(lines, new Map()) };
       }),
     );
+
+    this.domainEventPublisher.emitIssueCreated({
+      tenantId,
+      issueId: created.id,
+      actorUserId: actor.sub,
+    });
+    return created;
   }
 
   async list(query: ListStockIssuesQueryInput): Promise<ListResponse<StockIssue>> {
@@ -897,22 +869,12 @@ export class StockIssueService {
     const validated = DispatchStockIssueSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const previewLines = await qr.manager.find(StockIssueLine, {
-        where: { issueId: id, tenantId },
-        order: { createdAt: 'ASC' },
-      });
-      const itemIds = [...new Set(previewLines.map((line) => line.itemId))];
-      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
-        qr.manager,
-        tenantId,
-        itemIds,
-      );
-
       type DispatchTxResult = {
         detail: StockIssueDetail & { stockMovementId: string };
         movementResult: Awaited<
           ReturnType<StockLedgerService['recordStockIssueSaleWithManager']>
         > | null;
+        beforeByItem: Map<string, ItemStockThresholdSnapshot>;
       };
 
       const dispatched = await qr.manager.transaction(
@@ -924,6 +886,20 @@ export class StockIssueService {
           }
 
           if (issue.stockMovementId) {
+            // S2.1 · B3: el replay idempotente exige el MISMO handoff; otro
+            // handoff es 409 (reintento con datos de entrega distintos).
+            const storedAttachments = issue.handoffAttachments ?? [];
+            const incomingAttachments = validated.handoffAttachments ?? [];
+            const sameHandoff =
+              (issue.handoffMethod ?? null) === validated.handoffMethod &&
+              (issue.handoffNotes ?? null) === (validated.handoffNotes ?? null) &&
+              JSON.stringify(storedAttachments) === JSON.stringify(incomingAttachments);
+            if (!sameHandoff) {
+              throw new ConflictException(
+                'La salida ya fue despachada con otros datos de entrega; el reintento debe repetir el handoff original.',
+              );
+            }
+
             const existingLines = await manager.find(StockIssueLine, {
               where: { issueId: id, tenantId },
               order: { createdAt: 'ASC' },
@@ -937,6 +913,7 @@ export class StockIssueService {
                 stockMovementId: issue.stockMovementId,
               },
               movementResult: null,
+              beforeByItem: new Map<string, ItemStockThresholdSnapshot>(),
             };
           }
 
@@ -957,6 +934,14 @@ export class StockIssueService {
             throw new BadRequestException('La salida debe incluir al menos una línea.');
           }
 
+          // S2.1 · B3: el snapshot previo vive DENTRO de la transacción para
+          // que el cruce de umbrales compare contra el estado real al despachar.
+          const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+            manager,
+            tenantId,
+            [...new Set(issueLines.map((line) => line.itemId))],
+          );
+
           // MOD12 S2: grupo de seriales de la salida (una consulta para todas las líneas).
           const issueSerials = await this.loadIssueSerials(manager, tenantId, id);
           const serialsByLineId = this.groupSerialAssetIdsByLine(issueSerials);
@@ -974,6 +959,8 @@ export class StockIssueService {
           this.assertDistinctLocations(sourceLocation, destinationLocation);
           this.assertDestinationTypeForDispatch(issue.type, destinationLocation);
 
+          // S2.1 · B2: liberación única de la reserva propia (no bloquea su
+          // despacho, D-F3B-5/6) antes del ledger.
           // MOD12 S2 · B4: la verificación "cantidad 1 por serial" vive en el
           // elemento; a nivel de línea la coherencia es cantidad = tamaño del grupo.
           for (const line of issueLines) {
@@ -985,31 +972,45 @@ export class StockIssueService {
                 'La cantidad solicitada no coincide con el número de seriales de la línea.',
               );
             }
-
-            const quantity = this.resolveLineQuantity(line, groupSize);
-
-            // Libera la reserva propia antes del ledger para que no bloquee su despacho (D-F3B-5/6).
-            await this.releaseLineQuantity(manager, tenantId, sourceLocation.id, line, quantity);
           }
 
-          for (const line of issueLines) {
-            const groupSize = serialsByLineId.get(line.id)?.length ?? 0;
-            const quantity = this.resolveLineQuantity(line, groupSize);
-            const availability = await this.getAvailability(manager, tenantId, {
-              itemId: line.itemId,
-              locationId: sourceLocation.id,
-              lotId: line.lotId ?? null,
-              condition: line.condition ?? StockBalanceCondition.NEW,
-            });
+          await this.adjustReservations(
+            manager,
+            tenantId,
+            sourceLocation.id,
+            issueLines.map((line) =>
+              this.toReservationAdjustment(
+                line,
+                this.resolveLineQuantity(line, serialsByLineId.get(line.id)?.length ?? 0),
+                -1,
+              ),
+            ),
+          );
 
-            if (availability.available < quantity) {
-              throw new BadRequestException(
-                formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
-              );
-            }
-          }
+          await this.verifyReservationAvailability(
+            manager,
+            tenantId,
+            sourceLocation.id,
+            issueLines.map((line) =>
+              this.toReservationAdjustment(
+                line,
+                this.resolveLineQuantity(line, serialsByLineId.get(line.id)?.length ?? 0),
+                1,
+              ),
+            ),
+          );
 
-          const ledgerLines = this.buildDispatchLedgerLines(issueLines, serialsByLineId);
+          // S2.1 · B2: el kardex lleva el número de serie legible por serial.
+          const serialNumberById = await this.loadSerialNumbersById(
+            manager,
+            tenantId,
+            [...serialsByLineId.values()].flat(),
+          );
+          const ledgerLines = this.buildDispatchLedgerLines(
+            issueLines,
+            serialsByLineId,
+            serialNumberById,
+          );
           const idempotencyKey = `stock-issue:${issue.id}`;
           const originRefId =
             issue.commercialRefId ??
@@ -1103,6 +1104,7 @@ export class StockIssueService {
               stockMovementId: savedIssue.stockMovementId!,
             },
             movementResult: movement,
+            beforeByItem,
           };
         },
       );
@@ -1111,12 +1113,12 @@ export class StockIssueService {
         const afterByItem = await this.domainEventPublisher.captureItemSnapshots(
           qr.manager,
           tenantId,
-          itemIds,
+          [...new Set(dispatched.detail.lines.map((line) => line.itemId))],
         );
         this.domainEventPublisher.publishAfterCommittedMovement({
           tenantId,
           actorUserId: actor.sub,
-          beforeByItem,
+          beforeByItem: dispatched.beforeByItem,
           afterByItem,
           movement: dispatched.movementResult.movement,
           lines: dispatched.movementResult.lines,
@@ -1136,7 +1138,7 @@ export class StockIssueService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = UpdateStockIssueSchema.parse(input);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.transaction(async (manager) => {
         const issue = await manager.findOne(StockIssue, { where: { id, tenantId } });
 
@@ -1219,21 +1221,26 @@ export class StockIssueService {
             validated.lines.map((line) => ({
               itemId: line.itemId,
               requestedQty: line.requestedQty,
-              serializedAssetIds: line.serializedAssetIds ?? [],
+              serializedAssetIds: normalizeSerialGroup(line) ?? [],
             })),
             saved.sourceLocationId,
             id,
           );
 
-          for (const line of previousLines) {
-            await this.releaseLineQuantity(
-              manager,
-              tenantId,
-              previousSourceLocationId,
-              line,
-              this.resolveLineQuantity(line, previousGroups.get(line.id)?.length ?? 0),
-            );
-          }
+          // S2.1 · B2: liberación única de la reserva vigente (tamaño real del
+          // grupo, no el singular de transición).
+          await this.adjustReservations(
+            manager,
+            tenantId,
+            previousSourceLocationId,
+            previousLines.map((line) =>
+              this.toReservationAdjustment(
+                line,
+                this.resolveLineQuantity(line, previousGroups.get(line.id)?.length ?? 0),
+                -1,
+              ),
+            ),
+          );
 
           // El delete de líneas arrastra las filas hijas por ON DELETE CASCADE:
           // el reemplazo que reusa seriales de la misma salida no auto-colisiona.
@@ -1274,16 +1281,20 @@ export class StockIssueService {
           });
           await this.insertIssueLineSerials(manager, serialRows);
 
-          for (const line of validated.lines) {
-            // MOD12 S2 · ajuste G1: la reserva la decide el tamaño del grupo.
-            await this.reserveLineQuantity(
-              manager,
-              tenantId,
-              saved.sourceLocationId,
-              line,
-              this.resolveLineQuantity(line, line.serializedAssetIds?.length ?? 0),
-            );
-          }
+          // S2.1 · B2: reserva única agregada por (ítem, lote, condición).
+          // MOD12 S2 · ajuste G1: la reserva la decide el tamaño del grupo.
+          await this.adjustReservations(
+            manager,
+            tenantId,
+            saved.sourceLocationId,
+            validated.lines.map((line) =>
+              this.toReservationAdjustment(
+                line,
+                this.resolveLineQuantity(line, line.serializedAssetIds?.length ?? 0),
+                1,
+              ),
+            ),
+          );
         } else if (
           validated.sourceLocationId &&
           validated.sourceLocationId !== previousSourceLocationId
@@ -1302,26 +1313,27 @@ export class StockIssueService {
             id,
           );
 
-          for (const line of previousLines) {
-            const quantity = this.resolveLineQuantity(
-              line,
-              previousGroups.get(line.id)?.length ?? 0,
-            );
-            await this.releaseLineQuantity(
-              manager,
-              tenantId,
-              previousSourceLocationId,
-              line,
-              quantity,
-            );
-            await this.reserveLineQuantity(
-              manager,
-              tenantId,
-              saved.sourceLocationId,
-              line,
-              quantity,
-            );
-          }
+          // S2.1 · B2: el cambio de bodega mueve la reserva vigente en dos
+          // ajustes únicos (libera en origen anterior, reserva en la nueva).
+          const movedQuantities = previousLines.map((line) =>
+            this.resolveLineQuantity(line, previousGroups.get(line.id)?.length ?? 0),
+          );
+          await this.adjustReservations(
+            manager,
+            tenantId,
+            previousSourceLocationId,
+            previousLines.map((line, index) =>
+              this.toReservationAdjustment(line, movedQuantities[index] ?? 0, -1),
+            ),
+          );
+          await this.adjustReservations(
+            manager,
+            tenantId,
+            saved.sourceLocationId,
+            previousLines.map((line, index) =>
+              this.toReservationAdjustment(line, movedQuantities[index] ?? 0, 1),
+            ),
+          );
         }
 
         const lines = await manager.find(StockIssueLine, {
@@ -1331,19 +1343,24 @@ export class StockIssueService {
         const currentSerials = await this.loadIssueSerials(manager, tenantId, id);
         const viewsByLine = await this.buildLineSerialViews(manager, tenantId, currentSerials);
 
-        return {
-          ...saved,
-          lines: this.withSerialAssets(lines, viewsByLine),
-          createdByUserId: saved.createdByUserId ?? actor.sub,
-        };
+        // S2.1 · B2: la autoría no se fabrica (sin `?? actor.sub`): viaja en
+        // el evento post-commit.
+        return { ...saved, lines: this.withSerialAssets(lines, viewsByLine) };
       }),
     );
+
+    this.domainEventPublisher.emitIssueUpdated({
+      tenantId,
+      issueId: updated.id,
+      actorUserId: actor.sub,
+    });
+    return updated;
   }
 
-  async cancel(id: string, _actor: JwtPayload): Promise<StockIssue> {
+  async cancel(id: string, actor: JwtPayload): Promise<StockIssue> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+    const cancelled = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.transaction(async (manager) => {
         const issue = await manager.findOne(StockIssue, { where: { id, tenantId } });
 
@@ -1364,18 +1381,22 @@ export class StockIssueService {
           order: { createdAt: 'ASC' },
         });
 
+        // S2.1 · B2: liberación única agregada por (ítem, lote, condición).
         // MOD12 S2 · ajuste G1: libera por el tamaño real del grupo de seriales.
         const issueSerials = await this.loadIssueSerials(manager, tenantId, id);
         const serialsByLineId = this.groupSerialAssetIdsByLine(issueSerials);
-        for (const line of lines) {
-          await this.releaseLineQuantity(
-            manager,
-            tenantId,
-            issue.sourceLocationId,
-            line,
-            this.resolveLineQuantity(line, serialsByLineId.get(line.id)?.length ?? 0),
-          );
-        }
+        await this.adjustReservations(
+          manager,
+          tenantId,
+          issue.sourceLocationId,
+          lines.map((line) =>
+            this.toReservationAdjustment(
+              line,
+              this.resolveLineQuantity(line, serialsByLineId.get(line.id)?.length ?? 0),
+              -1,
+            ),
+          ),
+        );
 
         issue.status = StockIssueStatus.CANCELLED;
         issue.closedAt = new Date();
@@ -1389,5 +1410,12 @@ export class StockIssueService {
         return savedIssue;
       }),
     );
+
+    this.domainEventPublisher.emitIssueCancelled({
+      tenantId,
+      issueId: cancelled.id,
+      actorUserId: actor.sub,
+    });
+    return cancelled;
   }
 }

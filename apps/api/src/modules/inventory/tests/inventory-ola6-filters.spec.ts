@@ -20,6 +20,7 @@ import {
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { StockIssueService } from '../services/stock-issue.service';
+import { SerializedGroupValidator } from '../services/serialized-group.validator';
 import { CycleCountService } from '../services/cycle-count.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
@@ -419,6 +420,7 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
           captureItemSnapshots: jest.fn(),
           publishAfterCommittedMovement: jest.fn(),
         } as never,
+        new SerializedGroupValidator(),
       );
 
       await service.list({

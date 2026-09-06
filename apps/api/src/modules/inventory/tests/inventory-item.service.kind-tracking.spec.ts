@@ -191,6 +191,13 @@ describe('InventoryItemService · coherencia del maestro y bloqueo con saldo (Fa
       expect(query).toHaveBeenCalledWith(expect.stringContaining('stock_balances'), [
         'tenant-001',
         'item-001',
+        'SOLD',
+        'INTERNAL_CONSUMED',
+        'WRITTEN_OFF',
+        'LOST',
+        'CANCELLED',
+        'DISPATCHED',
+        'RECEIVED',
       ]);
       expect(save).not.toHaveBeenCalled();
     });
@@ -219,6 +226,13 @@ describe('InventoryItemService · coherencia del maestro y bloqueo con saldo (Fa
       expect(query).toHaveBeenCalledWith(expect.stringContaining('serialized_assets'), [
         'tenant-001',
         'item-001',
+        'SOLD',
+        'INTERNAL_CONSUMED',
+        'WRITTEN_OFF',
+        'LOST',
+        'CANCELLED',
+        'DISPATCHED',
+        'RECEIVED',
       ]);
       expect(save).not.toHaveBeenCalled();
     });
@@ -264,6 +278,129 @@ describe('InventoryItemService · coherencia del maestro y bloqueo con saldo (Fa
 
       expect(query).not.toHaveBeenCalled();
       expect(save).toHaveBeenCalled();
+    });
+  });
+
+  describe('bloqueo ampliado S2.1 · B3 (reserva, salidas abiertas, terminales)', () => {
+    function runUpdateWithFlags(flags: Record<string, boolean>) {
+      const existing = serializedExisting();
+      const findOne = jest.fn().mockResolvedValueOnce(existing).mockResolvedValueOnce(CATEGORY);
+      const query = jest.fn().mockResolvedValue([flags]);
+      const save = jest
+        .fn()
+        .mockImplementation(async (_entity: unknown, payload: Record<string, unknown>) => payload);
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { findOne, query, save } } as never),
+      );
+      return { query, save };
+    }
+
+    const CLEAR_FLAGS = {
+      has_stock: false,
+      has_assets: false,
+      has_reserved: false,
+      has_open_issues: false,
+    };
+
+    it('rechaza con reserva comprometida aunque no haya saldo en mano', async () => {
+      const { save } = runUpdateWithFlags({ ...CLEAR_FLAGS, has_reserved: true });
+
+      await expect(
+        service.update(
+          'item-001',
+          { trackingMode: InventoryTrackingMode.CONSUMABLE } as Parameters<
+            InventoryItemService['update']
+          >[1],
+          actor,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con salidas abiertas que referencian el ítem', async () => {
+      const { save } = runUpdateWithFlags({ ...CLEAR_FLAGS, has_open_issues: true });
+
+      await expect(
+        service.update(
+          'item-001',
+          { trackingMode: InventoryTrackingMode.CONSUMABLE } as Parameters<
+            InventoryItemService['update']
+          >[1],
+          actor,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('la sonda filtra activos terminales (solo no terminales bloquean)', async () => {
+      const { query } = runUpdateWithFlags(CLEAR_FLAGS);
+
+      await expect(
+        service.update(
+          'item-001',
+          { trackingMode: InventoryTrackingMode.FIXED_ASSET } as Parameters<
+            InventoryItemService['update']
+          >[1],
+          actor,
+        ),
+      ).resolves.toBeDefined();
+
+      const sql = String((query as jest.Mock).mock.calls[0]?.[0] ?? '');
+      expect(sql).toContain('current_status NOT IN');
+    });
+  });
+
+  describe('pareja barcode en el merge y mensajes agregados (S2.1 · B3)', () => {
+    it('el merge incluye la pareja barcode: un legado inconsistente frena cualquier edición', async () => {
+      // Legado con código pero sin formato: el payload viene limpio, pero la
+      // visión fusionada queda inconsistente y F4 debe frenarla en el merge.
+      const existing = serializedExisting({ barcode: 'LEGADO-SIN-TIPO', barcodeType: null });
+      const findOne = jest.fn().mockResolvedValueOnce(existing).mockResolvedValueOnce(CATEGORY);
+      const query = jest.fn().mockResolvedValue(NO_STOCK_FLAGS);
+      const save = jest.fn();
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { findOne, query, save } } as never),
+      );
+
+      const error = await service
+        .update(
+          'item-001',
+          { name: 'Onu Tp Link renovada' } as Parameters<InventoryItemService['update']>[1],
+          actor,
+        )
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toContain('el formato va junto al código');
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('agrega todos los mensajes cuando el merge acumula fallas', async () => {
+      const existing = serializedExisting({ barcode: 'LEGADO-SIN-TIPO', barcodeType: null });
+      const findOne = jest.fn().mockResolvedValueOnce(existing).mockResolvedValueOnce(CATEGORY);
+      const query = jest.fn().mockResolvedValue(NO_STOCK_FLAGS);
+      const save = jest.fn();
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { findOne, query, save } } as never),
+      );
+
+      // Cruce inválido (SERIALIZED→CONSUMABLE) + pareja barcode rota heredada:
+      // el merge debe contar AMBAS fallas en un solo mensaje (antes, solo la primera).
+      const error = await service
+        .update(
+          'item-001',
+          {
+            trackingMode: InventoryTrackingMode.CONSUMABLE,
+          } as Parameters<InventoryItemService['update']>[1],
+          actor,
+        )
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      const message = (error as BadRequestException).message;
+      expect(message).toContain('Tipo de producto y Control de material no coinciden');
+      expect(message).toContain('el formato va junto al código');
+      expect(save).not.toHaveBeenCalled();
     });
   });
 });

@@ -62,6 +62,7 @@ import { PurchasingService } from './services/purchasing.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockIssuePickingService } from './services/stock-issue-picking.service';
+import { SerializedGroupValidator } from './services/serialized-group.validator';
 import { ExecutorCustodyService } from './services/executor-custody.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockMovementQueryService } from './services/stock-movement-query.service';
@@ -131,6 +132,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     StockBalanceService,
     SerializedAssetService,
     StockIssuePickingService,
+    SerializedGroupValidator,
     ExecutorCustodyService,
     PurchasingPolicyService,
     PurchasingQueryService,

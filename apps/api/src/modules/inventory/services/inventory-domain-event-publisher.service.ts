@@ -19,6 +19,7 @@ import {
 import {
   AssetSoldEvent,
   INVENTORY_EVENTS,
+  StockIssueLifecycleEvent,
   StockLowEvent,
   StockLowLevel,
 } from '../events/inventory.events';
@@ -204,6 +205,27 @@ export class InventoryDomainEventPublisher {
         lines: input.lines,
       });
     }
+  }
+
+  /**
+   * Auditoría CUD de salidas (MOD12 S2.1 · B2): el servicio llama a estos
+   * métodos DESPUÉS del commit de la transacción (emisión síncrona vía
+   * `EventEmitter2`, sin promesas flotantes). La autoría viaja en el payload
+   * (`actorUserId`); la columna `created_by_user_id` ya no se fabrica.
+   */
+  emitIssueCreated(input: Omit<StockIssueLifecycleEvent, 'operation'>): void {
+    const payload: StockIssueLifecycleEvent = { ...input, operation: 'create' };
+    this.eventEmitter.emit(INVENTORY_EVENTS.ISSUE_CREATED, payload);
+  }
+
+  emitIssueUpdated(input: Omit<StockIssueLifecycleEvent, 'operation'>): void {
+    const payload: StockIssueLifecycleEvent = { ...input, operation: 'update' };
+    this.eventEmitter.emit(INVENTORY_EVENTS.ISSUE_UPDATED, payload);
+  }
+
+  emitIssueCancelled(input: Omit<StockIssueLifecycleEvent, 'operation'>): void {
+    const payload: StockIssueLifecycleEvent = { ...input, operation: 'cancel' };
+    this.eventEmitter.emit(INVENTORY_EVENTS.ISSUE_CANCELLED, payload);
   }
 
   emitStockLowCrossings(input: {

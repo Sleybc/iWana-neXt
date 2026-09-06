@@ -11,7 +11,11 @@ import {
 import { StockIssueService } from '../services/stock-issue.service';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { StockBalanceService } from '../services/stock-balance.service';
+import {
+  StockBalanceService,
+  buildReservationAvailabilityKey,
+} from '../services/stock-balance.service';
+import { SerializedGroupValidator } from '../services/serialized-group.validator';
 
 jest.mock('@iwana/db', () => ({
   InventoryItem: class InventoryItem {},
@@ -162,19 +166,46 @@ function createService(
     getAvailabilityWithManager: jest
       .fn()
       .mockResolvedValue({ onHand: 10, reserved: 0, available: 10 }),
+    getAvailabilitiesWithManager: jest.fn().mockImplementation(
+      async (
+        _manager: unknown,
+        _tenantId: string,
+        _locationId: string,
+        keys: Array<{
+          itemId: string;
+          lotId: string | null;
+          condition: StockBalanceCondition;
+        }>,
+      ) => {
+        const availability = new Map();
+        for (const key of keys) {
+          availability.set(buildReservationAvailabilityKey(key), {
+            onHand: 10,
+            reserved: 0,
+            available: 10,
+          });
+        }
+        return availability;
+      },
+    ),
     applyDeltaWithManager: jest.fn().mockResolvedValue({}),
     ...balanceOverrides,
   } as unknown as StockBalanceService;
   const domainEventPublisher = {
     captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
     publishAfterCommittedMovement: jest.fn(),
+    emitIssueCreated: jest.fn(),
+    emitIssueUpdated: jest.fn(),
+    emitIssueCancelled: jest.fn(),
   };
-  return new StockIssueService(
+  const service = new StockIssueService(
     {} as DataSource,
     ledger as never,
     balanceService,
     domainEventPublisher as never,
+    new SerializedGroupValidator(),
   );
+  return service;
 }
 
 function buildLedgerMock() {
@@ -258,6 +289,12 @@ describe('StockIssueService grupo de seriales (MOD12 S2 · B2/B4/B5)', () => {
       expect(ledgerInput.lines).toHaveLength(3);
       expect(ledgerInput.lines.map((line) => line.serializedAssetId)).toEqual(group);
       expect(ledgerInput.lines.every((line) => line.quantity === 1)).toBe(true);
+      // S2.1 · B2: el kardex lleva el número de serie legible por serial.
+      expect(ledgerInput.lines.map((line) => line.serialNumber)).toEqual([
+        'SN-0001',
+        'SN-0002',
+        'SN-0003',
+      ]);
 
       // dispatchedQty de la línea = tamaño del grupo.
       const lineSave = (manager.save as jest.Mock).mock.calls.find(

@@ -11,7 +11,11 @@ import {
 import { StockIssueService } from '../services/stock-issue.service';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { StockBalanceService } from '../services/stock-balance.service';
+import {
+  StockBalanceService,
+  buildReservationAvailabilityKey,
+} from '../services/stock-balance.service';
+import { SerializedGroupValidator } from '../services/serialized-group.validator';
 
 jest.mock('@iwana/db', () => ({
   InventoryItem: class InventoryItem {},
@@ -160,18 +164,46 @@ function createService(balanceOverrides?: Partial<Record<string, jest.Mock>>) {
     getAvailabilityWithManager: jest
       .fn()
       .mockResolvedValue({ onHand: 10, reserved: 0, available: 10 }),
+    // S2.1 · B2: el servicio agrega reservas por tupla y resuelve el
+    // disponible con UNA consulta batch; el mock indexa por la misma clave.
+    getAvailabilitiesWithManager: jest.fn().mockImplementation(
+      async (
+        _manager: unknown,
+        _tenantId: string,
+        _locationId: string,
+        keys: Array<{
+          itemId: string;
+          lotId: string | null;
+          condition: StockBalanceCondition;
+        }>,
+      ) => {
+        const availability = new Map();
+        for (const key of keys) {
+          availability.set(buildReservationAvailabilityKey(key), {
+            onHand: 10,
+            reserved: 0,
+            available: 10,
+          });
+        }
+        return availability;
+      },
+    ),
     applyDeltaWithManager: jest.fn().mockResolvedValue({}),
     ...balanceOverrides,
   } as unknown as StockBalanceService;
   const domainEventPublisher = {
     captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
     publishAfterCommittedMovement: jest.fn(),
+    emitIssueCreated: jest.fn(),
+    emitIssueUpdated: jest.fn(),
+    emitIssueCancelled: jest.fn(),
   };
   return new StockIssueService(
     {} as DataSource,
     {} as never,
     balanceService,
     domainEventPublisher as never,
+    new SerializedGroupValidator(),
   );
 }
 
@@ -256,7 +288,7 @@ describe('StockIssueService integridad del grupo de seriales (MOD12 S2 · B3)', 
     );
   });
 
-  it('rechaza la cantidad incoherente con el número de seriales del grupo', async () => {
+  it('rechaza la cantidad incoherente con el número de seriales del grupo (borde, CA-S2.1-BE04)', async () => {
     const { manager } = buildSerialManager({
       assets: [buildAsset(), buildAsset({ id: ASSET_B, serialNumber: 'SN-0002' })],
     });
@@ -275,7 +307,7 @@ describe('StockIssueService integridad del grupo de seriales (MOD12 S2 · B3)', 
         actor,
       ),
     ).rejects.toThrow(
-      'La cantidad solicitada del ítem CFO-SER-ROGPN-TPL-XC220 debe coincidir con el número de seriales seleccionados (2 seriales, cantidad 3).',
+      'La cantidad solicitada debe coincidir con el número de seriales seleccionados (2 seriales).',
     );
   });
 

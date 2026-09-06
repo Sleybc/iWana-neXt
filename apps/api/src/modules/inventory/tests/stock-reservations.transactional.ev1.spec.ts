@@ -33,6 +33,7 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
+import { SerializedGroupValidator } from '../services/serialized-group.validator';
 import { StockLedgerService } from '../services/stock-ledger.service';
 
 function loadWorkspaceEnv(): void {
@@ -157,10 +158,19 @@ const actor: JwtPayload = {
         publishAfterCommittedMovement: jest.fn(),
       } as never,
     );
-    issueService = new StockIssueService(dataSource, ledgerService, balanceService, {
-      captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
-      publishAfterCommittedMovement: jest.fn(),
-    } as never);
+    issueService = new StockIssueService(
+      dataSource,
+      ledgerService,
+      balanceService,
+      {
+        captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+        publishAfterCommittedMovement: jest.fn(),
+        emitIssueCreated: jest.fn(),
+        emitIssueUpdated: jest.fn(),
+        emitIssueCancelled: jest.fn(),
+      } as never,
+      new SerializedGroupValidator(),
+    );
 
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
       const main = await qr.manager.findOne(StockLocation, {

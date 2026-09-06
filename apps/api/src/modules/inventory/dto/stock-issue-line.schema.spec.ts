@@ -103,4 +103,42 @@ describe('StockIssueLineSchema seriales múltiples (MOD12 S2 · B1)', () => {
 
     expect(line?.serializedAssetIds).toBeUndefined();
   });
+
+  it('CA-S2.1-BE04: rechaza en el borde la cantidad fraccionaria con grupo', () => {
+    const result = CreateStockIssueSchema.safeParse(
+      buildCreatePayload([
+        { itemId: ITEM_ID, requestedQty: 2.5, serializedAssetIds: [ASSET_A, ASSET_B] },
+      ]),
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('número entero'))).toBe(
+        true,
+      );
+    }
+  });
+
+  it('CA-S2.1-BE04: rechaza en el borde la cantidad distinta del tamaño del grupo', () => {
+    const result = CreateStockIssueSchema.safeParse(
+      buildCreatePayload([
+        { itemId: ITEM_ID, requestedQty: 3, serializedAssetIds: [ASSET_A, ASSET_B] },
+      ]),
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.message.includes('(2 seriales)'))).toBe(
+        true,
+      );
+    }
+  });
+
+  it('CA-S2.1-BE04: el singular sigue despachando como grupo de 1 con cantidad 1', () => {
+    const parsed = CreateStockIssueSchema.parse(
+      buildCreatePayload([{ itemId: ITEM_ID, requestedQty: 1, serializedAssetId: ASSET_A }]),
+    );
+
+    expect(parsed.lines[0]?.serializedAssetIds).toEqual([ASSET_A]);
+  });
 });

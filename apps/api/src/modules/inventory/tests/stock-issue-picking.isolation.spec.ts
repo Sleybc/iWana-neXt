@@ -100,11 +100,28 @@ function managerForSeed(seed: TenantSeed) {
         });
       qb.groupBy = jest.fn().mockReturnValue(qb);
       qb.addGroupBy = jest.fn().mockReturnValue(qb);
+      // S2.1 · B2: with-stock filtra con HAVING y pagina en SQL.
+      qb.having = jest.fn().mockReturnValue(qb);
+      qb.offset = jest.fn().mockReturnValue(qb);
+      qb.limit = jest.fn().mockReturnValue(qb);
+      qb.from = jest.fn().mockImplementation((target: unknown) => {
+        if (typeof target === 'function') {
+          (target as (inner: unknown) => void)(qb);
+        }
+        return qb;
+      });
+      qb.setParameters = jest.fn().mockReturnValue(qb);
       qb.orderBy = jest.fn().mockReturnValue(qb);
       qb.addOrderBy = jest.fn().mockReturnValue(qb);
       qb.skip = jest.fn().mockReturnValue(qb);
       qb.take = jest.fn().mockReturnValue(qb);
       qb.clone = jest.fn().mockReturnValue(qb);
+      qb.getRawOne = jest.fn().mockImplementation(async () => {
+        if (selects.includes('total')) {
+          return { total: '1' };
+        }
+        return null;
+      });
       qb.getRawMany = jest.fn().mockImplementation(async () => {
         if (selects.includes('itemName')) {
           return [
