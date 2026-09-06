@@ -22,7 +22,7 @@
 | B1 · Contrato | AI-SR-FULL | `serializedAssetIds[]` en `StockIssueLineSchema` con normalización singular→arreglo; contrato extendido en `@iwana/shared` | `5ffad7c0` |
 | B2–B5 · Seriales múltiples | AI-SR-FULL (+ diseño migración AI-DATA-ENG) | Tabla `stock_issue_line_serials` + migración tenant 126 (backfill, enum, `updated_at`, RESTRICT), reglas por grupo (reserva/liberación/integridad keyed al tamaño del grupo), despacho con explosión N×ledger/N×eventos, lectura con `serializedAssets{id,serialNumber}`, traducción `23505`→400 | `699b1bde` |
 | C · Panel lateral | AI-FE-PLATFORM | `StockIssueLineSidePeek`, apertura por clic en el nombre, tabla del borrador sin controles inline con Modificar/Quitar, grilla `lg`, pie de paginación por `meta.capabilities`, escaneo conservado, badge "falta configurar" | `f79ca1b4` |
-| Remediación CI | AI-PLAT-OPS + AI-SR-FULL + AI-EM-ARCH | Specs fuera del build tsc de `shared`, mock de rol en `layout.spec.tsx`, esperas del test A3 del drawer, marcadores `(propuesto)` en citas ADR-082 | `ff7025e7` · `0ef8b88d` · `e2e11b40` |
+| Remediación CI | AI-PLAT-OPS + AI-SR-FULL + AI-EM-ARCH | Specs fuera del build tsc de `shared`, mock de rol en `layout.spec.tsx`, esperas del test A3 del drawer, marcadores `(propuesto)` en citas de ADR-082 (propuesto) | `ff7025e7` · `0ef8b88d` · `e2e11b40` |
 
 ## 2. Gates
 

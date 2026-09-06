@@ -1208,7 +1208,7 @@ async function provisionInventoryFixture(token, technicianId) {
       categoryId,
       category: 'CPE',
       trackingMode: 'CONSUMABLE',
-      unitOfMeasure: 'unit',
+      unitOfMeasure: 'UNIT',
       baseCost: 1,
       minimumStock: 0,
       purchasable: true,
