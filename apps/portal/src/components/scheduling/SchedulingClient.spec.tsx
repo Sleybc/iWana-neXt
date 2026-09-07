@@ -872,12 +872,7 @@ describe('SchedulingClient', () => {
 
     expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
     expect(screen.queryByText('Despacho de la solicitud')).not.toBeInTheDocument();
-    // El `drop` dispara actualizaciones asíncronas del rail: la aserción
-    // síncrona dependía de que el re-render hubiera terminado en el mismo tick,
-    // y fallaba en el runner Linux según cómo cayera el reparto de workers.
-    // `findByText` verifica lo mismo —que la solicitud sigue en el rail— sin
-    // depender de ese orden; si desapareciera de verdad, agota la espera igual.
-    expect(await screen.findByText('Instalación GPON barrio norte')).toBeInTheDocument();
+    expect(screen.getByText('Instalación GPON barrio norte')).toBeInTheDocument();
   });
 
   it('renderiza el resumen operativo y no muestra calendario completo en dashboard', async () => {
