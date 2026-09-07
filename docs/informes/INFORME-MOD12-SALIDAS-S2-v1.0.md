@@ -167,11 +167,21 @@ Estado verificado tras la transacción: diagnóstico A4 en **0 filas en ambos te
 
 **Consecuencia:** CA-S2-04 pasa a ser ejercible en vivo. El producto del caso ya ofrece selección de seriales en el panel de línea. Los pendientes RB-02 (recorrido de navegador), RB-03 (HTTP en vivo) y RB-04 (>25 ítems) siguen abiertos.
 
+### 12.2-bis Hallazgo H6 — el registro G6.5-S2.1 precede a las remediaciones que declaraba
+
+La corrida de CI de este cierre (run `34117865091`) destapó algo que ninguna corrida anterior podía ver: **el registro G6.5-S2.1 se tomó sobre `6400ddb9`, un SHA anterior a las remediaciones BE (`ab118a58`) y FE (`199c3eb7`) de S2.1**. Ese run sí tuvo el job de unit tests en verde, pero validó un árbol que todavía no contenía el trabajo que el registro daba por bueno.
+
+El primer CI posterior a esas remediaciones —`34110882819`, sobre `208bea06` en `main`— salió **rojo en el job de unit tests**, con dos archivos caídos: `InventoryCatalogDrawer.spec.tsx` (el H1 de esta auditoría) y `StockIssueLineSidePeek.spec.tsx` (dos casos de la guardia de descarte, introducidos por la propia remediación FE S2.1). Ninguno de los dos estaba registrado como pendiente.
+
+**Causa de los casos del panel:** `requestClose` de `OperationalSidePeek` es `async` y hace `await` sobre la guardia; aunque `handleBeforeClose` es síncrona, el `await` empuja el `setCloseNotice` a una microtarea posterior al evento de teclado, así que el aviso se pinta fuera del flujo del `keydown`. El `findByRole` por defecto (1000 ms) no alcanza bajo la saturación del runner Linux. Corregido con esperas explícitas en los tres puntos afectados del spec, documentadas en el propio archivo. **No se tocó `OperationalSidePeek`**: es un componente del design system con otros tres consumidores (`ExecutionOrderDrawer`, `ScheduleEventDrawer`, `VisitRequestRecommendationPanel`) y su cambio corresponde a AI-DS-OWNER.
+
+**Lección de proceso:** un registro de G6.5 solo vale sobre el SHA que realmente se va a mergear. Registrar el gate y luego seguir commiteando sobre esa rama invalida el registro sin que nada lo señale.
+
 ### 12.3 Verificación de este cierre
 
 | Verificación | Resultado |
 |---|---|
-| Suite inventario portal | 79 suites · 538 passed · 1 skipped · **0 fallos** |
+| Suite **completa** del portal (como en CI) | 233 suites · 2057 passed · 1 skipped · **0 fallos** |
 | Suite inventario API | 73 suites · 668 passed · 8 skipped · **0 fallos** |
 | Migración 126 | 16/16 |
 | `pnpm typecheck` | 8/8 |
