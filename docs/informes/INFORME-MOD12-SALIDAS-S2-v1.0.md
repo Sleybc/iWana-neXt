@@ -281,6 +281,20 @@ Queda `4a. Ráfaga de requests → 429 después del límite`: la respuesta 429 l
 
 **Dueño: AI-PLAT-OPS con AI-SR-FULL.** Bloquea G6.5.
 
+### 14.2-bis Abierto — `SchedulingClient`, aserción mal atribuida
+
+Rojo en **3 de 3** corridas de CI; pasa 22/22 en local. Se intentó cerrarlo con una espera asíncrona (`findByText`) y **no funcionó**: el mensaje sigue siendo `Unable to find` tras la espera completa, o sea el elemento **nunca aparece**. El intento se revirtió (`a4ff09ea`); la justificación que llevaba —«dependía de que el re-render terminara en el mismo tick»— era falsa y no debía quedar escrita en el código.
+
+**Diagnóstico, esta vez con la fuente delante:** el card del rail muestra `customerDisplayName?.trim() || visitRequest.title` (`PendingVisitRailCard.tsx:27,33`) — uno **o** el otro. Con `customerDisplayName = 'María Gómez'` presente, el título `'Instalación GPON barrio norte'` **nunca** se renderiza en el rail.
+
+Por tanto la tercera aserción del caso no verifica lo que su nombre anuncia. Que el rail se mantiene ya lo cubren las dos primeras (`heading` + `'María Gómez'`, que sí pasan). La tercera comprueba, de hecho, que **el evento creado por el drop** aparezca en la grilla — y eso depende de una cadena asíncrona que en el runner Linux no completa.
+
+**No se parchea aquí**: reescribir esa aserción exige decidir qué debe verificar realmente el caso, y eso es de los dueños del módulo. **Dueño: dueños de scheduling + AI-SR-QA.**
+
+Descartado con evidencia que sea regresión de los cambios de foco de esta sesión: `scheduling` no usa `PortalSidePeek` y `SchedulingClient` no monta `DialogContent`. Lo que cambió fue el reparto de workers de Jest —el portal pasó de 2058 a 2065 tests—, que expuso la fragilidad ya presente.
+
 ### 14.3 Nota de método
+
+Un apunte sobre el propio proceso: tres intentos de esta sesión (los timeouts del panel, el `@SkipThrottle()` del rate limiting y la espera de `SchedulingClient`) fallaron por el mismo motivo — leer «tarda» donde el mensaje decía «no existe». Los dos arreglos que sí funcionaron (foco diferido y migración 126) salieron a la primera, y en ambos casos se había reproducido el fallo antes de tocar nada. Los dos intentos sin causa confirmada se revirtieron en vez de dejarlos: un cambio que no arregla nada, con un comentario que explica algo falso, es peor que el defecto que pretendía tapar.
 
 Cuatro de los cinco defectos de esta sesión estaban ocultos tras compuertas que no podían fallar: la migración 126 llevaba rota desde S2.1 porque el job moría antes de llegar a su paso, y `packages/ui` acumulaba 29 tests que nunca se ejecutaron. Cada arreglo destapó el siguiente. Es el patrón que ADR-056 persigue y conviene mirarlo como tal: un gate verde que nunca corrió no es una garantía, es una deuda sin declarar.
