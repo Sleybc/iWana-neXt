@@ -9,6 +9,7 @@
     "./styles/globals.css": "./src/styles/globals.css"
   },
   "scripts": {
+    "test": "jest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "clean": "node ../../scripts/clean-paths.mjs dist"
