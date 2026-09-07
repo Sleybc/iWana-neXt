@@ -173,6 +173,22 @@ La corrida de CI de este cierre (run `34117865091`) destapó algo que ninguna co
 
 El primer CI posterior a esas remediaciones —`34110882819`, sobre `208bea06` en `main`— salió **rojo en el job de unit tests**, con dos archivos caídos: `InventoryCatalogDrawer.spec.tsx` (el H1 de esta auditoría) y `StockIssueLineSidePeek.spec.tsx` (dos casos de la guardia de descarte, introducidos por la propia remediación FE S2.1). Ninguno de los dos estaba registrado como pendiente.
 
+**Estado tras cinco corridas de CI (2026-09-07):** queda **1 test rojo** de 2058 — `StockIssueLineSidePeek › la guardia nombra ambos botones del pie`, solo en `mode="edit"`. Su gemelo en `mode="create"` quedó verde con la última corrección. El diagnóstico se corrigió tres veces y conviene dejarlo escrito para quien lo herede:
+
+| Intento | Hipótesis | Resultado |
+|---|---|---|
+| 1 | Carga acumulada del archivo → dividir el spec | Salvó el caso A3; cayó su vecino de costo negativo |
+| 2 | Lentitud → `timeout: 5000` por aserción | Verde en `536a2bd5`… por azar, no por el timeout |
+| 3 | Lentitud → `configure({ asyncUtilTimeout })` por archivo | Rojo: la configuración de módulo no sobrevive al reparto de workers de Jest |
+| 4 | Vuelta a inline | Rojo de nuevo: confirma que el intento 2 fue azar |
+| 5 | **Carrera de estado** → confirmar el valor del input antes del Escape | 2 fallos → 1; cierra el caso `create`, no el `edit` |
+
+**La evidencia que zanjó el diagnóstico** estaba en el mensaje desde la primera corrida y se leyó mal tres veces: `Unable to find role="alert"` **tras la espera completa**. Con 5 s el aviso tampoco aparecía, así que nunca fue lentitud. La guardia lee `dirty` en el instante del `keydown`; los dos casos escriben en Cantidad sin `clear()` previo, de modo que dependen de que el cambio esté aplicado cuando llega el Escape. El tercer caso del archivo, que sí hace `clear()`, nunca falló.
+
+**Qué queda por resolver (no diagnosticado):** por qué la misma sincronización cierra el caso `create` y no el `edit`. Se descartó que `useStockIssueLineForm` reinicie el estado al montar (`key === formKey` en el primer render, así que el efecto de reinicio no dispara). La diferencia debe estar en la rama de `mode` del componente. **Dueño: AI-FE-PLATFORM**, autor del Track C.
+
+**Riesgo a evaluar antes de descartarlo como «test frágil»:** si la guardia puede leer un `dirty` obsoleto en un runner lento, un operador con una máquina cargada podría perder el primer teclazo al abrir el panel. Conviene descartarlo explícitamente antes de tocar el test.
+
 **Causa de los casos del panel:** `requestClose` de `OperationalSidePeek` es `async` y hace `await` sobre la guardia; aunque `handleBeforeClose` es síncrona, el `await` empuja el `setCloseNotice` a una microtarea posterior al evento de teclado, así que el aviso se pinta fuera del flujo del `keydown`. El `findByRole` por defecto (1000 ms) no alcanza bajo la saturación del runner Linux. Corregido con esperas explícitas en los tres puntos afectados del spec, documentadas en el propio archivo. **No se tocó `OperationalSidePeek`**: es un componente del design system con otros tres consumidores (`ExecutionOrderDrawer`, `ScheduleEventDrawer`, `VisitRequestRecommendationPanel`) y su cambio corresponde a AI-DS-OWNER.
 
 **Lección de proceso:** un registro de G6.5 solo vale sobre el SHA que realmente se va a mergear. Registrar el gate y luego seguir commiteando sobre esa rama invalida el registro sin que nada lo señale.
