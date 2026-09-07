@@ -73,7 +73,6 @@ import { ExecutionOrderInventoryReconciliationService } from './services/executi
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { ExecutionOrderTenantScoped } from './guards/execution-order-tenant-scoped.decorator';
-import { SkipThrottle } from '@nestjs/throttler';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
 
@@ -88,21 +87,6 @@ import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/executi
   PermissionsGuard,
   ExecutionOrderAccessGuard,
 )
-/**
- * El límite de estas rutas lo gobierna `TenantAwareThrottlerGuard`, no el
- * throttler global (100 req/min, `AppModule`).
- *
- * Sin este `SkipThrottle` los dos limitadores se solapan y el global dispara
- * primero: el límite contractual de lecturas de OT —120 por actor y tenant— era
- * inalcanzable, y el 429 que llegaba era el del global, sin las cabeceras
- * `X-RateLimit-*` que el guard específico emite y que el contrato promete.
- *
- * No se pierde protección: el guard tenant-aware discrimina por actor + tenant +
- * bucket y es MÁS estricto donde importa —20 req/min en comandos y 10 en
- * evidencia, frente a los 100 planos del global—; solo es más permisivo en
- * lecturas ligeras, que es justo lo que el contrato declara.
- */
-@SkipThrottle()
 @UseInterceptors(ExecutionOrderResponseHeadersInterceptor)
 @Controller('tasks/execution-orders')
 export class ExecutionOrdersController {
