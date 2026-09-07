@@ -294,17 +294,15 @@ describe('StockIssueLineSidePeek', () => {
 
     await user.click(screen.getByLabelText('Cantidad'));
     await user.type(screen.getByLabelText('Cantidad'), '4');
+    // La guardia lee `dirty` en el momento del `keydown`. Sin confirmar antes
+    // que el cambio del input ya esté aplicado, el Escape puede leer el estado
+    // previo y cerrar sin avisar: en el runner Linux ese orden se invierte y el
+    // aviso no llega a existir (no es lentitud — con 5 s tampoco aparecía).
+    await waitFor(() => expect(screen.getByLabelText('Cantidad')).not.toHaveValue('1'));
     await user.keyboard('{Escape}');
 
     // La guardia bloquea el cierre y lo explica; el panel sigue abierto.
-    // `requestClose` de OperationalSidePeek hace `await` sobre la guardia, así
-    // que el aviso se pinta en una microtarea posterior al `keydown`. El default
-    // de 1000 ms no alcanza en el runner Linux; la espera va por aserción
-    // porque `configure()` a nivel de módulo no sobrevive al reparto de workers
-    // de Jest (medido: verde con inline en 536a2bd5, rojo con configure en 3b0f74da).
-    expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toHaveTextContent(
-      /cambios sin guardar/i,
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cambios sin guardar/i);
     expect(screen.getByRole('dialog', { name: /Cable drop/ })).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
@@ -396,10 +394,12 @@ describe('StockIssueLineSidePeek', () => {
 
     await user.click(screen.getByLabelText('Cantidad'));
     await user.type(screen.getByLabelText('Cantidad'), '4');
+    // Misma sincronización que el caso anterior: el cambio debe estar aplicado
+    // antes del Escape para que la guardia lo vea.
+    await waitFor(() => expect(screen.getByLabelText('Cantidad')).not.toHaveValue('1'));
     await user.keyboard('{Escape}');
 
-    // Misma cadena async que el caso anterior.
-    const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
+    const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Agregar al borrador');
     expect(alert).toHaveTextContent('Guardar cambios');
     expect(alert).toHaveTextContent('Cancelar');
