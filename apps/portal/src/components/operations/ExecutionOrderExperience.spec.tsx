@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ProgressMeter, OperationalSidePeek } from '@iwana/ui';
 
 describe('componentes de ejecución', () => {
@@ -30,6 +30,56 @@ describe('componentes de ejecución', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('OperationalSidePeek enfoca al abrir cuando nadie ha reclamado el foco', () => {
+    const frames: FrameRequestCallback[] = [];
+    const rafSpy = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    // Documento en reposo: el foco no puede venir prestado del caso anterior.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    render(
+      <OperationalSidePeek open onOpenChange={jest.fn()} title="Detalle operativo">
+        <button type="button">Primera acción</button>
+      </OperationalSidePeek>,
+    );
+
+    act(() => {
+      frames.forEach((frame) => frame(0));
+    });
+
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus();
+    rafSpy.mockRestore();
+  });
+
+  it('OperationalSidePeek no roba el foco a una interacción ya en curso', () => {
+    const frames: FrameRequestCallback[] = [];
+    const rafSpy = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+
+    render(
+      <OperationalSidePeek open onOpenChange={jest.fn()} title="Detalle operativo">
+        <input aria-label="Cantidad" />
+      </OperationalSidePeek>,
+    );
+
+    // El operador toca un control del panel antes de que corra el frame diferido.
+    const field = screen.getByLabelText('Cantidad');
+    field.focus();
+
+    act(() => {
+      frames.forEach((frame) => frame(0));
+    });
+
+    // El foco inicial no puede pisarlo: reubicarlo aquí cierra un desplegable
+    // recién abierto o descarta lo que se está tecleando.
+    expect(field).toHaveFocus();
+    rafSpy.mockRestore();
   });
 
   it('anuncia busy, muestra indicador y conserva un cierre táctil de 44 px', () => {

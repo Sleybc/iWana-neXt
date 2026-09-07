@@ -39,6 +39,15 @@ export function usePortalSideDrawerA11y(
 
   const layerId = layerIdRef.current;
 
+  // `onClose` viaja por ref para que NO sea dependencia del efecto de foco y
+  // trap. Los consumidores lo reciben de `useDiscardChangesGuard`, cuyo
+  // `requestClose` se declara `useCallback(..., [isDirty, onClose])`: cambiaba
+  // de identidad justo al ensuciarse el formulario, así que el efecto se
+  // reejecutaba y reprogramaba el foco inicial a mitad de captura. Con la ref,
+  // el foco inicial se programa una sola vez por apertura.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) {
       return;
@@ -61,8 +70,8 @@ export function usePortalSideDrawerA11y(
 
     registerPortalSideDrawerLayer(layerId);
 
-    previousActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    previousActiveElementRef.current = opener;
 
     const container = containerRef.current;
     if (!container) {
@@ -72,9 +81,23 @@ export function usePortalSideDrawerA11y(
     const focusable = getFocusableElements(container);
     const focusTarget = focusable[0] ?? container;
     const focusFrame = window.requestAnimationFrame(() => {
-      if (isTopMostPortalSideDrawerLayer(layerId)) {
-        focusTarget.focus();
+      if (!isTopMostPortalSideDrawerLayer(layerId)) {
+        return;
       }
+      // El foco inicial se difiere un frame, y ese frame puede caer DESPUÉS de
+      // la primera interacción del operador. Reubicarlo entonces cierra el
+      // desplegable recién abierto o le arranca el foco al campo que está
+      // tecleando. Solo se enfoca si nadie más reclamó el foco entretanto.
+      const active = document.activeElement;
+      const untouched =
+        active == null ||
+        active === document.body ||
+        active === document.documentElement ||
+        active === opener;
+      if (!untouched) {
+        return;
+      }
+      focusTarget.focus();
     });
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -84,7 +107,7 @@ export function usePortalSideDrawerA11y(
 
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -137,5 +160,5 @@ export function usePortalSideDrawerA11y(
       document.removeEventListener('keydown', onKeyDown);
       unregisterPortalSideDrawerLayer(layerId);
     };
-  }, [containerRef, layerId, onClose, open]);
+  }, [containerRef, layerId, open]);
 }

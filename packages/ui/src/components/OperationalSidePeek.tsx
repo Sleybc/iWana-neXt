@@ -64,9 +64,24 @@ export function OperationalSidePeek({
 
   useEffect(() => {
     if (!open) return;
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    previousFocusRef.current = opener;
     const frame = window.requestAnimationFrame(() => {
+      // El foco inicial se difiere un frame para que el panel ya esté pintado,
+      // pero ese frame puede caer DESPUÉS de la primera interacción del
+      // operador. Si para entonces alguien más reclamó el foco —un desplegable
+      // recién abierto (el menú del Select vive en un portal fuera del panel y
+      // se cierra al perder el foco), un campo que se está tecleando— reubicarlo
+      // aquí cierra el desplegable o descarta lo escrito. Solo se enfoca cuando
+      // el foco sigue donde estaba al abrir: el documento en reposo o el propio
+      // disparador del panel.
+      const active = document.activeElement;
+      const untouched =
+        active == null ||
+        active === document.body ||
+        active === document.documentElement ||
+        active === opener;
+      if (!untouched) return;
       const explicitTarget = initialFocusRef?.current;
       (explicitTarget ?? focusables()[0] ?? panelRef.current)?.focus();
     });

@@ -166,15 +166,18 @@ export function useStockIssueLineForm(
    * `useCallback(..., [dirty])` cambiaba de identidad justo al ensuciarse el
    * formulario, así que existía una ventana —entre el commit del render sucio y
    * la ejecución de ese efecto— en la que el listener aún tenía la versión
-   * anterior, con `dirty === false` capturado en su closure: el panel cerraba
-   * sin avisar y el aviso no llegaba a renderizarse. Es la carrera que dejaba en
-   * rojo los dos casos de la guardia en el runner Linux (5 corridas de CI), y en
-   * producción significaba perder el aviso de cambios sin guardar cuando el
-   * operador pulsa Escape inmediatamente después de teclear.
+   * anterior, con `dirty === false` capturado en su closure. Con la identidad
+   * estable, la ref del side peek se asigna una sola vez y la guardia siempre
+   * lee el valor vigente.
    *
-   * Con la identidad estable, la ref del side peek se asigna una sola vez y la
-   * guardia siempre lee el valor vigente. No hace falta tocar el componente del
-   * design system, que tiene otros tres consumidores.
+   * ATENCIÓN al leer este bloque: esta NO era la causa de los tres tests en
+   * rojo en el runner Linux. Se midió después: el fallo venía del foco inicial
+   * diferido de `OperationalSidePeek` (un `requestAnimationFrame` que caía tras
+   * la primera interacción y arrastraba el foco fuera del control en uso), y se
+   * corrigió en el propio componente del design system. Esta ref se conserva
+   * porque cierra una ventana distinta y real —la sincronización de
+   * `onBeforeCloseRef` sigue viviendo en un efecto— pero no acreditarle el
+   * arreglo de aquella carrera.
    */
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
