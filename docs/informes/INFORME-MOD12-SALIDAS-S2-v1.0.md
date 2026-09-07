@@ -77,7 +77,29 @@ Ningún `[BLOQUEO]` de track durante la fase. Los stop/go del plan no se dispara
 
 La fase entrega lo que el operador pidió: la combinación contradictoria del maestro ya no es guardable ni editable con saldo, la línea de salida se configura en un panel con seriales múltiples y cantidad ligada al grupo, el borrador es revisable con Modificar, y la paginación por página reemplaza un "Cargar más" que nunca funcionó. La compatibilidad con el flujo S1 está probada (payload singular sigue despachando igual). El gate de calidad G6 está en GO con pendientes de validación en vivo del operador; G6.5 queda registrado por separado y pendiente, con sus dos bloqueantes preexistentes identificados, cuantificados y con dueño — la fase deja la CI materialmente más sana de como la encontró.
 
-## 9. Registro G6.5 S2.1 — corrida por SHA `6400ddb9` (2026-09-06, AI-PLAT-OPS)
+## 9. Remediación S2.1 — tracks FE y BE (2026-09-06)
+
+### 9.1 Frontend — AI-FE-PLATFORM · commit `199c3eb7`
+
+**Prompt:** [PROMPT-MOD12-SALIDAS-S2.1-FE-v1.0](../prompts/PROMPT-MOD12-SALIDAS-S2.1-FE-v1.0.md) · **Evidencia:** [remediación FE S2.1](../quality/2026-09-06-mod12-s2.1-fe-remediacion.md)
+
+- **Alcance (C1-C5):** panel por `lineId` + `useStockIssueLineForm` (sucio por comparación, re-etiquetado tardío) · búsqueda en servidor + barrido paginado de seriales · invalidación al cambiar bodega · `busy`/a11y/escaneo solo-con-Enter, badge de conteo, 0 `eslint-disable`, DRY (`parseDecimalAmount`, clave de línea, validador, `useMinWidth` compartido en `apps/portal/src/lib/`) · copy firmado por PROD-UX (3 líneas exactas).
+- **Decisiones incorporadas:** DS-OWNER aprobó migrar el ámbar crudo al contrato (`text-error-700 dark:text-error-400`) en `StockIssueLineSidePeek.tsx:194,246,309` y `StockIssueDraftLinesTable.tsx:273`; `Badge variant="warning"` y etiqueta `REFURBISHED` intactos.
+- **Defectos corregidos en cierre (causa raíz):** `originRefId` faltante en hidratación de edición, `lineError`/clave de identidad con opcionales (`exactOptionalPropertyTypes`), actualizaciones fuera de `act()`, especs de picker con paginado `{limit:100,page:1}` (C2 correcto), races async en reapertura y escaneo (`currentTarget.value`), aislamiento determinista en `beforeEach`.
+- **Verificación final:** portal inventory **538 passed / 1 skipped (preexistente) / 0 failed** en 5 corridas consecutivas · typecheck scope 0 errores · lint 0 errores · `audit-ui` P0-P2 0. CA-S2.1-FE01..05 cubiertos.
+- **Consultas registradas:** `[CONSULTA]` a DS-OWNER (resuelta arriba) y a PROD-UX (copy firmado) en la evidencia §4.
+
+### 9.2 Backend — AI-SR-FULL · commit `ab118a58`
+
+**Prompt:** [PROMPT-MOD12-SALIDAS-S2.1-BE-v1.0](../prompts/PROMPT-MOD12-SALIDAS-S2.1-BE-v1.0.md) · **Evidencia:** [verificación BE S2.1](../quality/2026-09-06-mod12-s2.1-be-verificacion.md) + [reconciliación de espejo](../quality/2026-09-06-mod12-s2.1-espejo-reconciliacion.sql) · **Spec:** SPEC S2 §5 (contrato congelado intacto en forma; endurecimiento de validación declarado, sin re-sync)
+
+- **B0:** registro `StockIssueLineSerial` en `inventory.module.ts` + test de `forFeature` + `SerializedGroupValidator` en providers y contexto de test. CA-S2.1-BE01 ✓
+- **B1:** 126 refactorizada con pre/post-vuelo (0a huérfanos, 0b mismatch tenant, 0c colisiones → abortan con conteo), DDL `IF NOT EXISTS` + índice `(tenant_id, issue_id)`, backfill idempotente heredando `created_at/updated_at` + `ON CONFLICT DO NOTHING` + vía por rangos >5.000, post cobertura + espejo 0 divergentes, `down` LOSSY con `_backup_126`, H8 declarado. CA-S2.1-BE02 ✓.
+- **B2/B3:** `serial-group.utils.ts` puro, `SerializedGroupValidator` inyectable, `adjustReservations` agregado (1 `applyDelta` por clave + disponible GROUP BY), `serialNumber` legible en kardex, sin `createdByUserId: actor.sub`, eventos `ISSUE_CREATED/UPDATED/CANCELLED` post-commit, `with-stock` con `HAVING` en SQL, constantes centralizadas + paridad enum↔predicado, replay con distinto handoff → 409, snapshot en tx, `handoffAttachments` cerrado, sonda de tracking ampliada, merge con pareja barcode. CA-S2.1-BE03/04/05 ✓.
+- **Verificación final:** api inventory **668 passed / 8 skipped / 0 failed** · db **273/273** · typecheck + lint 0 errores · `migration-order` verde · `audit:adr-citations` BLOQUEANTE 0.
+- **Condiciones DATA-ENG para rollout** (migración 126): registradas en la evidencia §10 — staging dry-run por schema, gate de volumen ≤5.000 singulares (>5.000 bloqueado hasta dry-run con volumen y decisión `transactional`/ventana), `down()` prohibido en prod salvo incidente con backup verificado, job de reconciliación de huérfanos con dueño.
+
+## 10. Registro G6.5 S2.1 — corrida por SHA `6400ddb9` (2026-09-06, AI-PLAT-OPS)
 
 Higiene previa (`6400ddb9`, mensaje `chore(s2.1): higiene pre-G6.5 — registro hija, UNIT, marcador (propuesto)`): registro `StockIssueLineSerial` en `inventory.module.ts` (BE, solo inclusión verificada — entidad existe y se exporta desde `@iwana/db`), `unit`→`UNIT` en el provisioner (canon UOM verificado contra `inventory-unit-of-measure.ts` y migración 122) y marcador `(propuesto)` en la cita de ADR-082 (propuesto). Verdes locales focales antes del push: `SchedulingClient.spec` 22/22, `stock-issue-serial-groups.service.spec` 9/9, `node --check` del provisioner + gate de marcadores OK, `audit:doc-locations` 0 bloqueantes. El único bloqueante de `audit:adr-citations` en local vive en el prompt S2.1-G65 sin trackear (`(propuesto) ADR-082` antepuesto; la convención exige `ADR-082 (propuesto)`) — fuera del SHA, no afecta la corrida; EM-ARCH debe corregirlo antes de commitear los prompts.
 
@@ -104,3 +126,13 @@ Bloqueante: Sí | Supuesto mientras tanto: ninguno — no se relaja el workflow 
 ```
 
 **[ESCALACION AL CTO]** Prioridad: alta · Contexto: G6.5 vuelve a quedar pendiente por deuda ajena a plataforma (primero perfiles V1 + UOM + toolbar, ahora validación de cierre en 1f) · Opciones: (1) mini-fase de remediación antes del próximo módulo (recomendada — corrección del 422 de cierre con dueños MOD09-11/SR-FULL + re-corrida G6.5); (2) seguir acumulando fases con G6.5 pendiente y cerrar todo al final (riesgo: los bloqueantes se arrastran al primer despliegue real); (3) desacoplar formalmente el E2E operativo del estándar G6.5 vía ADR (requiere justificar por qué un E2E rojo no es señal de merge-readiness) · Recomendación: opción 1 · Decisión requerida antes de: iniciar la siguiente fase de MOD12.
+
+## 11. Estado consolidado y pendientes (2026-09-06)
+
+**Resuelto en S2.1 (commiteado en `main`):** higiene del worktree (22 UU alien resueltos + 75 archivos rancios revertidos, stash `stash@{0}` conservado intacto) en `6400ddb9` · BE `ab118a58` · FE `199c3eb7` · registro G6.5-S2.1 en `b1420b8a`. Prompts y evidencias S2.1 en `docs/prompts/` y `docs/quality/`.
+
+**Pendientes que condicionan G6.5 / merge:**
+1. **[Fix 422 cierre OT]** `POST /tasks/execution-orders/:id/close` → 422 (causa probable H1: la OT congela la plantilla canónica V2 y el fixture solo satisface los requisitos E2E; `CLOSURE_GATE_INCOMPLETE`). Dueño MOD09-11/SR-FULL con SR-QA. Es cambio de contrato (`ExecutionOrderError` + openapi): versionado vía orquestación. El fix NO relaja el gate.
+2. **Re-corrida G6.5** (ADR-069): la ejecuta el **operador** manualmente sobre el nuevo SHA una vez integrado el fix del 422 + el commit de docs de esta consolidación.
+3. **Pendientes del operador (RB-01..RB-04, no bloquean G6):** data-fix `CFO-SER-ROGPN-TPL-XC220` + entrada con seriales, recorrido navegador del plan §5.4, HTTP en vivo con credenciales de prueba, siembra >25 ítems para la segunda página.
+4. **Condiciones DATA-ENG pre-rollout** de la migración 126 (ver §9.2): aplicar antes de migrar tenants con datos.
