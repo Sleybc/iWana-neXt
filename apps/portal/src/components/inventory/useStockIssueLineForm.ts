@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StockBalanceCondition } from '@iwana/shared';
 import type { SearchablePickerItem } from '@/components/shared/SearchablePicker';
 import {
@@ -158,15 +158,36 @@ export function useStockIssueLineForm(
       effectiveQty !== snapshot.requestedQty ||
       serials.map((item) => item.id).join(',') !== snapshot.serialIds.join(','));
 
+  /**
+   * `dirty` viaja por ref actualizada **en render**, y la guardia es estable.
+   *
+   * `OperationalSidePeek` guarda `onBeforeClose` en una ref dentro de un
+   * `useEffect`, y su listener de Escape lee esa ref. Con la guardia declarada
+   * `useCallback(..., [dirty])` cambiaba de identidad justo al ensuciarse el
+   * formulario, así que existía una ventana —entre el commit del render sucio y
+   * la ejecución de ese efecto— en la que el listener aún tenía la versión
+   * anterior, con `dirty === false` capturado en su closure: el panel cerraba
+   * sin avisar y el aviso no llegaba a renderizarse. Es la carrera que dejaba en
+   * rojo los dos casos de la guardia en el runner Linux (5 corridas de CI), y en
+   * producción significaba perder el aviso de cambios sin guardar cuando el
+   * operador pulsa Escape inmediatamente después de teclear.
+   *
+   * Con la identidad estable, la ref del side peek se asigna una sola vez y la
+   * guardia siempre lee el valor vigente. No hace falta tocar el componente del
+   * design system, que tiene otros tres consumidores.
+   */
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+
   const handleBeforeClose = useCallback((): boolean => {
-    if (!dirty) {
+    if (!dirtyRef.current) {
       return true;
     }
     setCloseNotice(
       'Hay cambios sin guardar en esta línea. Confírmalos con Agregar al borrador o Guardar cambios, o descártalos con Cancelar.',
     );
     return false;
-  }, [dirty]);
+  }, []);
 
   return {
     condition,

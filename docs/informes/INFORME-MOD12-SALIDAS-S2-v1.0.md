@@ -173,7 +173,15 @@ La corrida de CI de este cierre (run `34117865091`) destapó algo que ninguna co
 
 El primer CI posterior a esas remediaciones —`34110882819`, sobre `208bea06` en `main`— salió **rojo en el job de unit tests**, con dos archivos caídos: `InventoryCatalogDrawer.spec.tsx` (el H1 de esta auditoría) y `StockIssueLineSidePeek.spec.tsx` (dos casos de la guardia de descarte, introducidos por la propia remediación FE S2.1). Ninguno de los dos estaba registrado como pendiente.
 
-**Estado tras cinco corridas de CI (2026-09-07):** queda **1 test rojo** de 2058 — `StockIssueLineSidePeek › la guardia nombra ambos botones del pie`, solo en `mode="edit"`. Su gemelo en `mode="create"` quedó verde con la última corrección. El diagnóstico se corrigió tres veces y conviene dejarlo escrito para quien lo herede:
+**Resuelto (2026-09-07): era un defecto del componente, no de los tests.** `handleBeforeClose` se declaraba `useCallback(..., [dirty])`, así que cambiaba de identidad justo al ensuciarse el formulario. `OperationalSidePeek` guarda `onBeforeClose` en una ref dentro de un `useEffect` (`packages/ui/src/components/OperationalSidePeek.tsx:44-47`) y su listener de Escape lee esa ref: entre el commit del render sucio y la ejecución de ese efecto había una ventana en la que el listener aún tenía la versión anterior, con `dirty === false` capturado en su closure. El panel cerraba sin avisar y el aviso **no llegaba a renderizarse** — de ahí que `findByRole('alert')` fallara incluso con 5 s de espera.
+
+**Impacto en producción, no solo en CI:** un operador que pulsa Escape inmediatamente después de teclear podía perder el aviso de cambios sin guardar y descartar la captura de la línea. El riesgo que la revisión anterior dejó anotado «a descartar» estaba confirmado.
+
+**Corrección:** `dirty` viaja por una ref actualizada **en render** y la guardia queda con identidad estable (`useStockIssueLineForm.ts`). La ref del side peek se asigna una sola vez y siempre lee el valor vigente. **No se tocó `OperationalSidePeek`** (design system, tres consumidores). Los dos tests volvieron a su forma original —sin esperas artificiales— y pasan: la corrección se valida con el test que ya existía, no con uno adaptado.
+
+**Deuda residual, distinta de lo anterior:** dos casos de estos specs fallan de forma **intermitente** y se reproducen en local, sin relación con la guardia: `StockIssueLineSidePeek › el re-etiquetado tardío` (medido: 1 fallo en 2 corridas, con su espera explícita ya puesta) y `InventoryCatalogDrawer › elegir Sin unidad de compra limpia los errores del par`. Ambos interactúan con el desplegable del `Select` mientras hay una carga async en vuelo. **Dueño: AI-FE-PLATFORM**; no se persiguen aquí para no seguir consumiendo corridas de CI en diagnóstico a ciegas.
+
+~~**Estado tras cinco corridas de CI (2026-09-07):** queda **1 test rojo** de 2058~~ — `StockIssueLineSidePeek › la guardia nombra ambos botones del pie`, solo en `mode="edit"`. Su gemelo en `mode="create"` quedó verde con la última corrección. El diagnóstico se corrigió tres veces y conviene dejarlo escrito para quien lo herede:
 
 | Intento | Hipótesis | Resultado |
 |---|---|---|

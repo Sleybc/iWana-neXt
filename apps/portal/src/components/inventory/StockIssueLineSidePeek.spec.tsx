@@ -294,11 +294,6 @@ describe('StockIssueLineSidePeek', () => {
 
     await user.click(screen.getByLabelText('Cantidad'));
     await user.type(screen.getByLabelText('Cantidad'), '4');
-    // La guardia lee `dirty` en el momento del `keydown`. Sin confirmar antes
-    // que el cambio del input ya esté aplicado, el Escape puede leer el estado
-    // previo y cerrar sin avisar: en el runner Linux ese orden se invierte y el
-    // aviso no llega a existir (no es lentitud — con 5 s tampoco aparecía).
-    await waitFor(() => expect(screen.getByLabelText('Cantidad')).not.toHaveValue('1'));
     await user.keyboard('{Escape}');
 
     // La guardia bloquea el cierre y lo explica; el panel sigue abierto.
@@ -394,9 +389,6 @@ describe('StockIssueLineSidePeek', () => {
 
     await user.click(screen.getByLabelText('Cantidad'));
     await user.type(screen.getByLabelText('Cantidad'), '4');
-    // Misma sincronización que el caso anterior: el cambio debe estar aplicado
-    // antes del Escape para que la guardia lo vea.
-    await waitFor(() => expect(screen.getByLabelText('Cantidad')).not.toHaveValue('1'));
     await user.keyboard('{Escape}');
 
     const alert = await screen.findByRole('alert');
