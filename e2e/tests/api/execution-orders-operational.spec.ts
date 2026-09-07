@@ -1864,14 +1864,16 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expect(wrongCategory).not.toBe(correctCategory);
 
       // El backend congela en la OT la versión PUBLISHED más reciente del
-      // PRIMER template PUBLISHED del workType (getActiveVersionForWorkType).
-      // El provisioner ya crea E2E_HAPPY_PATH (INSTALLATION, PUBLISHED) y
-      // expone su id vía E2E_HAPPY_PATH_TEMPLATE_ID; un template nuevo jamás
-      // gana la selección y la OT congelaría el snapshot del happy path
-      // (actividad+evidencia+firma). Para probar el gate MATERIAL de forma
-      // determinista, las versiones se publican sobre el template activo. El
-      // GET de templates no es usable aquí: el admin del tenant solo tiene
-      // OPERATIONS_EXECUTION_ORDER_TEMPLATES_MANAGE, no READ (403).
+      // template activo del workType (getActiveVersionForWorkType: plantilla
+      // con la versión publicada más reciente, published_at DESC). El
+      // provisioner ya crea E2E_HAPPY_PATH (INSTALLATION, PUBLISHED) y expone
+      // su id vía E2E_HAPPY_PATH_TEMPLATE_ID; un template nuevo jamás gana la
+      // selección (solo se eligen plantillas PUBLISHED) y la OT congelaría el
+      // snapshot del happy path (actividad+evidencia+firma). Para probar el
+      // gate MATERIAL de forma determinista, las versiones se publican sobre el
+      // template activo. El GET de templates no es usable aquí: el admin del
+      // tenant solo tiene OPERATIONS_EXECUTION_ORDER_TEMPLATES_MANAGE, no READ
+      // (403).
       const templateId = process.env.E2E_HAPPY_PATH_TEMPLATE_ID ?? '';
       expect(templateId).toMatch(UUID_PATTERN);
 
@@ -2044,10 +2046,11 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
         }
       } finally {
         // Restaurar el template activo: getActiveVersionForWorkType elige la
-        // versión PUBLISHED más alta del primer template PUBLISHED del
-        // workType. Si estas versiones MATERIAL quedaran publicadas, las OTs
-        // creadas después (p. ej. los retries de la serie serial 1a-1f)
-        // congelarían el snapshot de material y el close devolvería 422.
+        // versión PUBLISHED más reciente del template con la publicación más
+        // reciente del workType. Si estas versiones MATERIAL quedaran
+        // publicadas, las OTs creadas después (p. ej. los retries de la serie
+        // serial 1a-1f) congelarían el snapshot de material y el close
+        // devolvería 422.
         for (const versionId of materialVersionIds) {
           const retireRes = await authedPost(
             page,

@@ -447,33 +447,68 @@ describe('ExecutionOrderTemplatesService', () => {
   // getActiveVersionForWorkType
   // ═══════════════════════════════════════════════════════════════════
   describe('getActiveVersionForWorkType', () => {
-    it('debe retornar la versión publicada más reciente para un workType', async () => {
+    it('debe retornar la versión publicada más reciente del template activo', async () => {
+      const template = makeTemplate({ status: 'PUBLISHED' });
       const version = makeVersion({ id: 'ver-003', version: 3, status: 'PUBLISHED' });
 
-      const findOne = jest
-        .fn()
-        .mockResolvedValueOnce(makeTemplate({ status: 'PUBLISHED' })) // template
-        .mockResolvedValueOnce(version); // version
+      const qb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValueOnce(template),
+      };
+      const createQueryBuilder = jest.fn().mockReturnValue(qb);
+      const findOne = jest.fn().mockResolvedValueOnce(version);
 
       mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
-        fn({ manager: { findOne } }),
+        fn({ manager: { createQueryBuilder, findOne } }),
       );
 
       const result = await service.getActiveVersionForWorkType(WfmWorkType.INSTALLATION);
 
       expect(result).toEqual(version);
+      // La selección de plantilla debe ser determinista: se une contra las
+      // versiones PUBLISHED y se ordena por published_at DESC (desempates:
+      // version DESC y created_at DESC). Un findOne sin ORDER BY devolvía una
+      // fila arbitraria cuando hay varias plantillas PUBLISHED para el workType.
+      expect(createQueryBuilder).toHaveBeenCalledWith(ExecutionOrderTemplate, 'template');
+      expect(qb.innerJoin).toHaveBeenCalledWith(
+        ExecutionOrderTemplateVersion,
+        'version',
+        'version.template_id = template.id AND version.tenant_id = template.tenant_id AND version.status = :published',
+      );
+      expect(qb.orderBy).toHaveBeenCalledWith('version.published_at', 'DESC', 'NULLS LAST');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('version.version', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('template.created_at', 'DESC');
+      expect(findOne).toHaveBeenCalledWith(ExecutionOrderTemplateVersion, {
+        where: { tenantId: 'tenant-001', templateId: template.id, status: 'PUBLISHED' },
+        relations: ['requirements'],
+        order: { version: 'DESC' },
+      });
     });
 
     it('debe retornar null si no hay template publicado', async () => {
-      const findOne = jest.fn().mockResolvedValue(null);
+      const qb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValueOnce(null),
+      };
+      const createQueryBuilder = jest.fn().mockReturnValue(qb);
+      const findOne = jest.fn();
 
       mockRunInTenantSchema.mockImplementation(async (_ds: any, _schema: string, fn: any) =>
-        fn({ manager: { findOne } }),
+        fn({ manager: { createQueryBuilder, findOne } }),
       );
 
       const result = await service.getActiveVersionForWorkType(WfmWorkType.MAINTENANCE);
 
       expect(result).toBeNull();
+      expect(findOne).not.toHaveBeenCalled();
     });
   });
 

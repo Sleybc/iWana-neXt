@@ -324,9 +324,27 @@ export class ExecutionOrderTemplatesService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const template = await qr.manager.findOne(ExecutionOrderTemplate, {
-        where: { tenantId, workType, status: 'PUBLISHED' },
-      });
+      // La plantilla activa del workType es la que tiene la versión PUBLISHED
+      // publicada más recientemente (published_at DESC; desempates: version y
+      // created_at). Cuando existen varias plantillas PUBLISHED para el mismo
+      // workType (p. ej. la canónica sembrada por migración + una creada por el
+      // tenant), la selección debe ser determinista: un findOne sin ORDER BY
+      // devolvía una fila arbitraria y las OTs nuevas podían congelar el
+      // snapshot de una plantilla distinta de la activa (gate 422 falso).
+      const template = await qr.manager
+        .createQueryBuilder(ExecutionOrderTemplate, 'template')
+        .innerJoin(
+          ExecutionOrderTemplateVersion,
+          'version',
+          'version.template_id = template.id AND version.tenant_id = template.tenant_id AND version.status = :published',
+        )
+        .where('template.tenant_id = :tenantId', { tenantId })
+        .andWhere('template.work_type = :workType', { workType })
+        .andWhere('template.status = :published', { published: 'PUBLISHED' })
+        .orderBy('version.published_at', 'DESC', 'NULLS LAST')
+        .addOrderBy('version.version', 'DESC')
+        .addOrderBy('template.created_at', 'DESC')
+        .getOne();
       if (!template) return null;
 
       const version = await qr.manager.findOne(ExecutionOrderTemplateVersion, {
