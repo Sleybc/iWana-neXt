@@ -252,3 +252,35 @@ Es **preexistente** —ningún commit de este cierre toca `packages/database`—
 El post-vuelo **funciona** (caza el hueco); lo que falla es el backfill del re-run. Interacción a investigar: el `ON CONFLICT DO NOTHING` del `backfillInsertSql` frente al índice único parcial `uq_stock_issue_line_serials_active_asset`, y por qué el pre-vuelo `assertNoActiveCollisions` no aborta antes en ese escenario.
 
 **Dueño: AI-SR-FULL con revisión de AI-DATA-ENG** (Track B). Bloquea G6.5 junto con el E2E R4.1.
+
+
+## 14. Cierre de sesión (2026-09-07) — estado final y lo que queda
+
+Se desplegaron tres especialistas (AI-SR-FULL, AI-DS-OWNER, AI-PLAT-OPS). Los tres fueron cortados por el límite de sesión antes de commitear; su trabajo se rescató del árbol, se verificó y se completó.
+
+### 14.1 Resuelto
+
+| Hallazgo | Causa raíz | Evidencia |
+|---|---|---|
+| **Foco diferido** en 4 componentes (`OperationalSidePeek`, `usePortalSideDrawerA11y`, `Dialog`, `PortalSidePeek`) | El `requestAnimationFrame` del foco inicial pisa una interacción en curso: cierra el desplegable recién abierto (el menú del `Select` se portalea y su `onBlurCapture` lo cierra al perder foco) o arranca el foco al campo que se teclea | Portal 2064 · Web 229 · confirmado en CI Linux |
+| **Migración 126** | (1) El pre-vuelo 0c era ciego a los compromisos ya materializados en la hija; (2) `QueryRunner.hasTable()` resuelve contra `options.schema` y no contra la ruta de la sesión, dejando `down` en no-op silencioso. Ahora `to_regclass` | Integración **52/52** · unitarios **276/276** |
+| **Compuerta fantasma de `packages/ui`** | Tenía `jest.config.js` y 3 specs pero ningún script `test`: 29 tests que nunca corrieron en CI | Pipeline de 9 → **10 tareas**, `0 cached` |
+| **`SchedulingClient`** | Aserción síncrona tras un `drop` asíncrono; la expuso el nuevo reparto de workers (el portal pasó de 2058 a 2065 tests). Sin vía de impacto desde los cambios de foco: `scheduling` no usa `PortalSidePeek` ni monta `DialogContent` en ese árbol | 22/22 |
+
+### 14.2 Abierto — E2E R4.1, rate limiting
+
+**Único job de producto que sigue rojo.** El bloqueante histórico sí se cerró: `E2E_SETUP=OK` y **14 tests pasan**, incluido el cierre de OT que motivó el fix `208bea06`.
+
+Queda `4a. Ráfaga de requests → 429 después del límite`: la respuesta 429 llega **sin las cabeceras `X-RateLimit-*`** (`undefined` donde el contrato promete `"120"`).
+
+**Intento fallido, revertido:** se atribuyó a que el `ThrottlerGuard` global (100 req/min, `AppModule`) dispara antes que el `TenantAwareThrottlerGuard` del controlador (120 en lecturas) y su 429 no lleva esas cabeceras. Se aplicó `@SkipThrottle()` al controlador de OT y **el fallo no cambió en absoluto** — mismo test, mismo mensaje. El diagnóstico era falso y el cambio se revirtió (`e3ab2f36`): no se deja un cambio de rate limiting de producción apoyado en una causa refutada.
+
+**Lo descartado con evidencia:** el job hace checkout e instala, así que sí ejecuta el código de la rama; `ExecutionOrderResponseHeadersInterceptor` solo añade cabeceras, no las quita; el guard específico las emite (`tenant-aware-throttler.guard.ts:100-102`) **antes** de lanzar el 429, y el E2E ataca la API directa (`http://127.0.0.1:3000`), sin nginx de por medio.
+
+**Lo que falta por distinguir**, y no se pudo con los datos disponibles: si el 429 observado nace del guard global o del específico. El cuerpo de la respuesta lo diría —el específico responde `code: RATE_LIMIT_EXCEEDED`— pero la aserción de cabeceras falla antes de llegar a esa comprobación. El siguiente paso razonable es instrumentar el test para volcar cuerpo y cabeceras completas del primer 429, o reproducir la ráfaga contra la pila local.
+
+**Dueño: AI-PLAT-OPS con AI-SR-FULL.** Bloquea G6.5.
+
+### 14.3 Nota de método
+
+Cuatro de los cinco defectos de esta sesión estaban ocultos tras compuertas que no podían fallar: la migración 126 llevaba rota desde S2.1 porque el job moría antes de llegar a su paso, y `packages/ui` acumulaba 29 tests que nunca se ejecutaron. Cada arreglo destapó el siguiente. Es el patrón que ADR-056 persigue y conviene mirarlo como tal: un gate verde que nunca corrió no es una garantía, es una deuda sin declarar.
