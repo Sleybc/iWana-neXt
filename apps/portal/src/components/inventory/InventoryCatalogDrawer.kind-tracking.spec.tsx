@@ -1,4 +1,4 @@
-import { configure, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps } from 'react';
 import {
@@ -21,16 +21,20 @@ import {
  * CA-S2-01/02).
  *
  * Vive en su propio spec y no dentro de `InventoryCatalogDrawer.spec.tsx`: los
- * 6 casos de este bloque llevaron aquel archivo a 42 tests y el conjunto pasó a
- * agotar el reloj del caso «reorderPoint negativo (A3)», que falla en archivo
- * completo y pasa aislado. Subir su timeout ya se intentó (`0ef8b88d`) sin
- * resolverlo: la causa es la carga acumulada del archivo, no la espera.
+ * 6 casos de este bloque habían llevado aquel archivo a 42 tests.
+ *
+ * La causa de fondo, medida en tres corridas de CI, resultó ser otra: el drawer
+ * valida en `blur` y pinta el error en un re-render posterior, y el default de
+ * 1000 ms de las utilidades async no alcanza en el runner Linux. Dividir el
+ * archivo aliviaba la presión pero no la quitaba — al pasar el caso A3 cayó su
+ * vecino de costo negativo. El remedio efectivo es la espera explícita por
+ * aserción del spec hermano; `configure({ asyncUtilTimeout })` a nivel de módulo
+ * NO sirve: no sobrevive al reparto de workers de Jest (verde con inline en
+ * `536a2bd5`, rojo con configure en `3b0f74da`).
+ *
+ * La división se conserva porque el bloque es cohesivo y el archivo original ya
+ * era el más grande del módulo.
  */
-
-// Mismo presupuesto de espera que el spec hermano: el drawer valida en `blur` y
-// pinta en un re-render posterior (ver la nota extensa en
-// `InventoryCatalogDrawer.spec.tsx`).
-configure({ asyncUtilTimeout: 5000 });
 
 const item: InventoryItemRecord = {
   id: 'item-1',

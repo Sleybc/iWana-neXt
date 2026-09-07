@@ -1,4 +1,4 @@
-import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps } from 'react';
 import {
@@ -29,18 +29,6 @@ import {
   INVENTORY_NO_COST_LABEL,
   INVENTORY_STANDARD_COST_LABEL,
 } from './inventory-labels';
-
-/**
- * Este drawer valida en `blur` y pinta el error en un re-render posterior al
- * evento. El default de 1000 ms de las utilidades async basta en local pero no
- * bajo la saturación del runner Linux, donde cayeron primero el caso A3
- * (`0ef8b88d`) y después su vecino de costo negativo. Se sube el presupuesto de
- * espera **solo para este archivo** en vez de parchear cada aserción: la causa
- * es una y es del componente, no de un caso concreto. No se toca el default
- * global del portal — subirlo en las 233 suites haría que un fallo real tarde
- * 5 s en reportarse.
- */
-configure({ asyncUtilTimeout: 5000 });
 
 const item: InventoryItemRecord = {
   id: 'item-1',
@@ -660,7 +648,9 @@ describe('InventoryCatalogDrawer · F1 reglas cruzadas y validación', () => {
     await user.type(baseCost, '-5');
     fireEvent.blur(baseCost);
 
-    expect(await screen.findByText('El costo no puede ser negativo.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('El costo no puede ser negativo.', {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText('Costo de compra de referencia para este producto.'),
     ).not.toBeInTheDocument();
@@ -706,7 +696,11 @@ describe('InventoryCatalogDrawer · UoM de compra (incorporación ADR-085 tras F
     await user.type(screen.getByLabelText('Factor de conversión a unidad base'), '100');
 
     expect(
-      await screen.findByText(INVENTORY_CATALOG_PURCHASE_UOM_DIMENSION_ERROR),
+      await screen.findByText(
+        INVENTORY_CATALOG_PURCHASE_UOM_DIMENSION_ERROR,
+        {},
+        { timeout: 5000 },
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/Unidad en la que el proveedor entrega el producto/),
@@ -746,7 +740,9 @@ describe('InventoryCatalogDrawer · UoM de compra (incorporación ADR-085 tras F
     await user.type(factor, '0');
     fireEvent.blur(factor);
 
-    expect(await screen.findByText(INVENTORY_CATALOG_PURCHASE_FACTOR_ERROR)).toBeInTheDocument();
+    expect(
+      await screen.findByText(INVENTORY_CATALOG_PURCHASE_FACTOR_ERROR, {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(/Cuántas unidades base trae una unidad de compra/),
     ).not.toBeInTheDocument();
@@ -786,7 +782,9 @@ describe('InventoryCatalogDrawer · UoM de compra (incorporación ADR-085 tras F
     await user.clear(factor);
     await user.type(factor, '0');
     fireEvent.blur(factor);
-    expect(await screen.findByText(INVENTORY_CATALOG_PURCHASE_FACTOR_ERROR)).toBeInTheDocument();
+    expect(
+      await screen.findByText(INVENTORY_CATALOG_PURCHASE_FACTOR_ERROR, {}, { timeout: 5000 }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('combobox', { name: 'Unidad de compra' }));
     await user.click(await screen.findByRole('option', { name: 'Sin unidad de compra' }));
@@ -875,6 +873,8 @@ describe('InventoryCatalogDrawer · F4 código de barras (PRD §11)', () => {
     expect(
       await screen.findByText(
         'El dígito de control del código EAN13 no es válido: revisa que el número esté completo y sin errores de tecleo.',
+        {},
+        { timeout: 5000 },
       ),
     ).toBeInTheDocument();
 
@@ -892,7 +892,11 @@ describe('InventoryCatalogDrawer · F4 código de barras (PRD §11)', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     expect(
-      await screen.findByText('Indica el formato del código: el formato va junto al código.'),
+      await screen.findByText(
+        'Indica el formato del código: el formato va junto al código.',
+        {},
+        { timeout: 5000 },
+      ),
     ).toBeInTheDocument();
     expect(onUpdate).not.toHaveBeenCalled();
   });

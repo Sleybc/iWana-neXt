@@ -1,20 +1,8 @@
-import { configure, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InventoryTrackingMode, SerializedAssetStatus, StockBalanceCondition } from '@iwana/shared';
 import { SERIAL_QTY_HELP_TEXT, StockIssueLineSidePeek } from './StockIssueLineSidePeek';
 import type { StockIssueDraftLine } from './stock-issue-draft';
-
-/**
- * `requestClose` de OperationalSidePeek es async y hace `await` sobre la
- * guardia: aunque el callback es síncrono, el `await` empuja el `setCloseNotice`
- * a una microtarea posterior al `keydown`, así que el aviso se pinta fuera del
- * flujo del evento. Igual pasa con las opciones del Select, que montan en un
- * tick posterior al click. El default de 1000 ms no alcanza bajo la saturación
- * del runner Linux. Se sube el presupuesto solo para este archivo; el
- * componente del design system no se toca (tiene otros consumidores y su
- * cambio es de AI-DS-OWNER).
- */
-configure({ asyncUtilTimeout: 5000 });
 
 jest.mock('@/lib/api-client', () => {
   const actual = jest.requireActual('@/lib/api-client');
@@ -309,7 +297,14 @@ describe('StockIssueLineSidePeek', () => {
     await user.keyboard('{Escape}');
 
     // La guardia bloquea el cierre y lo explica; el panel sigue abierto.
-    expect(await screen.findByRole('alert')).toHaveTextContent(/cambios sin guardar/i);
+    // `requestClose` de OperationalSidePeek hace `await` sobre la guardia, así
+    // que el aviso se pinta en una microtarea posterior al `keydown`. El default
+    // de 1000 ms no alcanza en el runner Linux; la espera va por aserción
+    // porque `configure()` a nivel de módulo no sobrevive al reparto de workers
+    // de Jest (medido: verde con inline en 536a2bd5, rojo con configure en 3b0f74da).
+    expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toHaveTextContent(
+      /cambios sin guardar/i,
+    );
     expect(screen.getByRole('dialog', { name: /Cable drop/ })).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
@@ -403,7 +398,8 @@ describe('StockIssueLineSidePeek', () => {
     await user.type(screen.getByLabelText('Cantidad'), '4');
     await user.keyboard('{Escape}');
 
-    const alert = await screen.findByRole('alert');
+    // Misma cadena async que el caso anterior.
+    const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
     expect(alert).toHaveTextContent('Agregar al borrador');
     expect(alert).toHaveTextContent('Guardar cambios');
     expect(alert).toHaveTextContent('Cancelar');
@@ -430,7 +426,8 @@ describe('StockIssueLineSidePeek', () => {
 
     // El operador cambia la condición mientras llega la etiqueta real.
     await user.click(await screen.findByRole('combobox', { name: 'Condición' }));
-    await user.click(await screen.findByRole('option', { name: /Nuevo/ }));
+    // El desplegable del Select monta sus opciones en un tick posterior al click.
+    await user.click(await screen.findByRole('option', { name: /Nuevo/ }, { timeout: 5000 }));
 
     rerender(
       <StockIssueLineSidePeek
