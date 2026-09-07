@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, Select, SkeletonBlock } from '@iwana/ui';
 import {
   StockIssueType,
@@ -11,13 +11,12 @@ import {
 import {
   inventoryApi,
   type CreateStockIssueDto,
-  type ListPickableItemsParams,
   type StockIssueDetailRecord,
   type StockLocationRecord,
   type UpdateStockIssueDto,
 } from '@/lib/api-client';
-import { normalizeListMeta, listPageWindow } from '@/lib/list-meta';
-import { PORTAL_DEFAULT_PAGE_SIZE, PORTAL_PAGE_SIZE_OPTIONS } from '@/lib/portal-page-size';
+import { listPageWindow, normalizeListMeta } from '@/lib/list-meta';
+import { useMinWidth } from '@/lib/useMinWidth';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -36,6 +35,7 @@ import {
   getStockIssueTypeHelperLabel,
   getStockIssueTypeLabel,
 } from './inventory-labels';
+import { parseDecimalAmount } from './stock-issue-balance-utils';
 import { PurchaseSelectionBar } from './PurchaseSelectionBar';
 import { PurchaseSuggestionList } from './PurchaseSuggestionList';
 import {
@@ -51,11 +51,17 @@ import {
   type StockIssueLineSidePeekResult,
 } from './StockIssueLineSidePeek';
 import { StockIssueSourceTabs, type StockIssueSourceTab } from './StockIssueSourceTabs';
+import { scopeForTab, usePickableScope, type PickableScopeState } from './usePickableScope';
+import { useSerialLabels } from './useSerialLabels';
 import {
   addCatalogSelectionToDraft,
   applyBulkQuantityToDraftLines,
+  areComposerSnapshotsEqual,
+  buildComposerSnapshot,
   createEmptyStockIssueDraft,
   createManualStockIssueDraftLine,
+  invalidateDraftStockContext,
+  rehydrateBareDraftLines,
   removeDraftLine,
   removeDraftLines,
   updateDraftLineConfiguration,
@@ -68,7 +74,6 @@ import {
 import { resolveLineSerializedAssetIds } from './stock-issue-draft';
 import {
   applySingleLotPreselectionToDraftLines,
-  fallbackSerializedAssetLabel,
   isSerializedTrackingMode,
 } from './stock-issue-line-utils';
 import { buildDraftFromIssueDetail } from './stock-issue-draft-from-detail';
@@ -83,56 +88,14 @@ import { InventoryLocationPicker } from './InventoryLocationPicker';
 type DestinationOptionsByType = Map<StockLocationType, StockLocationRecord[]>;
 export type StockIssueComposerMode = 'create' | 'edit';
 
-type PickableScope = 'with-stock' | 'catalog';
+const TYPE_OPTIONS = Object.values(StockIssueType).map((type) => ({
+  value: type,
+  label: getStockIssueTypeLabel(type),
+}));
 
 const PICKABLE_EDIT_PRELOAD_LIMIT = 100;
 const PICKABLE_SEARCH_DEBOUNCE_MS = 300;
 const LIST_SKELETON_DELAY_MS = 300;
-
-function scopeForTab(tab: StockIssueSourceTab): PickableScope {
-  return tab === 'suggestions' ? 'with-stock' : 'catalog';
-}
-
-/**
- * Estado de un listado de elegibles. El modo de pie lo declara el servidor en
- * `meta.capabilities.randomAccess` (ADR-065): `true` → pager numerado; `false`
- * → «Cargar más» por cursor. Nunca los dos montados a la vez (hallazgo P1).
- */
-interface PickableScopeState {
-  items: StockIssuePickableItem[];
-  total: number;
-  hasMore: boolean;
-  nextCursor: string | null;
-  page: number;
-  limit: number;
-  totalPages: number | null;
-  randomAccess: boolean;
-  loading: boolean;
-  error: string | null;
-}
-
-function emptyScopeState(): PickableScopeState {
-  return {
-    items: [],
-    total: 0,
-    hasMore: false,
-    nextCursor: null,
-    page: 1,
-    limit: PORTAL_DEFAULT_PAGE_SIZE,
-    totalPages: null,
-    randomAccess: true,
-    loading: false,
-    error: null,
-  };
-}
-
-function parseDecimalAmount(value: string | null | undefined): number {
-  if (value == null || value === '') {
-    return 0;
-  }
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 /** Muestra el skeleton solo si la carga supera el umbral (evita parpadeo). */
 function useDelayedFlag(active: boolean, delayMs: number): boolean {
@@ -169,78 +132,6 @@ function buildConditionBreakdown(
   return item.availability
     .filter((entry) => parseDecimalAmount(entry.available) > 0)
     .map((entry) => ({ condition: entry.condition, available: entry.available }));
-}
-
-interface ComposerSnapshot {
-  type: StockIssueType;
-  sourceLocationId: string;
-  destinationLocationId: string;
-  commercialRefId: string;
-  originRefId: string;
-  costCenter: string;
-  reason: string;
-  lines: Array<{
-    itemId: string;
-    requestedQty: string;
-    condition: string;
-    lotId: string;
-    serializedAssetId: string;
-    serializedAssetIds: string[];
-  }>;
-}
-
-function buildComposerSnapshot(input: {
-  type: StockIssueType;
-  sourceLocationId: string;
-  destinationLocationId: string;
-  commercialRefId: string;
-  originRefId: string;
-  costCenter: string;
-  reason: string;
-  lines: StockIssueDraftLine[];
-}): ComposerSnapshot {
-  return {
-    type: input.type,
-    sourceLocationId: input.sourceLocationId,
-    destinationLocationId: input.destinationLocationId,
-    commercialRefId: input.commercialRefId,
-    originRefId: input.originRefId,
-    costCenter: input.costCenter,
-    reason: input.reason,
-    lines: input.lines.map((line) => ({
-      itemId: line.itemId,
-      requestedQty: line.requestedQty,
-      condition: line.condition,
-      lotId: line.lotId,
-      serializedAssetId: line.serializedAssetId,
-      serializedAssetIds: [...line.serializedAssetIds].sort(),
-    })),
-  };
-}
-
-function useMinWidth(minWidth: number): boolean {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    const media = window.matchMedia(`(min-width: ${minWidth}px)`);
-    const update = () => setMatches(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, [minWidth]);
-
-  return matches;
-}
-
-const TYPE_OPTIONS = Object.values(StockIssueType).map((type) => ({
-  value: type,
-  label: getStockIssueTypeLabel(type),
-}));
-
-function mapPickableError(error: unknown): string {
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : 'No fue posible cargar el material disponible.';
 }
 
 /**
@@ -300,6 +191,22 @@ function PickableListFooter({
   );
 }
 
+/**
+ * Coherencia resumen ↔ línea: si la línea hidratada trae un único lote en su
+ * condición, nace con ese lote para que la columna "Disponible en origen" no
+ * salte del total a 0 mientras el operador no elige. Con varios lotes decide él.
+ */
+function withSingleLotPreselection(
+  next: StockIssueDraftState,
+  lineIds?: readonly string[],
+): StockIssueDraftState {
+  return {
+    lines: applySingleLotPreselectionToDraftLines(next.lines, {
+      ...(lineIds ? { lineIds } : {}),
+    }),
+  };
+}
+
 export interface StockIssueComposerProps {
   mode?: StockIssueComposerMode;
   editIssue?: StockIssueDetailRecord | null;
@@ -347,47 +254,70 @@ export function StockIssueComposer({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [lineErrors, setLineErrors] = useState<Record<string, StockIssueDraftLineError>>({});
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  const [sourceNotice, setSourceNotice] = useState<string | null>(null);
+  const [scanNotice, setScanNotice] = useState('');
   const [mobileStep, setMobileStep] = useState<'capture' | 'review'>('capture');
-  const [editInitializing, setEditInitializing] = useState(false);
-  const editBaselineRef = useRef<ComposerSnapshot | null>(null);
-  const editHydratedRef = useRef<string | null>(null);
-  const abortByScopeRef = useRef<Record<PickableScope, AbortController | null>>({
-    'with-stock': null,
-    catalog: null,
-  });
-  // ADR-065 §9 (desviación aceptada por AI-EM-ARCH en consolidación S2): la paginación del selector de captura vive en estado por ser lista efímera del flujo de creación, no en URL.
-  const [pickablesByScope, setPickablesByScope] = useState<
-    Record<PickableScope, PickableScopeState>
-  >({
-    'with-stock': emptyScopeState(),
-    catalog: emptyScopeState(),
-  });
-  const [serialLabelsById, setSerialLabelsById] = useState<Record<string, string>>({});
   const [liveNotice, setLiveNotice] = useState('');
-  const [peek, setPeek] = useState<{ line: StockIssueDraftLine; mode: 'create' | 'edit' } | null>(
-    null,
-  );
+  const [editInitializing, setEditInitializing] = useState(false);
+  const editBaselineRef = useRef<ReturnType<typeof buildComposerSnapshot> | null>(null);
+  const editHydratedRef = useRef<string | null>(null);
+  const draftLinesRef = useRef<StockIssueDraftLine[]>(draft.lines);
+  draftLinesRef.current = draft.lines;
+  const selectedDraftLineIdsRef = useRef<string[]>(selectedDraftLineIds);
+  selectedDraftLineIdsRef.current = selectedDraftLineIds;
+  /** Consulta de escaneo armada por Enter del lector; se consume al resolverse. */
+  const scanArmedRef = useRef<string | null>(null);
+  const [scanSeq, setScanSeq] = useState(0);
+
+  const activeScope = scopeForTab(sourceTab);
+  const {
+    pickablesByScope,
+    setPickablesByScope,
+    pickableCache,
+    setPickableCache,
+    completedQByScope,
+    showStockContext,
+    retryActiveScope,
+    handleLoadMore,
+    handlePageChange,
+    handlePageSizeChange,
+    abortAllScopes,
+    clearScopes,
+    clearPickableCache,
+  } = usePickableScope({
+    sourceLocationId,
+    activeScope,
+    debouncedSearch,
+    editInitializing,
+  });
+  const { serialLabelsById, mergeSerialLabels, resetSerialLabels } = useSerialLabels(draft.lines);
+
+  // Panel por id viva (S2.1 C1): el `peek` guarda el id y el modo; la línea se
+  // deriva del borrador para que la hidratación posterior no muestre datos
+  // viejos. En creación la línea provisional vive aparte hasta confirmarse.
+  const [peek, setPeek] = useState<{ lineId: string; mode: 'create' | 'edit' } | null>(null);
+  const [provisionalLine, setProvisionalLine] = useState<StockIssueDraftLine | null>(null);
+  const peekLine = useMemo(() => {
+    if (!peek) {
+      return null;
+    }
+    if (peek.mode === 'create') {
+      return provisionalLine && provisionalLine.id === peek.lineId ? provisionalLine : null;
+    }
+    return draft.lines.find((line) => line.id === peek.lineId) ?? null;
+  }, [peek, provisionalLine, draft.lines]);
 
   const isDesktopLayout = useMinWidth(768);
   const showDestination = showDestinationForIssueType(type);
-  const showStockContext = Boolean(sourceLocationId.trim());
-  const activeScope = scopeForTab(sourceTab);
   const activeScopeState = pickablesByScope[activeScope];
   const showListSkeleton = useDelayedFlag(activeScopeState.loading, LIST_SKELETON_DELAY_MS);
 
-  // Caché de sesión de elegibles B1: al paginar por página el listado activo se
-  // reemplaza, pero las selecciones y la vía manual siguen necesitando los
-  // ítems de páginas anteriores (disponibilidad y lotes quedaron congelados en
-  // las líneas al agregarlas; el caché solo crece dentro del composer).
-  const [pickableCache, setPickableCache] = useState<Map<string, StockIssuePickableItem>>(
-    () => new Map(),
-  );
   const pickableById = pickableCache;
 
   const excludedSerializedAssetIds = useMemo(() => {
     const ids = new Set<string>();
     for (const line of draft.lines) {
-      if (peek && line.id === peek.line.id) {
+      if (peek && line.id === peek.lineId) {
         continue;
       }
       for (const id of resolveLineSerializedAssetIds(line)) {
@@ -397,19 +327,24 @@ export function StockIssueComposer({
     return [...ids];
   }, [draft.lines, peek]);
 
+  // Cada fila depende solo de su ámbito: cambiar de pestaña o de página en un
+  // ámbito no recalcula las filas del otro (S2.1 C4).
+  const withStockItems = pickablesByScope['with-stock'].items;
+  const catalogItems = pickablesByScope.catalog.items;
+
   const suggestionRows = useMemo(
     () =>
-      pickablesByScope['with-stock'].items.map((item) => ({
+      withStockItems.map((item) => ({
         itemId: item.itemId,
         productLabel: `${item.sku} · ${item.name}`,
         helperLabel: `Disponible en origen: ${formatInventoryQuantity(item.totalAvailable)} ${getInventoryUnitOfMeasureLabel(item.unitOfMeasure)} · ${formatConditionBreakdownText(item)}`,
         selected: selectedSuggestionIds.includes(item.itemId),
       })),
-    [pickablesByScope, selectedSuggestionIds],
+    [withStockItems, selectedSuggestionIds],
   );
 
   const catalogRows = useMemo(() => {
-    return pickablesByScope.catalog.items.map((item) => ({
+    return catalogItems.map((item) => ({
       id: item.itemId,
       productLabel: `${item.sku} · ${item.name}`,
       categoryName: item.categoryName?.trim() ? item.categoryName : 'Sin categoría',
@@ -418,7 +353,7 @@ export function StockIssueComposer({
       conditions: showStockContext ? buildConditionBreakdown(item) : [],
       selected: selectedCatalogIds.includes(item.itemId),
     }));
-  }, [pickablesByScope, selectedCatalogIds, showStockContext]);
+  }, [catalogItems, selectedCatalogIds, showStockContext]);
 
   const selectionCount = selectedSuggestionIds.length + selectedCatalogIds.length;
 
@@ -455,7 +390,7 @@ export function StockIssueComposer({
 
   const hasUnsavedChanges = useMemo(() => {
     if (isEditMode && editBaselineRef.current) {
-      return JSON.stringify(currentSnapshot) !== JSON.stringify(editBaselineRef.current);
+      return !areComposerSnapshotsEqual(currentSnapshot, editBaselineRef.current);
     }
 
     return Boolean(
@@ -485,154 +420,6 @@ export function StockIssueComposer({
     draft.lines.length,
   ]);
 
-  async function fetchPickableScope(
-    scope: PickableScope,
-    input: {
-      source: string;
-      q: string;
-      page?: number;
-      limit?: number;
-      cursor?: string | null;
-      append?: boolean;
-    },
-  ): Promise<void> {
-    abortByScopeRef.current[scope]?.abort();
-    const controller = new AbortController();
-    abortByScopeRef.current[scope] = controller;
-
-    setPickablesByScope((current) => ({
-      ...current,
-      [scope]: { ...current[scope], loading: true, error: null },
-    }));
-
-    const limit = input.limit ?? pickablesByScope[scope].limit;
-    const page = input.page ?? 1;
-    const state = pickablesByScope[scope];
-    const params: ListPickableItemsParams = {
-      sourceLocationId: input.source,
-      scope,
-      ...(input.q.trim() ? { q: input.q.trim() } : {}),
-      limit,
-      // ADR-065: el modo lo declara el servidor. Sin meta previa se asume el
-      // default numerado; en degradación (`randomAccess: false`) el avance
-      // vuelve al cursor con «Cargar más».
-      ...(state.randomAccess || state.total === 0
-        ? { page }
-        : input.cursor
-          ? { cursor: input.cursor }
-          : {}),
-    };
-
-    try {
-      const response = await inventoryApi.listPickableItems(params, { signal: controller.signal });
-      if (controller.signal.aborted) {
-        return;
-      }
-      const meta = normalizeListMeta(response.meta, {
-        dataLength: response.data.length,
-        limit,
-      });
-      setPickableCache((current) => {
-        const next = new Map(current);
-        for (const item of response.data) {
-          if (!next.has(item.itemId)) {
-            next.set(item.itemId, item);
-          }
-        }
-        return next;
-      });
-      setPickablesByScope((current) => {
-        const previous = current[scope];
-        const merged = input.append
-          ? [
-              ...previous.items,
-              ...response.data.filter(
-                (item) => !previous.items.some((row) => row.itemId === item.itemId),
-              ),
-            ]
-          : response.data;
-        return {
-          ...current,
-          [scope]: {
-            items: merged,
-            total: meta.total,
-            hasMore: meta.hasMore,
-            nextCursor: meta.nextCursor,
-            page: meta.page ?? page,
-            limit: meta.limit,
-            totalPages: meta.totalPages,
-            randomAccess: meta.capabilities.randomAccess,
-            loading: false,
-            error: null,
-          },
-        };
-      });
-    } catch (fetchError: unknown) {
-      if (controller.signal.aborted) {
-        return;
-      }
-      setPickablesByScope((current) => ({
-        ...current,
-        [scope]: {
-          ...current[scope],
-          ...(input.append ? {} : { items: [], total: 0, hasMore: false, nextCursor: null }),
-          loading: false,
-          error: mapPickableError(fetchError),
-        },
-      }));
-    }
-  }
-
-  function retryActiveScope(): void {
-    if (!sourceLocationId.trim() || editInitializing) {
-      return;
-    }
-    void fetchPickableScope(activeScope, {
-      source: sourceLocationId.trim(),
-      q: debouncedSearch,
-    });
-  }
-
-  function handleLoadMore(): void {
-    const state = pickablesByScope[activeScope];
-    const cursor = state.nextCursor;
-    if (!sourceLocationId.trim() || !cursor || state.randomAccess) {
-      return;
-    }
-    void fetchPickableScope(activeScope, {
-      source: sourceLocationId.trim(),
-      q: debouncedSearch,
-      cursor,
-      append: true,
-    });
-  }
-
-  /** Cambio de página del pager numerado (ADR-065): reemplaza el listado. */
-  function handlePageChange(scope: PickableScope, page: number): void {
-    if (!sourceLocationId.trim()) {
-      return;
-    }
-    void fetchPickableScope(scope, {
-      source: sourceLocationId.trim(),
-      q: debouncedSearch,
-      page,
-      limit: pickablesByScope[scope].limit,
-    });
-  }
-
-  /** Cambio de tamaño de página: vuelve a la página 1 (ADR-065). */
-  function handlePageSizeChange(scope: PickableScope, limit: number): void {
-    if (!sourceLocationId.trim()) {
-      return;
-    }
-    void fetchPickableScope(scope, {
-      source: sourceLocationId.trim(),
-      q: debouncedSearch,
-      page: 1,
-      limit,
-    });
-  }
-
   // Debounce 300 de la búsqueda: el mismo endpoint B1 resuelve `q` en servidor
   // (sku/nombre/marca/modelo/código) para ambas pestañas.
   useEffect(() => {
@@ -651,97 +438,30 @@ export function StockIssueComposer({
     onDraftLineCountChange?.(draft.lines.length);
   }, [draft.lines.length, onDraftLineCountChange]);
 
-  // Etiquetas de seriales (hidratación de edición y filas vivas): se resuelven
-  // una vez por activo y se cachean; un fallo degrada al id corto, nunca
-  // bloquea la línea. Fuente única para la tabla y el panel.
-  useEffect(() => {
-    const pending = new Set<string>();
-    for (const line of draft.lines) {
-      for (const id of resolveLineSerializedAssetIds(line)) {
-        if (serialLabelsById[id] == null) {
-          pending.add(id);
-        }
-      }
-    }
-    if (pending.size === 0) {
-      return;
-    }
-
-    let cancelled = false;
-    void Promise.all(
-      [...pending].map((assetId) =>
-        inventoryApi
-          .getAsset(assetId)
-          .then((asset) => ({
-            assetId,
-            label:
-              asset.serialNumber?.trim() ||
-              asset.assetTag?.trim() ||
-              fallbackSerializedAssetLabel(assetId),
-          }))
-          .catch(() => ({ assetId, label: fallbackSerializedAssetLabel(assetId) })),
-      ),
-    ).then((resolved) => {
-      if (cancelled) {
-        return;
-      }
-      setSerialLabelsById((current) => {
-        const next = { ...current };
-        for (const entry of resolved) {
-          next[entry.assetId] = entry.label;
-        }
-        return next;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [draft.lines, serialLabelsById]);
-
   // Al editar el borrador, el error de validación local deja de aplicar: se
   // recalcula en el próximo envío en vez de quedar fijo.
   useEffect(() => {
     setValidationError(null);
   }, [draft]);
 
-  // Carga B1 (reemplaza listBalances(100) + listAssets(100) + N+1 getItem(40) y
-  // la derivación cliente): el efecto sobre el origen y la búsqueda alimenta
-  // ambas pestañas desde B1, con `meta.total` en los contadores y el pie de
-  // paginación decidido por `meta.capabilities` (ADR-065).
+  // S2.1 C3: las líneas sin contexto se rehidratan desde el caché de la bodega
+  // vigente; la captura que el operador ya reconfiguró nunca se pisa.
   useEffect(() => {
-    const source = sourceLocationId.trim();
-    if (!source || editInitializing) {
+    if (!sourceLocationId.trim() || editInitializing) {
       return;
     }
-    void fetchPickableScope(activeScope, { source, q: debouncedSearch });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarga por origen/pestaña/búsqueda; fetchPickableScope es estable en intención
-  }, [sourceLocationId, activeScope, debouncedSearch, editInitializing]);
-
-  // El contador de la pestaña inactiva también refleja `meta.total` del servidor.
-  useEffect(() => {
-    const source = sourceLocationId.trim();
-    if (!source || editInitializing) {
-      return;
-    }
-    const inactive: PickableScope = activeScope === 'with-stock' ? 'catalog' : 'with-stock';
-    void fetchPickableScope(inactive, { source, q: debouncedSearch });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- total inactivo por cambio de origen/búsqueda
-  }, [sourceLocationId, debouncedSearch, editInitializing]);
-
-  useEffect(() => {
-    const scopes = abortByScopeRef.current;
-    return () => {
-      scopes['with-stock']?.abort();
-      scopes.catalog?.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showStockContext) {
-      setPickablesByScope({ 'with-stock': emptyScopeState(), catalog: emptyScopeState() });
-    }
-  }, [showStockContext]);
+    setDraft((current) => {
+      const { draft: next, rehydratedLineIds } = rehydrateBareDraftLines(current, pickableCache);
+      if (rehydratedLineIds.length === 0) {
+        return current;
+      }
+      return {
+        lines: applySingleLotPreselectionToDraftLines(next.lines, {
+          lineIds: rehydratedLineIds,
+        }),
+      };
+    });
+  }, [sourceLocationId, pickableCache, editInitializing]);
 
   // Inicialización del modo edición (S1): la cabecera sale del detalle y las
   // líneas se hidratan con el caché B1 (trackingMode + lots[] + availability[]);
@@ -776,10 +496,12 @@ export function StockIssueComposer({
     setValidationError(null);
     setLineErrors({});
     setDuplicateNotice(null);
+    setSourceNotice(null);
+    setScanNotice('');
     setMobileStep('capture');
-    setSerialLabelsById({});
-    setLiveNotice('');
+    resetSerialLabels();
     setPeek(null);
+    setProvisionalLine(null);
 
     const source = editIssue.sourceLocationId.trim();
     void (async () => {
@@ -864,7 +586,7 @@ export function StockIssueComposer({
       } = buildDraftFromIssueDetail(editIssue, new Map(), loaded);
       // Etiquetas legibles del contrato §5.5; las ya resueltas por el picker
       // no se pisan.
-      setSerialLabelsById((current) => ({ ...hydratedLabels, ...current }));
+      resetSerialLabels(hydratedLabels);
       const missingItemIds = [
         ...new Set(
           initialDraft.lines.filter((line) => !loaded.has(line.itemId)).map((line) => line.itemId),
@@ -919,19 +641,38 @@ export function StockIssueComposer({
     return () => {
       cancelled = true;
     };
-  }, [isEditMode, editIssue]);
+  }, [isEditMode, editIssue, resetSerialLabels, setPickableCache, setPickablesByScope]);
 
   /**
-   * F4 (RF-CAT-16, CA-F4-05): un lector deja el código completo en el buscador
-   * y el backend lo resuelve a una sola coincidencia; marcarla evita el clic
-   * manual. Vale para cualquier búsqueda con un único resultado.
+   * F4 (RF-CAT-16, CA-F4-05): solo el escaneo auto-marca — el lector deja el
+   * código completo y lo cierra con Enter, así que la coincidencia única de un
+   * escaneo queda marcada sin clic manual. La búsqueda tecleada nunca
+   * auto-marca. Espera al barrido vigente de la consulta (`completedQ`) y
+   * anuncia en la región viva de captura.
    */
   useEffect(() => {
-    if (!debouncedSearch.trim() || activeScopeState.items.length !== 1) {
+    const armed = scanArmedRef.current;
+    const wanted = debouncedSearch.trim();
+    if (!armed || !wanted || armed !== wanted) {
+      return;
+    }
+    if (activeScopeState.loading) {
+      return;
+    }
+    // Sin barrido completado para esta consulta, los ítems pueden ser un
+    // residuo anterior o el intermedio previo al fetch (batching con backend
+    // rápido): se espera al resultado vigente en vez de marcar mal.
+    if (completedQByScope[activeScope] !== wanted) {
+      return;
+    }
+    scanArmedRef.current = null;
+    if (activeScopeState.error) {
+      setScanNotice('No fue posible verificar el escaneo. Usa Reintentar.');
       return;
     }
     const [single] = activeScopeState.items;
-    if (!single) {
+    if (activeScopeState.items.length !== 1 || !single) {
+      setScanNotice('El escaneo no encontró un producto único en esta bodega.');
       return;
     }
     if (activeScope === 'with-stock') {
@@ -943,25 +684,43 @@ export function StockIssueComposer({
         current.includes(single.itemId) ? current : [...current, single.itemId],
       );
     }
-  }, [activeScopeState.items, debouncedSearch, activeScope]);
+    setScanNotice(`Se marcó ${single.sku} · ${single.name} por escaneo.`);
+  }, [
+    activeScopeState.items,
+    activeScopeState.loading,
+    activeScopeState.error,
+    debouncedSearch,
+    activeScope,
+    completedQByScope,
+    scanSeq,
+  ]);
 
-  /**
-   * Coherencia resumen ↔ línea: si la línea hidratada trae un único lote en su
-   * condición, nace con ese lote para que la columna "Disponible en origen" no
-   * salte del total a 0 mientras el operador no elige. Con varios lotes decide él.
-   */
-  function withSingleLotPreselection(
-    next: StockIssueDraftState,
-    lineIds?: readonly string[],
-  ): StockIssueDraftState {
-    return {
-      lines: applySingleLotPreselectionToDraftLines(next.lines, {
-        ...(lineIds ? { lineIds } : {}),
-      }),
-    };
+  function handleCatalogSearchChange(value: string): void {
+    scanArmedRef.current = null;
+    setScanNotice('');
+    setCatalogSearch(value);
   }
 
-  function clearLineError(lineId: string): void {
+  function handleCatalogSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    // Valor en vivo del campo (F4): en Enter rápido `catalogSearch` aún es el
+    // estado anterior; el lector deja el código completo y lo cierra con Enter.
+    const query = event.currentTarget.value.trim();
+    if (!query) {
+      return;
+    }
+    if (query !== catalogSearch) {
+      setCatalogSearch(event.currentTarget.value);
+    }
+    // Sufijo Enter del lector: arma el escaneo y despierta el efecto aunque el
+    // resultado ya estuviera resuelto para esta consulta.
+    scanArmedRef.current = query;
+    setScanSeq((current) => current + 1);
+  }
+
+  const clearLineError = useCallback((lineId: string) => {
     setLineErrors((current) => {
       if (!(lineId in current)) {
         return current;
@@ -970,7 +729,38 @@ export function StockIssueComposer({
       delete next[lineId];
       return next;
     });
-  }
+  }, []);
+
+  /** S2.1 C3: al cambiar el origen se invalida el contexto de bodega del
+   * borrador; el disponible contextual nunca se calcula con datos de otra
+   * bodega. Las líneas se rehidratan solas desde el caché de la bodega nueva.
+   */
+  const handleSourceChange = useCallback(
+    (nextId: string | null, item: { id: string; label: string } | null) => {
+      const nextSource = nextId ?? '';
+      const changed = nextSource !== sourceLocationId;
+      setSourceLocationId(nextSource);
+      setSourceLocationLabel(item ? item.label : null);
+      setSelectedSuggestionIds([]);
+      setSelectedCatalogIds([]);
+      scanArmedRef.current = null;
+      setScanNotice('');
+      if (destinationLocationId === nextSource) {
+        setDestinationLocationId('');
+        setDestinationLocationLabel(null);
+      }
+      if (changed) {
+        clearPickableCache();
+        setDraft((current) => invalidateDraftStockContext(current));
+        setSourceNotice(
+          draftLinesRef.current.length > 0
+            ? 'Cambiaste la bodega de origen: las líneas perdieron su disponibilidad. Revísalas con Modificar antes de crear la salida.'
+            : null,
+        );
+      }
+    },
+    [sourceLocationId, destinationLocationId, clearPickableCache],
+  );
 
   function handleAddSelectedProducts() {
     const selections = [...selectedSuggestionIds, ...selectedCatalogIds]
@@ -999,6 +789,7 @@ export function StockIssueComposer({
     );
     setSelectedSuggestionIds([]);
     setSelectedCatalogIds([]);
+    setSourceNotice(null);
 
     // Riesgo G1 (SPEC S2 §6.2): la vía rápida agrega el serializado sin
     // seriales; la fila lo hace visible (badge) y la región viva lo anuncia.
@@ -1033,59 +824,94 @@ export function StockIssueComposer({
     }
   }
 
-  /** Vía principal (MOD12 S2 §6.2): clic en el producto abre el panel. */
-  function openPeekForItem(itemId: string): void {
-    const item = pickableById.get(itemId);
-    if (!item) {
-      return;
-    }
-    const { draft: single } = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
-      {
-        id: item.itemId,
-        sku: item.sku,
-        name: item.name,
-        unitOfMeasure: item.unitOfMeasure,
-        trackingMode: item.trackingMode,
-        lots: item.lots,
-        availability: item.availability,
-        availableSerialCount: item.availableSerialCount,
-      },
-    ]);
-    const [line] = applySingleLotPreselectionToDraftLines(single.lines);
-    if (!line) {
-      return;
-    }
-    setPeek({ line, mode: 'create' });
-  }
-
-  function openPeekForEdit(lineId: string): void {
-    const line = draft.lines.find((candidate) => candidate.id === lineId);
-    if (!line || !line.itemId.trim()) {
-      return;
-    }
-    setPeek({ line, mode: 'edit' });
-  }
-
-  function handlePeekConfirm(result: StockIssueLineSidePeekResult): void {
-    if (!peek) {
-      return;
-    }
-    setSerialLabelsById((current) => ({ ...current, ...result.serializedAssetLabels }));
-
-    if (peek.mode === 'edit') {
-      clearLineError(peek.line.id);
-      setDraft((current) => updateDraftLineConfiguration(current, peek.line.id, result));
-      setLiveNotice('');
-    } else {
-      const configured = updateDraftLineConfiguration({ lines: [peek.line] }, peek.line.id, result);
-      const [line] = configured.lines;
-      if (line) {
-        setDraft((current) => ({ lines: [...current.lines, line] }));
+  const openPeekForEdit = useCallback(
+    (lineId: string) => {
+      const line = draftLinesRef.current.find((candidate) => candidate.id === lineId);
+      if (!line || !line.itemId.trim()) {
+        return;
       }
-      setLiveNotice('');
+      clearLineError(lineId);
+      setProvisionalLine(null);
+      setPeek({ lineId, mode: 'edit' });
+    },
+    [clearLineError],
+  );
+
+  /** Vía principal (MOD12 S2 §6.2): clic en el producto abre el panel. Si el
+   * ítem ya está en el borrador, abre edición sobre esa línea en vez de crear
+   * una provisional duplicada (CA-S2.1-FE01). */
+  const openPeekForItem = useCallback(
+    (itemId: string) => {
+      const existing = draftLinesRef.current.find((line) => line.itemId === itemId);
+      if (existing) {
+        openPeekForEdit(existing.id);
+        return;
+      }
+      const item = pickableCache.get(itemId);
+      if (!item) {
+        return;
+      }
+      const { draft: single } = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+        {
+          id: item.itemId,
+          sku: item.sku,
+          name: item.name,
+          unitOfMeasure: item.unitOfMeasure,
+          trackingMode: item.trackingMode,
+          lots: item.lots,
+          availability: item.availability,
+          availableSerialCount: item.availableSerialCount,
+        },
+      ]);
+      const [line] = applySingleLotPreselectionToDraftLines(single.lines);
+      if (!line) {
+        return;
+      }
+      setProvisionalLine(line);
+      setPeek({ lineId: line.id, mode: 'create' });
+    },
+    [pickableCache, openPeekForEdit],
+  );
+
+  const handlePeekConfirm = useCallback(
+    (result: StockIssueLineSidePeekResult) => {
+      if (!peek) {
+        return;
+      }
+      mergeSerialLabels(result.serializedAssetLabels);
+      setSourceNotice(null);
+
+      if (peek.mode === 'edit') {
+        clearLineError(peek.lineId);
+        setDraft((current) => updateDraftLineConfiguration(current, peek.lineId, result));
+        setLiveNotice('');
+      } else {
+        const provisional = provisionalLine;
+        if (provisional && provisional.id === peek.lineId) {
+          const configured = updateDraftLineConfiguration(
+            { lines: [provisional] },
+            provisional.id,
+            result,
+          );
+          const [line] = configured.lines;
+          if (line) {
+            setDraft((current) => ({ lines: [...current.lines, line] }));
+          }
+        }
+        setLiveNotice('');
+      }
+      setPeek(null);
+      setProvisionalLine(null);
+    },
+    [peek, provisionalLine, mergeSerialLabels, clearLineError],
+  );
+
+  const handlePeekOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setPeek(null);
+      setProvisionalLine(null);
     }
-    setPeek(null);
-  }
+  }, []);
 
   function handleAddManualLine() {
     setDraft((current) => ({
@@ -1096,36 +922,77 @@ export function StockIssueComposer({
     }
   }
 
-  function handleItemChange(lineId: string, hydration: StockIssueDraftItemHydration | null) {
-    clearLineError(lineId);
+  const handleItemChange = useCallback(
+    (lineId: string, hydration: StockIssueDraftItemHydration | null) => {
+      clearLineError(lineId);
+      setSourceNotice(null);
+      setDraft((current) => {
+        if (!hydration) {
+          return withSingleLotPreselection(updateDraftLineItem(current, lineId, '', '', ''), [
+            lineId,
+          ]);
+        }
+        return withSingleLotPreselection(
+          updateDraftLineItem(
+            current,
+            lineId,
+            hydration.itemId,
+            hydration.productLabel,
+            hydration.unitOfMeasure,
+            {
+              trackingMode: hydration.trackingMode,
+              lots: hydration.lots,
+              availability: hydration.availability,
+              availableSerialCount: hydration.availableSerialCount,
+            },
+          ),
+          [lineId],
+        );
+      });
+    },
+    [clearLineError],
+  );
+
+  const handleQuantityChange = useCallback(
+    (lineId: string, value: string) => {
+      clearLineError(lineId);
+      setDraft((current) => updateDraftLineQuantity(current, lineId, value));
+    },
+    [clearLineError],
+  );
+
+  const handleToggleLine = useCallback((lineId: string) => {
+    setSelectedDraftLineIds((current) =>
+      current.includes(lineId) ? current.filter((value) => value !== lineId) : [...current, lineId],
+    );
+  }, []);
+
+  const handleToggleAll = useCallback((checked: boolean) => {
+    setSelectedDraftLineIds(checked ? draftLinesRef.current.map((line) => line.id) : []);
+  }, []);
+
+  const handleRemoveLine = useCallback((lineId: string) => {
+    setSourceNotice(null);
+    setDraft((current) => removeDraftLine(current, lineId));
+    setSelectedDraftLineIds((current) => current.filter((value) => value !== lineId));
+  }, []);
+
+  const handleRemoveSelected = useCallback(() => {
+    setSourceNotice(null);
     setDraft((current) => {
-      if (!hydration) {
-        return withSingleLotPreselection(updateDraftLineItem(current, lineId, '', '', ''), [
-          lineId,
-        ]);
-      }
-      return withSingleLotPreselection(
-        updateDraftLineItem(
-          current,
-          lineId,
-          hydration.itemId,
-          hydration.productLabel,
-          hydration.unitOfMeasure,
-          {
-            trackingMode: hydration.trackingMode,
-            lots: hydration.lots,
-            availability: hydration.availability,
-            availableSerialCount: hydration.availableSerialCount,
-          },
-        ),
-        [lineId],
-      );
+      const ids = new Set(selectedDraftLineIdsRef.current);
+      return removeDraftLines(current, [...ids]);
     });
-  }
+    setSelectedDraftLineIds([]);
+  }, []);
+
+  const handleApplyBulkQuantity = useCallback((quantity: string) => {
+    const ids = [...selectedDraftLineIdsRef.current];
+    setDraft((current) => applyBulkQuantityToDraftLines(current, ids, quantity));
+  }, []);
 
   function resetComposer() {
-    abortByScopeRef.current['with-stock']?.abort();
-    abortByScopeRef.current.catalog?.abort();
+    abortAllScopes();
     setType(StockIssueType.TECHNICIAN_CUSTODY);
     setSourceLocationId('');
     setSourceLocationLabel(null);
@@ -1137,7 +1004,8 @@ export function StockIssueComposer({
     setReason('');
     setCatalogSearch('');
     setDebouncedSearch('');
-    setPickablesByScope({ 'with-stock': emptyScopeState(), catalog: emptyScopeState() });
+    clearScopes();
+    clearPickableCache();
     setSourceTab('suggestions');
     setSelectedSuggestionIds([]);
     setSelectedCatalogIds([]);
@@ -1146,10 +1014,13 @@ export function StockIssueComposer({
     setValidationError(null);
     setLineErrors({});
     setDuplicateNotice(null);
+    setSourceNotice(null);
+    setScanNotice('');
     setMobileStep('capture');
-    setSerialLabelsById({});
+    resetSerialLabels();
     setLiveNotice('');
     setPeek(null);
+    setProvisionalLine(null);
     editHydratedRef.current = null;
   }
 
@@ -1205,7 +1076,8 @@ export function StockIssueComposer({
           const lineId = firstError.controlId.replace('issue-draft-modify-', '');
           const target = draft.lines.find((candidate) => candidate.id === lineId);
           if (target) {
-            setPeek({ line: target, mode: 'edit' });
+            setProvisionalLine(null);
+            setPeek({ lineId: target.id, mode: 'edit' });
           } else {
             focusControl(firstError.controlId);
           }
@@ -1286,17 +1158,7 @@ export function StockIssueComposer({
           label="Origen"
           value={sourceLocationId || null}
           selectedLabel={sourceLocationLabel}
-          onChange={(nextId, item) => {
-            const nextSource = nextId ?? '';
-            setSourceLocationId(nextSource);
-            setSourceLocationLabel(item ? item.label : null);
-            setSelectedSuggestionIds([]);
-            setSelectedCatalogIds([]);
-            if (destinationLocationId === nextSource) {
-              setDestinationLocationId('');
-              setDestinationLocationLabel(null);
-            }
-          }}
+          onChange={handleSourceChange}
         />
         {showDestination ? (
           <InventoryLocationPicker
@@ -1359,7 +1221,12 @@ export function StockIssueComposer({
     }
 
     if (activeScopeState.loading && !showListSkeleton && activeScopeState.items.length === 0) {
-      return null;
+      // Hueco de carga con `aria-busy`: anuncia sin parpadear el skeleton.
+      return (
+        <span className="sr-only" role="status" aria-busy="true">
+          Cargando material disponible…
+        </span>
+      );
     }
 
     if (activeScopeState.error && activeScopeState.items.length === 0) {
@@ -1466,10 +1333,16 @@ export function StockIssueComposer({
         id="issue-catalog-search"
         label="Buscar ítem"
         placeholder="Buscar por código, nombre o marca"
-        helperText="Puedes escanear el código de barras: con una sola coincidencia queda marcada para agregar."
+        helperText="Puedes escanear el código de barras y cerrar con Enter: con una sola coincidencia queda marcada para agregar."
         value={catalogSearch}
-        onChange={(event) => setCatalogSearch(event.target.value)}
+        onChange={(event) => handleCatalogSearchChange(event.target.value)}
+        onKeyDown={handleCatalogSearchKeyDown}
       />
+      {scanNotice ? (
+        <p className="sr-only" role="status">
+          {scanNotice}
+        </p>
+      ) : null}
       {captureList}
       <PurchaseSelectionBar
         count={selectionCount}
@@ -1494,6 +1367,9 @@ export function StockIssueComposer({
             : 'Revisa cantidades antes de crear la salida.'
         }
       />
+      {sourceNotice ? (
+        <PortalAlert variant="warning" title="Bodega cambiada" description={sourceNotice} />
+      ) : null}
       {duplicateNotice ? (
         <PortalAlert variant="warning" title="Productos omitidos" description={duplicateNotice} />
       ) : null}
@@ -1517,38 +1393,15 @@ export function StockIssueComposer({
           liveNotice={liveNotice}
           pickableById={pickableById}
           lineErrors={lineErrors}
+          busy={isSubmitting}
           onItemChange={handleItemChange}
-          onQuantityChange={(lineId, value) => {
-            clearLineError(lineId);
-            setDraft((current) => updateDraftLineQuantity(current, lineId, value));
-          }}
-          onModifyLine={(lineId) => {
-            clearLineError(lineId);
-            openPeekForEdit(lineId);
-          }}
-          onToggleLine={(lineId) =>
-            setSelectedDraftLineIds((current) =>
-              current.includes(lineId)
-                ? current.filter((value) => value !== lineId)
-                : [...current, lineId],
-            )
-          }
-          onToggleAll={(checked) =>
-            setSelectedDraftLineIds(checked ? draft.lines.map((line) => line.id) : [])
-          }
-          onRemove={(lineId) => {
-            setDraft((current) => removeDraftLine(current, lineId));
-            setSelectedDraftLineIds((current) => current.filter((value) => value !== lineId));
-          }}
-          onRemoveSelected={() => {
-            setDraft((current) => removeDraftLines(current, selectedDraftLineIds));
-            setSelectedDraftLineIds([]);
-          }}
-          onApplyBulkQuantity={(quantity) =>
-            setDraft((current) =>
-              applyBulkQuantityToDraftLines(current, selectedDraftLineIds, quantity),
-            )
-          }
+          onQuantityChange={handleQuantityChange}
+          onModifyLine={openPeekForEdit}
+          onToggleLine={handleToggleLine}
+          onToggleAll={handleToggleAll}
+          onRemove={handleRemoveLine}
+          onRemoveSelected={handleRemoveSelected}
+          onApplyBulkQuantity={handleApplyBulkQuantity}
         />
       )}
     </section>
@@ -1637,17 +1490,14 @@ export function StockIssueComposer({
       )}
 
       <StockIssueLineSidePeek
-        open={peek != null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPeek(null);
-          }
-        }}
-        line={peek?.line ?? null}
+        open={peek != null && peekLine != null}
+        onOpenChange={handlePeekOpenChange}
+        line={peekLine}
         mode={peek?.mode ?? 'create'}
         sourceLocationId={sourceLocationId}
         excludedSerializedAssetIds={excludedSerializedAssetIds}
         serialLabelsById={serialLabelsById}
+        busy={isSubmitting}
         onConfirm={handlePeekConfirm}
       />
     </div>

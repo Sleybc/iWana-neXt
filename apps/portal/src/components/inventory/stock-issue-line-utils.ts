@@ -12,6 +12,7 @@ import type {
   SearchablePickerSearchResult,
 } from '@/components/shared/SearchablePicker';
 import { formatInventoryQuantity, getSerializedAssetStatusLabel } from './inventory-labels';
+import { parseDecimalAmount } from './stock-issue-balance-utils';
 import type { StockIssueDraftLine } from './stock-issue-draft';
 import { resolveLineSerializedAssetIds } from './stock-issue-draft';
 
@@ -42,14 +43,6 @@ export interface StockIssueLotOption {
   lotNumber: string;
   expiryDate: string | null;
   availableQty: number;
-}
-
-function parseDecimalAmount(value: string | null | undefined): number {
-  if (value == null || value === '') {
-    return 0;
-  }
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -274,10 +267,40 @@ export const PICKABLE_SERIAL_STATUSES = [
 export const SERIAL_PICKER_PAGE_SIZE = 50;
 
 /**
+ * Barrido servidor del alcance (S2.1 C2): página del contrato `listAssets`
+ * (su tope) y cota del barrido por búsqueda. Un serial fuera de la primera
+ * página se alcanza por su número exacto o por el barrido paginado — nunca
+ * por el `limit: 50` fijo con filtro cliente que ocultaba el resto.
+ */
+const SERIAL_SCAN_PAGE_LIMIT = 100;
+const SERIAL_SCAN_MAX_PAGES = 10;
+
+function toPickableSerialOption(asset: SerializedAssetRecord): SearchablePickerItem {
+  return {
+    id: asset.id,
+    label: formatSerializedAssetLabel(asset),
+    sublabel: getSerializedAssetStatusLabel(asset.currentStatus),
+  };
+}
+
+function matchesSerialQuery(asset: SerializedAssetRecord, needle: string): boolean {
+  if (!needle) {
+    return true;
+  }
+  const haystack = `${asset.serialNumber ?? ''} ${asset.assetTag ?? ''} ${asset.id}`.toLowerCase();
+  return haystack.includes(needle);
+}
+
+/**
  * Lookup de seriales elegibles acotado a ítem + bodega (S1/S2), compartido por
  * el picker singular (`InventoryAssetPicker`) y el multiselector del panel de
  * línea (MOD12 S2): mismos filtros `status`, mismo filtro cliente de
  * `excludeIds` y misma etiqueta canónica por serial.
+ *
+ * S2.1 C2: con alcance, la búsqueda exacta viaja al servidor (`serialNumber`,
+ * igualdad normalizada) y el resto se resuelve con barrido paginado real por
+ * `page`; el `total` devuelto es el de coincidencias filtrables (consulta +
+ * exclusión), coherente con lo que el picker muestra.
  */
 export async function searchPickableSerializedAssets(input: {
   itemId: string | null | undefined;
@@ -289,47 +312,70 @@ export async function searchPickableSerializedAssets(input: {
   const scopedItemId = input.itemId?.trim() ?? '';
   const scopedLocationId = input.locationId?.trim() ?? '';
 
-  if (scopedItemId && scopedLocationId) {
-    // La página por ítem + bodega es pequeña (seriales de un producto en una
-    // bodega): se filtra en cliente para no depender de la semántica exacta
-    // de `serialNumber` en el servidor (exacta vs parcial).
-    const response = await inventoryApi.listAssets(
-      {
-        itemId: scopedItemId,
-        locationId: scopedLocationId,
-        status: PICKABLE_SERIAL_STATUSES,
-        limit: SERIAL_PICKER_PAGE_SIZE,
-      },
-      undefined,
+  if (!scopedItemId || !scopedLocationId) {
+    const response = await inventoryApi.searchAssetsForPicker(
+      { q: input.query },
+      { signal: input.signal },
     );
+    return mapPickerSearchResponse(response);
+  }
+
+  const excluded = new Set(input.excludeIds ?? []);
+  const needle = input.query.trim().toLowerCase();
+
+  // Un serial fuera de la primera página se alcanza por su número exacto con
+  // una sola petición, sin depender del barrido.
+  if (needle) {
+    const exact = await inventoryApi.listAssets({
+      itemId: scopedItemId,
+      locationId: scopedLocationId,
+      status: PICKABLE_SERIAL_STATUSES,
+      serialNumber: input.query.trim(),
+      limit: SERIAL_SCAN_PAGE_LIMIT,
+    });
     if (input.signal.aborted) {
       return { items: [], total: 0 };
     }
-    const excluded = new Set(input.excludeIds ?? []);
-    const needle = input.query.trim().toLowerCase();
-    const items = response.data
-      .filter((asset) => !excluded.has(asset.id))
-      .filter((asset) => {
-        if (!needle) {
-          return true;
-        }
-        const haystack =
-          `${asset.serialNumber ?? ''} ${asset.assetTag ?? ''} ${asset.id}`.toLowerCase();
-        return haystack.includes(needle);
-      })
-      .map((asset) => ({
-        id: asset.id,
-        label: formatSerializedAssetLabel(asset),
-        sublabel: getSerializedAssetStatusLabel(asset.currentStatus),
-      }));
-    return { items, total: response.meta.total };
+    const exactMatches = exact.data.filter((asset) => !excluded.has(asset.id));
+    if (exactMatches.length > 0) {
+      return {
+        items: exactMatches.map(toPickableSerialOption),
+        total: exactMatches.length,
+      };
+    }
   }
 
-  const response = await inventoryApi.searchAssetsForPicker(
-    { q: input.query },
-    { signal: input.signal },
-  );
-  return mapPickerSearchResponse(response);
+  const matches: SearchablePickerItem[] = [];
+  let totalMatches = 0;
+  let universeTotal = Number.POSITIVE_INFINITY;
+  let page = 1;
+  while (page <= SERIAL_SCAN_MAX_PAGES && (page - 1) * SERIAL_SCAN_PAGE_LIMIT < universeTotal) {
+    const response = await inventoryApi.listAssets({
+      itemId: scopedItemId,
+      locationId: scopedLocationId,
+      status: PICKABLE_SERIAL_STATUSES,
+      limit: SERIAL_SCAN_PAGE_LIMIT,
+      page,
+    });
+    if (input.signal.aborted) {
+      return { items: [], total: 0 };
+    }
+    universeTotal = response.meta.total;
+    for (const asset of response.data) {
+      if (excluded.has(asset.id) || !matchesSerialQuery(asset, needle)) {
+        continue;
+      }
+      totalMatches += 1;
+      if (matches.length < SERIAL_PICKER_PAGE_SIZE) {
+        matches.push(toPickableSerialOption(asset));
+      }
+    }
+    if (response.data.length < SERIAL_SCAN_PAGE_LIMIT) {
+      break;
+    }
+    page += 1;
+  }
+  return { items: matches, total: totalMatches };
 }
 
 export function formatLotOptionLabel(option: {

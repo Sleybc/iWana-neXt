@@ -77,8 +77,9 @@ describe('InventoryAssetPicker', () => {
           itemId: 'item-1',
           locationId: 'loc-1',
           status: 'AVAILABLE,AVAILABLE_REFURBISHED',
+          limit: 100,
+          page: 1,
         }),
-        undefined,
       );
     });
     expect(searchAssetsMock).not.toHaveBeenCalled();

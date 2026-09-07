@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, DatePicker, Input, Select } from '@iwana/ui';
 import { PurchaseRequestPriority, PurchaseRequestType } from '@iwana/shared';
+import { useMinWidth } from '@/lib/useMinWidth';
 import type {
   CreatePurchaseRequestDto,
   InventoryCatalogOptionRecord,
@@ -75,25 +76,6 @@ const PRIORITY_OPTIONS = Object.values(PurchaseRequestPriority).map((value) => (
   value,
   label: getPurchaseRequestPriorityLabel(value),
 }));
-
-function useMinWidth(minWidth: number): boolean {
-  const [matches, setMatches] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      setMatches(true);
-      return;
-    }
-
-    const mediaQuery = window.matchMedia(`(min-width: ${minWidth}px)`);
-    const update = () => setMatches(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener('change', update);
-    return () => mediaQuery.removeEventListener('change', update);
-  }, [minWidth]);
-
-  return matches;
-}
 
 export function PurchaseRequestComposer({
   catalogOptions,

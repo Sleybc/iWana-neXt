@@ -33,7 +33,16 @@ function toNumber(value: string | number | null | undefined): number {
     return Number.isFinite(value) ? value : 0;
   }
 
-  if (!value) {
+  return parseDecimalAmount(value);
+}
+
+/**
+ * Cantidad decimal desde texto del formulario o del contrato (fuente única
+ * DRY S2.1: la usan el composer, el borrador y las utilidades de línea en vez
+ * de repetir el parseo en cada archivo).
+ */
+export function parseDecimalAmount(value: string | null | undefined): number {
+  if (value == null || value === '') {
     return 0;
   }
 

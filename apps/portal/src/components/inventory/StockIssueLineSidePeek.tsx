@@ -1,12 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useId, useMemo } from 'react';
 import { Button, Input, OperationalSidePeek, Select } from '@iwana/ui';
 import { StockBalanceCondition, getInventoryUnitOfMeasureLabel } from '@iwana/shared';
-import {
-  SearchableMultiPicker,
-  type SearchablePickerItem,
-} from '@/components/shared/SearchablePicker';
+import { SearchableMultiPicker } from '@/components/shared/SearchablePicker';
 import {
   STOCK_AVAILABLE_AT_SOURCE_LABEL,
   formatInventoryQuantity,
@@ -14,18 +11,15 @@ import {
 } from './inventory-labels';
 import { isRequestedQtyExceedingAvailable } from './stock-issue-balance-utils';
 import {
-  fallbackSerializedAssetLabel,
   formatLotOptionLabel,
   getAvailableQtyByCondition,
   getAvailableQtyForDraftLine,
-  isSerializedTrackingMode,
   listAvailableConditionsForDraftLine,
   listLotOptionsFromPickableLots,
-  resolveSingleLotIdFromLots,
   searchPickableSerializedAssets,
 } from './stock-issue-line-utils';
 import type { StockIssueDraftLine } from './stock-issue-draft';
-import { resolveLineSerializedAssetIds } from './stock-issue-draft';
+import { useStockIssueLineForm } from './useStockIssueLineForm';
 
 /**
  * Copy G1 aprobado (SPEC S2 §6.1): la cantidad de una línea serializada no se
@@ -56,7 +50,6 @@ export interface StockIssueLineSidePeekProps {
   /** Etiquetas ya resueltas de seriales (hidratación de edición y filas vivas). */
   serialLabelsById: Record<string, string>;
   busy?: boolean;
-  initialFocusRef?: RefObject<HTMLElement | null>;
   onConfirm: (result: StockIssueLineSidePeekResult) => void;
 }
 
@@ -64,6 +57,7 @@ export interface StockIssueLineSidePeekProps {
  * Panel lateral de captura de línea (MOD12 S2, receta §9): condición, lote,
  * seriales y cantidad se deciden aquí, no con controles inline en la tabla.
  * Construido sobre `OperationalSidePeek` de `@iwana/ui` — sin tokens nuevos.
+ * El estado de captura vive en `useStockIssueLineForm` (S2.1 C1).
  */
 export function StockIssueLineSidePeek({
   open,
@@ -74,46 +68,25 @@ export function StockIssueLineSidePeek({
   excludedSerializedAssetIds,
   serialLabelsById,
   busy = false,
-  initialFocusRef,
   onConfirm,
 }: StockIssueLineSidePeekProps) {
-  const [condition, setCondition] = useState<StockBalanceCondition>(
-    line?.condition ?? StockBalanceCondition.NEW,
-  );
-  const [lotId, setLotId] = useState('');
-  const [serials, setSerials] = useState<SearchablePickerItem[]>([]);
-  const [requestedQty, setRequestedQty] = useState('1');
-  const [closeNotice, setCloseNotice] = useState('');
-  const dirtyRef = useRef(false);
+  const {
+    condition,
+    lotId,
+    serials,
+    requestedQty,
+    effectiveQty,
+    serialized,
+    closeNotice,
+    setCondition,
+    setLotId,
+    setSerials,
+    setRequestedQty,
+    handleBeforeClose,
+  } = useStockIssueLineForm(line, serialLabelsById);
+  const qtyHelpId = useId();
 
-  const serialized = line ? isSerializedTrackingMode(line.trackingMode) : false;
   const noSerialsInSource = serialized && (line?.availableSerialCount ?? 0) === 0;
-
-  // Estado inicial por apertura: cada apertura reconfigura el panel con los
-  // valores de la línea; la resolución tardía de etiquetas no reinicia la
-  // captura del operador (por eso no va en las dependencias).
-  useEffect(() => {
-    if (!open || !line) {
-      return;
-    }
-    const ids = resolveLineSerializedAssetIds(line);
-    setCondition(line.condition);
-    setLotId(line.lotId.trim() || resolveSingleLotIdFromLots(line.lots, line.condition));
-    setSerials(
-      ids.map((id) => ({
-        id,
-        label: serialLabelsById[id] ?? fallbackSerializedAssetLabel(id),
-      })),
-    );
-    setRequestedQty(ids.length > 0 ? String(ids.length) : line.requestedQty);
-    setCloseNotice('');
-    dirtyRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reinicio solo al abrir o cambiar de línea
-  }, [open, line?.id]);
-
-  const markDirty = useCallback(() => {
-    dirtyRef.current = true;
-  }, []);
 
   // Opciones de condición: solo las con saldo, pero la condición ACTUAL de la
   // línea siempre figura (una línea editada cuyo caché de disponible ya no
@@ -146,6 +119,10 @@ export function StockIssueLineSidePeek({
     });
   }, [line, serialized, condition, lotId]);
 
+  // Pista explícita (S2.1 C3): con lotes en la condición y ninguno elegido, el
+  // disponible es 0 por falta de elección — no por falta de material.
+  const showLotHint = !serialized && lotId.trim() === '' && lotOptions.length > 0;
+
   const exceedsAvailable =
     availableQty != null &&
     line?.itemId &&
@@ -165,22 +142,7 @@ export function StockIssueLineSidePeek({
     [line?.itemId, sourceLocationId, excludedSerializedAssetIds],
   );
 
-  /**
-   * `onBeforeClose` (receta §9): un clic fuera o Escape no descarta en silencio
-   * la captura en curso. Cancelar, en el pie, es la salida deliberada.
-   */
-  const handleBeforeClose = useCallback((): boolean => {
-    if (!dirtyRef.current) {
-      return true;
-    }
-    setCloseNotice(
-      'Hay cambios sin guardar en esta línea. Confírmalos con el botón del pie o descártalos con Cancelar.',
-    );
-    return false;
-  }, []);
-
   const handleCancel = useCallback(() => {
-    dirtyRef.current = false;
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -195,14 +157,13 @@ export function StockIssueLineSidePeek({
     if (!line || !canConfirm) {
       return;
     }
-    dirtyRef.current = false;
     onConfirm({
       condition,
       // La línea serializada no participa de la tupla de lote (S1).
       lotId: serialized ? '' : lotId,
       serializedAssetIds: serials.map((item) => item.id),
       serializedAssetLabels: Object.fromEntries(serials.map((item) => [item.id, item.label])),
-      requestedQty: serialized ? String(serials.length) : requestedQty,
+      requestedQty: effectiveQty,
     });
   };
 
@@ -226,12 +187,11 @@ export function StockIssueLineSidePeek({
       eyebrow="Configurar línea"
       title={line.productLabel || 'Línea manual'}
       description={headerMeta}
-      {...(initialFocusRef ? { initialFocusRef } : {})}
       onBeforeClose={handleBeforeClose}
       footer={
         <div className="flex flex-col gap-2">
           {closeNotice ? (
-            <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+            <p role="alert" className="text-xs text-error-700 dark:text-error-400">
               {closeNotice}
             </p>
           ) : null}
@@ -250,8 +210,8 @@ export function StockIssueLineSidePeek({
         <Select
           label="Condición"
           value={condition}
+          disabled={busy}
           onChange={(event) => {
-            markDirty();
             // Cambiar la condición limpia el lote: las opciones de lote dependen
             // de ella y el disponible de la tupla cambia con la elección.
             setLotId('');
@@ -276,37 +236,40 @@ export function StockIssueLineSidePeek({
               resource={{ singular: 'serial', plural: 'seriales' }}
               label="Seriales"
               value={serials}
-              onChange={(next) => {
-                markDirty();
-                setSerials(next);
-              }}
+              onChange={setSerials}
               onSearch={searchSerials}
               minChars={0}
               placeholder="Buscar serial disponible"
-              disabled={noSerialsInSource}
+              disabled={busy || noSerialsInSource}
             />
             {noSerialsInSource ? (
-              <p className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="text-xs text-error-700 dark:text-error-400">
                 Este producto serializado no tiene seriales disponibles en esta bodega.
               </p>
             ) : null}
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Cantidad</p>
-              <p className="text-2xl font-semibold tabular-nums text-gray-900 dark:text-white">
-                {serials.length}
-              </p>
-              <p role="status" className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Cantidad: {serials.length}. {SERIAL_QTY_HELP_TEXT}
-              </p>
-            </div>
+            <Input
+              label="Cantidad"
+              value={effectiveQty}
+              readOnly
+              inputMode="numeric"
+              disabled={busy}
+              aria-describedby={qtyHelpId}
+            />
+            <p
+              id={qtyHelpId}
+              role="status"
+              className="mt-1 text-xs text-gray-500 dark:text-gray-400"
+            >
+              {SERIAL_QTY_HELP_TEXT}
+            </p>
           </div>
         ) : (
           <Input
             label="Cantidad"
             value={requestedQty}
             inputMode="decimal"
+            disabled={busy}
             onChange={(event) => {
-              markDirty();
               setRequestedQty(event.target.value);
             }}
           />
@@ -316,8 +279,8 @@ export function StockIssueLineSidePeek({
           <Select
             label="Lote"
             value={lotId}
+            disabled={busy}
             onChange={(event) => {
-              markDirty();
               setLotId(event.target.value);
             }}
             options={[
@@ -340,8 +303,14 @@ export function StockIssueLineSidePeek({
           </p>
         ) : null}
 
-        {exceedsAvailable ? (
-          <p className="text-xs text-amber-700 dark:text-amber-300">
+        {showLotHint ? (
+          <p className="text-xs text-gray-600 dark:text-gray-300">
+            Elige un lote para ver el disponible de la línea.
+          </p>
+        ) : null}
+
+        {exceedsAvailable && !showLotHint ? (
+          <p className="text-xs text-error-700 dark:text-error-400">
             Supera el material disponible en origen. No podrás crear la salida hasta ajustar la
             cantidad.
           </p>

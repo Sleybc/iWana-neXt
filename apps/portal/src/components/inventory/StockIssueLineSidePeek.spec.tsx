@@ -144,7 +144,7 @@ describe('StockIssueLineSidePeek', () => {
     );
 
     // Sin seriales la confirmación queda bloqueada y la cantidad es 0.
-    expect(screen.getByRole('status')).toHaveTextContent('Cantidad: 0.');
+    expect(screen.getByLabelText('Cantidad')).toHaveValue('0');
     expect(screen.getByRole('button', { name: 'Agregar al borrador' })).toBeDisabled();
 
     const serialInput = screen.getByPlaceholderText('Buscar serial disponible');
@@ -155,9 +155,10 @@ describe('StockIssueLineSidePeek', () => {
     await user.type(serialInput, 'SN');
     await user.click(await screen.findByRole('option', { name: /SN-002/ }));
 
-    expect(screen.getByRole('status')).toHaveTextContent('Cantidad: 2');
-    // El copy G1 exacto viaja en la región viva junto al conteo.
+    expect(screen.getByLabelText('Cantidad')).toHaveValue('2');
+    // El copy G1 exacto viaja en la región viva junto a la cantidad readonly.
     expect(screen.getByRole('status')).toHaveTextContent(SERIAL_QTY_HELP_TEXT);
+    expect(screen.getByRole('status')).not.toHaveTextContent('Cantidad:');
 
     await user.click(screen.getByRole('button', { name: 'Agregar al borrador' }));
     await waitFor(() => {
@@ -233,8 +234,9 @@ describe('StockIssueLineSidePeek', () => {
           itemId: 'item-serial',
           locationId: 'loc-1',
           status: 'AVAILABLE,AVAILABLE_REFURBISHED',
+          limit: 100,
+          page: 1,
         }),
-        undefined,
       );
     });
 
@@ -267,7 +269,7 @@ describe('StockIssueLineSidePeek', () => {
     // Reabre con los valores actuales de la fila (CA-S2-08).
     expect(screen.getByLabelText('Condición')).toHaveTextContent('Reacondicionado');
     expect(screen.getByText('SN-001')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Cantidad: 1');
+    expect(screen.getByLabelText('Cantidad')).toHaveValue('1');
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     expect(onConfirm).toHaveBeenCalledWith(
@@ -322,5 +324,152 @@ describe('StockIssueLineSidePeek', () => {
     expect(screen.getByText(/Supera el material disponible en origen/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Agregar al borrador' })).toBeDisabled();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('con busy deshabilita los controles del panel y la cantidad (CA-S2.1-FE05)', async () => {
+    const user = userEvent.setup();
+    render(
+      <StockIssueLineSidePeek
+        {...baseProps}
+        mode="create"
+        busy
+        line={buildLine({
+          itemId: 'item-serial',
+          productLabel: 'Router Onu Gpon',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          availableSerialCount: 2,
+        })}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText('Buscar serial disponible')).toBeDisabled();
+    expect(screen.getByLabelText('Cantidad')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Agregar al borrador' })).toBeDisabled();
+
+    // El escaneo no puede dismissed el panel a mitad del envío.
+    await user.keyboard('{Escape}');
+    expect(baseProps.onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('revertir los cambios limpia la guardia: Escape cierra sin aviso (sucio por comparación)', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = jest.fn();
+    render(
+      <StockIssueLineSidePeek
+        {...baseProps}
+        mode="create"
+        onOpenChange={onOpenChange}
+        line={buildLine()}
+      />,
+    );
+
+    const quantityInput = screen.getByLabelText('Cantidad');
+    await user.clear(quantityInput);
+    await user.type(quantityInput, '4');
+    await user.keyboard('{Escape}');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cambios sin guardar/i);
+
+    await user.clear(quantityInput);
+    await user.type(quantityInput, '1');
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('la guardia nombra ambos botones del pie (copy C5 con PROD-UX)', async () => {
+    const user = userEvent.setup();
+    render(
+      <StockIssueLineSidePeek
+        {...baseProps}
+        mode="edit"
+        onOpenChange={jest.fn()}
+        line={buildLine()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Cantidad'));
+    await user.type(screen.getByLabelText('Cantidad'), '4');
+    await user.keyboard('{Escape}');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Agregar al borrador');
+    expect(alert).toHaveTextContent('Guardar cambios');
+    expect(alert).toHaveTextContent('Cancelar');
+  });
+
+  it('el re-etiquetado tardío actualiza el rótulo sin perder la captura (CA-S2.1-FE03)', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <StockIssueLineSidePeek
+        {...baseProps}
+        mode="edit"
+        serialLabelsById={{}}
+        onConfirm={jest.fn()}
+        line={buildLine({
+          condition: StockBalanceCondition.REFURBISHED,
+          serializedAssetIds: ['asset-1'],
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          availableSerialCount: 4,
+        })}
+      />,
+    );
+
+    expect(screen.getByText('ASSET-1')).toBeInTheDocument();
+
+    // El operador cambia la condición mientras llega la etiqueta real.
+    await user.click(await screen.findByRole('combobox', { name: 'Condición' }));
+    await user.click(await screen.findByRole('option', { name: /Nuevo/ }));
+
+    rerender(
+      <StockIssueLineSidePeek
+        {...baseProps}
+        mode="edit"
+        serialLabelsById={{ 'asset-1': 'SN-001' }}
+        onConfirm={jest.fn()}
+        line={buildLine({
+          condition: StockBalanceCondition.REFURBISHED,
+          serializedAssetIds: ['asset-1'],
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          availableSerialCount: 4,
+        })}
+      />,
+    );
+
+    // El rótulo tardío llega sin reconstruir la condición elegida.
+    expect(screen.getByText('SN-001')).toBeInTheDocument();
+    expect(screen.getByLabelText('Condición')).toHaveTextContent('Nuevo');
+  });
+
+  it('con lotes sin elegir muestra la pista explícita en vez del aviso de exceso (CA-S2.1-FE04)', () => {
+    render(
+      <StockIssueLineSidePeek
+        {...baseProps}
+        mode="create"
+        line={buildLine({
+          requestedQty: '2',
+          lots: [
+            {
+              lotId: 'lote-a',
+              lotNumber: 'LOTE-A',
+              expiryDate: null,
+              condition: StockBalanceCondition.NEW,
+              available: '30',
+            },
+            {
+              lotId: 'lote-b',
+              lotNumber: 'LOTE-B',
+              expiryDate: null,
+              condition: StockBalanceCondition.NEW,
+              available: '20',
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText('Elige un lote para ver el disponible de la línea.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Supera el material disponible/)).not.toBeInTheDocument();
   });
 });

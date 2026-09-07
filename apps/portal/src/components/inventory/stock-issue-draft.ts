@@ -3,7 +3,9 @@ import {
   StockBalanceCondition,
   type StockIssuePickableAvailability,
   type StockIssuePickableLot,
+  type StockIssueType,
 } from '@iwana/shared';
+import { parseDecimalAmount } from './stock-issue-balance-utils';
 
 export interface StockIssueDraftCatalogSelection {
   id: string;
@@ -110,14 +112,6 @@ function createBaseDraftLine(
   };
 }
 
-function parseDecimalAmount(value: string | null | undefined): number {
-  if (value == null || value === '') {
-    return 0;
-  }
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 /**
  * Condición inicial de una línea recién agregada: la primera con disponible > 0
  * según el contrato B1 (D3: REFURBISHED/DAMAGED también despachan). Sin dato del
@@ -168,9 +162,17 @@ export function buildDraftProductLabel(name: string, model?: string | null): str
   return baseModel ? `${baseName} · ${baseModel}` : baseName;
 }
 
-function getLineIdentityKey(
-  line: Pick<StockIssueDraftLine, 'itemId' | 'lotId' | 'serializedAssetId' | 'serializedAssetIds'>,
-) {
+/**
+ * Clave de identidad de una línea del borrador (fuente única DRY S2.1: la usan
+ * el dedup del borrador y el validador estructurado del envío). Con seriales,
+ * el grupo manda; sin ellos, la tupla (ítem, lote).
+ */
+export function getStockIssueLineIdentityKey(line: {
+  itemId: string;
+  lotId: string;
+  serializedAssetId?: string | null;
+  serializedAssetIds?: string[] | null;
+}): string {
   const serializedIds = resolveLineSerializedAssetIds(line);
   if (serializedIds.length > 0) {
     return `serial:${[...serializedIds].sort().join(',')}`;
@@ -184,7 +186,9 @@ export function addCatalogSelectionToDraft(
   selections: StockIssueDraftCatalogSelection[],
 ): AddCatalogToDraftResult {
   const existingKeys = new Set(
-    draft.lines.filter((line) => line.itemId.length > 0).map((line) => getLineIdentityKey(line)),
+    draft.lines
+      .filter((line) => line.itemId.length > 0)
+      .map((line) => getStockIssueLineIdentityKey(line)),
   );
 
   const skippedItemIds: string[] = [];
@@ -345,4 +349,168 @@ export function updateDraftLineConfiguration(
         : line,
     ),
   };
+}
+
+/**
+ * Invalida el contexto de bodega de las líneas (S2.1 C3): al cambiar el origen,
+ * los `lots`, la `availability` y el conteo de seriales dejan de pertenecer a
+ * la bodega vigente y el disponible contextual nunca se calcula con ellos. La
+ * condición y la cantidad pedida se conservan; los seriales elegidos (activos
+ * de la bodega anterior) se retiran para que el panel los vuelva a pedir.
+ */
+export function invalidateDraftStockContext(draft: StockIssueDraftState): StockIssueDraftState {
+  let changed = false;
+  const lines = draft.lines.map((line) => {
+    if (
+      line.lots.length === 0 &&
+      line.availability.length === 0 &&
+      line.availableSerialCount === 0 &&
+      !line.lotId &&
+      resolveLineSerializedAssetIds(line).length === 0
+    ) {
+      return line;
+    }
+    changed = true;
+    return {
+      ...line,
+      lots: [],
+      availability: [],
+      availableSerialCount: 0,
+      lotId: '',
+      serializedAssetId: '',
+      serializedAssetLabel: '',
+      serializedAssetIds: [],
+    };
+  });
+  return changed ? { lines } : draft;
+}
+
+export interface PickableStockContext {
+  lots: StockIssuePickableLot[];
+  availability: StockIssuePickableAvailability[];
+  availableSerialCount: number;
+}
+
+/**
+ * Rehidrata las líneas sin contexto desde el caché de elegibles de la bodega
+ * vigente (S2.1 C3): solo toca líneas con `lots` y `availability` vacíos, así
+ * que la captura que el operador ya reconfiguró nunca se pisa. Devuelve los
+ * ids rehidratados para aplicarles la preselección de lote único.
+ */
+export function rehydrateBareDraftLines(
+  draft: StockIssueDraftState,
+  contextByItemId: Map<string, PickableStockContext>,
+): { draft: StockIssueDraftState; rehydratedLineIds: string[] } {
+  const rehydratedLineIds: string[] = [];
+  let changed = false;
+  const lines = draft.lines.map((line) => {
+    if (!line.itemId.trim() || line.lots.length > 0 || line.availability.length > 0) {
+      return line;
+    }
+    const context = contextByItemId.get(line.itemId);
+    if (!context) {
+      return line;
+    }
+    changed = true;
+    rehydratedLineIds.push(line.id);
+    return {
+      ...line,
+      lots: context.lots,
+      availability: context.availability,
+      availableSerialCount: context.availableSerialCount,
+    };
+  });
+  return changed ? { draft: { lines }, rehydratedLineIds } : { draft, rehydratedLineIds };
+}
+
+export interface ComposerSnapshotLine {
+  itemId: string;
+  requestedQty: string;
+  condition: string;
+  lotId: string;
+  serializedAssetId: string;
+  serializedAssetIds: string[];
+}
+
+export interface ComposerSnapshot {
+  type: StockIssueType;
+  sourceLocationId: string;
+  destinationLocationId: string;
+  commercialRefId: string;
+  originRefId: string;
+  costCenter: string;
+  reason: string;
+  lines: ComposerSnapshotLine[];
+}
+
+export function buildComposerSnapshot(input: {
+  type: StockIssueType;
+  sourceLocationId: string;
+  destinationLocationId: string;
+  commercialRefId: string;
+  originRefId: string;
+  costCenter: string;
+  reason: string;
+  lines: StockIssueDraftLine[];
+}): ComposerSnapshot {
+  return {
+    type: input.type,
+    sourceLocationId: input.sourceLocationId,
+    destinationLocationId: input.destinationLocationId,
+    commercialRefId: input.commercialRefId,
+    originRefId: input.originRefId,
+    costCenter: input.costCenter,
+    reason: input.reason,
+    lines: input.lines.map((line) => ({
+      itemId: line.itemId,
+      requestedQty: line.requestedQty,
+      condition: line.condition,
+      lotId: line.lotId,
+      serializedAssetId: line.serializedAssetId,
+      serializedAssetIds: [...line.serializedAssetIds].sort(),
+    })),
+  };
+}
+
+function areSnapshotLinesEqual(left: ComposerSnapshotLine, right: ComposerSnapshotLine): boolean {
+  return (
+    left.itemId === right.itemId &&
+    left.requestedQty === right.requestedQty &&
+    left.condition === right.condition &&
+    left.lotId === right.lotId &&
+    left.serializedAssetId === right.serializedAssetId &&
+    left.serializedAssetIds.length === right.serializedAssetIds.length &&
+    left.serializedAssetIds.every((id, index) => id === right.serializedAssetIds[index])
+  );
+}
+
+/**
+ * Compara instantáneas del composer campo por campo (S2.1 C4): sustituye el
+ * `JSON.stringify` del cálculo de cambios sin guardar, sin cambiar su
+ * semántica (el orden de las líneas sigue siendo significativo).
+ */
+export function areComposerSnapshotsEqual(
+  left: ComposerSnapshot | null,
+  right: ComposerSnapshot | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.type === right.type &&
+    left.sourceLocationId === right.sourceLocationId &&
+    left.destinationLocationId === right.destinationLocationId &&
+    left.commercialRefId === right.commercialRefId &&
+    left.originRefId === right.originRefId &&
+    left.costCenter === right.costCenter &&
+    left.reason === right.reason &&
+    left.lines.length === right.lines.length &&
+    left.lines.every((line, index) => {
+      const other = right.lines[index];
+      return other ? areSnapshotLinesEqual(line, other) : false;
+    })
+  );
 }

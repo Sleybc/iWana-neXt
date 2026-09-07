@@ -1,10 +1,12 @@
 import {
   InventoryItemKind,
   InventoryTrackingMode,
+  SerializedAssetStatus,
   StockBalanceCondition,
   type StockIssuePickableAvailability,
   type StockIssuePickableLot,
 } from '@iwana/shared';
+import { inventoryApi, type SerializedAssetRecord } from '@/lib/api-client';
 import {
   applySingleLotPreselectionToDraftLines,
   formatLotExpiryDate,
@@ -18,8 +20,21 @@ import {
   listLotOptionsFromPickableLots,
   listSerializedAssetsForItemAtLocation,
   resolveSingleLotIdFromLots,
+  searchPickableSerializedAssets,
 } from './stock-issue-line-utils';
 import type { StockIssueDraftLine } from './stock-issue-draft';
+
+jest.mock('@/lib/api-client', () => {
+  const actual = jest.requireActual('@/lib/api-client');
+  return {
+    ...actual,
+    inventoryApi: {
+      ...actual.inventoryApi,
+      listAssets: jest.fn(),
+      searchAssetsForPicker: jest.fn(),
+    },
+  };
+});
 
 function buildLot(overrides: Partial<StockIssuePickableLot> = {}): StockIssuePickableLot {
   return {
@@ -269,6 +284,92 @@ describe('stock-issue-line-utils', () => {
       const lines = applySingleLotPreselectionToDraftLines(original);
 
       expect(lines).toBe(original);
+    });
+  });
+
+  describe('searchPickableSerializedAssets con alcance (S2.1 C2)', () => {
+    const listAssetsMock = inventoryApi.listAssets as jest.Mock;
+    const universe = Array.from({ length: 60 }, (_, index) => ({
+      id: `asset-${index + 1}`,
+      serialNumber: `SN-${String(index + 1).padStart(3, '0')}`,
+      assetTag: null,
+      currentStatus: SerializedAssetStatus.AVAILABLE,
+    })) as unknown as SerializedAssetRecord[];
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      listAssetsMock.mockImplementation(
+        (params: { serialNumber?: string; page?: number; limit?: number }) => {
+          if (params.serialNumber) {
+            const found = universe.filter(
+              (asset) =>
+                asset.serialNumber?.toUpperCase() === params.serialNumber!.trim().toUpperCase(),
+            );
+            return Promise.resolve({ data: found, meta: { total: found.length } });
+          }
+          const limit = params.limit ?? 100;
+          const page = params.page ?? 1;
+          return Promise.resolve({
+            data: universe.slice((page - 1) * limit, page * limit),
+            meta: { total: universe.length },
+          });
+        },
+      );
+    });
+
+    it('alcanza por número exacto un serial fuera de la primera página (CA-S2.1-FE02)', async () => {
+      const result = await searchPickableSerializedAssets({
+        itemId: 'item-serial',
+        locationId: 'loc-1',
+        query: 'SN-059',
+        signal: new AbortController().signal,
+      });
+
+      expect(listAssetsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ serialNumber: 'SN-059' }),
+      );
+      expect(result.items.map((item) => item.label)).toEqual(['SN-059']);
+      expect(result.total).toBe(1);
+    });
+
+    it('el barrido paginado devuelve el total coherente con lo filtrable', async () => {
+      const result = await searchPickableSerializedAssets({
+        itemId: 'item-serial',
+        locationId: 'loc-1',
+        query: '',
+        signal: new AbortController().signal,
+      });
+
+      expect(listAssetsMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 100 }));
+      expect(result.items).toHaveLength(50);
+      expect(result.total).toBe(60);
+    });
+
+    it('los seriales excluidos no cuentan en el total', async () => {
+      const result = await searchPickableSerializedAssets({
+        itemId: 'item-serial',
+        locationId: 'loc-1',
+        excludeIds: ['asset-1', 'asset-2'],
+        query: '',
+        signal: new AbortController().signal,
+      });
+
+      expect(result.total).toBe(58);
+      expect(result.items.some((item) => item.id === 'asset-1')).toBe(false);
+    });
+
+    it('respeta el aborto entre páginas', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const result = await searchPickableSerializedAssets({
+        itemId: 'item-serial',
+        locationId: 'loc-1',
+        query: '',
+        signal: controller.signal,
+      });
+
+      expect(result).toEqual({ items: [], total: 0 });
     });
   });
 });

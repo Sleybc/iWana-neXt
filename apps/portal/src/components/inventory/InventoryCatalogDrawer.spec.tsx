@@ -969,6 +969,20 @@ describe('InventoryCatalogDrawer · Fase S2 coherencia del maestro (CA-S2-01/02)
     });
   });
 
+  it('la vía guiada marca sucio igual que la edición directa: Cancelar pide confirmación (S2.1 C5)', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderDrawer({ item: consumableStockItem });
+
+    await user.click(screen.getByRole('combobox', { name: 'Tipo de producto' }));
+    await user.click(await screen.findByRole('option', { name: 'Con serial' }));
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    // El cambio guiado cuenta como edición: no se descarta en silencio.
+    expect(await screen.findByRole('dialog', { name: 'Descartar cambios' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('ítem ya inconsistente: el guardado se bloquea con el mensaje exacto y se libera al corregir (CA-S2-01)', async () => {
     const user = userEvent.setup();
     // El caso real del catálogo: Tipo "Con serial" guardado con Control "Consumible".

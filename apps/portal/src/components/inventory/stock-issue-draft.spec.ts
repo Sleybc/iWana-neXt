@@ -1,11 +1,17 @@
-import { InventoryTrackingMode, StockBalanceCondition } from '@iwana/shared';
+import { InventoryTrackingMode, StockBalanceCondition, StockIssueType } from '@iwana/shared';
 import {
   addCatalogSelectionToDraft,
   applyBulkQuantityToDraftLines,
+  areComposerSnapshotsEqual,
+  buildComposerSnapshot,
   buildDraftProductLabel,
   createEmptyStockIssueDraft,
+  getStockIssueLineIdentityKey,
+  invalidateDraftStockContext,
+  rehydrateBareDraftLines,
   removeDraftLine,
   updateDraftLineItem,
+  type StockIssueDraftLine,
 } from './stock-issue-draft';
 
 describe('stock-issue-draft', () => {
@@ -247,6 +253,193 @@ describe('stock-issue-draft', () => {
       ]);
 
       expect(result.draft.lines[0]).toMatchObject({ productLabel: 'ONT WiFi 6' });
+    });
+  });
+
+  describe('getStockIssueLineIdentityKey (clave única DRY S2.1)', () => {
+    it('con seriales el grupo manda sobre el lote', () => {
+      expect(
+        getStockIssueLineIdentityKey({
+          itemId: 'item-1',
+          lotId: 'lote-a',
+          serializedAssetId: 'asset-2',
+          serializedAssetIds: ['asset-2', 'asset-1'],
+        }),
+      ).toBe('serial:asset-1,asset-2');
+    });
+
+    it('sin seriales usa la tupla ítem y lote', () => {
+      expect(
+        getStockIssueLineIdentityKey({
+          itemId: 'item-1',
+          lotId: '',
+          serializedAssetId: '',
+          serializedAssetIds: [],
+        }),
+      ).toBe('item:item-1:');
+    });
+  });
+
+  describe('areComposerSnapshotsEqual (sin JSON.stringify, S2.1 C4)', () => {
+    function buildSnapshot() {
+      return buildComposerSnapshot({
+        type: StockIssueType.TECHNICIAN_CUSTODY,
+        sourceLocationId: 'loc-1',
+        destinationLocationId: 'loc-2',
+        commercialRefId: '',
+        originRefId: '',
+        costCenter: '',
+        reason: '',
+        lines: [
+          {
+            id: 'line-1',
+            itemId: 'item-1',
+            sku: 'ONT-001',
+            productLabel: 'ONT WiFi 6',
+            requestedQty: '2',
+            unitOfMeasure: 'UNIT',
+            isManual: false,
+            condition: StockBalanceCondition.NEW,
+            lotId: 'lote-a',
+            serializedAssetId: '',
+            serializedAssetLabel: '',
+            serializedAssetIds: [],
+            trackingMode: InventoryTrackingMode.CONSUMABLE,
+            lots: [],
+            availability: [],
+            availableSerialCount: 0,
+          } as StockIssueDraftLine,
+        ],
+      });
+    }
+
+    it('iguala instantáneas idénticas aunque el orden del grupo varíe', () => {
+      const left = buildSnapshot();
+      const right = buildSnapshot();
+      expect(areComposerSnapshotsEqual(left, right)).toBe(true);
+      expect(areComposerSnapshotsEqual(left, null)).toBe(false);
+      expect(areComposerSnapshotsEqual(null, null)).toBe(true);
+    });
+
+    it('detecta cambios de cabecera y de línea', () => {
+      const left = buildSnapshot();
+      const changedSource = { ...left, sourceLocationId: 'loc-9' };
+      expect(areComposerSnapshotsEqual(left, changedSource)).toBe(false);
+
+      const changedLine = {
+        ...left,
+        lines: [{ ...left.lines[0]!, requestedQty: '3' }],
+      };
+      expect(areComposerSnapshotsEqual(left, changedLine)).toBe(false);
+    });
+  });
+
+  describe('invalidateDraftStockContext + rehydrateBareDraftLines (S2.1 C3)', () => {
+    function buildLine(overrides: Partial<StockIssueDraftLine> = {}): StockIssueDraftLine {
+      return {
+        id: 'line-1',
+        itemId: 'item-1',
+        sku: 'ONT-001',
+        productLabel: 'ONT WiFi 6',
+        requestedQty: '2',
+        unitOfMeasure: 'UNIT',
+        isManual: false,
+        condition: StockBalanceCondition.NEW,
+        lotId: 'lote-a',
+        serializedAssetId: '',
+        serializedAssetLabel: '',
+        serializedAssetIds: [],
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+        lots: [
+          {
+            lotId: 'lote-a',
+            lotNumber: 'LOTE-A',
+            expiryDate: null,
+            condition: StockBalanceCondition.NEW,
+            available: '8',
+          },
+        ],
+        availability: [
+          {
+            condition: StockBalanceCondition.NEW,
+            quantityOnHand: '8',
+            quantityReserved: '0',
+            available: '8',
+          },
+        ],
+        availableSerialCount: 0,
+        ...overrides,
+      };
+    }
+
+    it('al cambiar la bodega el contexto anterior se invalida pero la condición queda', () => {
+      const next = invalidateDraftStockContext({ lines: [buildLine()] });
+
+      expect(next.lines[0]).toMatchObject({
+        condition: StockBalanceCondition.NEW,
+        requestedQty: '2',
+        lotId: '',
+        lots: [],
+        availability: [],
+        availableSerialCount: 0,
+      });
+    });
+
+    it('retira también los seriales de la bodega anterior', () => {
+      const next = invalidateDraftStockContext({
+        lines: [
+          buildLine({
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+            serializedAssetId: 'asset-1',
+            serializedAssetIds: ['asset-1'],
+            availableSerialCount: 2,
+          }),
+        ],
+      });
+
+      expect(next.lines[0]).toMatchObject({
+        serializedAssetId: '',
+        serializedAssetIds: [],
+        availableSerialCount: 0,
+      });
+    });
+
+    it('rehidrata solo las líneas vacías desde el caché de la bodega vigente', () => {
+      const bare = invalidateDraftStockContext({
+        lines: [buildLine({ id: 'line-1' }), buildLine({ id: 'line-2', itemId: 'item-9' })],
+      });
+      const { draft: next, rehydratedLineIds } = rehydrateBareDraftLines(
+        bare,
+        new Map([
+          [
+            'item-1',
+            {
+              lots: [
+                {
+                  lotId: 'lote-n',
+                  lotNumber: 'LOTE-N',
+                  expiryDate: null,
+                  condition: StockBalanceCondition.NEW,
+                  available: '5',
+                },
+              ],
+              availability: [
+                {
+                  condition: StockBalanceCondition.NEW,
+                  quantityOnHand: '5',
+                  quantityReserved: '0',
+                  available: '5',
+                },
+              ],
+              availableSerialCount: 0,
+            },
+          ],
+        ]),
+      );
+
+      expect(rehydratedLineIds).toEqual(['line-1']);
+      expect(next.lines[0]?.lots).toHaveLength(1);
+      expect(next.lines[1]?.lots).toHaveLength(0);
     });
   });
 });

@@ -151,7 +151,7 @@ describe('StockIssueDraftLinesTable', () => {
     expect(screen.getByText('Falta configurar seriales')).toBeInTheDocument();
   });
 
-  it('varios seriales se muestran como badge de conteo con sus etiquetas', () => {
+  it('varios seriales se muestran como badge de conteo con lista truncada y total accesible', () => {
     render(
       <StockIssueDraftLinesTable
         {...baseProps}
@@ -172,7 +172,42 @@ describe('StockIssueDraftLinesTable', () => {
       />,
     );
 
-    expect(screen.getByText(/2 seriales: SN-001, SN-002/)).toBeInTheDocument();
+    // Badge solo conteo; la lista visible se trunca con `title` y el total va en el aria-label.
+    expect(screen.getByText('2 seriales')).toBeInTheDocument();
+    expect(screen.getByLabelText('2 seriales: SN-001, SN-002')).toBeInTheDocument();
+  });
+
+  it('con más de dos seriales la lista visible se trunca con el total en el título', () => {
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        serialLabelsById={{ 'asset-1': 'SN-001', 'asset-2': 'SN-002', 'asset-3': 'SN-003' }}
+        lines={[
+          buildLine({
+            id: 'line-serial',
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+            serializedAssetIds: ['asset-1', 'asset-2', 'asset-3'],
+            requestedQty: '3',
+            availableSerialCount: 5,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('3 seriales')).toBeInTheDocument();
+    expect(screen.getByText('SN-001, SN-002, +1 más')).toBeInTheDocument();
+    expect(screen.getByLabelText('3 seriales: SN-001, SN-002, SN-003')).toHaveAttribute(
+      'title',
+      'SN-001, SN-002, SN-003',
+    );
+  });
+
+  it('con busy deshabilita cantidad, Modificar y Quitar (CA-S2.1-FE05)', () => {
+    render(<StockIssueDraftLinesTable {...baseProps} busy lines={[buildLine()]} />);
+
+    expect(screen.getByLabelText('Cantidad Cable drop')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Modificar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Quitar' })).toBeDisabled();
   });
 
   it('cada fila tiene Modificar y Quitar visibles con sus callbacks', async () => {

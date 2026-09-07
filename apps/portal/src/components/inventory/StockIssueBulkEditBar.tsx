@@ -6,11 +6,13 @@ import { PortalActionToolbar } from '@/components/shared/portal-ui';
 
 interface StockIssueBulkEditBarProps {
   selectedCount: number;
+  disabled?: boolean;
   onApplyQuantity: (quantity: string) => void;
 }
 
 export function StockIssueBulkEditBar({
   selectedCount,
+  disabled = false,
   onApplyQuantity,
 }: StockIssueBulkEditBarProps) {
   const [bulkQuantity, setBulkQuantity] = useState('1');
@@ -30,12 +32,14 @@ export function StockIssueBulkEditBar({
           id="issue-bulk-quantity"
           label="Cantidad masiva"
           value={bulkQuantity}
+          disabled={disabled}
           onChange={(event) => setBulkQuantity(event.target.value)}
         />
         <Button
           type="button"
           variant="secondary"
           size="sm"
+          disabled={disabled}
           onClick={() => onApplyQuantity(bulkQuantity)}
         >
           Aplicar cantidad

@@ -6,7 +6,7 @@ import type {
 } from '@/lib/api-client';
 import { showDestinationForIssueType } from './stock-issue-form-utils';
 import { isSerializedInventoryItem, isSerializedTrackingMode } from './stock-issue-line-utils';
-import { resolveLineSerializedAssetIds } from './stock-issue-draft';
+import { getStockIssueLineIdentityKey, resolveLineSerializedAssetIds } from './stock-issue-draft';
 
 export interface StockIssueSubmitLineInput {
   /** Id de la línea del borrador; alimenta el foco al primer inválido y el error inline. */
@@ -38,20 +38,6 @@ export interface StockIssueSubmitLineInput {
 export interface StockIssueSubmitValidationResult<T> {
   payload: T | null;
   error: string | null;
-}
-
-function getLineDuplicateKey(
-  line: Pick<
-    StockIssueSubmitLineInput,
-    'itemId' | 'lotId' | 'serializedAssetId' | 'serializedAssetIds'
-  >,
-) {
-  const serializedIds = resolveLineSerializedAssetIds(line);
-  if (serializedIds.length > 0) {
-    return `serial:${[...serializedIds].sort().join(',')}`;
-  }
-
-  return `item:${line.itemId.trim()}:${line.lotId.trim()}`;
 }
 
 function validateHeaderFields(input: {
@@ -175,7 +161,7 @@ export function validateStockIssueDraftLines(
       serialOwner.set(id, index);
     }
 
-    const duplicateKey = getLineDuplicateKey(line);
+    const duplicateKey = getStockIssueLineIdentityKey(line);
     if (seenKeys.has(duplicateKey)) {
       errors.push({
         lineIndex: index,
@@ -227,70 +213,23 @@ function mapValidatedLines(
     return { mappedLines: [], error: 'Agrega al menos una línea a la salida.' };
   }
 
-  const seenKeys = new Set<string>();
-  const serialOwner = new Set<string>();
+  // Validador estructurado único (S2.1 C4 DRY): la primera causa global es el
+  // mismo copy que antes; el mapeo solo corre cuando todo el borrador es válido.
+  const fieldErrors = validateStockIssueDraftLines(lines, itemsById);
+  if (fieldErrors.length > 0) {
+    return { mappedLines: [], error: fieldErrors[0]?.message ?? 'Revisa las líneas del borrador.' };
+  }
+
   const mappedLines: CreateStockIssueDto['lines'] = [];
 
   for (const line of lines) {
     const itemId = line.itemId.trim();
-    if (!itemId) {
-      return {
-        mappedLines: [],
-        error: line.isManual
-          ? 'Completa el ítem de las líneas manuales.'
-          : 'Cada línea debe tener un ítem seleccionado.',
-      };
-    }
-
     const serializedIds = resolveLineSerializedAssetIds(line);
-    if (serializedIds.some((id) => serialOwner.has(id))) {
-      return {
-        mappedLines: [],
-        error:
-          'Hay seriales repetidos entre líneas. Deja cada serial en una sola línea del borrador.',
-      };
-    }
-    for (const id of serializedIds) {
-      serialOwner.add(id);
-    }
-
-    const duplicateKey = getLineDuplicateKey(line);
-    if (seenKeys.has(duplicateKey)) {
-      return {
-        mappedLines: [],
-        error: 'Hay líneas duplicadas en el borrador. Ajusta cantidad, lote o serial.',
-      };
-    }
-    seenKeys.add(duplicateKey);
-
-    const serialized = isLineSerialized(line, itemsById);
     const lotId = line.lotId.trim();
-
-    if (serialized && serializedIds.length === 0) {
-      return {
-        mappedLines: [],
-        error: `Selecciona los seriales de ${line.productLabel || 'esta línea'}.`,
-      };
-    }
-
-    const requestedQty = Number.parseFloat(line.requestedQty);
-    if (!Number.isFinite(requestedQty) || requestedQty <= 0) {
-      return {
-        mappedLines: [],
-        error: 'Cada línea debe tener una cantidad mayor a cero.',
-      };
-    }
-
-    if (serialized && requestedQty !== serializedIds.length) {
-      return {
-        mappedLines: [],
-        error: 'La cantidad debe coincidir con el número de seriales seleccionados.',
-      };
-    }
 
     mappedLines.push({
       itemId,
-      requestedQty,
+      requestedQty: Number.parseFloat(line.requestedQty),
       condition: line.condition,
       ...(lotId ? { lotId } : {}),
       // Grupo v2 del contrato; el singular de transición deja de enviarse.
