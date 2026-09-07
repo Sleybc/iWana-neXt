@@ -13,7 +13,6 @@ import {
   buildPayload,
   InventoryCatalogDrawer,
   validateCatalogBarcode,
-  validateCatalogItemCoherence,
   type CatalogFormState,
 } from './InventoryCatalogDrawer';
 import {
@@ -23,12 +22,9 @@ import {
   INVENTORY_BARCODE_PAIR_TYPE_MISSING_MESSAGE,
   INVENTORY_BARCODE_PAIR_VALUE_MISSING_MESSAGE,
   INVENTORY_CATALOG_COSTS_SECTION_HELP_TEXT,
-  INVENTORY_CATALOG_ITEM_KIND_HELP_TEXT,
   INVENTORY_CATALOG_PURCHASE_FACTOR_ERROR,
   INVENTORY_CATALOG_PURCHASE_UOM_DIMENSION_ERROR,
   INVENTORY_CATALOG_SUPPLIERS_NO_PERMISSION_HELP_TEXT,
-  INVENTORY_CATALOG_TRACKING_MODE_HELP_TEXT,
-  INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
   INVENTORY_LAST_PURCHASE_COST_LABEL,
   INVENTORY_NO_COST_LABEL,
   INVENTORY_STANDARD_COST_LABEL,
@@ -902,152 +898,5 @@ describe('InventoryCatalogDrawer · F4 código de barras (PRD §11)', () => {
     expect(validateCatalogBarcode({ barcode: '8412345678904', barcodeType: 'EAN13' })).toBe(
       'El dígito de control del código EAN13 no es válido: revisa que el número esté completo y sin errores de tecleo.',
     );
-  });
-});
-
-describe('InventoryCatalogDrawer · Fase S2 coherencia del maestro (CA-S2-01/02)', () => {
-  /** Ítem almacenable consumible: sin serial en ninguno de los dos campos. */
-  const consumableStockItem: InventoryItemRecord = {
-    ...item,
-    itemKind: InventoryItemKind.STOCK,
-    trackingMode: InventoryTrackingMode.CONSUMABLE,
-    assetControlled: false,
-  };
-
-  it('muestra el helperText de guía en ambos Selects (copy G1)', () => {
-    renderDrawer({ item: consumableStockItem });
-
-    expect(screen.getByText(INVENTORY_CATALOG_ITEM_KIND_HELP_TEXT)).toBeInTheDocument();
-    expect(screen.getByText(INVENTORY_CATALOG_TRACKING_MODE_HELP_TEXT)).toBeInTheDocument();
-  });
-
-  it('elegir "Con serial" en Tipo de producto ajusta Control de material a "Con serial" en el mismo cambio (CA-S2-02)', async () => {
-    const user = userEvent.setup();
-    renderDrawer({ item: consumableStockItem });
-
-    const trackingCombo = screen.getByRole('combobox', { name: 'Control de material' });
-    expect(trackingCombo).toHaveTextContent('Consumible');
-
-    await user.click(screen.getByRole('combobox', { name: 'Tipo de producto' }));
-    await user.click(await screen.findByRole('option', { name: 'Con serial' }));
-
-    expect(screen.getByRole('combobox', { name: 'Tipo de producto' })).toHaveTextContent(
-      'Con serial',
-    );
-    expect(trackingCombo).toHaveTextContent('Con serial');
-    // La guía existente de control de activo sigue encadenada al mismo cambio.
-    expect(screen.getByRole('checkbox', { name: /Control de activo/ })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /Control de activo/ })).toBeDisabled();
-  });
-
-  it('elegir "Activo fijo" en Control de material ajusta Tipo de producto a "Con serial" (guía inversa G1)', async () => {
-    const user = userEvent.setup();
-    renderDrawer({ item: consumableStockItem });
-
-    await user.click(screen.getByRole('combobox', { name: 'Control de material' }));
-    await user.click(await screen.findByRole('option', { name: 'Activo fijo' }));
-
-    expect(screen.getByRole('combobox', { name: 'Tipo de producto' })).toHaveTextContent(
-      'Con serial',
-    );
-    expect(screen.getByRole('checkbox', { name: /Control de activo/ })).toBeChecked();
-  });
-
-  it('la guía proactiva persiste la pareja coherente vía onUpdate', async () => {
-    const user = userEvent.setup();
-    const { onUpdate } = renderDrawer({ item: consumableStockItem });
-
-    await user.click(screen.getByRole('combobox', { name: 'Tipo de producto' }));
-    await user.click(await screen.findByRole('option', { name: 'Con serial' }));
-    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
-    expect(onUpdate.mock.calls[0]![1]).toMatchObject({
-      itemKind: InventoryItemKind.SERIALIZED,
-      trackingMode: InventoryTrackingMode.SERIALIZED,
-      assetControlled: true,
-    });
-  });
-
-  it('la vía guiada marca sucio igual que la edición directa: Cancelar pide confirmación (S2.1 C5)', async () => {
-    const user = userEvent.setup();
-    const { onClose } = renderDrawer({ item: consumableStockItem });
-
-    await user.click(screen.getByRole('combobox', { name: 'Tipo de producto' }));
-    await user.click(await screen.findByRole('option', { name: 'Con serial' }));
-
-    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
-
-    // El cambio guiado cuenta como edición: no se descarta en silencio.
-    expect(await screen.findByRole('dialog', { name: 'Descartar cambios' })).toBeInTheDocument();
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it('ítem ya inconsistente: el guardado se bloquea con el mensaje exacto y se libera al corregir (CA-S2-01)', async () => {
-    const user = userEvent.setup();
-    // El caso real del catálogo: Tipo "Con serial" guardado con Control "Consumible".
-    const inconsistentItem: InventoryItemRecord = {
-      ...item,
-      itemKind: InventoryItemKind.SERIALIZED,
-      trackingMode: InventoryTrackingMode.CONSUMABLE,
-      assetControlled: false,
-    };
-    const { onUpdate } = renderDrawer({ item: inconsistentItem });
-
-    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-
-    expect(
-      await screen.findByText(INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE),
-    ).toBeInTheDocument();
-    expect(onUpdate).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('combobox', { name: 'Control de material' }));
-    await user.click(await screen.findByRole('option', { name: 'Con serial' }));
-
-    await waitFor(() =>
-      expect(
-        screen.queryByText(INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE),
-      ).not.toBeInTheDocument(),
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
-    expect(onUpdate.mock.calls[0]![1]).toMatchObject({
-      itemKind: InventoryItemKind.SERIALIZED,
-      trackingMode: InventoryTrackingMode.SERIALIZED,
-    });
-  });
-
-  it('validateCatalogItemCoherence: pareja coherente válida, contradicción con el copy G1', () => {
-    expect(
-      validateCatalogItemCoherence({
-        itemKind: InventoryItemKind.SERIALIZED,
-        trackingMode: InventoryTrackingMode.SERIALIZED,
-      }),
-    ).toBeNull();
-    expect(
-      validateCatalogItemCoherence({
-        itemKind: InventoryItemKind.SERIALIZED,
-        trackingMode: InventoryTrackingMode.FIXED_ASSET,
-      }),
-    ).toBeNull();
-    expect(
-      validateCatalogItemCoherence({
-        itemKind: InventoryItemKind.STOCK,
-        trackingMode: InventoryTrackingMode.CONSUMABLE,
-      }),
-    ).toBeNull();
-    expect(
-      validateCatalogItemCoherence({
-        itemKind: InventoryItemKind.SERIALIZED,
-        trackingMode: InventoryTrackingMode.CONSUMABLE,
-      }),
-    ).toBe(INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE);
-    expect(
-      validateCatalogItemCoherence({
-        itemKind: InventoryItemKind.CONSUMABLE,
-        trackingMode: InventoryTrackingMode.FIXED_ASSET,
-      }),
-    ).toBe(INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE);
   });
 });

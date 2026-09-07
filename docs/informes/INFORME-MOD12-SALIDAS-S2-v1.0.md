@@ -136,3 +136,46 @@ Bloqueante: Sí | Supuesto mientras tanto: ninguno — no se relaja el workflow 
 2. **Re-corrida G6.5** (ADR-069): la ejecuta el **operador** manualmente sobre el nuevo SHA una vez integrado el fix del 422 + el commit de docs de esta consolidación.
 3. **Pendientes del operador (RB-01..RB-04, no bloquean G6):** data-fix `CFO-SER-ROGPN-TPL-XC220` + entrada con seriales, recorrido navegador del plan §5.4, HTTP en vivo con credenciales de prueba, siembra >25 ítems para la segunda página.
 4. **Condiciones DATA-ENG pre-rollout** de la migración 126 (ver §9.2): aplicar antes de migrar tenants con datos.
+
+## 12. Cierre de auditoría AI-EM-ARCH (2026-09-07)
+
+Auditoría de la ejecución contra los artefactos de la Fase 0 (spec S2 v1.0 y los tres prompts), con verificación independiente del informe: suites, `audit-ui`, `audit:adr-citations` y typecheck corridos de nuevo por el auditor.
+
+**Veredicto:** ejecución fiel a la arquitectura. Sin desviaciones estructurales ni requisitos omitidos en los tres tracks. Verificados en código: A1 bidireccional, A2 guía simétrica, A3 bloqueo con saldo, aritmética de grupo sin rastros del singular (`resolveLineQuantity`), índice único parcial sobre columna espejo, `OperationalSidePeek` + `SearchableMultiPicker` sin componentes nuevos, apertura por botón sobre el nombre (condición G1), tabla sin columna Condición, pie único por `meta.capabilities.randomAccess`, `InventoryClient.tsx` intacto.
+
+### 12.1 Hallazgos y disposición
+
+| # | Hallazgo | Disposición |
+|---|---|---|
+| **H1** | `InventoryCatalogDrawer.spec.tsx` fallaba de forma reproducible en el caso «reorderPoint negativo (A3)» al correr el archivo completo (pasaba aislado). Causa: el Track A llevó ese archivo a 42 casos y agotó el reloj del test preexistente; subir el timeout ya se había intentado sin éxito (`0ef8b88d`). G6 se declaró con «portal 507/508 · 0 fallos», que no se reproducía. | **Cerrado.** Los 6 casos de coherencia S2 se extraen a `InventoryCatalogDrawer.kind-tracking.spec.tsx` con su propio fixture. Mismos 42 tests, dos archivos, **0 fallos**. Suite de inventario del portal: **79 suites · 538 passed · 1 skipped · 0 fallos** (antes 78 suites con 1 fallo). |
+| **H2** | El entregable A4 del prompt Track A pedía la **consulta documentada**; se entregó solo el resultado (1 producto) en el archivo de evidencia. Sin instrumento, otro tenant no puede diagnosticarse antes de que A1 empiece a rechazarle ediciones. | **Cerrado.** [`docs/quality/2026-09-05-mod12-s2-a4-diagnostico-coherencia-maestro.sql`](../quality/2026-09-05-mod12-s2-a4-diagnostico-coherencia-maestro.sql), en el patrón del script de reconciliación de la espejo: detección en ambos sentidos, impacto (saldo/reservado/activos) y las tres vías de corrección. **Validado en vivo** contra los dos tenants. |
+| **H3** | El registro G6.5 vigente apunta a `6400ddb9`, SHA ya superado: el fix del 422 está en `main` (`208bea06`) sin corrida posterior. | **Abierto por diseño** — la re-corrida la dispara el push de esta rama (§12.3). |
+| **H4** | Alcance ampliado fuera del plan: remediación de CI, `useMinWidth` compartido y un fix en `modules/tasks` (otro módulo) para poder cerrar el gate propio. | **Aceptado y declarado.** Sin reversión: es síntoma de la deuda de plataforma ya escalada al CTO, no defecto de la fase. |
+| **H5** | Contrato de lectura enmendado de v2 (`serializedAssetIds`) a v2.1 (`serializedAssets` con id + serial legible). | **Correcto.** v2.1 es lo que especificaba el prompt BE §B5; la v2 inicial era la desviación. Versionado y anotado: re-sync cumplido. |
+
+### 12.2 Reclasificación del catálogo (RB-01, autorizada por el CTO 2026-09-05)
+
+Diagnóstico A4 ejecutado sobre los dos schemas: **un** ítem inconsistente, `CFO-SER-ROGPN-TPL-XC220` en `tenant_iwana` (`tenant_test_s2_live`: 0). Impacto medido: **50 unidades** on hand (lote `04092026`, condición `NEW`, Bodega Principal), **1 reservada** por una salida `CREW_CUSTODY` en `REQUESTED`, y **0 activos serializados**.
+
+Vía aplicada: la (b) del script — el producto se rastrea por serial. El CTO autorizó seriales sintéticos por tratarse de un entorno de prueba previo a producción. En una transacción:
+
+1. Salida `REQUESTED` cancelada y su reserva devuelta (equivalente a `StockIssueService.cancel`): reservado 1 → 0.
+2. **50 activos serializados** creados como los produce una recepción serializada — `AVAILABLE`, en la bodega del saldo, responsable `WAREHOUSE`, seriales `XC220-TEST-0001` … `XC220-TEST-0050` (prefijo `TEST` deliberado: identifica el origen sintético).
+3. Maestro alineado: `tracking_mode` → `SERIALIZED`, `asset_controlled` → `true`. La pareja queda coherente con `item_kind = SERIALIZED`.
+
+Estado verificado tras la transacción: diagnóstico A4 en **0 filas en ambos tenants**; ítem `SERIALIZED | SERIALIZED | asset_controlled = true`; 50 activos `AVAILABLE`; saldo 50, reservado 0.
+
+**Consecuencia:** CA-S2-04 pasa a ser ejercible en vivo. El producto del caso ya ofrece selección de seriales en el panel de línea. Los pendientes RB-02 (recorrido de navegador), RB-03 (HTTP en vivo) y RB-04 (>25 ítems) siguen abiertos.
+
+### 12.3 Verificación de este cierre
+
+| Verificación | Resultado |
+|---|---|
+| Suite inventario portal | 79 suites · 538 passed · 1 skipped · **0 fallos** |
+| Suite inventario API | 73 suites · 668 passed · 8 skipped · **0 fallos** |
+| Migración 126 | 16/16 |
+| `pnpm typecheck` | 8/8 |
+| `pnpm --filter @iwana/portal lint` | **0 errores** (46 warnings preexistentes, archivos ajenos) |
+| `audit-ui.mjs` sobre `components/inventory` | P0/P1/P2 = **0**; 6 P3 `[revisar]` en tablas ajenas a S2 |
+| `pnpm audit:adr-citations` | **BLOQUEANTE: 0** |
+| Diagnóstico A4 en vivo | 0 filas en `tenant_iwana` y `tenant_test_s2_live` |
