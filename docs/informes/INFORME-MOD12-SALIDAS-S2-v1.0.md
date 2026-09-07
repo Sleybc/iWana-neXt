@@ -213,3 +213,42 @@ El primer CI posterior a esas remediaciones —`34110882819`, sobre `208bea06` e
 | `audit-ui.mjs` sobre `components/inventory` | P0/P1/P2 = **0**; 6 P3 `[revisar]` en tablas ajenas a S2 |
 | `pnpm audit:adr-citations` | **BLOQUEANTE: 0** |
 | Diagnóstico A4 en vivo | 0 filas en `tenant_iwana` y `tenant_test_s2_live` |
+
+
+## 13. Cierre de H6 y hallazgo destapado (2026-09-07)
+
+### 13.1 H6 — resuelto en el design system, confirmado en CI Linux
+
+**Causa raíz (AI-FE-PLATFORM, medida no supuesta):** `OperationalSidePeek` (`packages/ui/src/components/OperationalSidePeek.tsx:69`) y `usePortalSideDrawerA11y` (`apps/portal/src/components/shared/use-portal-side-drawer-a11y.ts:74`) programaban el foco inicial dentro de un `requestAnimationFrame`. Ese frame puede correr **después** de la primera interacción del operador: al llegar arrastra el foco al primer focusable del panel y, de paso, cierra el desplegable recién abierto —el menú del `Select` se portalea a `document.body` (`Select.tsx:545,641`) y su `onBlurCapture` (`:405`) lo cierra al perder el foco— o le arranca el foco al campo que se está tecleando.
+
+Evidencia con el rAF interceptado: `document.activeElement` pasaba del `combobox` a un botón del pie y las opciones montadas caían de **1 a 0**.
+
+**Agravante en el hook del portal:** su efecto declaraba `onClose` como dependencia, y los cuatro drawers lo reciben de `useDiscardChangesGuard` como `useCallback(..., [isDirty, onClose])`. Cambiaba de identidad **justo al ensuciarse el formulario** —al primer carácter tecleado—, reejecutando el efecto y reprogramando el foco a mitad de captura. Reproducido en local: 1 de 5 corridas en rojo antes del arreglo.
+
+**No era deuda de tests, era defecto de producto:** el operador que abría un panel y tocaba de inmediato un desplegable lo veía cerrarse solo, o perdía lo tecleado.
+
+**Corrección (`8fe22a87`):** ambos sitios solo reubican el foco si nadie lo reclamó entretanto (`activeElement` nulo, `body`, `documentElement`, o el propio disparador). El foco de apertura —accesibilidad— se conserva íntegro. **Sin cambio de contrato**: props, estados y semántica ARIA idénticos. Regresión añadida en `ExecutionOrderExperience.spec.tsx`.
+
+**Confirmación en CI Linux (SHA `8fe22a87`):** los cinco tests intermitentes desaparecieron del job de unit tests. Es la validación que faltaba: seis corridas anteriores habían fallado ahí.
+
+**Corrección de registro:** el arreglo de `useStockIssueLineForm` (`2eed1fa2`) **no** era la causa de estos fallos, aunque su comentario original lo daba a entender. Se conserva porque cierra una ventana distinta y real, y el comentario quedó rectificado en el propio archivo.
+
+### 13.2 Escalación a AI-DS-OWNER — mismo defecto latente en `Dialog`
+
+`packages/ui/src/components/Dialog.tsx:191` tiene **el mismo patrón sin guarda**. No se tocó: la autorización de AI-EM-ARCH nombraba `OperationalSidePeek`, y `Dialog` tiene ~47 consumidores entre portal y web. El arreglo son las mismas tres líneas, pero esa superficie exige veredicto de **AI-DS-OWNER**. Es el mismo defecto de producto latente en 47 sitios.
+
+### 13.3 Hallazgo destapado — migración 126 rota, oculta tras el job
+
+Con los unit tests en verde, el job llegó por primera vez al paso *Integration tests contra PostgreSQL real* y encontró un fallo **determinista** (reproducido también en local):
+
+```
+● 126 stock_issue_line_serials › el re-run de up hace backfill del singular nuevo sin duplicar (S2.1 · B1)
+  [126 post-vuelo cobertura] 1 línea(s) con singular sin réplica en la hija.
+  at assertBackfillCoverage (126_create_stock_issue_line_serials.ts:320)
+```
+
+Es **preexistente** —ningún commit de este cierre toca `packages/database`— y llevaba oculto desde S2.1: el job moría antes en los unit tests del portal, así que este paso nunca se ejecutaba. Es exactamente el tipo de compuerta que ADR-056 persigue: un gate que no podía fallar porque no llegaba a correr.
+
+El post-vuelo **funciona** (caza el hueco); lo que falla es el backfill del re-run. Interacción a investigar: el `ON CONFLICT DO NOTHING` del `backfillInsertSql` frente al índice único parcial `uq_stock_issue_line_serials_active_asset`, y por qué el pre-vuelo `assertNoActiveCollisions` no aborta antes en ese escenario.
+
+**Dueño: AI-SR-FULL con revisión de AI-DATA-ENG** (Track B). Bloquea G6.5 junto con el E2E R4.1.
